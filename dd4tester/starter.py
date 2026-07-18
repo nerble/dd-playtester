@@ -139,8 +139,11 @@ class StarterPolicy:
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
+        recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
         folded = self.text.casefold()
+        if "you launch a volley of" in recent and "magic missile" in recent:
+            self.magic_missile_cast = False
         if any(
             warning in folded
             for warning in ("lack of food", "dying of hunger", "you are hungry")

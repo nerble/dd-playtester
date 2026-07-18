@@ -1071,6 +1071,30 @@ def test_mage_casts_magic_missile_while_fighting_an_arena_target() -> None:
     assert policy.next_decision(state) is None
 
 
+def test_mage_casts_again_after_the_server_confirms_the_previous_volley() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=7)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "a prowling wolf"
+    policy.magic_missile_cast = True
+    state = CharacterState(
+        hp=70,
+        max_hp=96,
+        mana=180,
+        max_mana=268,
+        position=6,
+        room_name="The Mud School Arena",
+        room_vnum="3736",
+    )
+
+    policy.observe_text("You launch a volley of 3 magic missiles at a wolf!\n")
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'magic missile' wolf"
+
+
 def test_mage_preserves_low_mana_for_arena_recovery() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=6)
     policy.in_world = True
