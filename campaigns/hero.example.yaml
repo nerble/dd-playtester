@@ -1,0 +1,10 @@
+# The character profile owns login details, race, gender, class, and local paths.
+character_profile: ../profiles/starter.example.yaml
+name: TestExample to HERO
+target_level: 100
+
+# Campaign-wide safety limits. Each segment is capped to the remaining budget.
+max_segments: 100
+max_total_runtime: 86400
+max_total_commands: 25000
+max_stalled_segments: 3

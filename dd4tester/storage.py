@@ -56,6 +56,55 @@ class RunStorage:
 
             CREATE INDEX IF NOT EXISTS idx_state_snapshots_run_id
             ON state_snapshots(run_id, id);
+
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                config_path TEXT NOT NULL,
+                character_profile_path TEXT NOT NULL,
+                target_level INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_campaigns_config_path
+            ON campaigns(config_path, id DESC);
+
+            CREATE TABLE IF NOT EXISTS campaign_segments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+                sequence INTEGER NOT NULL,
+                phase TEXT NOT NULL,
+                run_id INTEGER,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                status TEXT NOT NULL,
+                start_state_json TEXT NOT NULL,
+                end_state_json TEXT,
+                command_count INTEGER,
+                duration_seconds REAL,
+                error TEXT,
+                UNIQUE(campaign_id, sequence)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_campaign_segments_campaign_id
+            ON campaign_segments(campaign_id, sequence);
+
+            CREATE TABLE IF NOT EXISTS campaign_checkpoints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+                segment_id INTEGER REFERENCES campaign_segments(id) ON DELETE SET NULL,
+                run_id INTEGER,
+                phase TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                state_json TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_campaign_checkpoints_campaign_id
+            ON campaign_checkpoints(campaign_id, id);
             """
         )
         self.connection.commit()
@@ -174,6 +223,249 @@ class RunStorage:
             (run_id,),
         )
         return list(cursor.fetchall())
+
+    def count_events(self, run_id: int, *, kind: str | None = None) -> int:
+        if kind is None:
+            cursor = self.connection.execute(
+                "SELECT COUNT(*) FROM events WHERE run_id = ?",
+                (run_id,),
+            )
+        else:
+            cursor = self.connection.execute(
+                "SELECT COUNT(*) FROM events WHERE run_id = ? AND kind = ?",
+                (run_id, kind),
+            )
+        return int(cursor.fetchone()[0])
+
+    def create_campaign(
+        self,
+        *,
+        name: str,
+        config_path: Path,
+        character_profile_path: Path,
+        target_level: int,
+    ) -> int:
+        now = _now()
+        cursor = self.connection.execute(
+            """
+            INSERT INTO campaigns (
+                name, config_path, character_profile_path, target_level,
+                started_at, updated_at, status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'running')
+            """,
+            (
+                name,
+                str(config_path),
+                str(character_profile_path),
+                target_level,
+                now,
+                now,
+            ),
+        )
+        self.connection.commit()
+        return int(cursor.lastrowid)
+
+    def get_campaign(self, campaign_id: int) -> sqlite3.Row | None:
+        cursor = self.connection.execute(
+            """
+            SELECT id, name, config_path, character_profile_path, target_level,
+                   started_at, updated_at, status, error
+            FROM campaigns
+            WHERE id = ?
+            """,
+            (campaign_id,),
+        )
+        return cursor.fetchone()
+
+    def get_latest_campaign_for_config(self, config_path: Path) -> sqlite3.Row | None:
+        cursor = self.connection.execute(
+            """
+            SELECT id, name, config_path, character_profile_path, target_level,
+                   started_at, updated_at, status, error
+            FROM campaigns
+            WHERE config_path = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(config_path),),
+        )
+        return cursor.fetchone()
+
+    def list_campaigns(self, *, limit: int = 20) -> list[sqlite3.Row]:
+        cursor = self.connection.execute(
+            """
+            SELECT id, name, config_path, character_profile_path, target_level,
+                   started_at, updated_at, status, error
+            FROM campaigns
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return list(cursor.fetchall())
+
+    def resume_campaign(self, campaign_id: int) -> None:
+        self.connection.execute(
+            """
+            UPDATE campaigns
+            SET status = 'running', error = NULL, updated_at = ?
+            WHERE id = ?
+            """,
+            (_now(), campaign_id),
+        )
+        self.connection.commit()
+
+    def finish_campaign(
+        self,
+        campaign_id: int,
+        *,
+        status: str,
+        error: str | None = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            UPDATE campaigns
+            SET status = ?, error = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status, error, _now(), campaign_id),
+        )
+        self.connection.commit()
+
+    def start_campaign_segment(
+        self,
+        campaign_id: int,
+        *,
+        phase: str,
+        start_state: dict[str, Any],
+    ) -> int:
+        sequence = int(
+            self.connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM campaign_segments "
+                "WHERE campaign_id = ?",
+                (campaign_id,),
+            ).fetchone()[0]
+        )
+        cursor = self.connection.execute(
+            """
+            INSERT INTO campaign_segments (
+                campaign_id, sequence, phase, started_at, status, start_state_json
+            )
+            VALUES (?, ?, ?, ?, 'running', ?)
+            """,
+            (
+                campaign_id,
+                sequence,
+                phase,
+                _now(),
+                json.dumps(start_state, sort_keys=True),
+            ),
+        )
+        self.connection.commit()
+        return int(cursor.lastrowid)
+
+    def finish_campaign_segment(
+        self,
+        segment_id: int,
+        *,
+        status: str,
+        run_id: int | None,
+        end_state: dict[str, Any] | None,
+        command_count: int | None,
+        duration_seconds: float | None,
+        error: str | None = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            UPDATE campaign_segments
+            SET run_id = ?, finished_at = ?, status = ?, end_state_json = ?,
+                command_count = ?, duration_seconds = ?, error = ?
+            WHERE id = ?
+            """,
+            (
+                run_id,
+                _now(),
+                status,
+                json.dumps(end_state, sort_keys=True) if end_state is not None else None,
+                command_count,
+                duration_seconds,
+                error,
+                segment_id,
+            ),
+        )
+        self.connection.commit()
+
+    def list_campaign_segments(self, campaign_id: int) -> list[sqlite3.Row]:
+        cursor = self.connection.execute(
+            """
+            SELECT id, campaign_id, sequence, phase, run_id, started_at, finished_at,
+                   status, start_state_json, end_state_json, command_count,
+                   duration_seconds, error
+            FROM campaign_segments
+            WHERE campaign_id = ?
+            ORDER BY sequence
+            """,
+            (campaign_id,),
+        )
+        return list(cursor.fetchall())
+
+    def campaign_totals(self, campaign_id: int) -> sqlite3.Row:
+        cursor = self.connection.execute(
+            """
+            SELECT COUNT(*) AS segment_count,
+                   COALESCE(SUM(command_count), 0) AS command_count,
+                   COALESCE(SUM(duration_seconds), 0) AS duration_seconds
+            FROM campaign_segments
+            WHERE campaign_id = ?
+            """,
+            (campaign_id,),
+        )
+        return cursor.fetchone()
+
+    def record_campaign_checkpoint(
+        self,
+        campaign_id: int,
+        *,
+        segment_id: int | None,
+        run_id: int | None,
+        phase: str,
+        reason: str,
+        state: dict[str, Any],
+    ) -> int:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO campaign_checkpoints (
+                campaign_id, segment_id, run_id, phase, reason, created_at, state_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                campaign_id,
+                segment_id,
+                run_id,
+                phase,
+                reason,
+                _now(),
+                json.dumps(state, sort_keys=True),
+            ),
+        )
+        self.connection.commit()
+        return int(cursor.lastrowid)
+
+    def get_latest_campaign_checkpoint(self, campaign_id: int) -> sqlite3.Row | None:
+        cursor = self.connection.execute(
+            """
+            SELECT id, campaign_id, segment_id, run_id, phase, reason, created_at,
+                   state_json
+            FROM campaign_checkpoints
+            WHERE campaign_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (campaign_id,),
+        )
+        return cursor.fetchone()
 
     def list_state_snapshots(self, run_id: int) -> list[sqlite3.Row]:
         cursor = self.connection.execute(

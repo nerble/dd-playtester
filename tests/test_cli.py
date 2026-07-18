@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import dd4tester.cli
+from dd4tester.campaign import CampaignResult
 from dd4tester.cli import main
 from dd4tester.runner import RunResult
 from dd4tester.storage import RunStorage
@@ -81,6 +82,70 @@ def test_starter_command_runs_character_profile(tmp_path, capsys, monkeypatch) -
     assert exit_code == 0
     assert "Run 7 success" in captured.out
     assert f"Transcript: {transcript}" in captured.out
+
+
+def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypatch) -> None:
+    config = tmp_path / "campaign.yaml"
+
+    async def fake_campaign(path: Path, *, force_new: bool) -> CampaignResult:
+        assert path == config
+        assert force_new is True
+        return CampaignResult(4, "blocked", 9, "awaiting verified policy", {"level": 2})
+
+    monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
+
+    exit_code = main(["campaign", str(config), "--new"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Campaign 4 blocked" in captured.out
+    assert "Checkpoint: 9" in captured.out
+    assert "Level: 2" in captured.out
+
+
+def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Rulemage to HERO",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="starter",
+            start_state={"level": 1},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=7,
+            end_state={"level": 2},
+            command_count=42,
+            duration_seconds=12.5,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=segment_id,
+            run_id=7,
+            phase="starter",
+            reason="segment_complete",
+            state={"level": 2},
+        )
+        storage.finish_campaign(
+            campaign_id,
+            status="blocked",
+            error="awaiting verified policy",
+        )
+
+    exit_code = main(["show-campaign", str(campaign_id), "--database", str(database)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Campaign 1: Rulemage to HERO" in captured.out
+    assert "Checkpoint 1: starter (segment_complete), level 2" in captured.out
+    assert "1\tstarter\tsuccess\t7\t42\t12.5s\t-" in captured.out
 
 
 def _create_recorded_run(tmp_path) -> tuple[Path, Path]:

@@ -59,6 +59,25 @@ and equips rewards, buys food and water, practices a real class ability, reaches
 level 2, saves, and quits. Every choice is stored as a `decision` event with its
 stage and reason. Passwords remain redacted.
 
+## Campaign execution
+
+`campaigns/hero.example.yaml` turns a character profile into a durable
+level-100 campaign. It records a checkpoint after every verified policy segment,
+resumes the same configuration by default, and applies aggregate runtime,
+command, segment, and stalled-progress limits:
+
+```powershell
+python -m dd4tester campaign campaigns/hero.example.yaml
+python -m dd4tester show-campaign 1
+python -m dd4tester campaign campaigns/hero.example.yaml --new
+```
+
+Milestone 5 registers the proven creation/tutorial policy as its first segment.
+Once it reaches level 2, the campaign checkpoints and blocks cleanly until a
+verified leveling policy is added. It never fabricates a route or repeatedly
+grinds unknown content; this safety boundary lets future policies extend the
+same character toward HERO without losing campaign history.
+
 ## Run data
 
 With the default `scenarios/login.yaml` values, running from this repository root writes:
@@ -66,13 +85,15 @@ With the default `scenarios/login.yaml` values, running from this repository roo
 - SQLite database: `runs/dd4tester.sqlite3`
 - JSONL transcripts: `transcripts/<scenario-name>-<run-id>.jsonl`, for example `transcripts/login-1.jsonl`
 
-The SQLite schema has three tables:
+The SQLite schema includes run and campaign tables:
 
 - `runs`: one row per scenario run, including status, start/end times, scenario path, transcript path, and error text.
 - `events`: one row per command, response, GMCP message, runner state, or derived
   `game_event`. Structured event payloads contain `type`, `source`, and `data`.
 - `state_snapshots`: timestamped character-state revisions linked to the
   `game_event` that caused each change.
+- `campaigns`, `campaign_segments`, and `campaign_checkpoints`: durable campaign
+  status, policy-segment history, and resumable character-state checkpoints.
 
 Inspect stored runs, transcripts, and character state with:
 

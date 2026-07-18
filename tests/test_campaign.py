@@ -1,0 +1,210 @@
+import asyncio
+from pathlib import Path
+
+from dd4tester.campaign import CampaignRunner, load_campaign_spec
+from dd4tester.runner import RunResult
+from dd4tester.storage import RunStorage
+
+
+def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    calls: list[int] = []
+
+    async def starter_segment(spec, profile_path: Path) -> RunResult:
+        calls.append(spec.max_commands)
+        return _record_segment_run(spec.database, profile_path, {"level": 2, "xp": 100})
+
+    spec = load_campaign_spec(config_path)
+    result = asyncio.run(
+        CampaignRunner(spec, config_path, segment_runner=starter_segment).run()
+    )
+
+    assert result.status == "blocked"
+    assert result.state["level"] == 2
+    assert "No verified leveling policy" in result.message
+    assert calls == [250]
+
+    with RunStorage(database) as storage:
+        campaign = storage.get_campaign(result.campaign_id)
+        segments = storage.list_campaign_segments(result.campaign_id)
+        checkpoint = storage.get_latest_campaign_checkpoint(result.campaign_id)
+
+    assert campaign["status"] == "blocked"
+    assert len(segments) == 1
+    assert segments[0]["phase"] == "starter"
+    assert segments[0]["command_count"] == 1
+    assert checkpoint["reason"] == "segment_complete"
+
+    async def unexpected_segment(_spec, _profile_path: Path) -> RunResult:
+        raise AssertionError("a level-two campaign must not rerun the starter segment")
+
+    resumed = asyncio.run(
+        CampaignRunner(spec, config_path, segment_runner=unexpected_segment).run()
+    )
+
+    assert resumed.campaign_id == result.campaign_id
+    assert resumed.status == "blocked"
+    assert "No verified leveling policy" in resumed.message
+
+
+def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path, target_level=2)
+
+    async def starter_segment(spec, profile_path: Path) -> RunResult:
+        return _record_segment_run(spec.database, profile_path, {"level": 2, "xp": 100})
+
+    result = asyncio.run(
+        CampaignRunner(
+            load_campaign_spec(config_path),
+            config_path,
+            segment_runner=starter_segment,
+        ).run()
+    )
+
+    assert result.status == "success"
+    assert result.message == "Target level 2 reached."
+    with RunStorage(database) as storage:
+        assert storage.get_campaign(result.campaign_id)["status"] == "success"
+
+
+def test_campaign_caps_segment_with_remaining_aggregate_budget(tmp_path) -> None:
+    config_path, _database = _write_campaign_files(tmp_path, max_total_commands=7)
+    requested_commands: list[int] = []
+
+    async def starter_segment(spec, profile_path: Path) -> RunResult:
+        requested_commands.append(spec.max_commands)
+        return _record_segment_run(spec.database, profile_path, {"level": 2})
+
+    asyncio.run(
+        CampaignRunner(
+            load_campaign_spec(config_path),
+            config_path,
+            segment_runner=starter_segment,
+        ).run()
+    )
+
+    assert requested_commands == [7]
+
+
+def test_campaign_stops_after_configured_stalled_segments(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path, max_stalled_segments=2)
+    calls = 0
+
+    async def starter_segment(spec, profile_path: Path) -> RunResult:
+        nonlocal calls
+        calls += 1
+        return _record_segment_run(spec.database, profile_path, {"level": 1, "xp": 0})
+
+    spec = load_campaign_spec(config_path)
+    first = asyncio.run(
+        CampaignRunner(spec, config_path, segment_runner=starter_segment).run()
+    )
+    second = asyncio.run(
+        CampaignRunner(spec, config_path, segment_runner=starter_segment).run()
+    )
+    third = asyncio.run(
+        CampaignRunner(spec, config_path, segment_runner=starter_segment).run()
+    )
+
+    assert first.status == "blocked"
+    assert second.status == "blocked"
+    assert third.message == "Campaign stalled for 2 completed segment(s)."
+    assert calls == 3
+    with RunStorage(database) as storage:
+        assert len(storage.list_campaign_segments(third.campaign_id)) == 3
+
+    resumed = asyncio.run(
+        CampaignRunner(spec, config_path, segment_runner=starter_segment).run()
+    )
+    assert resumed.message == "Campaign stalled for 2 completed segment(s)."
+    assert calls == 3
+
+
+def test_campaign_records_a_returned_failed_segment(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+
+    async def failed_segment(spec, profile_path: Path) -> RunResult:
+        result = _record_segment_run(spec.database, profile_path, {"level": 1})
+        return RunResult(
+            result.run_id,
+            "failed",
+            result.transcript_path,
+            result.database_path,
+            result.final_state,
+        )
+
+    result = asyncio.run(
+        CampaignRunner(
+            load_campaign_spec(config_path),
+            config_path,
+            segment_runner=failed_segment,
+        ).run()
+    )
+
+    assert result.status == "failed"
+    with RunStorage(database) as storage:
+        segment = storage.list_campaign_segments(result.campaign_id)[0]
+        assert segment["status"] == "failed"
+        assert segment["error"] == "starter segment returned status failed"
+
+
+def _write_campaign_files(
+    tmp_path: Path,
+    *,
+    target_level: int = 100,
+    max_total_commands: int = 10_000,
+    max_stalled_segments: int = 2,
+) -> tuple[Path, Path]:
+    database = tmp_path / "runs.sqlite3"
+    profile_path = tmp_path / "character.yaml"
+    profile_path.write_text(
+        "\n".join(
+            [
+                "name: Campaignmage",
+                "password_env: TEST_PASSWORD",
+                "race: human",
+                "gender: female",
+                "class: mage",
+                f"database: '{database.as_posix()}'",
+                f"transcript_dir: '{(tmp_path / 'transcripts').as_posix()}'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "campaign.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "name: Campaignmage to HERO",
+                "character_profile: character.yaml",
+                f"target_level: {target_level}",
+                "max_segments: 10",
+                "max_total_runtime: 3600",
+                f"max_total_commands: {max_total_commands}",
+                f"max_stalled_segments: {max_stalled_segments}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return config_path, database
+
+
+def _record_segment_run(
+    database: Path,
+    profile_path: Path,
+    final_state: dict[str, int],
+) -> RunResult:
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="starter:Campaignmage",
+            scenario_path=profile_path,
+        )
+        storage.record_event(run_id, kind="command", payload={"command": "look"})
+        storage.finish_run(run_id, status="success")
+    return RunResult(
+        run_id=run_id,
+        status="success",
+        transcript_path=Path("transcripts/campaign.jsonl"),
+        database_path=database,
+        final_state=final_state,
+    )

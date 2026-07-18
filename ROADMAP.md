@@ -23,8 +23,8 @@ headlessly or through a visible Mudlet client in a Windows virtual machine.
    handling.
 4. **Reports - complete.** Produce Markdown and JSON summaries with progress, failures,
    balance signals, and representative run-time commentary.
-5. **Campaign execution.** Add checkpoints, resume support, budgets, stuck detection,
-   and controlled long-running progression.
+5. **Campaign execution foundation - complete.** Add checkpoints, resume support,
+   budgets, stuck detection, and controlled long-running progression.
 6. **Mudlet bridge.** Create a small Lua integration that exchanges commands, output,
    GMCP, and commentary while leaving the normal client visible.
 7. **VirtualBox orchestration.** Start and monitor a Windows VM, launch the Mudlet
@@ -83,3 +83,17 @@ combat and provisioning steps, practiced `magic missile`, saved, and quit.
   claiming conclusions beyond the recorded evidence.
 - First-person commentary is deterministic, traceable to stored decisions and game
   events, and never includes redacted commands or secrets.
+
+## Milestone 5 Exit Criteria
+
+- A campaign YAML binds a character profile to a target level and aggregate limits.
+- Campaign, segment, and checkpoint rows survive process restarts in SQLite.
+- The campaign resumes its last checkpoint by default and can explicitly start fresh.
+- Segment, command, runtime, and stalled-progress limits stop unsafe repetition.
+- The verified starter policy is executed as the first campaign segment; unimplemented
+  post-tutorial territory blocks with an explicit checkpoint instead of guessing.
+
+This completes the campaign execution foundation, not a claim that every class
+already has a verified level-2-to-HERO policy. The next progression work must
+collect live evidence for safe XP routes, class abilities, recovery, equipment,
+and failure handling before registering each new level-band policy.

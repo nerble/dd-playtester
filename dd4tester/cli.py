@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .campaign import run_campaign_file
 from .report import build_run_report, render_json, render_markdown
 from .runner import run_scenario_file
 from .starter import run_starter_profile
@@ -31,6 +32,21 @@ def build_parser() -> argparse.ArgumentParser:
         "profile",
         type=Path,
         help="path to the starter character YAML profile",
+    )
+
+    campaign_parser = subcommands.add_parser(
+        "campaign",
+        help="run or resume a checkpointed character campaign",
+    )
+    campaign_parser.add_argument(
+        "config",
+        type=Path,
+        help="path to the campaign YAML configuration",
+    )
+    campaign_parser.add_argument(
+        "--new",
+        action="store_true",
+        help="start a new campaign instead of resuming this configuration",
     )
 
     show_runs_parser = subcommands.add_parser("show-runs", help="list stored scenario runs")
@@ -104,6 +120,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=20,
         help="maximum representative commentary entries, default: 20",
     )
+
+    show_campaign_parser = subcommands.add_parser(
+        "show-campaign",
+        help="show checkpoint and segment history for a campaign",
+    )
+    show_campaign_parser.add_argument("campaign_id", type=int, help="stored campaign id")
+    show_campaign_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
     return parser
 
 
@@ -133,6 +161,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Database: {result.database_path}")
         return 0
 
+    if args.command == "campaign":
+        try:
+            result = asyncio.run(run_campaign_file(args.config, force_new=args.new))
+        except Exception as exc:
+            print(f"Campaign failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Campaign {result.campaign_id} {result.status}")
+        if result.message:
+            print(f"Status: {result.message}")
+        if result.checkpoint_id is not None:
+            print(f"Checkpoint: {result.checkpoint_id}")
+        print(f"Level: {result.state.get('level', '-')}")
+        return 0 if result.status == "success" else 1
+
     if args.command == "show-runs":
         return show_runs(args.database, limit=args.limit)
 
@@ -150,6 +192,9 @@ def main(argv: list[str] | None = None) -> int:
             output=args.output,
             commentary_limit=args.commentary_limit,
         )
+
+    if args.command == "show-campaign":
+        return show_campaign(args.campaign_id, database=args.database)
 
     parser.error(f"Unknown command: {args.command}")
     return 2
@@ -304,6 +349,54 @@ def show_report(
     return 0
 
 
+def show_campaign(campaign_id: int, *, database: Path) -> int:
+    if campaign_id < 1:
+        print("campaign_id must be at least 1", file=sys.stderr)
+        return 2
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+
+    with RunStorage(database) as storage:
+        campaign = storage.get_campaign(campaign_id)
+        segments = storage.list_campaign_segments(campaign_id)
+        checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+
+    if campaign is None:
+        print(f"No campaign with id {campaign_id} in {database.resolve()}", file=sys.stderr)
+        return 1
+
+    print(f"Database: {database.resolve()}")
+    print(f"Campaign {campaign['id']}: {campaign['name']}")
+    print(f"Status: {campaign['status']}")
+    print(f"Target level: {campaign['target_level']}")
+    print(f"Profile: {campaign['character_profile_path']}")
+    if campaign["error"]:
+        print(f"Reason: {campaign['error']}")
+    if checkpoint is not None:
+        state = json.loads(checkpoint["state_json"])
+        print(
+            f"Checkpoint {checkpoint['id']}: {checkpoint['phase']} "
+            f"({checkpoint['reason']}), level {state.get('level', '-')}"
+        )
+    print("sequence\tphase\tstatus\trun\tcommands\tduration\terror")
+    for segment in segments:
+        print(
+            "\t".join(
+                [
+                    str(segment["sequence"]),
+                    segment["phase"],
+                    segment["status"],
+                    str(segment["run_id"] or "-"),
+                    str(segment["command_count"] or 0),
+                    _duration(segment["duration_seconds"]),
+                    segment["error"] or "-",
+                ]
+            )
+        )
+    return 0
+
+
 def _resolve_transcript_target(target: str, database: Path) -> Path | None:
     if not target.isdigit():
         return Path(target)
@@ -331,3 +424,7 @@ def _resource(current: Any, maximum: Any) -> str:
     if maximum is None:
         return str(current)
     return f"{current}/{maximum}"
+
+
+def _duration(value: float | None) -> str:
+    return "-" if value is None else f"{value:g}s"
