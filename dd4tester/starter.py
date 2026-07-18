@@ -803,6 +803,7 @@ class StarterPolicy:
                     "3900": "north",
                     "3901": "north",
                     "3902": "east",
+                    "3903": "east",
                 }
                 direction = outward_routes.get(room_vnum or "")
                 if direction is not None:
@@ -909,6 +910,7 @@ class StarterPolicy:
     def _moria_return_decision(self, state: CharacterState) -> BotDecision:
         return_routes = {
             "3903": "west",
+            "3904": "west",
             "3902": "south",
             "3901": "south",
             "3900": "south",

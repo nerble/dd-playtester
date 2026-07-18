@@ -1325,6 +1325,60 @@ def test_moria_research_follows_the_verified_east_turn_and_returns() -> None:
     assert return_west.command == "west"
 
 
+def test_moria_research_follows_the_verified_north_wall_edge_and_returns() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", moria_research=True, moria_depth=4)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    for room_vnum, room_name in (
+        ("3900", "West trail around Midgaard"),
+        ("3901", "West trail around Midgaard"),
+        ("3902", "Northwest corner of dusty trail."),
+        ("3903", "Dusty trail along north wall."),
+    ):
+        decision = policy.next_decision(
+            CharacterState(
+                area="Moria",
+                room_name=room_name,
+                room_vnum=room_vnum,
+                position=7,
+            )
+        )
+        assert decision is not None
+        assert decision.command == "look"
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    move_east = policy.next_decision(
+        CharacterState(
+            area="Moria",
+            room_name="Dusty trail along north wall.",
+            room_vnum="3903",
+            position=7,
+        )
+    )
+    assert move_east is not None
+    assert move_east.command == "east"
+    policy.after_command(move_east)
+    policy.prompt_ready = True
+
+    east_room = CharacterState(
+        area="Moria",
+        room_name="North wall trail",
+        room_vnum="3904",
+        position=7,
+    )
+    look_east = policy.next_decision(east_room)
+    assert look_east is not None
+    assert look_east.command == "look"
+    policy.after_command(look_east)
+    policy.prompt_ready = True
+
+    return_west = policy.next_decision(east_room)
+    assert return_west is not None
+    assert return_west.command == "west"
+
+
 def test_safe_room_recovery_waits_for_movement_before_travel() -> None:
     policy = StarterPolicy(_spec(), "swordfish", moria_research=True)
     policy.in_world = True
