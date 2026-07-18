@@ -942,6 +942,30 @@ def test_gmcp_health_recovery_reopens_safe_room_decisions() -> None:
     assert policy.prompt_ready is True
 
 
+def test_normal_arena_policy_wakes_before_leaving_safety() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.course_started = True
+    policy.course_complete = True
+    policy.practiced = True
+    state = CharacterState(
+        level=4,
+        hp=79,
+        max_hp=79,
+        move=180,
+        max_move=180,
+        position=4,
+        room_name="Safety",
+        room_vnum="3737",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "stand"
+
+
 def test_starter_policy_rejects_invalid_objective_level() -> None:
     with pytest.raises(ValueError, match="objective_level"):
         StarterPolicy(_spec(), "swordfish", objective_level=1)

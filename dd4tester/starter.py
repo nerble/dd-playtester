@@ -412,6 +412,9 @@ class StarterPolicy:
         if room_vnum == "2" or room_name == "limbo":
             return BotDecision("look", "return from Limbo to the previous room")
 
+        if _is_sleeping(state):
+            return BotDecision("stand", "wake before travel or arena actions")
+
         if self.combat_active:
             if self.needs_food or self.needs_drink or _health_ratio(state) < 0.25:
                 return BotDecision("flee", "leave combat before emergency resupply")
