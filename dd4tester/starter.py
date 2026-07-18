@@ -101,6 +101,7 @@ class StarterPolicy:
         magic_shop_buy_fly: bool = False,
         fastwalk_route: Fastwalk | None = None,
         fastwalk_explore_direction: str | None = None,
+        fastwalk_explore_depth: int = 1,
         fastwalk_attack_target: str | None = None,
         moria_research: bool = False,
         moria_depth: int = 0,
@@ -109,6 +110,8 @@ class StarterPolicy:
             raise ValueError("objective_level must be at least 2")
         if moria_depth < 0:
             raise ValueError("moria_depth must not be negative")
+        if not 1 <= fastwalk_explore_depth <= 6:
+            raise ValueError("fastwalk_explore_depth must be between 1 and 6")
         self.spec = spec
         self.password = password
         self.objective_level = objective_level
@@ -120,6 +123,7 @@ class StarterPolicy:
         self.magic_shop_buy_fly = magic_shop_buy_fly
         self.fastwalk_route = fastwalk_route
         self.fastwalk_explore_direction = fastwalk_explore_direction
+        self.fastwalk_explore_depth = fastwalk_explore_depth
         self.fastwalk_attack_target = fastwalk_attack_target
         self.moria_research = moria_research
         self.moria_depth = moria_depth
@@ -184,6 +188,10 @@ class StarterPolicy:
         self.fastwalk_outbound_index = 0
         self.fastwalk_return_index = 0
         self.fastwalk_explore_step = 0
+        self.fastwalk_explore_distance = 0
+        self.fastwalk_explore_look_pending = False
+        self.fastwalk_withdrawing = False
+        self.fastwalk_return_steps_remaining = 0
         self.fastwalk_attack_started = False
         self.fastwalk_target_absent = False
         self.fastwalk_loot_step = 0
@@ -375,10 +383,7 @@ class StarterPolicy:
         elif (
             decision.command == "look"
             and self.fastwalk_route is not None
-            and (
-                self.fastwalk_arrival_observed
-                or self.fastwalk_explore_step == 2
-            )
+            and self.fastwalk_arrival_observed
             and self.current_room
         ):
             # A mobile can wander between visits; make this probe depend on this look.
@@ -1109,8 +1114,16 @@ class StarterPolicy:
                             "inventory",
                             "record supplies and loot from the fastwalk kill",
                         )
-                if self.fastwalk_explore_step >= 2:
-                    self.fastwalk_explore_step = 3
+                if (
+                    self.fastwalk_explore_distance > 0
+                    and not self.fastwalk_withdrawing
+                ):
+                    self.fastwalk_withdrawing = True
+                    self.fastwalk_return_steps_remaining = (
+                        self.fastwalk_explore_distance
+                    )
+                if self.fastwalk_return_steps_remaining > 0:
+                    self.fastwalk_return_steps_remaining -= 1
                     return BotDecision(
                         _opposite_direction(self.fastwalk_explore_direction),
                         "return from the one-hop fastwalk combat room",
@@ -1132,30 +1145,44 @@ class StarterPolicy:
                     "attack the requested target found in the bounded fastwalk search",
                 )
             if self.fastwalk_explore_direction is not None:
-                if self.fastwalk_explore_step == 0:
-                    self.fastwalk_explore_step = 1
-                    return BotDecision(
-                        self.fastwalk_explore_direction,
-                        "inspect one room beyond the official fastwalk endpoint",
-                    )
-                if self.fastwalk_explore_step == 1:
-                    self.fastwalk_explore_step = 2
-                    return BotDecision("look", "record the one-hop fastwalk exploration room")
-                if self.fastwalk_explore_step == 2:
-                    if (
-                        self.fastwalk_attack_target is not None
-                        and not self.fastwalk_attack_started
-                    ):
-                        self.fastwalk_target_absent = True
-                        self.fastwalk_explore_step = 3
+                if self.fastwalk_withdrawing:
+                    if self.fastwalk_return_steps_remaining > 0:
+                        self.fastwalk_return_steps_remaining -= 1
                         return BotDecision(
                             _opposite_direction(self.fastwalk_explore_direction),
-                            "withdraw because the requested mobile was absent from both fresh room snapshots",
+                            "backtrack the bounded fastwalk search",
                         )
-                    self.fastwalk_explore_step = 3
+                    self.fastwalk_returning = True
+                    return BotDecision("recall", "return from the fastwalk endpoint")
+                if self.fastwalk_explore_look_pending:
+                    self.fastwalk_explore_look_pending = False
+                    self.fastwalk_explore_step = self.fastwalk_explore_distance * 2
+                    return BotDecision(
+                        "look",
+                        "record the current bounded fastwalk exploration room",
+                    )
+                if self.fastwalk_explore_distance < self.fastwalk_explore_depth:
+                    self.fastwalk_explore_distance += 1
+                    self.fastwalk_explore_step = (
+                        self.fastwalk_explore_distance * 2 - 1
+                    )
+                    self.fastwalk_explore_look_pending = True
+                    return BotDecision(
+                        self.fastwalk_explore_direction,
+                        "inspect the next room in the bounded fastwalk search",
+                    )
+                if (
+                    self.fastwalk_attack_target is not None
+                    and not self.fastwalk_attack_started
+                ):
+                    self.fastwalk_target_absent = True
+                self.fastwalk_withdrawing = True
+                self.fastwalk_return_steps_remaining = self.fastwalk_explore_distance
+                if self.fastwalk_return_steps_remaining > 0:
+                    self.fastwalk_return_steps_remaining -= 1
                     return BotDecision(
                         _opposite_direction(self.fastwalk_explore_direction),
-                        "return from the one-hop fastwalk exploration room",
+                        "withdraw after the bounded target search",
                     )
             self.fastwalk_returning = True
             return BotDecision("recall", "return from the fastwalk endpoint")
@@ -1609,6 +1636,7 @@ class StarterBotRunner:
         magic_shop_buy_fly: bool = False,
         fastwalk_route: Fastwalk | None = None,
         fastwalk_explore_direction: str | None = None,
+        fastwalk_explore_depth: int = 1,
         fastwalk_attack_target: str | None = None,
         moria_research: bool = False,
         moria_depth: int = 0,
@@ -1627,6 +1655,7 @@ class StarterBotRunner:
         self.magic_shop_buy_fly = magic_shop_buy_fly
         self.fastwalk_route = fastwalk_route
         self.fastwalk_explore_direction = fastwalk_explore_direction
+        self.fastwalk_explore_depth = fastwalk_explore_depth
         self.fastwalk_attack_target = fastwalk_attack_target
         self.moria_research = moria_research
         self.moria_depth = moria_depth
@@ -1734,6 +1763,7 @@ class StarterBotRunner:
                 magic_shop_buy_fly=self.magic_shop_buy_fly,
                 fastwalk_route=self.fastwalk_route,
                 fastwalk_explore_direction=self.fastwalk_explore_direction,
+                fastwalk_explore_depth=self.fastwalk_explore_depth,
                 fastwalk_attack_target=self.fastwalk_attack_target,
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
@@ -1845,6 +1875,7 @@ class StarterBotRunner:
                     "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
                     "fastwalk_route": self.fastwalk_route.name if self.fastwalk_route else None,
                     "fastwalk_explore_direction": self.fastwalk_explore_direction,
+                    "fastwalk_explore_depth": self.fastwalk_explore_depth,
                     "fastwalk_attack_target": self.fastwalk_attack_target,
                     "fastwalk_target_absent": policy.fastwalk_target_absent,
                     "missing_targets": {
@@ -2007,6 +2038,7 @@ async def run_fastwalk_research_profile(
     route_name: str,
     *,
     explore_direction: str | None = None,
+    explore_depth: int = 1,
     attack_target: str | None = None,
 ) -> RunResult:
     profile_path = Path(path)
@@ -2016,6 +2048,7 @@ async def run_fastwalk_research_profile(
         profile_path,
         fastwalk_route=route_named(route_name),
         fastwalk_explore_direction=explore_direction,
+        fastwalk_explore_depth=explore_depth,
         fastwalk_attack_target=attack_target,
     ).run()
 

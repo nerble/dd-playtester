@@ -1505,6 +1505,59 @@ def test_fastwalk_research_can_inspect_one_endpoint_exit_and_return() -> None:
     assert return_south.command == "south"
 
 
+def test_fastwalk_research_can_inspect_two_rooms_and_backtrack_exactly() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+        fastwalk_explore_depth=2,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+
+    endpoint = CharacterState(room_name="The tunnel", room_vnum="4014", position=7)
+    first_north = policy.next_decision(endpoint)
+    assert first_north is not None
+    assert first_north.command == "north"
+    policy.after_command(first_north)
+    policy.prompt_ready = True
+
+    first_room = CharacterState(room_name="The cave", room_vnum="4018", position=7)
+    first_look = policy.next_decision(first_room)
+    assert first_look is not None
+    assert first_look.command == "look"
+    policy.after_command(first_look)
+    policy.prompt_ready = True
+
+    second_north = policy.next_decision(first_room)
+    assert second_north is not None
+    assert second_north.command == "north"
+    policy.after_command(second_north)
+    policy.prompt_ready = True
+
+    second_room = CharacterState(room_name="The cave", room_vnum="4019", position=7)
+    second_look = policy.next_decision(second_room)
+    assert second_look is not None
+    assert second_look.command == "look"
+    policy.after_command(second_look)
+    policy.prompt_ready = True
+
+    first_south = policy.next_decision(second_room)
+    assert first_south is not None
+    assert first_south.command == "south"
+    policy.after_command(first_south)
+    policy.prompt_ready = True
+
+    second_south = policy.next_decision(first_room)
+    assert second_south is not None
+    assert second_south.command == "south"
+
+
 def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     route = route_named("moria")
     policy = StarterPolicy(
@@ -1520,6 +1573,7 @@ def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     policy.fastwalk_outbound_index = len(route.commands)
     policy.fastwalk_arrival_observed = True
     policy.fastwalk_explore_step = 2
+    policy.fastwalk_explore_distance = 1
     policy.room_targets["4018"] = ["kobold"]
 
     decision = policy.next_decision(
@@ -1571,6 +1625,7 @@ def test_fastwalk_probe_withdraws_when_fresh_look_does_not_show_requested_target
     policy.fastwalk_outbound_index = len(route.commands)
     policy.fastwalk_arrival_observed = True
     policy.fastwalk_explore_step = 2
+    policy.fastwalk_explore_distance = 1
     policy.room_targets["4018"] = []
 
     decision = policy.next_decision(

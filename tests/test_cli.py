@@ -267,11 +267,13 @@ def test_fastwalk_research_command_runs_named_route(tmp_path, capsys, monkeypatc
         route: str,
         *,
         explore_direction: str | None = None,
+        explore_depth: int = 1,
         attack_target: str | None = None,
     ) -> RunResult:
         assert path == profile
         assert route == "moria"
         assert explore_direction is None
+        assert explore_depth == 1
         assert attack_target is None
         return RunResult(15, "success", transcript, database, {"level": 6})
 
@@ -298,11 +300,13 @@ def test_fastwalk_research_command_can_inspect_one_exit(tmp_path, capsys, monkey
         route: str,
         *,
         explore_direction: str | None = None,
+        explore_depth: int = 1,
         attack_target: str | None = None,
     ) -> RunResult:
         assert path == profile
         assert route == "moria"
         assert explore_direction == "north"
+        assert explore_depth == 2
         assert attack_target is None
         return RunResult(16, "success", transcript, database, {"level": 6})
 
@@ -313,7 +317,15 @@ def test_fastwalk_research_command_can_inspect_one_exit(tmp_path, capsys, monkey
     )
 
     exit_code = main(
-        ["fastwalk-research", str(profile), "moria", "--exit", "north"]
+        [
+            "fastwalk-research",
+            str(profile),
+            "moria",
+            "--exit",
+            "north",
+            "--depth",
+            "2",
+        ]
     )
 
     captured = capsys.readouterr()

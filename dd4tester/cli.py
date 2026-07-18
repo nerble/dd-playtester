@@ -133,7 +133,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--exit",
         dest="explore_direction",
         choices=("north", "south", "east", "west", "up", "down"),
-        help="inspect one room through this endpoint exit, then return",
+        help="inspect rooms through this endpoint exit, then return",
+    )
+    fastwalk_parser.add_argument(
+        "--depth",
+        type=int,
+        default=1,
+        help="maximum rooms to inspect through --exit, from 1 to 6, default: 1",
     )
     fastwalk_parser.add_argument(
         "--attack",
@@ -439,6 +445,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.profile,
                     args.route,
                     explore_direction=args.explore_direction,
+                    explore_depth=args.depth,
                     attack_target=args.attack_target,
                 )
             )
