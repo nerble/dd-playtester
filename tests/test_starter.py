@@ -1216,6 +1216,68 @@ def test_fastwalk_research_requires_recall_and_reverses_when_needed() -> None:
     assert reverse.command == "south"
 
 
+def test_fastwalk_research_walks_from_arena_safety_to_preserve_movement() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(_spec(), "swordfish", fastwalk_route=route)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    leave_safety = policy.next_decision(
+        CharacterState(room_name="Safety", room_vnum="3737", position=7)
+    )
+    assert leave_safety is not None
+    assert leave_safety.command == "enter portal"
+    assert policy.fastwalk_recall_started is False
+    policy.after_command(leave_safety)
+    policy.prompt_ready = True
+
+    leave_school = policy.next_decision(
+        CharacterState(
+            room_name="The Entrance to the Mud School",
+            room_vnum="3725",
+            position=7,
+        )
+    )
+    assert leave_school is not None
+    assert leave_school.command == "down"
+    assert policy.fastwalk_recall_started is False
+    policy.after_command(leave_school)
+    policy.prompt_ready = True
+
+    first_step = policy.next_decision(
+        CharacterState(
+            room_name="The Temple Of Midgaard",
+            room_vnum="3001",
+            position=7,
+        )
+    )
+    assert first_step is not None
+    assert first_step.command == route.commands[0]
+    assert policy.fastwalk_recall_started is True
+
+
+def test_fastwalk_research_leaves_arena_for_safety_before_field_hunt() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(
+            room_name="The Mud School Arena",
+            room_vnum="3735",
+            position=7,
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "up"
+    assert policy.fastwalk_recall_started is False
+
+
 def test_return_home_recalls_then_follows_verified_mage_guild_route() -> None:
     policy = StarterPolicy(_spec(), "swordfish", return_home=True)
     policy.in_world = True

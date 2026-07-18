@@ -1007,8 +1007,26 @@ class StarterPolicy:
 
         if not self.fastwalk_returning:
             if not self.fastwalk_recall_started:
-                self.fastwalk_recall_started = True
-                return BotDecision("recall", "start the official recall-origin fastwalk")
+                if room_vnum == "3001":
+                    self.fastwalk_recall_started = True
+                elif room_vnum == "3737" or room_name == "safety":
+                    return BotDecision(
+                        "enter portal",
+                        "leave arena Safety without paying the recall movement penalty",
+                    )
+                elif room_vnum == "3725" or "entrance to the mud school" in room_name:
+                    return BotDecision(
+                        "down",
+                        "walk from Mud School to the fastwalk recall origin",
+                    )
+                elif _is_arena_vnum(room_vnum):
+                    return BotDecision(
+                        "up",
+                        "leave the arena through Safety before the field hunt",
+                    )
+                else:
+                    self.fastwalk_recall_started = True
+                    return BotDecision("recall", "start the official recall-origin fastwalk")
             if self.fastwalk_outbound_index == 0 and room_vnum != "3001":
                 self.failure = (
                     "recall did not reach the Midgaard Temple before fastwalk "
