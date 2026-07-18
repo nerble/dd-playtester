@@ -1248,6 +1248,39 @@ def test_moria_research_follows_the_verified_east_turn_and_returns() -> None:
     assert return_west.command == "west"
 
 
+def test_safe_room_recovery_waits_for_movement_before_travel() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", moria_research=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    resting = CharacterState(
+        hp=90,
+        max_hp=96,
+        mana=268,
+        max_mana=268,
+        move=30,
+        max_move=200,
+        position=7,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+    )
+
+    sleep = policy.next_decision(resting)
+    assert sleep is not None
+    assert sleep.command == "sleep"
+    policy.after_command(sleep)
+    policy.prompt_ready = True
+
+    resting.position = 4
+    assert policy.next_decision(resting) is None
+
+    policy.prompt_ready = True
+    resting.move = 100
+    wake = policy.next_decision(resting)
+    assert wake is not None
+    assert wake.command == "stand"
+
+
 def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True

@@ -461,7 +461,7 @@ class StarterPolicy:
             if self.needs_food or self.needs_drink:
                 if _is_sleeping(state):
                     return BotDecision("stand", "wake to address hunger or thirst")
-            elif _health_ratio(state) >= 0.5:
+            elif _recovery_ready(state):
                 self.waiting_for_heal = False
                 self.health_check_due = None
                 return BotDecision("stand", "resume after safe-room recovery")
@@ -857,16 +857,24 @@ class StarterPolicy:
             self.health_check_due = None
             self.waiting_for_heal = False
             return BotDecision("stand", "resume training after sanctuary recovery")
-        if ratio >= 0.25:
-            return None
-
         room_name = (state.room_name or "").casefold()
-        if (
+        is_safe_room = (
             state.room_vnum in {"3054", "3721", "3737"}
             or "sanctuary" in room_name
             or "altar of the temple" in room_name
             or room_name == "safety"
             or "safe" in state.room_flags
+        )
+        if ratio >= 0.25:
+            if _move_ratio(state) >= 0.5 and _mana_ratio(state) >= 0.5:
+                return None
+            if not is_safe_room:
+                return None
+            self.waiting_for_heal = True
+            return BotDecision("sleep", "recover movement or mana in a safe room")
+
+        if (
+            is_safe_room
         ):
             self.waiting_for_heal = True
             return BotDecision("sleep", "recover under a safe-room healer")
@@ -1553,6 +1561,14 @@ def _mana_ratio(state: CharacterState) -> float:
     if state.mana is None or state.max_mana in (None, 0):
         return 1.0
     return float(state.mana) / float(state.max_mana)
+
+
+def _recovery_ready(state: CharacterState) -> bool:
+    return (
+        _health_ratio(state) >= 0.5
+        and _move_ratio(state) >= 0.5
+        and _mana_ratio(state) >= 0.5
+    )
 
 
 def _is_sleeping(state: CharacterState) -> bool:
