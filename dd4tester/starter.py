@@ -792,6 +792,14 @@ class StarterPolicy:
         room_name = (state.room_name or "").casefold()
         area = (state.area or "").casefold()
 
+        if room_vnum == "300":
+            if room_vnum not in self.moria_observed_rooms:
+                self.moria_seen = True
+                self.moria_observed_rooms.add(room_vnum)
+                return BotDecision("look", "record the Moria-to-plains boundary room")
+            self.moria_returning = True
+            return self._moria_return_decision(state)
+
         if area == "moria":
             room = room_vnum or room_name
             if room not in self.moria_observed_rooms:

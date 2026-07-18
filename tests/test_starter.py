@@ -1385,8 +1385,8 @@ def test_moria_research_probes_the_verified_north_branch_and_returns() -> None:
     policy.prompt_ready = True
 
     north_room = CharacterState(
-        area="Moria",
-        room_name="Moria north branch",
+        area="The Plains",
+        room_name="Path in the plains",
         room_vnum="300",
         position=7,
     )
