@@ -189,8 +189,9 @@ def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch
     transcript = tmp_path / "moria-1.jsonl"
     database = tmp_path / "runs.sqlite3"
 
-    async def fake_moria_research(path: Path) -> RunResult:
+    async def fake_moria_research(path: Path, *, depth: int) -> RunResult:
         assert path == profile
+        assert depth == 0
         return RunResult(12, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(

@@ -85,9 +85,12 @@ class StarterPolicy:
         city_restock: bool = False,
         guildmaster_research: bool = False,
         moria_research: bool = False,
+        moria_depth: int = 0,
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
+        if moria_depth < 0:
+            raise ValueError("moria_depth must not be negative")
         self.spec = spec
         self.password = password
         self.objective_level = objective_level
@@ -95,6 +98,7 @@ class StarterPolicy:
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
         self.moria_research = moria_research
+        self.moria_depth = moria_depth
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -145,7 +149,8 @@ class StarterPolicy:
         self.city_restock_step = 0
         self.guildmaster_step = 0
         self.moria_seen = False
-        self.moria_step = 0
+        self.moria_returning = False
+        self.moria_observed_rooms: set[str] = set()
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
@@ -769,13 +774,20 @@ class StarterPolicy:
         area = (state.area or "").casefold()
 
         if area == "moria":
-            if self.moria_step == 0:
+            room = room_vnum or room_name
+            if room not in self.moria_observed_rooms:
                 self.moria_seen = True
-                self.moria_step = 1
-                return BotDecision("look", "record the Moria entry room before returning")
+                self.moria_observed_rooms.add(room)
+                return BotDecision("look", "record the current Moria trail room")
+            if (
+                not self.moria_returning
+                and len(self.moria_observed_rooms) <= self.moria_depth
+            ):
+                return BotDecision("north", "extend the bounded Moria trail scout")
+            self.moria_returning = True
             return BotDecision("south", "return from Moria to the West Gate")
 
-        if self.moria_seen:
+        if self.moria_returning:
             if "outside the west gate" in room_name:
                 return BotDecision("east", "return through Midgaard's West Gate")
             if "inside the west gate" in room_name:
@@ -1157,6 +1169,7 @@ class StarterBotRunner:
         city_restock: bool = False,
         guildmaster_research: bool = False,
         moria_research: bool = False,
+        moria_depth: int = 0,
     ) -> None:
         self.spec = spec
         self.profile_path = profile_path
@@ -1168,6 +1181,7 @@ class StarterBotRunner:
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
         self.moria_research = moria_research
+        self.moria_depth = moria_depth
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
@@ -1256,6 +1270,7 @@ class StarterBotRunner:
                 city_restock=self.city_restock,
                 guildmaster_research=self.guildmaster_research,
                 moria_research=self.moria_research,
+                moria_depth=self.moria_depth,
             )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
@@ -1349,6 +1364,7 @@ class StarterBotRunner:
                     "city_restock": self.city_restock,
                     "guildmaster_research": self.guildmaster_research,
                     "moria_research": self.moria_research,
+                    "moria_depth": self.moria_depth,
                 },
             )
             storage.finish_run(run_id, status="success")
@@ -1473,13 +1489,18 @@ async def run_guildmaster_research_profile(path: str | Path) -> RunResult:
     ).run()
 
 
-async def run_moria_research_profile(path: str | Path) -> RunResult:
+async def run_moria_research_profile(
+    path: str | Path,
+    *,
+    depth: int = 0,
+) -> RunResult:
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
     return await StarterBotRunner(
         spec,
         profile_path,
         moria_research=True,
+        moria_depth=depth,
     ).run()
 
 

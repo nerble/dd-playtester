@@ -97,6 +97,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="path to an existing character YAML profile",
     )
+    moria_parser.add_argument(
+        "--depth",
+        type=int,
+        default=0,
+        help="number of additional northbound Moria trail rooms to inspect, default: 0",
+    )
     arena_research_parser.add_argument(
         "--target-level",
         type=int,
@@ -342,7 +348,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "moria-research":
         try:
-            result = asyncio.run(run_moria_research_profile(args.profile))
+            result = asyncio.run(
+                run_moria_research_profile(args.profile, depth=args.depth)
+            )
         except Exception as exc:
             print(f"Moria research failed: {exc}", file=sys.stderr)
             return 1

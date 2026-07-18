@@ -1150,6 +1150,40 @@ def test_moria_research_reaches_the_entry_and_returns_to_mage_laboratory() -> No
     assert decision.command == "save"
 
 
+def test_moria_research_depth_one_inspects_one_additional_trail_room() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", moria_research=True, moria_depth=1)
+    policy.in_world = True
+    policy.prompt_ready = True
+    entry = CharacterState(
+        area="Moria", room_name="West trail around Midgaard", room_vnum="3900", position=7
+    )
+
+    look_entry = policy.next_decision(entry)
+    assert look_entry is not None
+    assert look_entry.command == "look"
+    policy.after_command(look_entry)
+    policy.prompt_ready = True
+
+    deeper = policy.next_decision(entry)
+    assert deeper is not None
+    assert deeper.command == "north"
+    policy.after_command(deeper)
+    policy.prompt_ready = True
+
+    north_trail = CharacterState(
+        area="Moria", room_name="Dusty trail along north wall", room_vnum="3901", position=7
+    )
+    look_north = policy.next_decision(north_trail)
+    assert look_north is not None
+    assert look_north.command == "look"
+    policy.after_command(look_north)
+    policy.prompt_ready = True
+
+    return_south = policy.next_decision(north_trail)
+    assert return_south is not None
+    assert return_south.command == "south"
+
+
 def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True
