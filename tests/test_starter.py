@@ -628,6 +628,27 @@ def test_arena_research_continues_at_level_two_until_its_target() -> None:
     assert "level 3" in leave.reason
 
 
+def test_arena_safety_room_reenters_the_mud_school_portal() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
+    policy.in_world = True
+    policy.course_started = True
+    policy.course_complete = True
+    policy.practiced = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=2,
+        hp=60,
+        max_hp=60,
+        room_name="Safety",
+        room_vnum="3737",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "enter portal"
+
+
 def test_starter_policy_rejects_invalid_objective_level() -> None:
     with pytest.raises(ValueError, match="objective_level"):
         StarterPolicy(_spec(), "swordfish", objective_level=1)

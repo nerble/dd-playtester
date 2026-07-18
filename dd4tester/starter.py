@@ -379,6 +379,11 @@ class StarterPolicy:
             return BotDecision("up", "return to the Mud School entrance")
         if room_vnum == "3054" or "altar of the temple" in room_name:
             return BotDecision("south", "return from the Temple healer")
+        if room_vnum == "3737" or room_name == "safety":
+            return BotDecision(
+                "enter portal",
+                "return from the arena safety room to the Mud School",
+            )
 
         if room_vnum == "3725" or "entrance to the mud school" in room_name:
             if not self.course_started:
