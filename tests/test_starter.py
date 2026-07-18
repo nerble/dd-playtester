@@ -8,6 +8,7 @@ from dd4tester.connection import ReadResult
 from dd4tester.fastwalks import route_named
 from dd4tester.observations import GameEvent
 from dd4tester.starter import (
+    BotDecision,
     StarterBotRunner,
     StarterPolicy,
     _max_consecutive_command,
@@ -1244,6 +1245,44 @@ def test_return_home_recalls_then_follows_verified_mage_guild_route() -> None:
     )
     assert south is not None
     assert south.command == "south"
+
+
+def test_return_home_continues_from_common_square_without_another_recall() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        room_name="The Common Square",
+        room_vnum="3025",
+        position=7,
+        room_flags=["safe"],
+        move=118,
+        max_move=200,
+        mana=268,
+        max_mana=268,
+        hp=68,
+        max_hp=96,
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "north"
+
+
+def test_prompt_arriving_immediately_after_command_is_ignored_as_stale() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.after_command(BotDecision("south", "test command"))
+    state = CharacterState()
+    prompt = GameEvent("prompt_seen", "text", {})
+
+    policy.observe_events([prompt], state)
+
+    assert policy.prompt_ready is False
+    policy.last_command_at = time.monotonic() - 1
+    policy.observe_events([prompt], state)
+    assert policy.prompt_ready is True
 
 
 def test_fastwalk_research_can_inspect_one_endpoint_exit_and_return() -> None:

@@ -64,6 +64,7 @@ _TRAINING_SIDE_ROOMS = {
 }
 _ARENA_RESPAWN_WAIT_SECONDS = 90
 _HEALTH_CHECK_WAIT_SECONDS = 30
+_COMMAND_PROMPT_MIN_SECONDS = 0.05
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,7 @@ class StarterPolicy:
         self.awaiting_reconnect = False
         self.in_world = False
         self.prompt_ready = False
+        self.last_command_at: float | None = None
         self.text = ""
         self.roll_count = 0
         self.course_started = False
@@ -267,7 +269,12 @@ class StarterPolicy:
     ) -> None:
         for event in events:
             if event.type == "prompt_seen":
-                self.prompt_ready = True
+                if (
+                    self.last_command_at is None
+                    or time.monotonic() - self.last_command_at
+                    >= _COMMAND_PROMPT_MIN_SECONDS
+                ):
+                    self.prompt_ready = True
             if event.type in {"room_entered", "room_updated"}:
                 room = _room_key(state)
                 if room and room != self.current_room:
@@ -326,6 +333,7 @@ class StarterPolicy:
 
     def after_command(self, decision: BotDecision) -> None:
         self.prompt_ready = False
+        self.last_command_at = time.monotonic() if self.in_world else None
         self.text = ""
         if decision.command == "eat pie":
             self.food_attempted = True
@@ -1112,10 +1120,8 @@ class StarterPolicy:
         """Recall from an interrupted field run and return to the Mage Guild."""
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
-        if not self.return_home_recall_started:
-            self.return_home_recall_started = True
-            return BotDecision("recall", "recover an interrupted character to Midgaard")
         home_routes = {
+            "3025": "north",
             "3001": "south",
             "3005": "south",
             "3014": "west",
@@ -1124,6 +1130,10 @@ class StarterPolicy:
             "3017": "south",
             "3018": "east",
         }
+        if not self.return_home_recall_started:
+            self.return_home_recall_started = True
+            if room_vnum not in home_routes and room_vnum != "3019":
+                return BotDecision("recall", "recover an interrupted character to Midgaard")
         direction = home_routes.get(room_vnum or "")
         if direction is not None:
             return BotDecision(direction, "return from recall to the Mage Guild")
