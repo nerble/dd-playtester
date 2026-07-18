@@ -1,0 +1,714 @@
+import asyncio
+
+import pytest
+
+from dd4tester.character import CharacterSpec
+from dd4tester.connection import ReadResult
+from dd4tester.observations import GameEvent
+from dd4tester.starter import StarterBotRunner, StarterPolicy
+from dd4tester.state import CharacterState
+
+
+def _spec(**overrides: object) -> CharacterSpec:
+    values: dict[str, object] = {
+        "name": "Rulemage",
+        "race": "human",
+        "gender": "female",
+        "class": "mage",
+        "subclass": "warlock",
+        "minimum_primary_stat": 16,
+        "max_attribute_rolls": 2,
+    }
+    values.update(overrides)
+    return CharacterSpec.from_mapping(values)
+
+
+def _respond(
+    policy: StarterPolicy,
+    state: CharacterState,
+    text: str,
+) -> tuple[str, bool]:
+    policy.observe_text(text)
+    decision = policy.next_decision(state)
+    assert decision is not None
+    result = (decision.command, decision.secret)
+    policy.after_command(decision)
+    return result
+
+
+def test_creation_policy_follows_configured_character_profile() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    state = CharacterState()
+    prompts = [
+        ("Enter thy Name:", ("Rulemage", False)),
+        ("Did I get that right, Rulemage? [y/n]", ("y", False)),
+        ("Give me a password for Rulemage:", ("swordfish", True)),
+        ("Please retype the password:", ("swordfish", True)),
+        ("Do you want to enable colour? [y/n]", ("y", False)),
+        ("Press [Enter] to create your character.", ("", False)),
+        ("Please choose a race for your character. [a-y]", ("a", False)),
+        ("Are you sure you want to choose this race? [y/n]", ("y", False)),
+        ("Male, female or neuter? [m/f/n]", ("f", False)),
+        ("Are you sure you want this gender? [y/n]", ("y", False)),
+        ("Please choose a class for your character:", ("mage", False)),
+        ("Are you sure you want this class? [y/n]", ("y", False)),
+        (
+            "Press ENTER to begin rolling your character's attributes.",
+            ("", False),
+        ),
+    ]
+
+    for prompt, expected in prompts:
+        assert _respond(policy, state, prompt) == expected
+
+    assert _respond(
+        policy,
+        state,
+        "Str: 14 Int: 15 Wis: 16 Dex: 13 Con: 13\nAccept? [y/n]",
+    ) == ("n", False)
+    assert _respond(
+        policy,
+        state,
+        "Str: 12 Int: 14 Wis: 14 Dex: 12 Con: 12\nAccept? [y/n]",
+    ) == ("y", False)
+    assert policy.roll_count == 2
+    assert _respond(
+        policy,
+        state,
+        "Character generation complete. You are now ready to enter.",
+    ) == ("", False)
+    assert policy.awaiting_reconnect is True
+
+
+def test_existing_character_login_enters_world() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    state = CharacterState()
+
+    assert _respond(policy, state, "Enter thy Name:") == ("Rulemage", False)
+    assert _respond(policy, state, "Password:") == ("swordfish", True)
+    assert _respond(
+        policy,
+        state,
+        "To Enter the Dragons Domain press <Return>.",
+    ) == ("", False)
+
+    state.apply(
+        GameEvent(
+            "room_entered",
+            "gmcp",
+            {"name": "The Temple Of Midgaard", "vnum": "3001"},
+        )
+    )
+    prompt = GameEvent("prompt_seen", "gmcp", {"package": "Core.Prompt"})
+    state.apply(prompt)
+    policy.observe_events([prompt], state)
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "up"
+    assert policy.in_world is True
+
+
+def test_course_policy_asks_imp_then_follows_direction() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    state = CharacterState()
+    room = GameEvent(
+        "room_entered",
+        "gmcp",
+        {
+            "name": "Obstacle Course",
+            "vnum": "3705",
+            "exits": {"e": "3706", "s": "3704"},
+        },
+    )
+    prompt = GameEvent("prompt_seen", "gmcp", {"package": "Core.Prompt"})
+    state.apply(room)
+    state.apply(prompt)
+    policy.observe_events([room, prompt], state)
+
+    decision = policy.next_decision(state)
+    assert decision is not None
+    assert decision.command == "look imp"
+    policy.after_command(decision)
+
+    policy.observe_text("The Imp motions you to head EAST along the tunnel.")
+    policy.prompt_ready = True
+    decision = policy.next_decision(state)
+    assert decision is not None
+    assert decision.command == "open east"
+    policy.after_command(decision)
+
+    policy.prompt_ready = True
+    decision = policy.next_decision(state)
+    assert decision is not None
+    assert decision.command == "east"
+
+
+def test_level_two_course_graduate_saves_then_quits() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.course_complete = True
+    policy.provisioned = True
+    policy.practiced = True
+    state = CharacterState(level=2, room_name="The Entrance to the Mud School")
+    policy.prompt_ready = True
+
+    save = policy.next_decision(state)
+    assert save is not None
+    assert save.command == "save"
+    policy.after_command(save)
+    policy.prompt_ready = True
+
+    quit_decision = policy.next_decision(state)
+    assert quit_decision is not None
+    assert quit_decision.command == "quit"
+    policy.after_command(quit_decision)
+
+    assert policy.done is True
+
+
+def test_end_of_course_uses_portal_exit() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    state = CharacterState(
+        room_name="End of the Obstacle Course",
+        room_vnum="3710",
+    )
+    room = GameEvent(
+        "room_entered",
+        "gmcp",
+        {"name": state.room_name, "vnum": state.room_vnum, "exits": {}},
+    )
+    prompt = GameEvent("prompt_seen", "gmcp", {"package": "Core.Prompt"})
+    policy.observe_events([room, prompt], state)
+    policy.room_query_counts["3710"] = 1
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "enter portal"
+    assert policy.course_started is True
+
+
+def test_tutorial_stands_after_position_rejection() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.prompt_ready = True
+    policy.observe_text("Nah... You feel too relaxed...")
+    state = CharacterState(
+        room_name="End of the Obstacle Course",
+        room_vnum="3710",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "stand"
+
+
+def test_low_health_final_combat_retreats_to_sanctuary() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=3,
+        max_hp=60,
+        room_name="Final Combat",
+        room_vnum="3722",
+        exits={"n": "3723", "s": "3716"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "south"
+    assert "Sanctuary" in decision.reason
+
+
+def test_sanctuary_waits_for_healing_then_stands() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=10,
+        max_hp=60,
+        room_name="Sanctuary",
+        room_vnum="3721",
+    )
+
+    rest = policy.next_decision(state)
+    assert rest is not None
+    assert rest.command == "rest"
+    policy.after_command(rest)
+
+    policy.prompt_ready = True
+    assert policy.next_decision(state) is None
+
+    state.hp = 40
+    policy.prompt_ready = True
+    stand = policy.next_decision(state)
+    assert stand is not None
+    assert stand.command == "stand"
+
+
+def test_general_supplies_provisions_before_leaving() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.course_complete = True
+    state = CharacterState(
+        hp=1,
+        max_hp=60,
+        level=2,
+        room_name="General Supplies",
+        room_vnum="3724",
+    )
+
+    commands = []
+    for _index in range(6):
+        policy.prompt_ready = True
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+
+    assert commands == [
+        "list",
+        "buy 3 pie",
+        "buy skin",
+        "eat pie",
+        "drink skin",
+        "down",
+    ]
+    assert policy.provisioned is True
+
+
+def test_low_health_entrance_routes_to_temple_healer() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_complete = True
+    policy.provisioned = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=1,
+        max_hp=60,
+        level=2,
+        room_name="The Entrance to the Mud School",
+        room_vnum="3725",
+        exits={"d": "3001"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "down"
+    assert "Sanctuary" in decision.reason
+
+
+def test_combat_center_routes_to_required_side_room() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="Combat Training",
+        room_vnum="3712",
+        exits={"e": "3713", "n": "3715", "s": "3721", "w": "3714"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "open east"
+
+
+def test_training_room_identifies_and_fights_opponent() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="Combat Training Cage",
+        room_vnum="3713",
+        exits={"w": "3712"},
+    )
+    policy.text = "A large wolf is chained to a peg.\n"
+    room = GameEvent(
+        "room_entered",
+        "gmcp",
+        {
+            "name": state.room_name,
+            "vnum": state.room_vnum,
+            "exits": state.exits,
+        },
+    )
+    prompt = GameEvent("prompt_seen", "gmcp", {"package": "Core.Prompt"})
+    policy.observe_events([room, prompt], state)
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "kill wolf"
+    assert policy.combat_active is True
+
+
+def test_training_room_tracks_two_targets_and_loots_each() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.current_room = "3713"
+    policy.room_targets["3713"] = ["wolf", "large snake"]
+    policy.active_target = "wolf"
+    policy.combat_active = True
+    policy.observe_text("The wolf is DEAD!! You receive 100 experience points.")
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="Combat Training",
+        room_vnum="3713",
+        exits={"w": "3712"},
+    )
+
+    loot = policy.next_decision(state)
+    assert loot is not None
+    assert loot.command == "get all corpse"
+    policy.after_command(loot)
+    policy.prompt_ready = True
+
+    wear = policy.next_decision(state)
+    assert wear is not None
+    assert wear.command == "wear all"
+    policy.after_command(wear)
+    policy.prompt_ready = True
+
+    second_fight = policy.next_decision(state)
+    assert second_fight is not None
+    assert second_fight.command == "kill snake"
+
+
+def test_training_room_parses_descriptive_dd4_mob_lines() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="Combat Training",
+        room_vnum="3714",
+        exits={"e": "3712"},
+    )
+    policy.text = (
+        "A mountain lion spits and scratches at you.\n"
+        "A wild dog barks and growls.\n"
+    )
+    room = GameEvent(
+        "room_entered",
+        "gmcp",
+        {
+            "name": state.room_name,
+            "vnum": state.room_vnum,
+            "exits": state.exits,
+        },
+    )
+    prompt = GameEvent("prompt_seen", "gmcp", {"package": "Core.Prompt"})
+    policy.observe_events([room, prompt], state)
+
+    decision = policy.next_decision(state)
+
+    assert policy.room_targets["3714"] == ["mountain lion", "wild dog"]
+    assert decision is not None
+    assert decision.command == "kill lion"
+
+
+def test_resumed_room_extracts_targets_without_new_room_event() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.current_room = "3714"
+    policy.prompt_ready = True
+    policy.observe_text(
+        "A mountain lion spits and scratches at you.\n"
+        "A wild dog barks and growls.\n"
+    )
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="Combat Training",
+        room_vnum="3714",
+        exits={"e": "3712"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert policy.room_targets["3714"] == ["mountain lion", "wild dog"]
+    assert decision is not None
+    assert decision.command == "kill lion"
+
+
+def test_combat_death_narration_does_not_add_false_target() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.current_room = "3713"
+    policy.room_targets["3713"] = ["wolf"]
+    policy.active_target = "wolf"
+    policy.combat_active = True
+
+    policy.observe_text(
+        "A wolf is DEAD!!\n"
+        "You receive 100 experience points for the kill.\n"
+        "A wolf's heart is torn from its chest.\n"
+    )
+
+    assert policy.room_targets["3713"] == ["wolf"]
+    assert policy.defeated_targets["3713"] == {"wolf"}
+
+
+def test_resumed_empty_training_room_returns_after_inspection() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.current_room = "3713"
+    policy.room_query_counts["3713"] = 1
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="Combat Training",
+        room_vnum="3713",
+        exits={"w": "3712"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert "3713" in policy.cleared_training_rooms
+
+
+def test_room_description_structures_are_not_combat_targets() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.current_room = "3713"
+
+    policy.observe_text(
+        "The yard is quite large.\n"
+        "The door is closed.\n"
+        "A wolf circles as far as its chain will let it.\n"
+    )
+
+    assert policy.room_targets["3713"] == ["wolf"]
+
+
+def test_advanced_training_target_descriptions_are_parsed() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.current_room = "3717"
+
+    policy.observe_text(
+        "A small goblin cringes and scowls.\n"
+        "A kobold tries desperately to escape.\n"
+        "A human prisoner nervously circles you.\n"
+    )
+
+    assert policy.room_targets["3717"] == [
+        "small goblin",
+        "kobold",
+        "human prisoner",
+    ]
+
+
+def test_victory_room_uses_completion_portal() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.current_room = "3723"
+    policy.room_query_counts["3723"] = 1
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="Victory",
+        room_vnum="3723",
+        exits={"s": "3722"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "enter portal"
+
+
+def test_loremaster_prefers_class_skill_from_real_practice_list() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.loremaster_step = 2
+    policy.prompt_ready = True
+    policy.text = """
+Skills which may be learned:
+               continual light:   0%                   detect good:   0%
+                 magic missile:   0%               summon familiar:   0%
+You have 1 physical and 3 intellectual practices remaining.
+"""
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "practice magic missile"
+
+
+def test_arena_fights_discovered_target_and_leaves_at_level_two() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.arena_queried = True
+    policy.current_room = "3729"
+    policy.room_targets["3729"] = ["wild boar"]
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        level=1,
+        room_name="The Mud School Arena",
+        room_vnum="3729",
+        exits={"e": "3728", "s": "3731", "u": "3737"},
+    )
+
+    fight = policy.next_decision(state)
+    assert fight is not None
+    assert fight.command == "kill boar"
+
+    policy.combat_active = False
+    policy.prompt_ready = True
+    state.level = 2
+    leave = policy.next_decision(state)
+    assert leave is not None
+    assert leave.command == "up"
+
+
+def test_new_character_prelude_follows_down_exit() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=50,
+        max_hp=50,
+        level=1,
+        room_name="Floating in Space",
+        room_vnum="3700",
+        exits={"d": "3701"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "open down"
+
+
+def test_level_two_resume_infers_training_and_provisions() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=50,
+        max_hp=61,
+        level=2,
+        room_name="The Entrance to the Mud School",
+        room_vnum="3725",
+        inventory=[[{"short_desc": "a buffalo water skin"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "east"
+    assert policy.course_complete is True
+    assert policy.provisioned is True
+
+
+class _LoginOnlyConnection:
+    def __init__(self) -> None:
+        self.closed = False
+        self.sent: list[str] = []
+        self.reads = [
+            ReadResult(text="Enter thy Name:", raw=b"name"),
+            ReadResult(text="Password:", raw=b"password"),
+        ]
+
+    async def connect(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def send_command(self, command: str) -> None:
+        self.sent.append(command)
+
+    async def read_available(self, timeout: float = 0.25) -> ReadResult:
+        if self.reads:
+            return self.reads.pop(0)
+        return ReadResult()
+
+
+def test_starter_runner_redacts_password_on_failed_run(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    connection = _LoginOnlyConnection()
+    spec = _spec(
+        password_env="STARTER_TEST_PASSWORD",
+        max_commands=2,
+        max_runtime=2,
+        database=str(tmp_path / "runs.sqlite3"),
+        transcript_dir=str(tmp_path / "transcripts"),
+    )
+    monkeypatch.setenv("STARTER_TEST_PASSWORD", "not-for-transcripts")
+    runner = StarterBotRunner(
+        spec,
+        tmp_path / "starter.yaml",
+        connection_factory=lambda _spec: connection,
+    )
+
+    with pytest.raises(RuntimeError, match="command budget"):
+        asyncio.run(runner.run())
+
+    transcript = next((tmp_path / "transcripts").glob("*.jsonl")).read_text(
+        encoding="utf-8"
+    )
+    assert connection.sent == ["Rulemage", "not-for-transcripts"]
+    assert "not-for-transcripts" not in transcript
+    assert "[REDACTED]" in transcript
+
+
+def test_final_combat_loots_and_unlocks_after_kill() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.prompt_ready = True
+    policy.current_room = "3722"
+    policy.cleared_training_rooms.add("3722")
+    policy.post_kill_steps["3722"] = 2
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="Final Combat",
+        room_vnum="3722",
+        exits={"n": "3723", "s": "3716"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "unlock north"

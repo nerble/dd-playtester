@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
+import dd4tester.cli
 from dd4tester.cli import main
+from dd4tester.runner import RunResult
 from dd4tester.storage import RunStorage
 from dd4tester.transcript import TranscriptRecorder
 
@@ -59,6 +61,26 @@ def test_show_state_prints_latest_snapshot_and_history(tmp_path, capsys) -> None
     assert exit_code == 0
     assert "snapshot\ttimestamp\trevision\treason" in captured.out
     assert "room_entered" in captured.out
+
+
+def test_starter_command_runs_character_profile(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "starter.yaml"
+    profile.write_text("name: Rulemage", encoding="utf-8")
+    transcript = tmp_path / "starter-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_run(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(7, "success", transcript, database, {"level": 2})
+
+    monkeypatch.setattr(dd4tester.cli, "run_starter_profile", fake_run)
+
+    exit_code = main(["starter", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 7 success" in captured.out
+    assert f"Transcript: {transcript}" in captured.out
 
 
 def _create_recorded_run(tmp_path) -> tuple[Path, Path]:

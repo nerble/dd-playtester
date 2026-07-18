@@ -48,6 +48,18 @@ def test_text_observations_handle_split_chunks_and_unterminated_prompts() -> Non
     assert [event.type for event in flushed] == ["prompt_seen", "health_changed"]
 
 
+def test_experience_reward_is_not_recorded_as_an_item() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "You receive 153 experience points for the kill.\n"
+        "You receive a snowy white stone.\n"
+    )
+
+    assert [event.type for event in events] == ["item_acquired"]
+    assert events[0].data["item"] == "snowy white stone"
+
+
 def test_gmcp_observations_track_changes_without_duplicate_events() -> None:
     parser = ObservationParser()
 

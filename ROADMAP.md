@@ -18,10 +18,11 @@ headlessly or through a visible Mudlet client in a Windows virtual machine.
    such as room entry, prompts, health changes, combat, quests, items, levels, and death.
 2. **Character state — complete.** Build current state from events and persist
    timestamped snapshots.
-3. **Rule-based starter bot.** Automate login, character creation/selection, the tutorial,
-   basic movement, recovery, and safe failure handling.
+3. **Rule-based starter bot - complete.** Automate login, character
+   creation/selection, the tutorial, basic movement, recovery, and safe failure
+   handling.
 4. **Reports.** Produce Markdown and JSON summaries with progress, failures, balance
-   signals, and representative commentary.
+   signals, and representative run-time commentary.
 5. **Campaign execution.** Add checkpoints, resume support, budgets, stuck detection,
    and controlled long-running progression.
 6. **Mudlet bridge.** Create a small Lua integration that exchanges commands, output,
@@ -56,3 +57,19 @@ cover the server's actual room/prompt format and `Char.Base`, `Char.Vitals`,
 
 Milestone 2 was validated with deterministic fixture replay and a bounded live
 DD4 capture, including text-room enrichment from the later `Room.Info` GMCP.
+
+## Milestone 3 Exit Criteria
+
+- A YAML profile selects name, race, gender, base class, and optional level-30
+  subclass target without storing a password.
+- Character creation and reconnection are deterministic and transcripted.
+- The bot completes the prelude, obstacle course, all required training fights,
+  final gladiator/key sequence, and Victory portal.
+- It recovers below 25% health, provisions food and water, equips tutorial
+  rewards, practices an available class ability, reaches level 2, saves, and
+  quits.
+- Runtime, command, reconnect, and repeated-command limits stop stuck runs.
+
+Milestone 3 was validated live with a newly created Human female Mage targeting
+Warlock. The bot reached level 2 during advanced training, completed the final
+combat and provisioning steps, practiced `magic missile`, saved, and quit.

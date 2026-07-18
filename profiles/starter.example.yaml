@@ -1,0 +1,13 @@
+name: TestExample
+password_env: DD4_CHARACTER_PASSWORD
+race: human
+gender: female
+class: mage
+subclass: warlock
+colour: true
+max_attribute_rolls: 1
+minimum_primary_stat: 0
+max_runtime: 900
+max_commands: 250
+database: runs/dd4tester.sqlite3
+transcript_dir: transcripts

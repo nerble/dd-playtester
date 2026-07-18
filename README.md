@@ -16,8 +16,8 @@ The project connects over asyncio Telnet, records transcripts, captures GMCP,
 loads YAML scenarios, and stores run evidence in SQLite. Its observation layer
 derives deterministic `game_event` records for rooms, prompts, health, combat,
 quests, items, levels, and deaths. A state reducer turns those events into
-revisioned character snapshots. AI decision-making is intentionally not
-implemented yet.
+revisioned character snapshots. The starter bot uses explicit rules only; AI
+decision-making is intentionally not implemented yet.
 
 See [ROADMAP.md](ROADMAP.md) for the staged path from scripted scenarios to a
 level-100 autonomous campaign running visibly through Mudlet in a virtual machine.
@@ -37,6 +37,27 @@ python -m dd4tester run scenarios/capture.yaml
 Environment-backed commands are sent to DD4 but stored as `[REDACTED]` in both
 the transcript and SQLite. Sanitized real-protocol fixtures live under
 `tests/fixtures/`.
+
+## Rule-based starter bot
+
+Create a YAML profile based on `profiles/starter.example.yaml`, then set the
+profile's password environment variable and run:
+
+```powershell
+$env:DD4_CHARACTER_PASSWORD = "your-test-password"
+python -m dd4tester starter profiles/starter.example.yaml
+```
+
+The profile accepts `name`, `race`, `gender`, `class`, and optional `subclass`.
+Subclasses are level-30 targets in DD4; specifying only `subclass: warlock`
+automatically selects its required `mage` base class at creation. Runtime,
+command, attribute-roll, database, and transcript limits are also configurable.
+
+The deterministic policy creates or resumes the character, completes both
+tutorial courses and required fights, recovers with safe-room healers, loots
+and equips rewards, buys food and water, practices a real class ability, reaches
+level 2, saves, and quits. Every choice is stored as a `decision` event with its
+stage and reason. Passwords remain redacted.
 
 ## Run data
 

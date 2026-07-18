@@ -258,7 +258,7 @@ class ObservationParser:
             )
 
         item = _ITEM.search(text)
-        if item:
+        if item and "experience point" not in item.group("item").casefold():
             events.append(
                 GameEvent(
                     "item_acquired",

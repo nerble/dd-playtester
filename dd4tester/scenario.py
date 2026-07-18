@@ -25,7 +25,7 @@ class Scenario:
 
 def load_scenario(path: str | Path) -> Scenario:
     scenario_path = Path(path)
-    data = _load_yaml_mapping(scenario_path)
+    data = load_yaml_mapping(scenario_path)
     steps = [_parse_step(raw, index) for index, raw in enumerate(data.get("steps", []), start=1)]
     if not steps:
         raise ValueError(f"{scenario_path} must define at least one step")
@@ -67,7 +67,7 @@ def _parse_step(raw: Any, index: int) -> ScenarioStep:
     )
 
 
-def _load_yaml_mapping(path: Path) -> dict[str, Any]:
+def load_yaml_mapping(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     try:
         import yaml  # type: ignore[import-not-found]
