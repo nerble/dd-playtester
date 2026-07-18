@@ -94,5 +94,5 @@ FASTWALKS = (
 # Published-map routes that have also been traversed in live evidence. They are
 # omitted from show-fastwalks, which lists only the site's official fastwalks.
 MAP_ROUTES = (
-    Fastwalk("miden'nir", 5, 15, "2s6e"),
+    Fastwalk("miden'nir", 5, 15, "2s5e"),
 )

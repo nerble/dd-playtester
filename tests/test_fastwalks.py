@@ -44,6 +44,5 @@ def test_route_named_includes_live_verified_map_routes() -> None:
         "east",
         "east",
         "east",
-        "east",
     )
 
