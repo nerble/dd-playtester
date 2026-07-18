@@ -74,6 +74,8 @@ _MUD_SCHOOL_POLICY = ProgressionPolicy(
         "Live run 56: room text says the Loremaster trains recruits until level 10.",
         "Live run 57: arena rooms 3728-3732 contained a giant lizard and wild boar, with safe up exits.",
         "Live run 56: level-2 character had 325 XP to the next level and available practice points.",
+        "Live mage runs 65, 69, and 76 reached levels 3, 4, and 5 respectively; run 76 saved after a wolf level-up.",
+        "Live run 76: the level-4-to-5 arena segment used Safety recovery, a Midgaard food-and-water restock, and returned to Mud School safely.",
     ),
     practice_skill=None,
 )

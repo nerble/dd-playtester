@@ -21,7 +21,7 @@ def test_level_two_to_ten_policy_is_registered_but_research_gated(
     assert policy.status == "research"
     assert policy.executable is False
     assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
-    assert any("Live run 56" in item for item in policy.evidence)
+    assert any("Live run 76" in item for item in policy.evidence)
 
 
 def test_level_ten_and_above_is_explicitly_unavailable() -> None:

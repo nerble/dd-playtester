@@ -418,6 +418,9 @@ class StarterPolicy:
         if self.combat_active:
             if self.needs_food or self.needs_drink or _health_ratio(state) < 0.25:
                 return BotDecision("flee", "leave combat before emergency resupply")
+            spell = self._combat_spell_decision(state)
+            if spell is not None:
+                return spell
             self.prompt_ready = False
             return None
 
@@ -566,6 +569,17 @@ class StarterPolicy:
         if room_vnum == "3054" or "altar of the temple" in room_name:
             return BotDecision("south", "return from the Temple toward supplies")
         return None
+
+    def _combat_spell_decision(self, state: CharacterState) -> BotDecision | None:
+        if self.spec.character_class != "mage" or not self.active_target:
+            return None
+        if _mana_ratio(state) < 0.15:
+            return None
+        target = _target_keyword(self.active_target)
+        return BotDecision(
+            f"cast 'magic missile' {target}",
+            f"cast magic missile at arena opponent {self.active_target}",
+        )
 
     def _city_restock_decision(self, state: CharacterState) -> BotDecision | None:
         """Use the verified Midgaard fountain and bakery route, then stop."""
@@ -1247,6 +1261,12 @@ def _move_ratio(state: CharacterState) -> float:
     if state.move is None or state.max_move in (None, 0):
         return 1.0
     return float(state.move) / float(state.max_move)
+
+
+def _mana_ratio(state: CharacterState) -> float:
+    if state.mana is None or state.max_mana in (None, 0):
+        return 1.0
+    return float(state.mana) / float(state.max_mana)
 
 
 def _is_sleeping(state: CharacterState) -> bool:

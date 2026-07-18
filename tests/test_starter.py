@@ -966,6 +966,49 @@ def test_normal_arena_policy_wakes_before_leaving_safety() -> None:
     assert decision.command == "stand"
 
 
+def test_mage_casts_magic_missile_while_fighting_an_arena_target() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=6)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "a prowling wolf"
+    state = CharacterState(
+        hp=70,
+        max_hp=88,
+        mana=220,
+        max_mana=240,
+        position=6,
+        room_name="The Mud School Arena",
+        room_vnum="3736",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'magic missile' wolf"
+
+
+def test_mage_preserves_low_mana_for_arena_recovery() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=6)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "a wild boar"
+    state = CharacterState(
+        hp=70,
+        max_hp=88,
+        mana=20,
+        max_mana=240,
+        position=6,
+        room_name="The Mud School Arena",
+        room_vnum="3736",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is None
+
+
 def test_starter_policy_rejects_invalid_objective_level() -> None:
     with pytest.raises(ValueError, match="objective_level"):
         StarterPolicy(_spec(), "swordfish", objective_level=1)
