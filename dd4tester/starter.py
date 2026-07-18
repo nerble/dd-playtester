@@ -62,6 +62,7 @@ _TRAINING_SIDE_ROOMS = {
     "3720": "3716",
 }
 _ARENA_RESPAWN_WAIT_SECONDS = 90
+_HEALTH_CHECK_WAIT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class StarterPolicy:
         objective_level: int = 2,
         resupply_only: bool = False,
         city_restock: bool = False,
+        guildmaster_research: bool = False,
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
@@ -90,6 +92,7 @@ class StarterPolicy:
         self.objective_level = objective_level
         self.resupply_only = resupply_only
         self.city_restock = city_restock
+        self.guildmaster_research = guildmaster_research
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -116,6 +119,7 @@ class StarterPolicy:
         self.combat_active = False
         self.needs_stand = False
         self.waiting_for_heal = False
+        self.health_check_due: float | None = None
         self.waiting_for_move = False
         self.room_targets: dict[str, list[str]] = {}
         self.defeated_targets: dict[str, set[str]] = {}
@@ -136,6 +140,7 @@ class StarterPolicy:
         self.last_consumption: str | None = None
         self.insufficient_funds = False
         self.city_restock_step = 0
+        self.guildmaster_step = 0
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
@@ -294,6 +299,8 @@ class StarterPolicy:
             self.food_ordered = True
         elif decision.command == "buy skin":
             self.skin_ordered = True
+        if decision.command == "sleep" and self.waiting_for_heal:
+            self.health_check_due = time.monotonic() + _HEALTH_CHECK_WAIT_SECONDS
         if decision.command == "quit":
             self.done = True
 
@@ -438,6 +445,26 @@ class StarterPolicy:
         if room_vnum == "2" or room_name == "limbo":
             return BotDecision("look", "return from Limbo to the previous room")
 
+        if self.waiting_for_heal:
+            if _health_ratio(state) >= 0.5:
+                self.waiting_for_heal = False
+                self.health_check_due = None
+                return BotDecision("stand", "resume after safe-room recovery")
+            elif _is_sleeping(state):
+                if (
+                    self.health_check_due is not None
+                    and time.monotonic() >= self.health_check_due
+                ):
+                    self.health_check_due = (
+                        time.monotonic() + _HEALTH_CHECK_WAIT_SECONDS
+                    )
+                    return BotDecision("score", "check health while sleeping safely")
+                self.prompt_ready = False
+                return None
+            else:
+                self.prompt_ready = False
+                return None
+
         if _is_sleeping(state):
             return BotDecision("stand", "wake before travel or arena actions")
 
@@ -473,15 +500,24 @@ class StarterPolicy:
             self.stage = "complete"
             return BotDecision("quit", "emergency resupply complete")
 
-        if room_vnum == "3724" or room_name == "general supplies":
-            return self._store_decision()
-
-        if self.waiting_for_heal and _health_ratio(state) < 0.5:
-            self.prompt_ready = False
-            return None
         recovery = self._recovery_decision(state)
         if recovery is not None:
             return recovery
+
+        if self.guildmaster_research:
+            research = self._guildmaster_research_decision(state)
+            if research is not None:
+                return research
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", "persist mage Guildmaster route evidence")
+            self.stage = "complete"
+            return BotDecision("quit", "mage Guildmaster route research complete")
+
+        if room_vnum == "3724" or room_name == "general supplies":
+            return self._store_decision()
+
         if _move_ratio(state) <= 0.1:
             self.waiting_for_move = True
             return BotDecision("sleep", "recover movement before continuing arena patrol")
@@ -657,12 +693,58 @@ class StarterPolicy:
         )
         return None
 
+    def _guildmaster_research_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Visit Midgaard's Mage Guildmaster using source-backed room routes."""
+        if _is_sleeping(state):
+            return BotDecision("stand", "wake before travelling to the Mage Guild")
+        room_vnum = state.room_vnum
+        room_name = (state.room_name or "").casefold()
+        if room_vnum == "3737" or room_name == "safety":
+            return BotDecision("enter portal", "leave arena Safety for Midgaard")
+        if _is_arena_vnum(room_vnum):
+            return BotDecision("up", "leave the arena before travelling to Midgaard")
+        if room_vnum == "3725" or "entrance to the mud school" in room_name:
+            return BotDecision("down", "leave Mud School for the Temple")
+        if room_vnum == "3033" or room_name == "the magic shop":
+            return BotDecision("south", "return from the Magic Shop to the Mage Guild route")
+        routes = {
+            "3001": "south",
+            "3005": "south",
+            "3014": "west",
+            "3013": "west",
+            "3012": "south",
+            "3017": "south",
+            "3018": "east",
+        }
+        direction = routes.get(room_vnum or "")
+        if direction is not None:
+            return BotDecision(direction, "follow the source-backed route to the Mage Guild")
+        if room_vnum == "3019" or "mage's laboratory" in room_name:
+            commands = (
+                ("look guildmaster", "confirm the Magic Users Guildmaster"),
+                ("practice", "inspect the Guildmaster's available mage training"),
+            )
+            if self.guildmaster_step < len(commands):
+                command, reason = commands[self.guildmaster_step]
+                self.guildmaster_step += 1
+                return BotDecision(command, reason)
+            return None
+        self.failure = (
+            "no verified Mage Guild route for "
+            f"room {state.room_name!r} ({state.room_vnum})"
+        )
+        return None
+
     def _recovery_decision(
         self,
         state: CharacterState,
     ) -> BotDecision | None:
         ratio = _health_ratio(state)
         if self.waiting_for_heal:
+            self.health_check_due = None
             self.waiting_for_heal = False
             return BotDecision("stand", "resume training after sanctuary recovery")
         if ratio >= 0.25:
@@ -674,6 +756,7 @@ class StarterPolicy:
             or "sanctuary" in room_name
             or "altar of the temple" in room_name
             or room_name == "safety"
+            or "safe" in state.room_flags
         ):
             self.waiting_for_heal = True
             return BotDecision("sleep", "recover under a safe-room healer")
@@ -999,6 +1082,7 @@ class StarterBotRunner:
         objective_level: int = 2,
         resupply_only: bool = False,
         city_restock: bool = False,
+        guildmaster_research: bool = False,
     ) -> None:
         self.spec = spec
         self.profile_path = profile_path
@@ -1008,6 +1092,7 @@ class StarterBotRunner:
         self.objective_level = objective_level
         self.resupply_only = resupply_only
         self.city_restock = city_restock
+        self.guildmaster_research = guildmaster_research
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
@@ -1015,6 +1100,8 @@ class StarterBotRunner:
             scenario_name=(
                 f"restock:{self.spec.name}"
                 if self.city_restock
+                else f"guildmaster:{self.spec.name}"
+                if self.guildmaster_research
                 else f"resupply:{self.spec.name}"
                 if self.resupply_only
                 else f"starter:{self.spec.name}"
@@ -1026,6 +1113,8 @@ class StarterBotRunner:
             scenario_name=(
                 f"restock-{self.spec.name}"
                 if self.city_restock
+                else f"guildmaster-{self.spec.name}"
+                if self.guildmaster_research
                 else f"resupply-{self.spec.name}"
                 if self.resupply_only
                 else f"starter-{self.spec.name}"
@@ -1086,6 +1175,7 @@ class StarterBotRunner:
                 objective_level=self.objective_level,
                 resupply_only=self.resupply_only,
                 city_restock=self.city_restock,
+                guildmaster_research=self.guildmaster_research,
             )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
@@ -1177,6 +1267,7 @@ class StarterBotRunner:
                     "objective_level": self.objective_level,
                     "resupply_only": self.resupply_only,
                     "city_restock": self.city_restock,
+                    "guildmaster_research": self.guildmaster_research,
                 },
             )
             storage.finish_run(run_id, status="success")
@@ -1288,6 +1379,16 @@ async def run_restock_profile(path: str | Path) -> RunResult:
         spec,
         profile_path,
         city_restock=True,
+    ).run()
+
+
+async def run_guildmaster_research_profile(path: str | Path) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        guildmaster_research=True,
     ).run()
 
 

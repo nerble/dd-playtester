@@ -161,6 +161,29 @@ def test_restock_command_runs_city_provisioning(tmp_path, capsys, monkeypatch) -
     assert f"Transcript: {transcript}" in captured.out
 
 
+def test_guildmaster_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "guildmaster-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_guildmaster_research(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(11, "success", transcript, database, {"level": 6})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_guildmaster_research_profile",
+        fake_guildmaster_research,
+    )
+
+    exit_code = main(["guildmaster-research", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 11 success" in captured.out
+    assert f"Transcript: {transcript}" in captured.out
+
+
 def test_configure_login_command_uses_named_credential(capsys, monkeypatch) -> None:
     configured: list[str] = []
     monkeypatch.setattr(

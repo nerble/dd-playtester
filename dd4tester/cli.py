@@ -21,6 +21,7 @@ from .report import build_run_report, render_json, render_markdown
 from .runner import run_scenario_file
 from .starter import (
     run_arena_research_profile,
+    run_guildmaster_research_profile,
     run_restock_profile,
     run_resupply_profile,
     run_starter_profile,
@@ -76,6 +77,15 @@ def build_parser() -> argparse.ArgumentParser:
         "profile",
         type=Path,
         help="path to an existing character YAML profile",
+    )
+    guildmaster_parser = subcommands.add_parser(
+        "guildmaster-research",
+        help="visit the Midgaard Guildmaster and record available training",
+    )
+    guildmaster_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing mage character YAML profile",
     )
     arena_research_parser.add_argument(
         "--target-level",
@@ -303,6 +313,17 @@ def main(argv: list[str] | None = None) -> int:
             result = asyncio.run(run_restock_profile(args.profile))
         except Exception as exc:
             print(f"Restock run failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "guildmaster-research":
+        try:
+            result = asyncio.run(run_guildmaster_research_profile(args.profile))
+        except Exception as exc:
+            print(f"Guildmaster research failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")

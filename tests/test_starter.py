@@ -967,6 +967,95 @@ def test_city_restock_policy_uses_fountain_then_bakery() -> None:
     assert decision.command == "save"
 
 
+def test_guildmaster_research_reaches_mage_laboratory_and_records_training() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    rooms_and_commands = (
+        ("The Magic Shop", "3033", "south"),
+        ("Safety", "3737", "enter portal"),
+        ("The Entrance to the Mud School", "3725", "down"),
+        ("The Temple Of Midgaard", "3001", "south"),
+        ("The Temple Square", "3005", "south"),
+        ("Market Square", "3014", "west"),
+        ("Main Street", "3013", "west"),
+        ("Mage's Guild Entrance", "3012", "south"),
+        ("Mage Bar", "3017", "south"),
+        ("Mage's Laboratory", "3018", "east"),
+        ("Mage's Laboratory", "3019", "look guildmaster"),
+        ("Mage's Laboratory", "3019", "practice"),
+    )
+    for room_name, room_vnum, expected_command in rooms_and_commands:
+        decision = policy.next_decision(
+            CharacterState(room_name=room_name, room_vnum=room_vnum, position=7)
+        )
+        assert decision is not None
+        assert decision.command == expected_command
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
+    )
+    assert decision is not None
+    assert decision.command == "save"
+
+
+def test_guildmaster_research_leaves_an_arena_room_before_city_travel() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(room_name="The Arena", room_vnum="3728", position=7)
+    )
+
+    assert decision is not None
+    assert decision.command == "up"
+
+
+def test_guildmaster_research_sleeps_to_recover_in_a_safe_city_room() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=15,
+        max_hp=96,
+        position=7,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["indoors", "safe"],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "sleep"
+    assert policy.waiting_for_heal is True
+
+
+def test_safe_room_recovery_checks_health_without_waking() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.waiting_for_heal = True
+    policy.health_check_due = time.monotonic() - 1
+    state = CharacterState(
+        hp=15,
+        max_hp=96,
+        position=4,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["indoors", "safe"],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "score"
+
+
 def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True
