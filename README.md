@@ -44,6 +44,14 @@ quests, items, levels, and deaths. A state reducer turns those events into
 revisioned character snapshots. The starter bot uses explicit rules only; AI
 decision-making is intentionally not implemented yet.
 
+The official recall-origin fastwalks are included as parsed, inspectable route
+data. They are planning aids only until live runs verify an arrival and safe
+return for a specific character:
+
+```powershell
+python -m dd4tester show-fastwalks --level 6
+```
+
 See [ROADMAP.md](ROADMAP.md) for the staged path from scripted scenarios to a
 level-100 autonomous campaign running visibly through Mudlet in a virtual machine.
 

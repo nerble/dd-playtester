@@ -15,6 +15,7 @@ from .credentials import (
     configure_login,
 )
 from .evidence import collect_run_evidence, render_evidence_json
+from .fastwalks import FASTWALKS, routes_for_level
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
@@ -102,6 +103,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="number of additional northbound Moria trail rooms to inspect, default: 0",
+    )
+
+    fastwalks_parser = subcommands.add_parser(
+        "show-fastwalks",
+        help="list official recall-origin travel routes and their expanded commands",
+    )
+    fastwalks_parser.add_argument(
+        "--level",
+        type=int,
+        help="only list routes whose suggested level band includes this level",
     )
     arena_research_parser.add_argument(
         "--target-level",
@@ -357,6 +368,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")
         print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "show-fastwalks":
+        routes = routes_for_level(args.level) if args.level is not None else FASTWALKS
+        print("name\tlevels\tnotation\tcommands")
+        for route in routes:
+            print(
+                f"{route.name}\t{route.minimum_level}-{route.maximum_level}\t"
+                f"{route.notation}\t{' ; '.join(route.commands)}"
+            )
         return 0
 
     if args.command == "configure-login":

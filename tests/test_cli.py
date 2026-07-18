@@ -208,6 +208,16 @@ def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch
     assert f"Transcript: {transcript}" in captured.out
 
 
+def test_show_fastwalks_filters_official_routes_by_level(capsys) -> None:
+    exit_code = main(["show-fastwalks", "--level", "6"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "name\tlevels\tnotation\tcommands" in captured.out
+    assert "ambush\t6-16\t6s" in captured.out
+    assert "moria\t5-15\t2s6e8n" in captured.out
+
+
 def test_configure_login_command_uses_named_credential(capsys, monkeypatch) -> None:
     configured: list[str] = []
     monkeypatch.setattr(
