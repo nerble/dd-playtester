@@ -866,6 +866,39 @@ def test_city_restock_policy_uses_fountain_then_bakery() -> None:
     assert decision.command == "save"
 
 
+def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.course_started = True
+    policy.course_complete = True
+    policy.practiced = True
+
+    rooms_and_commands = (
+        ("The Bakery", "3009", "south"),
+        ("Main Street", "3013", "east"),
+        ("Market Square", "3014", "north"),
+        ("The Temple Square", "3005", "north"),
+        ("The Temple Of Midgaard", "3001", "up"),
+    )
+    for room_name, room_vnum, expected_command in rooms_and_commands:
+        decision = policy.next_decision(
+            CharacterState(
+                level=4,
+                hp=79,
+                max_hp=79,
+                position=7,
+                room_name=room_name,
+                room_vnum=room_vnum,
+                inventory=[[{"short_desc": "a buffalo water skin"}]],
+            )
+        )
+        assert decision is not None
+        assert decision.command == expected_command
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+
 def test_starter_policy_rejects_invalid_objective_level() -> None:
     with pytest.raises(ValueError, match="objective_level"):
         StarterPolicy(_spec(), "swordfish", objective_level=1)

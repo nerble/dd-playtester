@@ -471,6 +471,14 @@ class StarterPolicy:
             return BotDecision("up", "return to the Mud School entrance")
         if room_vnum == "3054" or "altar of the temple" in room_name:
             return BotDecision("south", "return from the Temple healer")
+        if room_vnum == "3009" or room_name == "the bakery":
+            return BotDecision("south", "leave the Bakery for the Mud School")
+        if room_vnum == "3013" or room_name == "main street":
+            return BotDecision("east", "return through Market Square to the Temple")
+        if room_vnum == "3014" or room_name == "market square":
+            return BotDecision("north", "return from Market Square to Temple Square")
+        if room_vnum == "3005" or room_name == "the temple square":
+            return BotDecision("north", "return from Temple Square to the Mud School")
         if room_vnum == "3737" or room_name == "safety":
             return BotDecision(
                 "enter portal",
