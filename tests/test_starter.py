@@ -1274,6 +1274,31 @@ def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     assert policy.active_target == "ugly kobold"
 
 
+def test_fastwalk_research_attacks_target_at_endpoint_before_exploring() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+        fastwalk_attack_target="kobold",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.room_targets["4014"] = ["ugly kobold"]
+
+    decision = policy.next_decision(
+        CharacterState(room_name="The tunnel", room_vnum="4014", position=7)
+    )
+
+    assert decision is not None
+    assert decision.command == "kill kobold"
+    assert policy.fastwalk_explore_step == 0
+
+
 def test_fastwalk_probe_withdraws_when_fresh_look_does_not_show_requested_target() -> None:
     route = route_named("moria")
     policy = StarterPolicy(
@@ -1298,6 +1323,42 @@ def test_fastwalk_probe_withdraws_when_fresh_look_does_not_show_requested_target
     assert decision is not None
     assert decision.command == "south"
     assert policy.active_target is None
+
+
+def test_fastwalk_research_loots_confirmed_endpoint_kill_before_recall() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+        fastwalk_attack_target="kobold",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_attack_started = True
+    policy.current_room = "4014"
+    policy.pending_loot_rooms.add("4014")
+    endpoint = CharacterState(room_name="The tunnel", room_vnum="4014", position=7)
+
+    loot = policy.next_decision(endpoint)
+    assert loot is not None
+    assert loot.command == "get all corpse"
+    policy.after_command(loot)
+    policy.prompt_ready = True
+
+    inventory = policy.next_decision(endpoint)
+    assert inventory is not None
+    assert inventory.command == "inventory"
+    policy.after_command(inventory)
+    policy.prompt_ready = True
+
+    recall = policy.next_decision(endpoint)
+    assert recall is not None
+    assert recall.command == "recall"
 
 
 def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> None:

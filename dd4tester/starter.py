@@ -170,6 +170,7 @@ class StarterPolicy:
         self.fastwalk_explore_step = 0
         self.fastwalk_attack_started = False
         self.fastwalk_target_absent = False
+        self.fastwalk_loot_step = 0
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -340,7 +341,10 @@ class StarterPolicy:
         elif (
             decision.command == "look"
             and self.fastwalk_route is not None
-            and self.fastwalk_explore_step == 2
+            and (
+                self.fastwalk_arrival_observed
+                or self.fastwalk_explore_step == 2
+            )
             and self.current_room
         ):
             # A mobile can wander between visits; make this probe depend on this look.
@@ -984,6 +988,48 @@ class StarterPolicy:
             if not self.fastwalk_arrival_observed:
                 self.fastwalk_arrival_observed = True
                 return BotDecision("look", "record the official fastwalk endpoint")
+            if (
+                self.fastwalk_attack_started
+                and not self.combat_active
+                and self.active_target is None
+            ):
+                room_key = room_vnum or ""
+                if room_key in self.pending_loot_rooms:
+                    if self.fastwalk_loot_step == 0:
+                        self.fastwalk_loot_step = 1
+                        return BotDecision(
+                            "get all corpse",
+                            "collect equipment and money from the confirmed fastwalk kill",
+                        )
+                    if self.fastwalk_loot_step == 1:
+                        self.fastwalk_loot_step = 2
+                        self.pending_loot_rooms.discard(room_key)
+                        return BotDecision(
+                            "inventory",
+                            "record supplies and loot from the fastwalk kill",
+                        )
+                if self.fastwalk_explore_step >= 2:
+                    self.fastwalk_explore_step = 3
+                    return BotDecision(
+                        _opposite_direction(self.fastwalk_explore_direction),
+                        "return from the one-hop fastwalk combat room",
+                    )
+                self.fastwalk_returning = True
+                return BotDecision("recall", "return after endpoint fastwalk combat")
+            if (
+                self.fastwalk_attack_target is not None
+                and not self.fastwalk_attack_started
+                and any(
+                    _targets_match(target, self.fastwalk_attack_target)
+                    for target in self.room_targets.get(room_vnum or "", [])
+                )
+            ):
+                self.fastwalk_attack_started = True
+                self.active_target = self.fastwalk_attack_target
+                return BotDecision(
+                    f"kill {_target_keyword(self.fastwalk_attack_target)}",
+                    "attack the requested target found in the bounded fastwalk search",
+                )
             if self.fastwalk_explore_direction is not None:
                 if self.fastwalk_explore_step == 0:
                     self.fastwalk_explore_step = 1
@@ -1000,20 +1046,10 @@ class StarterPolicy:
                         and not self.fastwalk_attack_started
                     ):
                         self.fastwalk_attack_started = True
-                        known_targets = self.room_targets.get(room_vnum or "", [])
-                        if not any(
-                            _targets_match(target, self.fastwalk_attack_target)
-                            for target in known_targets
-                        ):
-                            self.fastwalk_explore_step = 3
-                            return BotDecision(
-                                _opposite_direction(self.fastwalk_explore_direction),
-                                "withdraw because the requested mobile was absent from the fresh room snapshot",
-                            )
-                        self.active_target = self.fastwalk_attack_target
+                        self.fastwalk_explore_step = 3
                         return BotDecision(
-                            f"kill {_target_keyword(self.fastwalk_attack_target)}",
-                            "run the requested one-target fastwalk combat probe",
+                            _opposite_direction(self.fastwalk_explore_direction),
+                            "withdraw because the requested mobile was absent from both fresh room snapshots",
                         )
                     self.fastwalk_explore_step = 3
                     return BotDecision(
