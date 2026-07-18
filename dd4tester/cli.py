@@ -12,7 +12,7 @@ from .evidence import collect_run_evidence, render_evidence_json
 from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
 from .runner import run_scenario_file
-from .starter import run_starter_profile
+from .starter import run_arena_research_profile, run_starter_profile
 from .storage import RunStorage
 
 
@@ -34,6 +34,22 @@ def build_parser() -> argparse.ArgumentParser:
         "profile",
         type=Path,
         help="path to the starter character YAML profile",
+    )
+
+    arena_research_parser = subcommands.add_parser(
+        "arena-research",
+        help="run a bounded level-2 Mud School arena research segment",
+    )
+    arena_research_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing level-2 character profile",
+    )
+    arena_research_parser.add_argument(
+        "--target-level",
+        type=int,
+        default=3,
+        help="bounded completion level from 3 to 10, default: 3",
     )
 
     campaign_parser = subcommands.add_parser(
@@ -185,6 +201,22 @@ def main(argv: list[str] | None = None) -> int:
             result = asyncio.run(run_starter_profile(args.profile))
         except Exception as exc:
             print(f"Starter run failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "arena-research":
+        try:
+            result = asyncio.run(
+                run_arena_research_profile(
+                    args.profile,
+                    target_level=args.target_level,
+                )
+            )
+        except Exception as exc:
+            print(f"Arena research failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")

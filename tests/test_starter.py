@@ -598,6 +598,41 @@ def test_arena_fights_discovered_target_and_leaves_at_level_two() -> None:
     assert leave.command == "up"
 
 
+def test_arena_research_continues_at_level_two_until_its_target() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
+    policy.in_world = True
+    policy.arena_queried = True
+    policy.current_room = "3729"
+    policy.room_targets["3729"] = ["wild boar"]
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=2,
+        hp=60,
+        max_hp=60,
+        room_name="The Mud School Arena",
+        room_vnum="3729",
+    )
+
+    fight = policy.next_decision(state)
+
+    assert fight is not None
+    assert fight.command == "kill boar"
+
+    policy.combat_active = False
+    policy.prompt_ready = True
+    state.level = 3
+    leave = policy.next_decision(state)
+
+    assert leave is not None
+    assert leave.command == "up"
+    assert "level 3" in leave.reason
+
+
+def test_starter_policy_rejects_invalid_objective_level() -> None:
+    with pytest.raises(ValueError, match="objective_level"):
+        StarterPolicy(_spec(), "swordfish", objective_level=1)
+
+
 def test_new_character_prelude_follows_down_exit() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True

@@ -71,9 +71,18 @@ class BotDecision:
 class StarterPolicy:
     """Deterministic rules for creation and DD4's first training sequence."""
 
-    def __init__(self, spec: CharacterSpec, password: str) -> None:
+    def __init__(
+        self,
+        spec: CharacterSpec,
+        password: str,
+        *,
+        objective_level: int = 2,
+    ) -> None:
+        if objective_level < 2:
+            raise ValueError("objective_level must be at least 2")
         self.spec = spec
         self.password = password
+        self.objective_level = objective_level
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -350,7 +359,7 @@ class StarterPolicy:
 
         if (
             state.level is not None
-            and state.level >= 2
+            and state.level >= self.objective_level
             and self.course_complete
             and self.provisioned
             and self.practiced
@@ -358,7 +367,10 @@ class StarterPolicy:
             if not self.saved:
                 self.saved = True
                 self.stage = "saving"
-                return BotDecision("save", "persist level-two tutorial progress")
+                return BotDecision(
+                    "save",
+                    f"persist progress through level {self.objective_level}",
+                )
             self.stage = "complete"
             return BotDecision("quit", "starter objective complete")
 
@@ -653,8 +665,11 @@ class StarterPolicy:
         return BotDecision("west", "return to the Mud School entrance")
 
     def _arena_decision(self, state: CharacterState) -> BotDecision:
-        if state.level is not None and state.level >= 2:
-            return BotDecision("up", "leave the arena after reaching level two")
+        if state.level is not None and state.level >= self.objective_level:
+            return BotDecision(
+                "up",
+                f"leave the arena after reaching level {self.objective_level}",
+            )
 
         key = _room_key(state)
         self.arena_visited_rooms.add(key)
@@ -710,12 +725,14 @@ class StarterBotRunner:
         connection_factory: Callable[[CharacterSpec], TelnetConnection] | None = None,
         observation_parser: ObservationParser | None = None,
         character_state: CharacterState | None = None,
+        objective_level: int = 2,
     ) -> None:
         self.spec = spec
         self.profile_path = profile_path
         self.connection_factory = connection_factory or self._default_connection
         self.observation_parser = observation_parser or ObservationParser()
         self.character_state = character_state or CharacterState()
+        self.objective_level = objective_level
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
@@ -775,7 +792,11 @@ class StarterBotRunner:
                 raise RuntimeError(
                     f"Required environment variable {self.spec.password_env} is not set"
                 )
-            policy = StarterPolicy(self.spec, password)
+            policy = StarterPolicy(
+                self.spec,
+                password,
+                objective_level=self.objective_level,
+            )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
             reconnects = 0
@@ -863,6 +884,7 @@ class StarterBotRunner:
                     "commands": commands,
                     "stage": policy.stage,
                     "target_subclass": self.spec.subclass,
+                    "objective_level": self.objective_level,
                 },
             )
             storage.finish_run(run_id, status="success")
@@ -939,6 +961,22 @@ async def run_starter_profile(path: str | Path) -> RunResult:
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
     return await StarterBotRunner(spec, profile_path).run()
+
+
+async def run_arena_research_profile(
+    path: str | Path,
+    *,
+    target_level: int = 3,
+) -> RunResult:
+    if not 3 <= target_level <= 10:
+        raise ValueError("target_level must be between 3 and 10")
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        objective_level=target_level,
+    ).run()
 
 
 def _room_key(state: CharacterState) -> str:

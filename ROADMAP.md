@@ -108,3 +108,12 @@ and failure handling before registering each new level-band policy.
 - Kept the policy non-executable until a bounded live run proves the combat, XP,
   recovery, and exit sequence. Campaigns now identify this precise gate instead
   of reporting only a generic missing policy.
+
+## Progression Evidence Cycle 2
+
+- Added `arena-research`, a separate level-2 probe that defaults to a level-3
+  objective while retaining the existing arena target discovery, 25% health
+  retreat, recovery route, safe exit, save, and quit behavior.
+- The command is intentionally outside the campaign registry. Its first live
+  transcript must show an engagement, XP change, recovery-or-safe-health proof,
+  exit, and final level before the level-2-to-10 policy can become executable.

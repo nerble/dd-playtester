@@ -103,6 +103,26 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
     assert "Level: 2" in captured.out
 
 
+def test_arena_research_command_runs_with_requested_target(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "level-two.yaml"
+    transcript = tmp_path / "arena-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_arena_research(path: Path, *, target_level: int) -> RunResult:
+        assert path == profile
+        assert target_level == 3
+        return RunResult(8, "success", transcript, database, {"level": 3})
+
+    monkeypatch.setattr(dd4tester.cli, "run_arena_research_profile", fake_arena_research)
+
+    exit_code = main(["arena-research", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 8 success" in captured.out
+    assert f"Transcript: {transcript}" in captured.out
+
+
 def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
     database = tmp_path / "runs.sqlite3"
     with RunStorage(database) as storage:

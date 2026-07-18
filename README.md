@@ -104,6 +104,19 @@ python -m dd4tester collect-evidence 56 --output evidence/run-56.json
 The local `evidence/` output directory is ignored by Git. Exports omit commands,
 credentials, and raw response text.
 
+When a level-2 profile and its password environment variable are available, run
+one bounded arena probe before enabling any automated level-2-to-10 policy:
+
+```powershell
+python -m dd4tester arena-research profiles/your-level-2-character.yaml
+python -m dd4tester collect-evidence <run-id> --output evidence/arena-level-3.json
+```
+
+The probe targets level 3 by default, keeps the existing health retreat and
+safe-exit rules, then saves and quits. It is deliberately not registered as a
+campaign policy until that live evidence proves its combat, recovery, and XP
+behavior.
+
 ## Run data
 
 With the default `scenarios/login.yaml` values, running from this repository root writes:
