@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -758,6 +759,30 @@ def test_completed_arena_patrol_forgets_stale_room_sightings() -> None:
     assert "3728" not in policy.room_targets
     assert policy.room_targets["3713"] == ["snake"]
     assert "3728" not in policy.defeated_targets
+    assert policy.arena_respawn_due is not None
+
+
+def test_empty_arena_patrol_sleeps_safely_until_the_respawn_window() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.arena_respawn_due = time.monotonic() + 60
+    state = CharacterState(
+        level=2,
+        hp=60,
+        max_hp=60,
+        position=7,
+        room_name="Safety",
+        room_vnum="3737",
+    )
+
+    sleep = policy.next_decision(state)
+
+    assert sleep is not None
+    assert sleep.command == "sleep"
+    state.position = 4
+    policy.prompt_ready = True
+    assert policy.next_decision(state) is None
 
 
 def test_arena_safety_room_reenters_the_mud_school_portal() -> None:

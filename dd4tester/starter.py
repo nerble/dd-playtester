@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -60,6 +61,7 @@ _TRAINING_SIDE_ROOMS = {
     "3719": "3716",
     "3720": "3716",
 }
+_ARENA_RESPAWN_WAIT_SECONDS = 90
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,7 @@ class StarterPolicy:
         self.practiced = False
         self.arena_queried = False
         self.arena_visited_rooms: set[str] = set()
+        self.arena_respawn_due: float | None = None
         self.arena_pending_loot = False
         self.arena_loot_step = 0
         self.combat_active = False
@@ -413,6 +416,16 @@ class StarterPolicy:
 
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
+        if room_vnum == "3737" and self.arena_respawn_due is not None:
+            if time.monotonic() < self.arena_respawn_due:
+                if _is_sleeping(state):
+                    self.prompt_ready = False
+                    return None
+                return BotDecision(
+                    "sleep",
+                    "wait safely for arena opponents to respawn",
+                )
+            self.arena_respawn_due = None
         if room_vnum == "2" or room_name == "limbo":
             return BotDecision("look", "return from Limbo to the previous room")
 
@@ -939,6 +952,7 @@ class StarterPolicy:
         if direction is not None:
             return BotDecision(direction, "search the next arena section")
         self._reset_arena_patrol()
+        self.arena_respawn_due = time.monotonic() + _ARENA_RESPAWN_WAIT_SECONDS
         return BotDecision("up", "reset arena route through the safe entrance")
 
     def _reset_arena_patrol(self) -> None:
