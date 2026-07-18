@@ -152,6 +152,9 @@ class StarterPolicy:
             self.active_target = None
         if "you attack " in folded or " attacks you" in folded:
             self.combat_active = True
+        if "aren't fighting anyone" in folded:
+            self.combat_active = False
+            self.active_target = None
         if "aren't here" in folded or "do not see that here" in folded:
             self.combat_active = False
             if self.current_room and self.active_target:
@@ -441,9 +444,10 @@ class StarterPolicy:
 
         room_name = (state.room_name or "").casefold()
         if (
-            state.room_vnum in {"3054", "3721"}
+            state.room_vnum in {"3054", "3721", "3737"}
             or "sanctuary" in room_name
             or "altar of the temple" in room_name
+            or room_name == "safety"
         ):
             self.waiting_for_heal = True
             return BotDecision("sleep", "recover under a safe-room healer")

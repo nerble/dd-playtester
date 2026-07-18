@@ -473,6 +473,18 @@ def test_combat_death_narration_does_not_add_false_target() -> None:
     assert policy.defeated_targets["3713"] == {"wolf"}
 
 
+def test_flee_rejection_clears_the_combat_state() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.current_room = "3737"
+    policy.active_target = "wild boar"
+    policy.combat_active = True
+
+    policy.observe_text("You aren't fighting anyone.\n")
+
+    assert policy.combat_active is False
+    assert policy.active_target is None
+
+
 def test_resumed_empty_training_room_returns_after_inspection() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
@@ -679,6 +691,30 @@ def test_low_movement_sleeps_without_repeating_movement_commands() -> None:
     policy.after_command(decision)
     policy.prompt_ready = True
     assert policy.next_decision(state) is None
+
+
+def test_arena_safety_room_sleeps_until_health_recovers() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=4)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=3,
+        hp=17,
+        max_hp=70,
+        room_name="Safety",
+        room_vnum="3737",
+    )
+
+    sleep = policy.next_decision(state)
+
+    assert sleep is not None
+    assert sleep.command == "sleep"
+    policy.after_command(sleep)
+    state.hp = 40
+    policy.prompt_ready = True
+    stand = policy.next_decision(state)
+    assert stand is not None
+    assert stand.command == "stand"
 
 
 def test_missing_arena_target_is_removed_before_the_next_decision() -> None:
