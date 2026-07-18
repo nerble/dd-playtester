@@ -153,6 +153,7 @@ class StarterPolicy:
         self.city_restock_step = 0
         self.guildmaster_step = 0
         self.magic_shop_step = 0
+        self.magic_shop_purchase_failed = False
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -180,6 +181,8 @@ class StarterPolicy:
             self.needs_drink = False
         if "you can't afford" in folded or "you do not have enough" in folded:
             self.insufficient_funds = True
+            if self.magic_shop_research and self.magic_shop_buy_fly:
+                self.magic_shop_purchase_failed = True
         if "you don't have that item" in folded or "is empty" in folded:
             if self.last_consumption == "food":
                 self.needs_food = True
@@ -863,11 +866,16 @@ class StarterPolicy:
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
         if room_vnum == "3033" or room_name == "the magic shop":
+            if self.magic_shop_purchase_failed:
+                return BotDecision(
+                    "south",
+                    "return after the current light blue potion price was unaffordable",
+                )
             commands = [("list", "record Magic Shop stock and potion prices")]
             if self.magic_shop_buy_fly:
                 commands.extend(
                     (
-                        ("buy light", "buy the verified light blue travel potion"),
+                        ("buy light", "buy the requested light blue travel potion"),
                         ("inventory", "confirm the light blue potion was bought"),
                         ("quaff light", "use the light blue travel potion"),
                         ("affects", "record the potion's active travel effect"),
@@ -1478,6 +1486,7 @@ class StarterBotRunner:
                     "guildmaster_research": self.guildmaster_research,
                     "magic_shop_research": self.magic_shop_research,
                     "magic_shop_buy_fly": self.magic_shop_buy_fly,
+                    "magic_shop_purchase_failed": self.magic_shop_purchase_failed,
                     "moria_research": self.moria_research,
                     "moria_depth": self.moria_depth,
                 },

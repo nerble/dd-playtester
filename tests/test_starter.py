@@ -1227,6 +1227,27 @@ def test_magic_shop_research_can_buy_and_verify_a_fly_potion() -> None:
     assert leave_shop.command == "south"
 
 
+def test_magic_shop_research_returns_when_flight_potion_price_is_unaffordable() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        magic_shop_research=True,
+        magic_shop_buy_fly=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.magic_shop_step = 2
+    policy.observe_text("You can't afford that item.")
+
+    decision = policy.next_decision(
+        CharacterState(room_name="The Magic Shop", room_vnum="3033", position=7)
+    )
+
+    assert decision is not None
+    assert decision.command == "south"
+    assert policy.magic_shop_purchase_failed is True
+
+
 def test_moria_research_depth_one_inspects_one_additional_trail_room() -> None:
     policy = StarterPolicy(_spec(), "swordfish", moria_research=True, moria_depth=1)
     policy.in_world = True
