@@ -94,5 +94,5 @@ FASTWALKS = (
 # Source-backed hunt routes omitted from show-fastwalks, which lists only the
 # site's official fastwalks.
 MAP_ROUTES = (
-    Fastwalk("foundry", 1, 6, "2s3w4ne2dn"),
+    Fastwalk("foundry", 1, 6, "2s3w4ne2d2ne"),
 )

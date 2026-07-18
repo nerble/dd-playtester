@@ -1788,6 +1788,86 @@ def test_fastwalk_research_loots_confirmed_endpoint_kill_before_recall() -> None
     assert recall.command == "recall"
 
 
+def test_fastwalk_research_loots_incidental_kill_before_resuming_route() -> None:
+    route = route_named("foundry")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="Oshu",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 8
+    policy.current_room = "108"
+    policy.pending_loot_rooms.add("108")
+    tunnel = CharacterState(room_name="Muddy Tunnel", room_vnum="108", position=7)
+
+    loot = policy.next_decision(tunnel)
+    assert loot is not None
+    assert loot.command == "get all corpse"
+    policy.after_command(loot)
+    policy.prompt_ready = True
+
+    inventory = policy.next_decision(tunnel)
+    assert inventory is not None
+    assert inventory.command == "inventory"
+    policy.after_command(inventory)
+    policy.prompt_ready = True
+
+    resume = policy.next_decision(tunnel)
+    assert resume is not None
+    assert resume.command == route.commands[8]
+    assert policy.fastwalk_attack_started is False
+
+
+def test_fastwalk_research_claims_corpse_from_aggressive_combat() -> None:
+    route = route_named("foundry")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="Oshu",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 13
+    policy.current_room = "109"
+    tunnel = CharacterState(room_name="Muddy Tunnel", room_vnum="109", position=7)
+
+    policy.observe_events(
+        [GameEvent("combat_started", "text", {"target": "Olog"})],
+        tunnel,
+    )
+    policy.observe_text(
+        "Olog is DEAD!!\n"
+        "You receive 10 experience points for the kill.\n"
+    )
+    loot = policy.next_decision(tunnel)
+
+    assert loot is not None
+    assert loot.command == "get all corpse"
+    assert policy.combat_active is False
+    assert policy.defeated_targets["109"] == {"Olog"}
+
+
+def test_fastwalk_research_does_not_claim_unrelated_corpse() -> None:
+    route = route_named("foundry")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="Oshu",
+    )
+    policy.current_room = "109"
+
+    policy.observe_text("A goblin is DEAD!!\n")
+
+    assert policy.pending_loot_rooms == set()
+
+
 def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> None:
     route = route_named("moria")
 

@@ -248,12 +248,14 @@ class StarterPolicy:
             self.advice_direction = direction.group("direction").casefold()
         if "hole in the north wall" in folded:
             self.advice_direction = "north"
-        if "is dead" in folded or "you receive" in folded and "experience" in folded:
+        if "is dead" in recent or "you receive" in recent and "experience" in recent:
+            was_in_combat = self.combat_active
             self.combat_active = False
-            if self.current_room and self.active_target:
-                self.defeated_targets.setdefault(self.current_room, set()).add(
-                    self.active_target
-                )
+            if self.current_room and (self.active_target or was_in_combat):
+                if self.active_target:
+                    self.defeated_targets.setdefault(self.current_room, set()).add(
+                        self.active_target
+                    )
                 if self.current_room != "3722":
                     if _is_arena_vnum(self.current_room):
                         self.arena_pending_loot = True
@@ -265,13 +267,13 @@ class StarterPolicy:
                 self.post_kill_steps.setdefault(self.current_room, 0)
             self.active_target = None
             self.magic_missile_cast = False
-        if "you attack " in folded or " attacks you" in folded:
+        if "you attack " in recent or " attacks you" in recent:
             self.combat_active = True
-        if "aren't fighting anyone" in folded:
+        if "aren't fighting anyone" in recent:
             self.combat_active = False
             self.active_target = None
             self.magic_missile_cast = False
-        if "aren't here" in folded or "do not see that here" in folded:
+        if "aren't here" in recent or "do not see that here" in recent:
             self.combat_active = False
             if self.current_room and self.active_target:
                 if self.active_target == self.fastwalk_attack_target:
@@ -350,6 +352,9 @@ class StarterPolicy:
                     self.course_complete = True
             if event.type == "combat_started":
                 self.combat_active = True
+                target = event.data.get("target", event.data.get("name"))
+                if isinstance(target, str) and target.strip():
+                    self.active_target = target.strip()
             if event.type == "character_died":
                 self.failure = "character died during starter training"
         if self.waiting_for_move and _move_ratio(state) >= 0.5:
@@ -1076,6 +1081,25 @@ class StarterPolicy:
         assert self.fastwalk_route is not None
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
+        room_key = room_vnum or ""
+
+        if (
+            not self.combat_active
+            and self.active_target is None
+            and room_key in self.pending_loot_rooms
+        ):
+            if self.fastwalk_loot_step == 0:
+                self.fastwalk_loot_step = 1
+                return BotDecision(
+                    "get all corpse",
+                    "collect equipment and money from a fastwalk-route kill",
+                )
+            self.fastwalk_loot_step = 0
+            self.pending_loot_rooms.discard(room_key)
+            return BotDecision(
+                "inventory",
+                "record supplies and loot before resuming the fastwalk",
+            )
 
         if not self.fastwalk_returning:
             if not self.fastwalk_recall_started:
@@ -1145,21 +1169,6 @@ class StarterPolicy:
                 and not self.combat_active
                 and self.active_target is None
             ):
-                room_key = room_vnum or ""
-                if room_key in self.pending_loot_rooms:
-                    if self.fastwalk_loot_step == 0:
-                        self.fastwalk_loot_step = 1
-                        return BotDecision(
-                            "get all corpse",
-                            "collect equipment and money from the confirmed fastwalk kill",
-                        )
-                    if self.fastwalk_loot_step == 1:
-                        self.fastwalk_loot_step = 2
-                        self.pending_loot_rooms.discard(room_key)
-                        return BotDecision(
-                            "inventory",
-                            "record supplies and loot from the fastwalk kill",
-                        )
                 if (
                     self.fastwalk_explore_distance > 0
                     and not self.fastwalk_withdrawing
