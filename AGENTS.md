@@ -52,5 +52,6 @@ and reserve Mudlet-in-VM automation for client-specific validation.
 Use concise imperative commit subjects, for example `Persist character state
 snapshots`. Include verification details and behavioral impact in pull
 requests. After every significant verified change, commit and push the complete
-intended scope to the configured GitHub remote. Never push generated run data,
-transcripts, secrets, or unrelated user changes.
+intended scope to the configured GitHub remote, merge it into `main`, and push
+the updated `main`. Never push generated run data, transcripts, secrets, or
+unrelated user changes.
