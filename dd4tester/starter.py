@@ -925,6 +925,10 @@ class StarterPolicy:
 
         key = _room_key(state)
         self.arena_visited_rooms.add(key)
+        if state.in_combat or state.combat_target:
+            self.combat_active = True
+            self.prompt_ready = False
+            return None
         if not self.arena_queried:
             self.arena_queried = True
             return BotDecision("look imp", "ask the Imp for combat-arena guidance")

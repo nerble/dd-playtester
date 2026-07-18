@@ -671,6 +671,27 @@ def test_arena_prioritizes_wolves_when_multiple_targets_are_observed() -> None:
     assert decision.command == "kill wolf"
 
 
+def test_arena_waits_for_gmcp_combat_to_end_before_issuing_another_kill() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=7)
+    policy.in_world = True
+    policy.arena_queried = True
+    policy.current_room = "3736"
+    policy.room_targets["3736"] = ["lizard"]
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=6,
+        hp=80,
+        max_hp=96,
+        in_combat=True,
+        combat_target="a giant lizard",
+        room_name="The Mud School Arena",
+        room_vnum="3736",
+    )
+
+    assert policy.next_decision(state) is None
+    assert policy.combat_active is True
+
+
 def test_low_movement_sleeps_without_repeating_movement_commands() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=4)
     policy.in_world = True
