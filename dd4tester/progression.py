@@ -89,6 +89,12 @@ _MUD_SCHOOL_RESEARCH_POLICY = replace(
     status="research",
     execution=None,
     summary="Mud School continuation from level 6 through the level-10 transition.",
+    evidence=(
+        *_MUD_SCHOOL_ARENA_POLICY.evidence,
+        "DD4 source: the Loremaster directs level-10 characters to their Guildmaster; the Magic Users Guildmaster spawns in Midgaard room 3019.",
+        "DD4 source map metadata lists Moria for levels 5-15 and Old Thalos for levels 10-25.",
+        "DD4 source help: reaching level 100 also requires at least 1,000 total quest points.",
+    ),
 )
 
 _UNAVAILABLE_POLICY = ProgressionPolicy(

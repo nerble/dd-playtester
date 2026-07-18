@@ -32,6 +32,7 @@ def test_level_six_to_ten_policy_remains_research_gated() -> None:
     assert policy.policy_id == "mud-school-6-10"
     assert policy.status == "research"
     assert policy.executable is False
+    assert any("Guildmaster" in item for item in policy.evidence)
 
 
 def test_level_ten_and_above_is_explicitly_unavailable() -> None:
