@@ -785,6 +785,31 @@ def test_empty_arena_patrol_sleeps_safely_until_the_respawn_window() -> None:
     assert policy.next_decision(state) is None
 
 
+def test_safe_room_gmcp_update_reopens_expired_respawn_wait() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
+    policy.in_world = True
+    policy.arena_respawn_due = time.monotonic() - 1
+    state = CharacterState(
+        level=2,
+        hp=60,
+        max_hp=60,
+        position=4,
+        room_name="Safety",
+        room_vnum="3737",
+    )
+
+    policy.observe_events(
+        [GameEvent(type="room_updated", source="gmcp", data={})],
+        state,
+    )
+    decision = policy.next_decision(state)
+
+    assert policy.prompt_ready is True
+    assert decision is not None
+    assert decision.command == "stand"
+    assert policy.arena_respawn_due is None
+
+
 def test_arena_safety_room_reenters_the_mud_school_portal() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
     policy.in_world = True

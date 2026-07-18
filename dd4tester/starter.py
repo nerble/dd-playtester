@@ -253,6 +253,12 @@ class StarterPolicy:
             self.prompt_ready = True
         if self.waiting_for_heal and _health_ratio(state) >= 0.5:
             self.prompt_ready = True
+        if (
+            self.arena_respawn_due is not None
+            and time.monotonic() >= self.arena_respawn_due
+            and state.room_vnum == "3737"
+        ):
+            self.prompt_ready = True
 
     def next_decision(self, state: CharacterState) -> BotDecision | None:
         if self.done or self.failure:
