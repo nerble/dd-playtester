@@ -987,6 +987,9 @@ def test_mage_casts_magic_missile_while_fighting_an_arena_target() -> None:
     assert decision is not None
     assert decision.command == "cast 'magic missile' wolf"
 
+    policy.prompt_ready = True
+    assert policy.next_decision(state) is None
+
 
 def test_mage_preserves_low_mana_for_arena_recovery() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=6)

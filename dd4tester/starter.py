@@ -120,6 +120,7 @@ class StarterPolicy:
         self.pending_loot_rooms: set[str] = set()
         self.cleared_training_rooms: set[str] = set()
         self.post_kill_steps: dict[str, int] = {}
+        self.magic_missile_cast = False
         self.store_step = 0
         self.provisioned = False
         self.saved = False
@@ -186,11 +187,13 @@ class StarterPolicy:
                     self.cleared_training_rooms.add(self.current_room)
                 self.post_kill_steps.setdefault(self.current_room, 0)
             self.active_target = None
+            self.magic_missile_cast = False
         if "you attack " in folded or " attacks you" in folded:
             self.combat_active = True
         if "aren't fighting anyone" in folded:
             self.combat_active = False
             self.active_target = None
+            self.magic_missile_cast = False
         if "aren't here" in folded or "do not see that here" in folded:
             self.combat_active = False
             if self.current_room and self.active_target:
@@ -571,11 +574,16 @@ class StarterPolicy:
         return None
 
     def _combat_spell_decision(self, state: CharacterState) -> BotDecision | None:
-        if self.spec.character_class != "mage" or not self.active_target:
+        if (
+            self.spec.character_class != "mage"
+            or not self.active_target
+            or self.magic_missile_cast
+        ):
             return None
         if _mana_ratio(state) < 0.15:
             return None
         target = _target_keyword(self.active_target)
+        self.magic_missile_cast = True
         return BotDecision(
             f"cast 'magic missile' {target}",
             f"cast magic missile at arena opponent {self.active_target}",
@@ -843,6 +851,7 @@ class StarterPolicy:
             target = targets[0]
             self.combat_active = True
             self.active_target = target
+            self.magic_missile_cast = False
             return BotDecision(
                 f"kill {_target_keyword(target)}",
                 "defeat the final tutorial gladiator",
