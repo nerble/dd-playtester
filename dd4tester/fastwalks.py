@@ -71,7 +71,7 @@ def routes_for_level(level: int) -> tuple[Fastwalk, ...]:
 
 def route_named(name: str) -> Fastwalk:
     normalized = " ".join(name.casefold().replace("-", " ").split())
-    for route in FASTWALKS:
+    for route in (*FASTWALKS, *MAP_ROUTES):
         if route.name == normalized:
             return route
     raise ValueError(f"unknown fastwalk route {name!r}")
@@ -88,4 +88,11 @@ FASTWALKS = (
     Fastwalk("ambush", 6, 16, "6s"),
     Fastwalk("sewer", 5, 30, "4sd"),
     Fastwalk("elemental canyon", 5, 30, "2s6e4s2es2eds2u"),
+)
+
+
+# Published-map routes that have also been traversed in live evidence. They are
+# omitted from show-fastwalks, which lists only the site's official fastwalks.
+MAP_ROUTES = (
+    Fastwalk("miden'nir", 5, 15, "2s6e"),
 )

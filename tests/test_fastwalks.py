@@ -30,3 +30,20 @@ def test_official_routes_are_searchable_by_level_and_name() -> None:
     assert {"ambush", "moria", "fleshmonger"}.issubset(level_six_names)
     assert route_named("Dragon-Cult").commands == ("south", "south", "south", "west", "north")
 
+
+def test_route_named_includes_live_verified_map_routes() -> None:
+    route = route_named("Miden'nir")
+
+    assert route.minimum_level == 5
+    assert route.maximum_level == 15
+    assert route.commands == (
+        "south",
+        "south",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+    )
+
