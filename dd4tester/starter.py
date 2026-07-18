@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import time
@@ -14,6 +15,7 @@ from .credentials import CredentialStoreError, load_character_password
 from .fastwalks import Fastwalk, route_named
 from .observations import GameEvent, ObservationParser
 from .runner import RunResult
+from .shops import SafeShop, safe_shop_for_item, sale_keyword
 from .state import CharacterState
 from .storage import RunStorage
 from .transcript import TranscriptRecorder
@@ -100,6 +102,7 @@ class StarterPolicy:
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
+        liquidate_loot: bool = False,
         fastwalk_route: Fastwalk | None = None,
         fastwalk_explore_direction: str | None = None,
         fastwalk_explore_depth: int = 1,
@@ -122,6 +125,7 @@ class StarterPolicy:
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
+        self.liquidate_loot = liquidate_loot
         self.fastwalk_route = fastwalk_route
         self.fastwalk_explore_direction = fastwalk_explore_direction
         self.fastwalk_explore_depth = fastwalk_explore_depth
@@ -185,6 +189,10 @@ class StarterPolicy:
         self.guildmaster_step = 0
         self.magic_shop_step = 0
         self.magic_shop_purchase_failed = False
+        self.sale_plan: list[tuple[str, SafeShop]] = []
+        self.sale_index = 0
+        self.sale_route_index = 0
+        self.sale_phase = "plan"
         self.fastwalk_recall_started = False
         self.fastwalk_arrival_observed = False
         self.fastwalk_returning = False
@@ -198,6 +206,7 @@ class StarterPolicy:
         self.fastwalk_attack_started = False
         self.fastwalk_target_absent = False
         self.fastwalk_loot_step = 0
+        self.fastwalk_recall_after_loot = False
         self.return_home_recall_started = False
         self.moria_seen = False
         self.moria_returning = False
@@ -659,6 +668,17 @@ class StarterPolicy:
             self.stage = "complete"
             return BotDecision("quit", "Magic Shop research complete")
 
+        if self.liquidate_loot:
+            sale = self._liquidate_loot_decision(state)
+            if sale is not None:
+                return sale
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", "persist safe Midgaard loot sales")
+            self.stage = "complete"
+            return BotDecision("quit", "safe loot liquidation complete")
+
         if self.fastwalk_route is not None:
             research = self._fastwalk_research_decision(state)
             if research is not None:
@@ -1099,12 +1119,22 @@ class StarterPolicy:
                 )
             self.fastwalk_loot_step = 0
             self.pending_loot_rooms.discard(room_key)
+            self.fastwalk_recall_after_loot = (
+                self.fastwalk_route.recall_after_loot
+            )
             return BotDecision(
                 "inventory",
                 "record supplies and loot before resuming the fastwalk",
             )
 
         if not self.fastwalk_returning:
+            if self.fastwalk_recall_after_loot:
+                self.fastwalk_recall_after_loot = False
+                self.fastwalk_returning = True
+                return BotDecision(
+                    "recall",
+                    "leave a one-way hunt immediately after securing loot",
+                )
             if not self.fastwalk_recall_started:
                 if room_vnum == "3001":
                     self.fastwalk_recall_started = True
@@ -1281,6 +1311,69 @@ class StarterPolicy:
         command = reverse[self.fastwalk_return_index]
         self.fastwalk_return_index += 1
         return BotDecision(command, "reverse the official fastwalk after recall failed")
+
+    def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
+        """Sell known equipment through source-backed safe Midgaard shops."""
+        room_vnum = state.room_vnum
+        if self.sale_phase == "plan":
+            if room_vnum != "3019":
+                self.failure = "safe loot liquidation must start in the Mage's Laboratory"
+                return None
+            for description in _inventory_descriptions(state.inventory):
+                shop = safe_shop_for_item(description)
+                if shop is not None:
+                    self.sale_plan.append((sale_keyword(description), shop))
+            self.sale_phase = "outbound"
+
+        if self.sale_index >= len(self.sale_plan):
+            return None
+
+        keyword, shop = self.sale_plan[self.sale_index]
+        if self.sale_phase == "outbound":
+            if self.sale_route_index < len(shop.route_from_mage_lab):
+                command = shop.route_from_mage_lab[self.sale_route_index]
+                self.sale_route_index += 1
+                return BotDecision(
+                    command,
+                    f"walk safely to the {shop.name} for {shop.payout_percent}% base payout",
+                )
+            if room_vnum != shop.room_vnum:
+                self.failure = (
+                    f"safe shop route reached {state.room_name!r} ({room_vnum}), "
+                    f"expected {shop.name} ({shop.room_vnum})"
+                )
+                return None
+            self.sale_phase = "value"
+
+        if self.sale_phase == "value":
+            self.sale_phase = "sell"
+            return BotDecision(
+                f"value {keyword}",
+                f"record the keeper's duplicate-adjusted offer for {keyword}",
+            )
+        if self.sale_phase == "sell":
+            self.sale_phase = "inventory"
+            return BotDecision(
+                f"sell {keyword}",
+                f"sell {keyword} to the best verified safe compatible shop",
+            )
+        if self.sale_phase == "inventory":
+            self.sale_phase = "home"
+            self.sale_route_index = 0
+            return BotDecision("inventory", "confirm the sold item left inventory")
+        if self.sale_route_index < len(shop.route_to_mage_lab):
+            command = shop.route_to_mage_lab[self.sale_route_index]
+            self.sale_route_index += 1
+            return BotDecision(command, f"return safely from the {shop.name}")
+        if room_vnum != "3019":
+            self.failure = (
+                f"safe return from {shop.name} reached {state.room_name!r} ({room_vnum})"
+            )
+            return None
+        self.sale_index += 1
+        self.sale_route_index = 0
+        self.sale_phase = "outbound"
+        return self._liquidate_loot_decision(state)
 
     def _return_home_decision(self, state: CharacterState) -> BotDecision | None:
         """Recall from an interrupted field run and return to the Mage Guild."""
@@ -1692,6 +1785,7 @@ class StarterBotRunner:
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
+        liquidate_loot: bool = False,
         fastwalk_route: Fastwalk | None = None,
         fastwalk_explore_direction: str | None = None,
         fastwalk_explore_depth: int = 1,
@@ -1711,6 +1805,7 @@ class StarterBotRunner:
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
+        self.liquidate_loot = liquidate_loot
         self.fastwalk_route = fastwalk_route
         self.fastwalk_explore_direction = fastwalk_explore_direction
         self.fastwalk_explore_depth = fastwalk_explore_depth
@@ -1724,6 +1819,8 @@ class StarterBotRunner:
             scenario_name=(
                 f"restock:{self.spec.name}"
                 if self.city_restock
+                else f"sell-loot:{self.spec.name}"
+                if self.liquidate_loot
                 else f"return-home:{self.spec.name}"
                 if self.return_home
                 else f"guildmaster:{self.spec.name}"
@@ -1745,6 +1842,8 @@ class StarterBotRunner:
             scenario_name=(
                 f"restock-{self.spec.name}"
                 if self.city_restock
+                else f"sell-loot-{self.spec.name}"
+                if self.liquidate_loot
                 else f"return-home-{self.spec.name}"
                 if self.return_home
                 else f"guildmaster-{self.spec.name}"
@@ -1819,6 +1918,7 @@ class StarterBotRunner:
                 guildmaster_research=self.guildmaster_research,
                 magic_shop_research=self.magic_shop_research,
                 magic_shop_buy_fly=self.magic_shop_buy_fly,
+                liquidate_loot=self.liquidate_loot,
                 fastwalk_route=self.fastwalk_route,
                 fastwalk_explore_direction=self.fastwalk_explore_direction,
                 fastwalk_explore_depth=self.fastwalk_explore_depth,
@@ -1931,6 +2031,11 @@ class StarterBotRunner:
                     "magic_shop_research": self.magic_shop_research,
                     "magic_shop_buy_fly": self.magic_shop_buy_fly,
                     "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
+                    "liquidate_loot": self.liquidate_loot,
+                    "sale_plan": [
+                        {"keyword": keyword, "shop": shop.name}
+                        for keyword, shop in policy.sale_plan
+                    ],
                     "fastwalk_route": self.fastwalk_route.name if self.fastwalk_route else None,
                     "fastwalk_explore_direction": self.fastwalk_explore_direction,
                     "fastwalk_explore_depth": self.fastwalk_explore_depth,
@@ -2063,6 +2168,16 @@ async def run_restock_profile(path: str | Path) -> RunResult:
         spec,
         profile_path,
         city_restock=True,
+    ).run()
+
+
+async def run_sell_loot_profile(path: str | Path) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        liquidate_loot=True,
     ).run()
 
 
@@ -2347,6 +2462,13 @@ def _sellable_inventory_keyword(value: Any) -> str | None:
 
 
 def _inventory_descriptions(value: Any) -> list[str]:
+    if isinstance(value, str):
+        cleaned = _ANSI_ESCAPE.sub("", value).strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return []
+        return _inventory_descriptions(parsed)
     if isinstance(value, dict):
         description = value.get("short_desc")
         result = [str(description)] if isinstance(description, str) else []

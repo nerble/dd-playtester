@@ -36,6 +36,7 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
 
     assert route.minimum_level == 1
     assert route.maximum_level == 6
+    assert route.recall_after_loot is True
     assert route.commands == (
         "south",
         "south",

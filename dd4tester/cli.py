@@ -29,6 +29,7 @@ from .starter import (
     run_restock_profile,
     run_return_home_profile,
     run_resupply_profile,
+    run_sell_loot_profile,
     run_starter_profile,
 )
 from .storage import RunStorage
@@ -89,6 +90,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="visit the Midgaard fountain and Bakery, then save and quit",
     )
     restock_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
+    )
+    sell_loot_parser = subcommands.add_parser(
+        "sell-loot",
+        help="sell carried weapons and armour through verified safe Midgaard shops",
+    )
+    sell_loot_parser.add_argument(
         "profile",
         type=Path,
         help="path to an existing character YAML profile",
@@ -408,6 +418,17 @@ def main(argv: list[str] | None = None) -> int:
             result = asyncio.run(run_restock_profile(args.profile))
         except Exception as exc:
             print(f"Restock run failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "sell-loot":
+        try:
+            result = asyncio.run(run_sell_loot_profile(args.profile))
+        except Exception as exc:
+            print(f"Sell-loot run failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")

@@ -11,6 +11,7 @@ from dd4tester.starter import (
     BotDecision,
     StarterBotRunner,
     StarterPolicy,
+    _inventory_descriptions,
     _max_consecutive_command,
 )
 from dd4tester.state import CharacterState
@@ -1816,9 +1817,9 @@ def test_fastwalk_research_loots_incidental_kill_before_resuming_route() -> None
     policy.after_command(inventory)
     policy.prompt_ready = True
 
-    resume = policy.next_decision(tunnel)
-    assert resume is not None
-    assert resume.command == route.commands[8]
+    leave = policy.next_decision(tunnel)
+    assert leave is not None
+    assert leave.command == "recall"
     assert policy.fastwalk_attack_started is False
 
 
@@ -1877,6 +1878,46 @@ def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> Non
 
     assert _max_consecutive_command(route.commands, "north") == 8
     assert _max_consecutive_command(route.commands, "south") == 2
+
+
+def test_inventory_descriptions_parse_serialized_gmcp_inventory() -> None:
+    value = (
+        '[ [ { "quan": "1", "short_desc": "a metal buckler" }, '
+        '{ "quan": "1", "short_desc": "\\u001b[38;5;39m[-?-]\\u001b[0m '
+        'a spiked metal rod" } ] ]'
+    )
+
+    assert _inventory_descriptions(value) == [
+        "a metal buckler",
+        "\x1b[38;5;39m[-?-]\x1b[0m a spiked metal rod",
+    ]
+
+
+def test_liquidation_plans_distinct_items_for_best_safe_shops() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        inventory=[
+            [
+                {"short_desc": "a metal buckler", "quan": "1"},
+                {"short_desc": "[-?-] a spiked metal rod", "quan": "1"},
+                {"short_desc": "a big pot pie", "quan": "2"},
+            ]
+        ],
+    )
+
+    first_move = policy.next_decision(home)
+
+    assert first_move is not None
+    assert first_move.command == "west"
+    assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
+        ("buckler", "Leather Shop"),
+        ("rod", "Weapon Shop"),
+    ]
 
 
 def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> None:

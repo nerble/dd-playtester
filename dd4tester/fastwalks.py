@@ -28,6 +28,7 @@ class Fastwalk:
     minimum_level: int
     maximum_level: int
     notation: str
+    recall_after_loot: bool = False
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -94,5 +95,5 @@ FASTWALKS = (
 # Source-backed hunt routes omitted from show-fastwalks, which lists only the
 # site's official fastwalks.
 MAP_ROUTES = (
-    Fastwalk("foundry", 1, 6, "2s3w4ne2d2n"),
+    Fastwalk("foundry", 1, 6, "2s3w4ne2d2n", recall_after_loot=True),
 )
