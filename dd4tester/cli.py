@@ -99,6 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="path to an existing mage character YAML profile",
     )
+    magic_shop_parser.add_argument(
+        "--buy-fly",
+        action="store_true",
+        help="buy, use, and verify one light blue travel potion after listing stock",
+    )
     moria_parser = subcommands.add_parser(
         "moria-research",
         help="verify the safe Midgaard-to-Moria approach and return to the Mage Guild",
@@ -369,7 +374,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "magic-shop-research":
         try:
-            result = asyncio.run(run_magic_shop_research_profile(args.profile))
+            result = asyncio.run(
+                run_magic_shop_research_profile(args.profile, buy_fly=args.buy_fly)
+            )
         except Exception as exc:
             print(f"Magic Shop research failed: {exc}", file=sys.stderr)
             return 1

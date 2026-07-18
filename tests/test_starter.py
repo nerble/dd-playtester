@@ -1202,6 +1202,31 @@ def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> Non
     assert finish.command == "save"
 
 
+def test_magic_shop_research_can_buy_and_verify_a_fly_potion() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        magic_shop_research=True,
+        magic_shop_buy_fly=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    shop = CharacterState(room_name="The Magic Shop", room_vnum="3033", position=7)
+
+    commands = []
+    for _ in range(5):
+        decision = policy.next_decision(shop)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    assert commands == ["list", "buy light", "inventory", "quaff light", "affects"]
+    leave_shop = policy.next_decision(shop)
+    assert leave_shop is not None
+    assert leave_shop.command == "south"
+
+
 def test_moria_research_depth_one_inspects_one_additional_trail_room() -> None:
     policy = StarterPolicy(_spec(), "swordfish", moria_research=True, moria_depth=1)
     policy.in_world = True

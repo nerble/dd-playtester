@@ -85,6 +85,7 @@ class StarterPolicy:
         city_restock: bool = False,
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
+        magic_shop_buy_fly: bool = False,
         moria_research: bool = False,
         moria_depth: int = 0,
     ) -> None:
@@ -99,6 +100,7 @@ class StarterPolicy:
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
+        self.magic_shop_buy_fly = magic_shop_buy_fly
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.stage = "login"
@@ -150,7 +152,7 @@ class StarterPolicy:
         self.insufficient_funds = False
         self.city_restock_step = 0
         self.guildmaster_step = 0
-        self.magic_shop_listed = False
+        self.magic_shop_step = 0
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -860,12 +862,23 @@ class StarterPolicy:
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
         if room_vnum == "3033" or room_name == "the magic shop":
-            if not self.magic_shop_listed:
-                self.magic_shop_listed = True
-                return BotDecision("list", "record Magic Shop stock and potion prices")
+            commands = [("list", "record Magic Shop stock and potion prices")]
+            if self.magic_shop_buy_fly:
+                commands.extend(
+                    (
+                        ("buy light", "buy the verified light blue travel potion"),
+                        ("inventory", "confirm the light blue potion was bought"),
+                        ("quaff light", "use the light blue travel potion"),
+                        ("affects", "record the potion's active travel effect"),
+                    )
+                )
+            if self.magic_shop_step < len(commands):
+                command, reason = commands[self.magic_shop_step]
+                self.magic_shop_step += 1
+                return BotDecision(command, reason)
             return BotDecision("south", "return from the Magic Shop to the Mage Guild")
 
-        if not self.magic_shop_listed:
+        if self.magic_shop_step == 0:
             outward_routes = {
                 "3019": "west",
                 "3018": "north",
@@ -1257,6 +1270,7 @@ class StarterBotRunner:
         city_restock: bool = False,
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
+        magic_shop_buy_fly: bool = False,
         moria_research: bool = False,
         moria_depth: int = 0,
     ) -> None:
@@ -1270,6 +1284,7 @@ class StarterBotRunner:
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
+        self.magic_shop_buy_fly = magic_shop_buy_fly
         self.moria_research = moria_research
         self.moria_depth = moria_depth
 
@@ -1364,6 +1379,7 @@ class StarterBotRunner:
                 city_restock=self.city_restock,
                 guildmaster_research=self.guildmaster_research,
                 magic_shop_research=self.magic_shop_research,
+                magic_shop_buy_fly=self.magic_shop_buy_fly,
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
             )
@@ -1459,6 +1475,7 @@ class StarterBotRunner:
                     "city_restock": self.city_restock,
                     "guildmaster_research": self.guildmaster_research,
                     "magic_shop_research": self.magic_shop_research,
+                    "magic_shop_buy_fly": self.magic_shop_buy_fly,
                     "moria_research": self.moria_research,
                     "moria_depth": self.moria_depth,
                 },
@@ -1585,13 +1602,18 @@ async def run_guildmaster_research_profile(path: str | Path) -> RunResult:
     ).run()
 
 
-async def run_magic_shop_research_profile(path: str | Path) -> RunResult:
+async def run_magic_shop_research_profile(
+    path: str | Path,
+    *,
+    buy_fly: bool = False,
+) -> RunResult:
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
     return await StarterBotRunner(
         spec,
         profile_path,
         magic_shop_research=True,
+        magic_shop_buy_fly=buy_fly,
     ).run()
 
 
