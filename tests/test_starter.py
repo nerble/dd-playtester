@@ -7,7 +7,11 @@ from dd4tester.character import CharacterSpec
 from dd4tester.connection import ReadResult
 from dd4tester.fastwalks import route_named
 from dd4tester.observations import GameEvent
-from dd4tester.starter import StarterBotRunner, StarterPolicy
+from dd4tester.starter import (
+    StarterBotRunner,
+    StarterPolicy,
+    _max_consecutive_command,
+)
 from dd4tester.state import CharacterState
 
 
@@ -1189,6 +1193,13 @@ def test_fastwalk_research_requires_recall_and_reverses_when_needed() -> None:
     reverse = policy.next_decision(endpoint)
     assert reverse is not None
     assert reverse.command == "south"
+
+
+def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> None:
+    route = route_named("moria")
+
+    assert _max_consecutive_command(route.commands, "north") == 8
+    assert _max_consecutive_command(route.commands, "south") == 2
 
 
 def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> None:

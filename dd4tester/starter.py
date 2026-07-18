@@ -1554,7 +1554,17 @@ class StarterBotRunner:
                 else:
                     repeated_command = decision.command
                     repeated_count = 1
-                if repeated_count > 6:
+                repeat_limit = 6
+                if self.fastwalk_route is not None:
+                    route_commands = (
+                        self.fastwalk_route.commands
+                        + _reverse_fastwalk_commands(self.fastwalk_route.commands)
+                    )
+                    repeat_limit = max(
+                        repeat_limit,
+                        _max_consecutive_command(route_commands, decision.command),
+                    )
+                if repeated_count > repeat_limit:
                     raise RuntimeError(
                         f"Starter bot repeated {decision.command!r} too many times"
                     )
@@ -1810,6 +1820,18 @@ def _reverse_fastwalk_commands(commands: tuple[str, ...]) -> tuple[str, ...]:
             "fastwalk route cannot be reversed safely because it includes "
             f"{exc.args[0]!r}"
         ) from exc
+
+
+def _max_consecutive_command(commands: tuple[str, ...], command: str) -> int:
+    longest = 0
+    current = 0
+    for candidate in commands:
+        if candidate == command:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
 
 
 def _unvisited_exit(
