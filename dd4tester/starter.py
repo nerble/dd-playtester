@@ -371,7 +371,7 @@ class StarterPolicy:
             return recovery
         if _move_ratio(state) <= 0.1:
             self.waiting_for_move = True
-            return BotDecision("rest", "recover movement before continuing arena patrol")
+            return BotDecision("sleep", "recover movement before continuing arena patrol")
 
         if (
             state.level is not None
@@ -419,7 +419,7 @@ class StarterPolicy:
             return self._course_decision(state)
 
         if _health_ratio(state) < 0.25:
-            return BotDecision("rest", "recover below 25 percent health")
+            return BotDecision("sleep", "recover below 25 percent health")
 
         key = _room_key(state)
         if self.room_query_counts.get(key, 0) == 0:
@@ -446,7 +446,7 @@ class StarterPolicy:
             or "altar of the temple" in room_name
         ):
             self.waiting_for_heal = True
-            return BotDecision("rest", "recover under a safe-room healer")
+            return BotDecision("sleep", "recover under a safe-room healer")
 
         sanctuary_routes = {
             "3725": "down",
@@ -1071,7 +1071,7 @@ def _training_targets(text: str) -> list[str]:
         r"(?P<target>[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,2}?)\s+"
         r"(?:[A-Za-z]+ly\s+)?"
         r"(?:is|are|sits?|circles?|stands?|waits?|prepares?|paces?|growls?|"
-        r"hisses?|snarls?|cowers?|lies?|looks?|watches?|spits?|barks?|"
+        r"prowls?|hisses?|snarls?|cowers?|lies?|looks?|watches?|spits?|barks?|"
         r"glares?|grunts?|screams?|cries?|lunges?|shuffles?|crouches?|"
         r"scowls?|yells?|cringes?|tries?|makes?)\b",
         re.IGNORECASE,

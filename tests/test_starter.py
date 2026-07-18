@@ -243,10 +243,10 @@ def test_sanctuary_waits_for_healing_then_stands() -> None:
         room_vnum="3721",
     )
 
-    rest = policy.next_decision(state)
-    assert rest is not None
-    assert rest.command == "rest"
-    policy.after_command(rest)
+    sleep = policy.next_decision(state)
+    assert sleep is not None
+    assert sleep.command == "sleep"
+    policy.after_command(sleep)
 
     policy.prompt_ready = True
     assert policy.next_decision(state) is None
@@ -508,6 +508,15 @@ def test_room_description_structures_are_not_combat_targets() -> None:
     assert policy.room_targets["3713"] == ["wolf"]
 
 
+def test_prowling_wolf_is_registered_as_an_attackable_target() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.current_room = "3728"
+
+    policy.observe_text("A wolf prowls the arena.\n")
+
+    assert policy.room_targets["3728"] == ["wolf"]
+
+
 def test_advanced_training_target_descriptions_are_parsed() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.current_room = "3717"
@@ -649,7 +658,7 @@ def test_arena_prioritizes_wolves_when_multiple_targets_are_observed() -> None:
     assert decision.command == "kill wolf"
 
 
-def test_low_movement_rests_without_repeating_movement_commands() -> None:
+def test_low_movement_sleeps_without_repeating_movement_commands() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=4)
     policy.in_world = True
     policy.prompt_ready = True
@@ -666,7 +675,7 @@ def test_low_movement_rests_without_repeating_movement_commands() -> None:
     decision = policy.next_decision(state)
 
     assert decision is not None
-    assert decision.command == "rest"
+    assert decision.command == "sleep"
     policy.after_command(decision)
     policy.prompt_ready = True
     assert policy.next_decision(state) is None
