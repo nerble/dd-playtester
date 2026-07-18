@@ -95,6 +95,7 @@ _MUD_SCHOOL_RESEARCH_POLICY = replace(
         "Live run 88: the mage route reached Midgaard room 3019, confirmed the Magic Users Guildmaster, and recorded Ararisa's available mage skills.",
         "Live run 91: a no-combat round trip from the Mage Guild reached Moria entry room 3900 (West trail around Midgaard) and returned safely to room 3019.",
         "Live run 92: the depth-one Moria scout verified room 3901 as another empty north/south West Trail segment, then returned safely to room 3019.",
+        "Live run 93: the depth-two scout reached Moria room 3902 (Northwest corner of dusty trail), with east exit 3903 and a safe south return to 3901 and room 3019.",
         "DD4 source map metadata lists Moria for levels 5-15 and Old Thalos for levels 10-25.",
         "DD4 source help: reaching level 100 also requires at least 1,000 total quest points.",
     ),
