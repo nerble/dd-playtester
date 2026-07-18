@@ -783,9 +783,24 @@ class StarterPolicy:
                 not self.moria_returning
                 and len(self.moria_observed_rooms) <= self.moria_depth
             ):
-                return BotDecision("north", "extend the bounded Moria trail scout")
+                outward_routes = {
+                    "3900": "north",
+                    "3901": "north",
+                    "3902": "east",
+                }
+                direction = outward_routes.get(room_vnum or "")
+                if direction is not None:
+                    return BotDecision(
+                        direction,
+                        "extend the bounded Moria trail scout",
+                    )
+                self.failure = (
+                    "no verified forward Moria trail route for "
+                    f"room {state.room_name!r} ({state.room_vnum})"
+                )
+                return None
             self.moria_returning = True
-            return BotDecision("south", "return from Moria to the West Gate")
+            return self._moria_return_decision(state)
 
         if self.moria_returning:
             if "outside the west gate" in room_name:
@@ -822,6 +837,16 @@ class StarterPolicy:
             f"room {state.room_name!r} ({state.room_vnum})"
         )
         return None
+
+    def _moria_return_decision(self, state: CharacterState) -> BotDecision:
+        return_routes = {
+            "3903": "west",
+            "3902": "south",
+            "3901": "south",
+            "3900": "south",
+        }
+        direction = return_routes.get(state.room_vnum or "", "south")
+        return BotDecision(direction, "return from Moria to the West Gate")
 
     def _recovery_decision(
         self,

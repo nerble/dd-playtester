@@ -1184,6 +1184,70 @@ def test_moria_research_depth_one_inspects_one_additional_trail_room() -> None:
     assert return_south.command == "south"
 
 
+def test_moria_research_follows_the_verified_east_turn_and_returns() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", moria_research=True, moria_depth=3)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    entry = CharacterState(
+        area="Moria",
+        room_name="West trail around Midgaard",
+        room_vnum="3900",
+        position=7,
+    )
+    look_entry = policy.next_decision(entry)
+    assert look_entry is not None
+    assert look_entry.command == "look"
+    policy.after_command(look_entry)
+    policy.prompt_ready = True
+
+    north_trail = CharacterState(
+        area="Moria",
+        room_name="West trail around Midgaard",
+        room_vnum="3901",
+        position=7,
+    )
+    look_north = policy.next_decision(north_trail)
+    assert look_north is not None
+    assert look_north.command == "look"
+    policy.after_command(look_north)
+    policy.prompt_ready = True
+
+    corner = CharacterState(
+        area="Moria",
+        room_name="Northwest corner of dusty trail.",
+        room_vnum="3902",
+        position=7,
+    )
+    look_corner = policy.next_decision(corner)
+    assert look_corner is not None
+    assert look_corner.command == "look"
+    policy.after_command(look_corner)
+    policy.prompt_ready = True
+
+    turn_east = policy.next_decision(corner)
+    assert turn_east is not None
+    assert turn_east.command == "east"
+    policy.after_command(turn_east)
+    policy.prompt_ready = True
+
+    east_trail = CharacterState(
+        area="Moria",
+        room_name="North wall trail",
+        room_vnum="3903",
+        position=7,
+    )
+    look_east = policy.next_decision(east_trail)
+    assert look_east is not None
+    assert look_east.command == "look"
+    policy.after_command(look_east)
+    policy.prompt_ready = True
+
+    return_west = policy.next_decision(east_trail)
+    assert return_west is not None
+    assert return_west.command == "west"
+
+
 def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True
