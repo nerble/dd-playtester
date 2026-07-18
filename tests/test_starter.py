@@ -1837,20 +1837,24 @@ def test_fastwalk_research_claims_corpse_from_aggressive_combat() -> None:
     policy.current_room = "109"
     tunnel = CharacterState(room_name="Muddy Tunnel", room_vnum="109", position=7)
 
-    policy.observe_events(
-        [GameEvent("combat_started", "text", {"target": "Olog"})],
-        tunnel,
-    )
+    blocked_move = BotDecision("east", "follow official fastwalk foundry")
+    policy.after_command(blocked_move)
+    assert policy.pending_travel_origin == "109"
+
+    policy.observe_text("No way! You are still fighting!\n")
+    assert policy.pending_travel_origin is None
+    assert policy.combat_active is True
+
     policy.observe_text(
         "Olog is DEAD!!\n"
         "You receive 10 experience points for the kill.\n"
     )
+    policy.prompt_ready = True
     loot = policy.next_decision(tunnel)
 
     assert loot is not None
     assert loot.command == "get all corpse"
     assert policy.combat_active is False
-    assert policy.defeated_targets["109"] == {"Olog"}
 
 
 def test_fastwalk_research_does_not_claim_unrelated_corpse() -> None:

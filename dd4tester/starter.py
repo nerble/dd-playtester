@@ -289,6 +289,9 @@ class StarterPolicy:
             self.magic_missile_cast = False
         if "too relaxed" in folded or "you must be standing" in folded:
             self.needs_stand = True
+        if "you are still fighting" in recent:
+            self.combat_active = True
+            self.pending_travel_origin = None
         if "alas, you cannot go that way" in folded:
             if (
                 self.fastwalk_explore_look_pending

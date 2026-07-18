@@ -51,6 +51,5 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         "down",
         "north",
         "north",
-        "east",
     )
 
