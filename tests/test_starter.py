@@ -993,6 +993,35 @@ def test_city_restock_policy_uses_fountain_then_bakery() -> None:
     assert decision.command == "save"
 
 
+def test_city_restock_policy_reaches_fountain_from_mage_laboratory() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    route = (
+        ("Mage's Laboratory", "3019", "west"),
+        ("Mage's Bar", "3018", "north"),
+        ("Entrance to Mage's Guild", "3017", "north"),
+        ("Main Street", "3012", "east"),
+        ("Main Street", "3013", "east"),
+        ("Market Square", "3014", "north"),
+    )
+    for room_name, room_vnum, expected_command in route:
+        decision = policy.next_decision(
+            CharacterState(room_name=room_name, room_vnum=room_vnum, position=7)
+        )
+        assert decision is not None
+        assert decision.command == expected_command
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    at_fountain = policy.next_decision(
+        CharacterState(room_name="The Temple Square", room_vnum="3005", position=7)
+    )
+    assert at_fountain is not None
+    assert at_fountain.command == "fill skin"
+
+
 def test_guildmaster_research_reaches_mage_laboratory_and_records_training() -> None:
     policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
     policy.in_world = True

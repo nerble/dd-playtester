@@ -812,6 +812,21 @@ class StarterPolicy:
             return BotDecision("down", "travel from Mud School to the Temple")
         if room_vnum == "3001" or "temple of midgaard" in room_name:
             return BotDecision("south", "travel from the Temple to Temple Square")
+        if self.city_restock_step < 3:
+            fountain_routes = {
+                "3019": "west",
+                "3018": "north",
+                "3017": "north",
+                "3012": "east",
+                "3013": "east",
+                "3014": "north",
+            }
+            direction = fountain_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(
+                    direction,
+                    "walk from the Mage Guild to the Temple Square fountain",
+                )
         if room_vnum == "3005" or room_name == "the temple square":
             commands = (
                 ("fill skin", "fill the buffalo water skin at Temple Square"),
