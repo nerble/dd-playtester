@@ -288,6 +288,19 @@ class StarterPolicy:
         if "too relaxed" in folded or "you must be standing" in folded:
             self.needs_stand = True
         if "alas, you cannot go that way" in folded:
+            if (
+                self.fastwalk_explore_look_pending
+                and self.fastwalk_explore_distance > 0
+            ):
+                self.fastwalk_explore_distance -= 1
+                self.fastwalk_explore_look_pending = False
+                self.fastwalk_target_absent = (
+                    self.fastwalk_attack_target is not None
+                )
+                self.fastwalk_withdrawing = True
+                self.fastwalk_return_steps_remaining = (
+                    self.fastwalk_explore_distance
+                )
             self.pending_travel_origin = None
 
     def observe_events(

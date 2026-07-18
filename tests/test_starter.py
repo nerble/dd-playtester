@@ -1631,6 +1631,38 @@ def test_fastwalk_research_can_inspect_two_rooms_and_backtrack_exactly() -> None
     assert second_south.command == "south"
 
 
+def test_fastwalk_research_stops_at_a_blocked_exploration_exit() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+        fastwalk_explore_depth=3,
+        fastwalk_attack_target="wolf",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    endpoint = CharacterState(room_name="The tunnel", room_vnum="4014", position=7)
+
+    blocked_north = policy.next_decision(endpoint)
+    assert blocked_north is not None
+    assert blocked_north.command == "north"
+    policy.after_command(blocked_north)
+
+    policy.observe_text("Alas, you cannot go that way.\n")
+    policy.prompt_ready = True
+    recall = policy.next_decision(endpoint)
+
+    assert recall is not None
+    assert recall.command == "recall"
+    assert policy.fastwalk_explore_distance == 0
+    assert policy.fastwalk_target_absent is True
+
+
 def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     route = route_named("moria")
     policy = StarterPolicy(

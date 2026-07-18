@@ -31,18 +31,24 @@ def test_official_routes_are_searchable_by_level_and_name() -> None:
     assert route_named("Dragon-Cult").commands == ("south", "south", "south", "west", "north")
 
 
-def test_route_named_includes_live_verified_map_routes() -> None:
-    route = route_named("Miden'nir")
+def test_route_named_includes_source_backed_hunt_routes() -> None:
+    route = route_named("Foundry")
 
-    assert route.minimum_level == 5
-    assert route.maximum_level == 15
+    assert route.minimum_level == 1
+    assert route.maximum_level == 6
     assert route.commands == (
         "south",
         "south",
+        "west",
+        "west",
+        "west",
+        "north",
+        "north",
+        "north",
+        "north",
         "east",
-        "east",
-        "east",
-        "east",
-        "east",
+        "down",
+        "down",
+        "north",
     )
 
