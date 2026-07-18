@@ -1022,6 +1022,50 @@ def test_city_restock_policy_reaches_fountain_from_mage_laboratory() -> None:
     assert at_fountain.command == "fill skin"
 
 
+def test_city_restock_retries_the_quantity_the_baker_says_is_affordable() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.city_restock_step = 5
+    policy.observe_text("The baker tells you 'You can only afford 2 of those!'")
+
+    decision = policy.next_decision(
+        CharacterState(room_name="The Bakery", room_vnum="3009", position=7)
+    )
+
+    assert decision is not None
+    assert decision.command == "buy 2 pie"
+    assert policy.affordable_pies_ordered is True
+
+
+def test_fastwalk_research_walks_from_bakery_toward_recall() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(
+            room_name="The Bakery",
+            room_vnum="3009",
+            position=7,
+            hp=100,
+            max_hp=100,
+            mana=200,
+            max_mana=200,
+            move=200,
+            max_move=200,
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "south"
+    assert policy.fastwalk_recall_started is False
+
+
 def test_guildmaster_research_reaches_mage_laboratory_and_records_training() -> None:
     policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
     policy.in_world = True

@@ -30,6 +30,7 @@ _DIRECTION = re.compile(
     r".{0,80}?\b(?P<direction>north|south|east|west|up|down)\b",
     re.IGNORECASE | re.DOTALL,
 )
+_AFFORDABLE_QUANTITY = re.compile(r"can only afford\s+(?P<quantity>\d+)", re.IGNORECASE)
 _DIRECTION_SHORTCUTS = {
     "n": "north",
     "s": "south",
@@ -179,6 +180,8 @@ class StarterPolicy:
         self.last_consumption: str | None = None
         self.insufficient_funds = False
         self.city_restock_step = 0
+        self.affordable_pies: int | None = None
+        self.affordable_pies_ordered = False
         self.guildmaster_step = 0
         self.magic_shop_step = 0
         self.magic_shop_purchase_failed = False
@@ -225,6 +228,9 @@ class StarterPolicy:
             self.insufficient_funds = True
             if self.magic_shop_research and self.magic_shop_buy_fly:
                 self.magic_shop_purchase_failed = True
+        affordable = _AFFORDABLE_QUANTITY.search(cleaned)
+        if affordable is not None:
+            self.affordable_pies = int(affordable.group("quantity"))
         if "you don't have that item" in folded or "is empty" in folded:
             if self.last_consumption == "food":
                 self.needs_food = True
@@ -842,6 +848,16 @@ class StarterPolicy:
         if room_vnum == "3013" or room_name == "main street":
             return BotDecision("north", "enter the Midgaard Bakery")
         if room_vnum == "3009" or room_name == "the bakery":
+            if (
+                self.affordable_pies
+                and not self.affordable_pies_ordered
+                and self.city_restock_step >= 5
+            ):
+                self.affordable_pies_ordered = True
+                return BotDecision(
+                    f"buy {self.affordable_pies} pie",
+                    "retry the quantity the baker says is currently affordable",
+                )
             commands = (
                 ("list", "inspect the baker's current pie stock"),
                 ("buy 6 pie", "buy six big pot pies from the baker"),
@@ -1077,6 +1093,7 @@ class StarterPolicy:
                     "3019",
                     "3025",
                     "3054",
+                    "3009",
                 }:
                     origin_routes = {
                         "3019": "west",
@@ -1088,6 +1105,7 @@ class StarterPolicy:
                         "3005": "north",
                         "3025": "north",
                         "3054": "south",
+                        "3009": "south",
                     }
                     return BotDecision(
                         origin_routes[room_vnum],
