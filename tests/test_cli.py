@@ -245,10 +245,12 @@ def test_fastwalk_research_command_runs_named_route(tmp_path, capsys, monkeypatc
         route: str,
         *,
         explore_direction: str | None = None,
+        attack_target: str | None = None,
     ) -> RunResult:
         assert path == profile
         assert route == "moria"
         assert explore_direction is None
+        assert attack_target is None
         return RunResult(15, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(
@@ -274,10 +276,12 @@ def test_fastwalk_research_command_can_inspect_one_exit(tmp_path, capsys, monkey
         route: str,
         *,
         explore_direction: str | None = None,
+        attack_target: str | None = None,
     ) -> RunResult:
         assert path == profile
         assert route == "moria"
         assert explore_direction == "north"
+        assert attack_target is None
         return RunResult(16, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(

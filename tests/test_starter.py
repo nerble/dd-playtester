@@ -1228,6 +1228,31 @@ def test_fastwalk_research_can_inspect_one_endpoint_exit_and_return() -> None:
     assert return_south.command == "south"
 
 
+def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+        fastwalk_attack_target="ugly kobold",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_explore_step = 2
+
+    decision = policy.next_decision(
+        CharacterState(room_name="The cave", room_vnum="4018", position=7)
+    )
+
+    assert decision is not None
+    assert decision.command == "kill kobold"
+    assert policy.active_target == "ugly kobold"
+
+
 def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> None:
     route = route_named("moria")
 

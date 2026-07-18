@@ -124,6 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("north", "south", "east", "west", "up", "down"),
         help="inspect one room through this endpoint exit, then return",
     )
+    fastwalk_parser.add_argument(
+        "--attack",
+        dest="attack_target",
+        help="attack one explicit target after the one-room inspection",
+    )
     moria_parser = subcommands.add_parser(
         "moria-research",
         help="verify the safe Midgaard-to-Moria approach and return to the Mage Guild",
@@ -412,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.profile,
                     args.route,
                     explore_direction=args.explore_direction,
+                    attack_target=args.attack_target,
                 )
             )
         except Exception as exc:
