@@ -899,6 +899,49 @@ def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
         policy.prompt_ready = True
 
 
+def test_gmcp_recovery_vitals_resume_waiting_arena_policy() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
+    policy.in_world = True
+    policy.course_started = True
+    policy.course_complete = True
+    policy.practiced = True
+    policy.waiting_for_move = True
+    state = CharacterState(
+        level=4,
+        hp=79,
+        max_hp=79,
+        move=90,
+        max_move=180,
+        position=4,
+        room_name="Safety",
+        room_vnum="3737",
+    )
+
+    policy.observe_events(
+        [GameEvent(type="vitals_changed", source="gmcp", data={})],
+        state,
+    )
+    decision = policy.next_decision(state)
+
+    assert policy.prompt_ready is True
+    assert decision is not None
+    assert decision.command == "stand"
+
+
+def test_gmcp_health_recovery_reopens_safe_room_decisions() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
+    policy.in_world = True
+    policy.waiting_for_heal = True
+    state = CharacterState(hp=40, max_hp=79, room_name="Safety", room_vnum="3737")
+
+    policy.observe_events(
+        [GameEvent(type="vitals_changed", source="gmcp", data={})],
+        state,
+    )
+
+    assert policy.prompt_ready is True
+
+
 def test_starter_policy_rejects_invalid_objective_level() -> None:
     with pytest.raises(ValueError, match="objective_level"):
         StarterPolicy(_spec(), "swordfish", objective_level=1)

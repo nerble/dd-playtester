@@ -242,6 +242,10 @@ class StarterPolicy:
                 self.combat_active = True
             if event.type == "character_died":
                 self.failure = "character died during starter training"
+        if self.waiting_for_move and _move_ratio(state) >= 0.5:
+            self.prompt_ready = True
+        if self.waiting_for_heal and _health_ratio(state) >= 0.5:
+            self.prompt_ready = True
 
     def next_decision(self, state: CharacterState) -> BotDecision | None:
         if self.done or self.failure:
