@@ -88,6 +88,7 @@ class StarterPolicy:
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
         fastwalk_route: Fastwalk | None = None,
+        fastwalk_explore_direction: str | None = None,
         moria_research: bool = False,
         moria_depth: int = 0,
     ) -> None:
@@ -104,6 +105,7 @@ class StarterPolicy:
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
         self.fastwalk_route = fastwalk_route
+        self.fastwalk_explore_direction = fastwalk_explore_direction
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.stage = "login"
@@ -162,6 +164,7 @@ class StarterPolicy:
         self.fastwalk_returning = False
         self.fastwalk_outbound_index = 0
         self.fastwalk_return_index = 0
+        self.fastwalk_explore_step = 0
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -966,6 +969,22 @@ class StarterPolicy:
             if not self.fastwalk_arrival_observed:
                 self.fastwalk_arrival_observed = True
                 return BotDecision("look", "record the official fastwalk endpoint")
+            if self.fastwalk_explore_direction is not None:
+                if self.fastwalk_explore_step == 0:
+                    self.fastwalk_explore_step = 1
+                    return BotDecision(
+                        self.fastwalk_explore_direction,
+                        "inspect one room beyond the official fastwalk endpoint",
+                    )
+                if self.fastwalk_explore_step == 1:
+                    self.fastwalk_explore_step = 2
+                    return BotDecision("look", "record the one-hop fastwalk exploration room")
+                if self.fastwalk_explore_step == 2:
+                    self.fastwalk_explore_step = 3
+                    return BotDecision(
+                        _opposite_direction(self.fastwalk_explore_direction),
+                        "return from the one-hop fastwalk exploration room",
+                    )
             self.fastwalk_returning = True
             return BotDecision("recall", "return from the fastwalk endpoint")
 
@@ -1373,6 +1392,7 @@ class StarterBotRunner:
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
         fastwalk_route: Fastwalk | None = None,
+        fastwalk_explore_direction: str | None = None,
         moria_research: bool = False,
         moria_depth: int = 0,
     ) -> None:
@@ -1388,6 +1408,7 @@ class StarterBotRunner:
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
         self.fastwalk_route = fastwalk_route
+        self.fastwalk_explore_direction = fastwalk_explore_direction
         self.moria_research = moria_research
         self.moria_depth = moria_depth
 
@@ -1488,6 +1509,7 @@ class StarterBotRunner:
                 magic_shop_research=self.magic_shop_research,
                 magic_shop_buy_fly=self.magic_shop_buy_fly,
                 fastwalk_route=self.fastwalk_route,
+                fastwalk_explore_direction=self.fastwalk_explore_direction,
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
             )
@@ -1596,6 +1618,7 @@ class StarterBotRunner:
                     "magic_shop_buy_fly": self.magic_shop_buy_fly,
                     "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
                     "fastwalk_route": self.fastwalk_route.name if self.fastwalk_route else None,
+                    "fastwalk_explore_direction": self.fastwalk_explore_direction,
                     "moria_research": self.moria_research,
                     "moria_depth": self.moria_depth,
                 },
@@ -1740,6 +1763,8 @@ async def run_magic_shop_research_profile(
 async def run_fastwalk_research_profile(
     path: str | Path,
     route_name: str,
+    *,
+    explore_direction: str | None = None,
 ) -> RunResult:
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
@@ -1747,6 +1772,7 @@ async def run_fastwalk_research_profile(
         spec,
         profile_path,
         fastwalk_route=route_named(route_name),
+        fastwalk_explore_direction=explore_direction,
     ).run()
 
 
@@ -1832,6 +1858,17 @@ def _max_consecutive_command(commands: tuple[str, ...], command: str) -> int:
         else:
             current = 0
     return longest
+
+
+def _opposite_direction(direction: str) -> str:
+    return {
+        "north": "south",
+        "south": "north",
+        "east": "west",
+        "west": "east",
+        "up": "down",
+        "down": "up",
+    }[direction]
 
 
 def _unvisited_exit(

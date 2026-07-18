@@ -1195,6 +1195,39 @@ def test_fastwalk_research_requires_recall_and_reverses_when_needed() -> None:
     assert reverse.command == "south"
 
 
+def test_fastwalk_research_can_inspect_one_endpoint_exit_and_return() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    endpoint = CharacterState(room_name="The tunnel", room_vnum="4014", position=7)
+
+    enter_cave = policy.next_decision(endpoint)
+    assert enter_cave is not None
+    assert enter_cave.command == "north"
+    policy.after_command(enter_cave)
+    policy.prompt_ready = True
+
+    cave = CharacterState(room_name="A cave", room_vnum="4018", position=7)
+    look = policy.next_decision(cave)
+    assert look is not None
+    assert look.command == "look"
+    policy.after_command(look)
+    policy.prompt_ready = True
+
+    return_south = policy.next_decision(cave)
+    assert return_south is not None
+    assert return_south.command == "south"
+
+
 def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> None:
     route = route_named("moria")
 

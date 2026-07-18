@@ -118,6 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
         "route",
         help="official route name, for example: moria",
     )
+    fastwalk_parser.add_argument(
+        "--exit",
+        dest="explore_direction",
+        choices=("north", "south", "east", "west", "up", "down"),
+        help="inspect one room through this endpoint exit, then return",
+    )
     moria_parser = subcommands.add_parser(
         "moria-research",
         help="verify the safe Midgaard-to-Moria approach and return to the Mage Guild",
@@ -402,7 +408,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fastwalk-research":
         try:
             result = asyncio.run(
-                run_fastwalk_research_profile(args.profile, args.route)
+                run_fastwalk_research_profile(
+                    args.profile,
+                    args.route,
+                    explore_direction=args.explore_direction,
+                )
             )
         except Exception as exc:
             print(f"Fastwalk research failed: {exc}", file=sys.stderr)
