@@ -730,6 +730,36 @@ def test_missing_arena_target_is_removed_before_the_next_decision() -> None:
     assert policy.room_targets["3728"] == []
 
 
+def test_completed_arena_patrol_forgets_stale_room_sightings() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
+    policy.in_world = True
+    policy.arena_queried = True
+    policy.prompt_ready = True
+    policy.arena_visited_rooms.update(str(vnum) for vnum in range(3728, 3738))
+    policy.room_query_counts.update({"3728": 1, "3736": 1, "3713": 1})
+    policy.room_targets.update({"3728": ["wolf"], "3713": ["snake"]})
+    policy.defeated_targets["3728"] = {"wolf"}
+    state = CharacterState(
+        level=2,
+        hp=60,
+        max_hp=60,
+        room_name="The Mud School Arena",
+        room_vnum="3736",
+        exits={"n": "3733", "u": "3737", "w": "3735"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "up"
+    assert policy.arena_visited_rooms == set()
+    assert "3728" not in policy.room_query_counts
+    assert policy.room_query_counts["3713"] == 1
+    assert "3728" not in policy.room_targets
+    assert policy.room_targets["3713"] == ["snake"]
+    assert "3728" not in policy.defeated_targets
+
+
 def test_arena_safety_room_reenters_the_mud_school_portal() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
     policy.in_world = True

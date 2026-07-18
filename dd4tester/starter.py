@@ -205,6 +205,7 @@ class StarterPolicy:
                     target for target in targets if target != self.active_target
                 ]
             self.active_target = None
+            self.magic_missile_cast = False
         if "too relaxed" in folded or "you must be standing" in folded:
             self.needs_stand = True
 
@@ -937,8 +938,19 @@ class StarterPolicy:
         direction = _unvisited_arena_exit(state, self.arena_visited_rooms)
         if direction is not None:
             return BotDecision(direction, "search the next arena section")
-        self.arena_visited_rooms.clear()
+        self._reset_arena_patrol()
         return BotDecision("up", "reset arena route through the safe entrance")
+
+    def _reset_arena_patrol(self) -> None:
+        """Forget stale creature sightings before a fresh arena circuit."""
+        self.arena_visited_rooms.clear()
+        for room in tuple(self.room_query_counts):
+            if _is_arena_vnum(room):
+                self.room_query_counts.pop(room)
+        for room in tuple(self.room_targets):
+            if _is_arena_vnum(room):
+                self.room_targets.pop(room)
+                self.defeated_targets.pop(room, None)
 
     def _open_then_move(self, direction: str, reason: str) -> BotDecision:
         if self.pending_move == direction:
