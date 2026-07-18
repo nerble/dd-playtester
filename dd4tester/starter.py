@@ -109,6 +109,7 @@ class StarterPolicy:
         self.combat_active = False
         self.needs_stand = False
         self.waiting_for_heal = False
+        self.waiting_for_move = False
         self.room_targets: dict[str, list[str]] = {}
         self.defeated_targets: dict[str, set[str]] = {}
         self.active_target: str | None = None
@@ -340,6 +341,13 @@ class StarterPolicy:
             self.course_started = True
             self.course_complete = True
 
+        if self.waiting_for_move:
+            if _move_ratio(state) < 0.5:
+                self.prompt_ready = False
+                return None
+            self.waiting_for_move = False
+            self.needs_stand = True
+
         if self.needs_stand:
             self.needs_stand = False
             return BotDecision("stand", "stand before continuing tutorial actions")
@@ -361,6 +369,9 @@ class StarterPolicy:
         recovery = self._recovery_decision(state)
         if recovery is not None:
             return recovery
+        if _move_ratio(state) <= 0.1:
+            self.waiting_for_move = True
+            return BotDecision("rest", "recover movement before continuing arena patrol")
 
         if (
             state.level is not None
@@ -698,7 +709,10 @@ class StarterPolicy:
             self.room_query_counts[key] = 0
             return BotDecision("sacrifice corpse", "clear the arena corpse")
 
-        targets = self.room_targets.get(key, [])
+        targets = sorted(
+            self.room_targets.get(key, []),
+            key=_arena_target_priority,
+        )
         if targets:
             target = targets[0]
             self.combat_active = True
@@ -1004,6 +1018,12 @@ def _health_ratio(state: CharacterState) -> float:
     return float(state.hp) / float(state.max_hp)
 
 
+def _move_ratio(state: CharacterState) -> float:
+    if state.move is None or state.max_move in (None, 0):
+        return 1.0
+    return float(state.move) / float(state.max_move)
+
+
 def _unvisited_exit(
     state: CharacterState,
     visited: set[str],
@@ -1092,6 +1112,11 @@ def _training_targets(text: str) -> list[str]:
 
 def _target_keyword(target: str) -> str:
     return target.rsplit(maxsplit=1)[-1]
+
+
+def _arena_target_priority(target: str) -> tuple[int, str]:
+    normalized = target.casefold()
+    return (0 if "wolf" in normalized else 1, normalized)
 
 
 def _is_arena_vnum(vnum: str | None) -> bool:

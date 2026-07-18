@@ -628,6 +628,50 @@ def test_arena_research_continues_at_level_two_until_its_target() -> None:
     assert "level 3" in leave.reason
 
 
+def test_arena_prioritizes_wolves_when_multiple_targets_are_observed() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=4)
+    policy.in_world = True
+    policy.arena_queried = True
+    policy.current_room = "3729"
+    policy.room_targets["3729"] = ["wild boar", "wolf"]
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=3,
+        hp=70,
+        max_hp=70,
+        room_name="The Mud School Arena",
+        room_vnum="3729",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "kill wolf"
+
+
+def test_low_movement_rests_without_repeating_movement_commands() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=4)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=3,
+        hp=70,
+        max_hp=70,
+        move=0,
+        max_move=170,
+        room_name="The Mud School Arena",
+        room_vnum="3736",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "rest"
+    policy.after_command(decision)
+    policy.prompt_ready = True
+    assert policy.next_decision(state) is None
+
+
 def test_missing_arena_target_is_removed_before_the_next_decision() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
     policy.current_room = "3728"
