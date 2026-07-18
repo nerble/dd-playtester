@@ -142,6 +142,25 @@ def test_resupply_command_runs_bounded_recovery(tmp_path, capsys, monkeypatch) -
     assert f"Transcript: {transcript}" in captured.out
 
 
+def test_restock_command_runs_city_provisioning(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "restock-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_restock(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(10, "success", transcript, database, {"level": 4})
+
+    monkeypatch.setattr(dd4tester.cli, "run_restock_profile", fake_restock)
+
+    exit_code = main(["restock", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 10 success" in captured.out
+    assert f"Transcript: {transcript}" in captured.out
+
+
 def test_configure_login_command_uses_named_credential(capsys, monkeypatch) -> None:
     configured: list[str] = []
     monkeypatch.setattr(

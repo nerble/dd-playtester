@@ -79,6 +79,7 @@ class StarterPolicy:
         *,
         objective_level: int = 2,
         resupply_only: bool = False,
+        city_restock: bool = False,
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
@@ -86,6 +87,7 @@ class StarterPolicy:
         self.password = password
         self.objective_level = objective_level
         self.resupply_only = resupply_only
+        self.city_restock = city_restock
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -129,6 +131,7 @@ class StarterPolicy:
         self.skin_ordered = False
         self.last_consumption: str | None = None
         self.insufficient_funds = False
+        self.city_restock_step = 0
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
@@ -411,6 +414,17 @@ class StarterPolicy:
             self.prompt_ready = False
             return None
 
+        if self.city_restock:
+            restock = self._city_restock_decision(state)
+            if restock is not None:
+                return restock
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", "persist city food-and-water restock")
+            self.stage = "complete"
+            return BotDecision("quit", "city food-and-water restock complete")
+
         resupply = self._resupply_decision(state)
         if resupply is not None:
             return resupply
@@ -536,6 +550,51 @@ class StarterPolicy:
             return BotDecision("up", "return to the Mud School supplies")
         if room_vnum == "3054" or "altar of the temple" in room_name:
             return BotDecision("south", "return from the Temple toward supplies")
+        return None
+
+    def _city_restock_decision(self, state: CharacterState) -> BotDecision | None:
+        """Use the verified Midgaard fountain and bakery route, then stop."""
+        if _is_sleeping(state):
+            return BotDecision("stand", "wake before travelling to city supplies")
+
+        room_vnum = state.room_vnum
+        room_name = (state.room_name or "").casefold()
+        if room_vnum == "3737" or room_name == "safety":
+            return BotDecision("enter portal", "leave arena Safety for Midgaard")
+        if room_vnum == "3725" or "entrance to the mud school" in room_name:
+            return BotDecision("down", "travel from Mud School to the Temple")
+        if room_vnum == "3001" or "temple of midgaard" in room_name:
+            return BotDecision("south", "travel from the Temple to Temple Square")
+        if room_vnum == "3005" or room_name == "the temple square":
+            commands = (
+                ("fill skin", "fill the buffalo water skin at Temple Square"),
+                ("drink skin", "drink from the freshly filled water skin"),
+                ("south", "continue from Temple Square to the market"),
+            )
+            index = min(self.city_restock_step, len(commands) - 1)
+            self.city_restock_step += 1
+            command, reason = commands[index]
+            return BotDecision(command, reason)
+        if room_vnum == "3014" or room_name == "market square":
+            return BotDecision("west", "take Main Street toward the Bakery")
+        if room_vnum == "3013" or room_name == "main street":
+            return BotDecision("north", "enter the Midgaard Bakery")
+        if room_vnum == "3009" or room_name == "the bakery":
+            commands = (
+                ("list", "inspect the baker's current pie stock"),
+                ("buy 6 pie", "buy six big pot pies from the baker"),
+                ("inventory", "verify the city restock in carried inventory"),
+            )
+            index = self.city_restock_step - 3
+            if 0 <= index < len(commands):
+                self.city_restock_step += 1
+                command, reason = commands[index]
+                return BotDecision(command, reason)
+            return None
+        self.failure = (
+            "no verified city-restock route for "
+            f"room {state.room_name!r} ({state.room_vnum})"
+        )
         return None
 
     def _recovery_decision(
@@ -862,6 +921,7 @@ class StarterBotRunner:
         character_state: CharacterState | None = None,
         objective_level: int = 2,
         resupply_only: bool = False,
+        city_restock: bool = False,
     ) -> None:
         self.spec = spec
         self.profile_path = profile_path
@@ -870,12 +930,15 @@ class StarterBotRunner:
         self.character_state = character_state or CharacterState()
         self.objective_level = objective_level
         self.resupply_only = resupply_only
+        self.city_restock = city_restock
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
         run_id = storage.create_run(
             scenario_name=(
-                f"resupply:{self.spec.name}"
+                f"restock:{self.spec.name}"
+                if self.city_restock
+                else f"resupply:{self.spec.name}"
                 if self.resupply_only
                 else f"starter:{self.spec.name}"
             ),
@@ -883,7 +946,13 @@ class StarterBotRunner:
         )
         recorder = TranscriptRecorder.create(
             self.spec.transcript_dir,
-            scenario_name=f"starter-{self.spec.name}",
+            scenario_name=(
+                f"restock-{self.spec.name}"
+                if self.city_restock
+                else f"resupply-{self.spec.name}"
+                if self.resupply_only
+                else f"starter-{self.spec.name}"
+            ),
             run_id=run_id,
         )
         storage.set_transcript_path(run_id, recorder.path)
@@ -939,6 +1008,7 @@ class StarterBotRunner:
                 password,
                 objective_level=self.objective_level,
                 resupply_only=self.resupply_only,
+                city_restock=self.city_restock,
             )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
@@ -1029,6 +1099,7 @@ class StarterBotRunner:
                     "target_subclass": self.spec.subclass,
                     "objective_level": self.objective_level,
                     "resupply_only": self.resupply_only,
+                    "city_restock": self.city_restock,
                 },
             )
             storage.finish_run(run_id, status="success")
@@ -1130,6 +1201,16 @@ async def run_resupply_profile(path: str | Path) -> RunResult:
         spec,
         profile_path,
         resupply_only=True,
+    ).run()
+
+
+async def run_restock_profile(path: str | Path) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        city_restock=True,
     ).run()
 
 

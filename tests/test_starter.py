@@ -832,6 +832,40 @@ def test_resupply_policy_sells_equipment_after_an_insufficient_funds_response() 
     assert decision.command == "sell sword"
 
 
+def test_city_restock_policy_uses_fountain_then_bakery() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    rooms_and_commands = (
+        ("Safety", "3737", "enter portal"),
+        ("The Entrance to the Mud School", "3725", "down"),
+        ("The Temple Of Midgaard", "3001", "south"),
+        ("The Temple Square", "3005", "fill skin"),
+        ("The Temple Square", "3005", "drink skin"),
+        ("The Temple Square", "3005", "south"),
+        ("Market Square", "3014", "west"),
+        ("Main Street", "3013", "north"),
+        ("The Bakery", "3009", "list"),
+        ("The Bakery", "3009", "buy 6 pie"),
+        ("The Bakery", "3009", "inventory"),
+    )
+    for room_name, room_vnum, expected_command in rooms_and_commands:
+        decision = policy.next_decision(
+            CharacterState(room_name=room_name, room_vnum=room_vnum, position=7)
+        )
+        assert decision is not None
+        assert decision.command == expected_command
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(room_name="The Bakery", room_vnum="3009", position=7)
+    )
+    assert decision is not None
+    assert decision.command == "save"
+
+
 def test_starter_policy_rejects_invalid_objective_level() -> None:
     with pytest.raises(ValueError, match="objective_level"):
         StarterPolicy(_spec(), "swordfish", objective_level=1)

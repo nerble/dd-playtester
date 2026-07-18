@@ -30,6 +30,13 @@ the Mud School arena, consume food and water, save, and log out safely:
 python -m dd4tester resupply profiles/your-character.yaml
 ```
 
+To refill at the Midgaard Temple Square fountain and buy six pies from the
+Bakery, use the separate bounded restock command:
+
+```powershell
+python -m dd4tester restock profiles/your-character.yaml
+```
+
 The project connects over asyncio Telnet, records transcripts, captures GMCP,
 loads YAML scenarios, and stores run evidence in SQLite. Its observation layer
 derives deterministic `game_event` records for rooms, prompts, health, combat,

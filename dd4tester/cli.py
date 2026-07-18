@@ -19,7 +19,12 @@ from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
 from .runner import run_scenario_file
-from .starter import run_arena_research_profile, run_resupply_profile, run_starter_profile
+from .starter import (
+    run_arena_research_profile,
+    run_restock_profile,
+    run_resupply_profile,
+    run_starter_profile,
+)
 from .storage import RunStorage
 
 
@@ -58,6 +63,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="safely return a character from Limbo or the arena, eat, drink, save, and quit",
     )
     resupply_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
+    )
+
+    restock_parser = subcommands.add_parser(
+        "restock",
+        help="visit the Midgaard fountain and Bakery, then save and quit",
+    )
+    restock_parser.add_argument(
         "profile",
         type=Path,
         help="path to an existing character YAML profile",
@@ -277,6 +292,17 @@ def main(argv: list[str] | None = None) -> int:
             result = asyncio.run(run_resupply_profile(args.profile))
         except Exception as exc:
             print(f"Resupply run failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "restock":
+        try:
+            result = asyncio.run(run_restock_profile(args.profile))
+        except Exception as exc:
+            print(f"Restock run failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")
