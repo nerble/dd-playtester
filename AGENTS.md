@@ -43,9 +43,12 @@ required by the normal test suite.
 ## Data And Security
 
 Record commands, responses, GMCP, derived events, state changes, and timestamps.
-Send credentials through `DD4_USERNAME` and `DD4_PASSWORD`; transcript and
-database records must redact them. Use direct Telnet/GMCP for primary testing
-and reserve Mudlet-in-VM automation for client-specific validation.
+Use `configure-login` and `configure-character-password` for local credentials;
+they use Windows Credential Manager through `keyring`. `DD4_USERNAME`,
+`DD4_PASSWORD`, and a profile's password environment variable remain supported
+overrides. Transcript and database records must redact credentials. Use direct
+Telnet/GMCP for primary testing and reserve Mudlet-in-VM automation for
+client-specific validation.
 
 ## Commits And Pull Requests
 

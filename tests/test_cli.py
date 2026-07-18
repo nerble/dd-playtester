@@ -123,6 +123,45 @@ def test_arena_research_command_runs_with_requested_target(tmp_path, capsys, mon
     assert f"Transcript: {transcript}" in captured.out
 
 
+def test_configure_login_command_uses_named_credential(capsys, monkeypatch) -> None:
+    configured: list[str] = []
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "configure_login",
+        lambda name: configured.append(name),
+    )
+
+    exit_code = main(["configure-login", "--credential-name", "research-login"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert configured == ["research-login"]
+    assert "Stored login credential: research-login" in captured.out
+
+
+def test_configure_character_password_uses_profile_credential(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "character.yaml"
+    configured: list[str] = []
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "load_character_spec",
+        lambda _path: type("Spec", (), {"credential_name": "character:rulemira"})(),
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "configure_character_password",
+        lambda name: configured.append(name),
+    )
+
+    exit_code = main(["configure-character-password", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert configured == ["character:rulemira"]
+    assert "Stored character password credential: character:rulemira" in captured.out
+
+
 def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
     database = tmp_path / "runs.sqlite3"
     with RunStorage(database) as storage:

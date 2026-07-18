@@ -1,5 +1,6 @@
 name: TestExample
 password_env: DD4_CHARACTER_PASSWORD
+credential_name: character:testexample
 race: human
 gender: female
 class: mage

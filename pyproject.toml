@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Async Telnet play-testing scaffold for Dragons Domain IV."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["keyring>=25"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

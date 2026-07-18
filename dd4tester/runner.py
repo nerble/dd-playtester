@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .connection import ReadResult, TelnetConnection
+from .credentials import login_environment
 from .observations import GameEvent, ObservationParser
 from .scenario import Scenario, ScenarioStep, load_scenario
 from .state import CharacterState
@@ -266,4 +267,7 @@ class ScenarioRunner:
 async def run_scenario_file(path: str | Path) -> RunResult:
     scenario_path = Path(path)
     scenario = load_scenario(scenario_path)
-    return await ScenarioRunner(scenario, scenario_path).run()
+    if scenario.credential_name is None:
+        return await ScenarioRunner(scenario, scenario_path).run()
+    with login_environment(scenario.credential_name):
+        return await ScenarioRunner(scenario, scenario_path).run()

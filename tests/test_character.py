@@ -23,6 +23,19 @@ def test_subclass_derives_required_base_class() -> None:
     assert spec.primary_stat == "int"
 
 
+def test_profile_derives_stable_credential_name() -> None:
+    spec = CharacterSpec.from_mapping(
+        {
+            "name": "Rulemage",
+            "race": "human",
+            "gender": "female",
+            "class": "mage",
+        }
+    )
+
+    assert spec.credential_name == "character:rulemage"
+
+
 def test_profile_rejects_subclass_and_base_class_mismatch() -> None:
     with pytest.raises(ValueError, match="requires base class 'mage'"):
         CharacterSpec.from_mapping(

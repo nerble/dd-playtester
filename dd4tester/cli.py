@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from .campaign import run_campaign_file
+from .character import load_character_spec
+from .credentials import (
+    DEFAULT_LOGIN_CREDENTIAL,
+    configure_character_password,
+    configure_login,
+)
 from .evidence import collect_run_evidence, render_evidence_json
 from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
@@ -50,6 +56,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         help="bounded completion level from 3 to 10, default: 3",
+    )
+
+    configure_login_parser = subcommands.add_parser(
+        "configure-login",
+        help="store DD4 login credentials in the operating system credential manager",
+    )
+    configure_login_parser.add_argument(
+        "--credential-name",
+        default=DEFAULT_LOGIN_CREDENTIAL,
+        help=f"stored login name, default: {DEFAULT_LOGIN_CREDENTIAL}",
+    )
+
+    configure_character_parser = subcommands.add_parser(
+        "configure-character-password",
+        help="store a character password in the operating system credential manager",
+    )
+    configure_character_parser.add_argument("profile", type=Path)
+    configure_character_parser.add_argument(
+        "--credential-name",
+        help="override the credential name from the character profile",
     )
 
     campaign_parser = subcommands.add_parser(
@@ -221,6 +247,26 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")
         print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "configure-login":
+        try:
+            configure_login(args.credential_name)
+        except Exception as exc:
+            print(f"Credential setup failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Stored login credential: {args.credential_name}")
+        return 0
+
+    if args.command == "configure-character-password":
+        try:
+            spec = load_character_spec(args.profile)
+            credential_name = args.credential_name or spec.credential_name
+            configure_character_password(credential_name)
+        except Exception as exc:
+            print(f"Credential setup failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Stored character password credential: {credential_name}")
         return 0
 
     if args.command == "campaign":

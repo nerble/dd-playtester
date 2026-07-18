@@ -7,10 +7,21 @@ Automated play-testing and balance-analysis system for Dragons Domain IV.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .[dev]
-$env:DD4_USERNAME = "your-test-character"
-$env:DD4_PASSWORD = "your-test-password"
+python -m dd4tester configure-login
 python -m dd4tester run scenarios/login.yaml
 ```
+
+`configure-login` asks once, without echoing the password, and stores the DD4
+login in Windows Credential Manager. `run` then retrieves it automatically.
+For a character profile, store its password once as well:
+
+```powershell
+python -m dd4tester configure-character-password profiles/your-character.yaml
+```
+
+The `starter`, `arena-research`, and `campaign` commands automatically use that
+profile's `credential_name`. Environment variables still take precedence for
+automation. Credentials are never written to YAML, SQLite, or transcripts.
 
 The project connects over asyncio Telnet, records transcripts, captures GMCP,
 loads YAML scenarios, and stores run evidence in SQLite. Its observation layer

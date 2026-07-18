@@ -20,6 +20,7 @@ class Scenario:
     timeout: float = 10.0
     database: Path = Path("runs/dd4tester.sqlite3")
     transcript_dir: Path = Path("transcripts")
+    credential_name: str | None = None
     steps: list[ScenarioStep] = field(default_factory=list)
 
 
@@ -42,6 +43,7 @@ def load_scenario(path: str | Path) -> Scenario:
         timeout=float(data.get("timeout", 10.0)),
         database=Path(str(data.get("database", "runs/dd4tester.sqlite3"))),
         transcript_dir=Path(str(data.get("transcript_dir", "transcripts"))),
+        credential_name=_optional_text(data.get("credential_name")),
         steps=steps,
     )
 
@@ -65,6 +67,13 @@ def _parse_step(raw: Any, index: int) -> ScenarioStep:
     raise ValueError(
         f"Step {index} must define send, send_env, wait_for, pause, or action"
     )
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def load_yaml_mapping(path: Path) -> dict[str, Any]:

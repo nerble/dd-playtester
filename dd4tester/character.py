@@ -99,6 +99,7 @@ class CharacterSpec:
     race: str
     gender: str
     character_class: str
+    credential_name: str = ""
     subclass: str | None = None
     colour: bool = True
     max_attribute_rolls: int = 1
@@ -132,6 +133,11 @@ class CharacterSpec:
         password_env = str(data.get("password_env", "DD4_CHARACTER_PASSWORD")).strip()
         if not password_env:
             raise ValueError("password_env must not be empty")
+        credential_name = str(
+            data.get("credential_name", f"character:{name.casefold()}")
+        ).strip()
+        if not credential_name:
+            raise ValueError("credential_name must not be empty")
 
         race = _choice(data.get("race"), RACES, "race")
         gender = _choice(data.get("gender"), GENDERS, "gender")
@@ -175,6 +181,7 @@ class CharacterSpec:
         return cls(
             name=name,
             password_env=password_env,
+            credential_name=credential_name,
             race=race,
             gender=gender,
             character_class=character_class,

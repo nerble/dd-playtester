@@ -11,6 +11,7 @@ port: 4444
 timeout: 3
 database: runs/test.sqlite3
 transcript_dir: transcripts
+credential_name: dd4-login
 steps:
   - wait_for: "login:"
     timeout: 2
@@ -32,3 +33,4 @@ steps:
     assert scenario.steps[2].value == "DD4_PASSWORD"
     assert scenario.steps[3].action == "pause"
     assert scenario.steps[3].value == 0.1
+    assert scenario.credential_name == "dd4-login"

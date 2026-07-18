@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from .character import CharacterSpec, load_character_spec
 from .connection import ReadResult, TelnetConnection
+from .credentials import CredentialStoreError, load_character_password
 from .observations import GameEvent, ObservationParser
 from .runner import RunResult
 from .state import CharacterState
@@ -789,9 +790,10 @@ class StarterBotRunner:
 
         try:
             if password is None:
-                raise RuntimeError(
-                    f"Required environment variable {self.spec.password_env} is not set"
-                )
+                try:
+                    password = load_character_password(self.spec.credential_name)
+                except CredentialStoreError as exc:
+                    raise RuntimeError(str(exc)) from exc
             policy = StarterPolicy(
                 self.spec,
                 password,
