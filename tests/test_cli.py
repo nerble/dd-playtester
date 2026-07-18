@@ -184,6 +184,29 @@ def test_guildmaster_research_command_runs_bounded_route(tmp_path, capsys, monke
     assert f"Transcript: {transcript}" in captured.out
 
 
+def test_magic_shop_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "magic-shop-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_magic_shop_research(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(13, "success", transcript, database, {"level": 6})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_magic_shop_research_profile",
+        fake_magic_shop_research,
+    )
+
+    exit_code = main(["magic-shop-research", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 13 success" in captured.out
+    assert f"Transcript: {transcript}" in captured.out
+
+
 def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch) -> None:
     profile = tmp_path / "character.yaml"
     transcript = tmp_path / "moria-1.jsonl"

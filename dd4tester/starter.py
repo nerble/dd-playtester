@@ -84,6 +84,7 @@ class StarterPolicy:
         resupply_only: bool = False,
         city_restock: bool = False,
         guildmaster_research: bool = False,
+        magic_shop_research: bool = False,
         moria_research: bool = False,
         moria_depth: int = 0,
     ) -> None:
@@ -97,6 +98,7 @@ class StarterPolicy:
         self.resupply_only = resupply_only
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
+        self.magic_shop_research = magic_shop_research
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.stage = "login"
@@ -148,6 +150,7 @@ class StarterPolicy:
         self.insufficient_funds = False
         self.city_restock_step = 0
         self.guildmaster_step = 0
+        self.magic_shop_listed = False
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -533,6 +536,17 @@ class StarterPolicy:
             self.stage = "complete"
             return BotDecision("quit", "mage Guildmaster route research complete")
 
+        if self.magic_shop_research:
+            research = self._magic_shop_research_decision(state)
+            if research is not None:
+                return research
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", "persist Magic Shop stock evidence")
+            self.stage = "complete"
+            return BotDecision("quit", "Magic Shop research complete")
+
         if self.moria_research:
             research = self._moria_research_decision(state)
             if research is not None:
@@ -834,6 +848,47 @@ class StarterPolicy:
 
         self.failure = (
             "no verified Moria approach route for "
+            f"room {state.room_name!r} ({state.room_vnum})"
+        )
+        return None
+
+    def _magic_shop_research_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Record shop stock without buying an unverified item."""
+        room_vnum = state.room_vnum
+        room_name = (state.room_name or "").casefold()
+        if room_vnum == "3033" or room_name == "the magic shop":
+            if not self.magic_shop_listed:
+                self.magic_shop_listed = True
+                return BotDecision("list", "record Magic Shop stock and potion prices")
+            return BotDecision("south", "return from the Magic Shop to the Mage Guild")
+
+        if not self.magic_shop_listed:
+            outward_routes = {
+                "3019": "west",
+                "3018": "north",
+                "3017": "north",
+                "3012": "north",
+            }
+            direction = outward_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(direction, "follow the verified route to the Magic Shop")
+        else:
+            return_routes = {
+                "3012": "south",
+                "3017": "south",
+                "3018": "east",
+            }
+            direction = return_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(direction, "return from the Magic Shop to the Mage Guild")
+            if room_vnum == "3019" or "mage's laboratory" in room_name:
+                return None
+
+        self.failure = (
+            "no verified Magic Shop route for "
             f"room {state.room_name!r} ({state.room_vnum})"
         )
         return None
@@ -1201,6 +1256,7 @@ class StarterBotRunner:
         resupply_only: bool = False,
         city_restock: bool = False,
         guildmaster_research: bool = False,
+        magic_shop_research: bool = False,
         moria_research: bool = False,
         moria_depth: int = 0,
     ) -> None:
@@ -1213,6 +1269,7 @@ class StarterBotRunner:
         self.resupply_only = resupply_only
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
+        self.magic_shop_research = magic_shop_research
         self.moria_research = moria_research
         self.moria_depth = moria_depth
 
@@ -1224,6 +1281,8 @@ class StarterBotRunner:
                 if self.city_restock
                 else f"guildmaster:{self.spec.name}"
                 if self.guildmaster_research
+                else f"magic-shop:{self.spec.name}"
+                if self.magic_shop_research
                 else f"moria:{self.spec.name}"
                 if self.moria_research
                 else f"resupply:{self.spec.name}"
@@ -1239,6 +1298,8 @@ class StarterBotRunner:
                 if self.city_restock
                 else f"guildmaster-{self.spec.name}"
                 if self.guildmaster_research
+                else f"magic-shop-{self.spec.name}"
+                if self.magic_shop_research
                 else f"moria-{self.spec.name}"
                 if self.moria_research
                 else f"resupply-{self.spec.name}"
@@ -1302,6 +1363,7 @@ class StarterBotRunner:
                 resupply_only=self.resupply_only,
                 city_restock=self.city_restock,
                 guildmaster_research=self.guildmaster_research,
+                magic_shop_research=self.magic_shop_research,
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
             )
@@ -1396,6 +1458,7 @@ class StarterBotRunner:
                     "resupply_only": self.resupply_only,
                     "city_restock": self.city_restock,
                     "guildmaster_research": self.guildmaster_research,
+                    "magic_shop_research": self.magic_shop_research,
                     "moria_research": self.moria_research,
                     "moria_depth": self.moria_depth,
                 },
@@ -1519,6 +1582,16 @@ async def run_guildmaster_research_profile(path: str | Path) -> RunResult:
         spec,
         profile_path,
         guildmaster_research=True,
+    ).run()
+
+
+async def run_magic_shop_research_profile(path: str | Path) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        magic_shop_research=True,
     ).run()
 
 

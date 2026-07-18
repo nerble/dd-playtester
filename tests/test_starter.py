@@ -1150,6 +1150,58 @@ def test_moria_research_reaches_the_entry_and_returns_to_mage_laboratory() -> No
     assert decision.command == "save"
 
 
+def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", magic_shop_research=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    outward = (
+        ("Mage's Laboratory", "3019", "west"),
+        ("Mage's Bar", "3018", "north"),
+        ("Entrance to Mage's Guild", "3017", "north"),
+        ("Main Street", "3012", "north"),
+    )
+    for room_name, room_vnum, expected_command in outward:
+        decision = policy.next_decision(
+            CharacterState(room_name=room_name, room_vnum=room_vnum, position=7)
+        )
+        assert decision is not None
+        assert decision.command == expected_command
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    shop = CharacterState(room_name="The Magic Shop", room_vnum="3033", position=7)
+    listing = policy.next_decision(shop)
+    assert listing is not None
+    assert listing.command == "list"
+    policy.after_command(listing)
+    policy.prompt_ready = True
+
+    leave_shop = policy.next_decision(shop)
+    assert leave_shop is not None
+    assert leave_shop.command == "south"
+
+    return_path = (
+        ("Main Street", "3012", "south"),
+        ("Entrance to Mage's Guild", "3017", "south"),
+        ("Mage's Bar", "3018", "east"),
+    )
+    for room_name, room_vnum, expected_command in return_path:
+        decision = policy.next_decision(
+            CharacterState(room_name=room_name, room_vnum=room_vnum, position=7)
+        )
+        assert decision is not None
+        assert decision.command == expected_command
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    finish = policy.next_decision(
+        CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
+    )
+    assert finish is not None
+    assert finish.command == "save"
+
+
 def test_moria_research_depth_one_inspects_one_additional_trail_room() -> None:
     policy = StarterPolicy(_spec(), "swordfish", moria_research=True, moria_depth=1)
     policy.in_world = True
