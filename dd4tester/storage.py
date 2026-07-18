@@ -57,6 +57,22 @@ class RunStorage:
             CREATE INDEX IF NOT EXISTS idx_state_snapshots_run_id
             ON state_snapshots(run_id, id);
 
+            CREATE TABLE IF NOT EXISTS loot_sales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                character_name TEXT NOT NULL,
+                item_keyword TEXT NOT NULL,
+                item_description TEXT NOT NULL,
+                shop_name TEXT NOT NULL,
+                shop_room_vnum TEXT NOT NULL,
+                offered_coins INTEGER,
+                sold_coins INTEGER NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_loot_sales_character
+            ON loot_sales(character_name, item_keyword, shop_name, id);
+
             CREATE TABLE IF NOT EXISTS campaigns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -236,6 +252,54 @@ class RunStorage:
                 (run_id, kind),
             )
         return int(cursor.fetchone()[0])
+
+    def record_loot_sale(
+        self,
+        run_id: int,
+        *,
+        character_name: str,
+        item_keyword: str,
+        item_description: str,
+        shop_name: str,
+        shop_room_vnum: str,
+        offered_coins: int | None,
+        sold_coins: int,
+        timestamp: str | None = None,
+    ) -> int:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO loot_sales (
+                run_id, character_name, item_keyword, item_description,
+                shop_name, shop_room_vnum, offered_coins, sold_coins, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                character_name,
+                item_keyword,
+                item_description,
+                shop_name,
+                shop_room_vnum,
+                offered_coins,
+                sold_coins,
+                timestamp or _now(),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def list_loot_sales(self, character_name: str) -> list[sqlite3.Row]:
+        cursor = self.connection.execute(
+            """
+            SELECT id, run_id, character_name, item_keyword, item_description,
+                   shop_name, shop_room_vnum, offered_coins, sold_coins, timestamp
+            FROM loot_sales
+            WHERE character_name = ?
+            ORDER BY id
+            """,
+            (character_name,),
+        )
+        return list(cursor.fetchall())
 
     def create_campaign(
         self,

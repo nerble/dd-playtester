@@ -7,6 +7,7 @@ from dd4tester.character import CharacterSpec
 from dd4tester.connection import ReadResult
 from dd4tester.fastwalks import route_named
 from dd4tester.observations import GameEvent
+from dd4tester.shops import safe_shop_for_item
 from dd4tester.starter import (
     BotDecision,
     StarterBotRunner,
@@ -1917,6 +1918,30 @@ def test_liquidation_plans_distinct_items_for_best_safe_shops() -> None:
     assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
         ("buckler", "Leather Shop"),
         ("rod", "Weapon Shop"),
+    ]
+
+
+def test_liquidation_captures_offer_and_completed_sale() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    shop = safe_shop_for_item("a metal buckler")
+    assert shop is not None
+    policy.sale_plan = [("buckler", shop)]
+
+    policy.observe_text(
+        "The leather worker tells you "
+        "'I'll give you 10 coins for a metal buckler'.\n"
+    )
+    policy.observe_text("You sell a metal buckler for 10 coins.\n")
+
+    assert policy.completed_sales == [
+        {
+            "item_keyword": "buckler",
+            "item_description": "a metal buckler",
+            "shop_name": "Leather Shop",
+            "shop_room_vnum": "3035",
+            "offered_coins": 10,
+            "sold_coins": 10,
+        }
     ]
 
 

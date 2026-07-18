@@ -33,6 +33,14 @@ _DIRECTION = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _AFFORDABLE_QUANTITY = re.compile(r"can only afford\s+(?P<quantity>\d+)", re.IGNORECASE)
+_VALUE_OFFER = re.compile(
+    r"tells you 'I'll give you (?P<coins>\d+) coins? for (?P<item>.+?)'\.",
+    re.IGNORECASE,
+)
+_SALE_COMPLETED = re.compile(
+    r"You sell (?P<item>.+?) for (?P<coins>\d+) coins?\.",
+    re.IGNORECASE,
+)
 _DIRECTION_SHORTCUTS = {
     "n": "north",
     "s": "south",
@@ -193,6 +201,8 @@ class StarterPolicy:
         self.sale_index = 0
         self.sale_route_index = 0
         self.sale_phase = "plan"
+        self.sale_offer_coins: int | None = None
+        self.completed_sales: list[dict[str, Any]] = []
         self.fastwalk_recall_started = False
         self.fastwalk_arrival_observed = False
         self.fastwalk_returning = False
@@ -240,6 +250,23 @@ class StarterPolicy:
         affordable = _AFFORDABLE_QUANTITY.search(cleaned)
         if affordable is not None:
             self.affordable_pies = int(affordable.group("quantity"))
+        offer = _VALUE_OFFER.search(cleaned)
+        if offer is not None:
+            self.sale_offer_coins = int(offer.group("coins"))
+        completed_sale = _SALE_COMPLETED.search(cleaned)
+        if completed_sale is not None and self.sale_index < len(self.sale_plan):
+            keyword, shop = self.sale_plan[self.sale_index]
+            self.completed_sales.append(
+                {
+                    "item_keyword": keyword,
+                    "item_description": completed_sale.group("item"),
+                    "shop_name": shop.name,
+                    "shop_room_vnum": shop.room_vnum,
+                    "offered_coins": self.sale_offer_coins,
+                    "sold_coins": int(completed_sale.group("coins")),
+                }
+            )
+            self.sale_offer_coins = None
         if "you don't have that item" in folded or "is empty" in folded:
             if self.last_consumption == "food":
                 self.needs_food = True
@@ -2049,6 +2076,12 @@ class StarterBotRunner:
                     "moria_depth": self.moria_depth,
                 },
             )
+            for sale in policy.completed_sales:
+                storage.record_loot_sale(
+                    run_id,
+                    character_name=self.spec.name,
+                    **sale,
+                )
             storage.finish_run(run_id, status="success")
             return RunResult(
                 run_id,

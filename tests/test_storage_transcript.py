@@ -30,12 +30,23 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
         state=state,
         timestamp=event.timestamp,
     )
+    sale_id = storage.record_loot_sale(
+        run_id,
+        character_name="Ararisa",
+        item_keyword="buckler",
+        item_description="a metal buckler",
+        shop_name="Leather Shop",
+        shop_room_vnum="3035",
+        offered_coins=10,
+        sold_coins=10,
+    )
     storage.finish_run(run_id, status="success")
 
     runs = storage.list_runs()
     stored_run = storage.get_run(run_id)
     snapshots = storage.list_state_snapshots(run_id)
     latest_snapshot = storage.get_latest_state_snapshot(run_id)
+    sales = storage.list_loot_sales("Ararisa")
 
     recorder.close()
     storage.close()
@@ -60,3 +71,8 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert json.loads(snapshots[0]["state_json"]) == state
     assert latest_snapshot is not None
     assert latest_snapshot["reason"] == "progress_changed"
+    assert sales[0]["id"] == sale_id
+    assert sales[0]["run_id"] == run_id
+    assert sales[0]["item_keyword"] == "buckler"
+    assert sales[0]["offered_coins"] == 10
+    assert sales[0]["sold_coins"] == 10
