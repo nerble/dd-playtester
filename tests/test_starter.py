@@ -1056,6 +1056,40 @@ def test_safe_room_recovery_checks_health_without_waking() -> None:
     assert decision.command == "score"
 
 
+def test_safe_room_recovery_wakes_for_hunger_then_resumes_sleeping() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.waiting_for_heal = True
+    policy.needs_food = True
+    sleeping = CharacterState(
+        hp=15,
+        max_hp=96,
+        position=4,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["indoors", "safe"],
+        inventory=[[{"short_desc": "a big pot pie"}]],
+    )
+
+    wake = policy.next_decision(sleeping)
+    assert wake is not None
+    assert wake.command == "stand"
+    policy.after_command(wake)
+
+    policy.prompt_ready = True
+    sleeping.position = 7
+    eat = policy.next_decision(sleeping)
+    assert eat is not None
+    assert eat.command == "eat pie"
+    policy.after_command(eat)
+
+    policy.prompt_ready = True
+    resume = policy.next_decision(sleeping)
+    assert resume is not None
+    assert resume.command == "sleep"
+
+
 def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True

@@ -120,6 +120,7 @@ class StarterPolicy:
         self.needs_stand = False
         self.waiting_for_heal = False
         self.health_check_due: float | None = None
+        self.resume_recovery_after_resupply = False
         self.waiting_for_move = False
         self.room_targets: dict[str, list[str]] = {}
         self.defeated_targets: dict[str, set[str]] = {}
@@ -291,10 +292,12 @@ class StarterPolicy:
             self.food_attempted = True
             self.last_consumption = "food"
             self.needs_food = False
+            self.resume_recovery_after_resupply = self.waiting_for_heal
         elif decision.command == "drink skin":
             self.drink_attempted = True
             self.last_consumption = "drink"
             self.needs_drink = False
+            self.resume_recovery_after_resupply = self.waiting_for_heal
         elif decision.command == "buy 6 pie":
             self.food_ordered = True
         elif decision.command == "buy skin":
@@ -446,7 +449,10 @@ class StarterPolicy:
             return BotDecision("look", "return from Limbo to the previous room")
 
         if self.waiting_for_heal:
-            if _health_ratio(state) >= 0.5:
+            if self.needs_food or self.needs_drink:
+                if _is_sleeping(state):
+                    return BotDecision("stand", "wake to address hunger or thirst")
+            elif _health_ratio(state) >= 0.5:
                 self.waiting_for_heal = False
                 self.health_check_due = None
                 return BotDecision("stand", "resume after safe-room recovery")
@@ -462,6 +468,9 @@ class StarterPolicy:
                 self.prompt_ready = False
                 return None
             else:
+                if self.resume_recovery_after_resupply:
+                    self.resume_recovery_after_resupply = False
+                    return BotDecision("sleep", "resume safe-room recovery after resupply")
                 self.prompt_ready = False
                 return None
 
