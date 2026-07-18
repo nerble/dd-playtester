@@ -78,12 +78,14 @@ class StarterPolicy:
         password: str,
         *,
         objective_level: int = 2,
+        resupply_only: bool = False,
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
         self.spec = spec
         self.password = password
         self.objective_level = objective_level
+        self.resupply_only = resupply_only
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -119,11 +121,42 @@ class StarterPolicy:
         self.store_step = 0
         self.provisioned = False
         self.saved = False
+        self.needs_food = resupply_only
+        self.needs_drink = resupply_only
+        self.food_attempted = False
+        self.drink_attempted = False
+        self.food_ordered = False
+        self.skin_ordered = False
+        self.last_consumption: str | None = None
+        self.insufficient_funds = False
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
         self.text = (self.text + cleaned)[-24_000:]
         folded = self.text.casefold()
+        if any(
+            warning in folded
+            for warning in ("lack of food", "dying of hunger", "you are hungry")
+        ):
+            self.needs_food = True
+        if any(
+            warning in folded
+            for warning in ("throat is parched", "dying of thirst", "you are thirsty")
+        ):
+            self.needs_drink = True
+        if "you eat" in folded or "you are full" in folded:
+            self.needs_food = False
+        if "you drink" in folded or "do not feel thirsty" in folded:
+            self.needs_drink = False
+        if "you can't afford" in folded or "you do not have enough" in folded:
+            self.insufficient_funds = True
+        if "you don't have that item" in folded or "is empty" in folded:
+            if self.last_consumption == "food":
+                self.needs_food = True
+                self.food_ordered = False
+            if self.last_consumption == "drink":
+                self.needs_drink = True
+                self.skin_ordered = False
         targets = _training_targets(cleaned)
         if self.current_room and targets and not self.combat_active:
             known = self.room_targets.setdefault(self.current_room, [])
@@ -226,6 +259,18 @@ class StarterPolicy:
     def after_command(self, decision: BotDecision) -> None:
         self.prompt_ready = False
         self.text = ""
+        if decision.command == "eat pie":
+            self.food_attempted = True
+            self.last_consumption = "food"
+            self.needs_food = False
+        elif decision.command == "drink skin":
+            self.drink_attempted = True
+            self.last_consumption = "drink"
+            self.needs_drink = False
+        elif decision.command == "buy 6 pie":
+            self.food_ordered = True
+        elif decision.command == "buy skin":
+            self.skin_ordered = True
         if decision.command == "quit":
             self.done = True
 
@@ -357,14 +402,29 @@ class StarterPolicy:
 
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
-        if room_vnum == "3724" or room_name == "general supplies":
-            return self._store_decision()
+        if room_vnum == "2" or room_name == "limbo":
+            return BotDecision("look", "return from Limbo to the previous room")
 
         if self.combat_active:
-            if _health_ratio(state) < 0.25:
-                return BotDecision("flee", "leave combat below 25 percent health")
+            if self.needs_food or self.needs_drink or _health_ratio(state) < 0.25:
+                return BotDecision("flee", "leave combat before emergency resupply")
             self.prompt_ready = False
             return None
+
+        resupply = self._resupply_decision(state)
+        if resupply is not None:
+            return resupply
+
+        if self.resupply_only and self.food_attempted and self.drink_attempted:
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", "persist emergency resupply recovery")
+            self.stage = "complete"
+            return BotDecision("quit", "emergency resupply complete")
+
+        if room_vnum == "3724" or room_name == "general supplies":
+            return self._store_decision()
 
         if self.waiting_for_heal and _health_ratio(state) < 0.5:
             self.prompt_ready = False
@@ -429,6 +489,53 @@ class StarterPolicy:
             self.room_query_counts[key] = 1
             return BotDecision("look imp", "request deterministic tutorial guidance")
         self.failure = f"no starter rule for room {state.room_name!r} ({state.room_vnum})"
+        return None
+
+    def _resupply_decision(self, state: CharacterState) -> BotDecision | None:
+        if not (self.needs_food or self.needs_drink):
+            return None
+
+        if _is_sleeping(state):
+            return BotDecision("stand", "wake before eating or drinking")
+
+        if self.needs_food and (
+            _has_inventory_item(state.inventory, "pie") or self.food_ordered
+        ):
+            return BotDecision("eat pie", "address hunger before further recovery")
+        if self.needs_drink and (
+            _has_inventory_item(state.inventory, "water skin") or self.skin_ordered
+        ):
+            return BotDecision("drink skin", "address thirst before further recovery")
+
+        room_vnum = state.room_vnum
+        room_name = (state.room_name or "").casefold()
+        if room_vnum == "3724" or room_name == "general supplies":
+            if self.insufficient_funds:
+                sale = _sellable_inventory_keyword(state.inventory)
+                if sale is None:
+                    self.failure = "insufficient funds for emergency supplies and no sellable equipment"
+                    return None
+                self.insufficient_funds = False
+                return BotDecision(
+                    f"sell {sale}",
+                    f"sell scavenged equipment ({sale}) for emergency supplies",
+                )
+            if self.needs_food and not self.food_ordered:
+                return BotDecision("buy 6 pie", "stock emergency food from the Quartermaster")
+            if self.needs_drink and not self.skin_ordered:
+                return BotDecision("buy skin", "buy a full buffalo water skin from the Quartermaster")
+            return None
+
+        if room_vnum == "3737" or room_name == "safety":
+            return BotDecision("enter portal", "leave the arena safety room for supplies")
+        if _is_arena_vnum(room_vnum):
+            return BotDecision("up", "leave the arena for emergency supplies")
+        if room_vnum == "3725" or "entrance to the mud school" in room_name:
+            return BotDecision("up", "visit General Supplies for emergency provisions")
+        if room_vnum == "3001" or "temple of midgaard" in room_name:
+            return BotDecision("up", "return to the Mud School supplies")
+        if room_vnum == "3054" or "altar of the temple" in room_name:
+            return BotDecision("south", "return from the Temple toward supplies")
         return None
 
     def _recovery_decision(
@@ -754,6 +861,7 @@ class StarterBotRunner:
         observation_parser: ObservationParser | None = None,
         character_state: CharacterState | None = None,
         objective_level: int = 2,
+        resupply_only: bool = False,
     ) -> None:
         self.spec = spec
         self.profile_path = profile_path
@@ -761,11 +869,16 @@ class StarterBotRunner:
         self.observation_parser = observation_parser or ObservationParser()
         self.character_state = character_state or CharacterState()
         self.objective_level = objective_level
+        self.resupply_only = resupply_only
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
         run_id = storage.create_run(
-            scenario_name=f"starter:{self.spec.name}",
+            scenario_name=(
+                f"resupply:{self.spec.name}"
+                if self.resupply_only
+                else f"starter:{self.spec.name}"
+            ),
             scenario_path=self.profile_path,
         )
         recorder = TranscriptRecorder.create(
@@ -825,6 +938,7 @@ class StarterBotRunner:
                 self.spec,
                 password,
                 objective_level=self.objective_level,
+                resupply_only=self.resupply_only,
             )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
@@ -914,6 +1028,7 @@ class StarterBotRunner:
                     "stage": policy.stage,
                     "target_subclass": self.spec.subclass,
                     "objective_level": self.objective_level,
+                    "resupply_only": self.resupply_only,
                 },
             )
             storage.finish_run(run_id, status="success")
@@ -1008,6 +1123,16 @@ async def run_arena_research_profile(
     ).run()
 
 
+async def run_resupply_profile(path: str | Path) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        resupply_only=True,
+    ).run()
+
+
 def _room_key(state: CharacterState) -> str:
     return state.room_vnum or (state.room_name or "").casefold()
 
@@ -1026,6 +1151,11 @@ def _move_ratio(state: CharacterState) -> float:
     if state.move is None or state.max_move in (None, 0):
         return 1.0
     return float(state.move) / float(state.max_move)
+
+
+def _is_sleeping(state: CharacterState) -> bool:
+    position = state.position
+    return position == 4 or str(position).casefold() == "sleeping"
 
 
 def _unvisited_exit(
@@ -1144,3 +1274,35 @@ def _has_inventory_item(value: Any, needle: str) -> bool:
     if isinstance(value, list):
         return any(_has_inventory_item(item, needle) for item in value)
     return needle in str(value).casefold()
+
+
+def _sellable_inventory_keyword(value: Any) -> str | None:
+    """Choose a conservative equipment keyword, never food or water storage."""
+    names = _inventory_descriptions(value)
+    equipment_words = {
+        "armor", "axe", "blade", "boots", "bracer", "dagger", "gloves",
+        "helm", "mace", "shield", "sword", "wand", "weapon",
+    }
+    for name in names:
+        words = name.casefold().replace("'", "").split()
+        if {"pie", "skin", "water", "food"}.intersection(words):
+            continue
+        for word in reversed(words):
+            if word in equipment_words:
+                return word
+    return None
+
+
+def _inventory_descriptions(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        description = value.get("short_desc")
+        result = [str(description)] if isinstance(description, str) else []
+        for item in value.values():
+            result.extend(_inventory_descriptions(item))
+        return result
+    if isinstance(value, list):
+        result: list[str] = []
+        for item in value:
+            result.extend(_inventory_descriptions(item))
+        return result
+    return []

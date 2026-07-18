@@ -23,6 +23,13 @@ The `starter`, `arena-research`, and `campaign` commands automatically use that
 profile's `credential_name`. Environment variables still take precedence for
 automation. Credentials are never written to YAML, SQLite, or transcripts.
 
+Use the bounded resupply command to return an existing character from Limbo or
+the Mud School arena, consume food and water, save, and log out safely:
+
+```powershell
+python -m dd4tester resupply profiles/your-character.yaml
+```
+
 The project connects over asyncio Telnet, records transcripts, captures GMCP,
 loads YAML scenarios, and stores run evidence in SQLite. Its observation layer
 derives deterministic `game_event` records for rooms, prompts, health, combat,

@@ -751,6 +751,87 @@ def test_arena_safety_room_reenters_the_mud_school_portal() -> None:
     assert decision.command == "enter portal"
 
 
+def test_resupply_policy_returns_from_limbo_then_eats_and_drinks() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", resupply_only=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    limbo = CharacterState(room_name="Limbo", room_vnum="2")
+    decision = policy.next_decision(limbo)
+    assert decision is not None
+    assert decision.command == "look"
+    policy.after_command(decision)
+
+    policy.prompt_ready = True
+    safety = CharacterState(
+        hp=10,
+        max_hp=60,
+        position=4,
+        room_name="Safety",
+        room_vnum="3737",
+        inventory=[[{"short_desc": "a buffalo water skin"}, {"short_desc": "a big pot pie"}]],
+    )
+    decision = policy.next_decision(safety)
+    assert decision is not None
+    assert decision.command == "stand"
+    policy.after_command(decision)
+
+    policy.prompt_ready = True
+    safety.position = 7
+    decision = policy.next_decision(safety)
+    assert decision is not None
+    assert decision.command == "eat pie"
+    policy.after_command(decision)
+
+    policy.prompt_ready = True
+    decision = policy.next_decision(safety)
+    assert decision is not None
+    assert decision.command == "drink skin"
+    policy.after_command(decision)
+
+    policy.prompt_ready = True
+    decision = policy.next_decision(safety)
+    assert decision is not None
+    assert decision.command == "save"
+
+
+def test_hunger_warning_preempts_low_health_sleep() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.observe_text("You are dying of hunger! Your throat is parched.")
+    state = CharacterState(
+        hp=5,
+        max_hp=60,
+        position=7,
+        room_name="Safety",
+        room_vnum="3737",
+        inventory=[[{"short_desc": "a buffalo water skin"}, {"short_desc": "a big pot pie"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "eat pie"
+
+
+def test_resupply_policy_sells_equipment_after_an_insufficient_funds_response() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", resupply_only=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.observe_text("You can't afford that.")
+    state = CharacterState(
+        room_name="General Supplies",
+        room_vnum="3724",
+        inventory=[[{"short_desc": "a battered sword"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "sell sword"
+
+
 def test_starter_policy_rejects_invalid_objective_level() -> None:
     with pytest.raises(ValueError, match="objective_level"):
         StarterPolicy(_spec(), "swordfish", objective_level=1)
