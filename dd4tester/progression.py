@@ -99,6 +99,7 @@ _MUD_SCHOOL_RESEARCH_POLICY = replace(
         "Live run 94: the depth-three scout reached Moria room 3903 (Dusty trail along north wall), with east exit 3904 and a safe west return through room 3902 to room 3019.",
         "Live run 96: Midgaard Magic Shop listed a level-5 light blue potion for 123 at that time; quaffing it applied the fly effect. Shop prices must be checked each run.",
         "Live run 97: the fly effect persisted through reconnect and the depth-four Moria round trip reached room 3904 (the long dusty trail following the north wall), with exits east 3905, north 300, and west 3903.",
+        "Live run 99: the clean depth-five Moria scout reached room 3905 (Dusty trail along north wall), with east exit 3906 and a safe west return to room 3019; fly remained active after the trip.",
         "DD4 source map metadata lists Moria for levels 5-15 and Old Thalos for levels 10-25.",
         "DD4 source help: reaching level 100 also requires at least 1,000 total quest points.",
     ),
