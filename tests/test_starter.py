@@ -1765,6 +1765,36 @@ def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
         policy.prompt_ready = True
 
 
+def test_arena_policy_follows_midgaard_map_from_mage_guild_to_school() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=7)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=6,
+        hp=96,
+        max_hp=96,
+        mana=268,
+        max_mana=268,
+        move=173,
+        max_move=200,
+        position=7,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+        inventory=[
+            [
+                {"quan": "3", "short_desc": "a big pot pie"},
+                {"quan": "1", "short_desc": "a buffalo water skin"},
+            ]
+        ],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+
+
 def test_gmcp_recovery_vitals_resume_waiting_arena_policy() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True
