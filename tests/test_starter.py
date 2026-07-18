@@ -1183,7 +1183,7 @@ def test_fastwalk_research_requires_recall_and_reverses_when_needed() -> None:
     policy.prompt_ready = True
 
     recall = policy.next_decision(
-        CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
+        CharacterState(room_name="The Lane", room_vnum="3501", position=7)
     )
     assert recall is not None
     assert recall.command == "recall"
@@ -1276,6 +1276,131 @@ def test_fastwalk_research_leaves_arena_for_safety_before_field_hunt() -> None:
     assert decision is not None
     assert decision.command == "up"
     assert policy.fastwalk_recall_started is False
+
+
+def test_fastwalk_research_walks_from_mage_lab_to_preserve_movement() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(
+            room_name="Mage's Laboratory",
+            room_vnum="3019",
+            position=7,
+            hp=100,
+            max_hp=100,
+            mana=200,
+            max_mana=200,
+            move=200,
+            max_move=200,
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert policy.fastwalk_recall_started is False
+
+
+def test_movement_waits_for_room_change_instead_of_reusing_an_old_prompt() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.current_room = "3012"
+    state = CharacterState(
+        room_name="Main Street",
+        room_vnum="3012",
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=200,
+        max_mana=200,
+        move=200,
+        max_move=200,
+    )
+
+    move = policy.next_decision(state)
+    assert move is not None
+    assert move.command == "east"
+    policy.after_command(move)
+    policy.last_command_at = time.monotonic() - 1
+    policy.observe_events([GameEvent("prompt_seen", "text", {})], state)
+
+    assert policy.prompt_ready is False
+
+    state.apply(
+        GameEvent(
+            "room_entered",
+            "gmcp",
+            {"name": "Main Street", "vnum": "3013"},
+        )
+    )
+    policy.observe_events(
+        [
+            GameEvent("room_entered", "gmcp", {}),
+            GameEvent("prompt_seen", "text", {}),
+        ],
+        state,
+    )
+    assert policy.prompt_ready is True
+    assert policy.pending_travel_origin is None
+
+
+def test_fastwalk_recovery_uses_healer_north_of_recall() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    low_move = CharacterState(
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        room_flags=["safe"],
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=200,
+        max_mana=200,
+        move=40,
+        max_move=200,
+    )
+
+    healer = policy.next_decision(low_move)
+    assert healer is not None
+    assert healer.command == "north"
+
+    policy.prompt_ready = True
+    at_healer = CharacterState(
+        room_name="The Healer",
+        room_vnum="3054",
+        room_flags=["safe"],
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=200,
+        max_mana=200,
+        move=40,
+        max_move=200,
+    )
+    menu = policy.next_decision(at_healer)
+    assert menu is not None
+    assert menu.command == "heal"
+
+    policy.after_command(menu)
+    policy.prompt_ready = True
+    sleep = policy.next_decision(at_healer)
+    assert sleep is not None
+    assert sleep.command == "sleep"
 
 
 def test_return_home_recalls_then_follows_verified_mage_guild_route() -> None:

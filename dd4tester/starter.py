@@ -65,6 +65,16 @@ _TRAINING_SIDE_ROOMS = {
 _ARENA_RESPAWN_WAIT_SECONDS = 90
 _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
+_MOVEMENT_COMMANDS = {
+    "north",
+    "east",
+    "south",
+    "west",
+    "up",
+    "down",
+    "recall",
+    "enter portal",
+}
 
 
 @dataclass(frozen=True)
@@ -120,6 +130,7 @@ class StarterPolicy:
         self.in_world = False
         self.prompt_ready = False
         self.last_command_at: float | None = None
+        self.pending_travel_origin: str | None = None
         self.text = ""
         self.roll_count = 0
         self.course_started = False
@@ -140,6 +151,7 @@ class StarterPolicy:
         self.combat_active = False
         self.needs_stand = False
         self.waiting_for_heal = False
+        self.healer_menu_checked = False
         self.health_check_due: float | None = None
         self.resume_recovery_after_resupply = False
         self.waiting_for_move = False
@@ -261,6 +273,8 @@ class StarterPolicy:
             self.magic_missile_cast = False
         if "too relaxed" in folded or "you must be standing" in folded:
             self.needs_stand = True
+        if "alas, you cannot go that way" in folded:
+            self.pending_travel_origin = None
 
     def observe_events(
         self,
@@ -270,9 +284,15 @@ class StarterPolicy:
         for event in events:
             if event.type == "prompt_seen":
                 if (
-                    self.last_command_at is None
-                    or time.monotonic() - self.last_command_at
-                    >= _COMMAND_PROMPT_MIN_SECONDS
+                    (
+                        self.pending_travel_origin is None
+                        or _room_key(state) != self.pending_travel_origin
+                    )
+                    and (
+                        self.last_command_at is None
+                        or time.monotonic() - self.last_command_at
+                        >= _COMMAND_PROMPT_MIN_SECONDS
+                    )
                 ):
                     self.prompt_ready = True
             if event.type in {"room_entered", "room_updated"}:
@@ -280,6 +300,7 @@ class StarterPolicy:
                 if room and room != self.current_room:
                     self.previous_room = self.current_room
                     self.current_room = room
+                    self.pending_travel_origin = None
                     self.advice_direction = None
                     self.pending_move = None
                 targets = _training_targets(self.text)
@@ -334,6 +355,8 @@ class StarterPolicy:
     def after_command(self, decision: BotDecision) -> None:
         self.prompt_ready = False
         self.last_command_at = time.monotonic() if self.in_world else None
+        if decision.command in _MOVEMENT_COMMANDS and self.current_room:
+            self.pending_travel_origin = self.current_room
         self.text = ""
         if decision.command == "eat pie":
             self.food_attempted = True
@@ -1024,6 +1047,32 @@ class StarterPolicy:
                         "up",
                         "leave the arena through Safety before the field hunt",
                     )
+                elif room_vnum in {
+                    "3005",
+                    "3014",
+                    "3013",
+                    "3012",
+                    "3017",
+                    "3018",
+                    "3019",
+                    "3025",
+                    "3054",
+                }:
+                    origin_routes = {
+                        "3019": "west",
+                        "3018": "north",
+                        "3017": "north",
+                        "3012": "east",
+                        "3013": "east",
+                        "3014": "north",
+                        "3005": "north",
+                        "3025": "north",
+                        "3054": "south",
+                    }
+                    return BotDecision(
+                        origin_routes[room_vnum],
+                        "walk to the fastwalk origin without paying the recall movement penalty",
+                    )
                 else:
                     self.fastwalk_recall_started = True
                     return BotDecision("recall", "start the official recall-origin fastwalk")
@@ -1111,6 +1160,8 @@ class StarterPolicy:
             self.fastwalk_returning = True
             return BotDecision("recall", "return from the fastwalk endpoint")
 
+        if room_vnum == "3054":
+            return BotDecision("south", "leave the healer after fastwalk recovery")
         if room_vnum == "3001":
             home_routes = {
                 "3001": "south",
@@ -1208,8 +1259,20 @@ class StarterPolicy:
         if ratio >= 0.25:
             if _move_ratio(state) >= 0.5 and _mana_ratio(state) >= 0.5:
                 return None
+            if self.fastwalk_route is not None and state.room_vnum == "3001":
+                return BotDecision(
+                    "north",
+                    "recover faster with the healer north of recall",
+                )
             if not is_safe_room:
                 return None
+            if (
+                self.fastwalk_route is not None
+                and state.room_vnum == "3054"
+                and not self.healer_menu_checked
+            ):
+                self.healer_menu_checked = True
+                return BotDecision("heal", "record the healer's current services")
             self.waiting_for_heal = True
             return BotDecision("sleep", "recover movement or mana in a safe room")
 
