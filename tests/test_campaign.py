@@ -21,7 +21,7 @@ def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> No
 
     assert result.status == "blocked"
     assert result.state["level"] == 2
-    assert "Policy mud-school-2-10 is research-gated" in result.message
+    assert "checkpointed for the next verified segment" in result.message
     assert calls == [250]
 
     with RunStorage(database) as storage:
@@ -31,20 +31,20 @@ def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> No
 
     assert campaign["status"] == "blocked"
     assert len(segments) == 1
-    assert segments[0]["phase"] == "starter"
+    assert segments[0]["phase"] == "starter-0-2"
     assert segments[0]["command_count"] == 1
     assert checkpoint["reason"] == "segment_complete"
 
-    async def unexpected_segment(_spec, _profile_path: Path) -> RunResult:
-        raise AssertionError("a level-two campaign must not rerun the starter segment")
+    async def arena_segment(spec, profile_path: Path) -> RunResult:
+        return _record_segment_run(spec.database, profile_path, {"level": 6, "xp": 100})
 
     resumed = asyncio.run(
-        CampaignRunner(spec, config_path, segment_runner=unexpected_segment).run()
+        CampaignRunner(spec, config_path, segment_runner=arena_segment).run()
     )
 
     assert resumed.campaign_id == result.campaign_id
     assert resumed.status == "blocked"
-    assert "Policy mud-school-2-10 is research-gated" in resumed.message
+    assert "Policy mud-school-6-10 is research-gated" in resumed.message
 
 
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:

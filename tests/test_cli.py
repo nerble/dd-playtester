@@ -250,8 +250,8 @@ def test_show_policies_displays_evidence_and_practice_candidate(capsys) -> None:
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "Policy: mud-school-2-10" in captured.out
-    assert "Status: research" in captured.out
+    assert "Policy: mud-school-2-6" in captured.out
+    assert "Status: verified" in captured.out
     assert "Practice candidate: magic missile" in captured.out
     assert "Live run 56" in captured.out
 

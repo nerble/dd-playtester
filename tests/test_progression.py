@@ -12,17 +12,26 @@ def test_starter_policy_is_executable_before_level_two() -> None:
 
 
 @pytest.mark.parametrize("character_class", sorted(CLASS_PRACTICE_SKILLS))
-def test_level_two_to_ten_policy_is_registered_but_research_gated(
+def test_level_two_to_six_policy_is_verified_and_executable(
     character_class: str,
 ) -> None:
     policy = policy_for(2, character_class)
 
-    assert policy.policy_id == "mud-school-2-10"
-    assert policy.status == "research"
-    assert policy.executable is False
+    assert policy.policy_id == "mud-school-2-6"
+    assert policy.status == "verified"
+    assert policy.executable is True
+    assert policy.execution == "arena"
     assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
     assert any("Live run 76" in item for item in policy.evidence)
     assert any("Live run 82" in item for item in policy.evidence)
+
+
+def test_level_six_to_ten_policy_remains_research_gated() -> None:
+    policy = policy_for(6, "mage")
+
+    assert policy.policy_id == "mud-school-6-10"
+    assert policy.status == "research"
+    assert policy.executable is False
 
 
 def test_level_ten_and_above_is_explicitly_unavailable() -> None:

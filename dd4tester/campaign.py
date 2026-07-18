@@ -99,7 +99,7 @@ class CampaignRunner:
     ) -> None:
         self.spec = spec
         self.config_path = config_path.resolve()
-        self.segment_runner = segment_runner or _run_starter_segment
+        self.segment_runner = segment_runner
         self.force_new = force_new
 
     async def run(self) -> CampaignResult:
@@ -165,6 +165,7 @@ class CampaignRunner:
                 campaign_id,
                 state,
                 totals,
+                policy,
             )
 
     def _policy_for_state(self, state: dict[str, Any]) -> ProgressionPolicy:
@@ -197,10 +198,11 @@ class CampaignRunner:
         campaign_id: int,
         state: dict[str, Any],
         totals: Any,
+        policy: ProgressionPolicy,
     ) -> CampaignResult:
         segment_id = storage.start_campaign_segment(
             campaign_id,
-            phase="starter",
+            phase=policy.policy_id,
             start_state=state,
         )
         adjusted_character = replace(
@@ -215,12 +217,14 @@ class CampaignRunner:
             ),
         )
         try:
-            result = await self.segment_runner(
-                adjusted_character,
-                self.spec.character_profile,
-            )
+            if self.segment_runner is not None:
+                result = await self.segment_runner(adjusted_character, self.spec.character_profile)
+            else:
+                result = await _run_policy_segment(
+                    adjusted_character, self.spec.character_profile, policy
+                )
         except Exception as exc:
-            message = f"starter segment failed: {exc}"
+            message = f"{policy.policy_id} segment failed: {exc}"
             storage.finish_campaign_segment(
                 segment_id,
                 status="failed",
@@ -234,7 +238,7 @@ class CampaignRunner:
                 storage,
                 campaign_id,
                 segment_id,
-                phase="starter",
+                phase=policy.policy_id,
                 reason="segment_failed",
                 state=state,
             )
@@ -259,7 +263,7 @@ class CampaignRunner:
                 storage,
                 campaign_id,
                 segment_id,
-                phase="starter",
+                phase=policy.policy_id,
                 reason="segment_failed",
                 state=end_state,
                 run_id=result.run_id,
@@ -285,7 +289,7 @@ class CampaignRunner:
             storage,
             campaign_id,
             segment_id,
-            phase="starter",
+            phase=policy.policy_id,
             reason="segment_complete",
             state=checkpoint_state,
             run_id=result.run_id,
@@ -309,8 +313,8 @@ class CampaignRunner:
         next_policy = self._policy_for_state(end_state)
         if next_policy.executable:
             message = (
-                f"Starter segment completed at level {_level(end_state)}. "
-                "Campaign checkpointed for the next starter segment."
+                f"{policy.policy_id} segment completed at level {_level(end_state)}. "
+                "Campaign checkpointed for the next verified segment."
             )
         else:
             message = next_policy.blocks_message(self.spec.character.character_class)
@@ -353,8 +357,20 @@ def load_campaign_spec(path: str | Path) -> CampaignSpec:
     return CampaignSpec.from_mapping(load_yaml_mapping(config_path), path=config_path)
 
 
-async def _run_starter_segment(spec: CharacterSpec, profile_path: Path) -> RunResult:
-    return await StarterBotRunner(spec, profile_path).run()
+async def _run_policy_segment(
+    spec: CharacterSpec,
+    profile_path: Path,
+    policy: ProgressionPolicy,
+) -> RunResult:
+    if policy.execution == "starter":
+        return await StarterBotRunner(spec, profile_path).run()
+    if policy.execution == "arena":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+        ).run()
+    raise ValueError(f"unsupported executable policy {policy.policy_id}")
 
 
 def _checkpoint_state(checkpoint: Any) -> dict[str, Any]:

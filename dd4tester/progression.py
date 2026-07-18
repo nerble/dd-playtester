@@ -59,12 +59,12 @@ _STARTER_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
-_MUD_SCHOOL_POLICY = ProgressionPolicy(
-    policy_id="mud-school-2-10",
+_MUD_SCHOOL_ARENA_POLICY = ProgressionPolicy(
+    policy_id="mud-school-2-6",
     minimum_level=2,
-    maximum_level=10,
-    status="research",
-    execution=None,
+    maximum_level=6,
+    status="verified",
+    execution="arena",
     summary=(
         "Mud School orientation, the Loremaster, and the small arena observed for "
         "the level-2 to level-10 band."
@@ -79,6 +79,16 @@ _MUD_SCHOOL_POLICY = ProgressionPolicy(
         "Live run 82: the paced arena policy reached level 6, saved, and quit after a giant-lizard level-up.",
     ),
     practice_skill=None,
+)
+
+_MUD_SCHOOL_RESEARCH_POLICY = replace(
+    _MUD_SCHOOL_ARENA_POLICY,
+    policy_id="mud-school-6-10",
+    minimum_level=6,
+    maximum_level=10,
+    status="research",
+    execution=None,
+    summary="Mud School continuation from level 6 through the level-10 transition.",
 )
 
 _UNAVAILABLE_POLICY = ProgressionPolicy(
@@ -98,9 +108,14 @@ def policy_for(level: int | float | None, character_class: str) -> ProgressionPo
     canonical_class = canonical_class_name(character_class)
     if normalized_level < 2:
         return _STARTER_POLICY
+    if normalized_level < 6:
+        return replace(
+            _MUD_SCHOOL_ARENA_POLICY,
+            practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
+        )
     if normalized_level < 10:
         return replace(
-            _MUD_SCHOOL_POLICY,
+            _MUD_SCHOOL_RESEARCH_POLICY,
             practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
         )
     return replace(
