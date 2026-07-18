@@ -235,6 +235,28 @@ def test_magic_shop_research_command_can_buy_and_use_fly_potion(
     assert "Run 14 success" in captured.out
 
 
+def test_return_home_command_runs_safe_recall(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "return-home-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_return_home(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(15, "success", transcript, database, {"level": 6})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_return_home_profile",
+        fake_return_home,
+    )
+
+    exit_code = main(["return-home", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 15 success" in captured.out
+
+
 def test_fastwalk_research_command_runs_named_route(tmp_path, capsys, monkeypatch) -> None:
     profile = tmp_path / "character.yaml"
     transcript = tmp_path / "fastwalk-1.jsonl"

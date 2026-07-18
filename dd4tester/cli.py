@@ -27,6 +27,7 @@ from .starter import (
     run_magic_shop_research_profile,
     run_moria_research_profile,
     run_restock_profile,
+    run_return_home_profile,
     run_resupply_profile,
     run_starter_profile,
 )
@@ -68,6 +69,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="safely return a character from Limbo or the arena, eat, drink, save, and quit",
     )
     resupply_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
+    )
+
+    return_home_parser = subcommands.add_parser(
+        "return-home",
+        help="recall an interrupted character and return safely to its guild",
+    )
+    return_home_parser.add_argument(
         "profile",
         type=Path,
         help="path to an existing character YAML profile",
@@ -369,6 +380,17 @@ def main(argv: list[str] | None = None) -> int:
             result = asyncio.run(run_resupply_profile(args.profile))
         except Exception as exc:
             print(f"Resupply run failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "return-home":
+        try:
+            result = asyncio.run(run_return_home_profile(args.profile))
+        except Exception as exc:
+            print(f"Return-home run failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")

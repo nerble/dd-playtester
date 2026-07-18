@@ -1215,6 +1215,37 @@ def test_fastwalk_research_requires_recall_and_reverses_when_needed() -> None:
     assert reverse.command == "south"
 
 
+def test_return_home_recalls_then_follows_verified_mage_guild_route() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    recall = policy.next_decision(
+        CharacterState(room_name="The Lane", room_vnum="3501", position=7)
+    )
+    assert recall is not None
+    assert recall.command == "recall"
+    policy.after_command(recall)
+    policy.prompt_ready = True
+
+    south = policy.next_decision(
+        CharacterState(
+            room_name="The Temple Of Midgaard",
+            room_vnum="3001",
+            position=7,
+            room_flags=["safe"],
+            move=120,
+            max_move=200,
+            mana=200,
+            max_mana=200,
+            hp=100,
+            max_hp=100,
+        )
+    )
+    assert south is not None
+    assert south.command == "south"
+
+
 def test_fastwalk_research_can_inspect_one_endpoint_exit_and_return() -> None:
     route = route_named("moria")
     policy = StarterPolicy(

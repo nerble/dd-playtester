@@ -83,6 +83,7 @@ class StarterPolicy:
         *,
         objective_level: int = 2,
         resupply_only: bool = False,
+        return_home: bool = False,
         city_restock: bool = False,
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
@@ -101,6 +102,7 @@ class StarterPolicy:
         self.password = password
         self.objective_level = objective_level
         self.resupply_only = resupply_only
+        self.return_home = return_home
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
@@ -171,6 +173,7 @@ class StarterPolicy:
         self.fastwalk_attack_started = False
         self.fastwalk_target_absent = False
         self.fastwalk_loot_step = 0
+        self.return_home_recall_started = False
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -559,6 +562,17 @@ class StarterPolicy:
         recovery = self._recovery_decision(state)
         if recovery is not None:
             return recovery
+
+        if self.return_home:
+            home = self._return_home_decision(state)
+            if home is not None:
+                return home
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", "persist safe recall recovery")
+            self.stage = "complete"
+            return BotDecision("quit", "safe recall recovery complete")
 
         if self.guildmaster_research:
             research = self._guildmaster_research_decision(state)
@@ -1094,6 +1108,33 @@ class StarterPolicy:
         self.fastwalk_return_index += 1
         return BotDecision(command, "reverse the official fastwalk after recall failed")
 
+    def _return_home_decision(self, state: CharacterState) -> BotDecision | None:
+        """Recall from an interrupted field run and return to the Mage Guild."""
+        room_vnum = state.room_vnum
+        room_name = (state.room_name or "").casefold()
+        if not self.return_home_recall_started:
+            self.return_home_recall_started = True
+            return BotDecision("recall", "recover an interrupted character to Midgaard")
+        home_routes = {
+            "3001": "south",
+            "3005": "south",
+            "3014": "west",
+            "3013": "west",
+            "3012": "south",
+            "3017": "south",
+            "3018": "east",
+        }
+        direction = home_routes.get(room_vnum or "")
+        if direction is not None:
+            return BotDecision(direction, "return from recall to the Mage Guild")
+        if room_vnum == "3019" or "mage's laboratory" in room_name:
+            return None
+        self.failure = (
+            "recall recovery did not reach Midgaard from "
+            f"room {state.room_name!r} ({state.room_vnum})"
+        )
+        return None
+
     def _moria_return_decision(self, state: CharacterState) -> BotDecision:
         return_routes = {
             "3903": "west",
@@ -1458,6 +1499,7 @@ class StarterBotRunner:
         character_state: CharacterState | None = None,
         objective_level: int = 2,
         resupply_only: bool = False,
+        return_home: bool = False,
         city_restock: bool = False,
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
@@ -1475,6 +1517,7 @@ class StarterBotRunner:
         self.character_state = character_state or CharacterState()
         self.objective_level = objective_level
         self.resupply_only = resupply_only
+        self.return_home = return_home
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
@@ -1491,6 +1534,8 @@ class StarterBotRunner:
             scenario_name=(
                 f"restock:{self.spec.name}"
                 if self.city_restock
+                else f"return-home:{self.spec.name}"
+                if self.return_home
                 else f"guildmaster:{self.spec.name}"
                 if self.guildmaster_research
                 else f"magic-shop:{self.spec.name}"
@@ -1510,6 +1555,8 @@ class StarterBotRunner:
             scenario_name=(
                 f"restock-{self.spec.name}"
                 if self.city_restock
+                else f"return-home-{self.spec.name}"
+                if self.return_home
                 else f"guildmaster-{self.spec.name}"
                 if self.guildmaster_research
                 else f"magic-shop-{self.spec.name}"
@@ -1577,6 +1624,7 @@ class StarterBotRunner:
                 password,
                 objective_level=self.objective_level,
                 resupply_only=self.resupply_only,
+                return_home=self.return_home,
                 city_restock=self.city_restock,
                 guildmaster_research=self.guildmaster_research,
                 magic_shop_research=self.magic_shop_research,
@@ -1686,6 +1734,7 @@ class StarterBotRunner:
                     "target_subclass": self.spec.subclass,
                     "objective_level": self.objective_level,
                     "resupply_only": self.resupply_only,
+                    "return_home": self.return_home,
                     "city_restock": self.city_restock,
                     "guildmaster_research": self.guildmaster_research,
                     "magic_shop_research": self.magic_shop_research,
@@ -1802,6 +1851,16 @@ async def run_resupply_profile(path: str | Path) -> RunResult:
         spec,
         profile_path,
         resupply_only=True,
+    ).run()
+
+
+async def run_return_home_profile(path: str | Path) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        return_home=True,
     ).run()
 
 
