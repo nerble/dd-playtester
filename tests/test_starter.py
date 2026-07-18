@@ -1874,6 +1874,19 @@ def test_fastwalk_research_does_not_claim_unrelated_corpse() -> None:
     assert policy.pending_loot_rooms == set()
 
 
+def test_fastwalk_research_recognizes_existing_room_combat() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_attack_target="Olog",
+    )
+
+    policy.observe_text("Olog is here, fighting YOU!\n")
+
+    assert policy.combat_active is True
+
+
 def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> None:
     route = route_named("moria")
 

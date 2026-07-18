@@ -48,6 +48,18 @@ def test_text_observations_handle_split_chunks_and_unterminated_prompts() -> Non
     assert [event.type for event in flushed] == ["prompt_seen", "health_changed"]
 
 
+def test_text_observations_recognize_existing_room_combat() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "Muddy Tunnel\n"
+        "Olog is here, fighting YOU!\n"
+    )
+
+    combat = [event for event in events if event.type == "combat_started"]
+    assert combat[0].data["target"] == "Olog"
+
+
 def test_experience_reward_is_not_recorded_as_an_item() -> None:
     parser = ObservationParser()
 

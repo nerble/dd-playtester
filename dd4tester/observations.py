@@ -35,8 +35,9 @@ _OUTGOING_COMBAT = re.compile(
     re.IGNORECASE,
 )
 _INCOMING_COMBAT = re.compile(
-    r"^(?P<target>.+?) (?:attacks|engages) you(?:[.!]|$)",
-    re.IGNORECASE,
+    r"^\s*(?P<target>.+?) (?:(?:attacks|engages) you|is here,\s*fighting you)"
+    r"(?:[.!]|$)",
+    re.IGNORECASE | re.MULTILINE,
 )
 _QUEST = re.compile(
     r"\b(?:Quest received|New quest):\s*(?P<name>.+?)(?:[.!]|$)",

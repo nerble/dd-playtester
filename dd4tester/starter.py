@@ -303,7 +303,11 @@ class StarterPolicy:
                 self.post_kill_steps.setdefault(self.current_room, 0)
             self.active_target = None
             self.magic_missile_cast = False
-        if "you attack " in recent or " attacks you" in recent:
+        if (
+            "you attack " in recent
+            or " attacks you" in recent
+            or "fighting you" in recent
+        ):
             self.combat_active = True
         if "aren't fighting anyone" in recent:
             self.combat_active = False
