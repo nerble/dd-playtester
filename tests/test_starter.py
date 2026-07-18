@@ -1346,7 +1346,7 @@ def test_moria_research_follows_the_verified_east_turn_and_returns() -> None:
     assert return_west.command == "west"
 
 
-def test_moria_research_follows_the_verified_north_wall_edges_and_returns() -> None:
+def test_moria_research_probes_the_verified_north_branch_and_returns() -> None:
     policy = StarterPolicy(_spec(), "swordfish", moria_research=True, moria_depth=5)
     policy.in_world = True
     policy.prompt_ready = True
@@ -1371,7 +1371,7 @@ def test_moria_research_follows_the_verified_north_wall_edges_and_returns() -> N
         policy.after_command(decision)
         policy.prompt_ready = True
 
-    move_east = policy.next_decision(
+    move_north = policy.next_decision(
         CharacterState(
             area="Moria",
             room_name="The long dusty trail following the north wall.",
@@ -1379,26 +1379,26 @@ def test_moria_research_follows_the_verified_north_wall_edges_and_returns() -> N
             position=7,
         )
     )
-    assert move_east is not None
-    assert move_east.command == "east"
-    policy.after_command(move_east)
+    assert move_north is not None
+    assert move_north.command == "north"
+    policy.after_command(move_north)
     policy.prompt_ready = True
 
-    east_room = CharacterState(
+    north_room = CharacterState(
         area="Moria",
-        room_name="North wall trail",
-        room_vnum="3905",
+        room_name="Moria north branch",
+        room_vnum="300",
         position=7,
     )
-    look_east = policy.next_decision(east_room)
-    assert look_east is not None
-    assert look_east.command == "look"
-    policy.after_command(look_east)
+    look_north = policy.next_decision(north_room)
+    assert look_north is not None
+    assert look_north.command == "look"
+    policy.after_command(look_north)
     policy.prompt_ready = True
 
-    return_west = policy.next_decision(east_room)
-    assert return_west is not None
-    assert return_west.command == "west"
+    return_south = policy.next_decision(north_room)
+    assert return_south is not None
+    assert return_south.command == "south"
 
 
 def test_safe_room_recovery_waits_for_movement_before_travel() -> None:
