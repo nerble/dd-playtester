@@ -184,6 +184,29 @@ def test_guildmaster_research_command_runs_bounded_route(tmp_path, capsys, monke
     assert f"Transcript: {transcript}" in captured.out
 
 
+def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "moria-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_moria_research(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(12, "success", transcript, database, {"level": 6})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_moria_research_profile",
+        fake_moria_research,
+    )
+
+    exit_code = main(["moria-research", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 12 success" in captured.out
+    assert f"Transcript: {transcript}" in captured.out
+
+
 def test_configure_login_command_uses_named_credential(capsys, monkeypatch) -> None:
     configured: list[str] = []
     monkeypatch.setattr(

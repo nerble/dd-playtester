@@ -1090,6 +1090,66 @@ def test_safe_room_recovery_wakes_for_hunger_then_resumes_sleeping() -> None:
     assert resume.command == "sleep"
 
 
+def test_moria_research_reaches_the_entry_and_returns_to_mage_laboratory() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", moria_research=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    outward = (
+        ("Mage's Laboratory", "3019", "west"),
+        ("Mage's Bar", "3018", "north"),
+        ("Entrance to Mage's Guild", "3017", "north"),
+        ("Main Street", "3012", "west"),
+        ("Inside the West Gate of Midgaard", "3040", "west"),
+        ("Outside the West Gate of Midgaard", "3041", "north"),
+    )
+    for room_name, room_vnum, expected_command in outward:
+        decision = policy.next_decision(
+            CharacterState(room_name=room_name, room_vnum=room_vnum, position=7)
+        )
+        assert decision is not None
+        assert decision.command == expected_command
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    moria = CharacterState(
+        area="Moria", room_name="East trail around Midgaard", room_vnum="4000", position=7
+    )
+    decision = policy.next_decision(moria)
+    assert decision is not None
+    assert decision.command == "look"
+    policy.after_command(decision)
+    policy.prompt_ready = True
+
+    decision = policy.next_decision(moria)
+    assert decision is not None
+    assert decision.command == "south"
+    policy.after_command(decision)
+    policy.prompt_ready = True
+
+    return_path = (
+        ("Outside the West Gate of Midgaard", "3041", "east"),
+        ("Inside the West Gate of Midgaard", "3040", "east"),
+        ("Main Street", "3012", "south"),
+        ("Entrance to Mage's Guild", "3017", "south"),
+        ("Mage's Bar", "3018", "east"),
+    )
+    for room_name, room_vnum, expected_command in return_path:
+        decision = policy.next_decision(
+            CharacterState(room_name=room_name, room_vnum=room_vnum, position=7)
+        )
+        assert decision is not None
+        assert decision.command == expected_command
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
+    )
+    assert decision is not None
+    assert decision.command == "save"
+
+
 def test_arena_policy_returns_from_midgaard_bakery_to_mud_school() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True

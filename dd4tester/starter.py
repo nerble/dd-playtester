@@ -84,6 +84,7 @@ class StarterPolicy:
         resupply_only: bool = False,
         city_restock: bool = False,
         guildmaster_research: bool = False,
+        moria_research: bool = False,
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
@@ -93,6 +94,7 @@ class StarterPolicy:
         self.resupply_only = resupply_only
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
+        self.moria_research = moria_research
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -142,6 +144,8 @@ class StarterPolicy:
         self.insufficient_funds = False
         self.city_restock_step = 0
         self.guildmaster_step = 0
+        self.moria_seen = False
+        self.moria_step = 0
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
@@ -524,6 +528,17 @@ class StarterPolicy:
             self.stage = "complete"
             return BotDecision("quit", "mage Guildmaster route research complete")
 
+        if self.moria_research:
+            research = self._moria_research_decision(state)
+            if research is not None:
+                return research
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", "persist Moria approach route evidence")
+            self.stage = "complete"
+            return BotDecision("quit", "Moria approach route research complete")
+
         if room_vnum == "3724" or room_name == "general supplies":
             return self._store_decision()
 
@@ -743,6 +758,55 @@ class StarterPolicy:
             return None
         self.failure = (
             "no verified Mage Guild route for "
+            f"room {state.room_name!r} ({state.room_vnum})"
+        )
+        return None
+
+    def _moria_research_decision(self, state: CharacterState) -> BotDecision | None:
+        """Verify the safe Midgaard-to-Moria approach, then return to the Mage Guild."""
+        room_vnum = state.room_vnum
+        room_name = (state.room_name or "").casefold()
+        area = (state.area or "").casefold()
+
+        if area == "moria":
+            if self.moria_step == 0:
+                self.moria_seen = True
+                self.moria_step = 1
+                return BotDecision("look", "record the Moria entry room before returning")
+            return BotDecision("south", "return from Moria to the West Gate")
+
+        if self.moria_seen:
+            if "outside the west gate" in room_name:
+                return BotDecision("east", "return through Midgaard's West Gate")
+            if "inside the west gate" in room_name:
+                return BotDecision("east", "return from the West Gate to Main Street")
+            return_routes = {
+                "3012": "south",
+                "3017": "south",
+                "3018": "east",
+            }
+            direction = return_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(direction, "return from Moria to the Mage Guild")
+            if room_vnum == "3019" or "mage's laboratory" in room_name:
+                return None
+        else:
+            outward_routes = {
+                "3019": "west",
+                "3018": "north",
+                "3017": "north",
+                "3012": "west",
+            }
+            direction = outward_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(direction, "follow the verified route to Midgaard's West Gate")
+            if "inside the west gate" in room_name:
+                return BotDecision("west", "leave Midgaard through the West Gate")
+            if "outside the west gate" in room_name:
+                return BotDecision("north", "enter Moria from the West Gate")
+
+        self.failure = (
+            "no verified Moria approach route for "
             f"room {state.room_name!r} ({state.room_vnum})"
         )
         return None
@@ -1092,6 +1156,7 @@ class StarterBotRunner:
         resupply_only: bool = False,
         city_restock: bool = False,
         guildmaster_research: bool = False,
+        moria_research: bool = False,
     ) -> None:
         self.spec = spec
         self.profile_path = profile_path
@@ -1102,6 +1167,7 @@ class StarterBotRunner:
         self.resupply_only = resupply_only
         self.city_restock = city_restock
         self.guildmaster_research = guildmaster_research
+        self.moria_research = moria_research
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
@@ -1111,6 +1177,8 @@ class StarterBotRunner:
                 if self.city_restock
                 else f"guildmaster:{self.spec.name}"
                 if self.guildmaster_research
+                else f"moria:{self.spec.name}"
+                if self.moria_research
                 else f"resupply:{self.spec.name}"
                 if self.resupply_only
                 else f"starter:{self.spec.name}"
@@ -1124,6 +1192,8 @@ class StarterBotRunner:
                 if self.city_restock
                 else f"guildmaster-{self.spec.name}"
                 if self.guildmaster_research
+                else f"moria-{self.spec.name}"
+                if self.moria_research
                 else f"resupply-{self.spec.name}"
                 if self.resupply_only
                 else f"starter-{self.spec.name}"
@@ -1185,6 +1255,7 @@ class StarterBotRunner:
                 resupply_only=self.resupply_only,
                 city_restock=self.city_restock,
                 guildmaster_research=self.guildmaster_research,
+                moria_research=self.moria_research,
             )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
@@ -1277,6 +1348,7 @@ class StarterBotRunner:
                     "resupply_only": self.resupply_only,
                     "city_restock": self.city_restock,
                     "guildmaster_research": self.guildmaster_research,
+                    "moria_research": self.moria_research,
                 },
             )
             storage.finish_run(run_id, status="success")
@@ -1398,6 +1470,16 @@ async def run_guildmaster_research_profile(path: str | Path) -> RunResult:
         spec,
         profile_path,
         guildmaster_research=True,
+    ).run()
+
+
+async def run_moria_research_profile(path: str | Path) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        moria_research=True,
     ).run()
 
 
