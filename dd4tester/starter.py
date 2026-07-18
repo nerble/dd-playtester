@@ -141,6 +141,7 @@ class StarterPolicy:
         self.waiting_for_move = False
         self.room_targets: dict[str, list[str]] = {}
         self.defeated_targets: dict[str, set[str]] = {}
+        self.missing_targets: dict[str, set[str]] = {}
         self.active_target: str | None = None
         self.pending_loot_rooms: set[str] = set()
         self.cleared_training_rooms: set[str] = set()
@@ -168,6 +169,7 @@ class StarterPolicy:
         self.fastwalk_return_index = 0
         self.fastwalk_explore_step = 0
         self.fastwalk_attack_started = False
+        self.fastwalk_target_absent = False
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -240,7 +242,9 @@ class StarterPolicy:
         if "aren't here" in folded or "do not see that here" in folded:
             self.combat_active = False
             if self.current_room and self.active_target:
-                self.defeated_targets.setdefault(self.current_room, set()).add(
+                if self.active_target == self.fastwalk_attack_target:
+                    self.fastwalk_target_absent = True
+                self.missing_targets.setdefault(self.current_room, set()).add(
                     self.active_target
                 )
                 targets = self.room_targets.get(self.current_room, [])
@@ -333,6 +337,14 @@ class StarterPolicy:
             self.food_ordered = True
         elif decision.command == "buy skin":
             self.skin_ordered = True
+        elif (
+            decision.command == "look"
+            and self.fastwalk_route is not None
+            and self.fastwalk_explore_step == 2
+            and self.current_room
+        ):
+            # A mobile can wander between visits; make this probe depend on this look.
+            self.room_targets[self.current_room] = []
         if decision.command == "sleep" and self.waiting_for_heal:
             self.health_check_due = time.monotonic() + _HEALTH_CHECK_WAIT_SECONDS
         if decision.command == "quit":
@@ -988,6 +1000,16 @@ class StarterPolicy:
                         and not self.fastwalk_attack_started
                     ):
                         self.fastwalk_attack_started = True
+                        known_targets = self.room_targets.get(room_vnum or "", [])
+                        if not any(
+                            _targets_match(target, self.fastwalk_attack_target)
+                            for target in known_targets
+                        ):
+                            self.fastwalk_explore_step = 3
+                            return BotDecision(
+                                _opposite_direction(self.fastwalk_explore_direction),
+                                "withdraw because the requested mobile was absent from the fresh room snapshot",
+                            )
                         self.active_target = self.fastwalk_attack_target
                         return BotDecision(
                             f"kill {_target_keyword(self.fastwalk_attack_target)}",
@@ -1636,6 +1658,11 @@ class StarterBotRunner:
                     "fastwalk_route": self.fastwalk_route.name if self.fastwalk_route else None,
                     "fastwalk_explore_direction": self.fastwalk_explore_direction,
                     "fastwalk_attack_target": self.fastwalk_attack_target,
+                    "fastwalk_target_absent": policy.fastwalk_target_absent,
+                    "missing_targets": {
+                        room: sorted(targets)
+                        for room, targets in sorted(policy.missing_targets.items())
+                    },
                     "moria_research": self.moria_research,
                     "moria_depth": self.moria_depth,
                 },
@@ -1978,6 +2005,11 @@ def _training_targets(text: str) -> list[str]:
 
 def _target_keyword(target: str) -> str:
     return target.rsplit(maxsplit=1)[-1]
+
+
+def _targets_match(observed: str, requested: str) -> bool:
+    """Treat a requested descriptor and the MUD's shorter mobile name as equivalent."""
+    return observed == requested or _target_keyword(observed) == _target_keyword(requested)
 
 
 def _arena_target_priority(target: str) -> tuple[int, str]:

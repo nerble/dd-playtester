@@ -755,6 +755,26 @@ def test_missing_arena_target_is_removed_before_the_next_decision() -> None:
     assert policy.combat_active is False
     assert policy.active_target is None
     assert policy.room_targets["3728"] == []
+    assert policy.defeated_targets.get("3728", set()) == set()
+    assert policy.missing_targets["3728"] == {"wild boar"}
+
+
+def test_fastwalk_target_absence_is_recorded_without_marking_a_kill() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_attack_target="kobold",
+    )
+    policy.current_room = "4018"
+    policy.active_target = "kobold"
+    policy.room_targets["4018"] = ["kobold"]
+
+    policy.observe_text("They aren't here.")
+
+    assert policy.fastwalk_target_absent is True
+    assert policy.defeated_targets.get("4018", set()) == set()
+    assert policy.missing_targets["4018"] == {"kobold"}
 
 
 def test_completed_arena_patrol_forgets_stale_room_sightings() -> None:
@@ -1243,6 +1263,7 @@ def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     policy.fastwalk_outbound_index = len(route.commands)
     policy.fastwalk_arrival_observed = True
     policy.fastwalk_explore_step = 2
+    policy.room_targets["4018"] = ["kobold"]
 
     decision = policy.next_decision(
         CharacterState(room_name="The cave", room_vnum="4018", position=7)
@@ -1251,6 +1272,32 @@ def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     assert decision is not None
     assert decision.command == "kill kobold"
     assert policy.active_target == "ugly kobold"
+
+
+def test_fastwalk_probe_withdraws_when_fresh_look_does_not_show_requested_target() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+        fastwalk_attack_target="kobold",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_explore_step = 2
+    policy.room_targets["4018"] = []
+
+    decision = policy.next_decision(
+        CharacterState(room_name="The cave", room_vnum="4018", position=7)
+    )
+
+    assert decision is not None
+    assert decision.command == "south"
+    assert policy.active_target is None
 
 
 def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> None:
