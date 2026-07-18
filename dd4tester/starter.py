@@ -1488,7 +1488,7 @@ class StarterBotRunner:
                     "guildmaster_research": self.guildmaster_research,
                     "magic_shop_research": self.magic_shop_research,
                     "magic_shop_buy_fly": self.magic_shop_buy_fly,
-                    "magic_shop_purchase_failed": self.magic_shop_purchase_failed,
+                    "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
                     "moria_research": self.moria_research,
                     "moria_depth": self.moria_depth,
                 },
