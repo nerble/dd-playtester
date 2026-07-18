@@ -76,6 +76,7 @@ _MUD_SCHOOL_POLICY = ProgressionPolicy(
         "Live run 56: level-2 character had 325 XP to the next level and available practice points.",
         "Live mage runs 65, 69, and 76 reached levels 3, 4, and 5 respectively; run 76 saved after a wolf level-up.",
         "Live run 76: the level-4-to-5 arena segment used Safety recovery, a Midgaard food-and-water restock, and returned to Mud School safely.",
+        "Live run 82: the paced arena policy reached level 6, saved, and quit after a giant-lizard level-up.",
     ),
     practice_skill=None,
 )
