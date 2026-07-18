@@ -157,6 +157,10 @@ class StarterPolicy:
                 self.defeated_targets.setdefault(self.current_room, set()).add(
                     self.active_target
                 )
+                targets = self.room_targets.get(self.current_room, [])
+                self.room_targets[self.current_room] = [
+                    target for target in targets if target != self.active_target
+                ]
             self.active_target = None
         if "too relaxed" in folded or "you must be standing" in folded:
             self.needs_stand = True

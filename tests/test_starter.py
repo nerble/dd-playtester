@@ -628,6 +628,19 @@ def test_arena_research_continues_at_level_two_until_its_target() -> None:
     assert "level 3" in leave.reason
 
 
+def test_missing_arena_target_is_removed_before_the_next_decision() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
+    policy.current_room = "3728"
+    policy.active_target = "wild boar"
+    policy.room_targets["3728"] = ["wild boar"]
+
+    policy.observe_text("They aren't here.")
+
+    assert policy.combat_active is False
+    assert policy.active_target is None
+    assert policy.room_targets["3728"] == []
+
+
 def test_arena_safety_room_reenters_the_mud_school_portal() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
     policy.in_world = True
