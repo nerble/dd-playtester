@@ -1323,6 +1323,16 @@ def test_fastwalk_probe_withdraws_when_fresh_look_does_not_show_requested_target
     assert decision is not None
     assert decision.command == "south"
     assert policy.active_target is None
+    assert policy.fastwalk_attack_started is False
+    assert policy.fastwalk_target_absent is True
+    policy.after_command(decision)
+    policy.prompt_ready = True
+
+    endpoint = CharacterState(room_name="The tunnel", room_vnum="4014", position=7)
+    recall = policy.next_decision(endpoint)
+
+    assert recall is not None
+    assert recall.command == "recall"
 
 
 def test_fastwalk_research_loots_confirmed_endpoint_kill_before_recall() -> None:

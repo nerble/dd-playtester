@@ -1045,7 +1045,7 @@ class StarterPolicy:
                         self.fastwalk_attack_target is not None
                         and not self.fastwalk_attack_started
                     ):
-                        self.fastwalk_attack_started = True
+                        self.fastwalk_target_absent = True
                         self.fastwalk_explore_step = 3
                         return BotDecision(
                             _opposite_direction(self.fastwalk_explore_direction),
