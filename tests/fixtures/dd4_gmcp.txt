@@ -1,0 +1,7 @@
+Char.Base { "name": "FixtureGuy", "race": "Human", "class": "Mage", "subclass": "none", "sex": "1" }
+Char.Vitals { "hp": "60", "mana": "180", "move": "160", "maxhp": "60", "maxmana": "180", "maxmove": "160", "position": "7", "form": "normal", "rage": "50", "maxrage": "100" }
+Char.Stats { "str": "12", "int": "20", "wis": "15", "dex": "15", "con": "12", "str_mod": "12", "int_mod": "20", "wis_mod": "15", "dex_mod": "15", "con_mod": "12", "hitroll": "50000", "damroll": "50000", "wimpy": "0", "carry_num": "4", "maxcarry_num": "37", "carry_wt": "13", "maxcarry_wt": "140", "ac": "50000", "fame": "0", "save_vs": "50000", "crit": "50000", "swift": "50000", "r_acid": "50000", "r_lightning": "50000", "r_heat": "50000", "r_cold": "50000" }
+Char.Worth { "alignment": "50000", "level": "2", "xp": "2300", "maxxp": "4000", "xptnl": "1700", "xplvl": "1700", "practice": "1", "platinum": "0", "gold": "4", "silver": "8", "copper": "2", "steel": "0", "titanium": "0", "adamantite": "0", "electrum": "0", "starmetal": "0" }
+Char.Affect [ [] ]
+Char.Items [ [ [] ] ]
+Room.Info { "area": "Midgaard", "name": "The Temple Of Midgaard", "sector": "0", "sector_text": "inside", "description": "You are in the southern end of the temple hall in the Temple of Midgaard.", "flags": "no_mob indoors safe", "vnum": "3001", "exits": { "n": "3054", "s": "3005", "u": "3725" } }

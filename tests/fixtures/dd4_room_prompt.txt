@@ -1,0 +1,4 @@
+The Temple Of Midgaard
+[Exits: north south up]
+You are in the southern end of the temple hall in the Temple of Midgaard.
+<60/60 hits 180/180 mana 160/160 move [Midgaard]>

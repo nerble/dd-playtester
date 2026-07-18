@@ -1,0 +1,25 @@
+name: login
+host: dragons-domain.org
+port: 8888
+timeout: 5
+database: runs/dd4tester.sqlite3
+transcript_dir: transcripts
+steps:
+  - wait_for: "Name:"
+    timeout: 5
+  - send_env: "DD4_USERNAME"
+    timeout: 1
+  - wait_for: "Password:"
+    timeout: 5
+  - send_env: "DD4_PASSWORD"
+    timeout: 1
+  - wait_for: "To Enter the Dragons Domain"
+    timeout: 10
+  - send: ""
+    timeout: 5
+  - wait_for: " hits "
+    timeout: 10
+  - send: "look"
+    timeout: 3
+  - send: "quit"
+    timeout: 3
