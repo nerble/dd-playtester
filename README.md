@@ -78,6 +78,32 @@ verified leveling policy is added. It never fabricates a route or repeatedly
 grinds unknown content; this safety boundary lets future policies extend the
 same character toward HERO without losing campaign history.
 
+## Progression Evidence
+
+Inspect the currently registered policy for a class and level before launching a
+campaign segment:
+
+```powershell
+python -m dd4tester show-policies --level 2 --class mage
+```
+
+The registry distinguishes `verified`, `research`, and `unavailable` policies.
+The starter band is verified through level 2. Existing live DD4 captures register
+the Mud School, Loremaster, and arena as a research-gated level-2-to-10 band for
+every supported base class, including its class-specific practice candidate. The
+campaign will checkpoint rather than attack until that combat and XP loop has
+been demonstrated in sanitized evidence.
+
+Export a compact evidence record from a bounded research run for review:
+
+```powershell
+python -m dd4tester collect-evidence 56
+python -m dd4tester collect-evidence 56 --output evidence/run-56.json
+```
+
+The local `evidence/` output directory is ignored by Git. Exports omit commands,
+credentials, and raw response text.
+
 ## Run data
 
 With the default `scenarios/login.yaml` values, running from this repository root writes:

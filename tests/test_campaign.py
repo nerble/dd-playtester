@@ -21,7 +21,7 @@ def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> No
 
     assert result.status == "blocked"
     assert result.state["level"] == 2
-    assert "No verified leveling policy" in result.message
+    assert "Policy mud-school-2-10 is research-gated" in result.message
     assert calls == [250]
 
     with RunStorage(database) as storage:
@@ -44,7 +44,7 @@ def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> No
 
     assert resumed.campaign_id == result.campaign_id
     assert resumed.status == "blocked"
-    assert "No verified leveling policy" in resumed.message
+    assert "Policy mud-school-2-10 is research-gated" in resumed.message
 
 
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:

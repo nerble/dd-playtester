@@ -153,6 +153,7 @@ activemq-data/
 runs/
 transcripts/
 reports/
+evidence/
 .venv
 env/
 venv/

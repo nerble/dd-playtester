@@ -1,0 +1,116 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+
+from .character import CLASSES
+
+
+CLASS_PRACTICE_SKILLS = {
+    "mage": "magic missile",
+    "cleric": "cure light",
+    "thief": "backstab",
+    "warrior": "kick",
+    "psionic": "mind thrust",
+    "shifter": "shapeshift",
+    "brawler": "kick",
+    "ranger": "kick",
+    "smithy": "repair",
+}
+
+
+@dataclass(frozen=True)
+class ProgressionPolicy:
+    policy_id: str
+    minimum_level: int
+    maximum_level: int | None
+    status: str
+    execution: str | None
+    summary: str
+    evidence: tuple[str, ...]
+    practice_skill: str | None
+
+    @property
+    def executable(self) -> bool:
+        return self.execution is not None and self.status == "verified"
+
+    def blocks_message(self, character_class: str) -> str:
+        if self.status == "research":
+            return (
+                f"Policy {self.policy_id} is research-gated for {character_class}. "
+                "Its route is observed, but its combat and XP loop are not yet verified."
+            )
+        return (
+            f"No policy is registered for level {self.minimum_level}+ "
+            f"{character_class} progression."
+        )
+
+
+_STARTER_POLICY = ProgressionPolicy(
+    policy_id="starter-0-2",
+    minimum_level=0,
+    maximum_level=2,
+    status="verified",
+    execution="starter",
+    summary="Character creation and the complete Mud School tutorial through level 2.",
+    evidence=(
+        "Live starter run reached level 2, saved, and quit (run 60).",
+        "Policy is generic over the supported race, gender, and base-class choices.",
+    ),
+    practice_skill=None,
+)
+
+_MUD_SCHOOL_POLICY = ProgressionPolicy(
+    policy_id="mud-school-2-10",
+    minimum_level=2,
+    maximum_level=10,
+    status="research",
+    execution=None,
+    summary=(
+        "Mud School orientation, the Loremaster, and the small arena observed for "
+        "the level-2 to level-10 band."
+    ),
+    evidence=(
+        "Live run 56: Mud School entrance vnum 3725 links to Loremaster vnum 3726 and arena vnum 3728.",
+        "Live run 56: room text says the Loremaster trains recruits until level 10.",
+        "Live run 57: arena rooms 3728-3732 contained a giant lizard and wild boar, with safe up exits.",
+        "Live run 56: level-2 character had 325 XP to the next level and available practice points.",
+    ),
+    practice_skill=None,
+)
+
+_UNAVAILABLE_POLICY = ProgressionPolicy(
+    policy_id="unregistered-10-100",
+    minimum_level=10,
+    maximum_level=None,
+    status="unavailable",
+    execution=None,
+    summary="No evidence-backed route, combat loop, or recovery plan has been registered.",
+    evidence=(),
+    practice_skill=None,
+)
+
+
+def policy_for(level: int | float | None, character_class: str) -> ProgressionPolicy:
+    normalized_level = int(level or 0)
+    canonical_class = canonical_class_name(character_class)
+    if normalized_level < 2:
+        return _STARTER_POLICY
+    if normalized_level < 10:
+        return replace(
+            _MUD_SCHOOL_POLICY,
+            practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
+        )
+    return replace(
+        _UNAVAILABLE_POLICY,
+        minimum_level=normalized_level,
+        practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
+    )
+
+
+def canonical_class_name(value: str) -> str:
+    normalized = " ".join(value.strip().casefold().replace("-", " ").split())
+    try:
+        return CLASSES[normalized]
+    except KeyError as exc:
+        available = ", ".join(sorted(CLASSES))
+        raise ValueError(f"unknown class {value!r}; choose one of: {available}") from exc

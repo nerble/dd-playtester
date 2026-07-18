@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from .campaign import run_campaign_file
+from .evidence import collect_run_evidence, render_evidence_json
+from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
 from .runner import run_scenario_file
 from .starter import run_starter_profile
@@ -132,6 +134,34 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_DATABASE,
         help=f"SQLite database path, default: {DEFAULT_DATABASE}",
     )
+
+    show_policies_parser = subcommands.add_parser(
+        "show-policies",
+        help="show the evidence and status for a class and level band",
+    )
+    show_policies_parser.add_argument("--level", type=int, required=True)
+    show_policies_parser.add_argument(
+        "--class",
+        dest="character_class",
+        required=True,
+    )
+
+    collect_evidence_parser = subcommands.add_parser(
+        "collect-evidence",
+        help="export a redaction-safe evidence record for a stored run",
+    )
+    collect_evidence_parser.add_argument("run_id", type=int, help="stored run id")
+    collect_evidence_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    collect_evidence_parser.add_argument(
+        "--output",
+        type=Path,
+        help="write JSON evidence to this file instead of standard output",
+    )
     return parser
 
 
@@ -195,6 +225,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "show-campaign":
         return show_campaign(args.campaign_id, database=args.database)
+
+    if args.command == "show-policies":
+        return show_policies(args.level, args.character_class)
+
+    if args.command == "collect-evidence":
+        return collect_evidence(args.run_id, database=args.database, output=args.output)
 
     parser.error(f"Unknown command: {args.command}")
     return 2
@@ -394,6 +430,53 @@ def show_campaign(campaign_id: int, *, database: Path) -> int:
                 ]
             )
         )
+    return 0
+
+
+def show_policies(level: int, character_class: str) -> int:
+    if level < 0 or level > 100:
+        print("--level must be between 0 and 100", file=sys.stderr)
+        return 2
+    try:
+        policy = policy_for(level, character_class)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    print(f"Policy: {policy.policy_id}")
+    print(f"Level band: {policy.minimum_level}-{policy.maximum_level or 100}")
+    print(f"Status: {policy.status}")
+    print(f"Summary: {policy.summary}")
+    print(f"Practice candidate: {policy.practice_skill or '-'}")
+    print("Evidence:")
+    if policy.evidence:
+        for item in policy.evidence:
+            print(f"- {item}")
+    else:
+        print("- None recorded.")
+    return 0
+
+
+def collect_evidence(run_id: int, *, database: Path, output: Path | None) -> int:
+    if run_id < 1:
+        print("run_id must be at least 1", file=sys.stderr)
+        return 2
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+    try:
+        with RunStorage(database) as storage:
+            rendered = render_evidence_json(collect_run_evidence(storage, run_id))
+    except LookupError:
+        print(f"No run with id {run_id} in {database.resolve()}", file=sys.stderr)
+        return 1
+
+    if output is None:
+        print(rendered, end="")
+        return 0
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered, encoding="utf-8")
+    print(f"Evidence: {output.resolve()}")
     return 0
 
 

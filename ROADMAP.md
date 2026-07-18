@@ -97,3 +97,14 @@ This completes the campaign execution foundation, not a claim that every class
 already has a verified level-2-to-HERO policy. The next progression work must
 collect live evidence for safe XP routes, class abilities, recovery, equipment,
 and failure handling before registering each new level-band policy.
+
+## Progression Evidence Cycle 1
+
+- Registered the level-2-to-10 Mud School band as research-gated for every base
+  class, with class-specific practice candidates.
+- Preserved the live evidence: the entrance links to the Loremaster and arena;
+  the Loremaster advertises training through level 10; and observed arena rooms
+  contain low-tier opponents with safe exits.
+- Kept the policy non-executable until a bounded live run proves the combat, XP,
+  recovery, and exit sequence. Campaigns now identify this precise gate instead
+  of reporting only a generic missing policy.

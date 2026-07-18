@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .character import CharacterSpec, load_character_spec
+from .progression import ProgressionPolicy, policy_for
 from .runner import RunResult
 from .scenario import load_yaml_mapping
 from .starter import StarterBotRunner
@@ -117,6 +118,7 @@ class CampaignRunner:
                     state,
                 )
 
+            policy = self._policy_for_state(state)
             stalled = int(state.get("campaign_stalled_segments", 0))
             if stalled >= self.spec.max_stalled_segments:
                 message = f"Campaign stalled for {stalled} completed segment(s)."
@@ -124,7 +126,7 @@ class CampaignRunner:
                     storage,
                     campaign_id,
                     checkpoint_id,
-                    phase=_phase_for_state(state),
+                    phase=policy.policy_id,
                     reason="stalled",
                     state=state,
                 )
@@ -138,24 +140,20 @@ class CampaignRunner:
                     storage,
                     campaign_id,
                     checkpoint_id,
-                    phase=_phase_for_state(state),
+                    phase=policy.policy_id,
                     reason="budget_exhausted",
                     state=state,
                 )
                 storage.finish_campaign(campaign_id, status="blocked", error=budget_failure)
                 return CampaignResult(campaign_id, "blocked", checkpoint_id, budget_failure, state)
 
-            phase = _phase_for_state(state)
-            if phase != "starter":
-                message = (
-                    f"No verified {phase} policy is registered for level {_level(state)}. "
-                    "Campaign stopped safely at its checkpoint."
-                )
+            if not policy.executable:
+                message = policy.blocks_message(self.spec.character.character_class)
                 checkpoint_id = self._checkpoint(
                     storage,
                     campaign_id,
                     checkpoint_id,
-                    phase=phase,
+                    phase=policy.policy_id,
                     reason="awaiting_policy",
                     state=state,
                 )
@@ -168,6 +166,9 @@ class CampaignRunner:
                 state,
                 totals,
             )
+
+    def _policy_for_state(self, state: dict[str, Any]) -> ProgressionPolicy:
+        return policy_for(_level(state), self.spec.character.character_class)
 
     def _open_campaign(self, storage: RunStorage) -> tuple[int, dict[str, Any]]:
         campaign = None if self.force_new else storage.get_latest_campaign_for_config(
@@ -305,10 +306,14 @@ class CampaignRunner:
             storage.finish_campaign(campaign_id, status="blocked", error=message)
             return CampaignResult(campaign_id, "blocked", checkpoint_id, message, end_state)
 
-        message = (
-            f"Starter segment completed at level {_level(end_state)}. "
-            "No verified leveling policy is registered yet."
-        )
+        next_policy = self._policy_for_state(end_state)
+        if next_policy.executable:
+            message = (
+                f"Starter segment completed at level {_level(end_state)}. "
+                "Campaign checkpointed for the next starter segment."
+            )
+        else:
+            message = next_policy.blocks_message(self.spec.character.character_class)
         storage.finish_campaign(campaign_id, status="blocked", error=message)
         return CampaignResult(campaign_id, "blocked", checkpoint_id, message, end_state)
 
@@ -356,10 +361,6 @@ def _checkpoint_state(checkpoint: Any) -> dict[str, Any]:
     if checkpoint is None:
         return {}
     return dict(json.loads(checkpoint["state_json"]))
-
-
-def _phase_for_state(state: dict[str, Any]) -> str:
-    return "starter" if _level(state) < 2 else "leveling"
 
 
 def _level(state: dict[str, Any]) -> int:

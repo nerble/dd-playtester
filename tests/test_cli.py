@@ -148,6 +148,17 @@ def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
     assert "1\tstarter\tsuccess\t7\t42\t12.5s\t-" in captured.out
 
 
+def test_show_policies_displays_evidence_and_practice_candidate(capsys) -> None:
+    exit_code = main(["show-policies", "--level", "2", "--class", "mage"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Policy: mud-school-2-10" in captured.out
+    assert "Status: research" in captured.out
+    assert "Practice candidate: magic missile" in captured.out
+    assert "Live run 56" in captured.out
+
+
 def _create_recorded_run(tmp_path) -> tuple[Path, Path]:
     database = tmp_path / "runs.sqlite3"
     storage = RunStorage(database)
