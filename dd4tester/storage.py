@@ -162,6 +162,19 @@ class RunStorage:
         )
         return cursor.fetchone()
 
+    def list_events(self, run_id: int) -> list[sqlite3.Row]:
+        """Return the recorded evidence for a run in chronological storage order."""
+        cursor = self.connection.execute(
+            """
+            SELECT id, run_id, timestamp, kind, payload_json
+            FROM events
+            WHERE run_id = ?
+            ORDER BY id
+            """,
+            (run_id,),
+        )
+        return list(cursor.fetchall())
+
     def list_state_snapshots(self, run_id: int) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """

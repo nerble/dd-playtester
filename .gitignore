@@ -152,6 +152,7 @@ activemq-data/
 .envrc
 runs/
 transcripts/
+reports/
 .venv
 env/
 venv/

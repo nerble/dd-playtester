@@ -83,3 +83,16 @@ python -m dd4tester show-transcript transcripts/login-1.jsonl --raw
 python -m dd4tester show-state 1
 python -m dd4tester show-state 1 --history
 ```
+
+Create a deterministic run report from the stored events and state snapshots:
+
+```powershell
+python -m dd4tester report 1
+python -m dd4tester report 1 --format json --output reports/run-1.json
+python -m dd4tester report 1 --output reports/run-1.md
+```
+
+Reports cover progression, failures, health and combat signals, and concise
+first-person commentary derived from recorded evidence. They do not make AI
+decisions or invent events. The optional `reports/` directory is local output
+and is ignored by Git.

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .report import build_run_report, render_json, render_markdown
 from .runner import run_scenario_file
 from .starter import run_starter_profile
 from .storage import RunStorage
@@ -74,6 +75,35 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="list all state snapshot revisions instead of the latest state",
     )
+
+    report_parser = subcommands.add_parser(
+        "report",
+        help="render a Markdown or JSON summary of a stored run",
+    )
+    report_parser.add_argument("run_id", type=int, help="stored run id")
+    report_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    report_parser.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="report format, default: markdown",
+    )
+    report_parser.add_argument(
+        "--output",
+        type=Path,
+        help="write the report to this file instead of standard output",
+    )
+    report_parser.add_argument(
+        "--commentary-limit",
+        type=int,
+        default=20,
+        help="maximum representative commentary entries, default: 20",
+    )
     return parser
 
 
@@ -111,6 +141,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "show-state":
         return show_state(args.run_id, database=args.database, history=args.history)
+
+    if args.command == "report":
+        return show_report(
+            args.run_id,
+            database=args.database,
+            report_format=args.format,
+            output=args.output,
+            commentary_limit=args.commentary_limit,
+        )
 
     parser.error(f"Unknown command: {args.command}")
     return 2
@@ -222,6 +261,46 @@ def show_state(run_id: int, *, database: Path, history: bool) -> int:
                 ]
             )
         )
+    return 0
+
+
+def show_report(
+    run_id: int,
+    *,
+    database: Path,
+    report_format: str,
+    output: Path | None,
+    commentary_limit: int,
+) -> int:
+    if run_id < 1:
+        print("run_id must be at least 1", file=sys.stderr)
+        return 2
+    if commentary_limit < 1:
+        print("--commentary-limit must be at least 1", file=sys.stderr)
+        return 2
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+
+    try:
+        with RunStorage(database) as storage:
+            report = build_run_report(
+                storage,
+                run_id,
+                commentary_limit=commentary_limit,
+            )
+    except LookupError:
+        print(f"No run with id {run_id} in {database.resolve()}", file=sys.stderr)
+        return 1
+
+    rendered = render_json(report) if report_format == "json" else render_markdown(report)
+    if output is None:
+        print(rendered, end="")
+        return 0
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered, encoding="utf-8")
+    print(f"Report: {output.resolve()}")
     return 0
 
 

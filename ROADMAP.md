@@ -21,8 +21,8 @@ headlessly or through a visible Mudlet client in a Windows virtual machine.
 3. **Rule-based starter bot - complete.** Automate login, character
    creation/selection, the tutorial, basic movement, recovery, and safe failure
    handling.
-4. **Reports.** Produce Markdown and JSON summaries with progress, failures, balance
-   signals, and representative run-time commentary.
+4. **Reports - complete.** Produce Markdown and JSON summaries with progress, failures,
+   balance signals, and representative run-time commentary.
 5. **Campaign execution.** Add checkpoints, resume support, budgets, stuck detection,
    and controlled long-running progression.
 6. **Mudlet bridge.** Create a small Lua integration that exchanges commands, output,
@@ -73,3 +73,13 @@ DD4 capture, including text-room enrichment from the later `Room.Info` GMCP.
 Milestone 3 was validated live with a newly created Human female Mage targeting
 Warlock. The bot reached level 2 during advanced training, completed the final
 combat and provisioning steps, practiced `magic missile`, saved, and quit.
+
+## Milestone 4 Exit Criteria
+
+- `report` renders the same stored run as either concise Markdown or structured JSON.
+- Reports show level, XP, health, room, combat, item, and quest progress when observed.
+- Failed runs and detected character deaths are called out directly.
+- Balance signals report observed progression, combat, and low-health pressure without
+  claiming conclusions beyond the recorded evidence.
+- First-person commentary is deterministic, traceable to stored decisions and game
+  events, and never includes redacted commands or secrets.
