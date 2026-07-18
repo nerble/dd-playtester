@@ -115,6 +115,20 @@ python -m dd4tester collect-evidence 56 --output evidence/run-56.json
 The local `evidence/` output directory is ignored by Git. Exports omit commands,
 credentials, and raw response text.
 
+## Skill Prerequisites
+
+The package includes a versioned snapshot of DD4's server-side prerequisite
+definitions. Inspect a class skill before selecting practice targets:
+
+```powershell
+python -m dd4tester show-prereqs --class mage --skill fireball
+python -m dd4tester show-prereqs --class warlock --skill dragon-shield
+```
+
+The command reports every prerequisite and required percentage from the source
+snapshot. It is informational until live skill percentages are added to the
+character state model.
+
 When a level-2 profile and its password environment variable are available, run
 one bounded arena probe before enabling any automated level-2-to-10 policy:
 

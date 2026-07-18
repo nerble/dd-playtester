@@ -17,6 +17,9 @@ dev = ["pytest>=8.0"]
 where = ["."]
 include = ["dd4tester*"]
 
+[tool.setuptools.package-data]
+dd4tester = ["data/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

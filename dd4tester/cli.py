@@ -15,6 +15,7 @@ from .credentials import (
     configure_login,
 )
 from .evidence import collect_run_evidence, render_evidence_json
+from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
 from .runner import run_scenario_file
@@ -188,6 +189,18 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    show_prerequisites_parser = subcommands.add_parser(
+        "show-prereqs",
+        help="inspect DD4 skill prerequisites from the bundled server-source snapshot",
+    )
+    show_prerequisites_parser.add_argument("--class", dest="character_class", required=True)
+    show_prerequisites_parser.add_argument("--skill")
+    show_prerequisites_parser.add_argument(
+        "--snapshot",
+        type=Path,
+        help="use a prerequisite snapshot JSON file instead of the bundled snapshot",
+    )
+
     collect_evidence_parser = subcommands.add_parser(
         "collect-evidence",
         help="export a redaction-safe evidence record for a stored run",
@@ -306,6 +319,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "show-policies":
         return show_policies(args.level, args.character_class)
+
+    if args.command == "show-prereqs":
+        return show_prereqs(
+            args.character_class,
+            skill=args.skill,
+            snapshot=args.snapshot,
+        )
 
     if args.command == "collect-evidence":
         return collect_evidence(args.run_id, database=args.database, output=args.output)
@@ -532,6 +552,50 @@ def show_policies(level: int, character_class: str) -> int:
             print(f"- {item}")
     else:
         print("- None recorded.")
+    return 0
+
+
+def show_prereqs(
+    character_class: str,
+    *,
+    skill: str | None,
+    snapshot: Path | None,
+) -> int:
+    try:
+        source, entries = load_snapshot(snapshot)
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        print(f"Could not load prerequisite snapshot: {exc}", file=sys.stderr)
+        return 1
+
+    class_skills = known_skills(entries, class_name=character_class)
+    if not class_skills:
+        print(f"No prerequisite definitions found for {character_class!r}.", file=sys.stderr)
+        return 1
+
+    print(f"Source: {source['repository']} @ {source['revision']}")
+    if skill is None:
+        print(f"Class: {character_class}")
+        print(f"Skills with definitions: {len(class_skills)}")
+        print("Skills: " + ", ".join(class_skills))
+        return 0
+
+    requirements = requirements_for_skill(
+        entries,
+        class_name=character_class,
+        skill=skill,
+    )
+    if not requirements:
+        print(
+            f"No prerequisite definition found for {skill!r} in {character_class!r}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"Class: {character_class}")
+    print(f"Skill: {requirements[0].skill}")
+    print("Requirements:")
+    for requirement in requirements:
+        print(f"- {requirement.prerequisite}: {requirement.minimum_percent}%")
     return 0
 
 

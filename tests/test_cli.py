@@ -218,6 +218,15 @@ def test_show_policies_displays_evidence_and_practice_candidate(capsys) -> None:
     assert "Live run 56" in captured.out
 
 
+def test_show_prereqs_displays_bundled_skill_requirements(capsys) -> None:
+    exit_code = main(["show-prereqs", "--class", "mage", "--skill", "fireball"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Skill: fireball" in captured.out
+    assert "group evocation: 75%" in captured.out
+
+
 def _create_recorded_run(tmp_path) -> tuple[Path, Path]:
     database = tmp_path / "runs.sqlite3"
     storage = RunStorage(database)
