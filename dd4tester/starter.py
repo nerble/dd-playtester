@@ -807,6 +807,7 @@ class StarterPolicy:
                     "3901": "north",
                     "3902": "east",
                     "3903": "east",
+                    "3904": "east",
                 }
                 direction = outward_routes.get(room_vnum or "")
                 if direction is not None:
@@ -919,6 +920,7 @@ class StarterPolicy:
         return_routes = {
             "3903": "west",
             "3904": "west",
+            "3905": "west",
             "3902": "south",
             "3901": "south",
             "3900": "south",
