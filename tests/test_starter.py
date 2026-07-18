@@ -5,6 +5,7 @@ import pytest
 
 from dd4tester.character import CharacterSpec
 from dd4tester.connection import ReadResult
+from dd4tester.fastwalks import route_named
 from dd4tester.observations import GameEvent
 from dd4tester.starter import StarterBotRunner, StarterPolicy
 from dd4tester.state import CharacterState
@@ -1148,6 +1149,46 @@ def test_moria_research_reaches_the_entry_and_returns_to_mage_laboratory() -> No
     )
     assert decision is not None
     assert decision.command == "save"
+
+
+def test_fastwalk_research_requires_recall_and_reverses_when_needed() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(_spec(), "swordfish", fastwalk_route=route)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    recall = policy.next_decision(
+        CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
+    )
+    assert recall is not None
+    assert recall.command == "recall"
+    policy.after_command(recall)
+    policy.prompt_ready = True
+
+    first_step = policy.next_decision(
+        CharacterState(room_name="The Temple Of Midgaard", room_vnum="3001", position=7)
+    )
+    assert first_step is not None
+    assert first_step.command == "south"
+
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.prompt_ready = True
+    endpoint = CharacterState(room_name="Moria entrance", room_vnum="3900", position=7)
+    look = policy.next_decision(endpoint)
+    assert look is not None
+    assert look.command == "look"
+    policy.after_command(look)
+    policy.prompt_ready = True
+
+    return_recall = policy.next_decision(endpoint)
+    assert return_recall is not None
+    assert return_recall.command == "recall"
+    policy.after_command(return_recall)
+    policy.prompt_ready = True
+
+    reverse = policy.next_decision(endpoint)
+    assert reverse is not None
+    assert reverse.command == "south"
 
 
 def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> None:

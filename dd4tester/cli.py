@@ -23,6 +23,7 @@ from .runner import run_scenario_file
 from .starter import (
     run_arena_research_profile,
     run_guildmaster_research_profile,
+    run_fastwalk_research_profile,
     run_magic_shop_research_profile,
     run_moria_research_profile,
     run_restock_profile,
@@ -103,6 +104,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--buy-fly",
         action="store_true",
         help="buy, use, and verify one light blue travel potion after listing stock",
+    )
+    fastwalk_parser = subcommands.add_parser(
+        "fastwalk-research",
+        help="verify an official recall-origin route without initiating combat",
+    )
+    fastwalk_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
+    )
+    fastwalk_parser.add_argument(
+        "route",
+        help="official route name, for example: moria",
     )
     moria_parser = subcommands.add_parser(
         "moria-research",
@@ -379,6 +393,19 @@ def main(argv: list[str] | None = None) -> int:
             )
         except Exception as exc:
             print(f"Magic Shop research failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "fastwalk-research":
+        try:
+            result = asyncio.run(
+                run_fastwalk_research_profile(args.profile, args.route)
+            )
+        except Exception as exc:
+            print(f"Fastwalk research failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")

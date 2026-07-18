@@ -11,6 +11,7 @@ from typing import Any, Callable
 from .character import CharacterSpec, load_character_spec
 from .connection import ReadResult, TelnetConnection
 from .credentials import CredentialStoreError, load_character_password
+from .fastwalks import Fastwalk, route_named
 from .observations import GameEvent, ObservationParser
 from .runner import RunResult
 from .state import CharacterState
@@ -86,6 +87,7 @@ class StarterPolicy:
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
+        fastwalk_route: Fastwalk | None = None,
         moria_research: bool = False,
         moria_depth: int = 0,
     ) -> None:
@@ -101,6 +103,7 @@ class StarterPolicy:
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
+        self.fastwalk_route = fastwalk_route
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.stage = "login"
@@ -154,6 +157,11 @@ class StarterPolicy:
         self.guildmaster_step = 0
         self.magic_shop_step = 0
         self.magic_shop_purchase_failed = False
+        self.fastwalk_recall_started = False
+        self.fastwalk_arrival_observed = False
+        self.fastwalk_returning = False
+        self.fastwalk_outbound_index = 0
+        self.fastwalk_return_index = 0
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -552,6 +560,17 @@ class StarterPolicy:
             self.stage = "complete"
             return BotDecision("quit", "Magic Shop research complete")
 
+        if self.fastwalk_route is not None:
+            research = self._fastwalk_research_decision(state)
+            if research is not None:
+                return research
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", "persist official fastwalk route evidence")
+            self.stage = "complete"
+            return BotDecision("quit", "official fastwalk research complete")
+
         if self.moria_research:
             research = self._moria_research_decision(state)
             if research is not None:
@@ -924,6 +943,67 @@ class StarterPolicy:
         )
         return None
 
+    def _fastwalk_research_decision(self, state: CharacterState) -> BotDecision | None:
+        """Exercise an official recall-origin route one command at a time."""
+        assert self.fastwalk_route is not None
+        room_vnum = state.room_vnum
+        room_name = (state.room_name or "").casefold()
+
+        if not self.fastwalk_returning:
+            if not self.fastwalk_recall_started:
+                self.fastwalk_recall_started = True
+                return BotDecision("recall", "start the official recall-origin fastwalk")
+            if self.fastwalk_outbound_index == 0 and room_vnum != "3001":
+                self.failure = (
+                    "recall did not reach the Midgaard Temple before fastwalk "
+                    f"{self.fastwalk_route.name!r}"
+                )
+                return None
+            if self.fastwalk_outbound_index < len(self.fastwalk_route.commands):
+                command = self.fastwalk_route.commands[self.fastwalk_outbound_index]
+                self.fastwalk_outbound_index += 1
+                return BotDecision(command, f"follow official fastwalk {self.fastwalk_route.name}")
+            if not self.fastwalk_arrival_observed:
+                self.fastwalk_arrival_observed = True
+                return BotDecision("look", "record the official fastwalk endpoint")
+            self.fastwalk_returning = True
+            return BotDecision("recall", "return from the fastwalk endpoint")
+
+        if room_vnum == "3001":
+            home_routes = {
+                "3001": "south",
+                "3005": "south",
+                "3014": "west",
+                "3013": "west",
+                "3012": "south",
+                "3017": "south",
+                "3018": "east",
+            }
+            return BotDecision("south", "return from recall to the Mage Guild")
+        if room_vnum in {"3005", "3014", "3013", "3012", "3017", "3018"}:
+            home_routes = {
+                "3005": "south",
+                "3014": "west",
+                "3013": "west",
+                "3012": "south",
+                "3017": "south",
+                "3018": "east",
+            }
+            return BotDecision(home_routes[room_vnum], "return from recall to the Mage Guild")
+        if room_vnum == "3019" or "mage's laboratory" in room_name:
+            return None
+
+        reverse = _reverse_fastwalk_commands(self.fastwalk_route.commands)
+        if self.fastwalk_return_index >= len(reverse):
+            self.failure = (
+                "fastwalk return did not reach Midgaard Temple or Mage Guild from "
+                f"room {state.room_name!r} ({state.room_vnum})"
+            )
+            return None
+        command = reverse[self.fastwalk_return_index]
+        self.fastwalk_return_index += 1
+        return BotDecision(command, "reverse the official fastwalk after recall failed")
+
     def _moria_return_decision(self, state: CharacterState) -> BotDecision:
         return_routes = {
             "3903": "west",
@@ -1292,6 +1372,7 @@ class StarterBotRunner:
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
+        fastwalk_route: Fastwalk | None = None,
         moria_research: bool = False,
         moria_depth: int = 0,
     ) -> None:
@@ -1306,6 +1387,7 @@ class StarterBotRunner:
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
+        self.fastwalk_route = fastwalk_route
         self.moria_research = moria_research
         self.moria_depth = moria_depth
 
@@ -1319,6 +1401,8 @@ class StarterBotRunner:
                 if self.guildmaster_research
                 else f"magic-shop:{self.spec.name}"
                 if self.magic_shop_research
+                else f"fastwalk-{self.fastwalk_route.name}:{self.spec.name}"
+                if self.fastwalk_route is not None
                 else f"moria:{self.spec.name}"
                 if self.moria_research
                 else f"resupply:{self.spec.name}"
@@ -1336,6 +1420,8 @@ class StarterBotRunner:
                 if self.guildmaster_research
                 else f"magic-shop-{self.spec.name}"
                 if self.magic_shop_research
+                else f"fastwalk-{self.fastwalk_route.name}-{self.spec.name}"
+                if self.fastwalk_route is not None
                 else f"moria-{self.spec.name}"
                 if self.moria_research
                 else f"resupply-{self.spec.name}"
@@ -1401,6 +1487,7 @@ class StarterBotRunner:
                 guildmaster_research=self.guildmaster_research,
                 magic_shop_research=self.magic_shop_research,
                 magic_shop_buy_fly=self.magic_shop_buy_fly,
+                fastwalk_route=self.fastwalk_route,
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
             )
@@ -1498,6 +1585,7 @@ class StarterBotRunner:
                     "magic_shop_research": self.magic_shop_research,
                     "magic_shop_buy_fly": self.magic_shop_buy_fly,
                     "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
+                    "fastwalk_route": self.fastwalk_route.name if self.fastwalk_route else None,
                     "moria_research": self.moria_research,
                     "moria_depth": self.moria_depth,
                 },
@@ -1639,6 +1727,19 @@ async def run_magic_shop_research_profile(
     ).run()
 
 
+async def run_fastwalk_research_profile(
+    path: str | Path,
+    route_name: str,
+) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        fastwalk_route=route_named(route_name),
+    ).run()
+
+
 async def run_moria_research_profile(
     path: str | Path,
     *,
@@ -1691,6 +1792,24 @@ def _recovery_ready(state: CharacterState) -> bool:
 def _is_sleeping(state: CharacterState) -> bool:
     position = state.position
     return position == 4 or str(position).casefold() == "sleeping"
+
+
+def _reverse_fastwalk_commands(commands: tuple[str, ...]) -> tuple[str, ...]:
+    opposite = {
+        "north": "south",
+        "south": "north",
+        "east": "west",
+        "west": "east",
+        "up": "down",
+        "down": "up",
+    }
+    try:
+        return tuple(opposite[command] for command in reversed(commands))
+    except KeyError as exc:
+        raise ValueError(
+            "fastwalk route cannot be reversed safely because it includes "
+            f"{exc.args[0]!r}"
+        ) from exc
 
 
 def _unvisited_exit(

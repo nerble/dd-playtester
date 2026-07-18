@@ -235,6 +235,29 @@ def test_magic_shop_research_command_can_buy_and_use_fly_potion(
     assert "Run 14 success" in captured.out
 
 
+def test_fastwalk_research_command_runs_named_route(tmp_path, capsys, monkeypatch) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "fastwalk-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_fastwalk_research(path: Path, route: str) -> RunResult:
+        assert path == profile
+        assert route == "moria"
+        return RunResult(15, "success", transcript, database, {"level": 6})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_fastwalk_research_profile",
+        fake_fastwalk_research,
+    )
+
+    exit_code = main(["fastwalk-research", str(profile), "moria"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 15 success" in captured.out
+
+
 def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch) -> None:
     profile = tmp_path / "character.yaml"
     transcript = tmp_path / "moria-1.jsonl"
