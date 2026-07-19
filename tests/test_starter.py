@@ -1894,6 +1894,31 @@ def test_fastwalk_repeat_limit_allows_the_route_run_but_not_extra_steps() -> Non
     assert _max_consecutive_command(route.commands, "south") == 2
 
 
+def test_recall_only_fastwalk_with_door_command_fails_cleanly_if_recall_fails() -> None:
+    route = route_named("foundry captain")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="Ushog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_returning = True
+    foundry = CharacterState(
+        area="The Foundry",
+        room_name="Ushog's Quarters",
+        room_vnum="112",
+        position=7,
+    )
+
+    decision = policy.next_decision(foundry)
+
+    assert decision is None
+    assert policy.failure is not None
+    assert policy.failure.startswith("recall-only fastwalk did not reach")
+
+
 def test_inventory_descriptions_parse_serialized_gmcp_inventory() -> None:
     value = (
         '[ [ { "quan": "1", "short_desc": "a metal buckler" }, '

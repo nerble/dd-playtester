@@ -714,6 +714,8 @@ class StarterPolicy:
             research = self._fastwalk_research_decision(state)
             if research is not None:
                 return research
+            if self.failure is not None:
+                return None
             if not self.saved:
                 self.saved = True
                 self.stage = "saving"
@@ -1332,6 +1334,12 @@ class StarterPolicy:
         if room_vnum == "3019" or "mage's laboratory" in room_name:
             return None
 
+        if self.fastwalk_route.recall_after_loot:
+            self.failure = (
+                "recall-only fastwalk did not reach Midgaard Temple or Mage Guild "
+                f"from room {state.room_name!r} ({state.room_vnum})"
+            )
+            return None
         reverse = _reverse_fastwalk_commands(self.fastwalk_route.commands)
         if self.fastwalk_return_index >= len(reverse):
             self.failure = (
@@ -2022,10 +2030,11 @@ class StarterBotRunner:
                     repeated_count = 1
                 repeat_limit = 6
                 if self.fastwalk_route is not None:
-                    route_commands = (
-                        self.fastwalk_route.commands
-                        + _reverse_fastwalk_commands(self.fastwalk_route.commands)
-                    )
+                    route_commands = self.fastwalk_route.commands
+                    if not self.fastwalk_route.recall_after_loot:
+                        route_commands += _reverse_fastwalk_commands(
+                            self.fastwalk_route.commands
+                        )
                     repeat_limit = max(
                         repeat_limit,
                         _max_consecutive_command(route_commands, decision.command),
