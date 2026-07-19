@@ -121,7 +121,7 @@ and failure handling before registering each new level-band policy.
 ## Progression Evidence Cycle 3
 
 - Added source-backed candidate scoring for exact recall routes, reset placements,
-  loot, mobile instance limits, alignment, aggressive hazards, and current-reboot
+  loot, mobile spawn limits, alignment, aggressive hazards, and current-reboot
   kill history.
 
 ## Progression Evidence Cycle 4
@@ -137,6 +137,28 @@ and failure handling before registering each new level-band policy.
 - Live run 200 verified the text equipment fallback, equipped Ararisa's carried
   weapon, preserved her stat-boosting diploma and snowy stone, saved, and quit
   safely without consuming XP or supplies.
+- Live run 201 gained 110 XP from two arena boars in 43.6 seconds and exited at
+  full health with 218/268 mana. This showed checkpoint overhead, not combat
+  pressure, was limiting progress, so the verified level-6 arena batch was
+  increased from two to ten kills while retaining all recovery and exit guards.
+
+## Progression Evidence Cycle 5
+
+- Added `money-loop`, which selects source-backed Foundry targets, performs
+  bounded hunt and recall trips, liquidates only identified expendable gear at
+  compatible safe shops, fills the water skin, and buys the affordable pie
+  reserve.
+- Corrected mobile reset `maximum_count` evidence to a concurrent spawn limit.
+  It is not an object instance limit and does not make a mobile unavailable
+  after that many kills; reboot kill history remains useful for XP weighting.
+- Live runs 206, 207, and 208 killed Uburz and two Ologs for 196 XP without
+  damage. Run 212 identified loot with the Human racial spell, protected and
+  equipped Uburz's +1 Intelligence silver circlet, and sold four expendable
+  items for 56 coins.
+- Live run 213 filled and drank from the buffalo skin, observed a 46-copper pie
+  price, and bought one pie with 21 copper-equivalent left. Field hunts now
+  continue toward their requested target after safe incidental kills so later
+  trips can collect varied drops instead of recalling after every Olog.
 - Verified the Circus midget route in run 146 and one bounded kill in run 148:
   43 XP, 94/96 minimum health, purse loot, immediate recall, full recovery, and
   safe return to the Mage Guild.

@@ -1662,6 +1662,43 @@ def test_fastwalk_fights_viable_opportunistic_attacker_instead_of_fleeing() -> N
     assert policy.fastwalk_abort_reason is None
 
 
+def test_fastwalk_continues_to_requested_target_after_safe_incidental_loot() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry captain"),
+        fastwalk_attack_target="Ushog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 14
+    policy.fastwalk_attack_target = "Olog"
+    policy.fastwalk_attack_started = True
+    policy.fastwalk_last_kill_target = "Olog"
+    policy.pending_loot_rooms.add("108")
+    state = CharacterState(
+        level=6,
+        hp=96,
+        max_hp=96,
+        room_name="Muddy Tunnel",
+        room_vnum="108",
+        position=7,
+    )
+
+    loot = policy.next_decision(state)
+    policy.prompt_ready = True
+    inventory = policy.next_decision(state)
+
+    assert loot is not None
+    assert loot.command == "get all corpse"
+    assert inventory is not None
+    assert inventory.command == "inventory"
+    assert policy.fastwalk_recall_after_loot is False
+    assert policy.fastwalk_attack_target == "Ushog"
+    assert policy.fastwalk_attack_started is False
+
+
 def test_fastwalk_waits_for_enemy_snapshot_before_fleeing() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -3051,6 +3088,63 @@ def test_liquidation_plans_distinct_items_for_best_safe_shops() -> None:
     ]
 
 
+def test_human_identifies_loot_and_keeps_stat_circlet_before_sale() -> None:
+    circlet = ObjectSource(
+        108,
+        "silver circlet",
+        "a silver circlet",
+        8,
+        (0, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 2),
+        affects=((3, 1),),
+    )
+    cap = ObjectSource(
+        109,
+        "iron cap",
+        "an iron cap",
+        9,
+        (5, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 4),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        gear_catalog=GearCatalog({circlet.vnum: circlet, cap.vnum: cap}),
+    )
+    policy.in_world = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        inventory=[
+            [
+                {"short_desc": "[SET] a silver circlet", "quan": "1"},
+                {"short_desc": "an iron cap", "quan": "1"},
+            ]
+        ],
+    )
+
+    policy.prompt_ready = True
+    identify_circlet = policy.next_decision(home)
+    policy.prompt_ready = True
+    identify_cap = policy.next_decision(home)
+    policy.prompt_ready = True
+    first_move = policy.next_decision(home)
+
+    assert identify_circlet is not None
+    assert identify_circlet.command == "cast 'identify' circlet"
+    assert identify_cap is not None
+    assert identify_cap.command == "cast 'identify' cap"
+    assert first_move is not None
+    assert first_move.command == "west"
+    assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
+        ("cap", "Leather Shop")
+    ]
+
+
 def test_liquidation_uses_character_sale_history() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -3898,6 +3992,49 @@ def test_recovery_gear_is_equipped_before_sleeping() -> None:
     assert sleep.command == "sleep"
 
 
+def test_equipment_audit_retries_when_hunger_tick_replaces_response() -> None:
+    recovery = _gear_item(
+        9001,
+        "circlet recovery",
+        "a recovery circlet",
+        (12, 20),
+        (13, 15),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({recovery.vnum: recovery}),
+    )
+    policy.in_world = True
+    state = CharacterState(
+        level=6,
+        hp=96,
+        max_hp=96,
+        mana=268,
+        max_mana=268,
+        move=200,
+        max_move=200,
+        position=7,
+        room_name="General Supplies",
+        room_vnum="3724",
+        room_flags=["safe"],
+        inventory=[[{"short_desc": "a buffalo water skin"}]],
+    )
+
+    policy.prompt_ready = True
+    audit = policy.next_decision(state)
+    assert audit is not None
+    assert audit.command == "equipment"
+    policy.after_command(audit)
+
+    policy.observe_text("You're dying of hunger!")
+    policy.prompt_ready = True
+    retry = policy.next_decision(state)
+    assert retry is not None
+    assert retry.command == "equipment"
+    assert "interrupted" in retry.reason
+
+
 def test_gear_stance_switches_to_stats_only_near_level_gain() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -3953,6 +4090,84 @@ def test_emergency_sale_protects_bonus_gear_and_capacity_items() -> None:
     ]]
 
     assert _sellable_inventory_keyword(inventory, catalog) == "helm"
+
+
+def test_resupply_sells_duplicate_plain_worn_armour_when_broke() -> None:
+    cloak = ObjectSource(
+        9004,
+        "dark blue cloak",
+        "a dark-blue cloak",
+        9,
+        (2, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 2),
+    )
+    diploma = ObjectSource(
+        3715,
+        "diploma",
+        "a Mud School diploma",
+        8,
+        (0, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 14),
+        affects=((4, 1), (5, 1)),
+    )
+    catalog = GearCatalog({cloak.vnum: cloak, diploma.vnum: diploma})
+    policy = StarterPolicy(_spec(), "swordfish", gear_catalog=catalog)
+    policy.gear_worn = [cloak, cloak, diploma]
+    policy.needs_food = True
+    policy.insufficient_funds = True
+    state = CharacterState(
+        room_name="General Supplies",
+        room_vnum="3724",
+        position=7,
+        inventory=[[{"short_desc": "a buffalo water skin"}]],
+    )
+
+    remove = policy._resupply_decision(state)
+    assert remove is not None
+    assert remove.command == "remove dark"
+    assert policy.emergency_sale_in_progress
+
+    state.inventory = [[
+        {"short_desc": "a buffalo water skin"},
+        {"short_desc": "a dark-blue cloak"},
+    ]]
+    sell = policy._resupply_decision(state)
+    assert sell is not None
+    assert sell.command == "sell cloak"
+
+
+def test_resupply_never_removes_the_only_stat_item_for_food() -> None:
+    diploma = ObjectSource(
+        3715,
+        "diploma",
+        "a Mud School diploma",
+        8,
+        (0, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 14),
+        affects=((4, 1), (5, 1)),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({diploma.vnum: diploma}),
+    )
+    policy.gear_worn = [diploma]
+    policy.needs_food = True
+    policy.insufficient_funds = True
+    state = CharacterState(
+        room_name="General Supplies",
+        room_vnum="3724",
+        position=7,
+        inventory=[[{"short_desc": "a buffalo water skin"}]],
+    )
+
+    assert policy._resupply_decision(state) is None
+    assert policy.failure == (
+        "insufficient funds for emergency supplies and no safely expendable equipment"
+    )
 
 
 def test_final_combat_loots_and_unlocks_after_kill() -> None:

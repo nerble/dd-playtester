@@ -86,12 +86,12 @@ def test_candidate_ranking_rejects_route_through_higher_level_aggressor(
     assert candidate.status == "reject"
     assert candidate.route == ("north", "north")
     assert candidate.room_spawn_count == 1
-    assert candidate.source_instance_limit == 2
+    assert candidate.source_spawn_limit == 2
     assert candidate.boot_kills == 2
     assert candidate.loot == ("a rusty sword",)
     assert candidate.contained_coins == 50
     assert "route: the dangerous guard L8 in 3002" in candidate.hazards
-    assert any("faster unoccupied reset" in hazard for hazard in candidate.hazards)
+    assert not any("instance limit" in hazard for hazard in candidate.hazards)
 
 
 def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -> None:

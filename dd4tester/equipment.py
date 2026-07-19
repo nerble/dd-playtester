@@ -42,7 +42,7 @@ _WEAR_CATEGORIES = {
 }
 _CATEGORY_CAPACITY = {"finger": 2, "neck": 2, "wrist": 2}
 _DISPLAY_PREFIX = re.compile(
-    r"^(?:\[-\?-\]|\([^)]*\)|a|an|the)\s+",
+    r"^(?:\[[^\]]+\]|\([^)]*\)|a|an|the)\s+",
     re.IGNORECASE,
 )
 _COLOUR_CODE = re.compile(r"\{.")

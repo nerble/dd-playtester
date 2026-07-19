@@ -59,3 +59,7 @@ def test_sale_keyword_uses_the_distinctive_final_noun() -> None:
 
 def test_unknown_item_is_not_sent_to_an_incompatible_shop() -> None:
     assert safe_shop_for_item("a buffalo water skin") is None
+
+
+def test_source_item_type_overrides_name_based_shop_guess() -> None:
+    assert safe_shop_for_item("a silver circlet", item_type=8) is None

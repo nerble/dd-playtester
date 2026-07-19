@@ -138,7 +138,7 @@ class HuntCandidate:
     room_vnum: int
     room_name: str
     route: tuple[str, ...]
-    source_instance_limit: int
+    source_spawn_limit: int
     room_spawn_count: int
     boot_kills: int
     loot: tuple[str, ...]
@@ -314,12 +314,6 @@ def rank_hunt_candidates(
             hazards.append("target is aggressive")
         for special in world.mobile_specials.get(mobile.vnum, ()):
             hazards.append(f"target special: {special}")
-        if boot_kills >= reset.maximum_count:
-            hazards.append(
-                "current-boot kills meet the mobile instance limit; "
-                "leave the area and await its faster unoccupied reset"
-            )
-
         source_value = sum(item.source_cost for item in sellable)
         score = (
             100
@@ -349,7 +343,7 @@ def rank_hunt_candidates(
                 room_vnum=room.vnum,
                 room_name=room.name,
                 route=route,
-                source_instance_limit=reset.maximum_count,
+                source_spawn_limit=reset.maximum_count,
                 room_spawn_count=room_spawn_count,
                 boot_kills=boot_kills,
                 loot=tuple(item.short_description for item in sellable),

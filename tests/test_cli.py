@@ -4,6 +4,7 @@ from pathlib import Path
 import dd4tester.cli
 from dd4tester.campaign import CampaignResult
 from dd4tester.cli import main
+from dd4tester.money import MoneyLoopResult
 from dd4tester.runner import RunResult
 from dd4tester.storage import RunStorage
 from dd4tester.transcript import TranscriptRecorder
@@ -54,6 +55,52 @@ def test_arena_research_passes_kill_limit_to_runner(tmp_path, capsys, monkeypatc
     assert exit_code == 0
     assert captured_args["target_level"] == 7
     assert captured_args["kill_limit"] == 2
+
+
+def test_money_loop_passes_level_trip_limit_and_source(tmp_path, capsys, monkeypatch) -> None:
+    captured_args: dict[str, object] = {}
+    profile = tmp_path / "character.yaml"
+    source = tmp_path / "area"
+    run = RunResult(
+        8,
+        "success",
+        tmp_path / "run.jsonl",
+        tmp_path / "runs.sqlite3",
+        {},
+    )
+
+    async def run_money(profile_path, *, character_level, trip_limit, source_directory):
+        captured_args.update(
+            profile=profile_path,
+            character_level=character_level,
+            trip_limit=trip_limit,
+            source_directory=source_directory,
+        )
+        return MoneyLoopResult((run,), run, run, ("Uburz",))
+
+    monkeypatch.setattr(dd4tester.cli, "run_money_loop_profile", run_money)
+
+    exit_code = main(
+        [
+            "money-loop",
+            str(profile),
+            "--level",
+            "6",
+            "--trips",
+            "2",
+            "--source",
+            str(source),
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured_args == {
+        "profile": profile,
+        "character_level": 6,
+        "trip_limit": 2,
+        "source_directory": source,
+    }
+    assert "Money loop completed runs: 8, 8, 8" in capsys.readouterr().out
 
 
 def test_show_sales_lists_recorded_proceeds(tmp_path, capsys) -> None:
@@ -480,7 +527,7 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Current reboot: unknown" in captured.out
-    assert "room_spawns\tinstance_limit\tboot_kills" in captured.out
+    assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
     assert "reject\t" in captured.out
     assert "a cellar rat" in captured.out
     assert "route: the dangerous guard L8 in 3002" in captured.out

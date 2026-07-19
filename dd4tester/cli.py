@@ -18,6 +18,7 @@ from .credentials import (
 from .evidence import collect_run_evidence, render_evidence_json
 from .fastwalks import FASTWALKS, routes_for_level
 from .hunt_candidates import load_world_source, rank_hunt_candidates
+from .money import run_money_loop_profile
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
@@ -104,6 +105,33 @@ def build_parser() -> argparse.ArgumentParser:
         "profile",
         type=Path,
         help="path to an existing character YAML profile",
+    )
+    money_loop_parser = subcommands.add_parser(
+        "money-loop",
+        help="hunt renewable Foundry drops, sell them safely, and restock food",
+    )
+    money_loop_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
+    )
+    money_loop_parser.add_argument(
+        "--level",
+        type=int,
+        required=True,
+        help="current character level used for source-backed risk filtering",
+    )
+    money_loop_parser.add_argument(
+        "--trips",
+        type=int,
+        default=3,
+        help="maximum bounded hunt trips before liquidation, default: 3",
+    )
+    money_loop_parser.add_argument(
+        "--source",
+        type=Path,
+        default=Path("runs/dd4-source/server/area"),
+        help="path to the DD4 server area directory",
     )
     guildmaster_parser = subcommands.add_parser(
         "guildmaster-research",
@@ -512,6 +540,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Database: {result.database_path}")
         return 0
 
+    if args.command == "money-loop":
+        try:
+            result = asyncio.run(
+                run_money_loop_profile(
+                    args.profile,
+                    character_level=args.level,
+                    trip_limit=args.trips,
+                    source_directory=args.source,
+                )
+            )
+        except Exception as exc:
+            print(f"Money loop failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Money loop completed runs: {', '.join(map(str, result.run_ids))}")
+        print(f"Targets: {', '.join(result.targets)}")
+        print(f"Final restock run: {result.restock_run.run_id}")
+        print(f"Database: {result.restock_run.database_path}")
+        return 0
+
     if args.command == "guildmaster-research":
         try:
             result = asyncio.run(run_guildmaster_research_profile(args.profile))
@@ -797,7 +844,7 @@ def show_hunt_candidates(
     print(f"Current reboot: {boot_id or 'unknown'}")
     print(
         "status\tscore\tarea\ttarget\tlevel\troom\troute\troom_spawns\t"
-        "instance_limit\tboot_kills\tloot\thazards"
+        "spawn_limit\tboot_kills\tloot\thazards"
     )
     for candidate in candidates[:limit]:
         loot = "; ".join(candidate.loot)
@@ -818,7 +865,7 @@ def show_hunt_candidates(
                     f"{candidate.room_vnum} {candidate.room_name}",
                     ";".join(candidate.route),
                     str(candidate.room_spawn_count),
-                    str(candidate.source_instance_limit),
+                    str(candidate.source_spawn_limit),
                     str(candidate.boot_kills),
                     loot or "-",
                     "; ".join(candidate.hazards) or "-",

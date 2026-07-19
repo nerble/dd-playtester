@@ -32,7 +32,7 @@ def test_level_six_to_ten_policy_uses_verified_bounded_arena_segments() -> None:
     assert policy.policy_id == "mud-school-6-10"
     assert policy.status == "verified"
     assert policy.execution == "arena"
-    assert policy.segment_kill_limit == 2
+    assert policy.segment_kill_limit == 10
     assert policy.executable is True
     assert any("Guildmaster" in item for item in policy.evidence)
 

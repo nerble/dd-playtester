@@ -102,18 +102,21 @@ _CONTAINER_WORDS = {
 def safe_shop_for_item(
     description: str,
     sale_counts: Mapping[tuple[str, str], int] | None = None,
+    *,
+    item_type: int | None = None,
 ) -> SafeShop | None:
     """Choose the best compatible safe shop after known duplicate penalties."""
     words = set(re.findall(r"[a-z]+", description.casefold()))
-    item_type = (
-        9
-        if words & _ARMOUR_WORDS
-        else 5
-        if words & _WEAPON_WORDS
-        else 15
-        if words & _CONTAINER_WORDS
-        else None
-    )
+    if item_type is None:
+        item_type = (
+            9
+            if words & _ARMOUR_WORDS
+            else 5
+            if words & _WEAPON_WORDS
+            else 15
+            if words & _CONTAINER_WORDS
+            else None
+        )
     compatible = [
         shop for shop in SAFE_MIDGAARD_SHOPS if shop.item_type == item_type
     ]

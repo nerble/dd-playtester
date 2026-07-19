@@ -195,6 +195,7 @@ class StarterPolicy:
         self.fastwalk_explore_direction = fastwalk_explore_direction
         self.fastwalk_explore_depth = fastwalk_explore_depth
         self.fastwalk_attack_target = fastwalk_attack_target
+        self.fastwalk_requested_target = fastwalk_attack_target
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.gear_catalog = gear_catalog
@@ -265,6 +266,8 @@ class StarterPolicy:
         self.sale_offer_coins: int | None = None
         self.completed_sales: list[dict[str, Any]] = []
         self.sale_container_step = 0
+        self.sale_identify_plan: list[str] | None = None
+        self.sale_identify_index = 0
         self.fastwalk_recall_started = False
         self.fastwalk_arrival_observed = False
         self.fastwalk_returning = False
@@ -308,6 +311,7 @@ class StarterPolicy:
         self.gear_applied_stance: str | None = None
         self.gear_inventory_signature: tuple[str, ...] = ()
         self.gear_confirmation_required = False
+        self.emergency_sale_in_progress = False
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
@@ -378,6 +382,10 @@ class StarterPolicy:
         if offer is not None:
             self.sale_offer_coins = int(offer.group("coins"))
         completed_sale = _SALE_COMPLETED.search(cleaned)
+        if completed_sale is not None and self.emergency_sale_in_progress:
+            self.emergency_sale_in_progress = False
+            self.gear_audited = False
+            self.gear_applied_stance = None
         if completed_sale is not None and self.sale_index < len(self.sale_plan):
             keyword, shop = self.sale_plan[self.sale_index]
             self.completed_sales.append(
@@ -1200,6 +1208,8 @@ class StarterPolicy:
             or state.dead
             or self.combat_active
             or _is_sleeping(state)
+            or self.liquidate_loot
+            or self.emergency_sale_in_progress
             or (state.area or "").casefold() == "purgatory"
         ):
             return None
@@ -1216,10 +1226,19 @@ class StarterPolicy:
             return BotDecision(command, reason)
 
         if self.gear_audit_pending:
-            self.gear_worn = self.gear_catalog.match_equipment_text(self.text)
+            audited_items = self.gear_catalog.match_equipment_text(self.text)
+            explicit_empty = "you are not using any equipment" in self.text.casefold()
             self.gear_audit_pending = False
-            self.gear_audited = True
-            self.gear_confirmation_required = False
+            if audited_items or explicit_empty:
+                self.gear_worn = audited_items
+                self.gear_audited = True
+                self.gear_confirmation_required = False
+            else:
+                self.gear_audit_pending = True
+                return BotDecision(
+                    "equipment",
+                    "retry a worn-item audit interrupted by a game status tick",
+                )
 
         if self.gear_confirmation_required:
             self.gear_audit_pending = True
@@ -1355,8 +1374,18 @@ class StarterPolicy:
                     self.gear_catalog,
                 )
                 if sale is None:
-                    self.failure = "insufficient funds for emergency supplies and no sellable equipment"
-                    return None
+                    worn_item = self._emergency_worn_sale_item()
+                    if worn_item is None:
+                        self.failure = (
+                            "insufficient funds for emergency supplies and "
+                            "no safely expendable equipment"
+                        )
+                        return None
+                    self.emergency_sale_in_progress = True
+                    return BotDecision(
+                        f"remove {item_keyword(worn_item)}",
+                        "remove duplicate unbonused armour for emergency food money",
+                    )
                 self.insufficient_funds = False
                 return BotDecision(
                     f"sell {sale}",
@@ -1724,17 +1753,22 @@ class StarterPolicy:
             self.fastwalk_loot_step = 0
             self.pending_loot_rooms.discard(room_key)
             objective_killed = (
-                self.fastwalk_attack_target is not None
+                self.fastwalk_requested_target is not None
                 and self.fastwalk_last_kill_target is not None
                 and _targets_match(
                     self.fastwalk_last_kill_target,
-                    self.fastwalk_attack_target,
+                    self.fastwalk_requested_target,
                 )
             )
             self.fastwalk_recall_after_loot = (
                 self.fastwalk_route.recall_after_loot
                 and (objective_killed or _health_ratio(state) < 0.8)
             )
+            if not objective_killed and self.fastwalk_last_kill_target is not None:
+                self.fastwalk_attack_target = self.fastwalk_requested_target
+                self.fastwalk_attack_started = False
+                self.fastwalk_consider_target = None
+                self.fastwalk_consider_viable = None
             self.fastwalk_last_kill_target = None
             return BotDecision(
                 "inventory",
@@ -1983,12 +2017,12 @@ class StarterPolicy:
 
     @property
     def fastwalk_objective_killed(self) -> bool:
-        if self.fastwalk_attack_target is None:
+        if self.fastwalk_requested_target is None:
             return True
         return any(
             _targets_match(
                 str(kill["mob_name"]).casefold(),
-                self.fastwalk_attack_target.casefold(),
+                self.fastwalk_requested_target.casefold(),
             )
             for kill in self.completed_kills
         )
@@ -2032,6 +2066,25 @@ class StarterPolicy:
                 "withdraw after considering the field target unsuitable",
             )
         return None
+
+    def _emergency_worn_sale_item(self) -> Any | None:
+        """Choose expendable armour, preferring duplicate plain pieces."""
+        candidates = [
+            item
+            for item in self.gear_worn
+            if item.item_type == 9 and not protects_from_sale(item)
+        ]
+        if not candidates:
+            return None
+        counts = Counter(normalize_item_name(item.short_description) for item in candidates)
+        return min(
+            candidates,
+            key=lambda item: (
+                counts[normalize_item_name(item.short_description)] <= 1,
+                item.source_cost,
+                item.vnum,
+            ),
+        )
 
     def _opportunistic_fastwalk_attacker_is_viable(
         self,
@@ -2085,6 +2138,27 @@ class StarterPolicy:
                     "get all purse",
                     "extract carried coins before planning equipment sales",
                 )
+            descriptions = _inventory_descriptions(state.inventory)
+            if self.sale_identify_plan is None:
+                self.sale_identify_plan = list(
+                    dict.fromkeys(
+                        sale_keyword(description)
+                        for description in descriptions
+                        if "water skin" not in description.casefold()
+                        and "pie" not in description.casefold()
+                    )
+                )
+            if (
+                self.spec.race == "human"
+                and self.gear_catalog is not None
+                and self.sale_identify_index < len(self.sale_identify_plan)
+            ):
+                keyword = self.sale_identify_plan[self.sale_identify_index]
+                self.sale_identify_index += 1
+                return BotDecision(
+                    f"cast 'identify' {keyword}",
+                    f"use the Human racial spell to audit {keyword} before sale",
+                )
             projected_counts = Counter(self.loot_sale_counts)
             if self.world_boot_id is not None:
                 projected_counts.update(
@@ -2092,15 +2166,21 @@ class StarterPolicy:
                     for row in self.loot_sale_history
                     if row.get("boot_id") == self.world_boot_id
                 )
-            for description in _inventory_descriptions(state.inventory):
+            for description in descriptions:
                 item = (
                     self.gear_catalog.match(description)
                     if self.gear_catalog is not None
                     else None
                 )
+                if self.gear_catalog is not None and item is None:
+                    continue
                 if item is not None and protects_from_sale(item):
                     continue
-                shop = safe_shop_for_item(description, projected_counts)
+                shop = safe_shop_for_item(
+                    description,
+                    projected_counts,
+                    item_type=item.item_type if item is not None else None,
+                )
                 if shop is not None:
                     keyword = sale_keyword(description)
                     self.sale_plan.append((keyword, shop))
@@ -2963,7 +3043,11 @@ class StarterBotRunner:
                 raise RuntimeError(policy.utility_abort_reason)
             if policy.fastwalk_abort_reason is not None:
                 raise RuntimeError(policy.fastwalk_abort_reason)
-            if self.fastwalk_route is not None and not policy.fastwalk_arrival_observed:
+            if (
+                self.fastwalk_route is not None
+                and not policy.fastwalk_arrival_observed
+                and not policy.fastwalk_objective_killed
+            ):
                 raise RuntimeError(
                     f"fastwalk {self.fastwalk_route.name!r} returned without "
                     "observing its endpoint"
@@ -3461,8 +3545,9 @@ def _sellable_inventory_keyword(
     """Choose a conservative equipment keyword, never food or water storage."""
     names = _inventory_descriptions(value)
     equipment_words = {
-        "armor", "axe", "blade", "boots", "bracer", "dagger", "gloves",
-        "helm", "mace", "shield", "sword", "wand", "weapon",
+        "armor", "axe", "belt", "blade", "boots", "bracer", "cape", "cloak",
+        "dagger", "gloves", "helm", "leggings", "mace", "shield", "sleeves",
+        "sword", "vest", "wand", "weapon",
     }
     for name in names:
         item = gear_catalog.match(name) if gear_catalog is not None else None

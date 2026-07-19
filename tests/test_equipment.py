@@ -95,3 +95,18 @@ def test_catalog_matches_unidentified_inventory_prefix() -> None:
     catalog = GearCatalog({diploma.vnum: diploma})
 
     assert catalog.match("\x1b[38;5;39m[-?-]\x1b[0m a Mud School diploma") == diploma
+
+
+def test_catalog_matches_set_prefix_and_protects_foundry_circlet() -> None:
+    foundry = parse_area_file(
+        Path("runs/dd4-source/server/area/foundry.are"),
+        include_resets=False,
+        include_entities=False,
+        include_objects=True,
+    )
+    circlet = foundry.objects[108]
+    catalog = GearCatalog({circlet.vnum: circlet})
+
+    assert catalog.match("[SET] a silver circlet") == circlet
+    assert circlet.affects == ((3, 1),)
+    assert protects_from_sale(circlet)
