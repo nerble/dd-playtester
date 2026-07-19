@@ -299,6 +299,21 @@ def test_general_supplies_provisions_before_leaving() -> None:
     assert policy.provisioned is True
 
 
+def test_general_supplies_leaves_without_rebuying_existing_provisions() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.course_started = True
+    policy.course_complete = True
+    policy.provisioned = True
+    policy.prompt_ready = True
+    state = CharacterState(room_name="General Supplies", room_vnum="3724")
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "down"
+
+
 def test_low_health_entrance_routes_to_temple_healer() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True

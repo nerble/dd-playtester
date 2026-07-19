@@ -971,6 +971,11 @@ class StarterPolicy:
             return BotDecision("quit", "Moria approach route research complete")
 
         if room_vnum == "3724" or room_name == "general supplies":
+            if self.provisioned:
+                return BotDecision(
+                    "down",
+                    "leave General Supplies with existing provisions",
+                )
             return self._store_decision()
 
         if _move_ratio(state) <= 0.1:
