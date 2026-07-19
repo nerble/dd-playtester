@@ -37,6 +37,7 @@ def build_run_report(
     event_counts = Counter(event["kind"] for event in events)
     duration_seconds = _duration_seconds(run["started_at"], run["finished_at"])
     confirmed_kills = _completed_kills(events)
+    sales = [dict(sale) for sale in storage.list_loot_sales_for_run(run_id)]
 
     progress = _progress_summary(
         initial_state,
@@ -46,6 +47,7 @@ def build_run_report(
         game_events,
         decisions,
         confirmed_kills,
+        sales,
     )
     failures = _failures(run, game_event_counts)
     balance_signals = _balance_signals(progress, game_event_counts)
@@ -102,7 +104,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Confirmed kills: {_format_confirmed_kills(progress['confirmed_kills'])}  ",
         f"Observed level gains: {progress['level_gains_observed']}  ",
         f"Items acquired: {progress['items_acquired']}  ",
-        f"Quests received: {progress['quests_received']}",
+        f"Quests received: {progress['quests_received']}  ",
+        f"Loot sales: {_format_sales(progress['loot_sales'])}",
         "",
         "## Failures",
         "",
@@ -162,6 +165,7 @@ def _progress_summary(
     game_events: list[dict[str, Any]],
     decisions: list[dict[str, Any]],
     confirmed_kills: list[dict[str, Any]],
+    sales: list[dict[str, Any]],
 ) -> dict[str, Any]:
     health_samples = [
         _fraction(snapshot["state"].get("hp"), snapshot["state"].get("max_hp"))
@@ -184,6 +188,7 @@ def _progress_summary(
         "level_gains_observed": game_event_counts["level_gained"],
         "items_acquired": sum(_is_item_acquisition(event) for event in game_events),
         "quests_received": game_event_counts["quest_received"],
+        "loot_sales": _sales_summary(sales),
     }
 
 
@@ -227,6 +232,20 @@ def _balance_signals(
                 "name": "experience",
                 "severity": "info",
                 "detail": f"XP changed by {xp_change:+g}.",
+            }
+        )
+
+    sales = progress["loot_sales"]
+    if sales["count"]:
+        shops = ", ".join(sales["shops"])
+        signals.append(
+            {
+                "name": "loot sales",
+                "severity": "info",
+                "detail": (
+                    f"Sold {sales['count']} item(s) for {sales['coins']} coins "
+                    f"through {shops}."
+                ),
             }
         )
 
@@ -390,6 +409,28 @@ def _format_confirmed_kills(kills: list[dict[str, Any]]) -> str:
         xp = kill.get("xp_gained")
         entries.append(f"{name} (+{xp} XP)" if _is_number(xp) else name)
     return ", ".join(entries) or "none"
+
+
+def _sales_summary(sales: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "count": len(sales),
+        "coins": sum(int(sale["sold_coins"]) for sale in sales),
+        "shops": sorted({str(sale["shop_name"]) for sale in sales}),
+        "items": [
+            {
+                "item": sale["item_description"],
+                "shop": sale["shop_name"],
+                "coins": sale["sold_coins"],
+            }
+            for sale in sales
+        ],
+    }
+
+
+def _format_sales(sales: dict[str, Any]) -> str:
+    if not sales["count"]:
+        return "none"
+    return f"{sales['count']} item(s) for {sales['coins']} coins"
 
 
 def _change(initial: Any, final: Any) -> dict[str, int | float | None]:

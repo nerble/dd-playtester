@@ -354,6 +354,20 @@ class RunStorage:
         )
         return list(cursor.fetchall())
 
+    def list_loot_sales_for_run(self, run_id: int) -> list[sqlite3.Row]:
+        """Return completed sales recorded for one run in execution order."""
+        cursor = self.connection.execute(
+            """
+            SELECT id, run_id, character_name, boot_id, item_keyword, item_description,
+                   shop_name, shop_room_vnum, offered_coins, sold_coins, timestamp
+            FROM loot_sales
+            WHERE run_id = ?
+            ORDER BY id
+            """,
+            (run_id,),
+        )
+        return list(cursor.fetchall())
+
     def record_mob_kill(
         self,
         run_id: int,

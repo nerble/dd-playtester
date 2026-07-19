@@ -22,6 +22,30 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     assert "success" in captured.out
 
 
+def test_show_sales_lists_recorded_proceeds(tmp_path, capsys) -> None:
+    database, _transcript = _create_recorded_run(tmp_path)
+    with RunStorage(database) as storage:
+        storage.record_loot_sale(
+            1,
+            character_name="Ararisa",
+            item_keyword="cap",
+            item_description="an iron cap",
+            shop_name="Leather Shop",
+            shop_room_vnum="3035",
+            offered_coins=11,
+            sold_coins=11,
+        )
+
+    exit_code = main(
+        ["show-sales", "--database", str(database), "--character", "Ararisa"]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "an iron cap" in captured.out
+    assert "Total shown: 11 coins" in captured.out
+
+
 def test_show_transcript_reads_run_id_from_database(tmp_path, capsys) -> None:
     database, transcript = _create_recorded_run(tmp_path)
 

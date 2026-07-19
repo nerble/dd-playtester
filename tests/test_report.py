@@ -27,6 +27,14 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     ]
     assert report["progress"]["level_gains_observed"] == 1
     assert report["progress"]["items_acquired"] == 1
+    assert report["progress"]["loot_sales"] == {
+        "count": 1,
+        "coins": 10,
+        "shops": ["Leather Shop"],
+        "items": [
+            {"item": "a metal buckler", "shop": "Leather Shop", "coins": 10}
+        ],
+    }
     assert report["failures"] == [
         "command budget reached",
         "Character died 1 time(s).",
@@ -45,6 +53,7 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     assert "# Run 1: starter:Reportmage" in markdown
     assert "## Balance Signals" in markdown
     assert "Confirmed kills: tutorial wolf (+75 XP)" in markdown
+    assert "Loot sales: 1 item(s) for 10 coins" in markdown
     assert "**critical - health pressure:** Health reached 10% of maximum." in markdown
 
 
@@ -214,6 +223,16 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
             "completed_kills": [{"mob_name": "tutorial wolf", "xp_gained": 75}],
         },
         timestamp="2026-07-18T00:00:07+00:00",
+    )
+    storage.record_loot_sale(
+        run_id,
+        character_name="Reportmage",
+        item_keyword="buckler",
+        item_description="a metal buckler",
+        shop_name="Leather Shop",
+        shop_room_vnum="3035",
+        offered_coins=10,
+        sold_coins=10,
     )
     storage.finish_run(run_id, status=status, error=error)
     storage.close()

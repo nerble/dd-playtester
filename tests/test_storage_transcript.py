@@ -47,6 +47,7 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     snapshots = storage.list_state_snapshots(run_id)
     latest_snapshot = storage.get_latest_state_snapshot(run_id)
     sales = storage.list_loot_sales("Ararisa")
+    run_sales = storage.list_loot_sales_for_run(run_id)
 
     recorder.close()
     storage.close()
@@ -77,6 +78,7 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert sales[0]["item_keyword"] == "buckler"
     assert sales[0]["offered_coins"] == 10
     assert sales[0]["sold_coins"] == 10
+    assert run_sales[0]["id"] == sale_id
 
 
 def test_storage_scopes_sales_and_kills_by_boot_identity(tmp_path) -> None:

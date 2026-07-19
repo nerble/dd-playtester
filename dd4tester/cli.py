@@ -262,6 +262,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     show_runs_parser.add_argument("--limit", type=int, default=20, help="maximum runs to show")
 
+    show_sales_parser = subcommands.add_parser(
+        "show-sales",
+        help="list recorded loot-sale proceeds for a character",
+    )
+    show_sales_parser.add_argument(
+        "--character",
+        default="Ararisa",
+        help="character whose sales to show, default: Ararisa",
+    )
+    show_sales_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    show_sales_parser.add_argument(
+        "--limit", type=int, default=20, help="maximum sales to show"
+    )
+
     show_transcript_parser = subcommands.add_parser(
         "show-transcript",
         help="show a transcript by run id or JSONL transcript path",
@@ -577,6 +596,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "show-runs":
         return show_runs(args.database, limit=args.limit)
 
+    if args.command == "show-sales":
+        return show_sales(args.database, character=args.character, limit=args.limit)
+
     if args.command == "show-transcript":
         return show_transcript(args.target, database=args.database, raw=args.raw)
 
@@ -643,6 +665,43 @@ def show_runs(database: Path, *, limit: int) -> int:
                 ]
             )
         )
+    return 0
+
+
+def show_sales(database: Path, *, character: str, limit: int) -> int:
+    if limit < 1:
+        print("--limit must be at least 1", file=sys.stderr)
+        return 2
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+
+    with RunStorage(database) as storage:
+        sales = storage.list_loot_sales(character)
+
+    print(f"Database: {database.resolve()}")
+    print(f"Character: {character}")
+    if not sales:
+        print("No loot sales recorded.")
+        return 0
+
+    visible = sales[-limit:]
+    print("id\trun\tboot\titem\tshop\tcoins\ttimestamp")
+    for sale in visible:
+        print(
+            "\t".join(
+                [
+                    str(sale["id"]),
+                    str(sale["run_id"]),
+                    sale["boot_id"] or "-",
+                    sale["item_description"],
+                    sale["shop_name"],
+                    str(sale["sold_coins"]),
+                    sale["timestamp"],
+                ]
+            )
+        )
+    print(f"Total shown: {sum(sale['sold_coins'] for sale in visible)} coins")
     return 0
 
 
