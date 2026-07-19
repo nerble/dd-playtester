@@ -1532,6 +1532,106 @@ def test_return_home_continues_from_common_square_without_another_recall() -> No
     assert decision.command == "north"
 
 
+def test_return_home_uses_recall_for_trapped_emergency_combat() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    trapped = CharacterState(
+        area="The Foundry",
+        room_name="Ushog's Quarters",
+        room_vnum="112",
+        position=7,
+        hp=10,
+        max_hp=100,
+    )
+
+    decision = policy.next_decision(trapped)
+
+    assert decision is not None
+    assert decision.command == "recall"
+
+
+def test_return_home_follows_randomized_purgatory_exit_by_destination() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    purgatory = CharacterState(
+        area="Purgatory",
+        room_name="The Purgatory",
+        room_vnum="401",
+        position=7,
+        exits={"north": "410", "down": "410"},
+    )
+
+    decision = policy.next_decision(purgatory)
+
+    assert decision is not None
+    assert decision.command in {"north", "down"}
+    assert decision.command != "recall"
+
+
+def test_return_home_loots_corpse_enters_portal_and_sleeps() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    judgement = CharacterState(
+        area="Purgatory",
+        room_name="The Judgement Room",
+        room_vnum="427",
+        position=7,
+    )
+
+    loot = policy.next_decision(judgement)
+    assert loot is not None
+    assert loot.command == "get all corpse"
+    policy.after_command(loot)
+    policy.prompt_ready = True
+
+    inventory = policy.next_decision(judgement)
+    assert inventory is not None
+    assert inventory.command == "inventory"
+    policy.after_command(inventory)
+    policy.prompt_ready = True
+
+    portal = policy.next_decision(judgement)
+    assert portal is not None
+    assert portal.command == "enter portal"
+    policy.after_command(portal)
+    policy.prompt_ready = True
+
+    healer = CharacterState(
+        area="Midgaard",
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=90,
+        max_mana=100,
+        move=90,
+        max_move=100,
+        room_flags=["safe"],
+    )
+    sleep = policy.next_decision(healer)
+    assert sleep is not None
+    assert sleep.command == "sleep"
+    policy.after_command(sleep)
+    policy.prompt_ready = True
+
+    healer.position = 4
+    stand = policy.next_decision(healer)
+    assert stand is not None
+    assert stand.command == "stand"
+    policy.after_command(stand)
+    policy.prompt_ready = True
+
+    healer.position = 7
+    leave = policy.next_decision(healer)
+    assert leave is not None
+    assert leave.command == "south"
+
+
 def test_prompt_arriving_immediately_after_command_is_ignored_as_stale() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
@@ -1791,20 +1891,27 @@ def test_fastwalk_research_loots_confirmed_endpoint_kill_before_recall() -> None
 
 
 def test_fastwalk_research_loots_incidental_kill_before_resuming_route() -> None:
-    route = route_named("foundry")
+    route = route_named("foundry captain")
     policy = StarterPolicy(
         _spec(),
         "swordfish",
         fastwalk_route=route,
-        fastwalk_attack_target="Oshu",
+        fastwalk_attack_target="Ushog",
     )
     policy.in_world = True
     policy.prompt_ready = True
     policy.fastwalk_recall_started = True
-    policy.fastwalk_outbound_index = 8
-    policy.current_room = "108"
-    policy.pending_loot_rooms.add("108")
-    tunnel = CharacterState(room_name="Muddy Tunnel", room_vnum="108", position=7)
+    policy.fastwalk_outbound_index = len(route.commands) - 1
+    policy.current_room = "109"
+    policy.pending_loot_rooms.add("109")
+    policy.fastwalk_last_kill_target = "Olog"
+    tunnel = CharacterState(
+        room_name="Muddy Tunnel",
+        room_vnum="109",
+        position=7,
+        hp=90,
+        max_hp=100,
+    )
 
     loot = policy.next_decision(tunnel)
     assert loot is not None
@@ -1820,8 +1927,84 @@ def test_fastwalk_research_loots_incidental_kill_before_resuming_route() -> None
 
     leave = policy.next_decision(tunnel)
     assert leave is not None
-    assert leave.command == "recall"
+    assert leave.command == "south"
     assert policy.fastwalk_attack_started is False
+
+
+def test_recall_only_fastwalk_recalls_after_low_health_incidental_kill() -> None:
+    route = route_named("foundry captain")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="Ushog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.current_room = "109"
+    policy.pending_loot_rooms.add("109")
+    policy.fastwalk_last_kill_target = "Olog"
+    tunnel = CharacterState(
+        room_name="Muddy Tunnel",
+        room_vnum="109",
+        position=7,
+        hp=70,
+        max_hp=100,
+    )
+
+    loot = policy.next_decision(tunnel)
+    assert loot is not None
+    policy.after_command(loot)
+    policy.prompt_ready = True
+    inventory = policy.next_decision(tunnel)
+    assert inventory is not None
+    policy.after_command(inventory)
+    policy.prompt_ready = True
+
+    recall = policy.next_decision(tunnel)
+
+    assert recall is not None
+    assert recall.command == "recall"
+
+
+def test_recall_only_fastwalk_recalls_after_objective_kill() -> None:
+    route = route_named("foundry captain")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="Ushog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.current_room = "112"
+    policy.pending_loot_rooms.add("112")
+    policy.fastwalk_last_kill_target = "Ushog"
+    quarters = CharacterState(
+        room_name="Ushog's Quarters",
+        room_vnum="112",
+        position=7,
+        hp=90,
+        max_hp=100,
+    )
+
+    loot = policy.next_decision(quarters)
+    assert loot is not None
+    policy.after_command(loot)
+    policy.prompt_ready = True
+    inventory = policy.next_decision(quarters)
+    assert inventory is not None
+    policy.after_command(inventory)
+    policy.prompt_ready = True
+
+    recall = policy.next_decision(quarters)
+
+    assert recall is not None
+    assert recall.command == "recall"
 
 
 def test_fastwalk_research_claims_corpse_from_aggressive_combat() -> None:
@@ -1835,7 +2018,7 @@ def test_fastwalk_research_claims_corpse_from_aggressive_combat() -> None:
     policy.in_world = True
     policy.prompt_ready = True
     policy.fastwalk_recall_started = True
-    policy.fastwalk_outbound_index = 13
+    policy.fastwalk_outbound_index = 14
     policy.current_room = "109"
     tunnel = CharacterState(room_name="Muddy Tunnel", room_vnum="109", position=7)
 
@@ -1846,6 +2029,7 @@ def test_fastwalk_research_claims_corpse_from_aggressive_combat() -> None:
     policy.observe_text("No way! You are still fighting!\n")
     assert policy.pending_travel_origin is None
     assert policy.combat_active is True
+    assert policy.fastwalk_outbound_index == 13
 
     policy.observe_text(
         "Olog is DEAD!!\n"

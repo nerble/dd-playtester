@@ -87,6 +87,14 @@ _MOVEMENT_COMMANDS = {
     "recall",
     "enter portal",
 }
+_PURGATORY_DESTINATION_PATH = {
+    "401": "410",
+    "410": "411",
+    "411": "423",
+    "423": "422",
+    "422": "426",
+    "426": "427",
+}
 
 
 @dataclass(frozen=True)
@@ -220,7 +228,14 @@ class StarterPolicy:
         self.fastwalk_target_absent = False
         self.fastwalk_loot_step = 0
         self.fastwalk_recall_after_loot = False
+        self.fastwalk_last_kill_target: str | None = None
+        self.pending_fastwalk_outbound_move = False
         self.return_home_recall_started = False
+        self.purgatory_recovery_active = False
+        self.purgatory_judgement_step = 0
+        self.purgatory_portal_entered = False
+        self.purgatory_sleep_started = False
+        self.purgatory_recovery_complete = False
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -291,6 +306,8 @@ class StarterPolicy:
             was_in_combat = self.combat_active
             self.combat_active = False
             if self.current_room and (self.active_target or was_in_combat):
+                if self.fastwalk_route is not None:
+                    self.fastwalk_last_kill_target = self.active_target
                 if self.active_target:
                     self.defeated_targets.setdefault(self.current_room, set()).add(
                         self.active_target
@@ -334,6 +351,12 @@ class StarterPolicy:
             self.needs_stand = True
         if "you are still fighting" in recent:
             self.combat_active = True
+            if self.pending_fastwalk_outbound_move:
+                self.fastwalk_outbound_index = max(
+                    0,
+                    self.fastwalk_outbound_index - 1,
+                )
+                self.pending_fastwalk_outbound_move = False
             self.pending_travel_origin = None
         if "alas, you cannot go that way" in folded:
             if (
@@ -376,6 +399,7 @@ class StarterPolicy:
                     self.previous_room = self.current_room
                     self.current_room = room
                     self.pending_travel_origin = None
+                    self.pending_fastwalk_outbound_move = False
                     self.advice_direction = None
                     self.pending_move = None
                 targets = _training_targets(self.text)
@@ -435,6 +459,11 @@ class StarterPolicy:
         self.last_command_at = time.monotonic() if self.in_world else None
         if decision.command in _MOVEMENT_COMMANDS and self.current_room:
             self.pending_travel_origin = self.current_room
+        if (
+            decision.command in _MOVEMENT_COMMANDS
+            and decision.reason.startswith("follow official fastwalk")
+        ):
+            self.pending_fastwalk_outbound_move = True
         self.text = ""
         if decision.command == "eat pie":
             self.food_attempted = True
@@ -635,12 +664,28 @@ class StarterPolicy:
 
         if self.combat_active:
             if self.needs_food or self.needs_drink or _health_ratio(state) < 0.25:
+                if self.return_home:
+                    return BotDecision(
+                        "recall",
+                        "use emergency recall when reconnecting to trapped combat",
+                    )
                 return BotDecision("flee", "leave combat before emergency resupply")
             spell = self._combat_spell_decision(state)
             if spell is not None:
                 return spell
             self.prompt_ready = False
             return None
+
+        if self.return_home and (
+            self.purgatory_recovery_active
+            or (state.area or "").casefold() == "purgatory"
+            or state.room_vnum in _PURGATORY_DESTINATION_PATH
+            or state.room_vnum == "427"
+        ):
+            self.purgatory_recovery_active = True
+            purgatory = self._purgatory_recovery_decision(state)
+            if purgatory is not None:
+                return purgatory
 
         if self.city_restock:
             restock = self._city_restock_decision(state)
@@ -1155,12 +1200,22 @@ class StarterPolicy:
                 )
             self.fastwalk_loot_step = 0
             self.pending_loot_rooms.discard(room_key)
+            objective_killed = (
+                self.fastwalk_attack_target is not None
+                and self.fastwalk_last_kill_target is not None
+                and _targets_match(
+                    self.fastwalk_last_kill_target,
+                    self.fastwalk_attack_target,
+                )
+            )
             self.fastwalk_recall_after_loot = (
                 self.fastwalk_route.recall_after_loot
+                and (objective_killed or _health_ratio(state) < 0.8)
             )
+            self.fastwalk_last_kill_target = None
             return BotDecision(
                 "inventory",
-                "record supplies and loot before resuming the fastwalk",
+                "record loot before choosing whether to continue or recall",
             )
 
         if not self.fastwalk_returning:
@@ -1425,6 +1480,7 @@ class StarterPolicy:
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
         home_routes = {
+            "3054": "south",
             "3025": "north",
             "3001": "south",
             "3005": "south",
@@ -1448,6 +1504,65 @@ class StarterPolicy:
             f"room {state.room_name!r} ({state.room_vnum})"
         )
         return None
+
+    def _purgatory_recovery_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Retrieve the player's corpse and leave Purgatory before disconnecting."""
+        room_vnum = state.room_vnum or ""
+        if room_vnum == "427":
+            if self.purgatory_judgement_step == 0:
+                self.purgatory_judgement_step = 1
+                return BotDecision(
+                    "get all corpse",
+                    "reclaim every possession from the protected player corpse",
+                )
+            if self.purgatory_judgement_step == 1:
+                self.purgatory_judgement_step = 2
+                return BotDecision(
+                    "inventory",
+                    "verify the corpse contents were reclaimed before leaving",
+                )
+            self.purgatory_judgement_step = 3
+            self.purgatory_portal_entered = True
+            return BotDecision("enter portal", "leave Purgatory through its portal")
+
+        if self.purgatory_portal_entered and room_vnum == "3054":
+            if not self.purgatory_sleep_started:
+                self.purgatory_sleep_started = True
+                return BotDecision(
+                    "sleep",
+                    "recover safely beside the healer after corpse retrieval",
+                )
+            if _is_sleeping(state):
+                self.purgatory_recovery_complete = True
+                return BotDecision(
+                    "stand",
+                    "wake after post-death recovery before walking home",
+                )
+            self.purgatory_recovery_complete = True
+            return None
+
+        if self.purgatory_recovery_complete:
+            return None
+
+        destination = _PURGATORY_DESTINATION_PATH.get(room_vnum)
+        if destination is None:
+            return BotDecision(
+                "look",
+                "refresh Purgatory position without disconnecting",
+            )
+        direction = _direction_to_destination(state, {destination})
+        if direction is None:
+            return BotDecision(
+                "look",
+                f"refresh randomized Purgatory exits toward room {destination}",
+            )
+        return BotDecision(
+            direction,
+            f"follow the Purgatory room graph toward protected corpse room {destination}",
+        )
 
     def _moria_return_decision(self, state: CharacterState) -> BotDecision:
         return_routes = {
