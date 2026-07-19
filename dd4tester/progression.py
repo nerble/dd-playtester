@@ -28,6 +28,7 @@ class ProgressionPolicy:
     summary: str
     evidence: tuple[str, ...]
     practice_skill: str | None
+    segment_kill_limit: int | None = None
 
     @property
     def executable(self) -> bool:
@@ -86,9 +87,13 @@ _MUD_SCHOOL_RESEARCH_POLICY = replace(
     policy_id="mud-school-6-10",
     minimum_level=6,
     maximum_level=10,
-    status="research",
-    execution=None,
-    summary="Mud School continuation from level 6 through the level-10 transition.",
+    status="verified",
+    execution="arena",
+    summary=(
+        "Mud School arena progression from level 6 through level 10 in "
+        "two-kill, save-and-exit checkpoints."
+    ),
+    segment_kill_limit=2,
     evidence=(
         *_MUD_SCHOOL_ARENA_POLICY.evidence,
         "DD4 source: the Loremaster directs level-10 characters to their Guildmaster; the Magic Users Guildmaster spawns in Midgaard room 3019.",
@@ -107,6 +112,8 @@ _MUD_SCHOOL_RESEARCH_POLICY = replace(
         "Live run 146: the source-derived Circus route reached midget tent room 4411 without combat or damage, then recalled, recovered, and returned safely to room 3019.",
         "Live run 148: Ararisa killed the level-3 midget for 43 XP, remained above 97% health, looted its purse, recalled immediately, recovered fully, and returned safely to room 3019.",
         "Live runs 150-151: the midget purse contained 51 copper this reboot and the safe General Store in room 3010 bought the empty purse for 8 copper.",
+        "Live run 165: a two-kill bounded arena segment confirmed wild boar (+38 XP) and giant lizard (+20 XP), then saved safely.",
+        "Live run 167: the corrected two-kill segment confirmed two wild boars (+109 XP total) and exited to Mud School Safety at full health.",
         "The published Midgaard map verifies the Common Square-to-Mage-Guild route as 3025 north, 3014 west, 3013 west, 3012 south, 3017 south, and 3018 east to room 3019.",
         "DD4 source map metadata lists Moria for levels 5-15 and Old Thalos for levels 10-25.",
         "DD4 source help: reaching level 100 also requires at least 1,000 total quest points.",

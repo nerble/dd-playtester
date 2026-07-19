@@ -346,10 +346,18 @@ async def run_campaign_file(
     path: str | Path,
     *,
     force_new: bool = False,
+    segments: int = 1,
 ) -> CampaignResult:
+    if segments < 1:
+        raise ValueError("segments must be positive")
     config_path = Path(path)
     spec = load_campaign_spec(config_path)
-    return await CampaignRunner(spec, config_path, force_new=force_new).run()
+    result = await CampaignRunner(spec, config_path, force_new=force_new).run()
+    for _ in range(1, segments):
+        if result.status != "blocked" or not _is_ready_checkpoint(result.message):
+            break
+        result = await CampaignRunner(spec, config_path).run()
+    return result
 
 
 def load_campaign_spec(path: str | Path) -> CampaignSpec:
@@ -369,6 +377,7 @@ async def _run_policy_segment(
             spec,
             profile_path,
             objective_level=policy.maximum_level or 10,
+            arena_kill_limit=policy.segment_kill_limit,
         ).run()
     raise ValueError(f"unsupported executable policy {policy.policy_id}")
 
@@ -377,6 +386,10 @@ def _checkpoint_state(checkpoint: Any) -> dict[str, Any]:
     if checkpoint is None:
         return {}
     return dict(json.loads(checkpoint["state_json"]))
+
+
+def _is_ready_checkpoint(message: str | None) -> bool:
+    return bool(message and "checkpointed for the next verified segment." in message)
 
 
 def _level(state: dict[str, Any]) -> int:

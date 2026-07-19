@@ -257,6 +257,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="start a new campaign instead of resuming this configuration",
     )
+    campaign_parser.add_argument(
+        "--segments",
+        type=int,
+        default=1,
+        help="run up to this many ready checkpoint segments, default: 1",
+    )
 
     show_runs_parser = subcommands.add_parser("show-runs", help="list stored scenario runs")
     show_runs_parser.add_argument(
@@ -603,7 +609,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "campaign":
         try:
-            result = asyncio.run(run_campaign_file(args.config, force_new=args.new))
+            result = asyncio.run(
+                run_campaign_file(
+                    args.config,
+                    force_new=args.new,
+                    segments=args.segments,
+                )
+            )
         except Exception as exc:
             print(f"Campaign failed: {exc}", file=sys.stderr)
             return 1

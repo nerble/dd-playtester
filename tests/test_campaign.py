@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from dd4tester.campaign import CampaignRunner, load_campaign_spec
+from dd4tester.campaign import CampaignRunner, load_campaign_spec, run_campaign_file
 from dd4tester.runner import RunResult
 from dd4tester.storage import RunStorage
 
@@ -44,7 +44,7 @@ def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> No
 
     assert resumed.campaign_id == result.campaign_id
     assert resumed.status == "blocked"
-    assert "Policy mud-school-6-10 is research-gated" in resumed.message
+    assert "checkpointed for the next verified segment" in resumed.message
 
 
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:
@@ -65,6 +65,33 @@ def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:
     assert result.message == "Target level 2 reached."
     with RunStorage(database) as storage:
         assert storage.get_campaign(result.campaign_id)["status"] == "success"
+
+
+def test_campaign_file_runs_multiple_ready_segments(tmp_path, monkeypatch) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    calls = 0
+
+    async def segment(spec, profile_path: Path) -> RunResult:
+        nonlocal calls
+        calls += 1
+        return _record_segment_run(
+            spec.database,
+            profile_path,
+            {"level": min(2, calls), "xp": calls * 100},
+        )
+
+    class TestRunner(CampaignRunner):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, segment_runner=segment, **kwargs)
+
+    monkeypatch.setattr("dd4tester.campaign.CampaignRunner", TestRunner)
+
+    result = asyncio.run(run_campaign_file(config_path, segments=2))
+
+    assert result.status == "blocked"
+    assert calls == 2
+    with RunStorage(database) as storage:
+        assert len(storage.list_campaign_segments(result.campaign_id)) == 2
 
 
 def test_campaign_caps_segment_with_remaining_aggregate_budget(tmp_path) -> None:

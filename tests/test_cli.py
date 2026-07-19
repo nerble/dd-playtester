@@ -145,9 +145,10 @@ def test_starter_command_runs_character_profile(tmp_path, capsys, monkeypatch) -
 def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypatch) -> None:
     config = tmp_path / "campaign.yaml"
 
-    async def fake_campaign(path: Path, *, force_new: bool) -> CampaignResult:
+    async def fake_campaign(path: Path, *, force_new: bool, segments: int) -> CampaignResult:
         assert path == config
         assert force_new is True
+        assert segments == 1
         return CampaignResult(4, "blocked", 9, "awaiting verified policy", {"level": 2})
 
     monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
