@@ -205,6 +205,7 @@ class StarterPolicy:
         self.loremaster_step = 0
         self.practiced = False
         self.arena_queried = False
+        self.arena_segment_leaving = False
         self.arena_visited_rooms: set[str] = set()
         self.arena_respawn_due: float | None = None
         self.arena_pending_loot = False
@@ -980,7 +981,10 @@ class StarterPolicy:
             (
                 state.level is not None
                 and state.level >= self.objective_level
-                or self._arena_kill_limit_reached
+                or (
+                    self.arena_segment_leaving
+                    and state.room_vnum == "3737"
+                )
             )
             and self.course_complete
             and self.provisioned
@@ -2174,10 +2178,15 @@ class StarterPolicy:
         return BotDecision("west", "return to the Mud School entrance")
 
     def _arena_decision(self, state: CharacterState) -> BotDecision:
+        if self._arena_kill_limit_reached:
+            self.arena_segment_leaving = True
+            return BotDecision(
+                "up",
+                self._arena_segment_completion_reason,
+            )
         if (
             state.level is not None
             and state.level >= self.objective_level
-            or self._arena_kill_limit_reached
         ):
             return BotDecision(
                 "up",
