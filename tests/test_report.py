@@ -120,6 +120,13 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
         run_id,
         source_event_id=initial_event,
         reason="room_entered",
+        state={"revision": 0, "room_name": "Training Yard"},
+        timestamp="2026-07-17T23:59:59+00:00",
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=initial_event,
+        reason="room_entered",
         state={
             "revision": 1,
             "level": 1,

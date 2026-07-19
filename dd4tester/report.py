@@ -27,7 +27,7 @@ def build_run_report(
         _snapshot_from_row(snapshot)
         for snapshot in storage.list_state_snapshots(run_id)
     ]
-    initial_state = snapshots[0]["state"] if snapshots else {}
+    initial_state = _initial_observed_state(snapshots)
     final_state = snapshots[-1]["state"] if snapshots else {}
     game_events = [event for event in events if event["kind"] == "game_event"]
     decisions = [event for event in events if event["kind"] == "decision"]
@@ -155,6 +155,15 @@ def _snapshot_from_row(row: Any) -> dict[str, Any]:
         "reason": row["reason"],
         "state": json.loads(row["state_json"]),
     }
+
+
+def _initial_observed_state(snapshots: list[dict[str, Any]]) -> dict[str, Any]:
+    """Use the first state with core GMCP values, not a partial room update."""
+    for snapshot in snapshots:
+        state = snapshot["state"]
+        if all(state.get(field) is not None for field in ("level", "xp", "hp", "max_hp")):
+            return state
+    return snapshots[0]["state"] if snapshots else {}
 
 
 def _progress_summary(

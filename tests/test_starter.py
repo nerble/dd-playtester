@@ -2301,6 +2301,37 @@ def test_fastwalk_research_claims_corpse_from_aggressive_combat() -> None:
     assert policy.combat_active is False
 
 
+def test_fastwalk_recognizes_mob_attack_text_on_its_final_route_step() -> None:
+    route = route_named("foundry")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="Olog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    state = CharacterState(
+        room_name="Muddy Tunnel",
+        room_vnum="108",
+        hp=96,
+        max_hp=96,
+        mana=268,
+        max_mana=268,
+        position=7,
+    )
+
+    policy.observe_text("Olog's pound misses you.\n")
+    decision = policy.next_decision(state)
+
+    assert policy.combat_active is True
+    assert policy.fastwalk_arrival_observed is True
+    assert decision is not None
+    assert decision.command == "cast 'magic missile' Olog"
+
+
 def test_fastwalk_research_does_not_claim_unrelated_corpse() -> None:
     route = route_named("foundry")
     policy = StarterPolicy(

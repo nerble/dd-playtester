@@ -59,6 +59,11 @@ _MOB_LEAVES = re.compile(
     r"(?P<direction>north|south|east|west|up|down)\.",
     re.IGNORECASE,
 )
+_MOB_ATTACKS_YOU = re.compile(
+    r"\b[A-Za-z][A-Za-z '-]{0,60}'s .{0,80}\b(?:misses|hits|"
+    r"scratches|wounds|mauls|decimates) you\b",
+    re.IGNORECASE,
+)
 _DIRECTION_SHORTCUTS = {
     "n": "north",
     "s": "south",
@@ -393,6 +398,7 @@ class StarterPolicy:
             "you attack " in recent
             or " attacks you" in recent
             or "fighting you" in recent
+            or _MOB_ATTACKS_YOU.search(recent) is not None
         ):
             self.combat_active = True
         if "aren't fighting anyone" in recent:
@@ -785,6 +791,7 @@ class StarterPolicy:
                     and self.fastwalk_outbound_index >= len(self.fastwalk_route.commands)
                     and _text_mentions_target(self.text, self.fastwalk_attack_target)
                 ):
+                    self.fastwalk_arrival_observed = True
                     self.fastwalk_attack_started = True
                     self.active_target = self.fastwalk_attack_target
                     spell = self._combat_spell_decision(state)
@@ -2575,7 +2582,14 @@ class StarterBotRunner:
             if policy is not None:
                 self._flush_observations(record, policy)
             persist_policy_research()
-            record("state", {"state": "failed", "error": str(exc)})
+            record(
+                "state",
+                {
+                    "state": "failed",
+                    "error": str(exc),
+                    "completed_kills": policy.completed_kills if policy else [],
+                },
+            )
             storage.finish_run(run_id, status="failed", error=str(exc))
             raise
         finally:
