@@ -123,7 +123,12 @@ def item_category(item: ObjectSource) -> str | None:
     return None
 
 
-def stance_score(item: ObjectSource, stance: str) -> tuple[int, ...]:
+def stance_score(
+    item: ObjectSource,
+    stance: str,
+    *,
+    level_gain_priorities: tuple[str, ...] = (),
+) -> tuple[int, ...]:
     bonuses = _bonus_totals(item)
     stats = sum(max(0, bonuses.get(location, 0)) for location in APPLY_STATS)
     damroll = max(0, bonuses.get(APPLY_DAMROLL, 0))
@@ -138,6 +143,23 @@ def stance_score(item: ObjectSource, stance: str) -> tuple[int, ...]:
         else 0
     )
     if stance == STANCE_PRE_LEVEL:
+        if level_gain_priorities:
+            level_metrics = {
+                "intellectual_practices": (
+                    2 * bonuses.get(3, 0) + bonuses.get(2, 0)
+                ),
+                "physical_practices": (
+                    bonuses.get(3, 0)
+                    + bonuses.get(1, 0)
+                    + bonuses.get(4, 0)
+                ),
+                "hitpoints": bonuses.get(5, 0),
+                "mana": 2 * bonuses.get(2, 0) + bonuses.get(3, 0),
+                "movement": bonuses.get(5, 0) + bonuses.get(4, 0),
+            }
+            return tuple(
+                level_metrics[priority] for priority in level_gain_priorities
+            ) + (stats, damroll, hitroll, recovery, armor, weapon)
         return stats, damroll, hitroll, recovery, armor, weapon
     if stance == STANCE_RECOVERY:
         return recovery, stats, damroll, hitroll, armor, weapon
@@ -174,6 +196,7 @@ def plan_stance(
     stance: str,
     *,
     character_level: int | None = None,
+    level_gain_priorities: tuple[str, ...] = (),
 ) -> list[GearChoice]:
     """Return carried items that should replace or fill the current gear set."""
     carried_items = list(carried)
@@ -195,7 +218,14 @@ def plan_stance(
         capacity = _CATEGORY_CAPACITY.get(category, 1)
         ranked = sorted(
             [(item, True) for item in current] + [(item, False) for item in available],
-            key=lambda entry: (stance_score(entry[0], stance), entry[1]),
+            key=lambda entry: (
+                stance_score(
+                    entry[0],
+                    stance,
+                    level_gain_priorities=level_gain_priorities,
+                ),
+                entry[1],
+            ),
             reverse=True,
         )[:capacity]
         choices.extend(
@@ -210,6 +240,8 @@ def plan_stance_swaps(
     carried: Iterable[ObjectSource],
     worn: Iterable[ObjectSource],
     stance: str,
+    *,
+    level_gain_priorities: tuple[str, ...] = (),
 ) -> tuple[list[ObjectSource], list[ObjectSource]]:
     """Return worn removals and carried additions needed for a stance."""
     carried_items = list(carried)
@@ -230,7 +262,14 @@ def plan_stance_swaps(
             for item, _ in sorted(
                 [(item, True) for item in current]
                 + [(item, False) for item in available],
-                key=lambda entry: (stance_score(entry[0], stance), entry[1]),
+                key=lambda entry: (
+                    stance_score(
+                        entry[0],
+                        stance,
+                        level_gain_priorities=level_gain_priorities,
+                    ),
+                    entry[1],
+                ),
                 reverse=True,
             )[:capacity]
         ]
@@ -254,8 +293,20 @@ def plan_stance_swaps(
             if added < max(0, desired_counts[item.vnum] - already):
                 additions.append(item)
                 added_counts[item.vnum] = added + 1
-    removals.sort(key=lambda item: stance_score(item, stance))
-    additions.sort(key=lambda item: stance_score(item, stance))
+    removals.sort(
+        key=lambda item: stance_score(
+            item,
+            stance,
+            level_gain_priorities=level_gain_priorities,
+        )
+    )
+    additions.sort(
+        key=lambda item: stance_score(
+            item,
+            stance,
+            level_gain_priorities=level_gain_priorities,
+        )
+    )
     return removals, additions
 
 

@@ -91,6 +91,45 @@ PRIMARY_STATS = {
     "smithy": "str",
 }
 
+LEVEL_GAIN_METRICS = {
+    "intellectual_practices",
+    "physical_practices",
+    "hitpoints",
+    "mana",
+    "movement",
+}
+
+CLASS_LEVEL_GAIN_PRIORITIES = {
+    "mage": (
+        "intellectual_practices",
+        "mana",
+        "hitpoints",
+        "movement",
+        "physical_practices",
+    ),
+    "cleric": (
+        "intellectual_practices",
+        "mana",
+        "hitpoints",
+        "movement",
+        "physical_practices",
+    ),
+    "psionic": (
+        "intellectual_practices",
+        "mana",
+        "hitpoints",
+        "movement",
+        "physical_practices",
+    ),
+}
+_PHYSICAL_LEVEL_GAIN_PRIORITIES = (
+    "physical_practices",
+    "hitpoints",
+    "movement",
+    "intellectual_practices",
+    "mana",
+)
+
 
 @dataclass(frozen=True)
 class CharacterSpec:
@@ -104,6 +143,7 @@ class CharacterSpec:
     colour: bool = True
     max_attribute_rolls: int = 1
     minimum_primary_stat: int = 0
+    level_gain_priorities: tuple[str, ...] = ()
     host: str = "dragons-domain.org"
     port: int = 8888
     timeout: float = 10.0
@@ -123,6 +163,15 @@ class CharacterSpec:
     @property
     def primary_stat(self) -> str:
         return PRIMARY_STATS[self.character_class]
+
+    @property
+    def effective_level_gain_priorities(self) -> tuple[str, ...]:
+        if self.level_gain_priorities:
+            return self.level_gain_priorities
+        return CLASS_LEVEL_GAIN_PRIORITIES.get(
+            self.character_class,
+            _PHYSICAL_LEVEL_GAIN_PRIORITIES,
+        )
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "CharacterSpec":
@@ -170,6 +219,21 @@ class CharacterSpec:
         minimum_primary_stat = int(data.get("minimum_primary_stat", 0))
         if minimum_primary_stat < 0 or minimum_primary_stat > 25:
             raise ValueError("minimum_primary_stat must be between 0 and 25")
+        raw_priorities = data.get("level_gain_priorities", ())
+        if not isinstance(raw_priorities, (list, tuple)):
+            raise ValueError("level_gain_priorities must be a YAML list")
+        level_gain_priorities = tuple(
+            str(priority).strip().casefold() for priority in raw_priorities
+        )
+        if len(level_gain_priorities) != len(set(level_gain_priorities)):
+            raise ValueError("level_gain_priorities must not contain duplicates")
+        unknown_priorities = set(level_gain_priorities) - LEVEL_GAIN_METRICS
+        if unknown_priorities:
+            available = ", ".join(sorted(LEVEL_GAIN_METRICS))
+            unknown = ", ".join(sorted(unknown_priorities))
+            raise ValueError(
+                f"unknown level_gain_priorities {unknown}; choose from: {available}"
+            )
 
         max_runtime = float(data.get("max_runtime", 900))
         max_commands = int(data.get("max_commands", 250))
@@ -189,6 +253,7 @@ class CharacterSpec:
             colour=bool(data.get("colour", True)),
             max_attribute_rolls=max_attribute_rolls,
             minimum_primary_stat=minimum_primary_stat,
+            level_gain_priorities=level_gain_priorities,
             host=str(data.get("host", "dragons-domain.org")),
             port=int(data.get("port", 8888)),
             timeout=float(data.get("timeout", 10)),

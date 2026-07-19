@@ -62,4 +62,29 @@ def test_unknown_item_is_not_sent_to_an_incompatible_shop() -> None:
 
 
 def test_source_item_type_overrides_name_based_shop_guess() -> None:
-    assert safe_shop_for_item("a silver circlet", item_type=8) is None
+    shop = safe_shop_for_item("a silver circlet", item_type=8)
+
+    assert shop is not None
+    assert shop.name == "Jeweller"
+    assert shop.room_vnum == "3034"
+    assert shop.payout_percent == 50
+    assert shop.route_from_mage_lab == (
+        "west",
+        "north",
+        "north",
+        "east",
+        "east",
+        "east",
+        "south",
+    )
+
+
+def test_exhausted_duplicate_value_is_not_routed_to_a_shop() -> None:
+    shop = safe_shop_for_item(
+        "a length of metal piping",
+        {("piping", "Weapon Shop"): 4},
+        item_type=5,
+        item_value=28,
+    )
+
+    assert shop is None

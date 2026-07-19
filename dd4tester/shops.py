@@ -57,6 +57,13 @@ SAFE_MIDGAARD_SHOPS = (
         40,
         ("west", "north", "north", "east", "east", "east", "east", "north"),
     ),
+    SafeShop(
+        "Jeweller",
+        "3034",
+        8,
+        50,
+        ("west", "north", "north", "east", "east", "east", "south"),
+    ),
 )
 
 _ARMOUR_WORDS = {
@@ -104,6 +111,7 @@ def safe_shop_for_item(
     sale_counts: Mapping[tuple[str, str], int] | None = None,
     *,
     item_type: int | None = None,
+    item_value: int | None = None,
 ) -> SafeShop | None:
     """Choose the best compatible safe shop after known duplicate penalties."""
     words = set(re.findall(r"[a-z]+", description.casefold()))
@@ -122,6 +130,18 @@ def safe_shop_for_item(
     ]
     keyword = sale_keyword(description)
     counts = sale_counts or {}
+    if item_value is not None:
+        compatible = [
+            shop
+            for shop in compatible
+            if int(
+                item_value
+                * shop.payout_percent
+                / 100
+                / (2 ** counts.get((keyword, shop.name), 0))
+            )
+            >= 1
+        ]
     return max(
         compatible,
         key=lambda shop: (

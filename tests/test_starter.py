@@ -1046,7 +1046,7 @@ def test_completed_arena_patrol_forgets_stale_room_sightings() -> None:
     assert policy.arena_respawn_due is not None
 
 
-def test_empty_arena_patrol_sleeps_safely_until_the_respawn_window() -> None:
+def test_empty_arena_patrol_vacates_mud_school_for_the_respawn_window() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
     policy.in_world = True
     policy.prompt_ready = True
@@ -1060,13 +1060,31 @@ def test_empty_arena_patrol_sleeps_safely_until_the_respawn_window() -> None:
         room_vnum="3737",
     )
 
-    sleep = policy.next_decision(state)
+    leave = policy.next_decision(state)
 
+    assert leave is not None
+    assert leave.command == "enter portal"
+
+    state.room_name = "The Entrance to the Mud School"
+    state.room_vnum = "3725"
+    policy.prompt_ready = True
+    outside = policy.next_decision(state)
+    assert outside is not None
+    assert outside.command == "down"
+
+    state.room_name = "The Temple Of Midgaard"
+    state.room_vnum = "3001"
+    policy.prompt_ready = True
+    healer = policy.next_decision(state)
+    assert healer is not None
+    assert healer.command == "north"
+
+    state.room_name = "By the Temple Altar"
+    state.room_vnum = "3054"
+    policy.prompt_ready = True
+    sleep = policy.next_decision(state)
     assert sleep is not None
     assert sleep.command == "sleep"
-    state.position = 4
-    policy.prompt_ready = True
-    assert policy.next_decision(state) is None
 
 
 def test_safe_room_gmcp_update_reopens_expired_respawn_wait() -> None:
@@ -1078,8 +1096,8 @@ def test_safe_room_gmcp_update_reopens_expired_respawn_wait() -> None:
         hp=60,
         max_hp=60,
         position=4,
-        room_name="Safety",
-        room_vnum="3737",
+        room_name="By the Temple Altar",
+        room_vnum="3054",
     )
 
     policy.observe_events(
@@ -1091,6 +1109,28 @@ def test_safe_room_gmcp_update_reopens_expired_respawn_wait() -> None:
     assert policy.prompt_ready is True
     assert decision is not None
     assert decision.command == "stand"
+    assert policy.arena_respawn_due is None
+
+
+def test_expired_arena_reset_reenters_school_from_midgaard() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.arena_respawn_due = time.monotonic() - 1
+
+    decision = policy.next_decision(
+        CharacterState(
+            level=2,
+            hp=60,
+            max_hp=60,
+            position=7,
+            room_name="The Temple Of Midgaard",
+            room_vnum="3001",
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "up"
     assert policy.arena_respawn_due is None
 
 
@@ -1700,6 +1740,47 @@ def test_fastwalk_defends_against_the_configured_endpoint_target() -> None:
     assert decision.command == "cast 'magic missile' Olog"
     assert policy.fastwalk_attack_started is True
     assert policy.fastwalk_abort_reason is None
+
+
+def test_fastwalk_flees_and_recalls_when_field_health_reaches_sixty_percent() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_attack_target="Olog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(policy.fastwalk_route.commands)
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.active_target = "Olog"
+    state = CharacterState(
+        hp=60,
+        max_hp=100,
+        mana=200,
+        max_mana=240,
+        position=6,
+        room_name="Muddy Tunnel",
+        room_vnum="108",
+    )
+
+    flee = policy.next_decision(state)
+
+    assert flee is not None
+    assert flee.command == "flee"
+    assert "60%" in flee.reason
+    assert policy.fastwalk_emergency_recall_pending is True
+    assert policy.fastwalk_abort_reason is not None
+    policy.after_command(flee)
+    policy.observe_text("You flee from combat!\n")
+    policy.prompt_ready = True
+
+    recall = policy.next_decision(state)
+
+    assert recall is not None
+    assert recall.command == "recall"
 
 
 def test_fastwalk_fights_viable_opportunistic_attacker_instead_of_fleeing() -> None:
@@ -3142,6 +3223,15 @@ def test_inventory_descriptions_parse_serialized_gmcp_inventory() -> None:
     ]
 
 
+def test_inventory_descriptions_expand_stacked_quantities() -> None:
+    value = [[{"quan": "2", "short_desc": "a pair of blue snakeskin boots"}]]
+
+    assert _inventory_descriptions(value) == [
+        "a pair of blue snakeskin boots",
+        "a pair of blue snakeskin boots",
+    ]
+
+
 def test_liquidation_plans_distinct_items_for_best_safe_shops() -> None:
     policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
     policy.in_world = True
@@ -3196,6 +3286,7 @@ def test_human_identifies_loot_and_keeps_stat_circlet_before_sale() -> None:
         gear_catalog=GearCatalog({circlet.vnum: circlet, cap.vnum: cap}),
     )
     policy.in_world = True
+    policy.gear_audited = True
     home = CharacterState(
         room_name="Mage's Laboratory",
         room_vnum="3019",
@@ -3224,6 +3315,52 @@ def test_human_identifies_loot_and_keeps_stat_circlet_before_sale() -> None:
     assert policy.sale_plan == []
 
 
+def test_liquidation_sells_one_copy_after_retaining_the_best_stacked_item() -> None:
+    boots = ObjectSource(
+        112,
+        "blue snakeskin boots",
+        "a pair of blue snakeskin boots",
+        8,
+        (2, 0, 0, 0),
+        60,
+        wear_flags=1 | (1 << 6),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        gear_catalog=GearCatalog({boots.vnum: boots}),
+    )
+    policy.in_world = True
+    policy.gear_audited = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        level=7,
+        position=7,
+        inventory=[
+            [{"short_desc": "a pair of blue snakeskin boots", "quan": "2"}]
+        ],
+    )
+
+    policy.prompt_ready = True
+    identify = policy.next_decision(home)
+    assert identify is not None
+    assert identify.command == "cast 'identify' boots"
+    policy.after_command(identify)
+    policy.observe_text(
+        "It is worn on the feet.\n"
+        "It is worth 60 copper coins and is level 1.\n"
+    )
+    policy.prompt_ready = True
+    first_move = policy.next_decision(home)
+
+    assert first_move is not None
+    assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
+        ("boots", "Jeweller")
+    ]
+
+
 def test_liquidation_keeps_best_carried_combat_item_for_an_empty_slot() -> None:
     better = ObjectSource(
         110,
@@ -3250,6 +3387,7 @@ def test_liquidation_keeps_best_carried_combat_item_for_an_empty_slot() -> None:
         gear_catalog=GearCatalog({better.vnum: better, weaker.vnum: weaker}),
     )
     policy.in_world = True
+    policy.gear_audited = True
     home = CharacterState(
         room_name="Mage's Laboratory",
         room_vnum="3019",
@@ -3269,6 +3407,63 @@ def test_liquidation_keeps_best_carried_combat_item_for_an_empty_slot() -> None:
 
     assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
         ("shirt", "Leather Shop")
+    ]
+
+
+def test_liquidation_audits_worn_gear_before_retaining_carried_items() -> None:
+    chainmail = ObjectSource(
+        113,
+        "chainmail vest",
+        "a chainmail vest",
+        9,
+        (4, 0, 0, 0),
+        20,
+        wear_flags=1 | (1 << 3),
+    )
+    jerkin = ObjectSource(
+        114,
+        "leather jerkin",
+        "a leather jerkin",
+        9,
+        (2, 0, 0, 0),
+        40,
+        wear_flags=1 | (1 << 3),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        gear_catalog=GearCatalog(
+            {chainmail.vnum: chainmail, jerkin.vnum: jerkin}
+        ),
+    )
+    policy.in_world = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        level=7,
+        position=7,
+        inventory=[[{"short_desc": "a leather jerkin", "quan": "1"}]],
+    )
+
+    policy.prompt_ready = True
+    audit = policy.next_decision(home)
+    assert audit is not None
+    assert audit.command == "equipment"
+    policy.after_command(audit)
+    policy.observe_text("<worn on body> a chainmail vest\n")
+    policy.prompt_ready = True
+    identify = policy.next_decision(home)
+    assert identify is not None
+    assert identify.command == "cast 'identify' jerkin"
+    policy.after_command(identify)
+    policy.observe_text("It is worth 40 copper coins and is level 1.\n")
+    policy.prompt_ready = True
+    first_move = policy.next_decision(home)
+
+    assert first_move is not None
+    assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
+        ("jerkin", "Leather Shop")
     ]
 
 
@@ -3922,6 +4117,36 @@ def test_mage_casts_again_after_the_server_confirms_the_previous_volley() -> Non
 
     assert decision is not None
     assert decision.command == "cast 'magic missile' wolf"
+
+
+def test_mage_casts_again_after_the_previous_spell_misses() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_attack_target="Olog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.active_target = "Olog"
+    policy.magic_missile_cast = True
+    state = CharacterState(
+        hp=90,
+        max_hp=100,
+        mana=200,
+        max_mana=240,
+        position=6,
+        room_name="Muddy Tunnel",
+        room_vnum="108",
+    )
+
+    policy.observe_text("Your spell misses Olog.\n")
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'magic missile' Olog"
 
 
 def test_mage_preserves_low_mana_for_arena_recovery() -> None:

@@ -694,6 +694,26 @@ class RunStorage:
         )
         return cursor.fetchone()
 
+    def get_latest_character_state(self, character_name: str) -> dict[str, Any] | None:
+        """Return the newest persisted snapshot for one named character."""
+        cursor = self.connection.execute(
+            """
+            SELECT state_json
+            FROM state_snapshots
+            ORDER BY id DESC
+            """
+        )
+        expected = character_name.casefold()
+        for row in cursor:
+            try:
+                state = json.loads(row["state_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            name = state.get("name")
+            if isinstance(name, str) and name.casefold() == expected:
+                return dict(state)
+        return None
+
     def close(self) -> None:
         self.connection.commit()
         self._events_since_commit = 0

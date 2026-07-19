@@ -22,7 +22,12 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
         payload=event.payload,
         timestamp=event.timestamp,
     )
-    state = {"schema_version": 1, "revision": 1, "level": 2}
+    state = {
+        "schema_version": 1,
+        "revision": 1,
+        "name": "Ararisa",
+        "level": 2,
+    }
     snapshot_id = storage.record_state_snapshot(
         run_id,
         source_event_id=source_event_id,
@@ -46,6 +51,7 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     stored_run = storage.get_run(run_id)
     snapshots = storage.list_state_snapshots(run_id)
     latest_snapshot = storage.get_latest_state_snapshot(run_id)
+    latest_character_state = storage.get_latest_character_state("ararisa")
     sales = storage.list_loot_sales("Ararisa")
     run_sales = storage.list_loot_sales_for_run(run_id)
 
@@ -72,6 +78,7 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert json.loads(snapshots[0]["state_json"]) == state
     assert latest_snapshot is not None
     assert latest_snapshot["reason"] == "progress_changed"
+    assert latest_character_state == state
     assert sales[0]["id"] == sale_id
     assert sales[0]["run_id"] == run_id
     assert sales[0]["boot_id"] is None

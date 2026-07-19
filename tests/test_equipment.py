@@ -45,6 +45,40 @@ def test_stances_prioritize_damroll_stats_and_recovery_resources() -> None:
     )
 
 
+def test_pre_level_priorities_can_target_mage_practices_or_hitpoints() -> None:
+    wisdom = _item(4, "wisdom helm", (3, 1))
+    constitution = _item(5, "constitution helm", (5, 1))
+    mage_priorities = (
+        "intellectual_practices",
+        "mana",
+        "hitpoints",
+    )
+    hitpoint_priorities = (
+        "hitpoints",
+        "intellectual_practices",
+        "mana",
+    )
+
+    assert stance_score(
+        wisdom,
+        STANCE_PRE_LEVEL,
+        level_gain_priorities=mage_priorities,
+    ) > stance_score(
+        constitution,
+        STANCE_PRE_LEVEL,
+        level_gain_priorities=mage_priorities,
+    )
+    assert stance_score(
+        constitution,
+        STANCE_PRE_LEVEL,
+        level_gain_priorities=hitpoint_priorities,
+    ) > stance_score(
+        wisdom,
+        STANCE_PRE_LEVEL,
+        level_gain_priorities=hitpoint_priorities,
+    )
+
+
 def test_stance_swap_removes_conflict_before_wearing_better_item() -> None:
     damage = _item(1, "damage helm", (19, 4))
     recovery = _item(2, "recovery helm", (12, 20), (13, 15))

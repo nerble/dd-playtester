@@ -18,6 +18,8 @@ from .equipment import (
     STANCE_COMBAT,
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
+    is_capacity_infrastructure,
+    item_category,
     item_keyword,
     load_gear_catalog,
     normalize_item_name,
@@ -60,6 +62,10 @@ _BOOT_TIME = re.compile(
 )
 _TOTAL_XP_GAIN = re.compile(
     r"You gained a total of (?P<xp>\d+) experience points?!",
+    re.IGNORECASE,
+)
+_IDENTIFIED_VALUE = re.compile(
+    r"\bis worth\s+(?P<coins>\d+)\s+copper coins?\b",
     re.IGNORECASE,
 )
 _MOB_DEATH = re.compile(
@@ -112,6 +118,7 @@ _ARENA_RESPAWN_WAIT_SECONDS = 90
 _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
 _PRE_LEVEL_XP_FRACTION = 0.10
+_FIELD_WITHDRAW_HEALTH_RATIO = 0.60
 _MOVEMENT_COMMANDS = {
     "north",
     "east",
@@ -269,6 +276,8 @@ class StarterPolicy:
         self.sale_container_step = 0
         self.sale_identify_plan: list[str] | None = None
         self.sale_identify_index = 0
+        self.sale_identify_pending_keyword: str | None = None
+        self.sale_identified_values: dict[str, int] = {}
         self.fastwalk_recall_started = False
         self.fastwalk_arrival_observed = False
         self.fastwalk_returning = False
@@ -343,7 +352,11 @@ class StarterPolicy:
                 )
             ):
                 self.fastwalk_consider_viable = False
-        if "you launch a volley of" in recent and "magic missile" in recent:
+        if (
+            "you launch a volley of" in recent
+            and "magic missile" in recent
+            or "your spell" in recent
+        ):
             self.magic_missile_cast = False
         if any(
             warning in folded
@@ -400,6 +413,15 @@ class StarterPolicy:
                 }
             )
             self.sale_offer_coins = None
+        identified_value = _IDENTIFIED_VALUE.search(cleaned)
+        if (
+            identified_value is not None
+            and self.sale_identify_pending_keyword is not None
+        ):
+            self.sale_identified_values[self.sale_identify_pending_keyword] = int(
+                identified_value.group("coins")
+            )
+            self.sale_identify_pending_keyword = None
         boot_time = _BOOT_TIME.search(cleaned)
         if boot_time is not None:
             self.world_boot_id = " ".join(boot_time.group("boot").split())
@@ -609,7 +631,7 @@ class StarterPolicy:
         if (
             self.arena_respawn_due is not None
             and time.monotonic() >= self.arena_respawn_due
-            and state.room_vnum == "3737"
+            and state.room_vnum in {"3001", "3054"}
         ):
             self.prompt_ready = True
 
@@ -835,16 +857,47 @@ class StarterPolicy:
 
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
-        if room_vnum == "3737" and self.arena_respawn_due is not None:
-            if time.monotonic() < self.arena_respawn_due:
+        if self.arena_respawn_due is not None:
+            if room_vnum == "3737":
+                return BotDecision(
+                    "enter portal",
+                    "vacate Mud School so its depleted arena can reset",
+                )
+            if room_vnum == "3725":
+                return BotDecision(
+                    "down",
+                    "leave the Mud School area during its arena reset",
+                )
+            if room_vnum == "3001":
+                if time.monotonic() >= self.arena_respawn_due:
+                    self.arena_respawn_due = None
+                    return BotDecision(
+                        "up",
+                        "re-enter Mud School after the outside-area reset window",
+                    )
+                return BotDecision(
+                    "north",
+                    "wait beside the Midgaard healer while Mud School resets",
+                )
+            if room_vnum == "3054":
+                if time.monotonic() >= self.arena_respawn_due:
+                    self.arena_respawn_due = None
+                    if _is_sleeping(state):
+                        return BotDecision(
+                            "stand",
+                            "wake after the outside-area arena reset window",
+                        )
+                    return BotDecision(
+                        "south",
+                        "return to Mud School after its arena reset window",
+                    )
                 if _is_sleeping(state):
                     self.prompt_ready = False
                     return None
                 return BotDecision(
                     "sleep",
-                    "wait safely for arena opponents to respawn",
+                    "recover beside the healer while Mud School resets",
                 )
-            self.arena_respawn_due = None
         if room_vnum == "2" or room_name == "limbo":
             return BotDecision("look", "return from Limbo to the previous room")
 
@@ -949,6 +1002,30 @@ class StarterPolicy:
                 return BotDecision(
                     "flee",
                     "withdraw from unexpected combat during a bounded fastwalk",
+                )
+            if self.fastwalk_route is not None and (
+                self.needs_food
+                or self.needs_drink
+                or _health_ratio(state) <= _FIELD_WITHDRAW_HEALTH_RATIO
+            ):
+                causes = []
+                if self.needs_food:
+                    causes.append("hunger")
+                if self.needs_drink:
+                    causes.append("thirst")
+                if _health_ratio(state) <= _FIELD_WITHDRAW_HEALTH_RATIO:
+                    causes.append(
+                        f"health at or below "
+                        f"{int(_FIELD_WITHDRAW_HEALTH_RATIO * 100)}%"
+                    )
+                cause = ", ".join(causes)
+                self.fastwalk_abort_reason = (
+                    f"field combat aborted for safety: {cause}"
+                )
+                self.fastwalk_emergency_recall_pending = True
+                return BotDecision(
+                    "flee",
+                    f"withdraw from field combat because of {cause}",
                 )
             if self.needs_food or self.needs_drink or _health_ratio(state) < 0.25:
                 if self.return_home:
@@ -1262,7 +1339,12 @@ class StarterPolicy:
             )
 
         carried = self.gear_catalog.match_many(_inventory_descriptions(state.inventory))
-        removals, additions = plan_stance_swaps(carried, self.gear_worn, stance)
+        removals, additions = plan_stance_swaps(
+            carried,
+            self.gear_worn,
+            stance,
+            level_gain_priorities=self.spec.effective_level_gain_priorities,
+        )
         stance_label = stance.replace("_", " ")
         self.gear_command_queue = [
             (
@@ -2139,6 +2221,27 @@ class StarterPolicy:
             if room_vnum != "3019":
                 self.failure = "safe loot liquidation must start in the Mage's Laboratory"
                 return None
+            if self.gear_catalog is not None and not self.gear_audited:
+                if self.gear_audit_pending:
+                    audited_items = self.gear_catalog.match_equipment_text(self.text)
+                    explicit_empty = (
+                        "you are not using any equipment" in self.text.casefold()
+                    )
+                    if audited_items or explicit_empty:
+                        self.gear_worn = audited_items
+                        self.gear_audited = True
+                        self.gear_audit_pending = False
+                    else:
+                        return BotDecision(
+                            "equipment",
+                            "retry the worn-item audit before planning loot sales",
+                        )
+                else:
+                    self.gear_audit_pending = True
+                    return BotDecision(
+                        "equipment",
+                        "audit worn items before planning safe loot sales",
+                    )
             has_purse = any(
                 "purse" in description.casefold()
                 for description in _inventory_descriptions(state.inventory)
@@ -2172,6 +2275,7 @@ class StarterPolicy:
             ):
                 keyword = self.sale_identify_plan[self.sale_identify_index]
                 self.sale_identify_index += 1
+                self.sale_identify_pending_keyword = keyword
                 return BotDecision(
                     f"cast 'identify' {keyword}",
                     f"use the Human racial spell to audit {keyword} before sale",
@@ -2186,15 +2290,25 @@ class StarterPolicy:
             retained_counts: Counter[int] = Counter()
             if self.gear_catalog is not None:
                 carried = self.gear_catalog.match_many(descriptions)
-                retained_counts.update(
-                    choice.item.vnum
-                    for choice in plan_stance(
-                        carried,
-                        self.gear_worn,
-                        STANCE_COMBAT,
-                        character_level=state.level,
+                for stance in (
+                    STANCE_COMBAT,
+                    STANCE_RECOVERY,
+                    STANCE_PRE_LEVEL,
+                ):
+                    stance_counts = Counter(
+                        choice.item.vnum
+                        for choice in plan_stance(
+                            carried,
+                            self.gear_worn,
+                            stance,
+                            character_level=state.level,
+                            level_gain_priorities=(
+                                self.spec.effective_level_gain_priorities
+                            ),
+                        )
                     )
-                )
+                    for vnum, count in stance_counts.items():
+                        retained_counts[vnum] = max(retained_counts[vnum], count)
             for description in descriptions:
                 item = (
                     self.gear_catalog.match(description)
@@ -2203,7 +2317,16 @@ class StarterPolicy:
                 )
                 if self.gear_catalog is not None and item is None:
                     continue
-                if item is not None and protects_from_sale(item):
+                if (
+                    item is not None
+                    and (
+                        is_capacity_infrastructure(item)
+                        or (
+                            item_category(item) is None
+                            and protects_from_sale(item)
+                        )
+                    )
+                ):
                     continue
                 if item is not None and retained_counts[item.vnum] > 0:
                     retained_counts[item.vnum] -= 1
@@ -2212,6 +2335,9 @@ class StarterPolicy:
                     description,
                     projected_counts,
                     item_type=item.item_type if item is not None else None,
+                    item_value=self.sale_identified_values.get(
+                        sale_keyword(description)
+                    ),
                 )
                 if shop is not None:
                     keyword = sale_keyword(description)
@@ -3623,7 +3749,12 @@ def _inventory_descriptions(value: Any) -> list[str]:
         return _inventory_descriptions(parsed)
     if isinstance(value, dict):
         description = value.get("short_desc")
-        result = [str(description)] if isinstance(description, str) else []
+        quantity = _int_or_none(value.get("quan")) or 1
+        result = (
+            [str(description)] * max(1, quantity)
+            if isinstance(description, str)
+            else []
+        )
         for item in value.values():
             result.extend(_inventory_descriptions(item))
         return result

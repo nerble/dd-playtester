@@ -190,15 +190,19 @@ class CampaignRunner:
                 character_profile_path=self.spec.character_profile,
                 target_level=self.spec.target_level,
             )
-            return campaign_id, {}
+            return campaign_id, storage.get_latest_character_state(
+                self.spec.character.name
+            ) or {}
 
         campaign_id = int(campaign["id"])
-        if campaign["status"] == "success":
-            checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
-            return campaign_id, _checkpoint_state(checkpoint)
-        storage.resume_campaign(campaign_id)
         checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
-        return campaign_id, _checkpoint_state(checkpoint)
+        checkpoint_state = _checkpoint_state(checkpoint)
+        live_state = storage.get_latest_character_state(self.spec.character.name)
+        state = _newer_progress_state(checkpoint_state, live_state)
+        if campaign["status"] == "success":
+            return campaign_id, state
+        storage.resume_campaign(campaign_id)
+        return campaign_id, state
 
     async def _run_starter(
         self,
@@ -399,6 +403,22 @@ def _checkpoint_state(checkpoint: Any) -> dict[str, Any]:
 def _level(state: dict[str, Any]) -> int:
     level = state.get("level")
     return int(level) if isinstance(level, (int, float)) else 0
+
+
+def _newer_progress_state(
+    checkpoint: dict[str, Any],
+    live: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not live:
+        return checkpoint
+    checkpoint_progress = (_level(checkpoint), _numeric_progress(checkpoint, "xp"))
+    live_progress = (_level(live), _numeric_progress(live, "xp"))
+    return live if live_progress >= checkpoint_progress else checkpoint
+
+
+def _numeric_progress(state: dict[str, Any], key: str) -> int:
+    value = state.get(key)
+    return int(value) if isinstance(value, (int, float)) else 0
 
 
 def _budget_failure(spec: CampaignSpec, totals: Any) -> str | None:

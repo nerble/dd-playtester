@@ -188,3 +188,28 @@ and failure handling before registering each new level-band policy.
   return to the Mage Guild with two pies intact. Future liquidation retains the
   best carried combat item for each otherwise-empty wear slot before selling
   expendable gear.
+
+## Progression Evidence Cycle 7
+
+- Run 233 proved the outside-area arena reset loop: ten kills, 698 XP, two
+  resets while Ararisa waited at Midgaard's healer, and a safe exit through
+  Mud School Safety. Campaign resume now reconciles stale checkpoints against
+  the latest persisted character state.
+- Run 235 exposed two field-combat faults against Uburz: withdrawal at 25% was
+  too late, and a missed opening magic missile suppressed later casts. Run 236
+  recovered Ararisa from 36/105 health to full safety. Field fights now flee and
+  recall at 60% health, hunger, or thirst, and retry magic missile after either
+  a hit or miss result.
+- Loot liquidation now audits worn equipment, expands stacked inventory
+  quantities, preserves the best combat, recovery, and pre-level loadouts, and
+  sells redundant stat gear by actual DD4 item type. Live runs 240 and 242 sold
+  duplicate boots, jerkin, cap, circlet, and boots for 139 coins total. Run 243
+  converted the reserve into four pies and a filled water skin.
+- Pre-level equipment priorities are profile-configurable and source-backed:
+  intellectual practices use `2*WIS + INT`, physical practices use
+  `WIS + STR + DEX`, mana uses `2*INT + WIS`, hit points use CON, and movement
+  uses `CON + DEX`. Ararisa prioritizes intellectual practices, mana, hit
+  points, movement, then physical practices.
+- Run 244 validated repeated field casting against Olog: three magic-missile
+  commands, 97 XP, no health loss, confirmed loot, recall, and safe return to
+  the Mage Guild with four pies intact.

@@ -67,6 +67,48 @@ def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:
         assert storage.get_campaign(result.campaign_id)["status"] == "success"
 
 
+def test_campaign_resumes_from_newer_external_character_state(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+
+    async def segment(spec, profile_path: Path) -> RunResult:
+        return _record_segment_run(
+            spec.database,
+            profile_path,
+            {"level": 2, "xp": 100},
+        )
+
+    spec = load_campaign_spec(config_path)
+    initial = asyncio.run(
+        CampaignRunner(spec, config_path, segment_runner=segment).run()
+    )
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="external:Campaignmage",
+            scenario_path=config_path,
+        )
+        event_id = storage.record_event(
+            run_id,
+            kind="game_event",
+            payload={"type": "progress_changed"},
+        )
+        storage.record_state_snapshot(
+            run_id,
+            source_event_id=event_id,
+            reason="progress_changed",
+            state={"name": "Campaignmage", "level": 7, "xp": 20_000},
+        )
+        storage.finish_run(run_id, status="success")
+
+    resumed = asyncio.run(
+        CampaignRunner(spec, config_path, segment_runner=segment).run()
+    )
+
+    assert resumed.campaign_id == initial.campaign_id
+    with RunStorage(database) as storage:
+        segments = storage.list_campaign_segments(resumed.campaign_id)
+    assert segments[-1]["phase"] == "mud-school-6-10"
+
+
 def test_campaign_file_runs_multiple_ready_segments(tmp_path, monkeypatch) -> None:
     config_path, database = _write_campaign_files(tmp_path)
     calls = 0
