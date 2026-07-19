@@ -130,3 +130,32 @@ def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -
 
     assert candidates[0].status == "reject"
     assert "route-area wanderer: a large grey wolf L8" in candidates[0].hazards
+
+
+def test_candidate_ranking_can_include_targets_without_known_loot(monkeypatch) -> None:
+    area = parse_area_file(FIXTURE)
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("hunt_area.are",),
+    )
+    world = WorldSource(
+        mobiles=area.mobiles,
+        objects=area.objects,
+        rooms=area.rooms,
+        mob_resets=area.mob_resets,
+        container_contents=area.container_contents,
+        mobile_specials=area.mobile_specials,
+    )
+
+    loot_candidates = rank_hunt_candidates(world, character_level=10)
+    xp_candidates = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+    )
+
+    assert [candidate.target for candidate in loot_candidates] == ["a cellar rat"]
+    assert {candidate.target for candidate in xp_candidates} == {
+        "a cellar rat",
+        "the dangerous guard",
+    }

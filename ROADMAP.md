@@ -290,3 +290,21 @@ and failure handling before registering each new level-band policy.
 - Campaign sack attempts require a verified GMCP invisibility affect and treat
   a safely completed no-sack attempt as retryable. Manual `midennir-research`
   remains strict and reports a missing sack as failure.
+
+## Progression Evidence Cycle 11
+
+- Live runs 279 and 280 gained 210 and 369 XP from Miden'nir goblins. Run 280
+  completed two sequential fights and returned safely to the Mage Guild at full
+  health and mana, leaving Ararisa 749 XP from level 8.
+- Run 281 found neither a wandering goblin at the fastwalk endpoint nor the
+  room-3506 reset. It returned safely with no XP change in 48.7 seconds,
+  confirming that an empty area remains a cheap, bounded retry rather than a
+  reason to force a deeper hunt.
+- Source-backed hunt discovery now indexes Ambush, Moria, and Thalos and offers
+  an explicit `--include-xp-only` mode. The default remains loot-oriented, while
+  progression research can also inspect targets without saleable drops.
+- At level 10, source ranking identifies Ambush's level-8 to level-10 goblins
+  as the strongest reachable loot-and-XP candidates. Thalos is rejected while
+  its level-11 mimic can wander, and useful Moria targets remain behind mixed
+  level-10 to level-13 opposition. Ambush is therefore the next level-band
+  research candidate, not yet an executable policy.

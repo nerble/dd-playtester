@@ -1,4 +1,4 @@
-"""Source-backed low-level hunt candidate discovery and risk scoring."""
+"""Source-backed hunt candidate discovery and risk scoring."""
 
 from __future__ import annotations
 
@@ -21,11 +21,14 @@ ITEM_MONEY = 20
 
 RECALL_VNUM = 3001
 LOW_LEVEL_AREA_FILES = (
+    "ambush.are",
     "foundry.are",
     "gremlinlair.are",
     "circus.are",
     "midennir.are",
     "dwarven_home.are",
+    "moria.are",
+    "thalos.are",
 )
 
 _DIRECTIONS = {
@@ -236,6 +239,7 @@ def rank_hunt_candidates(
     *,
     character_level: int,
     boot_kill_counts: Mapping[str, int] | None = None,
+    include_xp_only: bool = False,
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -269,7 +273,7 @@ def rank_hunt_candidates(
             for item in loot_objects
             if item.item_type == ITEM_MONEY
         )
-        if not sellable and contained_coins <= 0:
+        if not include_xp_only and not sellable and contained_coins <= 0:
             continue
 
         path = _shortest_path(world.rooms, RECALL_VNUM, reset.room_vnum)

@@ -223,7 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hunt_candidates_parser = subcommands.add_parser(
         "show-hunt-candidates",
-        help="rank source-backed low-level hunt and loot candidates",
+        help="rank source-backed hunt and loot candidates",
     )
     hunt_candidates_parser.add_argument("--level", type=int, required=True)
     hunt_candidates_parser.add_argument(
@@ -248,6 +248,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=20,
         help="maximum candidates to show, default: 20",
+    )
+    hunt_candidates_parser.add_argument(
+        "--include-xp-only",
+        action="store_true",
+        help="include targets without known saleable loot or coin drops",
     )
     arena_research_parser.add_argument(
         "--target-level",
@@ -653,6 +658,7 @@ def main(argv: list[str] | None = None) -> int:
             character=args.character,
             database=args.database,
             limit=args.limit,
+            include_xp_only=args.include_xp_only,
         )
 
     if args.command == "configure-login":
@@ -828,6 +834,7 @@ def show_hunt_candidates(
     character: str,
     database: Path,
     limit: int,
+    include_xp_only: bool = False,
 ) -> int:
     if level < 1:
         print("--level must be at least 1", file=sys.stderr)
@@ -858,6 +865,7 @@ def show_hunt_candidates(
         world,
         character_level=level,
         boot_kill_counts=kill_counts,
+        include_xp_only=include_xp_only,
     )
 
     print(f"Source: {source.resolve()}")

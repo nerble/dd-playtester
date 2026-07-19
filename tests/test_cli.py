@@ -540,11 +540,12 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
         [
             "show-hunt-candidates",
             "--level",
-            "6",
+            "10",
             "--source",
             str(source),
             "--database",
             str(tmp_path / "missing.sqlite3"),
+            "--include-xp-only",
         ]
     )
 
@@ -552,8 +553,9 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert exit_code == 0
     assert "Current reboot: unknown" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
-    assert "reject\t" in captured.out
+    assert "caution\t" in captured.out
     assert "a cellar rat" in captured.out
+    assert "the dangerous guard" in captured.out
     assert "route: the dangerous guard L8 in 3002" in captured.out
 
 
