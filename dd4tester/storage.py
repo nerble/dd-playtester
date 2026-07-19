@@ -240,6 +240,19 @@ class RunStorage:
         self.connection.commit()
         self._events_since_commit = 0
 
+    def fail_interrupted_runs(self, *, reason: str) -> int:
+        """Mark orphaned running records as failed after their process has ended."""
+        cursor = self.connection.execute(
+            """
+            UPDATE runs
+            SET finished_at = ?, status = 'failed', error = ?
+            WHERE status = 'running'
+            """,
+            (_now(), reason),
+        )
+        self.connection.commit()
+        return int(cursor.rowcount)
+
     def list_runs(self, *, limit: int = 20) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """

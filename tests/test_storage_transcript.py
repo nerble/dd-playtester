@@ -81,6 +81,20 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert run_sales[0]["id"] == sale_id
 
 
+def test_storage_marks_interrupted_runs_as_failed(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    run_id = storage.create_run(scenario_name="arena", scenario_path=Path("arena.yaml"))
+
+    recovered = storage.fail_interrupted_runs(reason="test interruption")
+    run = storage.get_run(run_id)
+    storage.close()
+
+    assert recovered == 1
+    assert run is not None
+    assert run["status"] == "failed"
+    assert run["error"] == "test interruption"
+
+
 def test_storage_scopes_sales_and_kills_by_boot_identity(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     run_id = storage.create_run(

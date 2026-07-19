@@ -22,6 +22,18 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     assert "success" in captured.out
 
 
+def test_recover_runs_marks_orphaned_records(tmp_path, capsys) -> None:
+    database, _transcript = _create_recorded_run(tmp_path)
+    with RunStorage(database) as storage:
+        storage.create_run(scenario_name="arena", scenario_path=tmp_path / "arena.yaml")
+
+    exit_code = main(["recover-runs", "--database", str(database)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Marked 1 interrupted run(s) as failed." in captured.out
+
+
 def test_show_sales_lists_recorded_proceeds(tmp_path, capsys) -> None:
     database, _transcript = _create_recorded_run(tmp_path)
     with RunStorage(database) as storage:

@@ -262,6 +262,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     show_runs_parser.add_argument("--limit", type=int, default=20, help="maximum runs to show")
 
+    recover_runs_parser = subcommands.add_parser(
+        "recover-runs",
+        help="mark orphaned running records as interrupted after their process has ended",
+    )
+    recover_runs_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    recover_runs_parser.add_argument(
+        "--reason",
+        default="runner process ended before the run could finish",
+        help="failure reason to record",
+    )
+
     show_sales_parser = subcommands.add_parser(
         "show-sales",
         help="list recorded loot-sale proceeds for a character",
@@ -596,6 +612,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "show-runs":
         return show_runs(args.database, limit=args.limit)
 
+    if args.command == "recover-runs":
+        return recover_runs(args.database, reason=args.reason)
+
     if args.command == "show-sales":
         return show_sales(args.database, character=args.character, limit=args.limit)
 
@@ -665,6 +684,17 @@ def show_runs(database: Path, *, limit: int) -> int:
                 ]
             )
         )
+    return 0
+
+
+def recover_runs(database: Path, *, reason: str) -> int:
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+    with RunStorage(database) as storage:
+        recovered = storage.fail_interrupted_runs(reason=reason)
+    print(f"Database: {database.resolve()}")
+    print(f"Marked {recovered} interrupted run(s) as failed.")
     return 0
 
 
