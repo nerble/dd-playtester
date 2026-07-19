@@ -732,6 +732,18 @@ class StarterPolicy:
 
         if self.combat_active:
             if self.fastwalk_route is not None and not self.fastwalk_attack_started:
+                if (
+                    self.fastwalk_attack_target is not None
+                    and self.fastwalk_outbound_index >= len(self.fastwalk_route.commands)
+                    and _text_mentions_target(self.text, self.fastwalk_attack_target)
+                ):
+                    self.fastwalk_attack_started = True
+                    self.active_target = self.fastwalk_attack_target
+                    spell = self._combat_spell_decision(state)
+                    if spell is not None:
+                        return spell
+                    self.prompt_ready = False
+                    return None
                 self.fastwalk_abort_reason = (
                     "unexpected combat interrupted fastwalk "
                     f"{self.fastwalk_route.name!r} before its objective"
@@ -2831,6 +2843,11 @@ def _defeated_mobile(text: str) -> str | None:
     while words and words[0] in {"a", "an", "the"}:
         words.pop(0)
     return " ".join(words) or None
+
+
+def _text_mentions_target(text: str, target: str) -> bool:
+    keyword = _target_keyword(target)
+    return bool(re.search(rf"\b{re.escape(keyword)}\b", text, re.IGNORECASE))
 
 
 def _target_keyword(target: str) -> str:

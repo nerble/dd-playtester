@@ -1321,6 +1321,36 @@ def test_fastwalk_unexpected_combat_flees_then_recalls_and_records_failure() -> 
     assert "unexpected combat" in recall.reason
 
 
+def test_fastwalk_defends_against_the_configured_endpoint_target() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_attack_target="Olog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(policy.fastwalk_route.commands)
+    policy.combat_active = True
+    policy.observe_text("Olog, the Goblin Soldier, crouches in the muck.\n")
+
+    decision = policy.next_decision(
+        CharacterState(
+            room_name="Muddy Tunnel",
+            room_vnum="108",
+            mana=268,
+            max_mana=268,
+            position=7,
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "cast 'magic missile' Olog"
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_abort_reason is None
+
+
 def test_fastwalk_research_walks_from_arena_safety_to_preserve_movement() -> None:
     route = route_named("moria")
     policy = StarterPolicy(_spec(), "swordfish", fastwalk_route=route)
