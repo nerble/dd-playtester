@@ -26,6 +26,38 @@ def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
     assert area.container_contents[201] == [202]
 
 
+def test_area_parser_ignores_mobile_program_vnum_references(tmp_path) -> None:
+    area_file = tmp_path / "scripted.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+rat~
+a rat~
+A rat is here.~
+Small but hostile.~
+0 0 0 S
+3 0 0 0d0+0 0d0+0
+0 0
+8 8 0
+#200
+keyword~
+short~
+long~
+description~
+not-a-mobile-header
+mpecho a mobile program reference
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+
+    area = parse_area_file(area_file, include_objects=False)
+
+    assert set(area.mobiles) == {100}
+
+
 def test_candidate_ranking_rejects_route_through_higher_level_aggressor(
     monkeypatch,
 ) -> None:
@@ -83,12 +115,13 @@ def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -
         rooms={
             3001: RoomSource(3001, "Recall", "midgaard.are"),
             6008: RoomSource(6008, "Forest clearing", "transit.are"),
+            6009: RoomSource(6009, "Forest track", "transit.are"),
             7001: RoomSource(7001, "Rat cellar", "target.are"),
         },
         objects={
             300: ObjectSource(300, "sword", "a rusty sword", 5, (), 100),
         },
-        mob_resets=[MobReset(200, 6008, 1, ()), MobReset(100, 7001, 1, (300,))],
+        mob_resets=[MobReset(200, 6009, 1, ()), MobReset(100, 7001, 1, (300,))],
     )
     world.rooms[3001].exits["west"] = ExitSource("west", 6008, 0, -1)
     world.rooms[6008].exits["west"] = ExitSource("west", 7001, 0, -1)
@@ -96,4 +129,4 @@ def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -
     candidates = rank_hunt_candidates(world, character_level=6)
 
     assert candidates[0].status == "reject"
-    assert "route: a large grey wolf L8 in 6008" in candidates[0].hazards
+    assert "route-area wanderer: a large grey wolf L8" in candidates[0].hazards

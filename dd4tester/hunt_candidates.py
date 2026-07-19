@@ -228,7 +228,10 @@ def rank_hunt_candidates(
     }
     resets_by_room = _resets_by_room(world)
     candidate_area_files = set(LOW_LEVEL_AREA_FILES)
-    area_aggressors = _area_wandering_aggressors(world, candidate_area_files)
+    area_aggressors = _area_wandering_aggressors(
+        world,
+        {room.area_file for room in world.rooms.values()},
+    )
     ranked: list[HuntCandidate] = []
 
     for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
@@ -273,14 +276,19 @@ def rank_hunt_candidates(
                 if hazard.level > character_level:
                     dangerous = True
 
-        for hazard in area_aggressors.get(mobile.area_file, ()):
-            if hazard.vnum == mobile.vnum:
-                continue
-            if hazard.level > character_level:
+        for area_file in {
+            world.rooms[path_room].area_file
+            for path_room in path_rooms
+            if path_room in world.rooms
+        }:
+            for hazard in area_aggressors.get(area_file, ()):
+                if hazard.vnum == mobile.vnum:
+                    continue
                 hazards.append(
-                    f"wanderer: {hazard.short_description} L{hazard.level}"
+                    f"route-area wanderer: {hazard.short_description} L{hazard.level}"
                 )
-                dangerous = True
+                if hazard.level > character_level:
+                    dangerous = True
 
         if closed_doors:
             hazards.append(f"{closed_doors} closed door(s) on route")
@@ -389,7 +397,14 @@ def _parse_mobiles(
         index += 1
         combat_parts = lines[index].split()
         index += 1
-        if len(flag_parts) < 3 or not combat_parts:
+        if (
+            len(flag_parts) < 3
+            or not combat_parts
+            or not _all_ints((flag_parts[2], combat_parts[0]))
+        ):
+            # Mob programs can contain ``#<vnum>`` references that are not
+            # mobile records. Skip them unless their expected numeric header is present.
+            index = _next_vnum_marker(lines, index, end)
             continue
         mobiles[vnum] = MobileSource(
             vnum=vnum,
