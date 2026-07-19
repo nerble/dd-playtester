@@ -265,6 +265,19 @@ class RunStorage:
         )
         return cursor.fetchone()
 
+    def latest_boot_id(self) -> str | None:
+        cursor = self.connection.execute(
+            """
+            SELECT boot_id
+            FROM runs
+            WHERE boot_id IS NOT NULL
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        return str(row["boot_id"]) if row is not None else None
+
     def list_events(self, run_id: int) -> list[sqlite3.Row]:
         """Return the recorded evidence for a run in chronological storage order."""
         cursor = self.connection.execute(

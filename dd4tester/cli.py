@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections import Counter
 import json
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ from .credentials import (
 )
 from .evidence import collect_run_evidence, render_evidence_json
 from .fastwalks import FASTWALKS, routes_for_level
+from .hunt_candidates import load_world_source, rank_hunt_candidates
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
@@ -180,6 +182,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--level",
         type=int,
         help="only list routes whose suggested level band includes this level",
+    )
+    hunt_candidates_parser = subcommands.add_parser(
+        "show-hunt-candidates",
+        help="rank source-backed low-level hunt and loot candidates",
+    )
+    hunt_candidates_parser.add_argument("--level", type=int, required=True)
+    hunt_candidates_parser.add_argument(
+        "--character",
+        default="Ararisa",
+        help="character name used for current-reboot kill history, default: Ararisa",
+    )
+    hunt_candidates_parser.add_argument(
+        "--source",
+        type=Path,
+        default=Path("runs/dd4-source/server/area"),
+        help="path to the DD4 server area directory",
+    )
+    hunt_candidates_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    hunt_candidates_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="maximum candidates to show, default: 20",
     )
     arena_research_parser.add_argument(
         "--target-level",
@@ -501,6 +531,15 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 0
 
+    if args.command == "show-hunt-candidates":
+        return show_hunt_candidates(
+            args.source,
+            level=args.level,
+            character=args.character,
+            database=args.database,
+            limit=args.limit,
+        )
+
     if args.command == "configure-login":
         try:
             configure_login(args.credential_name)
@@ -601,6 +640,81 @@ def show_runs(database: Path, *, limit: int) -> int:
                     run["started_at"],
                     run["finished_at"] or "-",
                     run["transcript_path"] or "-",
+                ]
+            )
+        )
+    return 0
+
+
+def show_hunt_candidates(
+    source: Path,
+    *,
+    level: int,
+    character: str,
+    database: Path,
+    limit: int,
+) -> int:
+    if level < 1:
+        print("--level must be at least 1", file=sys.stderr)
+        return 2
+    if limit < 1:
+        print("--limit must be at least 1", file=sys.stderr)
+        return 2
+    try:
+        world = load_world_source(source)
+    except (OSError, ValueError) as exc:
+        print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
+        return 1
+
+    boot_id: str | None = None
+    kill_counts: Counter[str] = Counter()
+    if database.exists():
+        with RunStorage(database) as storage:
+            boot_id = storage.latest_boot_id()
+            if boot_id is not None:
+                kill_counts.update(
+                    row["mob_name"]
+                    for row in storage.list_mob_kills(
+                        character,
+                        boot_id=boot_id,
+                    )
+                )
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=level,
+        boot_kill_counts=kill_counts,
+    )
+
+    print(f"Source: {source.resolve()}")
+    print(f"Character: {character}, level {level}")
+    print(f"Current reboot: {boot_id or 'unknown'}")
+    print(
+        "status\tscore\tarea\ttarget\tlevel\troom\troute\troom_spawns\t"
+        "instance_limit\tboot_kills\tloot\thazards"
+    )
+    for candidate in candidates[:limit]:
+        loot = "; ".join(candidate.loot)
+        if candidate.contained_coins:
+            loot = "; ".join(
+                value
+                for value in (loot, f"{candidate.contained_coins} contained coins")
+                if value
+            )
+        print(
+            "\t".join(
+                [
+                    candidate.status,
+                    f"{candidate.score:g}",
+                    candidate.area_file,
+                    candidate.target,
+                    str(candidate.level),
+                    f"{candidate.room_vnum} {candidate.room_name}",
+                    ";".join(candidate.route),
+                    str(candidate.room_spawn_count),
+                    str(candidate.source_instance_limit),
+                    str(candidate.boot_kills),
+                    loot or "-",
+                    "; ".join(candidate.hazards) or "-",
                 ]
             )
         )

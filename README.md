@@ -52,6 +52,17 @@ return for a specific character:
 python -m dd4tester show-fastwalks --level 6
 ```
 
+Rank low-level hunt targets from DD4's public area files before a live probe:
+
+```powershell
+python -m dd4tester show-hunt-candidates --level 6 --character Ararisa
+```
+
+The ranking starts at Midgaard recall and reports exact routes, reset-backed
+loot, room placements, global mobile limits, route hazards, and kills observed
+during the current DD4 reboot. Prices, repeated-kill XP, and spawn or instance
+observations are not carried across the `DD was started at ...` boundary.
+
 See [ROADMAP.md](ROADMAP.md) for the staged path from scripted scenarios to a
 level-100 autonomous campaign running visibly through Mudlet in a virtual machine.
 
@@ -178,6 +189,8 @@ The SQLite schema includes run and campaign tables:
   `game_event`. Structured event payloads contain `type`, `source`, and `data`.
 - `state_snapshots`: timestamped character-state revisions linked to the
   `game_event` that caused each change.
+- `loot_sales`: observed item/shop payouts scoped to character and DD4 reboot.
+- `mob_kills`: observed target kills and XP scoped to character and DD4 reboot.
 - `campaigns`, `campaign_segments`, and `campaign_checkpoints`: durable campaign
   status, policy-segment history, and resumable character-state checkpoints.
 

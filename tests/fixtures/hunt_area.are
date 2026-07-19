@@ -1,0 +1,94 @@
+#AREA Tester~ Test Hunt~
+1 10 0 100
+
+#MOBILES
+#100
+rat~
+a cellar rat~
+A cellar rat waits here.~
+~
+33 0 -500 S
+3 0 0 1d4+1 1d2+0
+0 0
+8 8 1
+#101
+guard~
+the dangerous guard~
+The dangerous guard waits here.~
+~
+35 0 -500 S
+8 0 0 1d4+1 1d2+0
+0 0
+8 8 1
+#0
+
+#OBJECTS
+#200
+sword~
+a rusty sword~
+A rusty sword is here.~
+~
+5 0 8193
+0~ 0~ 1~ 1~
+1 100 0
+#201
+purse~
+a small purse~
+A small purse is here.~
+~
+15 0 1
+10~ 0~ 0~ 0~
+1 20 0
+#202
+coins~
+a pile of coins~
+A pile of coins is here.~
+~
+20 0 1
+50~ 0~ 0~ 0~
+1 0 0
+#0
+
+#ROOMS
+#3001
+Recall~
+The recall room.~
+0 0 0
+D0
+~
+~
+0 -1 3002
+S
+#3002
+Hall~
+The hall.~
+0 0 0
+D0
+~
+~
+0 -1 3003
+D2
+~
+~
+0 -1 3001
+S
+#3003
+Cellar~
+The cellar.~
+0 0 0
+D2
+~
+~
+0 -1 3002
+S
+#0
+
+#RESETS
+M 1 101 1 3002
+M 1 100 2 3003
+E 1 200 1 16
+G 1 201 1
+P 1 202 1 201
+S
+
+#$

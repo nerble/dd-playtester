@@ -367,6 +367,39 @@ def test_show_fastwalks_filters_official_routes_by_level(capsys) -> None:
     assert "moria\t5-15\t2s6e8n" in captured.out
 
 
+def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
+    tmp_path,
+    capsys,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    fixture = Path(__file__).parent / "fixtures" / "hunt_area.are"
+    (source / "foundry.are").write_text(
+        fixture.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "show-hunt-candidates",
+            "--level",
+            "6",
+            "--source",
+            str(source),
+            "--database",
+            str(tmp_path / "missing.sqlite3"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Current reboot: unknown" in captured.out
+    assert "room_spawns\tinstance_limit\tboot_kills" in captured.out
+    assert "reject\t" in captured.out
+    assert "a cellar rat" in captured.out
+    assert "route: the dangerous guard L8 in 3002" in captured.out
+
+
 def test_configure_login_command_uses_named_credential(capsys, monkeypatch) -> None:
     configured: list[str] = []
     monkeypatch.setattr(
