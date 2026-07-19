@@ -50,6 +50,15 @@ _TOTAL_XP_GAIN = re.compile(
     r"You gained a total of (?P<xp>\d+) experience points?!",
     re.IGNORECASE,
 )
+_MOB_DEATH = re.compile(
+    r"(?:^|\n)\s*(?P<target>[A-Za-z][A-Za-z '-]{0,60}?) is DEAD!!",
+    re.IGNORECASE,
+)
+_MOB_LEAVES = re.compile(
+    r"(?:^|\n)\s*(?P<target>[A-Za-z][A-Za-z '-]{0,60}?) leaves "
+    r"(?P<direction>north|south|east|west|up|down)\.",
+    re.IGNORECASE,
+)
 _DIRECTION_SHORTCUTS = {
     "n": "north",
     "s": "south",
@@ -229,6 +238,7 @@ class StarterPolicy:
         self.sale_phase = "plan"
         self.sale_offer_coins: int | None = None
         self.completed_sales: list[dict[str, Any]] = []
+        self.sale_container_step = 0
         self.fastwalk_recall_started = False
         self.fastwalk_arrival_observed = False
         self.fastwalk_returning = False
@@ -240,6 +250,8 @@ class StarterPolicy:
         self.fastwalk_withdrawing = False
         self.fastwalk_return_steps_remaining = 0
         self.fastwalk_attack_started = False
+        self.fastwalk_pursuit_direction: str | None = None
+        self.fastwalk_pursuit_steps = 0
         self.fastwalk_target_absent = False
         self.fastwalk_loot_step = 0
         self.fastwalk_recall_after_loot = False
@@ -325,7 +337,7 @@ class StarterPolicy:
             self.advice_direction = "north"
         if "is dead" in recent or "you receive" in recent and "experience" in recent:
             was_in_combat = self.combat_active
-            defeated_target = self.active_target
+            defeated_target = self.active_target or _defeated_mobile(cleaned)
             self.combat_active = False
             if self.current_room and (self.active_target or was_in_combat):
                 if self.fastwalk_route is not None:
@@ -357,6 +369,22 @@ class StarterPolicy:
                 self.post_kill_steps.setdefault(self.current_room, 0)
             self.active_target = None
             self.magic_missile_cast = False
+        fleeing_mobile = _MOB_LEAVES.search(cleaned)
+        if (
+            fleeing_mobile is not None
+            and self.fastwalk_attack_target is not None
+            and self.active_target is not None
+            and _targets_match(
+                fleeing_mobile.group("target").casefold(),
+                self.fastwalk_attack_target.casefold(),
+            )
+        ):
+            self.combat_active = False
+            self.active_target = None
+            self.magic_missile_cast = False
+            self.fastwalk_pursuit_direction = fleeing_mobile.group(
+                "direction"
+            ).casefold()
         if (
             "you attack " in recent
             or " attacks you" in recent
@@ -1262,6 +1290,24 @@ class StarterPolicy:
                     "get all corpse",
                     "collect equipment and money from a fastwalk-route kill",
                 )
+            if (
+                self.fastwalk_loot_step == 1
+                and self.fastwalk_route.loot_container is not None
+            ):
+                self.fastwalk_loot_step = 2
+                return BotDecision(
+                    f"open {self.fastwalk_route.loot_container}",
+                    "open the source-backed loot container before extraction",
+                )
+            if (
+                self.fastwalk_loot_step == 2
+                and self.fastwalk_route.loot_container is not None
+            ):
+                self.fastwalk_loot_step = 3
+                return BotDecision(
+                    f"get all {self.fastwalk_route.loot_container}",
+                    "extract money and useful contents from the opened loot container",
+                )
             self.fastwalk_loot_step = 0
             self.pending_loot_rooms.discard(room_key)
             objective_killed = (
@@ -1357,6 +1403,45 @@ class StarterPolicy:
                 and not self.combat_active
                 and self.active_target is None
             ):
+                if self.fastwalk_objective_killed:
+                    if (
+                        self.fastwalk_explore_distance > 0
+                        and not self.fastwalk_withdrawing
+                    ):
+                        self.fastwalk_withdrawing = True
+                        self.fastwalk_return_steps_remaining = (
+                            self.fastwalk_explore_distance
+                        )
+                    if self.fastwalk_return_steps_remaining > 0:
+                        self.fastwalk_return_steps_remaining -= 1
+                        return BotDecision(
+                            _opposite_direction(self.fastwalk_explore_direction),
+                            "return from the one-hop fastwalk combat room",
+                        )
+                    self.fastwalk_returning = True
+                    return BotDecision("recall", "return after endpoint fastwalk combat")
+                if (
+                    self.fastwalk_pursuit_direction is not None
+                    and self.fastwalk_pursuit_steps < 3
+                ):
+                    direction = self.fastwalk_pursuit_direction
+                    self.fastwalk_pursuit_direction = None
+                    self.fastwalk_pursuit_steps += 1
+                    return BotDecision(
+                        direction,
+                        "pursue the requested target after it fled",
+                    )
+                if any(
+                    _targets_match(target, self.fastwalk_attack_target or "")
+                    for target in self.room_targets.get(room_vnum or "", [])
+                ):
+                    self.active_target = self.fastwalk_attack_target
+                    self.combat_active = True
+                    return BotDecision(
+                        f"kill {_target_keyword(self.fastwalk_attack_target or '')}",
+                        "re-engage the requested target after bounded pursuit",
+                    )
+                self.fastwalk_target_absent = True
                 if (
                     self.fastwalk_explore_distance > 0
                     and not self.fastwalk_withdrawing
@@ -1383,6 +1468,7 @@ class StarterPolicy:
             ):
                 self.fastwalk_attack_started = True
                 self.active_target = self.fastwalk_attack_target
+                self.combat_active = True
                 return BotDecision(
                     f"kill {_target_keyword(self.fastwalk_attack_target)}",
                     "attack the requested target found in the bounded fastwalk search",
@@ -1473,6 +1559,18 @@ class StarterPolicy:
         self.fastwalk_return_index += 1
         return BotDecision(command, "reverse the official fastwalk after recall failed")
 
+    @property
+    def fastwalk_objective_killed(self) -> bool:
+        if self.fastwalk_attack_target is None:
+            return True
+        return any(
+            _targets_match(
+                str(kill["mob_name"]).casefold(),
+                self.fastwalk_attack_target.casefold(),
+            )
+            for kill in self.completed_kills
+        )
+
     def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
         """Sell known equipment through source-backed safe Midgaard shops."""
         room_vnum = state.room_vnum
@@ -1480,6 +1578,22 @@ class StarterPolicy:
             if room_vnum != "3019":
                 self.failure = "safe loot liquidation must start in the Mage's Laboratory"
                 return None
+            has_purse = any(
+                "purse" in description.casefold()
+                for description in _inventory_descriptions(state.inventory)
+            )
+            if has_purse and self.sale_container_step == 0:
+                self.sale_container_step = 1
+                return BotDecision(
+                    "open purse",
+                    "open a carried purse before extracting its coins",
+                )
+            if has_purse and self.sale_container_step == 1:
+                self.sale_container_step = 2
+                return BotDecision(
+                    "get all purse",
+                    "extract carried coins before planning equipment sales",
+                )
             projected_counts = Counter(self.loot_sale_counts)
             if self.world_boot_id is not None:
                 projected_counts.update(
@@ -2277,6 +2391,11 @@ class StarterBotRunner:
                 commands += 1
                 policy.after_command(decision)
 
+            if not policy.fastwalk_objective_killed:
+                raise RuntimeError(
+                    "bounded fastwalk attack returned safely without a "
+                    f"confirmed {self.fastwalk_attack_target} kill"
+                )
             record(
                 "state",
                 {
@@ -2304,6 +2423,7 @@ class StarterBotRunner:
                     "fastwalk_explore_depth": self.fastwalk_explore_depth,
                     "fastwalk_attack_target": self.fastwalk_attack_target,
                     "fastwalk_target_absent": policy.fastwalk_target_absent,
+                    "fastwalk_objective_killed": policy.fastwalk_objective_killed,
                     "missing_targets": {
                         room: sorted(targets)
                         for room, targets in sorted(policy.missing_targets.items())
@@ -2670,6 +2790,16 @@ def _training_targets(text: str) -> list[str]:
         ):
             targets.append(target)
     return targets
+
+
+def _defeated_mobile(text: str) -> str | None:
+    match = _MOB_DEATH.search(text)
+    if match is None:
+        return None
+    words = match.group("target").casefold().split()
+    while words and words[0] in {"a", "an", "the"}:
+        words.pop(0)
+    return " ".join(words) or None
 
 
 def _target_keyword(target: str) -> str:

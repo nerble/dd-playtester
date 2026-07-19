@@ -34,6 +34,24 @@ def test_foundry_item_descriptions_are_classified() -> None:
     assert safe_shop_for_item("a steel barrel-helm") is not None
 
 
+def test_empty_purse_uses_the_safe_general_store_container_buyer() -> None:
+    shop = safe_shop_for_item("the midget's purse")
+
+    assert shop is not None
+    assert shop.name == "General Store"
+    assert shop.room_vnum == "3010"
+    assert shop.payout_percent == 40
+    assert shop.route_from_mage_lab == (
+        "west",
+        "north",
+        "north",
+        "east",
+        "east",
+        "east",
+        "north",
+    )
+
+
 def test_sale_keyword_uses_the_distinctive_final_noun() -> None:
     assert sale_keyword("a metal buckler") == "buckler"
     assert sale_keyword("[-?-] a spiked metal rod") == "rod"

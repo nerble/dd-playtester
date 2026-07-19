@@ -1850,6 +1850,7 @@ def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     assert decision is not None
     assert decision.command == "kill kobold"
     assert policy.active_target == "ugly kobold"
+    assert policy.combat_active is True
 
 
 def test_fastwalk_research_attacks_target_at_endpoint_before_exploring() -> None:
@@ -1875,6 +1876,68 @@ def test_fastwalk_research_attacks_target_at_endpoint_before_exploring() -> None
     assert decision is not None
     assert decision.command == "kill kobold"
     assert policy.fastwalk_explore_step == 0
+    assert policy.combat_active is True
+
+
+def test_fastwalk_pursues_and_reengages_a_fleeing_requested_target() -> None:
+    route = route_named("circus midget")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="midget",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.room_targets["4411"] = ["midget"]
+    tent = CharacterState(room_name="The Midget's Tent", room_vnum="4411", position=7)
+
+    attack = policy.next_decision(tent)
+    assert attack is not None
+    assert attack.command == "kill midget"
+    policy.after_command(attack)
+    policy.observe_text(
+        "Your pound scratches the Midget.\n"
+        "The Midget leaves north.\n"
+        "The Midget has fled!\n"
+    )
+    policy.prompt_ready = True
+
+    pursuit = policy.next_decision(tent)
+    assert pursuit is not None
+    assert pursuit.command == "north"
+    policy.after_command(pursuit)
+    policy.current_room = "4410"
+    policy.room_targets["4410"] = ["midget"]
+    policy.prompt_ready = True
+
+    reengage = policy.next_decision(
+        CharacterState(room_name="The Illusionist's Tent", room_vnum="4410", position=7)
+    )
+    assert reengage is not None
+    assert reengage.command == "kill midget"
+    assert policy.combat_active is True
+
+
+def test_fastwalk_records_an_incidental_kill_name_from_death_text() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("circus midget"),
+    )
+    policy.current_room = "2172"
+    policy.combat_active = True
+
+    policy.observe_text(
+        "The drunk is DEAD!!\n"
+        "You receive 46 experience points for the kill.\n"
+        "You gained a total of 82 experience points!\n"
+    )
+
+    assert policy.completed_kills == [{"mob_name": "drunk", "xp_gained": 82}]
 
 
 def test_fastwalk_probe_withdraws_when_fresh_look_does_not_show_requested_target() -> None:
@@ -2247,6 +2310,66 @@ def test_liquidation_uses_character_sale_history() -> None:
     assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
         ("buckler", "Armoury"),
     ]
+
+
+def test_liquidation_opens_and_extracts_a_purse_before_planning_sales() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        inventory=[[{"short_desc": "the midget's purse", "quan": "1"}]],
+    )
+
+    opened = policy.next_decision(home)
+
+    assert opened is not None
+    assert opened.command == "open purse"
+    policy.after_command(opened)
+    policy.prompt_ready = True
+
+    extracted = policy.next_decision(home)
+
+    assert extracted is not None
+    assert extracted.command == "get all purse"
+
+
+def test_fastwalk_extracts_source_backed_container_before_inventory() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("circus midget"),
+        fastwalk_attack_target="midget",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.current_room = "4411"
+    policy.pending_loot_rooms.add("4411")
+    tent = CharacterState(
+        room_name="The Midget's Tent",
+        room_vnum="4411",
+        position=7,
+    )
+
+    corpse = policy.next_decision(tent)
+    assert corpse is not None
+    assert corpse.command == "get all corpse"
+    policy.after_command(corpse)
+    policy.prompt_ready = True
+
+    opened = policy.next_decision(tent)
+
+    assert opened is not None
+    assert opened.command == "open purse"
+    policy.after_command(opened)
+    policy.prompt_ready = True
+
+    purse = policy.next_decision(tent)
+
+    assert purse is not None
+    assert purse.command == "get all purse"
 
 
 def test_liquidation_scopes_sale_history_to_time_boot_identity() -> None:

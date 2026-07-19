@@ -16,6 +16,8 @@ Confirm dynamic behavior such as wandering, prices, and combat risk with live,
 redacted transcripts before promoting it into an autonomous policy. Scope
 prices, kill repetition, item instance limits, and observed spawn counts to the
 `DD was started at ...` reboot identity; never carry them across reboots.
+Leave a depleted hunt area before waiting because occupied areas reset more
+slowly.
 
 ## Development Commands
 

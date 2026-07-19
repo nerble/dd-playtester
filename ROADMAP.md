@@ -117,3 +117,15 @@ and failure handling before registering each new level-band policy.
 - The command is intentionally outside the campaign registry. Its first live
   transcript must show an engagement, XP change, recovery-or-safe-health proof,
   exit, and final level before the level-2-to-10 policy can become executable.
+
+## Progression Evidence Cycle 3
+
+- Added source-backed candidate scoring for exact recall routes, reset placements,
+  loot, mobile instance limits, alignment, aggressive hazards, and current-reboot
+  kill history.
+- Verified the Circus midget route in run 146 and one bounded kill in run 148:
+  43 XP, 94/96 minimum health, purse loot, immediate recall, full recovery, and
+  safe return to the Mage Guild.
+- Verified the complete money loop in runs 150-151: 51 copper extracted from
+  the purse and 8 copper from selling the empty container at the safe General
+  Store. Hunt areas are vacated after loot so their reset timers advance faster.

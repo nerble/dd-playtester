@@ -29,6 +29,7 @@ class Fastwalk:
     maximum_level: int
     notation: str
     recall_after_loot: bool = False
+    loot_container: str | None = None
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -96,6 +97,14 @@ FASTWALKS = (
 # site's official fastwalks.
 MAP_ROUTES = (
     Fastwalk("foundry", 1, 6, "2s3w4ne2d2n", recall_after_loot=True),
+    Fastwalk(
+        "circus midget",
+        3,
+        6,
+        "2s3e6s3es",
+        recall_after_loot=True,
+        loot_container="purse",
+    ),
     Fastwalk(
         "foundry captain",
         7,

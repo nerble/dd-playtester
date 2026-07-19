@@ -255,6 +255,8 @@ def rank_hunt_candidates(
         route, path_rooms, closed_doors = path
         hazards: list[str] = []
         dangerous = False
+        normalized_target = _normalize_name(mobile.short_description)
+        boot_kills = kill_counts.get(normalized_target, 0)
 
         for path_room in path_rooms[:-1]:
             for path_reset in resets_by_room.get(path_room, ()):
@@ -284,9 +286,12 @@ def rank_hunt_candidates(
             hazards.append("target is aggressive")
         for special in world.mobile_specials.get(mobile.vnum, ()):
             hazards.append(f"target special: {special}")
+        if boot_kills >= reset.maximum_count:
+            hazards.append(
+                "current-boot kills meet the mobile instance limit; "
+                "leave the area and await its faster unoccupied reset"
+            )
 
-        normalized_target = _normalize_name(mobile.short_description)
-        boot_kills = kill_counts.get(normalized_target, 0)
         source_value = sum(item.source_cost for item in sellable)
         score = (
             100

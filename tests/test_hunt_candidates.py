@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from dd4tester.hunt_candidates import (
-    LOW_LEVEL_AREA_FILES,
     WorldSource,
     parse_area_file,
     rank_hunt_candidates,
@@ -55,3 +54,4 @@ def test_candidate_ranking_rejects_route_through_higher_level_aggressor(
     assert candidate.loot == ("a rusty sword",)
     assert candidate.contained_coins == 50
     assert "route: the dangerous guard L8 in 3002" in candidate.hazards
+    assert any("faster unoccupied reset" in hazard for hazard in candidate.hazards)

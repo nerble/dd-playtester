@@ -62,6 +62,8 @@ The ranking starts at Midgaard recall and reports exact routes, reset-backed
 loot, room placements, global mobile limits, route hazards, and kills observed
 during the current DD4 reboot. Prices, repeated-kill XP, and spawn or instance
 observations are not carried across the `DD was started at ...` boundary.
+After looting, leave the area before recovery or liquidation so its unoccupied
+reset timer can advance faster.
 
 See [ROADMAP.md](ROADMAP.md) for the staged path from scripted scenarios to a
 level-100 autonomous campaign running visibly through Mudlet in a virtual machine.

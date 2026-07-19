@@ -59,3 +59,26 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     assert captain.commands[-3:] == ("west", "open south", "south")
     assert captain.recall_after_loot is True
 
+    midget = route_named("Circus Midget")
+    assert midget.minimum_level == 3
+    assert midget.maximum_level == 6
+    assert midget.commands == (
+        "south",
+        "south",
+        "east",
+        "east",
+        "east",
+        "south",
+        "south",
+        "south",
+        "south",
+        "south",
+        "south",
+        "east",
+        "east",
+        "east",
+        "south",
+    )
+    assert midget.recall_after_loot is True
+    assert midget.loot_container == "purse"
+
