@@ -96,4 +96,11 @@ FASTWALKS = (
 # site's official fastwalks.
 MAP_ROUTES = (
     Fastwalk("foundry", 1, 6, "2s3w4ne2d2n", recall_after_loot=True),
+    Fastwalk(
+        "foundry captain",
+        5,
+        7,
+        "2s3w4ne2d2n;open west;ws",
+        recall_after_loot=True,
+    ),
 )

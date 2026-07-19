@@ -54,3 +54,7 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         "north",
     )
 
+    captain = route_named("Foundry Captain")
+    assert captain.commands[-3:] == ("open west", "west", "south")
+    assert captain.recall_after_loot is True
+
