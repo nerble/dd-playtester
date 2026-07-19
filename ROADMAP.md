@@ -213,3 +213,49 @@ and failure handling before registering each new level-band policy.
 - Run 244 validated repeated field casting against Olog: three magic-missile
   commands, 97 XP, no health loss, confirmed loot, recall, and safe return to
   the Mage Guild with four pies intact.
+
+## Progression Evidence Cycle 8
+
+- Live `consider` output is authoritative for field combat because area-file
+  mobile levels can vary slightly at runtime. Run 247 proved that low-value
+  arena targets can be skipped; the same gate now protects fastwalk hunts.
+- Runs 250-252 turned the official Moria fastwalk into a verified level-7 mage
+  segment. Room 4015 was rejected because its snake can be joined by an orc or
+  hobgoblin. DD4 source shows room 4025, two north from the endpoint, has one
+  level-7 garter snake and no other mobile reset.
+- Run 252 considered that isolated snake a perfect match, killed it for 373 XP,
+  recalled, recovered, saved, and logged out in room 3019 at full health and
+  mana. The campaign now selects this one-kill field segment for level 7-9
+  mages while retaining the arena policy for other classes.
+- The command watchdog now resets when room, vitals, movement, XP, level,
+  combat, death, or position changes. This permits long real fights while
+  retaining a bounded escape for commands the server genuinely ignores.
+- DD4 source confirms the level-10 large hobgoblins in Moria rooms 4064 and
+  4071 carry purple sanctuary potions. These are future defensive farm targets.
+  `HELP VAULT` also permits town vault storage for objects up to five levels
+  above the character; future inventory policy should bank valuable usable-soon
+  gear instead of selling it.
+
+## Progression Evidence Cycle 9
+
+- DD4 source and the official Ambush fastwalk establish the Miden'nir sack
+  route: `6s` from recall, then
+  `w,s,s,w,s,w,s,s,e,s,s,open east,e,e` to room 4518. The guaranteed large
+  sack reset weighs 50 pounds and holds 400 pounds, so the expedition now
+  discards low-value piping, a cap, and one pie before departure.
+- Runs 268, 270, and 272 killed a mountain goblin, goblin lieutenant, and
+  mountain goblin for 361, 210, and 244 XP. The first run reached room 4518 but
+  could not carry the sack; the later load plan leaves sufficient capacity.
+- Miden'nir is productive but spawn-sensitive. A level-9 dark horseman joined
+  run 270, and two level-7 mountain goblins occupied the entry in run 274.
+  Conservative flee, recall, healer recovery, and safe logout paths worked in
+  both cases. Room 3570 is a source-proven route choke point, so no alternate
+  path can bypass a dangerous occupant.
+- Required expedition items are now verified from inventory before a run can
+  succeed. Run 272's early reserve withdrawal was retrospectively corrected
+  from success to failure because it did not acquire the sack.
+- Leaving an arena area for 90 seconds successfully reset it in run 267, but
+  the resulting targets were below the efficient XP band. Ararisa is safe at
+  level 7 with 23,275 XP, 1,575 short of level 8. The next Miden'nir attempt
+  should follow a clear spawn window or level-8 invisibility training rather
+  than repeatedly forcing the occupied choke point.

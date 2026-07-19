@@ -1,0 +1,8 @@
+character_profile: ../runs/ararisa-research.yaml
+name: Ararisa to HERO
+target_level: 100
+
+max_segments: 500
+max_total_runtime: 86400
+max_total_commands: 50000
+max_stalled_segments: 3

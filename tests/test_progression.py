@@ -37,6 +37,23 @@ def test_level_six_to_ten_policy_uses_verified_bounded_arena_segments() -> None:
     assert any("Guildmaster" in item for item in policy.evidence)
 
 
+def test_level_seven_mage_uses_verified_bounded_arena_after_moria_regression() -> None:
+    policy = policy_for(7, "mage")
+
+    assert policy.policy_id == "mud-school-6-10"
+    assert policy.status == "verified"
+    assert policy.execution == "arena"
+    assert policy.segment_kill_limit == 10
+    assert policy.executable is True
+
+
+def test_level_seven_non_mage_keeps_the_arena_policy() -> None:
+    policy = policy_for(7, "warrior")
+
+    assert policy.policy_id == "mud-school-6-10"
+    assert policy.execution == "arena"
+
+
 def test_level_ten_and_above_is_explicitly_unavailable() -> None:
     policy = policy_for(10, "psionicist")
 

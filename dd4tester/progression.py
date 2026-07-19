@@ -121,6 +121,28 @@ _MUD_SCHOOL_RESEARCH_POLICY = replace(
     ),
 )
 
+_MORIA_SNAKE_POLICY = ProgressionPolicy(
+    policy_id="moria-circuit-7-10",
+    minimum_level=7,
+    maximum_level=10,
+    status="research",
+    execution=None,
+    summary=(
+        "Mage field progression through three live-considered Moria targets, "
+        "with one recall after the bounded circuit."
+    ),
+    evidence=(
+        "DD4 source: the official Moria fastwalk reaches room 4014; two north moves reach room 4025.",
+        "DD4 source: room 4025 has one level-7 garter-snake reset and no other mobile reset.",
+        "Live run 252: level-7 mage Ararisa considered the snake a perfect match, killed it for 373 XP, and returned to room 3019 at full health and mana.",
+        "DD4 source: the circuit links a level-6 hobgoblin in room 4059, a level-5 centipede in room 4060, and a level-7 large orc in room 4022; same-room hobgoblin and orc fallbacks cover wandering mobiles.",
+        "Area-file mobile levels are approximate; every field target is checked with live consider output before combat.",
+        "Live run 264: a wandering veteran warrior intercepted the static route, forced repeated combat extraction, and produced a net XP loss; the circuit is not safe for unattended execution.",
+    ),
+    practice_skill="magic missile",
+    segment_kill_limit=1,
+)
+
 _UNAVAILABLE_POLICY = ProgressionPolicy(
     policy_id="unregistered-10-100",
     minimum_level=10,

@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .character import CharacterSpec, load_character_spec
+from .fastwalks import route_named
 from .progression import ProgressionPolicy, policy_for
 from .runner import RunResult
 from .scenario import load_yaml_mapping
-from .starter import StarterBotRunner
+from .starter import FieldHuntStop, StarterBotRunner
 from .storage import RunStorage
 
 
@@ -390,6 +391,31 @@ async def _run_policy_segment(
             profile_path,
             objective_level=policy.maximum_level or 10,
             arena_kill_limit=policy.segment_kill_limit,
+        ).run()
+    if policy.execution == "moria-circuit":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=route_named("moria"),
+            fastwalk_hunt_stops=(
+                FieldHuntStop(
+                    (
+                        "west",
+                        "west",
+                        "north",
+                        "west",
+                        "south",
+                        "east",
+                        "south",
+                    ),
+                    "hobgoblin",
+                ),
+                FieldHuntStop(("east",), "centipede"),
+                FieldHuntStop((), "hobgoblin"),
+                FieldHuntStop(("west", "north", "west"), "large orc"),
+                FieldHuntStop((), "orc"),
+            ),
         ).run()
     raise ValueError(f"unsupported executable policy {policy.policy_id}")
 

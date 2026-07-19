@@ -118,7 +118,8 @@ _ARENA_RESPAWN_WAIT_SECONDS = 90
 _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
 _PRE_LEVEL_XP_FRACTION = 0.10
-_FIELD_WITHDRAW_HEALTH_RATIO = 0.60
+_FIELD_WITHDRAW_HEALTH_RATIO = 0.70
+_FIELD_FINISH_HEALTH_RATIO = 0.50
 _MOVEMENT_COMMANDS = {
     "north",
     "east",
@@ -146,6 +147,14 @@ class BotDecision:
     secret: bool = False
 
 
+@dataclass(frozen=True)
+class FieldHuntStop:
+    route: tuple[str, ...]
+    target: str | None = None
+    actions: tuple[str, ...] = ()
+    required_items: tuple[str, ...] = ()
+
+
 class StarterPolicy:
     """Deterministic rules for creation and DD4's first training sequence."""
 
@@ -170,6 +179,8 @@ class StarterPolicy:
         fastwalk_explore_direction: str | None = None,
         fastwalk_explore_depth: int = 1,
         fastwalk_attack_target: str | None = None,
+        fastwalk_origin_actions: tuple[str, ...] = (),
+        fastwalk_hunt_stops: tuple[FieldHuntStop, ...] = (),
         moria_research: bool = False,
         moria_depth: int = 0,
         gear_catalog: GearCatalog | None = None,
@@ -204,6 +215,16 @@ class StarterPolicy:
         self.fastwalk_explore_depth = fastwalk_explore_depth
         self.fastwalk_attack_target = fastwalk_attack_target
         self.fastwalk_requested_target = fastwalk_attack_target
+        self.fastwalk_origin_actions = fastwalk_origin_actions
+        self.fastwalk_origin_action_index = 0
+        self.fastwalk_hunt_stops = fastwalk_hunt_stops
+        self.fastwalk_hunt_stop_index = 0
+        self.fastwalk_hunt_move_index = 0
+        self.fastwalk_hunt_action_index = 0
+        self.fastwalk_hunt_looked = False
+        self.fastwalk_hunt_stop_killed = False
+        self.fastwalk_hunt_stop_skipped = False
+        self.fastwalk_hunt_preflight_food_attempted = False
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.gear_catalog = gear_catalog
@@ -234,6 +255,7 @@ class StarterPolicy:
         self.arena_pending_loot = False
         self.arena_loot_step = 0
         self.combat_active = False
+        self.flee_pending = False
         self.needs_stand = False
         self.waiting_for_heal = False
         self.healer_menu_checked = False
@@ -264,6 +286,9 @@ class StarterPolicy:
         self.city_restock_step = 0
         self.affordable_pies: int | None = None
         self.affordable_pies_ordered = False
+        self.restock_borrowing = False
+        self.restock_borrow_step = 0
+        self.restock_borrow_complete = False
         self.guildmaster_step = 0
         self.magic_shop_step = 0
         self.magic_shop_purchase_failed = False
@@ -292,8 +317,8 @@ class StarterPolicy:
         self.fastwalk_pursuit_direction: str | None = None
         self.fastwalk_pursuit_steps = 0
         self.fastwalk_target_absent = False
-        self.fastwalk_consider_target: str | None = None
-        self.fastwalk_consider_viable: bool | None = None
+        self.consider_target: str | None = None
+        self.consider_viable: bool | None = None
         self.fastwalk_loot_step = 0
         self.fastwalk_recall_after_loot = False
         self.fastwalk_last_kill_target: str | None = None
@@ -302,10 +327,8 @@ class StarterPolicy:
         self.utility_abort_reason: str | None = None
         self.utility_emergency_recall_pending = False
         self.pending_fastwalk_outbound_move = False
+        self.pending_fastwalk_hunt_move = False
         self.return_home_recall_started = False
-        self.return_home_gear_checked = False
-        self.return_home_equipment_plan: list[str] | None = None
-        self.return_home_equipment_index = 0
         self.purgatory_recovery_active = False
         self.purgatory_judgement_step = 0
         self.purgatory_portal_entered = False
@@ -328,7 +351,7 @@ class StarterPolicy:
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
         folded = self.text.casefold()
-        if self.fastwalk_consider_target is not None:
+        if self.consider_target is not None:
             if any(
                 phrase in recent
                 for phrase in (
@@ -337,7 +360,7 @@ class StarterPolicy:
                     "do you feel lucky, punk?",
                 )
             ):
-                self.fastwalk_consider_viable = True
+                self.consider_viable = True
             elif any(
                 phrase in recent
                 for phrase in (
@@ -351,7 +374,7 @@ class StarterPolicy:
                     "they're not here",
                 )
             ):
-                self.fastwalk_consider_viable = False
+                self.consider_viable = False
         if (
             "you launch a volley of" in recent
             and "magic missile" in recent
@@ -453,6 +476,20 @@ class StarterPolicy:
             if self.current_room and (self.active_target or was_in_combat):
                 if self.fastwalk_route is not None:
                     self.fastwalk_last_kill_target = self.active_target
+                    if (
+                        self.fastwalk_hunt_stops
+                        and self.active_target is not None
+                        and self.fastwalk_hunt_stops[
+                            self.fastwalk_hunt_stop_index
+                        ].target is not None
+                        and _targets_match(
+                            self.active_target,
+                            self.fastwalk_hunt_stops[
+                                self.fastwalk_hunt_stop_index
+                            ].target,
+                        )
+                    ):
+                        self.fastwalk_hunt_stop_killed = True
                 if defeated_target:
                     xp_gain = _TOTAL_XP_GAIN.search(cleaned)
                     self.completed_kills.append(
@@ -480,6 +517,8 @@ class StarterPolicy:
                 self.post_kill_steps.setdefault(self.current_room, 0)
             self.active_target = None
             self.magic_missile_cast = False
+            self.consider_target = None
+            self.consider_viable = None
         fleeing_mobile = _MOB_LEAVES.search(cleaned)
         if (
             fleeing_mobile is not None
@@ -511,6 +550,9 @@ class StarterPolicy:
             self.combat_active = False
             self.active_target = None
             self.magic_missile_cast = False
+            self.flee_pending = False
+        if "you failed to flee" in recent or "you couldn't escape" in recent:
+            self.flee_pending = False
         if "aren't here" in recent or "do not see that here" in recent:
             self.combat_active = False
             if self.current_room and self.active_target:
@@ -535,6 +577,12 @@ class StarterPolicy:
                     self.fastwalk_outbound_index - 1,
                 )
                 self.pending_fastwalk_outbound_move = False
+            if self.pending_fastwalk_hunt_move:
+                self.fastwalk_hunt_move_index = max(
+                    0,
+                    self.fastwalk_hunt_move_index - 1,
+                )
+                self.pending_fastwalk_hunt_move = False
             self.pending_travel_origin = None
         if "alas, you cannot go that way" in folded:
             if (
@@ -578,6 +626,7 @@ class StarterPolicy:
                     self.current_room = room
                     self.pending_travel_origin = None
                     self.pending_fastwalk_outbound_move = False
+                    self.pending_fastwalk_hunt_move = False
                     self.advice_direction = None
                     self.pending_move = None
                 targets = _training_targets(self.text)
@@ -661,6 +710,11 @@ class StarterPolicy:
             and decision.reason.startswith("follow official fastwalk")
         ):
             self.pending_fastwalk_outbound_move = True
+        if (
+            decision.command in _MOVEMENT_COMMANDS
+            and decision.reason == "follow the verified field-hunt circuit"
+        ):
+            self.pending_fastwalk_hunt_move = True
         self.text = ""
         if decision.command == "eat pie":
             self.food_attempted = True
@@ -686,6 +740,8 @@ class StarterPolicy:
             self.room_targets[self.current_room] = []
         if decision.command == "sleep" and self.waiting_for_heal:
             self.health_check_due = time.monotonic() + _HEALTH_CHECK_WAIT_SECONDS
+        if decision.command == "flee":
+            self.flee_pending = True
         if decision.command == "quit":
             self.done = True
 
@@ -925,7 +981,7 @@ class StarterPolicy:
             ):
                 if _is_sleeping(state):
                     return BotDecision("stand", "wake to address hunger or thirst")
-            elif _recovery_ready(state):
+            elif self._recovery_ready_for_objective(state):
                 self.waiting_for_heal = False
                 self.health_check_due = None
                 return BotDecision("stand", "resume after safe-room recovery")
@@ -976,7 +1032,10 @@ class StarterPolicy:
                     self.prompt_ready = False
                     return None
                 if (
-                    self.fastwalk_attack_target is not None
+                    (
+                        self.fastwalk_attack_target is not None
+                        or self.fastwalk_hunt_stops
+                    )
                     and self._opportunistic_fastwalk_attacker_is_viable(state)
                 ):
                     self.fastwalk_attack_target = self.active_target
@@ -999,6 +1058,9 @@ class StarterPolicy:
                     f"{self.fastwalk_route.name!r} before its objective"
                 )
                 self.fastwalk_emergency_recall_pending = True
+                if self.flee_pending:
+                    self.prompt_ready = False
+                    return None
                 return BotDecision(
                     "flee",
                     "withdraw from unexpected combat during a bounded fastwalk",
@@ -1006,17 +1068,21 @@ class StarterPolicy:
             if self.fastwalk_route is not None and (
                 self.needs_food
                 or self.needs_drink
-                or _health_ratio(state) <= _FIELD_WITHDRAW_HEALTH_RATIO
+                or _health_ratio(state) <= self._field_combat_withdraw_ratio(state)
             ):
+                if self.flee_pending:
+                    self.prompt_ready = False
+                    return None
                 causes = []
                 if self.needs_food:
                     causes.append("hunger")
                 if self.needs_drink:
                     causes.append("thirst")
-                if _health_ratio(state) <= _FIELD_WITHDRAW_HEALTH_RATIO:
+                withdraw_ratio = self._field_combat_withdraw_ratio(state)
+                if _health_ratio(state) <= withdraw_ratio:
                     causes.append(
                         f"health at or below "
-                        f"{int(_FIELD_WITHDRAW_HEALTH_RATIO * 100)}%"
+                        f"{int(withdraw_ratio * 100)}%"
                     )
                 cause = ", ".join(causes)
                 self.fastwalk_abort_reason = (
@@ -1099,29 +1165,6 @@ class StarterPolicy:
             home = self._return_home_decision(state)
             if home is not None:
                 return home
-            if not self.return_home_gear_checked:
-                self.return_home_gear_checked = True
-                return BotDecision(
-                    "wear all",
-                    "restore equipment after any interrupted or post-death run",
-                )
-            if self.return_home_equipment_plan is None:
-                self.return_home_equipment_plan = [
-                    sale_keyword(description)
-                    for description in _inventory_descriptions(state.inventory)
-                    if safe_shop_for_item(description) is not None
-                ]
-            if self.return_home_equipment_index < len(
-                self.return_home_equipment_plan
-            ):
-                keyword = self.return_home_equipment_plan[
-                    self.return_home_equipment_index
-                ]
-                self.return_home_equipment_index += 1
-                return BotDecision(
-                    f"wear {keyword}",
-                    "let remaining recovered equipment replace a conflicting item",
-                )
             if not self.saved:
                 self.saved = True
                 self.stage = "saving"
@@ -1543,6 +1586,38 @@ class StarterPolicy:
 
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
+        if self.restock_borrowing:
+            if room_vnum == "3009" and self.restock_borrow_step >= 2:
+                self.restock_borrowing = False
+                self.restock_borrow_complete = True
+                self.insufficient_funds = False
+                self.city_restock_step = 4
+                return self._city_restock_decision(state)
+            if room_vnum == "3007":
+                if self.restock_borrow_step == 0:
+                    self.restock_borrow_step = 1
+                    return BotDecision(
+                        "borrow 300",
+                        "use bank credit to fund essential field provisions",
+                    )
+                self.restock_borrow_step = 2
+                return BotDecision("west", "leave the bank after borrowing")
+            borrow_routes = {
+                "3009": "south",
+                "3013": "east",
+                "3014": "north",
+                "3005": "east",
+                "3006": "east" if self.restock_borrow_step == 0 else "west",
+            }
+            if room_vnum == "3005" and self.restock_borrow_step >= 2:
+                return BotDecision("south", "return from the bank to the Bakery")
+            if room_vnum == "3014" and self.restock_borrow_step >= 2:
+                return BotDecision("west", "return from the bank to the Bakery")
+            if room_vnum == "3013" and self.restock_borrow_step >= 2:
+                return BotDecision("north", "return from the bank to the Bakery")
+            direction = borrow_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(direction, "visit Dragonhoard Bank for food credit")
         if room_vnum == "3737" or room_name == "safety":
             return BotDecision("enter portal", "leave arena Safety for Midgaard")
         if room_vnum == "3725" or "entrance to the mud school" in room_name:
@@ -1595,6 +1670,12 @@ class StarterPolicy:
         if room_vnum == "3013" or room_name == "main street":
             return BotDecision("north", "enter the Midgaard Bakery")
         if room_vnum == "3009" or room_name == "the bakery":
+            if self.insufficient_funds and not self.restock_borrow_complete:
+                self.restock_borrowing = True
+                return BotDecision(
+                    "south",
+                    "visit Dragonhoard Bank after the baker rejects the food order",
+                )
             if (
                 self.affordable_pies
                 and not self.affordable_pies_ordered
@@ -1861,13 +1942,20 @@ class StarterPolicy:
             )
             self.fastwalk_recall_after_loot = (
                 self.fastwalk_route.recall_after_loot
-                and (objective_killed or _health_ratio(state) < 0.8)
+                and (
+                    (
+                        not self.fastwalk_hunt_stops
+                        and objective_killed
+                    )
+                    or _health_ratio(state) < 0.8
+                    or _mana_ratio(state) < 0.3
+                )
             )
             if not objective_killed and self.fastwalk_last_kill_target is not None:
                 self.fastwalk_attack_target = self.fastwalk_requested_target
                 self.fastwalk_attack_started = False
-                self.fastwalk_consider_target = None
-                self.fastwalk_consider_viable = None
+                self.consider_target = None
+                self.consider_viable = None
             self.fastwalk_last_kill_target = None
             return BotDecision(
                 "inventory",
@@ -1948,6 +2036,15 @@ class StarterPolicy:
                     f"{self.fastwalk_route.name!r}"
                 )
                 return None
+            if self.fastwalk_origin_action_index < len(self.fastwalk_origin_actions):
+                command = self.fastwalk_origin_actions[
+                    self.fastwalk_origin_action_index
+                ]
+                self.fastwalk_origin_action_index += 1
+                return BotDecision(
+                    command,
+                    "prepare inventory at the safe fastwalk origin",
+                )
             if self.fastwalk_outbound_index < len(self.fastwalk_route.commands):
                 command = self.fastwalk_route.commands[self.fastwalk_outbound_index]
                 self.fastwalk_outbound_index += 1
@@ -1955,6 +2052,17 @@ class StarterPolicy:
             if not self.fastwalk_arrival_observed:
                 self.fastwalk_arrival_observed = True
                 return BotDecision("look", "record the official fastwalk endpoint")
+            if self.fastwalk_hunt_stops:
+                if (
+                    not self.fastwalk_hunt_preflight_food_attempted
+                    and _has_inventory_item(state.inventory, "pie")
+                ):
+                    self.fastwalk_hunt_preflight_food_attempted = True
+                    return BotDecision(
+                        "eat pie",
+                        "eat before beginning the extended field circuit",
+                    )
+                return self._fastwalk_hunt_plan_decision(state)
             if (
                 self.fastwalk_attack_started
                 and not self.combat_active
@@ -2142,14 +2250,14 @@ class StarterPolicy:
         """Use DD4's consider bands before committing a field hunt."""
         assert self.fastwalk_attack_target is not None
         target = self.fastwalk_attack_target
-        if self.fastwalk_consider_target != target:
-            self.fastwalk_consider_target = target
-            self.fastwalk_consider_viable = None
+        if self.consider_target != target:
+            self.consider_target = target
+            self.consider_viable = None
             return BotDecision(
                 f"consider {_target_keyword(target)}",
                 "consider the field target before committing to combat",
             )
-        if self.fastwalk_consider_viable is True:
+        if self.consider_viable is True:
             self.fastwalk_attack_started = True
             self.active_target = target
             self.combat_active = True
@@ -2157,14 +2265,134 @@ class StarterPolicy:
                 f"kill {_target_keyword(target)}",
                 "attack the considered viable fastwalk target",
             )
-        if self.fastwalk_consider_viable is False:
+        if self.consider_viable is False:
             self.fastwalk_target_absent = True
+            if self.fastwalk_hunt_stops:
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_attack_started = False
+                return BotDecision(
+                    "look",
+                    "skip an unsuitable circuit target before continuing",
+                )
             self.fastwalk_returning = True
             return BotDecision(
                 "recall",
                 "withdraw after considering the field target unsuitable",
             )
         return None
+
+    def _fastwalk_hunt_plan_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        if (
+            self.needs_food
+            or self.needs_drink
+            or _health_ratio(state) < 0.8
+            or _mana_ratio(state) < 0.3
+        ):
+            missing_items = self._missing_required_field_items(state)
+            if missing_items:
+                self.fastwalk_abort_reason = (
+                    "field expedition withdrew before acquiring required item(s): "
+                    + ", ".join(missing_items)
+                )
+            self.fastwalk_returning = True
+            return BotDecision(
+                "recall",
+                "end the field circuit while recovery reserves remain",
+            )
+
+        if self.fastwalk_hunt_stop_killed or self.fastwalk_hunt_stop_skipped:
+            self.fastwalk_hunt_stop_index += 1
+            self.fastwalk_hunt_move_index = 0
+            self.fastwalk_hunt_action_index = 0
+            self.fastwalk_hunt_looked = False
+            self.fastwalk_hunt_stop_killed = False
+            self.fastwalk_hunt_stop_skipped = False
+            self.fastwalk_attack_started = False
+            self.fastwalk_target_absent = False
+            self.consider_target = None
+            self.consider_viable = None
+
+        if self.fastwalk_hunt_stop_index >= len(self.fastwalk_hunt_stops):
+            self.fastwalk_returning = True
+            return BotDecision("recall", "return after completing the field circuit")
+
+        stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+        self.fastwalk_attack_target = stop.target
+        if self.fastwalk_hunt_move_index < len(stop.route):
+            command = stop.route[self.fastwalk_hunt_move_index]
+            self.fastwalk_hunt_move_index += 1
+            return BotDecision(command, "follow the verified field-hunt circuit")
+
+        if not self.fastwalk_hunt_looked:
+            self.fastwalk_hunt_looked = True
+            return BotDecision("look", "inspect the next field-hunt stop")
+
+        if self.fastwalk_hunt_action_index < len(stop.actions):
+            command = stop.actions[self.fastwalk_hunt_action_index]
+            self.fastwalk_hunt_action_index += 1
+            return BotDecision(command, "perform the verified field-expedition action")
+
+        if stop.target is None:
+            missing_items = [
+                item
+                for item in stop.required_items
+                if not _has_inventory_item(state.inventory, item)
+            ]
+            if missing_items:
+                self.fastwalk_abort_reason = (
+                    "field expedition did not acquire required item(s): "
+                    + ", ".join(missing_items)
+                )
+                self.fastwalk_returning = True
+                return BotDecision(
+                    "recall",
+                    "return safely after a required field item was not acquired",
+                )
+            self.fastwalk_hunt_stop_skipped = True
+            return BotDecision("look", "record the completed field-expedition stop")
+
+        targets = self.room_targets.get(state.room_vnum or "", [])
+        if any(_targets_match(target, stop.target) for target in targets):
+            return self._consider_fastwalk_target()
+
+        self.fastwalk_hunt_stop_skipped = True
+        return BotDecision("look", "record an absent circuit target before continuing")
+
+    def _field_combat_withdraw_ratio(self, state: CharacterState) -> float:
+        enemies = _enemy_records(state.enemies)
+        if len(enemies) != 1 or state.level is None:
+            return _FIELD_WITHDRAW_HEALTH_RATIO
+        enemy = enemies[0]
+        enemy_level = _int_or_none(enemy.get("level"))
+        enemy_hp = _int_or_none(enemy.get("hp"))
+        enemy_max_hp = _int_or_none(enemy.get("maxhp"))
+        if (
+            enemy_level is not None
+            and enemy_level <= state.level
+            and enemy_hp is not None
+            and enemy_max_hp not in (None, 0)
+            and enemy_hp / enemy_max_hp <= 0.5
+        ):
+            return _FIELD_FINISH_HEALTH_RATIO
+        return _FIELD_WITHDRAW_HEALTH_RATIO
+
+    def _missing_required_field_items(
+        self,
+        state: CharacterState,
+    ) -> list[str]:
+        required = {
+            item
+            for stop in self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index :]
+            for item in stop.required_items
+        }
+        return sorted(
+            item
+            for item in required
+            if not _has_inventory_item(state.inventory, item)
+        )
 
     def _emergency_worn_sale_item(self) -> Any | None:
         """Choose expendable armour, preferring duplicate plain pieces."""
@@ -2190,8 +2418,16 @@ class StarterPolicy:
         state: CharacterState,
     ) -> bool:
         enemies = _enemy_records(state.enemies)
-        if enemies and self.active_target_level is None:
-            self.active_target_level = _int_or_none(enemies[0].get("level"))
+        if enemies:
+            enemy = enemies[0]
+            if self.active_target is None:
+                self.active_target = str(
+                    enemy.get("name")
+                    or enemy.get("long_desc")
+                    or ""
+                ).strip() or None
+            if self.active_target_level is None:
+                self.active_target_level = _int_or_none(enemy.get("level"))
         if (
             self.active_target is None
             or self.active_target_level is None
@@ -2562,7 +2798,9 @@ class StarterPolicy:
         if ratio >= 0.25:
             if (
                 ratio >= 0.95
-                and _move_ratio(state) >= 0.5
+                and _move_ratio(state) >= (
+                    0.9 if self.fastwalk_hunt_stops else 0.5
+                )
                 and _mana_ratio(state) >= 0.5
             ):
                 return None
@@ -2613,6 +2851,15 @@ class StarterPolicy:
         if direction is not None:
             return BotDecision(direction, "retreat to the tutorial Sanctuary")
         return None
+
+    def _recovery_ready_for_objective(self, state: CharacterState) -> bool:
+        return (
+            _recovery_ready(state)
+            and (
+                not self.fastwalk_hunt_stops
+                or _move_ratio(state) >= 0.9
+            )
+        )
 
     def _store_decision(self) -> BotDecision:
         commands = (
@@ -2869,11 +3116,35 @@ class StarterPolicy:
             return BotDecision("sacrifice corpse", "clear the arena corpse")
 
         targets = sorted(
-            self.room_targets.get(key, []),
+            (
+                target
+                for target in self.room_targets.get(key, [])
+                if target not in self.defeated_targets.get(key, set())
+            ),
             key=_arena_target_priority,
         )
         if targets:
             target = targets[0]
+            if self.consider_target != target:
+                self.consider_target = target
+                self.consider_viable = None
+                return BotDecision(
+                    f"consider {_target_keyword(target)}",
+                    f"check the live level band for arena opponent {target}",
+                )
+            if self.consider_viable is False:
+                self.defeated_targets.setdefault(key, set()).add(target)
+                self.consider_target = None
+                self.consider_viable = None
+                return BotDecision(
+                    "look",
+                    f"skip under-level arena opponent {target}",
+                )
+            if self.consider_viable is None:
+                self.prompt_ready = False
+                return None
+            self.consider_target = None
+            self.consider_viable = None
             self.combat_active = True
             self.active_target = target
             return BotDecision(
@@ -2933,6 +3204,8 @@ class StarterBotRunner:
         fastwalk_explore_direction: str | None = None,
         fastwalk_explore_depth: int = 1,
         fastwalk_attack_target: str | None = None,
+        fastwalk_origin_actions: tuple[str, ...] = (),
+        fastwalk_hunt_stops: tuple[FieldHuntStop, ...] = (),
         moria_research: bool = False,
         moria_depth: int = 0,
         gear_catalog: GearCatalog | None = None,
@@ -2955,9 +3228,12 @@ class StarterBotRunner:
         self.fastwalk_explore_direction = fastwalk_explore_direction
         self.fastwalk_explore_depth = fastwalk_explore_depth
         self.fastwalk_attack_target = fastwalk_attack_target
+        self.fastwalk_origin_actions = fastwalk_origin_actions
+        self.fastwalk_hunt_stops = fastwalk_hunt_stops
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.gear_catalog = gear_catalog
+        self._last_gmcp_messages: dict[str, str] = {}
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
@@ -3104,6 +3380,8 @@ class StarterBotRunner:
                 fastwalk_explore_direction=self.fastwalk_explore_direction,
                 fastwalk_explore_depth=self.fastwalk_explore_depth,
                 fastwalk_attack_target=self.fastwalk_attack_target,
+                fastwalk_origin_actions=self.fastwalk_origin_actions,
+                fastwalk_hunt_stops=self.fastwalk_hunt_stops,
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
                 gear_catalog=gear_catalog,
@@ -3113,6 +3391,7 @@ class StarterBotRunner:
             reconnects = 0
             repeated_command = ""
             repeated_count = 0
+            watchdog_progress = _watchdog_progress_marker(self.character_state)
 
             while not policy.done:
                 if policy.failure:
@@ -3160,6 +3439,11 @@ class StarterBotRunner:
                 if decision is None:
                     continue
 
+                current_progress = _watchdog_progress_marker(self.character_state)
+                if current_progress != watchdog_progress:
+                    repeated_command = ""
+                    repeated_count = 0
+                    watchdog_progress = current_progress
                 decision_payload = {
                     "stage": policy.stage,
                     "reason": decision.reason,
@@ -3312,6 +3596,10 @@ class StarterBotRunner:
             policy.observe_text(result.text)
             events.extend(self.observation_parser.feed_text(result.text))
         for message in result.gmcp_messages:
+            package = message.partition(" ")[0]
+            if self._last_gmcp_messages.get(package) == message:
+                continue
+            self._last_gmcp_messages[package] = message
             record("gmcp", {"message": message})
             events.extend(self.observation_parser.feed_gmcp(message))
         for negotiation in result.negotiations:
@@ -3461,6 +3749,40 @@ async def run_fastwalk_research_profile(
     ).run()
 
 
+async def run_midennir_research_profile(path: str | Path) -> RunResult:
+    """Collect the source-backed large sack and return safely through recall."""
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        fastwalk_route=route_named("ambush"),
+        fastwalk_origin_actions=("drop all.piping", "drop cap", "drop pie"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (
+                    "west",
+                    "south",
+                    "south",
+                    "west",
+                    "south",
+                    "west",
+                    "south",
+                    "south",
+                    "east",
+                    "south",
+                    "south",
+                    "open east",
+                    "east",
+                    "east",
+                ),
+                actions=("get sack", "inventory"),
+                required_items=("large sack",),
+            ),
+        ),
+    ).run()
+
+
 async def run_moria_research_profile(
     path: str | Path,
     *,
@@ -3566,6 +3888,20 @@ def _max_consecutive_command(commands: tuple[str, ...], command: str) -> int:
     return longest
 
 
+def _watchdog_progress_marker(state: CharacterState) -> tuple[object, ...]:
+    return (
+        state.room_vnum,
+        state.hp,
+        state.mana,
+        state.move,
+        state.xp,
+        state.level,
+        state.in_combat,
+        state.dead,
+        state.position,
+    )
+
+
 def _opposite_direction(direction: str) -> str:
     return {
         "north": "south",
@@ -3621,11 +3957,11 @@ def _practice_candidates(text: str) -> list[str]:
 def _training_targets(text: str) -> list[str]:
     pattern = re.compile(
         r"(?:^|\n)\s*(?:\([^)]*\)\s*)*(?:A|An|The)\s+"
-        r"(?P<target>[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,2}?)\s+"
+        r"(?P<target>[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,3}?)\s+"
         r"(?:[A-Za-z]+ly\s+)?"
         r"(?:is|are|sits?|circles?|stands?|waits?|prepares?|paces?|growls?|"
-        r"prowls?|hisses?|snarls?|cowers?|lies?|looks?|watches?|spits?|barks?|"
-        r"glares?|grunts?|screams?|cries?|lunges?|shuffles?|crouches?|"
+        r"prowls?|hisses?|snarls?|slithers?|cowers?|lies?|looks?|watches?|spits?|barks?|"
+        r"glares?|grunts?|screams?|cries?|crawls?|lunges?|shuffles?|crouches?|"
         r"scowls?|yells?|cringes?|tries?|makes?)\b",
         re.IGNORECASE,
     )

@@ -466,6 +466,30 @@ def test_fastwalk_research_command_can_inspect_one_exit(tmp_path, capsys, monkey
     assert "Run 16 success" in captured.out
 
 
+def test_midennir_research_command_collects_large_sack(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "midennir-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_midennir_research(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(17, "success", transcript, database, {"level": 7})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_midennir_research_profile",
+        fake_midennir_research,
+    )
+
+    exit_code = main(["midennir-research", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 17 success" in captured.out
+
+
 def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch) -> None:
     profile = tmp_path / "character.yaml"
     transcript = tmp_path / "moria-1.jsonl"

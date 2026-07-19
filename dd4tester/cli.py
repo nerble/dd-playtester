@@ -28,6 +28,7 @@ from .starter import (
     run_guildmaster_research_profile,
     run_fastwalk_research_profile,
     run_magic_shop_research_profile,
+    run_midennir_research_profile,
     run_moria_research_profile,
     run_restock_profile,
     run_return_home_profile,
@@ -185,6 +186,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--attack",
         dest="attack_target",
         help="attack one explicit target after the one-room inspection",
+    )
+    midennir_parser = subcommands.add_parser(
+        "midennir-research",
+        help="collect the source-backed large sack from the Ambush trail",
+    )
+    midennir_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
     )
     moria_parser = subcommands.add_parser(
         "moria-research",
@@ -596,6 +606,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         except Exception as exc:
             print(f"Fastwalk research failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "midennir-research":
+        try:
+            result = asyncio.run(run_midennir_research_profile(args.profile))
+        except Exception as exc:
+            print(f"Miden'nir research failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")
