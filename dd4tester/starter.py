@@ -13,6 +13,17 @@ from typing import Any, Callable, Mapping
 from .character import CharacterSpec, load_character_spec
 from .connection import ReadResult, TelnetConnection
 from .credentials import CredentialStoreError, load_character_password
+from .equipment import (
+    GearCatalog,
+    STANCE_COMBAT,
+    STANCE_PRE_LEVEL,
+    STANCE_RECOVERY,
+    item_keyword,
+    load_gear_catalog,
+    normalize_item_name,
+    plan_stance_swaps,
+    protects_from_sale,
+)
 from .fastwalks import Fastwalk, route_named
 from .observations import GameEvent, ObservationParser
 from .runner import RunResult
@@ -99,6 +110,7 @@ _TRAINING_SIDE_ROOMS = {
 _ARENA_RESPAWN_WAIT_SECONDS = 90
 _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
+_PRE_LEVEL_XP_FRACTION = 0.10
 _MOVEMENT_COMMANDS = {
     "north",
     "east",
@@ -152,6 +164,7 @@ class StarterPolicy:
         fastwalk_attack_target: str | None = None,
         moria_research: bool = False,
         moria_depth: int = 0,
+        gear_catalog: GearCatalog | None = None,
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
@@ -184,6 +197,7 @@ class StarterPolicy:
         self.fastwalk_attack_target = fastwalk_attack_target
         self.moria_research = moria_research
         self.moria_depth = moria_depth
+        self.gear_catalog = gear_catalog
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -221,6 +235,8 @@ class StarterPolicy:
         self.defeated_targets: dict[str, set[str]] = {}
         self.missing_targets: dict[str, set[str]] = {}
         self.active_target: str | None = None
+        self.active_target_level: int | None = None
+        self.awaiting_enemy_assessment = False
         self.pending_loot_rooms: set[str] = set()
         self.cleared_training_rooms: set[str] = set()
         self.post_kill_steps: dict[str, int] = {}
@@ -263,6 +279,8 @@ class StarterPolicy:
         self.fastwalk_pursuit_direction: str | None = None
         self.fastwalk_pursuit_steps = 0
         self.fastwalk_target_absent = False
+        self.fastwalk_consider_target: str | None = None
+        self.fastwalk_consider_viable: bool | None = None
         self.fastwalk_loot_step = 0
         self.fastwalk_recall_after_loot = False
         self.fastwalk_last_kill_target: str | None = None
@@ -283,12 +301,43 @@ class StarterPolicy:
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
+        self.gear_audit_pending = False
+        self.gear_audited = False
+        self.gear_worn = []
+        self.gear_command_queue: list[tuple[str, str]] = []
+        self.gear_applied_stance: str | None = None
+        self.gear_inventory_signature: tuple[str, ...] = ()
+        self.gear_confirmation_required = False
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
         folded = self.text.casefold()
+        if self.fastwalk_consider_target is not None:
+            if any(
+                phrase in recent
+                for phrase in (
+                    "looks like an easy kill",
+                    "the perfect match",
+                    "do you feel lucky, punk?",
+                )
+            ):
+                self.fastwalk_consider_viable = True
+            elif any(
+                phrase in recent
+                for phrase in (
+                    "naked and weaponless",
+                    "is no match for you",
+                    "laughs at you mercilessly",
+                    "death will thank you",
+                    "could crush you with my little finger",
+                    "puny insect",
+                    "unimaginably more powerful",
+                    "they're not here",
+                )
+            ):
+                self.fastwalk_consider_viable = False
         if "you launch a volley of" in recent and "magic missile" in recent:
             self.magic_missile_cast = False
         if any(
@@ -305,13 +354,26 @@ class StarterPolicy:
             self.needs_food = False
         if "you drink" in folded or "do not feel thirsty" in folded:
             self.needs_drink = False
-        if "you can't afford" in folded or "you do not have enough" in folded:
+        if any(
+            warning in folded
+            for warning in (
+                "you can't afford",
+                "you can't even afford",
+                "you do not have enough",
+            )
+        ):
             self.insufficient_funds = True
+            if self.food_ordered and self.needs_food:
+                self.food_ordered = False
+            if self.skin_ordered and self.needs_drink:
+                self.skin_ordered = False
             if self.magic_shop_research and self.magic_shop_buy_fly:
                 self.magic_shop_purchase_failed = True
         affordable = _AFFORDABLE_QUANTITY.search(cleaned)
         if affordable is not None:
             self.affordable_pies = int(affordable.group("quantity"))
+            self.food_ordered = False
+            self.affordable_pies_ordered = False
         offer = _VALUE_OFFER.search(cleaned)
         if offer is not None:
             self.sale_offer_coins = int(offer.group("coins"))
@@ -332,7 +394,11 @@ class StarterPolicy:
         boot_time = _BOOT_TIME.search(cleaned)
         if boot_time is not None:
             self.world_boot_id = " ".join(boot_time.group("boot").split())
-        if "you don't have that item" in folded or "is empty" in folded:
+        if (
+            "you don't have that item" in folded
+            or "you can't find it" in folded
+            or "is empty" in folded
+        ):
             if self.last_consumption == "food":
                 self.needs_food = True
                 self.food_ordered = False
@@ -506,6 +572,25 @@ class StarterPolicy:
                 target = event.data.get("target", event.data.get("name"))
                 if isinstance(target, str) and target.strip():
                     self.active_target = target.strip()
+            if event.type == "enemies_changed":
+                enemies = _enemy_records(event.data.get("value"))
+                if enemies:
+                    enemy = enemies[0]
+                    target = enemy.get("name")
+                    if isinstance(target, str) and target.strip():
+                        self.active_target = target.strip()
+                    self.active_target_level = _int_or_none(enemy.get("level"))
+                    self.combat_active = True
+                    self.awaiting_enemy_assessment = False
+                    self.prompt_ready = True
+                else:
+                    self.active_target_level = None
+            if event.type == "equipment_changed" and self.gear_catalog is not None:
+                self.gear_worn = self.gear_catalog.match_many(
+                    _equipment_descriptions(event.data.get("value", event.data))
+                )
+                self.gear_audit_pending = False
+                self.gear_audited = True
             if event.type == "character_died":
                 self.failure = "character died during starter training"
         if self.waiting_for_move and _move_ratio(state) >= 0.5:
@@ -714,6 +799,10 @@ class StarterPolicy:
                     "character died; completed Purgatory recovery is required"
                 )
 
+        gear = self._gear_decision(state)
+        if gear is not None:
+            return gear
+
         if _has_inventory_item(state.inventory, "water skin"):
             self.provisioned = True
         if (
@@ -751,7 +840,27 @@ class StarterPolicy:
             return BotDecision("look", "return from Limbo to the previous room")
 
         if self.waiting_for_heal:
-            if self.needs_food or self.needs_drink:
+            waiting_room_name = (state.room_name or "").casefold()
+            waiting_in_healer_room = (
+                state.room_vnum in {"3054", "3721", "3737"}
+                or "sanctuary" in waiting_room_name
+                or "altar of the temple" in waiting_room_name
+                or waiting_room_name == "safety"
+            )
+            if (
+                (self.return_home or self.resupply_only)
+                and not waiting_in_healer_room
+                and _health_ratio(state) < 0.95
+            ):
+                self.waiting_for_heal = False
+                self.health_check_due = None
+            elif (
+                self.needs_food
+                and _has_inventory_item(state.inventory, "pie")
+            ) or (
+                self.needs_drink
+                and _has_inventory_item(state.inventory, "water skin")
+            ):
                 if _is_sleeping(state):
                     return BotDecision("stand", "wake to address hunger or thirst")
             elif _recovery_ready(state):
@@ -802,6 +911,25 @@ class StarterPolicy:
                     spell = self._combat_spell_decision(state)
                     if spell is not None:
                         return spell
+                    self.prompt_ready = False
+                    return None
+                if (
+                    self.fastwalk_attack_target is not None
+                    and self._opportunistic_fastwalk_attacker_is_viable(state)
+                ):
+                    self.fastwalk_attack_target = self.active_target
+                    self.fastwalk_attack_started = True
+                    spell = self._combat_spell_decision(state)
+                    if spell is not None:
+                        return spell
+                    self.prompt_ready = False
+                    return None
+                if (
+                    self.fastwalk_attack_target is not None
+                    and self.active_target_level is None
+                    and not self.awaiting_enemy_assessment
+                ):
+                    self.awaiting_enemy_assessment = True
                     self.prompt_ready = False
                     return None
                 self.fastwalk_abort_reason = (
@@ -866,6 +994,8 @@ class StarterPolicy:
         resupply = self._resupply_decision(state)
         if resupply is not None:
             return resupply
+        if self.failure:
+            return None
 
         if self.resupply_only and self.food_attempted and self.drink_attempted:
             if not self.saved:
@@ -1063,27 +1193,167 @@ class StarterPolicy:
         self.failure = f"no starter rule for room {state.room_name!r} ({state.room_vnum})"
         return None
 
+    def _gear_decision(self, state: CharacterState) -> BotDecision | None:
+        """Apply the right source-backed loadout before the next activity."""
+        if (
+            self.gear_catalog is None
+            or state.dead
+            or self.combat_active
+            or _is_sleeping(state)
+            or (state.area or "").casefold() == "purgatory"
+        ):
+            return None
+
+        stance = self._desired_gear_stance(state)
+        signature = tuple(
+            sorted(
+                normalize_item_name(description)
+                for description in _inventory_descriptions(state.inventory)
+            )
+        )
+        if self.gear_command_queue:
+            command, reason = self.gear_command_queue.pop(0)
+            return BotDecision(command, reason)
+
+        if self.gear_audit_pending:
+            self.gear_worn = self.gear_catalog.match_equipment_text(self.text)
+            self.gear_audit_pending = False
+            self.gear_audited = True
+            self.gear_confirmation_required = False
+
+        if self.gear_confirmation_required:
+            self.gear_audit_pending = True
+            return BotDecision(
+                "equipment",
+                f"confirm the applied {stance.replace('_', ' ')} stance",
+            )
+
+        if (
+            self.gear_applied_stance == stance
+            and self.gear_inventory_signature == signature
+        ):
+            return None
+
+        if not self.gear_audited:
+            self.gear_audit_pending = True
+            return BotDecision(
+                "equipment",
+                f"audit worn items before applying the {stance.replace('_', ' ')} stance",
+            )
+
+        carried = self.gear_catalog.match_many(_inventory_descriptions(state.inventory))
+        removals, additions = plan_stance_swaps(carried, self.gear_worn, stance)
+        stance_label = stance.replace("_", " ")
+        self.gear_command_queue = [
+            (
+                f"remove {item_keyword(item)}",
+                f"remove lower-priority gear for the {stance_label} stance",
+            )
+            for item in removals
+        ] + [
+            (
+                f"wear {item_keyword(item)}",
+                f"equip {stance_label} gear: {item.short_description}",
+            )
+            for item in additions
+        ]
+        if not self.gear_command_queue:
+            self.gear_applied_stance = stance
+            self.gear_inventory_signature = signature
+            return None
+
+        # Confirm the resulting paper doll before considering this stance stable.
+        self.gear_applied_stance = stance
+        self.gear_inventory_signature = ()
+        self.gear_audited = False
+        self.gear_confirmation_required = True
+        command, reason = self.gear_command_queue.pop(0)
+        return BotDecision(command, reason)
+
+    def _desired_gear_stance(self, state: CharacterState) -> str:
+        room_name = (state.room_name or "").casefold()
+        safe_room = (
+            state.room_vnum in {"3054", "3721", "3737"}
+            or "sanctuary" in room_name
+            or "altar of the temple" in room_name
+            or room_name == "safety"
+            or "safe" in state.room_flags
+        )
+        recovery_due = (
+            self.waiting_for_heal
+            or self.arena_respawn_due is not None
+            or (
+                safe_room
+                and (
+                    _health_ratio(state) < 0.95
+                    or _mana_ratio(state) < 0.5
+                    or _move_ratio(state) < 0.5
+                )
+            )
+        )
+        if recovery_due:
+            return STANCE_RECOVERY
+        if _near_level_gain(state):
+            return STANCE_PRE_LEVEL
+        return STANCE_COMBAT
+
     def _resupply_decision(self, state: CharacterState) -> BotDecision | None:
-        if not (self.needs_food or self.needs_drink):
+        room_vnum = state.room_vnum
+        room_name = (state.room_name or "").casefold()
+        healer_room = (
+            room_vnum in {"3054", "3721", "3737"}
+            or "sanctuary" in room_name
+            or "altar of the temple" in room_name
+            or room_name == "safety"
+        )
+        needs_healer_route = (
+            self.resupply_only
+            and _health_ratio(state) < 0.95
+            and not healer_room
+        )
+        if not (self.needs_food or self.needs_drink or needs_healer_route):
             return None
 
         if _is_sleeping(state):
             return BotDecision("stand", "wake before eating or drinking")
 
-        if self.needs_food and (
-            _has_inventory_item(state.inventory, "pie") or self.food_ordered
-        ):
+        if self.needs_food and _has_inventory_item(state.inventory, "pie"):
             return BotDecision("eat pie", "address hunger before further recovery")
-        if self.needs_drink and (
-            _has_inventory_item(state.inventory, "water skin") or self.skin_ordered
-        ):
+        if self.needs_drink and _has_inventory_item(state.inventory, "water skin"):
             return BotDecision("drink skin", "address thirst before further recovery")
 
-        room_vnum = state.room_vnum
-        room_name = (state.room_name or "").casefold()
+        if self.resupply_only and healer_room and _health_ratio(state) < 0.95:
+            self.waiting_for_heal = True
+            return BotDecision(
+                "sleep",
+                "recover safely before travelling for missing provisions",
+            )
+
+        if needs_healer_route:
+            healer_routes = {
+                "3063": "north",
+                "3060": "down",
+                "3724": "down",
+                "3725": "down",
+                "3019": "west",
+                "3018": "north",
+                "3017": "north",
+                "3012": "east",
+                "3013": "east",
+                "3014": "north",
+                "3005": "north",
+                "3001": "north",
+            }
+            direction = healer_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(direction, "reach the healer before further recovery")
+
         if room_vnum == "3724" or room_name == "general supplies":
             if self.insufficient_funds:
-                sale = _sellable_inventory_keyword(state.inventory)
+                sale = _sellable_inventory_keyword(
+                    state.inventory,
+                    self.gear_catalog,
+                )
                 if sale is None:
                     self.failure = "insufficient funds for emergency supplies and no sellable equipment"
                     return None
@@ -1091,6 +1361,18 @@ class StarterPolicy:
                 return BotDecision(
                     f"sell {sale}",
                     f"sell scavenged equipment ({sale}) for emergency supplies",
+                )
+            if (
+                self.needs_food
+                and self.affordable_pies is not None
+                and self.affordable_pies > 0
+                and not self.affordable_pies_ordered
+            ):
+                self.affordable_pies_ordered = True
+                self.food_ordered = True
+                return BotDecision(
+                    f"buy {self.affordable_pies} pie",
+                    "buy the quantity the Quartermaster says is affordable",
                 )
             if self.needs_food and not self.food_ordered:
                 return BotDecision("buy 6 pie", "stock emergency food from the Quartermaster")
@@ -1102,6 +1384,22 @@ class StarterPolicy:
             return BotDecision("enter portal", "leave the arena safety room for supplies")
         if _is_arena_vnum(room_vnum):
             return BotDecision("up", "leave the arena for emergency supplies")
+        supply_routes = {
+            "3063": "north",
+            "3060": "down",
+            "3054": "south",
+            "3019": "west",
+            "3018": "north",
+            "3017": "north",
+            "3012": "east",
+            "3013": "east",
+            "3014": "north",
+            "3005": "north",
+            "3001": "up",
+        }
+        direction = supply_routes.get(room_vnum or "")
+        if direction is not None:
+            return BotDecision(direction, "reach Mud School supplies before further recovery")
         if room_vnum == "3725" or "entrance to the mud school" in room_name:
             return BotDecision("up", "visit General Supplies for emergency provisions")
         if room_vnum == "3001" or "temple of midgaard" in room_name:
@@ -1501,6 +1799,17 @@ class StarterPolicy:
                     self.fastwalk_recall_started = True
                     return BotDecision("recall", "start the official recall-origin fastwalk")
             if self.fastwalk_outbound_index == 0 and room_vnum != "3001":
+                recovery_routes = {
+                    "3054": "south",
+                    "3725": "down",
+                    "3724": "down",
+                }
+                direction = recovery_routes.get(room_vnum or "")
+                if direction is not None:
+                    return BotDecision(
+                        direction,
+                        "return from safe recovery to the fastwalk recall origin",
+                    )
                 self.failure = (
                     "recall did not reach the Midgaard Temple before fastwalk "
                     f"{self.fastwalk_route.name!r}"
@@ -1581,13 +1890,7 @@ class StarterPolicy:
                     for target in self.room_targets.get(room_vnum or "", [])
                 )
             ):
-                self.fastwalk_attack_started = True
-                self.active_target = self.fastwalk_attack_target
-                self.combat_active = True
-                return BotDecision(
-                    f"kill {_target_keyword(self.fastwalk_attack_target)}",
-                    "attack the requested target found in the bounded fastwalk search",
-                )
+                return self._consider_fastwalk_target()
             if self.fastwalk_explore_direction is not None:
                 if self.fastwalk_withdrawing:
                     if self.fastwalk_return_steps_remaining > 0:
@@ -1633,6 +1936,10 @@ class StarterPolicy:
 
         if room_vnum == "3054":
             return BotDecision("south", "leave the healer after fastwalk recovery")
+        if room_vnum == "3724":
+            return BotDecision("down", "leave General Supplies after fastwalk recovery")
+        if room_vnum == "3725":
+            return BotDecision("down", "leave the Mud School after fastwalk recovery")
         if room_vnum == "3001":
             home_routes = {
                 "3001": "south",
@@ -1698,6 +2005,50 @@ class StarterPolicy:
             )
         )
 
+    def _consider_fastwalk_target(self) -> BotDecision | None:
+        """Use DD4's consider bands before committing a field hunt."""
+        assert self.fastwalk_attack_target is not None
+        target = self.fastwalk_attack_target
+        if self.fastwalk_consider_target != target:
+            self.fastwalk_consider_target = target
+            self.fastwalk_consider_viable = None
+            return BotDecision(
+                f"consider {_target_keyword(target)}",
+                "consider the field target before committing to combat",
+            )
+        if self.fastwalk_consider_viable is True:
+            self.fastwalk_attack_started = True
+            self.active_target = target
+            self.combat_active = True
+            return BotDecision(
+                f"kill {_target_keyword(target)}",
+                "attack the considered viable fastwalk target",
+            )
+        if self.fastwalk_consider_viable is False:
+            self.fastwalk_target_absent = True
+            self.fastwalk_returning = True
+            return BotDecision(
+                "recall",
+                "withdraw after considering the field target unsuitable",
+            )
+        return None
+
+    def _opportunistic_fastwalk_attacker_is_viable(
+        self,
+        state: CharacterState,
+    ) -> bool:
+        enemies = _enemy_records(state.enemies)
+        if enemies and self.active_target_level is None:
+            self.active_target_level = _int_or_none(enemies[0].get("level"))
+        if (
+            self.active_target is None
+            or self.active_target_level is None
+            or state.level is None
+            or _health_ratio(state) < 0.75
+        ):
+            return False
+        return state.level - 5 <= self.active_target_level <= state.level
+
     @property
     def _arena_kill_limit_reached(self) -> bool:
         return (
@@ -1742,6 +2093,13 @@ class StarterPolicy:
                     if row.get("boot_id") == self.world_boot_id
                 )
             for description in _inventory_descriptions(state.inventory):
+                item = (
+                    self.gear_catalog.match(description)
+                    if self.gear_catalog is not None
+                    else None
+                )
+                if item is not None and protects_from_sale(item):
+                    continue
                 shop = safe_shop_for_item(description, projected_counts)
                 if shop is not None:
                     keyword = sale_keyword(description)
@@ -1804,6 +2162,10 @@ class StarterPolicy:
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
         home_routes = {
+            "3063": "north",
+            "3060": "down",
+            "3724": "down",
+            "3725": "down",
             "3054": "south",
             "3025": "north",
             "3001": "south",
@@ -1818,6 +2180,22 @@ class StarterPolicy:
             self.return_home_recall_started = True
             if room_vnum not in home_routes and room_vnum != "3019":
                 return BotDecision("recall", "recover an interrupted character to Midgaard")
+        if _health_ratio(state) < 0.95:
+            healer_routes = {
+                "3063": "north",
+                "3060": "down",
+                "3019": "west",
+                "3018": "north",
+                "3017": "north",
+                "3012": "east",
+                "3013": "east",
+                "3014": "north",
+                "3005": "north",
+                "3001": "north",
+            }
+            direction = healer_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(direction, "reach the healer before completing recovery")
         direction = home_routes.get(room_vnum or "")
         if direction is not None:
             return BotDecision(direction, "return from recall to the Mage Guild")
@@ -1918,14 +2296,26 @@ class StarterPolicy:
             or room_name == "safety"
             or "safe" in state.room_flags
         )
+        is_healer_room = (
+            state.room_vnum in {"3054", "3721", "3737"}
+            or "sanctuary" in room_name
+            or "altar of the temple" in room_name
+            or room_name == "safety"
+        )
         if ratio >= 0.25:
-            if _move_ratio(state) >= 0.5 and _mana_ratio(state) >= 0.5:
+            if (
+                ratio >= 0.95
+                and _move_ratio(state) >= 0.5
+                and _mana_ratio(state) >= 0.5
+            ):
                 return None
             if self.fastwalk_route is not None and state.room_vnum == "3001":
                 return BotDecision(
                     "north",
                     "recover faster with the healer north of recall",
                 )
+            if self.return_home and ratio < 0.75 and not is_healer_room:
+                return None
             if not is_safe_room:
                 return None
             if (
@@ -1941,6 +2331,8 @@ class StarterPolicy:
         if (
             is_safe_room
         ):
+            if self.return_home and not is_healer_room:
+                return None
             self.waiting_for_heal = True
             return BotDecision("sleep", "recover under a safe-room healer")
 
@@ -2286,6 +2678,7 @@ class StarterBotRunner:
         fastwalk_attack_target: str | None = None,
         moria_research: bool = False,
         moria_depth: int = 0,
+        gear_catalog: GearCatalog | None = None,
     ) -> None:
         self.spec = spec
         self.profile_path = profile_path
@@ -2307,6 +2700,7 @@ class StarterBotRunner:
         self.fastwalk_attack_target = fastwalk_attack_target
         self.moria_research = moria_research
         self.moria_depth = moria_depth
+        self.gear_catalog = gear_catalog
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
@@ -2425,6 +2819,10 @@ class StarterBotRunner:
                     password = load_character_password(self.spec.credential_name)
                 except CredentialStoreError as exc:
                     raise RuntimeError(str(exc)) from exc
+            gear_catalog = self.gear_catalog
+            source_directory = Path("runs/dd4-source/server/area")
+            if gear_catalog is None and source_directory.is_dir():
+                gear_catalog = load_gear_catalog(str(source_directory.resolve()))
             policy = StarterPolicy(
                 self.spec,
                 password,
@@ -2451,6 +2849,7 @@ class StarterBotRunner:
                 fastwalk_attack_target=self.fastwalk_attack_target,
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
+                gear_catalog=gear_catalog,
             )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
@@ -2836,6 +3235,27 @@ def _move_ratio(state: CharacterState) -> float:
     return float(state.move) / float(state.max_move)
 
 
+def _enemy_records(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        records = [value] if isinstance(value.get("name"), str) else []
+        for item in value.values():
+            records.extend(_enemy_records(item))
+        return records
+    if isinstance(value, list):
+        records: list[dict[str, Any]] = []
+        for item in value:
+            records.extend(_enemy_records(item))
+        return records
+    return []
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _mana_ratio(state: CharacterState) -> float:
     if state.mana is None or state.max_mana in (None, 0):
         return 1.0
@@ -2844,7 +3264,7 @@ def _mana_ratio(state: CharacterState) -> float:
 
 def _recovery_ready(state: CharacterState) -> bool:
     return (
-        _health_ratio(state) >= 0.5
+        _health_ratio(state) >= 0.95
         and _move_ratio(state) >= 0.5
         and _mana_ratio(state) >= 0.5
     )
@@ -3034,7 +3454,10 @@ def _has_inventory_item(value: Any, needle: str) -> bool:
     return needle in str(value).casefold()
 
 
-def _sellable_inventory_keyword(value: Any) -> str | None:
+def _sellable_inventory_keyword(
+    value: Any,
+    gear_catalog: GearCatalog | None = None,
+) -> str | None:
     """Choose a conservative equipment keyword, never food or water storage."""
     names = _inventory_descriptions(value)
     equipment_words = {
@@ -3042,7 +3465,10 @@ def _sellable_inventory_keyword(value: Any) -> str | None:
         "helm", "mace", "shield", "sword", "wand", "weapon",
     }
     for name in names:
-        words = name.casefold().replace("'", "").split()
+        item = gear_catalog.match(name) if gear_catalog is not None else None
+        if item is not None and protects_from_sale(item):
+            continue
+        words = re.findall(r"[a-z0-9]+", name.casefold())
         if {"pie", "skin", "water", "food"}.intersection(words):
             continue
         for word in reversed(words):
@@ -3071,3 +3497,36 @@ def _inventory_descriptions(value: Any) -> list[str]:
             result.extend(_inventory_descriptions(item))
         return result
     return []
+
+
+def _equipment_descriptions(value: Any) -> list[str]:
+    if isinstance(value, str):
+        cleaned = _ANSI_ESCAPE.sub("", value).strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return []
+        return _equipment_descriptions(parsed)
+    if isinstance(value, dict):
+        description = value.get("name", value.get("short_desc"))
+        result = [str(description)] if isinstance(description, str) else []
+        for key, item in value.items():
+            if key not in {"name", "short_desc"}:
+                result.extend(_equipment_descriptions(item))
+        return result
+    if isinstance(value, list):
+        result: list[str] = []
+        for item in value:
+            result.extend(_equipment_descriptions(item))
+        return result
+    return []
+
+
+def _near_level_gain(state: CharacterState) -> bool:
+    if state.xp_to_next_level is None:
+        return False
+    level_span = state.progress.get("xplvl") if isinstance(state.progress, dict) else None
+    if not isinstance(level_span, (int, float)):
+        level_span = 2500
+    threshold = max(250, int(level_span * _PRE_LEVEL_XP_FRACTION))
+    return 0 < state.xp_to_next_level <= threshold

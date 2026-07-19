@@ -66,6 +66,9 @@ class ObjectSource:
     item_type: int
     values: tuple[int, ...]
     source_cost: int
+    wear_flags: int = 0
+    level: int = 0
+    affects: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -167,6 +170,19 @@ def load_world_source(area_directory: Path) -> WorldSource:
         for container, contents in parsed.container_contents.items():
             world.container_contents.setdefault(container, []).extend(contents)
     return world
+
+
+def load_object_sources(area_directory: Path) -> dict[int, ObjectSource]:
+    """Load object prototypes without paying to parse the complete room graph."""
+    if not area_directory.is_dir():
+        raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
+
+    objects: dict[int, ObjectSource] = {}
+    for path in sorted(area_directory.glob("*.are")):
+        lines = path.read_text(encoding="latin-1").splitlines()
+        sections = _section_ranges(lines)
+        objects.update(_parse_objects(lines, sections.get("#OBJECTS")))
+    return objects
 
 
 def parse_area_file(
@@ -452,15 +468,42 @@ def _parse_objects(
         index += 1
         if not type_parts:
             continue
+        record_end = _next_vnum_marker(lines, index, end)
+        try:
+            item_type = int(type_parts[0])
+            wear_flags = _parse_bits(type_parts[2]) if len(type_parts) > 2 else 0
+            source_cost = int(cost_parts[1]) if len(cost_parts) > 1 else 0
+            level = int(cost_parts[2]) if len(cost_parts) > 2 else 0
+        except ValueError:
+            # Object programs and extended descriptions can contain ``#<vnum>``
+            # references. Ignore them unless the expected numeric header follows.
+            index = record_end
+            continue
+        affects: list[tuple[int, int]] = []
+        detail_index = index
+        while detail_index < record_end:
+            if lines[detail_index].strip() != "A":
+                detail_index += 1
+                continue
+            detail_index += 1
+            if detail_index >= record_end:
+                break
+            affect_parts = lines[detail_index].split()
+            if len(affect_parts) >= 2 and _all_ints(affect_parts[:2]):
+                affects.append((int(affect_parts[0]), int(affect_parts[1])))
+            detail_index += 1
         objects[vnum] = ObjectSource(
             vnum=vnum,
             keywords=_clean_text(keywords),
             short_description=_clean_text(short_description),
-            item_type=int(type_parts[0]),
+            item_type=item_type,
             values=values,
-            source_cost=int(cost_parts[1]) if len(cost_parts) > 1 else 0,
+            source_cost=source_cost,
+            wear_flags=wear_flags,
+            level=level,
+            affects=tuple(affects),
         )
-        index = _next_vnum_marker(lines, index, end)
+        index = record_end
     return objects
 
 

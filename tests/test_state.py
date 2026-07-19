@@ -72,6 +72,30 @@ def test_state_changes_only_when_event_changes_domain_state() -> None:
     assert state.in_combat is True
     assert state.combat_target == "a practice dummy"
 
+    assert state.apply(
+        GameEvent(
+            "enemies_changed",
+            "gmcp",
+            {"value": [[{"name": "Olog", "level": "4"}]]},
+        )
+    )
+    assert state.enemies[0][0]["level"] == "4"
+
+    assert state.apply(
+        GameEvent(
+            "equipment_changed",
+            "gmcp",
+            {
+                "value": {
+                    "equipment": {
+                        "head": {"id": 3706, "name": "a steel barrel-helm"}
+                    }
+                }
+            },
+        )
+    )
+    assert state.equipment["equipment"]["head"]["id"] == 3706
+
     assert state.apply(GameEvent("character_died", "text", {"text": "You have died."}))
     assert state.dead is True
     assert state.in_combat is False

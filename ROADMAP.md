@@ -123,6 +123,20 @@ and failure handling before registering each new level-band policy.
 - Added source-backed candidate scoring for exact recall routes, reset placements,
   loot, mobile instance limits, alignment, aggressive hazards, and current-reboot
   kill history.
+
+## Progression Evidence Cycle 4
+
+- Added source-backed equipment parsing and three explicit loadouts: combat
+  prioritizes damroll, pre-level prioritizes positive stats during the final 10%
+  of a level, and recovery prioritizes maximum hitpoints and mana before sleep.
+- Equipment is audited before changes and confirmed afterward. Waking returns to
+  combat or pre-level gear, while newly acquired inventory triggers a fresh plan.
+- Bonus gear, large sacks, backpacks, and the girdle of many pouches are protected
+  from liquidation. Early progression should acquire a safe sack or backpack;
+  the Mahntor girdle remains a later-band objective.
+- Live run 200 verified the text equipment fallback, equipped Ararisa's carried
+  weapon, preserved her stat-boosting diploma and snowy stone, saved, and quit
+  safely without consuming XP or supplies.
 - Verified the Circus midget route in run 146 and one bounded kill in run 148:
   43 XP, 94/96 minimum health, purse loot, immediate recall, full recovery, and
   safe return to the Mage Guild.

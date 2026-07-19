@@ -27,7 +27,7 @@ def test_telnet_negotiates_gmcp_and_captures_payload() -> None:
             'Core.Hello {"client":"dd4tester","version":"0.1.0"}'
         ),
         gmcp_subnegotiation(
-            'Core.Supports.Set ["Char 1","Char.Items 1","Room 1","Comm 1"]'
+            'Core.Supports.Set ["Char 1","Char.Items 1","Char.Equipment 1","Room 1","Comm 1"]'
         ),
     ]
     assert chunk.data == b"hello world"
@@ -49,7 +49,7 @@ def test_telnet_parser_handles_partial_negotiation() -> None:
             'Core.Hello {"client":"dd4tester","version":"0.1.0"}'
         ),
         gmcp_subnegotiation(
-            'Core.Supports.Set ["Char 1","Char.Items 1","Room 1","Comm 1"]'
+            'Core.Supports.Set ["Char 1","Char.Items 1","Char.Equipment 1","Room 1","Comm 1"]'
         ),
     ]
     assert second.gmcp_messages == ["Char.Status {}"]

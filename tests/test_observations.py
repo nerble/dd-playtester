@@ -115,6 +115,29 @@ def test_gmcp_non_json_payload_is_preserved() -> None:
     assert events[0].data == {"package": "Core.Prompt", "value": "ready>"}
 
 
+def test_gmcp_enemy_snapshot_is_preserved() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_gmcp(
+        'Char.Enemies [ [ { "name": "Olog", "level": "4", "hp": "48" } ] ]'
+    )
+
+    assert [event.type for event in events] == ["enemies_changed"]
+    assert events[0].data["value"][0][0]["name"] == "Olog"
+
+
+def test_gmcp_equipment_snapshot_is_preserved() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_gmcp(
+        'Char.Equipment {"equipment":{"head":{"id":3706,'
+        '"name":"a steel barrel-helm"}}}'
+    )
+
+    assert [event.type for event in events] == ["equipment_changed"]
+    assert events[0].data["equipment"]["head"]["id"] == 3706
+
+
 def test_real_dd4_text_fixture_produces_room_and_prompt_state() -> None:
     parser = ObservationParser()
     fixture = (Path(__file__).parent / "fixtures" / "dd4_room_prompt.txt").read_text(

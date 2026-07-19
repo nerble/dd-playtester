@@ -41,7 +41,9 @@ class CharacterState:
     progress: dict[str, Any] = field(default_factory=dict)
     currencies: dict[str, int | float] = field(default_factory=dict)
     inventory: Any = None
+    equipment: Any = None
     affects: Any = None
+    enemies: Any = None
     quests: list[dict[str, Any]] = field(default_factory=list)
     acquired_items: list[dict[str, Any]] = field(default_factory=list)
     last_prompt: dict[str, Any] = field(default_factory=dict)
@@ -171,9 +173,19 @@ class CharacterState:
             self.inventory = deepcopy(value)
             return
 
+        if event.type == "equipment_changed":
+            value = data.get("value", _payload(data))
+            self.equipment = deepcopy(value)
+            return
+
         if event.type == "affects_changed":
             value = data.get("value", _payload(data))
             self.affects = deepcopy(value)
+            return
+
+        if event.type == "enemies_changed":
+            value = data.get("value", _payload(data))
+            self.enemies = deepcopy(value)
             return
 
         if event.type == "item_acquired":

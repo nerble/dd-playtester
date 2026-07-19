@@ -13,7 +13,13 @@ SE = 240
 GMCP = 201
 GMCP_CLIENT_NAME = "dd4tester"
 GMCP_CLIENT_VERSION = "0.1.0"
-GMCP_SUPPORTS = ("Char 1", "Char.Items 1", "Room 1", "Comm 1")
+GMCP_SUPPORTS = (
+    "Char 1",
+    "Char.Items 1",
+    "Char.Equipment 1",
+    "Room 1",
+    "Comm 1",
+)
 
 COMMAND_NAMES = {
     DONT: "DONT",

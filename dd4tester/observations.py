@@ -156,6 +156,8 @@ class ObservationParser:
             "char.worth": "progress_changed",
             "char.affect": "affects_changed",
             "char.items": "inventory_changed",
+            "char.equipment": "equipment_changed",
+            "char.enemies": "enemies_changed",
         }
         snapshot_type = snapshot_types.get(normalized)
         if snapshot_type is not None and self._gmcp_snapshots.get(normalized) != payload:
