@@ -1718,6 +1718,54 @@ def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
     assert recall.command == "recall"
 
 
+def test_progress_watchdog_recalls_a_stalled_noncombat_run() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(room_name="Main Street", room_vnum="3012", position=7)
+
+    decision = policy.recover_from_stall(state, "west")
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.return_home is True
+    assert policy.utility_abort_reason == (
+        "progress watchdog stopped after repeating 'west' without state progress"
+    )
+
+
+def test_progress_watchdog_flees_before_recalling_from_combat() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    state = CharacterState(room_name="Main Street", room_vnum="3012", position=7)
+
+    decision = policy.recover_from_stall(state, "west")
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.utility_emergency_recall_pending is True
+
+
+def test_progress_watchdog_preserves_purgatory_recovery() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        area="Purgatory",
+        dead=True,
+        room_name="Judgement Hall",
+        room_vnum="427",
+        position=7,
+    )
+
+    decision = policy.recover_from_stall(state, "look")
+
+    assert decision is None
+    assert policy.purgatory_recovery_active is True
+
+
 def test_return_home_loots_corpse_enters_portal_and_sleeps() -> None:
     policy = StarterPolicy(_spec(), "swordfish", return_home=True)
     policy.in_world = True

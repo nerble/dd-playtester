@@ -570,6 +570,38 @@ class StarterPolicy:
         if self.awaiting_reconnect:
             self.stage = "login"
 
+    def recover_from_stall(
+        self,
+        state: CharacterState,
+        repeated_command: str,
+    ) -> BotDecision | None:
+        """Abandon stalled work only after arranging a safe exit."""
+        self.return_home = True
+        self.utility_abort_reason = (
+            "progress watchdog stopped after repeating "
+            f"{repeated_command!r} without state progress"
+        )
+        in_purgatory = (
+            state.dead
+            or (state.area or "").casefold() == "purgatory"
+            or state.room_vnum in _PURGATORY_DESTINATION_PATH
+            or state.room_vnum == "427"
+        )
+        if in_purgatory:
+            self.purgatory_recovery_active = True
+            return None
+        if self.combat_active:
+            self.utility_emergency_recall_pending = True
+            return BotDecision(
+                "flee",
+                "withdraw from combat after the progress watchdog intervened",
+            )
+        self.return_home_recall_started = True
+        return BotDecision(
+            "recall",
+            "recall home after the progress watchdog intervened",
+        )
+
     def _login_decision(self) -> BotDecision | None:
         folded = self.text.casefold()
 
@@ -2447,9 +2479,26 @@ class StarterBotRunner:
                         _max_consecutive_command(route_commands, decision.command),
                     )
                 if repeated_count > repeat_limit:
-                    raise RuntimeError(
-                        f"Starter bot repeated {decision.command!r} too many times"
+                    recovery = policy.recover_from_stall(
+                        self.character_state,
+                        decision.command,
                     )
+                    record(
+                        "state",
+                        {
+                            "state": "progress_watchdog",
+                            "repeated_command": decision.command,
+                            "repeat_limit": repeat_limit,
+                            "recovery_command": (
+                                recovery.command if recovery is not None else None
+                            ),
+                        },
+                    )
+                    if recovery is None:
+                        continue
+                    decision = recovery
+                    repeated_command = decision.command
+                    repeated_count = 1
                 record("decision", decision_payload)
                 record(
                     "command",
