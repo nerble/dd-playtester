@@ -1,6 +1,11 @@
 from pathlib import Path
 
 from dd4tester.hunt_candidates import (
+    ExitSource,
+    MobileSource,
+    MobReset,
+    ObjectSource,
+    RoomSource,
     WorldSource,
     parse_area_file,
     rank_hunt_candidates,
@@ -55,3 +60,40 @@ def test_candidate_ranking_rejects_route_through_higher_level_aggressor(
     assert candidate.contained_coins == 50
     assert "route: the dangerous guard L8 in 3002" in candidate.hazards
     assert any("faster unoccupied reset" in hazard for hazard in candidate.hazards)
+
+
+def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "rat", "a cellar rat", 3, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "wolf",
+                "a large grey wolf",
+                8,
+                1 << 5,
+                0,
+                "transit.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            6008: RoomSource(6008, "Forest clearing", "transit.are"),
+            7001: RoomSource(7001, "Rat cellar", "target.are"),
+        },
+        objects={
+            300: ObjectSource(300, "sword", "a rusty sword", 5, (), 100),
+        },
+        mob_resets=[MobReset(200, 6008, 1, ()), MobReset(100, 7001, 1, (300,))],
+    )
+    world.rooms[3001].exits["west"] = ExitSource("west", 6008, 0, -1)
+    world.rooms[6008].exits["west"] = ExitSource("west", 7001, 0, -1)
+
+    candidates = rank_hunt_candidates(world, character_level=6)
+
+    assert candidates[0].status == "reject"
+    assert "route: a large grey wolf L8 in 6008" in candidates[0].hazards

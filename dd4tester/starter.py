@@ -256,6 +256,8 @@ class StarterPolicy:
         self.fastwalk_loot_step = 0
         self.fastwalk_recall_after_loot = False
         self.fastwalk_last_kill_target: str | None = None
+        self.fastwalk_abort_reason: str | None = None
+        self.fastwalk_emergency_recall_pending = False
         self.pending_fastwalk_outbound_move = False
         self.return_home_recall_started = False
         self.return_home_gear_checked = False
@@ -392,6 +394,10 @@ class StarterPolicy:
         ):
             self.combat_active = True
         if "aren't fighting anyone" in recent:
+            self.combat_active = False
+            self.active_target = None
+            self.magic_missile_cast = False
+        if "you flee from combat" in recent:
             self.combat_active = False
             self.active_target = None
             self.magic_missile_cast = False
@@ -725,6 +731,16 @@ class StarterPolicy:
             return BotDecision("stand", "wake before travel or arena actions")
 
         if self.combat_active:
+            if self.fastwalk_route is not None and not self.fastwalk_attack_started:
+                self.fastwalk_abort_reason = (
+                    "unexpected combat interrupted fastwalk "
+                    f"{self.fastwalk_route.name!r} before its objective"
+                )
+                self.fastwalk_emergency_recall_pending = True
+                return BotDecision(
+                    "flee",
+                    "withdraw from unexpected combat during a bounded fastwalk",
+                )
             if self.needs_food or self.needs_drink or _health_ratio(state) < 0.25:
                 if self.return_home:
                     return BotDecision(
@@ -1278,6 +1294,14 @@ class StarterPolicy:
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
         room_key = room_vnum or ""
+
+        if self.fastwalk_emergency_recall_pending and not self.combat_active:
+            self.fastwalk_emergency_recall_pending = False
+            self.fastwalk_returning = True
+            return BotDecision(
+                "recall",
+                "leave the fastwalk immediately after unexpected combat",
+            )
 
         if (
             not self.combat_active
@@ -2391,6 +2415,13 @@ class StarterBotRunner:
                 commands += 1
                 policy.after_command(decision)
 
+            if policy.fastwalk_abort_reason is not None:
+                raise RuntimeError(policy.fastwalk_abort_reason)
+            if self.fastwalk_route is not None and not policy.fastwalk_arrival_observed:
+                raise RuntimeError(
+                    f"fastwalk {self.fastwalk_route.name!r} returned without "
+                    "observing its endpoint"
+                )
             if not policy.fastwalk_objective_killed:
                 raise RuntimeError(
                     "bounded fastwalk attack returned safely without a "

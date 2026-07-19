@@ -1291,6 +1291,36 @@ def test_fastwalk_research_requires_recall_and_reverses_when_needed() -> None:
     assert reverse.command == "south"
 
 
+def test_fastwalk_unexpected_combat_flees_then_recalls_and_records_failure() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+
+    flee = policy.next_decision(
+        CharacterState(room_name="Forest clearing", room_vnum="6008", position=7)
+    )
+
+    assert flee is not None
+    assert flee.command == "flee"
+    assert policy.fastwalk_abort_reason is not None
+    policy.after_command(flee)
+    policy.observe_text("You flee from combat!")
+    policy.prompt_ready = True
+
+    recall = policy.next_decision(
+        CharacterState(room_name="Forest path", room_vnum="6011", position=7)
+    )
+
+    assert recall is not None
+    assert recall.command == "recall"
+    assert "unexpected combat" in recall.reason
+
+
 def test_fastwalk_research_walks_from_arena_safety_to_preserve_movement() -> None:
     route = route_named("moria")
     policy = StarterPolicy(_spec(), "swordfish", fastwalk_route=route)

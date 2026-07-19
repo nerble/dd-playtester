@@ -145,7 +145,7 @@ class HuntCandidate:
 
 
 def load_world_source(area_directory: Path) -> WorldSource:
-    """Parse room topology from all areas and reset facts from target areas."""
+    """Parse global route hazards and target-area loot evidence from DD4 source."""
     if not area_directory.is_dir():
         raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
 
@@ -155,8 +155,9 @@ def load_world_source(area_directory: Path) -> WorldSource:
         is_target = path.name in target_files
         parsed = parse_area_file(
             path,
-            include_resets=is_target,
-            include_entities=is_target,
+            include_resets=True,
+            include_entities=True,
+            include_objects=is_target,
         )
         world.mobiles.update(parsed.mobiles)
         world.objects.update(parsed.objects)
@@ -173,6 +174,7 @@ def parse_area_file(
     *,
     include_resets: bool = True,
     include_entities: bool = True,
+    include_objects: bool | None = None,
 ) -> AreaSource:
     lines = path.read_text(encoding="latin-1").splitlines()
     sections = _section_ranges(lines)
@@ -181,9 +183,11 @@ def parse_area_file(
         if include_entities
         else {}
     )
+    if include_objects is None:
+        include_objects = include_entities
     objects = (
         _parse_objects(lines, sections.get("#OBJECTS"))
-        if include_entities
+        if include_objects
         else {}
     )
     rooms = _parse_rooms(lines, sections.get("#ROOMS"), path.name)
