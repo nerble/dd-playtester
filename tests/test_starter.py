@@ -2829,10 +2829,26 @@ def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
     assert policy.utility_abort_reason is not None
     policy.after_command(flee)
     policy.observe_text("You flee from combat!\n")
+    stale_enemies = [[{"name": "the drunk", "level": "2"}]]
+    policy.observe_events(
+        [
+            GameEvent(
+                "enemies_changed",
+                "gmcp",
+                {"value": stale_enemies},
+            )
+        ],
+        CharacterState(enemies=stale_enemies, position=6),
+    )
     policy.prompt_ready = True
 
     recall = policy.next_decision(
-        CharacterState(room_name="Market Square", room_vnum="3014", position=7)
+        CharacterState(
+            enemies=stale_enemies,
+            room_name="Market Square",
+            room_vnum="3014",
+            position=6,
+        )
     )
 
     assert recall is not None
@@ -5323,6 +5339,30 @@ def test_starter_runner_redacts_password_on_failed_run(
     assert connection.sent == ["Rulemage", "not-for-transcripts"]
     assert "not-for-transcripts" not in transcript
     assert "[REDACTED]" in transcript
+
+
+def test_starter_runner_accepts_safe_withdrawal_after_reaching_objective(
+    tmp_path,
+) -> None:
+    spec = _spec(
+        database=str(tmp_path / "runs.sqlite3"),
+        transcript_dir=str(tmp_path / "transcripts"),
+    )
+    runner = StarterBotRunner(
+        spec,
+        tmp_path / "starter.yaml",
+        objective_level=8,
+    )
+
+    runner.character_state.level = 7
+    assert runner._fastwalk_abort_is_failure(
+        "field combat aborted for safety: health at or below 70%"
+    )
+
+    runner.character_state.level = 8
+    assert not runner._fastwalk_abort_is_failure(
+        "field combat aborted for safety: health at or below 70%"
+    )
 
 
 def _gear_item(

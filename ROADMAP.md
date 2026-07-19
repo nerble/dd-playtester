@@ -313,3 +313,28 @@ and failure handling before registering each new level-band policy.
   Arena patrols now distinguish under-level occupants from an empty arena:
   the former save and exit immediately, while only the latter trigger an
   outside-area reset wait.
+
+## Progression Evidence Cycle 12
+
+- Miden'nir runs 282 and 285 gained 208 and 209 XP. Run 291 then killed a
+  level-7 goblin lieutenant and advanced Ararisa to level 8 with 24,850 XP,
+  115 maximum hit points, 316 maximum mana, and 220 maximum movement. She
+  withdrew at the safety threshold and recovered in the Mage Guild.
+- Foundry run 287 gained 118 XP from Uburz, while run 288 gained only 33 XP
+  from an incidental Olog before the intended target was found absent. These
+  results reinforce Miden'nir as the better current progression loop.
+- A level-2 drunk interrupted the run-290 shop route. Delayed GMCP enemy data
+  made the utility runner issue a second flee after the first had succeeded,
+  causing an avoidable second XP penalty. A latched flee-success state now
+  recalls immediately despite one stale enemy update, with regression coverage.
+- A run that reaches its objective level before withdrawing safely now counts
+  as successful. This preserves run-291-style level advancement without
+  weakening safety failures below the requested objective.
+- DD4 source defines one area pulse as 30-90 seconds. Empty areas reset at age
+  8 and receive a randomized post-reset age of 0-3; occupied areas can be
+  delayed beyond age 14. Progression waits should therefore leave the area and
+  use bounded multi-minute retries instead of waiting beside missing spawns.
+- The next executable stage is the level-8 practice plan followed by a verified
+  invisibility-assisted expedition to room 4518 for the large sack. Food and
+  water are restocked before departure, and low-value piping and cap weight are
+  discarded at the safe origin.

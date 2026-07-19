@@ -274,6 +274,7 @@ class StarterPolicy:
         self.arena_loot_step = 0
         self.combat_active = False
         self.flee_pending = False
+        self.flee_succeeded = False
         self.needs_stand = False
         self.waiting_for_heal = False
         self.healer_menu_checked = False
@@ -577,8 +578,10 @@ class StarterPolicy:
             self.active_target = None
             self.magic_missile_cast = False
             self.flee_pending = False
+            self.flee_succeeded = True
         if "you failed to flee" in recent or "you couldn't escape" in recent:
             self.flee_pending = False
+            self.flee_succeeded = False
         if "aren't here" in recent or "do not see that here" in recent:
             self.combat_active = False
             if self.current_room and self.active_target:
@@ -768,6 +771,7 @@ class StarterPolicy:
             self.health_check_due = time.monotonic() + _HEALTH_CHECK_WAIT_SECONDS
         if decision.command == "flee":
             self.flee_pending = True
+            self.flee_succeeded = False
         if decision.command == "quit":
             self.done = True
 
@@ -1031,6 +1035,25 @@ class StarterPolicy:
 
         if _is_sleeping(state):
             return BotDecision("stand", "wake before travel or arena actions")
+
+        if self.flee_succeeded:
+            self.flee_succeeded = False
+            self.combat_active = False
+            self.active_target = None
+            if self.utility_emergency_recall_pending:
+                self.utility_emergency_recall_pending = False
+                self.return_home_recall_started = True
+                return BotDecision(
+                    "recall",
+                    "recall immediately after fleeing unexpected utility-run combat",
+                )
+            if self.fastwalk_emergency_recall_pending:
+                self.fastwalk_emergency_recall_pending = False
+                self.fastwalk_returning = True
+                return BotDecision(
+                    "recall",
+                    "leave the fastwalk immediately after unexpected combat",
+                )
 
         if self.combat_active:
             if self._is_noncombat_utility_run:
@@ -3685,7 +3708,7 @@ class StarterBotRunner:
                 raise RuntimeError(policy.utility_abort_reason)
             if (
                 policy.fastwalk_abort_reason is not None
-                and not self.allow_safe_fastwalk_abort
+                and self._fastwalk_abort_is_failure(policy.fastwalk_abort_reason)
             ):
                 raise RuntimeError(policy.fastwalk_abort_reason)
             if (
@@ -3767,6 +3790,12 @@ class StarterBotRunner:
                 await connection.close()
             recorder.close()
             storage.close()
+
+    def _fastwalk_abort_is_failure(self, abort_reason: str) -> bool:
+        if self.allow_safe_fastwalk_abort:
+            return False
+        final_level = self.character_state.level
+        return final_level is None or final_level < self.objective_level
 
     def _record_read(
         self,
