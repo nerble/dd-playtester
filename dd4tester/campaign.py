@@ -85,6 +85,14 @@ class CampaignResult:
     message: str | None
     state: dict[str, Any]
 
+    @property
+    def ready_for_next_segment(self) -> bool:
+        return bool(
+            self.status == "blocked"
+            and self.message
+            and "checkpointed for the next verified segment." in self.message
+        )
+
 
 class CampaignRunner:
     """Run verified policy segments with durable checkpoints and aggregate limits."""
@@ -354,7 +362,7 @@ async def run_campaign_file(
     spec = load_campaign_spec(config_path)
     result = await CampaignRunner(spec, config_path, force_new=force_new).run()
     for _ in range(1, segments):
-        if result.status != "blocked" or not _is_ready_checkpoint(result.message):
+        if not result.ready_for_next_segment:
             break
         result = await CampaignRunner(spec, config_path).run()
     return result
@@ -386,10 +394,6 @@ def _checkpoint_state(checkpoint: Any) -> dict[str, Any]:
     if checkpoint is None:
         return {}
     return dict(json.loads(checkpoint["state_json"]))
-
-
-def _is_ready_checkpoint(message: str | None) -> bool:
-    return bool(message and "checkpointed for the next verified segment." in message)
 
 
 def _level(state: dict[str, Any]) -> int:

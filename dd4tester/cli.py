@@ -625,7 +625,7 @@ def main(argv: list[str] | None = None) -> int:
         if result.checkpoint_id is not None:
             print(f"Checkpoint: {result.checkpoint_id}")
         print(f"Level: {result.state.get('level', '-')}")
-        return 0 if result.status == "success" else 1
+        return 0 if result.status == "success" or result.ready_for_next_segment else 1
 
     if args.command == "show-runs":
         return show_runs(args.database, limit=args.limit)

@@ -162,6 +162,27 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
     assert "Level: 2" in captured.out
 
 
+def test_campaign_command_returns_success_for_ready_checkpoint(tmp_path, capsys, monkeypatch) -> None:
+    config = tmp_path / "campaign.yaml"
+
+    async def fake_campaign(path: Path, *, force_new: bool, segments: int) -> CampaignResult:
+        return CampaignResult(
+            4,
+            "blocked",
+            9,
+            "mud-school-6-10 segment completed at level 6. "
+            "Campaign checkpointed for the next verified segment.",
+            {"level": 6},
+        )
+
+    monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
+
+    exit_code = main(["campaign", str(config)])
+
+    assert exit_code == 0
+    assert "Campaign 4 blocked" in capsys.readouterr().out
+
+
 def test_arena_research_command_runs_with_requested_target(tmp_path, capsys, monkeypatch) -> None:
     profile = tmp_path / "level-two.yaml"
     transcript = tmp_path / "arena-1.jsonl"
