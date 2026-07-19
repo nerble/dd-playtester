@@ -165,3 +165,26 @@ and failure handling before registering each new level-band policy.
 - Verified the complete money loop in runs 150-151: 51 copper extracted from
   the purse and 8 copper from selling the empty container at the safe General
   Store. Hunt areas are vacated after loot so their reset timers advance faster.
+
+## Progression Evidence Cycle 6
+
+- Grouped compatible sales by shop and made city restocking return to the Mage
+  Guild. Run 223 verified the full fountain, Bakery, return, save, and safe quit
+  path with two pies carried.
+- Money loops now preserve successful hunt evidence and continue to liquidation
+  and restocking when a later requested mobile is absent. Runs 224-228 verified
+  this with Uburz, an incidental Olog, absent Ushog and Golgog targets, 295 XP,
+  29 copper of accepted loot sales, and a safe two-pie finish.
+- Run 225 exposed a higher-than-expected Foundry wandering risk: a level-2 Olog
+  reduced the lightly armoured level-6 mage to 24/96 health before dying. The
+  bot recalled immediately, recovered fully beside the healer, and consumed a
+  pie when hunger interrupted recovery.
+- Human identify evidence showed Uburz's silver circlet belongs to the Dwarven
+  and Goblin Alliance set; pairing it with the dwarven children's pinkish ring
+  grants +2 Strength. Repeated metal piping sales decayed until the weaponsmith
+  refused the item, so refused duplicates must not be counted as cash reserve.
+- Run 229 used four bounded arena kills for 369 XP and advanced Ararisa from
+  level 6 to level 7 with 105 maximum health. Run 230 then verified the safe
+  return to the Mage Guild with two pies intact. Future liquidation retains the
+  best carried combat item for each otherwise-empty wear slot before selling
+  expendable gear.

@@ -858,6 +858,41 @@ def test_arena_kill_limit_saves_from_safety_not_the_arena() -> None:
     assert decision.command == "save"
 
 
+def test_target_level_exits_to_safety_before_saving() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=7)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.course_complete = True
+    policy.provisioned = True
+    policy.practiced = True
+    arena = CharacterState(
+        level=7,
+        hp=105,
+        max_hp=105,
+        room_name="The Mud School Arena",
+        room_vnum="3729",
+    )
+
+    leave = policy.next_decision(arena)
+
+    assert leave is not None
+    assert leave.command == "up"
+
+    policy.prompt_ready = True
+    save = policy.next_decision(
+        CharacterState(
+            level=7,
+            hp=105,
+            max_hp=105,
+            room_name="Safety",
+            room_vnum="3737",
+        )
+    )
+
+    assert save is not None
+    assert save.command == "save"
+
+
 def test_arena_prioritizes_wolves_when_multiple_targets_are_observed() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=4)
     policy.in_world = True
@@ -1248,6 +1283,11 @@ def test_city_restock_policy_uses_fountain_then_bakery() -> None:
         ("The Bakery", "3009", "list"),
         ("The Bakery", "3009", "buy 6 pie"),
         ("The Bakery", "3009", "inventory"),
+        ("The Bakery", "3009", "south"),
+        ("Main Street", "3013", "west"),
+        ("Main Street", "3012", "south"),
+        ("Entrance to Mage's Guild", "3017", "south"),
+        ("Mage's Bar", "3018", "east"),
     )
     for room_name, room_vnum, expected_command in rooms_and_commands:
         decision = policy.next_decision(
@@ -1259,10 +1299,51 @@ def test_city_restock_policy_uses_fountain_then_bakery() -> None:
         policy.prompt_ready = True
 
     decision = policy.next_decision(
-        CharacterState(room_name="The Bakery", room_vnum="3009", position=7)
+        CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
     )
     assert decision is not None
     assert decision.command == "save"
+
+
+def test_liquidation_groups_items_by_shop_and_stays_for_the_next_sale() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        inventory=[
+            [
+                {"short_desc": "a leather jerkin", "quan": "1"},
+                {"short_desc": "a length of metal piping", "quan": "1"},
+                {"short_desc": "a pair of black leather boots", "quan": "1"},
+            ]
+        ],
+    )
+
+    policy.next_decision(home)
+
+    assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
+        ("jerkin", "Leather Shop"),
+        ("boots", "Leather Shop"),
+        ("piping", "Weapon Shop"),
+    ]
+
+    policy.sale_index = 0
+    policy.sale_phase = "inventory"
+    policy.prompt_ready = True
+    next_sale = policy.next_decision(
+        CharacterState(
+            room_name="Leather Shop",
+            room_vnum=policy.sale_plan[0][1].room_vnum,
+            position=7,
+        )
+    )
+
+    assert next_sale is not None
+    assert next_sale.command == "value boots"
+    assert policy.sale_index == 1
 
 
 def test_city_restock_policy_reaches_fountain_from_mage_laboratory() -> None:
@@ -3139,9 +3220,55 @@ def test_human_identifies_loot_and_keeps_stat_circlet_before_sale() -> None:
     assert identify_cap is not None
     assert identify_cap.command == "cast 'identify' cap"
     assert first_move is not None
-    assert first_move.command == "west"
+    assert first_move.command == "save"
+    assert policy.sale_plan == []
+
+
+def test_liquidation_keeps_best_carried_combat_item_for_an_empty_slot() -> None:
+    better = ObjectSource(
+        110,
+        "leather jerkin",
+        "a leather jerkin",
+        9,
+        (4, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 3),
+    )
+    weaker = ObjectSource(
+        111,
+        "cloth shirt",
+        "a cloth shirt",
+        9,
+        (1, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 3),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        gear_catalog=GearCatalog({better.vnum: better, weaker.vnum: weaker}),
+    )
+    policy.in_world = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        level=6,
+        position=7,
+        inventory=[
+            [
+                {"short_desc": "a leather jerkin", "quan": "1"},
+                {"short_desc": "a cloth shirt", "quan": "1"},
+            ]
+        ],
+    )
+
+    for _ in range(3):
+        policy.prompt_ready = True
+        policy.next_decision(home)
+
     assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
-        ("cap", "Leather Shop")
+        ("shirt", "Leather Shop")
     ]
 
 

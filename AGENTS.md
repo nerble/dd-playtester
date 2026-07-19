@@ -14,8 +14,10 @@ Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
 Confirm dynamic behavior such as wandering, prices, and combat risk with live,
 redacted transcripts before promoting it into an autonomous policy. Scope
-prices, kill repetition, item instance limits, and observed spawn counts to the
-`DD was started at ...` reboot identity; never carry them across reboots.
+prices, kill repetition, applicable object instance limits, and observed spawn
+counts to the `DD was started at ...` reboot identity; never carry them across
+reboots. Instance limiting applies only to the few objects whose source
+definitions use it, not to mobiles.
 Leave a depleted hunt area before waiting because occupied areas reset more
 slowly.
 
@@ -62,7 +64,8 @@ client-specific validation.
 
 Use concise imperative commit subjects, for example `Persist character state
 snapshots`. Include verification details and behavioral impact in pull
-requests. After every significant verified change, commit and push the complete
-intended scope to the configured GitHub remote, merge it into `main`, and push
-the updated `main`. Never push generated run data, transcripts, secrets, or
-unrelated user changes.
+requests. Commit significant verified changes locally. About every third
+milestone, push the complete intended scope to the configured GitHub remote,
+merge it into `main`, and push the updated `main`; a failed push must not block
+local testing. Never push generated run data, transcripts, secrets, or unrelated
+user changes.

@@ -21,6 +21,7 @@ from .equipment import (
     item_keyword,
     load_gear_catalog,
     normalize_item_name,
+    plan_stance,
     plan_stance_swaps,
     protects_from_sale,
 )
@@ -1122,11 +1123,11 @@ class StarterPolicy:
 
         if (
             (
-                state.level is not None
-                and state.level >= self.objective_level
-                or (
-                    self.arena_segment_leaving
-                    and state.room_vnum == "3737"
+                (self.objective_level <= 2 or state.room_vnum == "3737")
+                and (
+                    state.level is not None
+                    and state.level >= self.objective_level
+                    or self.arena_segment_leaving
                 )
             )
             and self.course_complete
@@ -1466,6 +1467,22 @@ class StarterPolicy:
             return BotDecision("down", "travel from Mud School to the Temple")
         if room_vnum == "3001" or "temple of midgaard" in room_name:
             return BotDecision("south", "travel from the Temple to Temple Square")
+        if self.city_restock_step >= 6:
+            home_routes = {
+                "3009": "south",
+                "3013": "west",
+                "3012": "south",
+                "3017": "south",
+                "3018": "east",
+            }
+            if room_vnum == "3019" or "mage's laboratory" in room_name:
+                return None
+            direction = home_routes.get(room_vnum or "")
+            if direction is not None:
+                return BotDecision(
+                    direction,
+                    "return safely to the Mage Guild after city restocking",
+                )
         if self.city_restock_step < 3:
             fountain_routes = {
                 "3019": "west",
@@ -2166,6 +2183,18 @@ class StarterPolicy:
                     for row in self.loot_sale_history
                     if row.get("boot_id") == self.world_boot_id
                 )
+            retained_counts: Counter[int] = Counter()
+            if self.gear_catalog is not None:
+                carried = self.gear_catalog.match_many(descriptions)
+                retained_counts.update(
+                    choice.item.vnum
+                    for choice in plan_stance(
+                        carried,
+                        self.gear_worn,
+                        STANCE_COMBAT,
+                        character_level=state.level,
+                    )
+                )
             for description in descriptions:
                 item = (
                     self.gear_catalog.match(description)
@@ -2176,6 +2205,9 @@ class StarterPolicy:
                     continue
                 if item is not None and protects_from_sale(item):
                     continue
+                if item is not None and retained_counts[item.vnum] > 0:
+                    retained_counts[item.vnum] -= 1
+                    continue
                 shop = safe_shop_for_item(
                     description,
                     projected_counts,
@@ -2185,6 +2217,13 @@ class StarterPolicy:
                     keyword = sale_keyword(description)
                     self.sale_plan.append((keyword, shop))
                     projected_counts[(keyword, shop.name)] += 1
+            shop_order = list(dict.fromkeys(shop.name for _, shop in self.sale_plan))
+            self.sale_plan = [
+                sale
+                for shop_name in shop_order
+                for sale in self.sale_plan
+                if sale[1].name == shop_name
+            ]
             self.sale_phase = "outbound"
 
         if self.sale_index >= len(self.sale_plan):
@@ -2220,6 +2259,18 @@ class StarterPolicy:
                 f"sell {keyword} to the best verified safe compatible shop",
             )
         if self.sale_phase == "inventory":
+            next_index = self.sale_index + 1
+            if (
+                next_index < len(self.sale_plan)
+                and self.sale_plan[next_index][1].name == shop.name
+            ):
+                self.sale_index = next_index
+                self.sale_phase = "value"
+                next_keyword, _ = self.sale_plan[self.sale_index]
+                return BotDecision(
+                    f"value {next_keyword}",
+                    f"value the next compatible item without leaving the {shop.name}",
+                )
             self.sale_phase = "home"
             self.sale_route_index = 0
             return BotDecision("inventory", "confirm the sold item left inventory")

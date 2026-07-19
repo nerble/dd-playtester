@@ -85,6 +85,23 @@ def route_notation(commands: tuple[str, ...]) -> str:
     return ";".join(_COMPACT_DIRECTIONS.get(command, command) for command in commands)
 
 
+def _latest_run_result(
+    storage: RunStorage,
+    *,
+    scenario_name: str,
+) -> RunResult:
+    for row in storage.list_runs(limit=10):
+        if row["scenario_name"] == scenario_name:
+            return RunResult(
+                run_id=int(row["id"]),
+                status=str(row["status"]),
+                transcript_path=Path(row["transcript_path"]),
+                database_path=storage.path,
+                final_state={},
+            )
+    raise RuntimeError(f"hunt failed before recording {scenario_name!r}")
+
+
 async def run_money_loop_profile(
     path: str | Path,
     *,
@@ -127,12 +144,20 @@ async def run_money_loop_profile(
             notation=route_notation(candidate.route),
             recall_after_loot=True,
         )
-        result = await StarterBotRunner(
-            spec,
-            profile_path,
-            fastwalk_route=route,
-            fastwalk_attack_target=candidate.target_keyword,
-        ).run()
+        scenario_name = f"fastwalk-{route.name}:{spec.name}"
+        try:
+            result = await StarterBotRunner(
+                spec,
+                profile_path,
+                fastwalk_route=route,
+                fastwalk_attack_target=candidate.target_keyword,
+            ).run()
+        except Exception:
+            with RunStorage(spec.database) as storage:
+                result = _latest_run_result(
+                    storage,
+                    scenario_name=scenario_name,
+                )
         hunt_runs.append(result)
         with RunStorage(spec.database) as storage:
             confirmed_kills += sum(

@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from dd4tester.hunt_candidates import HuntCandidate
-from dd4tester.money import route_notation, select_money_targets
+from dd4tester.money import _latest_run_result, route_notation, select_money_targets
+from dd4tester.storage import RunStorage
 
 
 def _candidate(
@@ -83,3 +86,25 @@ def test_source_route_is_converted_to_fastwalk_notation() -> None:
     assert route_notation(("south", "west", "open south", "down")) == (
         "s;w;open south;d"
     )
+
+
+def test_failed_hunt_can_be_recovered_for_bounded_loop_accounting(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    transcript = tmp_path / "failed-hunt.jsonl"
+    scenario_name = "fastwalk-money absent:Ararisa"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name=scenario_name,
+            scenario_path=tmp_path / "profile.yaml",
+        )
+        storage.set_transcript_path(run_id, transcript)
+        storage.finish_run(run_id, status="failed", error="target absent")
+
+        result = _latest_run_result(storage, scenario_name=scenario_name)
+
+    assert result.run_id == run_id
+    assert result.status == "failed"
+    assert result.transcript_path == transcript
+    assert result.database_path == database
