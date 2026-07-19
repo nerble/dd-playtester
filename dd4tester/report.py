@@ -36,6 +36,7 @@ def build_run_report(
     )
     event_counts = Counter(event["kind"] for event in events)
     duration_seconds = _duration_seconds(run["started_at"], run["finished_at"])
+    confirmed_kills = _completed_kills(events)
 
     progress = _progress_summary(
         initial_state,
@@ -44,6 +45,7 @@ def build_run_report(
         game_event_counts,
         game_events,
         decisions,
+        confirmed_kills,
     )
     failures = _failures(run, game_event_counts)
     balance_signals = _balance_signals(progress, game_event_counts)
@@ -97,6 +99,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Final room: {progress['room']['final'] or '-'}  ",
         f"Combat starts: {progress['combat_starts']}  ",
         f"Combat decisions: {progress['combat_decisions']}  ",
+        f"Confirmed kills: {_format_confirmed_kills(progress['confirmed_kills'])}  ",
         f"Observed level gains: {progress['level_gains_observed']}  ",
         f"Items acquired: {progress['items_acquired']}  ",
         f"Quests received: {progress['quests_received']}",
@@ -158,6 +161,7 @@ def _progress_summary(
     game_event_counts: Counter[str],
     game_events: list[dict[str, Any]],
     decisions: list[dict[str, Any]],
+    confirmed_kills: list[dict[str, Any]],
 ) -> dict[str, Any]:
     health_samples = [
         _fraction(snapshot["state"].get("hp"), snapshot["state"].get("max_hp"))
@@ -176,6 +180,7 @@ def _progress_summary(
         "room": {"initial": initial.get("room_name"), "final": final.get("room_name")},
         "combat_starts": game_event_counts["combat_started"],
         "combat_decisions": sum(_is_combat_decision(decision) for decision in decisions),
+        "confirmed_kills": confirmed_kills,
         "level_gains_observed": game_event_counts["level_gained"],
         "items_acquired": sum(_is_item_acquisition(event) for event in game_events),
         "quests_received": game_event_counts["quest_received"],
@@ -248,6 +253,9 @@ def _balance_signals(
             detail += f" and {deaths} death(s)."
         else:
             detail += " without a detected death."
+        confirmed_kills = progress["confirmed_kills"]
+        if confirmed_kills:
+            detail += f" Confirmed kills: {_format_confirmed_kills(confirmed_kills)}."
         signals.append({"name": "combat", "severity": "info", "detail": detail})
     return signals
 
@@ -281,6 +289,10 @@ def _comment_for_event(event: dict[str, Any]) -> tuple[int, str] | None:
         if reason and _noteworthy_reason(reason):
             return 1, f"I chose to {reason[0].lower() + reason[1:]}."
         return None
+    if event["kind"] == "state":
+        kills = event["payload"].get("completed_kills")
+        if isinstance(kills, list) and kills:
+            return 1, f"I confirmed kills: {_format_confirmed_kills(kills)}."
     if event["kind"] != "game_event":
         return None
 
@@ -358,6 +370,26 @@ def _is_item_acquisition(event: dict[str, Any]) -> bool:
 
 def _is_experience_item(value: Any) -> bool:
     return isinstance(value, str) and "experience point" in value.casefold()
+
+
+def _completed_kills(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for event in reversed(events):
+        if event["kind"] != "state":
+            continue
+        kills = event["payload"].get("completed_kills")
+        if not isinstance(kills, list):
+            continue
+        return [dict(kill) for kill in kills if isinstance(kill, dict)]
+    return []
+
+
+def _format_confirmed_kills(kills: list[dict[str, Any]]) -> str:
+    entries: list[str] = []
+    for kill in kills:
+        name = str(kill.get("mob_name", "unknown target"))
+        xp = kill.get("xp_gained")
+        entries.append(f"{name} (+{xp} XP)" if _is_number(xp) else name)
+    return ", ".join(entries) or "none"
 
 
 def _change(initial: Any, final: Any) -> dict[str, int | float | None]:

@@ -22,6 +22,9 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     assert report["progress"]["health"]["lowest_fraction"] == 0.1
     assert report["progress"]["combat_starts"] == 1
     assert report["progress"]["combat_decisions"] == 1
+    assert report["progress"]["confirmed_kills"] == [
+        {"mob_name": "tutorial wolf", "xp_gained": 75}
+    ]
     assert report["progress"]["level_gains_observed"] == 1
     assert report["progress"]["items_acquired"] == 1
     assert report["failures"] == [
@@ -41,6 +44,7 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     markdown = render_markdown(report)
     assert "# Run 1: starter:Reportmage" in markdown
     assert "## Balance Signals" in markdown
+    assert "Confirmed kills: tutorial wolf (+75 XP)" in markdown
     assert "**critical - health pressure:** Health reached 10% of maximum." in markdown
 
 
@@ -201,6 +205,15 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
         kind="game_event",
         payload={"type": "character_died", "source": "text", "data": {}},
         timestamp="2026-07-18T00:00:06+00:00",
+    )
+    storage.record_event(
+        run_id,
+        kind="state",
+        payload={
+            "state": "completed",
+            "completed_kills": [{"mob_name": "tutorial wolf", "xp_gained": 75}],
+        },
+        timestamp="2026-07-18T00:00:07+00:00",
     )
     storage.finish_run(run_id, status=status, error=error)
     storage.close()
