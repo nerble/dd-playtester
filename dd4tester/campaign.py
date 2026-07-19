@@ -178,7 +178,11 @@ class CampaignRunner:
             )
 
     def _policy_for_state(self, state: dict[str, Any]) -> ProgressionPolicy:
-        return policy_for(_level(state), self.spec.character.character_class)
+        return policy_for(
+            _level(state),
+            self.spec.character.character_class,
+            has_large_sack=_state_has_item(state.get("inventory"), "large sack"),
+        )
 
     def _open_campaign(self, storage: RunStorage) -> tuple[int, dict[str, Any]]:
         campaign = None if self.force_new else storage.get_latest_campaign_for_config(
@@ -392,6 +396,52 @@ async def _run_policy_segment(
             objective_level=policy.maximum_level or 10,
             arena_kill_limit=policy.segment_kill_limit,
         ).run()
+    if policy.execution == "midennir-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=route_named("ambush"),
+            fastwalk_explore_direction="east",
+            fastwalk_explore_depth=1,
+            fastwalk_attack_target="goblin",
+            fastwalk_train_before_departure=True,
+            require_fastwalk_kill=False,
+        ).run()
+    if policy.execution == "midennir-sack":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=route_named("ambush"),
+            fastwalk_origin_actions=("drop all.piping", "drop cap"),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=True,
+            fastwalk_hunt_stops=(
+                FieldHuntStop(
+                    (
+                        "west",
+                        "south",
+                        "south",
+                        "west",
+                        "south",
+                        "west",
+                        "south",
+                        "south",
+                        "east",
+                        "south",
+                        "south",
+                        "open east",
+                        "east",
+                        "east",
+                    ),
+                    actions=("get sack", "inventory"),
+                    required_items=("large sack",),
+                ),
+            ),
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+        ).run()
     if policy.execution == "moria-circuit":
         return await StarterBotRunner(
             spec,
@@ -445,6 +495,19 @@ def _newer_progress_state(
 def _numeric_progress(state: dict[str, Any], key: str) -> int:
     value = state.get(key)
     return int(value) if isinstance(value, (int, float)) else 0
+
+
+def _state_has_item(value: Any, item_name: str) -> bool:
+    target = item_name.casefold()
+    if isinstance(value, dict):
+        for key in ("short_desc", "name", "item"):
+            description = value.get(key)
+            if isinstance(description, str) and target in description.casefold():
+                return True
+        return any(_state_has_item(item, item_name) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_state_has_item(item, item_name) for item in value)
+    return False
 
 
 def _budget_failure(spec: CampaignSpec, totals: Any) -> str | None:

@@ -787,6 +787,99 @@ You have 1 physical and 3 intellectual practices remaining.
     assert decision.command == "practice magic missile"
 
 
+def test_level_eight_mage_practices_illusion_then_invisibility() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.loremaster_step = 2
+    policy.prompt_ready = True
+    policy.text = """
+Skills known:
+                 magic missile:  46%               illusion magiks:  24%
+You have 2 physical and 3 intellectual practices remaining.
+"""
+    state = CharacterState(
+        level=8,
+        hp=110,
+        max_hp=110,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+
+    commands: list[str] = []
+    for _ in range(4):
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    assert commands == [
+        "practice illusion magiks",
+        "practice invis",
+        "practice invis",
+        "west",
+    ]
+    assert policy.chill_touch_unavailable is False
+
+
+def test_level_nine_mage_practices_evocation_then_chill_touch() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.loremaster_step = 2
+    policy.prompt_ready = True
+    policy.text = """
+Skills known:
+                 magic missile:  46%              evocation magiks:  23%
+You have 2 physical and 3 intellectual practices remaining.
+"""
+    state = CharacterState(
+        level=9,
+        hp=115,
+        max_hp=115,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+
+    commands: list[str] = []
+    for _ in range(4):
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    assert commands == [
+        "practice evocation magiks",
+        "practice chill touch",
+        "practice chill touch",
+        "west",
+    ]
+
+
+def test_loremaster_does_not_practice_without_relevant_points() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.loremaster_step = 2
+    policy.prompt_ready = True
+    policy.text = """
+Skills known:
+                 magic missile:  46%              evocation magiks:  23%
+You have 1 physical and 0 intellectual practices remaining.
+"""
+    state = CharacterState(
+        level=7,
+        hp=105,
+        max_hp=105,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+
+
 def test_arena_fights_discovered_target_and_leaves_at_level_two() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
@@ -2360,6 +2453,61 @@ def test_fastwalk_recovery_uses_healer_north_of_recall() -> None:
     assert sleep.command == "sleep"
 
 
+def test_short_fastwalk_continues_from_safe_city_room_at_forty_percent_move() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        room_name="Main Street",
+        room_vnum="3013",
+        room_flags=["safe"],
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=200,
+        max_mana=200,
+        move=90,
+        max_move=200,
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "east"
+
+
+def test_deep_field_circuit_keeps_ninety_percent_move_reserve() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop(("west",), "goblin"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        room_name="Main Street",
+        room_vnum="3013",
+        room_flags=["safe"],
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=200,
+        max_mana=200,
+        move=100,
+        max_move=200,
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "sleep"
+
+
 def test_return_home_recalls_then_follows_verified_mage_guild_route() -> None:
     policy = StarterPolicy(_spec(), "swordfish", return_home=True)
     policy.in_world = True
@@ -3022,6 +3170,205 @@ def test_fastwalk_origin_actions_run_before_route_commands() -> None:
         policy.after_command(decision)
 
     assert commands == ["drop all.piping", "drop cap", "south"]
+
+
+def test_level_eight_midennir_casts_and_verifies_invisibility() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_require_invisibility=True,
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=8,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="The Temple of Midgaard",
+        room_vnum="3001",
+    )
+
+    cast = policy.next_decision(state)
+    assert cast is not None
+    assert cast.command == "cast invis"
+    policy.after_command(cast)
+
+    state.affects = [[{"name": "invis", "duration": "8"}]]
+    policy.prompt_ready = True
+    move = policy.next_decision(state)
+
+    assert move is not None
+    assert move.command == "south"
+    assert policy.fastwalk_invisibility_attempts == 1
+
+
+def test_level_seven_midennir_does_not_require_unavailable_invisibility() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_require_invisibility=True,
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=7,
+        hp=105,
+        max_hp=105,
+        mana=289,
+        max_mana=289,
+        move=210,
+        max_move=210,
+        room_name="The Temple of Midgaard",
+        room_vnum="3001",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "south"
+
+
+def test_level_eight_fastwalk_detours_to_loremaster_with_new_practices() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=8,
+        practice=4,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert "Loremaster" in decision.reason
+
+
+def test_trained_fastwalk_leaves_mud_school_for_temple_origin() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    policy.practiced = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=8,
+        practice=1,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="Entrance to the Mud School",
+        room_vnum="3725",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "down"
+
+
+def test_fastwalk_training_finishes_after_practice_balance_drops() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    policy.fastwalk_training_started = True
+    policy.loremaster_step = 3
+    policy.practice_plan = (
+        "illusion magiks",
+        "invis",
+        "invis",
+    )
+    policy.practice_plan_index = 3
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=8,
+        practice=1,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert policy.practiced is True
+
+
+def test_midennir_aborts_safely_when_invisibility_is_unknown() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_require_invisibility=True,
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=8,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="The Temple of Midgaard",
+        room_vnum="3001",
+    )
+
+    cast = policy.next_decision(state)
+    assert cast is not None
+    policy.after_command(cast)
+    policy.observe_text("You don't know any spells of that name.\n")
+    policy.prompt_ready = True
+    abort = policy.next_decision(state)
+
+    assert abort is not None
+    assert abort.command == "south"
+    assert policy.fastwalk_returning is True
+    assert policy.fastwalk_abort_reason == (
+        "Miden'nir expedition could not establish invisibility at the safe origin"
+    )
 
 
 def test_field_reserve_withdrawal_fails_when_required_item_is_missing() -> None:
@@ -4699,6 +5046,77 @@ def test_mage_casts_magic_missile_while_fighting_an_arena_target() -> None:
 
     policy.prompt_ready = True
     assert policy.next_decision(state) is None
+
+
+def test_level_nine_mage_prefers_chill_touch() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=9)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "a mountain goblin"
+    state = CharacterState(
+        level=9,
+        hp=105,
+        max_hp=110,
+        mana=250,
+        max_mana=310,
+        position=6,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'chill touch' goblin"
+
+
+def test_level_eight_mage_keeps_magic_missile_until_offense_training() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=9)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "a mountain goblin"
+    state = CharacterState(
+        level=8,
+        hp=105,
+        max_hp=110,
+        mana=250,
+        max_mana=310,
+        position=6,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'magic missile' goblin"
+
+
+def test_level_nine_mage_falls_back_when_chill_touch_is_unknown() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=9)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "a mountain goblin"
+    policy.magic_missile_cast = True
+    state = CharacterState(
+        level=9,
+        hp=105,
+        max_hp=110,
+        mana=250,
+        max_mana=310,
+        position=6,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+    )
+
+    policy.observe_text("You don't know any spells of that name.\n")
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'magic missile' goblin"
 
 
 def test_mage_casts_again_after_the_server_confirms_the_previous_volley() -> None:

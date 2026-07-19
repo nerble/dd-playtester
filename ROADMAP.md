@@ -242,7 +242,7 @@ and failure handling before registering each new level-band policy.
   route: `6s` from recall, then
   `w,s,s,w,s,w,s,s,e,s,s,open east,e,e` to room 4518. The guaranteed large
   sack reset weighs 50 pounds and holds 400 pounds, so the expedition now
-  discards low-value piping, a cap, and one pie before departure.
+  discards low-value piping and a cap before departure while preserving food.
 - Runs 268, 270, and 272 killed a mountain goblin, goblin lieutenant, and
   mountain goblin for 361, 210, and 244 XP. The first run reached room 4518 but
   could not carry the sack; the later load plan leaves sufficient capacity.
@@ -256,6 +256,37 @@ and failure handling before registering each new level-band policy.
   from success to failure because it did not acquire the sack.
 - Leaving an arena area for 90 seconds successfully reset it in run 267, but
   the resulting targets were below the efficient XP band. Ararisa is safe at
-  level 7 with 23,275 XP, 1,575 short of level 8. The next Miden'nir attempt
-  should follow a clear spawn window or level-8 invisibility training rather
-  than repeatedly forcing the occupied choke point.
+  level 7. Run 275 found one reset goblin, killed it for 216 XP, and returned
+  safely at full health and mana with 23,491 XP. Run 277's Moria snake survived
+  to the withdrawal threshold; flee damage credit offset the penalty for a net
+  31 XP, confirming that Moria remains research-only.
+- DD4 practice formulas establish a two-level mage unlock plan. At level 8,
+  three intellectual practices train `illusion magiks`, `invis`, and `invis`;
+  the Miden'nir runner then verifies invisibility at Temple origin before
+  entering the choke point. At level 9, practices train `evocation magiks`,
+  `chill touch`, and `chill touch`. Level-9 combat prefers chill touch's
+  source-backed 19-29 damage range and falls back to magic missile if the
+  server rejects it.
+
+## Progression Evidence Cycle 10
+
+- The HERO campaign now selects Miden'nir progression from both level and
+  persisted inventory. Level 7 uses one bounded live-considered goblin hunt;
+  level 8 selects the invisible sack expedition until `a large sack` appears,
+  then levels 8-9 resume bounded goblin segments.
+- Empty, moved, or crowded goblin spawn windows are safe retry checkpoints.
+  Campaign hunts do not require a kill to complete a segment, while XP gain
+  still resets the stalled-segment counter. Ararisa's campaign permits ten
+  consecutive no-progress segments so ordinary area reset timing does not
+  prematurely block the run.
+- Source inspection after run 278 showed that the fastwalk endpoint has no
+  goblin reset; successful endpoint kills were wandering mobiles. Campaign
+  hunts now inspect the endpoint and room 3506, one east, where DD4 directly
+  resets a mountain goblin. The probe remains bounded to that single room.
+- Field runners with new level-8 or level-9 practices detour from the Mage
+  Guild to the Mud School Loremaster before departure. Training remains active
+  while GMCP decrements the practice balance, preventing a partially completed
+  practice plan from accidentally starting the fastwalk.
+- Campaign sack attempts require a verified GMCP invisibility affect and treat
+  a safely completed no-sack attempt as retryable. Manual `midennir-research`
+  remains strict and reports a missing sack as failure.

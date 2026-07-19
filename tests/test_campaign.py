@@ -1,7 +1,13 @@
 import asyncio
 from pathlib import Path
 
-from dd4tester.campaign import CampaignRunner, load_campaign_spec, run_campaign_file
+from dd4tester.campaign import (
+    CampaignRunner,
+    _run_policy_segment,
+    load_campaign_spec,
+    run_campaign_file,
+)
+from dd4tester.progression import policy_for
 from dd4tester.runner import RunResult
 from dd4tester.storage import RunStorage
 
@@ -106,7 +112,86 @@ def test_campaign_resumes_from_newer_external_character_state(tmp_path) -> None:
     assert resumed.campaign_id == initial.campaign_id
     with RunStorage(database) as storage:
         segments = storage.list_campaign_segments(resumed.campaign_id)
-    assert segments[-1]["phase"] == "mud-school-6-10"
+    assert segments[-1]["phase"] == "midennir-goblin-7-8"
+
+
+def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+
+    before = runner._policy_for_state(
+        {"level": 8, "inventory": [[{"short_desc": "a big pot pie"}]]}
+    )
+    after = runner._policy_for_state(
+        {"level": 8, "inventory": [[{"short_desc": "a large sack"}]]}
+    )
+
+    assert before.policy_id == "midennir-sack-8-10"
+    assert after.policy_id == "midennir-goblin-8-10"
+
+
+def test_midennir_campaign_hunt_allows_retryable_empty_spawn(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 7, "xp": 20_000})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(7, "mage"),
+        )
+    )
+
+    assert captured["fastwalk_attack_target"] == "goblin"
+    assert captured["fastwalk_explore_direction"] == "east"
+    assert captured["fastwalk_explore_depth"] == 1
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_midennir_campaign_sack_requires_verified_invisibility(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 8, "xp": 25_000})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(8, "mage"),
+        )
+    )
+
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["fastwalk_require_invisibility"] is True
+    assert captured["allow_safe_fastwalk_abort"] is True
+    stops = captured["fastwalk_hunt_stops"]
+    assert stops[0].required_items == ("large sack",)
 
 
 def test_campaign_file_runs_multiple_ready_segments(tmp_path, monkeypatch) -> None:

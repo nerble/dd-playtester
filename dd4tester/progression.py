@@ -143,6 +143,61 @@ _MORIA_SNAKE_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_MIDENNIR_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="midennir-goblin-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="midennir-hunt",
+    summary=(
+        "One bounded, live-considered Miden'nir goblin hunt with conservative "
+        "multi-attacker withdrawal, recall, and healer recovery."
+    ),
+    evidence=(
+        "Live runs 268, 270, 272, and 275 killed Miden'nir goblins for 361, 210, 244, and 216 XP.",
+        "Live runs 270 and 274 safely withdrew from a wandering level-9 horseman and two simultaneous level-7 goblins.",
+        "Live run 275 returned to the Mage Guild at full health and mana after one bounded kill.",
+        "DD4 source resets a mountain goblin in room 3506, exactly one east of the official fastwalk endpoint.",
+        "Empty or crowded spawn windows are retryable campaign checkpoints, not reasons to force combat.",
+    ),
+    practice_skill="magic missile",
+    segment_kill_limit=1,
+)
+
+_MIDENNIR_SACK_POLICY = ProgressionPolicy(
+    policy_id="midennir-sack-8-10",
+    minimum_level=8,
+    maximum_level=10,
+    status="verified",
+    execution="midennir-sack",
+    summary=(
+        "Train and verify invisibility, collect the source-backed large sack "
+        "from room 4518, then recall and recover."
+    ),
+    evidence=(
+        "DD4 source guarantees the 50-pound, 400-capacity large sack reset in room 4518.",
+        "DD4 source and live routing establish the exact Ambush fastwalk and room-4518 path.",
+        "The level-8 mage practice plan raises illusion magiks above the invis prerequisite and spends the remaining practices on invis.",
+        "The runner verifies the invis affect before leaving safe Temple origin and aborts safely if it cannot establish the spell.",
+    ),
+    practice_skill="invis",
+)
+
+_MIDENNIR_LEVEL_EIGHT_POLICY = ProgressionPolicy(
+    policy_id="midennir-goblin-8-10",
+    minimum_level=8,
+    maximum_level=10,
+    status="verified",
+    execution="midennir-hunt",
+    summary=(
+        "Repeat the bounded Miden'nir goblin segment after capacity "
+        "infrastructure has been acquired."
+    ),
+    evidence=_MIDENNIR_LEVEL_SEVEN_POLICY.evidence,
+    practice_skill="chill touch",
+    segment_kill_limit=1,
+)
+
 _UNAVAILABLE_POLICY = ProgressionPolicy(
     policy_id="unregistered-10-100",
     minimum_level=10,
@@ -155,7 +210,12 @@ _UNAVAILABLE_POLICY = ProgressionPolicy(
 )
 
 
-def policy_for(level: int | float | None, character_class: str) -> ProgressionPolicy:
+def policy_for(
+    level: int | float | None,
+    character_class: str,
+    *,
+    has_large_sack: bool = False,
+) -> ProgressionPolicy:
     normalized_level = int(level or 0)
     canonical_class = canonical_class_name(character_class)
     if normalized_level < 2:
@@ -164,6 +224,14 @@ def policy_for(level: int | float | None, character_class: str) -> ProgressionPo
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,
             practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
+        )
+    if canonical_class == "mage" and normalized_level == 7:
+        return _MIDENNIR_LEVEL_SEVEN_POLICY
+    if canonical_class == "mage" and 8 <= normalized_level < 10:
+        return (
+            _MIDENNIR_LEVEL_EIGHT_POLICY
+            if has_large_sack
+            else _MIDENNIR_SACK_POLICY
         )
     if normalized_level < 10:
         return replace(

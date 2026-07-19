@@ -64,6 +64,11 @@ _TOTAL_XP_GAIN = re.compile(
     r"You gained a total of (?P<xp>\d+) experience points?!",
     re.IGNORECASE,
 )
+_PRACTICE_BALANCE = re.compile(
+    r"You have\s+(?P<physical>\d+).*?physical.*?"
+    r"and\s+(?P<intellectual>\d+).*?intellectual practices remaining",
+    re.IGNORECASE | re.DOTALL,
+)
 _IDENTIFIED_VALUE = re.compile(
     r"\bis worth\s+(?P<coins>\d+)\s+copper coins?\b",
     re.IGNORECASE,
@@ -180,6 +185,8 @@ class StarterPolicy:
         fastwalk_explore_depth: int = 1,
         fastwalk_attack_target: str | None = None,
         fastwalk_origin_actions: tuple[str, ...] = (),
+        fastwalk_train_before_departure: bool = False,
+        fastwalk_require_invisibility: bool = False,
         fastwalk_hunt_stops: tuple[FieldHuntStop, ...] = (),
         moria_research: bool = False,
         moria_depth: int = 0,
@@ -217,6 +224,12 @@ class StarterPolicy:
         self.fastwalk_requested_target = fastwalk_attack_target
         self.fastwalk_origin_actions = fastwalk_origin_actions
         self.fastwalk_origin_action_index = 0
+        self.fastwalk_train_before_departure = fastwalk_train_before_departure
+        self.fastwalk_training_started = False
+        self.fastwalk_require_invisibility = fastwalk_require_invisibility
+        self.fastwalk_invisibility_attempts = 0
+        self.fastwalk_invisibility_pending = False
+        self.fastwalk_invisibility_unavailable = False
         self.fastwalk_hunt_stops = fastwalk_hunt_stops
         self.fastwalk_hunt_stop_index = 0
         self.fastwalk_hunt_move_index = 0
@@ -248,6 +261,8 @@ class StarterPolicy:
         self.pending_move: str | None = None
         self.loremaster_step = 0
         self.practiced = False
+        self.practice_plan: tuple[str, ...] = ()
+        self.practice_plan_index = 0
         self.arena_queried = False
         self.arena_segment_leaving = False
         self.arena_visited_rooms: set[str] = set()
@@ -272,6 +287,7 @@ class StarterPolicy:
         self.cleared_training_rooms: set[str] = set()
         self.post_kill_steps: dict[str, int] = {}
         self.magic_missile_cast = False
+        self.chill_touch_unavailable = False
         self.store_step = 0
         self.provisioned = False
         self.saved = False
@@ -378,8 +394,15 @@ class StarterPolicy:
         if (
             "you launch a volley of" in recent
             and "magic missile" in recent
+            or "chilling touch" in recent
             or "your spell" in recent
         ):
+            self.magic_missile_cast = False
+        if "don't know any spells of that name" in recent:
+            if self.fastwalk_invisibility_pending:
+                self.fastwalk_invisibility_unavailable = True
+            else:
+                self.chill_touch_unavailable = True
             self.magic_missile_cast = False
         if any(
             warning in folded
@@ -1205,6 +1228,13 @@ class StarterPolicy:
             self.stage = "complete"
             return BotDecision("quit", "safe loot liquidation complete")
 
+        if self._needs_fastwalk_training(state):
+            training = self._fastwalk_training_decision(state)
+            if training is not None:
+                return training
+            if self.failure is not None:
+                return None
+
         if self.fastwalk_route is not None:
             research = self._fastwalk_research_decision(state)
             if research is not None:
@@ -1304,7 +1334,7 @@ class StarterPolicy:
             return self._open_then_move("south", "enter the level-one combat arena")
 
         if room_vnum == "3726" or "loremaster" in room_name:
-            return self._loremaster_decision()
+            return self._loremaster_decision(state)
 
         if room_vnum == "3728" or "arena" in room_name:
             return self._arena_decision(state)
@@ -1573,11 +1603,66 @@ class StarterPolicy:
         if _mana_ratio(state) < 0.15:
             return None
         target = _target_keyword(self.active_target)
+        spell = (
+            "chill touch"
+            if (state.level or 0) >= 9 and not self.chill_touch_unavailable
+            else "magic missile"
+        )
         self.magic_missile_cast = True
         return BotDecision(
-            f"cast 'magic missile' {target}",
-            f"cast magic missile at arena opponent {self.active_target}",
+            f"cast '{spell}' {target}",
+            f"cast {spell} at arena opponent {self.active_target}",
         )
+
+    def _needs_fastwalk_training(self, state: CharacterState) -> bool:
+        return bool(
+            self.fastwalk_route is not None
+            and self.fastwalk_train_before_departure
+            and not self.fastwalk_returning
+            and not self.practiced
+            and self.spec.character_class == "mage"
+            and (state.level or 0) in {8, 9}
+            and (
+                self.fastwalk_training_started
+                or (state.practice or 0) > 1
+            )
+        )
+
+    def _fastwalk_training_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        self.fastwalk_training_started = True
+        if _is_sleeping(state):
+            return BotDecision("stand", "wake before visiting the Loremaster")
+        room_vnum = state.room_vnum or ""
+        room_name = (state.room_name or "").casefold()
+        if room_vnum == "3726" or "loremaster" in room_name:
+            return self._loremaster_decision(state)
+        routes = {
+            "3019": "west",
+            "3018": "north",
+            "3017": "north",
+            "3012": "east",
+            "3013": "east",
+            "3014": "north",
+            "3005": "north",
+            "3001": "up",
+            "3725": "east",
+            "3054": "south",
+            "3724": "down",
+        }
+        direction = routes.get(room_vnum)
+        if direction is not None:
+            return BotDecision(
+                direction,
+                "visit the Loremaster for the level-aware field practice plan",
+            )
+        self.failure = (
+            "no verified route to the Loremaster before field departure from "
+            f"{state.room_name!r} ({state.room_vnum})"
+        )
+        return None
 
     def _city_restock_decision(self, state: CharacterState) -> BotDecision | None:
         """Use the verified Midgaard fountain and bakery route, then stop."""
@@ -2045,6 +2130,31 @@ class StarterPolicy:
                     command,
                     "prepare inventory at the safe fastwalk origin",
                 )
+            if (
+                self.fastwalk_require_invisibility
+                and (state.level or 0) >= 8
+                and not _has_named_affect(state.affects, "invis")
+            ):
+                if (
+                    self.fastwalk_invisibility_unavailable
+                    or self.fastwalk_invisibility_attempts >= 8
+                ):
+                    self.fastwalk_abort_reason = (
+                        "Miden'nir expedition could not establish invisibility "
+                        "at the safe origin"
+                    )
+                    self.fastwalk_returning = True
+                    return BotDecision(
+                        "south",
+                        "return safely after invisibility preparation failed",
+                    )
+                self.fastwalk_invisibility_attempts += 1
+                self.fastwalk_invisibility_pending = True
+                return BotDecision(
+                    "cast invis",
+                    "establish invisibility before entering Miden'nir",
+                )
+            self.fastwalk_invisibility_pending = False
             if self.fastwalk_outbound_index < len(self.fastwalk_route.commands):
                 command = self.fastwalk_route.commands[self.fastwalk_outbound_index]
                 self.fastwalk_outbound_index += 1
@@ -2795,12 +2905,17 @@ class StarterPolicy:
             or "altar of the temple" in room_name
             or room_name == "safety"
         )
+        required_move_ratio = (
+            0.9
+            if self.fastwalk_hunt_stops
+            else 0.4
+            if self.fastwalk_route is not None
+            else 0.5
+        )
         if ratio >= 0.25:
             if (
                 ratio >= 0.95
-                and _move_ratio(state) >= (
-                    0.9 if self.fastwalk_hunt_stops else 0.5
-                )
+                and _move_ratio(state) >= required_move_ratio
                 and _mana_ratio(state) >= 0.5
             ):
                 return None
@@ -3055,7 +3170,7 @@ class StarterPolicy:
         command, reason = commands[index]
         return BotDecision(command, reason)
 
-    def _loremaster_decision(self) -> BotDecision:
+    def _loremaster_decision(self, state: CharacterState) -> BotDecision:
         if self.loremaster_step == 0:
             self.loremaster_step = 1
             return BotDecision("look loremaster", "ask the Loremaster about training")
@@ -3066,14 +3181,53 @@ class StarterPolicy:
             self.loremaster_step = 3
             candidates = _practice_candidates(self.text)
             preferred = _STARTER_SKILLS[self.spec.character_class]
-            skill = (
-                preferred
-                if preferred in candidates
-                else candidates[0] if candidates else preferred
+            balances = _practice_balances(self.text)
+            relevant_practices = (
+                balances[1]
+                if self.spec.character_class in {"mage", "cleric", "psionic"}
+                else balances[0]
             )
+            if (
+                self.spec.character_class == "mage"
+                and (state.level or 0) >= 8
+                and (relevant_practices is None or relevant_practices > 0)
+            ):
+                available = relevant_practices if relevant_practices is not None else 1
+                plan: list[str] = []
+                if (state.level or 0) == 8:
+                    illusion = _skill_percent(self.text, "illusion magiks")
+                    if illusion is None or illusion < 30:
+                        plan.append("illusion magiks")
+                    plan.extend(
+                        "invis"
+                        for _ in range(max(0, min(2, available - len(plan))))
+                    )
+                else:
+                    evocation = _skill_percent(self.text, "evocation magiks")
+                    if evocation is None or evocation < 30:
+                        plan.append("evocation magiks")
+                    plan.extend(
+                        "chill touch"
+                        for _ in range(max(0, min(2, available - len(plan))))
+                    )
+                self.practice_plan = tuple(plan)
+            elif relevant_practices == 0:
+                self.practice_plan = ()
+            else:
+                skill = (
+                    preferred
+                    if preferred in candidates
+                    else candidates[0] if candidates else preferred
+                )
+                self.practice_plan = (skill,)
+        if self.practice_plan_index < len(self.practice_plan):
+            skill = self.practice_plan[self.practice_plan_index]
+            self.practice_plan_index += 1
+            if skill == "chill touch":
+                self.chill_touch_unavailable = False
             return BotDecision(
                 f"practice {skill}",
-                f"practice a starter {self.spec.character_class} ability",
+                f"follow the level-aware {self.spec.character_class} practice plan",
             )
         self.practiced = True
         return BotDecision("west", "return to the Mud School entrance")
@@ -3205,7 +3359,11 @@ class StarterBotRunner:
         fastwalk_explore_depth: int = 1,
         fastwalk_attack_target: str | None = None,
         fastwalk_origin_actions: tuple[str, ...] = (),
+        fastwalk_train_before_departure: bool = False,
+        fastwalk_require_invisibility: bool = False,
         fastwalk_hunt_stops: tuple[FieldHuntStop, ...] = (),
+        require_fastwalk_kill: bool = True,
+        allow_safe_fastwalk_abort: bool = False,
         moria_research: bool = False,
         moria_depth: int = 0,
         gear_catalog: GearCatalog | None = None,
@@ -3229,7 +3387,11 @@ class StarterBotRunner:
         self.fastwalk_explore_depth = fastwalk_explore_depth
         self.fastwalk_attack_target = fastwalk_attack_target
         self.fastwalk_origin_actions = fastwalk_origin_actions
+        self.fastwalk_train_before_departure = fastwalk_train_before_departure
+        self.fastwalk_require_invisibility = fastwalk_require_invisibility
         self.fastwalk_hunt_stops = fastwalk_hunt_stops
+        self.require_fastwalk_kill = require_fastwalk_kill
+        self.allow_safe_fastwalk_abort = allow_safe_fastwalk_abort
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.gear_catalog = gear_catalog
@@ -3381,6 +3543,8 @@ class StarterBotRunner:
                 fastwalk_explore_depth=self.fastwalk_explore_depth,
                 fastwalk_attack_target=self.fastwalk_attack_target,
                 fastwalk_origin_actions=self.fastwalk_origin_actions,
+                fastwalk_train_before_departure=self.fastwalk_train_before_departure,
+                fastwalk_require_invisibility=self.fastwalk_require_invisibility,
                 fastwalk_hunt_stops=self.fastwalk_hunt_stops,
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
@@ -3502,7 +3666,10 @@ class StarterBotRunner:
 
             if policy.utility_abort_reason is not None:
                 raise RuntimeError(policy.utility_abort_reason)
-            if policy.fastwalk_abort_reason is not None:
+            if (
+                policy.fastwalk_abort_reason is not None
+                and not self.allow_safe_fastwalk_abort
+            ):
                 raise RuntimeError(policy.fastwalk_abort_reason)
             if (
                 self.fastwalk_route is not None
@@ -3513,7 +3680,7 @@ class StarterBotRunner:
                     f"fastwalk {self.fastwalk_route.name!r} returned without "
                     "observing its endpoint"
                 )
-            if not policy.fastwalk_objective_killed:
+            if self.require_fastwalk_kill and not policy.fastwalk_objective_killed:
                 raise RuntimeError(
                     "bounded fastwalk attack returned safely without a "
                     f"confirmed {self.fastwalk_attack_target} kill"
@@ -3757,7 +3924,9 @@ async def run_midennir_research_profile(path: str | Path) -> RunResult:
         spec,
         profile_path,
         fastwalk_route=route_named("ambush"),
-        fastwalk_origin_actions=("drop all.piping", "drop cap", "drop pie"),
+        fastwalk_origin_actions=("drop all.piping", "drop cap"),
+        fastwalk_train_before_departure=True,
+        fastwalk_require_invisibility=True,
         fastwalk_hunt_stops=(
             FieldHuntStop(
                 (
@@ -3952,6 +4121,35 @@ def _practice_candidates(text: str) -> list[str]:
         if candidate not in candidates:
             candidates.append(candidate)
     return candidates
+
+
+def _practice_balances(text: str) -> tuple[int | None, int | None]:
+    match = _PRACTICE_BALANCE.search(_ANSI_ESCAPE.sub("", text))
+    if match is None:
+        return None, None
+    return int(match.group("physical")), int(match.group("intellectual"))
+
+
+def _skill_percent(text: str, skill: str) -> int | None:
+    cleaned = _ANSI_ESCAPE.sub("", text)
+    match = re.search(
+        rf"\b{re.escape(skill)}\s*:\s*(?P<percent>\d+)%",
+        cleaned,
+        re.IGNORECASE,
+    )
+    return int(match.group("percent")) if match else None
+
+
+def _has_named_affect(value: Any, name: str) -> bool:
+    target = name.casefold()
+    if isinstance(value, Mapping):
+        affect_name = value.get("name")
+        if isinstance(affect_name, str) and affect_name.casefold() == target:
+            return True
+        return any(_has_named_affect(item, name) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_has_named_affect(item, name) for item in value)
+    return False
 
 
 def _training_targets(text: str) -> list[str]:

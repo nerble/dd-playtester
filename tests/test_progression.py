@@ -37,13 +37,13 @@ def test_level_six_to_ten_policy_uses_verified_bounded_arena_segments() -> None:
     assert any("Guildmaster" in item for item in policy.evidence)
 
 
-def test_level_seven_mage_uses_verified_bounded_arena_after_moria_regression() -> None:
+def test_level_seven_mage_uses_verified_midennir_hunt() -> None:
     policy = policy_for(7, "mage")
 
-    assert policy.policy_id == "mud-school-6-10"
+    assert policy.policy_id == "midennir-goblin-7-8"
     assert policy.status == "verified"
-    assert policy.execution == "arena"
-    assert policy.segment_kill_limit == 10
+    assert policy.execution == "midennir-hunt"
+    assert policy.segment_kill_limit == 1
     assert policy.executable is True
 
 
@@ -52,6 +52,17 @@ def test_level_seven_non_mage_keeps_the_arena_policy() -> None:
 
     assert policy.policy_id == "mud-school-6-10"
     assert policy.execution == "arena"
+
+
+def test_level_eight_mage_collects_sack_before_resuming_hunts() -> None:
+    sack = policy_for(8, "mage")
+    hunt = policy_for(8, "mage", has_large_sack=True)
+
+    assert sack.policy_id == "midennir-sack-8-10"
+    assert sack.execution == "midennir-sack"
+    assert sack.practice_skill == "invis"
+    assert hunt.policy_id == "midennir-goblin-8-10"
+    assert hunt.execution == "midennir-hunt"
 
 
 def test_level_ten_and_above_is_explicitly_unavailable() -> None:
