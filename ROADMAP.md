@@ -308,3 +308,8 @@ and failure handling before registering each new level-band policy.
   its level-11 mimic can wander, and useful Moria targets remain behind mixed
   level-10 to level-13 opposition. Ambush is therefore the next level-band
   research candidate, not yet an executable policy.
+- Live run 284 confirmed that level-7 Ararisa considers the remaining Mud
+  School boars and wolves "no match" and correctly refuses their poor XP.
+  Arena patrols now distinguish under-level occupants from an empty arena:
+  the former save and exit immediately, while only the latter trigger an
+  outside-area reset wait.

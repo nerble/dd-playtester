@@ -1228,6 +1228,38 @@ def test_completed_arena_patrol_forgets_stale_room_sightings() -> None:
     assert policy.arena_respawn_due is not None
 
 
+def test_underlevel_arena_patrol_finishes_without_waiting_for_respawn() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        objective_level=8,
+        arena_kill_limit=10,
+    )
+    policy.in_world = True
+    policy.arena_queried = True
+    policy.prompt_ready = True
+    policy.arena_skipped_underlevel = True
+    policy.arena_visited_rooms.update(str(vnum) for vnum in range(3728, 3738))
+    policy.room_query_counts["3736"] = 1
+    state = CharacterState(
+        level=7,
+        hp=105,
+        max_hp=105,
+        room_name="The Mud School Arena",
+        room_vnum="3736",
+        exits={"n": "3733", "u": "3737", "w": "3735"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "up"
+    assert "under-level" in decision.reason
+    assert policy.arena_segment_leaving is True
+    assert policy.arena_no_viable_targets is True
+    assert policy.arena_respawn_due is None
+
+
 def test_empty_arena_patrol_vacates_mud_school_for_the_respawn_window() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=3)
     policy.in_world = True

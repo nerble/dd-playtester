@@ -265,6 +265,9 @@ class StarterPolicy:
         self.practice_plan_index = 0
         self.arena_queried = False
         self.arena_segment_leaving = False
+        self.arena_no_viable_targets = False
+        self.arena_skipped_underlevel = False
+        self.arena_viable_target_seen = False
         self.arena_visited_rooms: set[str] = set()
         self.arena_respawn_due: float | None = None
         self.arena_pending_loot = False
@@ -2558,6 +2561,8 @@ class StarterPolicy:
     def _arena_segment_completion_reason(self) -> str:
         if self._arena_kill_limit_reached:
             return f"finish the bounded arena segment after {self.arena_kill_limit} kills"
+        if self.arena_no_viable_targets:
+            return "finish the bounded arena segment because all observed opponents are under-level"
         return f"leave the arena after reaching level {self.objective_level}"
 
     def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
@@ -3288,6 +3293,7 @@ class StarterPolicy:
                 )
             if self.consider_viable is False:
                 self.defeated_targets.setdefault(key, set()).add(target)
+                self.arena_skipped_underlevel = True
                 self.consider_target = None
                 self.consider_viable = None
                 return BotDecision(
@@ -3297,6 +3303,7 @@ class StarterPolicy:
             if self.consider_viable is None:
                 self.prompt_ready = False
                 return None
+            self.arena_viable_target_seen = True
             self.consider_target = None
             self.consider_viable = None
             self.combat_active = True
@@ -3313,6 +3320,14 @@ class StarterPolicy:
         direction = _unvisited_arena_exit(state, self.arena_visited_rooms)
         if direction is not None:
             return BotDecision(direction, "search the next arena section")
+        if self.arena_skipped_underlevel and not self.arena_viable_target_seen:
+            self.arena_no_viable_targets = True
+            self.arena_segment_leaving = True
+            self._reset_arena_patrol()
+            return BotDecision(
+                "up",
+                self._arena_segment_completion_reason,
+            )
         self._reset_arena_patrol()
         self.arena_respawn_due = time.monotonic() + _ARENA_RESPAWN_WAIT_SECONDS
         return BotDecision("up", "reset arena route through the safe entrance")
@@ -3320,6 +3335,8 @@ class StarterPolicy:
     def _reset_arena_patrol(self) -> None:
         """Forget stale creature sightings before a fresh arena circuit."""
         self.arena_visited_rooms.clear()
+        self.arena_skipped_underlevel = False
+        self.arena_viable_target_seen = False
         for room in tuple(self.room_query_counts):
             if _is_arena_vnum(room):
                 self.room_query_counts.pop(room)
