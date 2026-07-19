@@ -13,6 +13,26 @@ def test_safe_shop_selection_prefers_margin_within_verified_safe_routes() -> Non
     assert weapon.payout_percent == 40
 
 
+def test_safe_shop_selection_accounts_for_recorded_duplicate_penalties() -> None:
+    shop = safe_shop_for_item(
+        "a metal buckler",
+        {("buckler", "Leather Shop"): 1},
+    )
+
+    assert shop is not None
+    assert shop.name == "Armoury"
+
+
+def test_foundry_item_descriptions_are_classified() -> None:
+    pipe_shop = safe_shop_for_item("a length of metal piping")
+    guards_shop = safe_shop_for_item("a pair of leather leg guards")
+
+    assert pipe_shop is not None
+    assert pipe_shop.name == "Weapon Shop"
+    assert guards_shop is not None
+    assert guards_shop.name == "Leather Shop"
+
+
 def test_sale_keyword_uses_the_distinctive_final_noun() -> None:
     assert sale_keyword("a metal buckler") == "buckler"
     assert sale_keyword("[-?-] a spiked metal rod") == "rod"

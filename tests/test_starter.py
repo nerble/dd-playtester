@@ -1959,6 +1959,30 @@ def test_liquidation_plans_distinct_items_for_best_safe_shops() -> None:
     ]
 
 
+def test_liquidation_uses_character_sale_history() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        loot_sale_counts={("buckler", "Leather Shop"): 1},
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        inventory=[[{"short_desc": "a metal buckler", "quan": "1"}]],
+    )
+
+    first_move = policy.next_decision(home)
+
+    assert first_move is not None
+    assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
+        ("buckler", "Armoury"),
+    ]
+
+
 def test_liquidation_captures_offer_and_completed_sale() -> None:
     policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
     shop = safe_shop_for_item("a metal buckler")

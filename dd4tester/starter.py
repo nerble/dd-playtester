@@ -5,9 +5,10 @@ import json
 import os
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from .character import CharacterSpec, load_character_spec
 from .connection import ReadResult, TelnetConnection
@@ -111,6 +112,7 @@ class StarterPolicy:
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
         liquidate_loot: bool = False,
+        loot_sale_counts: Mapping[tuple[str, str], int] | None = None,
         fastwalk_route: Fastwalk | None = None,
         fastwalk_explore_direction: str | None = None,
         fastwalk_explore_depth: int = 1,
@@ -134,6 +136,7 @@ class StarterPolicy:
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
         self.liquidate_loot = liquidate_loot
+        self.loot_sale_counts = dict(loot_sale_counts or {})
         self.fastwalk_route = fastwalk_route
         self.fastwalk_explore_direction = fastwalk_explore_direction
         self.fastwalk_explore_depth = fastwalk_explore_depth
@@ -1358,10 +1361,13 @@ class StarterPolicy:
             if room_vnum != "3019":
                 self.failure = "safe loot liquidation must start in the Mage's Laboratory"
                 return None
+            projected_counts = Counter(self.loot_sale_counts)
             for description in _inventory_descriptions(state.inventory):
-                shop = safe_shop_for_item(description)
+                shop = safe_shop_for_item(description, projected_counts)
                 if shop is not None:
-                    self.sale_plan.append((sale_keyword(description), shop))
+                    keyword = sale_keyword(description)
+                    self.sale_plan.append((keyword, shop))
+                    projected_counts[(keyword, shop.name)] += 1
             self.sale_phase = "outbound"
 
         if self.sale_index >= len(self.sale_plan):
@@ -1958,6 +1964,12 @@ class StarterBotRunner:
                 magic_shop_research=self.magic_shop_research,
                 magic_shop_buy_fly=self.magic_shop_buy_fly,
                 liquidate_loot=self.liquidate_loot,
+                loot_sale_counts=Counter(
+                    (row["item_keyword"], row["shop_name"])
+                    for row in storage.list_loot_sales(self.spec.name)
+                )
+                if self.liquidate_loot
+                else None,
                 fastwalk_route=self.fastwalk_route,
                 fastwalk_explore_direction=self.fastwalk_explore_direction,
                 fastwalk_explore_depth=self.fastwalk_explore_depth,

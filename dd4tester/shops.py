@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from typing import Mapping
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,7 @@ _ARMOUR_WORDS = {
     "hat",
     "helmet",
     "jerkin",
+    "guards",
     "leggings",
     "shield",
 }
@@ -72,6 +75,7 @@ _WEAPON_WORDS = {
     "knife",
     "mace",
     "pipe",
+    "piping",
     "rod",
     "spear",
     "staff",
@@ -80,14 +84,26 @@ _WEAPON_WORDS = {
 }
 
 
-def safe_shop_for_item(description: str) -> SafeShop | None:
-    """Choose the highest-margin compatible safe shop for a described item."""
-    words = set(description.casefold().split())
+def safe_shop_for_item(
+    description: str,
+    sale_counts: Mapping[tuple[str, str], int] | None = None,
+) -> SafeShop | None:
+    """Choose the best compatible safe shop after known duplicate penalties."""
+    words = set(re.findall(r"[a-z]+", description.casefold()))
     item_type = 9 if words & _ARMOUR_WORDS else 5 if words & _WEAPON_WORDS else None
     compatible = [
         shop for shop in SAFE_MIDGAARD_SHOPS if shop.item_type == item_type
     ]
-    return max(compatible, key=lambda shop: shop.payout_percent, default=None)
+    keyword = sale_keyword(description)
+    counts = sale_counts or {}
+    return max(
+        compatible,
+        key=lambda shop: (
+            shop.payout_percent / (2 ** counts.get((keyword, shop.name), 0)),
+            -len(shop.route_from_mage_lab),
+        ),
+        default=None,
+    )
 
 
 def sale_keyword(description: str) -> str:
