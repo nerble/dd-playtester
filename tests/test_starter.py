@@ -2118,6 +2118,28 @@ def test_fastwalk_research_does_not_claim_unrelated_corpse() -> None:
     assert policy.pending_loot_rooms == set()
 
 
+def test_fastwalk_records_mob_kill_and_observed_xp() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_attack_target="Olog",
+    )
+    policy.current_room = "109"
+    policy.combat_active = True
+    policy.active_target = "Olog"
+
+    policy.observe_text(
+        "Olog is DEAD!!\n"
+        "You receive 20 experience points for the kill.\n"
+        "You gained a total of 45 experience points!\n"
+    )
+
+    assert policy.completed_kills == [
+        {"mob_name": "Olog", "xp_gained": 45}
+    ]
+
+
 def test_fastwalk_research_recognizes_existing_room_combat() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -2224,6 +2246,86 @@ def test_liquidation_uses_character_sale_history() -> None:
     assert first_move is not None
     assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
         ("buckler", "Armoury"),
+    ]
+
+
+def test_liquidation_scopes_sale_history_to_time_boot_identity() -> None:
+    current_boot = "Sun Jul 19 12:00:00 2026"
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        query_world_time=True,
+        loot_sale_history=[
+            {
+                "boot_id": "Sat Jul 18 12:00:00 2026",
+                "item_keyword": "buckler",
+                "shop_name": "Leather Shop",
+            },
+            {
+                "boot_id": current_boot,
+                "item_keyword": "buckler",
+                "shop_name": "Leather Shop",
+            },
+        ],
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        inventory=[[{"short_desc": "a metal buckler", "quan": "1"}]],
+    )
+
+    time_query = policy.next_decision(home)
+    assert time_query is not None
+    assert time_query.command == "time"
+    policy.after_command(time_query)
+    policy.observe_text(f"DD was started at {current_boot}\n")
+    policy.prompt_ready = True
+
+    first_move = policy.next_decision(home)
+
+    assert first_move is not None
+    assert policy.world_boot_id == current_boot
+    assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
+        ("buckler", "Armoury"),
+    ]
+
+
+def test_liquidation_ignores_duplicate_sales_from_previous_boot() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        query_world_time=True,
+        loot_sale_history=[
+            {
+                "boot_id": "Sat Jul 18 12:00:00 2026",
+                "item_keyword": "buckler",
+                "shop_name": "Leather Shop",
+            }
+        ],
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        inventory=[[{"short_desc": "a metal buckler", "quan": "1"}]],
+    )
+
+    time_query = policy.next_decision(home)
+    assert time_query is not None
+    policy.after_command(time_query)
+    policy.observe_text("DD was started at Sun Jul 19 12:00:00 2026\n")
+    policy.prompt_ready = True
+    policy.next_decision(home)
+
+    assert [(keyword, shop.name) for keyword, shop in policy.sale_plan] == [
+        ("buckler", "Leather Shop"),
     ]
 
 

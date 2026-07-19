@@ -42,6 +42,14 @@ _SALE_COMPLETED = re.compile(
     r"You sell (?P<item>.+?) for (?P<coins>\d+) coins?\.",
     re.IGNORECASE,
 )
+_BOOT_TIME = re.compile(
+    r"DD was started at\s+(?P<boot>[^\r\n]+)",
+    re.IGNORECASE,
+)
+_TOTAL_XP_GAIN = re.compile(
+    r"You gained a total of (?P<xp>\d+) experience points?!",
+    re.IGNORECASE,
+)
 _DIRECTION_SHORTCUTS = {
     "n": "north",
     "s": "south",
@@ -121,6 +129,8 @@ class StarterPolicy:
         magic_shop_buy_fly: bool = False,
         liquidate_loot: bool = False,
         loot_sale_counts: Mapping[tuple[str, str], int] | None = None,
+        loot_sale_history: list[Mapping[str, Any]] | None = None,
+        query_world_time: bool = False,
         fastwalk_route: Fastwalk | None = None,
         fastwalk_explore_direction: str | None = None,
         fastwalk_explore_depth: int = 1,
@@ -145,6 +155,11 @@ class StarterPolicy:
         self.magic_shop_buy_fly = magic_shop_buy_fly
         self.liquidate_loot = liquidate_loot
         self.loot_sale_counts = dict(loot_sale_counts or {})
+        self.loot_sale_history = [dict(row) for row in loot_sale_history or []]
+        self.query_world_time = query_world_time
+        self.world_time_queried = False
+        self.world_boot_id: str | None = None
+        self.completed_kills: list[dict[str, Any]] = []
         self.fastwalk_route = fastwalk_route
         self.fastwalk_explore_direction = fastwalk_explore_direction
         self.fastwalk_explore_depth = fastwalk_explore_depth
@@ -288,6 +303,9 @@ class StarterPolicy:
                 }
             )
             self.sale_offer_coins = None
+        boot_time = _BOOT_TIME.search(cleaned)
+        if boot_time is not None:
+            self.world_boot_id = " ".join(boot_time.group("boot").split())
         if "you don't have that item" in folded or "is empty" in folded:
             if self.last_consumption == "food":
                 self.needs_food = True
@@ -307,10 +325,23 @@ class StarterPolicy:
             self.advice_direction = "north"
         if "is dead" in recent or "you receive" in recent and "experience" in recent:
             was_in_combat = self.combat_active
+            defeated_target = self.active_target
             self.combat_active = False
             if self.current_room and (self.active_target or was_in_combat):
                 if self.fastwalk_route is not None:
                     self.fastwalk_last_kill_target = self.active_target
+                if defeated_target:
+                    xp_gain = _TOTAL_XP_GAIN.search(cleaned)
+                    self.completed_kills.append(
+                        {
+                            "mob_name": defeated_target,
+                            "xp_gained": (
+                                int(xp_gain.group("xp"))
+                                if xp_gain is not None
+                                else None
+                            ),
+                        }
+                    )
                 if self.active_target:
                     self.defeated_targets.setdefault(self.current_room, set()).add(
                         self.active_target
@@ -678,6 +709,13 @@ class StarterPolicy:
                 return spell
             self.prompt_ready = False
             return None
+
+        if self.query_world_time and not self.world_time_queried:
+            self.world_time_queried = True
+            return BotDecision(
+                "time",
+                "identify the current reboot for dynamic world-state evidence",
+            )
 
         if self.return_home and (
             self.purgatory_recovery_active
@@ -1443,6 +1481,12 @@ class StarterPolicy:
                 self.failure = "safe loot liquidation must start in the Mage's Laboratory"
                 return None
             projected_counts = Counter(self.loot_sale_counts)
+            if self.world_boot_id is not None:
+                projected_counts.update(
+                    (row["item_keyword"], row["shop_name"])
+                    for row in self.loot_sale_history
+                    if row.get("boot_id") == self.world_boot_id
+                )
             for description in _inventory_descriptions(state.inventory):
                 shop = safe_shop_for_item(description, projected_counts)
                 if shop is not None:
@@ -2050,6 +2094,28 @@ class StarterBotRunner:
         password = os.environ.get(self.spec.password_env)
         policy: StarterPolicy | None = None
         connection: TelnetConnection | None = None
+        policy_research_persisted = False
+
+        def persist_policy_research() -> None:
+            nonlocal policy_research_persisted
+            if policy is None or policy_research_persisted:
+                return
+            policy_research_persisted = True
+            storage.set_run_boot_id(run_id, policy.world_boot_id)
+            for kill in policy.completed_kills:
+                storage.record_mob_kill(
+                    run_id,
+                    character_name=self.spec.name,
+                    boot_id=policy.world_boot_id,
+                    **kill,
+                )
+            for sale in policy.completed_sales:
+                storage.record_loot_sale(
+                    run_id,
+                    character_name=self.spec.name,
+                    boot_id=policy.world_boot_id,
+                    **sale,
+                )
 
         def record(kind: str, payload: dict[str, Any]) -> None:
             event = recorder.record(kind, payload)
@@ -2105,12 +2171,14 @@ class StarterBotRunner:
                 magic_shop_research=self.magic_shop_research,
                 magic_shop_buy_fly=self.magic_shop_buy_fly,
                 liquidate_loot=self.liquidate_loot,
-                loot_sale_counts=Counter(
-                    (row["item_keyword"], row["shop_name"])
-                    for row in storage.list_loot_sales(self.spec.name)
-                )
+                loot_sale_history=[
+                    dict(row) for row in storage.list_loot_sales(self.spec.name)
+                ]
                 if self.liquidate_loot
                 else None,
+                query_world_time=(
+                    self.liquidate_loot or self.fastwalk_route is not None
+                ),
                 fastwalk_route=self.fastwalk_route,
                 fastwalk_explore_direction=self.fastwalk_explore_direction,
                 fastwalk_explore_depth=self.fastwalk_explore_depth,
@@ -2225,6 +2293,8 @@ class StarterBotRunner:
                     "magic_shop_buy_fly": self.magic_shop_buy_fly,
                     "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
                     "liquidate_loot": self.liquidate_loot,
+                    "world_boot_id": policy.world_boot_id,
+                    "completed_kills": policy.completed_kills,
                     "sale_plan": [
                         {"keyword": keyword, "shop": shop.name}
                         for keyword, shop in policy.sale_plan
@@ -2242,12 +2312,7 @@ class StarterBotRunner:
                     "moria_depth": self.moria_depth,
                 },
             )
-            for sale in policy.completed_sales:
-                storage.record_loot_sale(
-                    run_id,
-                    character_name=self.spec.name,
-                    **sale,
-                )
+            persist_policy_research()
             storage.finish_run(run_id, status="success")
             return RunResult(
                 run_id,
@@ -2259,6 +2324,7 @@ class StarterBotRunner:
         except Exception as exc:
             if policy is not None:
                 self._flush_observations(record, policy)
+            persist_policy_research()
             record("state", {"state": "failed", "error": str(exc)})
             storage.finish_run(run_id, status="failed", error=str(exc))
             raise

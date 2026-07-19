@@ -589,7 +589,7 @@ def show_runs(database: Path, *, limit: int) -> int:
         print("No runs recorded.")
         return 0
 
-    print("id\tstatus\tscenario\tstarted_at\tfinished_at\ttranscript")
+    print("id\tstatus\tscenario\tboot_id\tstarted_at\tfinished_at\ttranscript")
     for run in runs:
         print(
             "\t".join(
@@ -597,6 +597,7 @@ def show_runs(database: Path, *, limit: int) -> int:
                     str(run["id"]),
                     run["status"],
                     run["scenario_name"],
+                    run["boot_id"] or "-",
                     run["started_at"],
                     run["finished_at"] or "-",
                     run["transcript_path"] or "-",

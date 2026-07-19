@@ -73,6 +73,47 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert latest_snapshot["reason"] == "progress_changed"
     assert sales[0]["id"] == sale_id
     assert sales[0]["run_id"] == run_id
+    assert sales[0]["boot_id"] is None
     assert sales[0]["item_keyword"] == "buckler"
     assert sales[0]["offered_coins"] == 10
     assert sales[0]["sold_coins"] == 10
+
+
+def test_storage_scopes_sales_and_kills_by_boot_identity(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    run_id = storage.create_run(
+        scenario_name="hunt",
+        scenario_path=Path("profile.yaml"),
+    )
+    boot_id = "Sun Jul 19 12:00:00 2026"
+    storage.set_run_boot_id(run_id, boot_id)
+    storage.record_loot_sale(
+        run_id,
+        character_name="Ararisa",
+        boot_id=boot_id,
+        item_keyword="cap",
+        item_description="an iron cap",
+        shop_name="Leather Shop",
+        shop_room_vnum="3035",
+        offered_coins=20,
+        sold_coins=20,
+    )
+    kill_id = storage.record_mob_kill(
+        run_id,
+        character_name="Ararisa",
+        boot_id=boot_id,
+        mob_name="Olog",
+        xp_gained=45,
+    )
+
+    run = storage.get_run(run_id)
+    sales = storage.list_loot_sales("Ararisa")
+    kills = storage.list_mob_kills("Ararisa", boot_id=boot_id)
+    storage.close()
+
+    assert run is not None
+    assert run["boot_id"] == boot_id
+    assert sales[0]["boot_id"] == boot_id
+    assert kills[0]["id"] == kill_id
+    assert kills[0]["mob_name"] == "Olog"
+    assert kills[0]["xp_gained"] == 45

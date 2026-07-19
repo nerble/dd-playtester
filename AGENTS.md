@@ -13,7 +13,9 @@ Never modify the Dragons Domain IV core repository from this project.
 Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
 Confirm dynamic behavior such as wandering, prices, and combat risk with live,
-redacted transcripts before promoting it into an autonomous policy.
+redacted transcripts before promoting it into an autonomous policy. Scope
+prices, kill repetition, item instance limits, and observed spawn counts to the
+`DD was started at ...` reboot identity; never carry them across reboots.
 
 ## Development Commands
 

@@ -27,6 +27,7 @@ class RunStorage:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 scenario_name TEXT NOT NULL,
                 scenario_path TEXT NOT NULL,
+                boot_id TEXT,
                 started_at TEXT NOT NULL,
                 finished_at TEXT,
                 status TEXT NOT NULL,
@@ -61,6 +62,7 @@ class RunStorage:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
                 character_name TEXT NOT NULL,
+                boot_id TEXT,
                 item_keyword TEXT NOT NULL,
                 item_description TEXT NOT NULL,
                 shop_name TEXT NOT NULL,
@@ -72,6 +74,19 @@ class RunStorage:
 
             CREATE INDEX IF NOT EXISTS idx_loot_sales_character
             ON loot_sales(character_name, item_keyword, shop_name, id);
+
+            CREATE TABLE IF NOT EXISTS mob_kills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                character_name TEXT NOT NULL,
+                boot_id TEXT,
+                mob_name TEXT NOT NULL,
+                xp_gained INTEGER,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mob_kills_character
+            ON mob_kills(character_name, boot_id, mob_name, id);
 
             CREATE TABLE IF NOT EXISTS campaigns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,6 +138,20 @@ class RunStorage:
             ON campaign_checkpoints(campaign_id, id);
             """
         )
+        loot_sale_columns = {
+            row["name"]
+            for row in self.connection.execute("PRAGMA table_info(loot_sales)")
+        }
+        if "boot_id" not in loot_sale_columns:
+            self.connection.execute(
+                "ALTER TABLE loot_sales ADD COLUMN boot_id TEXT"
+            )
+        run_columns = {
+            row["name"]
+            for row in self.connection.execute("PRAGMA table_info(runs)")
+        }
+        if "boot_id" not in run_columns:
+            self.connection.execute("ALTER TABLE runs ADD COLUMN boot_id TEXT")
         self.connection.commit()
 
     def create_run(self, *, scenario_name: str, scenario_path: Path) -> int:
@@ -140,6 +169,15 @@ class RunStorage:
         self.connection.execute(
             "UPDATE runs SET transcript_path = ? WHERE id = ?",
             (str(transcript_path), run_id),
+        )
+        self.connection.commit()
+
+    def set_run_boot_id(self, run_id: int, boot_id: str | None) -> None:
+        if boot_id is None:
+            return
+        self.connection.execute(
+            "UPDATE runs SET boot_id = ? WHERE id = ?",
+            (boot_id, run_id),
         )
         self.connection.commit()
 
@@ -205,8 +243,8 @@ class RunStorage:
     def list_runs(self, *, limit: int = 20) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """
-            SELECT id, scenario_name, scenario_path, started_at, finished_at,
-                   status, transcript_path, error
+            SELECT id, scenario_name, scenario_path, boot_id, started_at,
+                   finished_at, status, transcript_path, error
             FROM runs
             ORDER BY id DESC
             LIMIT ?
@@ -218,8 +256,8 @@ class RunStorage:
     def get_run(self, run_id: int) -> sqlite3.Row | None:
         cursor = self.connection.execute(
             """
-            SELECT id, scenario_name, scenario_path, started_at, finished_at,
-                   status, transcript_path, error
+            SELECT id, scenario_name, scenario_path, boot_id, started_at,
+                   finished_at, status, transcript_path, error
             FROM runs
             WHERE id = ?
             """,
@@ -258,6 +296,7 @@ class RunStorage:
         run_id: int,
         *,
         character_name: str,
+        boot_id: str | None = None,
         item_keyword: str,
         item_description: str,
         shop_name: str,
@@ -269,14 +308,15 @@ class RunStorage:
         cursor = self.connection.execute(
             """
             INSERT INTO loot_sales (
-                run_id, character_name, item_keyword, item_description,
+                run_id, character_name, boot_id, item_keyword, item_description,
                 shop_name, shop_room_vnum, offered_coins, sold_coins, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
                 character_name,
+                boot_id,
                 item_keyword,
                 item_description,
                 shop_name,
@@ -291,7 +331,7 @@ class RunStorage:
     def list_loot_sales(self, character_name: str) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """
-            SELECT id, run_id, character_name, item_keyword, item_description,
+            SELECT id, run_id, character_name, boot_id, item_keyword, item_description,
                    shop_name, shop_room_vnum, offered_coins, sold_coins, timestamp
             FROM loot_sales
             WHERE character_name = ?
@@ -299,6 +339,64 @@ class RunStorage:
             """,
             (character_name,),
         )
+        return list(cursor.fetchall())
+
+    def record_mob_kill(
+        self,
+        run_id: int,
+        *,
+        character_name: str,
+        boot_id: str | None,
+        mob_name: str,
+        xp_gained: int | None,
+        timestamp: str | None = None,
+    ) -> int:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO mob_kills (
+                run_id, character_name, boot_id, mob_name, xp_gained, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                character_name,
+                boot_id,
+                mob_name,
+                xp_gained,
+                timestamp or _now(),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def list_mob_kills(
+        self,
+        character_name: str,
+        *,
+        boot_id: str | None = None,
+    ) -> list[sqlite3.Row]:
+        if boot_id is None:
+            cursor = self.connection.execute(
+                """
+                SELECT id, run_id, character_name, boot_id, mob_name,
+                       xp_gained, timestamp
+                FROM mob_kills
+                WHERE character_name = ?
+                ORDER BY id
+                """,
+                (character_name,),
+            )
+        else:
+            cursor = self.connection.execute(
+                """
+                SELECT id, run_id, character_name, boot_id, mob_name,
+                       xp_gained, timestamp
+                FROM mob_kills
+                WHERE character_name = ? AND boot_id = ?
+                ORDER BY id
+                """,
+                (character_name, boot_id),
+            )
         return list(cursor.fetchall())
 
     def create_campaign(
