@@ -258,6 +258,8 @@ class StarterPolicy:
         self.fastwalk_last_kill_target: str | None = None
         self.fastwalk_abort_reason: str | None = None
         self.fastwalk_emergency_recall_pending = False
+        self.utility_abort_reason: str | None = None
+        self.utility_emergency_recall_pending = False
         self.pending_fastwalk_outbound_move = False
         self.return_home_recall_started = False
         self.return_home_gear_checked = False
@@ -662,8 +664,12 @@ class StarterPolicy:
 
     def _tutorial_decision(self, state: CharacterState) -> BotDecision | None:
         if state.dead:
-            self.failure = "character died during starter training"
-            return None
+            self.return_home = True
+            self.purgatory_recovery_active = True
+            if self.utility_abort_reason is None:
+                self.utility_abort_reason = (
+                    "character died; completed Purgatory recovery is required"
+                )
 
         if _has_inventory_item(state.inventory, "water skin"):
             self.provisioned = True
@@ -731,6 +737,16 @@ class StarterPolicy:
             return BotDecision("stand", "wake before travel or arena actions")
 
         if self.combat_active:
+            if self._is_noncombat_utility_run:
+                self.return_home = True
+                self.utility_emergency_recall_pending = True
+                self.utility_abort_reason = (
+                    "unexpected combat interrupted a non-combat utility run"
+                )
+                return BotDecision(
+                    "flee",
+                    "withdraw from unexpected combat before returning home safely",
+                )
             if self.fastwalk_route is not None and not self.fastwalk_attack_started:
                 if (
                     self.fastwalk_attack_target is not None
@@ -771,6 +787,14 @@ class StarterPolicy:
             return BotDecision(
                 "time",
                 "identify the current reboot for dynamic world-state evidence",
+            )
+
+        if self.utility_emergency_recall_pending:
+            self.utility_emergency_recall_pending = False
+            self.return_home_recall_started = True
+            return BotDecision(
+                "recall",
+                "recall immediately after fleeing unexpected utility-run combat",
             )
 
         if self.return_home and (
@@ -1607,6 +1631,18 @@ class StarterPolicy:
             for kill in self.completed_kills
         )
 
+    @property
+    def _is_noncombat_utility_run(self) -> bool:
+        return any(
+            (
+                self.liquidate_loot,
+                self.city_restock,
+                self.guildmaster_research,
+                self.magic_shop_research,
+                self.resupply_only,
+            )
+        )
+
     def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
         """Sell known equipment through source-backed safe Midgaard shops."""
         room_vnum = state.room_vnum
@@ -2427,6 +2463,8 @@ class StarterBotRunner:
                 commands += 1
                 policy.after_command(decision)
 
+            if policy.utility_abort_reason is not None:
+                raise RuntimeError(policy.utility_abort_reason)
             if policy.fastwalk_abort_reason is not None:
                 raise RuntimeError(policy.fastwalk_abort_reason)
             if self.fastwalk_route is not None and not policy.fastwalk_arrival_observed:

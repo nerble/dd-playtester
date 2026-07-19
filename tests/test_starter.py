@@ -1680,6 +1680,7 @@ def test_return_home_follows_randomized_purgatory_exit_by_destination() -> None:
         area="Purgatory",
         room_name="The Purgatory",
         room_vnum="401",
+        dead=True,
         position=7,
         exits={"north": "410", "down": "410"},
     )
@@ -1689,6 +1690,32 @@ def test_return_home_follows_randomized_purgatory_exit_by_destination() -> None:
     assert decision is not None
     assert decision.command in {"north", "down"}
     assert decision.command != "recall"
+
+
+def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+
+    flee = policy.next_decision(
+        CharacterState(room_name="Main Street", room_vnum="3012", position=7)
+    )
+
+    assert flee is not None
+    assert flee.command == "flee"
+    assert policy.return_home is True
+    assert policy.utility_abort_reason is not None
+    policy.after_command(flee)
+    policy.observe_text("You flee from combat!\n")
+    policy.prompt_ready = True
+
+    recall = policy.next_decision(
+        CharacterState(room_name="Market Square", room_vnum="3014", position=7)
+    )
+
+    assert recall is not None
+    assert recall.command == "recall"
 
 
 def test_return_home_loots_corpse_enters_portal_and_sleeps() -> None:
