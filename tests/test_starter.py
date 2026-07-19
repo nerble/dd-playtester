@@ -22,6 +22,7 @@ from dd4tester.starter import (
     StarterPolicy,
     _inventory_descriptions,
     _max_consecutive_command,
+    _practice_balances,
     _sellable_inventory_keyword,
     _watchdog_progress_marker,
 )
@@ -3220,6 +3221,52 @@ def test_fastwalk_origin_actions_run_before_route_commands() -> None:
     assert commands == ["drop all.piping", "drop cap", "south"]
 
 
+def test_vault_preflight_stows_gear_and_verifies_free_weight() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        vault_stow_items=("vest", "cape"),
+        vault_required_free_weight=60,
+    )
+    policy.in_world = True
+    state = CharacterState(
+        level=8,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="Dragonhoard Bank, Midgaard Branch",
+        room_vnum="3007",
+        stats={"carry_wt": 70, "maxcarry_wt": 140},
+    )
+
+    commands = []
+    for _ in range(5):
+        policy.prompt_ready = True
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+
+    assert commands == [
+        "remove vest",
+        "lodge vest",
+        "remove cape",
+        "lodge cape",
+        "score",
+    ]
+
+    policy.prompt_ready = True
+    return_to_recall = policy.next_decision(state)
+
+    assert return_to_recall is not None
+    assert return_to_recall.command == "west"
+    assert policy.failure is None
+
+
 def test_level_eight_midennir_casts_and_verifies_invisibility() -> None:
     route = route_named("ambush")
     policy = StarterPolicy(
@@ -3295,9 +3342,12 @@ def test_level_eight_fastwalk_detours_to_loremaster_with_new_practices() -> None
     )
     policy.in_world = True
     policy.prompt_ready = True
+    policy.observe_text(
+        "Physical pracs: 1.  Intellectual pracs: 3.\n"
+    )
     state = CharacterState(
         level=8,
-        practice=4,
+        practice=1,
         hp=110,
         max_hp=110,
         mana=310,
@@ -3313,6 +3363,127 @@ def test_level_eight_fastwalk_detours_to_loremaster_with_new_practices() -> None
     assert decision is not None
     assert decision.command == "west"
     assert "Loremaster" in decision.reason
+
+
+def test_fastwalk_audits_unknown_practice_balance_before_departure() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=8,
+        practice=1,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+    )
+
+    audit = policy.next_decision(state)
+
+    assert audit is not None
+    assert audit.command == "score"
+    assert "practices" in audit.reason
+
+
+def test_fastwalk_remembers_practice_balance_during_loremaster_travel() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    temple = CharacterState(
+        level=8,
+        practice=1,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+    )
+
+    audit = policy.next_decision(temple)
+    assert audit is not None
+    policy.after_command(audit)
+    policy.observe_text("Physical pracs: 1.  Intellectual pracs: 3.\n")
+    policy.prompt_ready = True
+    up = policy.next_decision(temple)
+    assert up is not None
+    assert up.command == "up"
+    policy.after_command(up)
+    policy.observe_text("The Entrance to the Mud School\n")
+    policy.prompt_ready = True
+
+    east = policy.next_decision(
+        CharacterState(
+            level=8,
+            practice=1,
+            hp=110,
+            max_hp=110,
+            mana=310,
+            max_mana=310,
+            move=218,
+            max_move=220,
+            room_name="The Entrance to the Mud School",
+            room_vnum="3725",
+        )
+    )
+
+    assert east is not None
+    assert east.command == "east"
+    assert policy.failure is None
+
+
+def test_fastwalk_skips_loremaster_after_zero_practice_audit() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.observe_text("Physical pracs: 1.  Intellectual pracs: 0.\n")
+    state = CharacterState(
+        level=8,
+        practice=1,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+    )
+
+    departure = policy.next_decision(state)
+
+    assert departure is not None
+    assert departure.command == "south"
+
+
+def test_practice_balances_use_latest_supported_score_format() -> None:
+    text = (
+        "You have 1 physical and 3 intellectual practices remaining.\n"
+        "Physical pracs: 1.  Intellectual pracs: 0.\n"
+    )
+
+    assert _practice_balances(text) == (1, 0)
 
 
 def test_trained_fastwalk_leaves_mud_school_for_temple_origin() -> None:

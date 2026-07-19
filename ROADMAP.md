@@ -338,3 +338,24 @@ and failure handling before registering each new level-band policy.
   invisibility-assisted expedition to room 4518 for the large sack. Food and
   water are restocked before departure, and low-value piping and cap weight are
   discarded at the safe origin.
+
+## Progression Evidence Cycle 13
+
+- Run 292 restocked Ararisa to seven pies and a filled buffalo water skin.
+  Run 293 exposed stale enemy data after fleeing, and runs 294-295 exposed two
+  practice-audit timing gaps without placing the character outside safe rooms.
+- Practice balances are now parsed from both Loremaster and `score` output,
+  retained across movement commands, and audited explicitly before level-8 or
+  level-9 field departure. Invisibility retries use the policy's complete
+  eight-attempt budget before a safe abort.
+- The level-8 sack policy now uses the Dragonhoard Bank vault. Run 296 lodged
+  low-value sleeves, vest, cape, belt, bracer, and leg guards, reducing field
+  carry weight to 67/140 while preserving stat gear, weapon, diploma, light,
+  provisions, and water.
+- Run 296 practiced `illusion magiks` once and `invis` twice, established a
+  verified 10-tick invisibility affect, traversed the source-backed Ambush route
+  without combat, and acquired the guaranteed large sack in room 4518.
+- Ararisa recalled, recovered to 115/115 health, 316/316 mana, and 220/220
+  movement, then saved and logged out in the Mage Guild. Her persistent
+  inventory now contains the large sack, six pies, and buffalo water skin.
+  The campaign can advance to its level-8 Miden'nir goblin hunt policy.

@@ -190,6 +190,15 @@ def test_midennir_campaign_sack_requires_verified_invisibility(
     assert captured["fastwalk_train_before_departure"] is True
     assert captured["fastwalk_require_invisibility"] is True
     assert captured["allow_safe_fastwalk_abort"] is True
+    assert captured["vault_required_free_weight"] == 60
+    assert captured["vault_stow_items"] == (
+        "sleeves",
+        "vest",
+        "cape",
+        "belt",
+        "bracer",
+        "guards",
+    )
     stops = captured["fastwalk_hunt_stops"]
     assert stops[0].required_items == ("large sack",)
 

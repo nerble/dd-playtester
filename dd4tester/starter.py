@@ -69,6 +69,11 @@ _PRACTICE_BALANCE = re.compile(
     r"and\s+(?P<intellectual>\d+).*?intellectual practices remaining",
     re.IGNORECASE | re.DOTALL,
 )
+_SCORE_PRACTICE_BALANCE = re.compile(
+    r"Physical pracs:\s*(?P<physical>\d+)\.\s*"
+    r"Intellectual pracs:\s*(?P<intellectual>\d+)\.",
+    re.IGNORECASE,
+)
 _IDENTIFIED_VALUE = re.compile(
     r"\bis worth\s+(?P<coins>\d+)\s+copper coins?\b",
     re.IGNORECASE,
@@ -185,6 +190,8 @@ class StarterPolicy:
         fastwalk_explore_depth: int = 1,
         fastwalk_attack_target: str | None = None,
         fastwalk_origin_actions: tuple[str, ...] = (),
+        vault_stow_items: tuple[str, ...] = (),
+        vault_required_free_weight: int = 0,
         fastwalk_train_before_departure: bool = False,
         fastwalk_require_invisibility: bool = False,
         fastwalk_hunt_stops: tuple[FieldHuntStop, ...] = (),
@@ -224,8 +231,20 @@ class StarterPolicy:
         self.fastwalk_requested_target = fastwalk_attack_target
         self.fastwalk_origin_actions = fastwalk_origin_actions
         self.fastwalk_origin_action_index = 0
+        self.vault_stow_commands = tuple(
+            command
+            for item in vault_stow_items
+            for command in (f"remove {item}", f"lodge {item}")
+        )
+        self.vault_stow_command_index = 0
+        self.vault_required_free_weight = vault_required_free_weight
+        self.vault_stow_audit_requested = False
+        self.vault_stow_returning = False
+        self.vault_stow_complete = not self.vault_stow_commands
         self.fastwalk_train_before_departure = fastwalk_train_before_departure
         self.fastwalk_training_started = False
+        self.fastwalk_practice_audit_requested = False
+        self.latest_practice_balances: tuple[int | None, int | None] = (None, None)
         self.fastwalk_require_invisibility = fastwalk_require_invisibility
         self.fastwalk_invisibility_attempts = 0
         self.fastwalk_invisibility_pending = False
@@ -370,6 +389,9 @@ class StarterPolicy:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
+        practice_balances = _practice_balances(cleaned)
+        if practice_balances != (None, None):
+            self.latest_practice_balances = practice_balances
         folded = self.text.casefold()
         if self.consider_target is not None:
             if any(
@@ -916,9 +938,10 @@ class StarterPolicy:
                     "character died; completed Purgatory recovery is required"
                 )
 
-        gear = self._gear_decision(state)
-        if gear is not None:
-            return gear
+        if self.vault_stow_complete:
+            gear = self._gear_decision(state)
+            if gear is not None:
+                return gear
 
         if _has_inventory_item(state.inventory, "water skin"):
             self.provisioned = True
@@ -1253,6 +1276,13 @@ class StarterPolicy:
                 return BotDecision("save", "persist safe Midgaard loot sales")
             self.stage = "complete"
             return BotDecision("quit", "safe loot liquidation complete")
+
+        if not self.vault_stow_complete:
+            vault = self._vault_stow_decision(state)
+            if vault is not None:
+                return vault
+            if self.failure is not None:
+                return None
 
         if self._needs_fastwalk_training(state):
             training = self._fastwalk_training_decision(state)
@@ -1641,6 +1671,12 @@ class StarterPolicy:
         )
 
     def _needs_fastwalk_training(self, state: CharacterState) -> bool:
+        physical, intellectual = self.latest_practice_balances
+        relevant_practices = (
+            intellectual
+            if self.spec.character_class in {"mage", "cleric", "psionic"}
+            else physical
+        )
         return bool(
             self.fastwalk_route is not None
             and self.fastwalk_train_before_departure
@@ -1650,6 +1686,8 @@ class StarterPolicy:
             and (state.level or 0) in {8, 9}
             and (
                 self.fastwalk_training_started
+                or relevant_practices is None
+                or (relevant_practices is not None and relevant_practices > 0)
                 or (state.practice or 0) > 1
             )
         )
@@ -1665,6 +1703,26 @@ class StarterPolicy:
         room_name = (state.room_name or "").casefold()
         if room_vnum == "3726" or "loremaster" in room_name:
             return self._loremaster_decision(state)
+        physical, intellectual = self.latest_practice_balances
+        relevant_practices = (
+            intellectual
+            if self.spec.character_class in {"mage", "cleric", "psionic"}
+            else physical
+        )
+        if relevant_practices is None:
+            if self.fastwalk_practice_audit_requested:
+                self.failure = (
+                    "score did not report the practice balance before field departure"
+                )
+                return None
+            self.fastwalk_practice_audit_requested = True
+            return BotDecision(
+                "score",
+                "audit class-relevant practices before field departure",
+            )
+        if relevant_practices == 0:
+            self.practiced = True
+            return None
         routes = {
             "3019": "west",
             "3018": "north",
@@ -1689,6 +1747,71 @@ class StarterPolicy:
             f"{state.room_name!r} ({state.room_vnum})"
         )
         return None
+
+    def _vault_stow_decision(self, state: CharacterState) -> BotDecision | None:
+        if _is_sleeping(state):
+            return BotDecision("stand", "wake before visiting the town vault")
+        room_vnum = state.room_vnum or ""
+        if self.vault_stow_returning:
+            routes = {"3007": "west", "3006": "west", "3005": "north"}
+            if room_vnum == "3001":
+                self.vault_stow_complete = True
+                return None
+            direction = routes.get(room_vnum)
+            if direction is None:
+                self.failure = (
+                    "no verified return route from the town vault at "
+                    f"{state.room_name!r} ({state.room_vnum})"
+                )
+                return None
+            return BotDecision(direction, "return from the town vault to recall")
+
+        if room_vnum != "3007":
+            routes = {
+                "3019": "west",
+                "3018": "north",
+                "3017": "north",
+                "3012": "east",
+                "3013": "east",
+                "3014": "north",
+                "3726": "west",
+                "3725": "down",
+                "3001": "south",
+                "3005": "east",
+                "3006": "east",
+                "3054": "south",
+            }
+            direction = routes.get(room_vnum)
+            if direction is None:
+                self.failure = (
+                    "no verified route to the town vault from "
+                    f"{state.room_name!r} ({state.room_vnum})"
+                )
+                return None
+            return BotDecision(direction, "visit the town vault before field departure")
+
+        if self.vault_stow_command_index < len(self.vault_stow_commands):
+            command = self.vault_stow_commands[self.vault_stow_command_index]
+            self.vault_stow_command_index += 1
+            return BotDecision(command, "store low-value heavy gear in the town vault")
+        if not self.vault_stow_audit_requested:
+            self.vault_stow_audit_requested = True
+            return BotDecision("score", "verify carry capacity after vault storage")
+
+        carry_weight = _state_stat(state, "carry_wt")
+        max_carry_weight = _state_stat(state, "maxcarry_wt")
+        if carry_weight is None or max_carry_weight is None:
+            self.failure = "carry capacity was unavailable after vault storage"
+            return None
+        free_weight = max_carry_weight - carry_weight
+        if free_weight < self.vault_required_free_weight:
+            self.failure = (
+                f"vault storage left only {free_weight} pounds free; "
+                f"{self.vault_required_free_weight} required"
+            )
+            return None
+        self.vault_stow_returning = True
+        return BotDecision("west", "return from the town vault to recall")
 
     def _city_restock_decision(self, state: CharacterState) -> BotDecision | None:
         """Use the verified Midgaard fountain and bakery route, then stop."""
@@ -3399,6 +3522,8 @@ class StarterBotRunner:
         fastwalk_explore_depth: int = 1,
         fastwalk_attack_target: str | None = None,
         fastwalk_origin_actions: tuple[str, ...] = (),
+        vault_stow_items: tuple[str, ...] = (),
+        vault_required_free_weight: int = 0,
         fastwalk_train_before_departure: bool = False,
         fastwalk_require_invisibility: bool = False,
         fastwalk_hunt_stops: tuple[FieldHuntStop, ...] = (),
@@ -3427,6 +3552,8 @@ class StarterBotRunner:
         self.fastwalk_explore_depth = fastwalk_explore_depth
         self.fastwalk_attack_target = fastwalk_attack_target
         self.fastwalk_origin_actions = fastwalk_origin_actions
+        self.vault_stow_items = vault_stow_items
+        self.vault_required_free_weight = vault_required_free_weight
         self.fastwalk_train_before_departure = fastwalk_train_before_departure
         self.fastwalk_require_invisibility = fastwalk_require_invisibility
         self.fastwalk_hunt_stops = fastwalk_hunt_stops
@@ -3583,6 +3710,8 @@ class StarterBotRunner:
                 fastwalk_explore_depth=self.fastwalk_explore_depth,
                 fastwalk_attack_target=self.fastwalk_attack_target,
                 fastwalk_origin_actions=self.fastwalk_origin_actions,
+                vault_stow_items=self.vault_stow_items,
+                vault_required_free_weight=self.vault_required_free_weight,
                 fastwalk_train_before_departure=self.fastwalk_train_before_departure,
                 fastwalk_require_invisibility=self.fastwalk_require_invisibility,
                 fastwalk_hunt_stops=self.fastwalk_hunt_stops,
@@ -3670,6 +3799,11 @@ class StarterBotRunner:
                         repeat_limit,
                         _max_consecutive_command(route_commands, decision.command),
                     )
+                if (
+                    decision.command == "cast invis"
+                    and self.fastwalk_require_invisibility
+                ):
+                    repeat_limit = max(repeat_limit, 8)
                 if repeated_count > repeat_limit:
                     recovery = policy.recover_from_stall(
                         self.character_state,
@@ -4170,9 +4304,15 @@ def _practice_candidates(text: str) -> list[str]:
 
 
 def _practice_balances(text: str) -> tuple[int | None, int | None]:
-    match = _PRACTICE_BALANCE.search(_ANSI_ESCAPE.sub("", text))
-    if match is None:
+    cleaned = _ANSI_ESCAPE.sub("", text)
+    matches = [
+        match
+        for pattern in (_PRACTICE_BALANCE, _SCORE_PRACTICE_BALANCE)
+        for match in pattern.finditer(cleaned)
+    ]
+    if not matches:
         return None, None
+    match = max(matches, key=lambda candidate: candidate.start())
     return int(match.group("physical")), int(match.group("intellectual"))
 
 
@@ -4184,6 +4324,14 @@ def _skill_percent(text: str, skill: str) -> int | None:
         re.IGNORECASE,
     )
     return int(match.group("percent")) if match else None
+
+
+def _state_stat(state: CharacterState, name: str) -> int | None:
+    value = state.stats.get(name)
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _has_named_affect(value: Any, name: str) -> bool:

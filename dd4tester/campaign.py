@@ -415,6 +415,15 @@ async def _run_policy_segment(
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("drop all.piping", "drop cap"),
+            vault_stow_items=(
+                "sleeves",
+                "vest",
+                "cape",
+                "belt",
+                "bracer",
+                "guards",
+            ),
+            vault_required_free_weight=60,
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=True,
             fastwalk_hunt_stops=(
