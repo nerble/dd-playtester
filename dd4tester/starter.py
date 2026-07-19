@@ -135,6 +135,7 @@ class StarterPolicy:
         password: str,
         *,
         objective_level: int = 2,
+        arena_kill_limit: int | None = None,
         resupply_only: bool = False,
         return_home: bool = False,
         city_restock: bool = False,
@@ -154,6 +155,8 @@ class StarterPolicy:
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
+        if arena_kill_limit is not None and arena_kill_limit < 1:
+            raise ValueError("arena_kill_limit must be positive")
         if moria_depth < 0:
             raise ValueError("moria_depth must not be negative")
         if not 1 <= fastwalk_explore_depth <= 6:
@@ -161,6 +164,7 @@ class StarterPolicy:
         self.spec = spec
         self.password = password
         self.objective_level = objective_level
+        self.arena_kill_limit = arena_kill_limit
         self.resupply_only = resupply_only
         self.return_home = return_home
         self.city_restock = city_restock
@@ -973,8 +977,11 @@ class StarterPolicy:
             return BotDecision("sleep", "recover movement before continuing arena patrol")
 
         if (
-            state.level is not None
-            and state.level >= self.objective_level
+            (
+                state.level is not None
+                and state.level >= self.objective_level
+                or self._arena_kill_limit_reached
+            )
             and self.course_complete
             and self.provisioned
             and self.practiced
@@ -984,7 +991,7 @@ class StarterPolicy:
                 self.stage = "saving"
                 return BotDecision(
                     "save",
-                    f"persist progress through level {self.objective_level}",
+                    self._arena_segment_completion_reason,
                 )
             self.stage = "complete"
             return BotDecision("quit", "starter objective complete")
@@ -1682,6 +1689,19 @@ class StarterPolicy:
             )
         )
 
+    @property
+    def _arena_kill_limit_reached(self) -> bool:
+        return (
+            self.arena_kill_limit is not None
+            and len(self.completed_kills) >= self.arena_kill_limit
+        )
+
+    @property
+    def _arena_segment_completion_reason(self) -> str:
+        if self._arena_kill_limit_reached:
+            return f"finish the bounded arena segment after {self.arena_kill_limit} kills"
+        return f"leave the arena after reaching level {self.objective_level}"
+
     def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
         """Sell known equipment through source-backed safe Midgaard shops."""
         room_vnum = state.room_vnum
@@ -2154,10 +2174,14 @@ class StarterPolicy:
         return BotDecision("west", "return to the Mud School entrance")
 
     def _arena_decision(self, state: CharacterState) -> BotDecision:
-        if state.level is not None and state.level >= self.objective_level:
+        if (
+            state.level is not None
+            and state.level >= self.objective_level
+            or self._arena_kill_limit_reached
+        ):
             return BotDecision(
                 "up",
-                f"leave the arena after reaching level {self.objective_level}",
+                self._arena_segment_completion_reason,
             )
 
         key = _room_key(state)
@@ -2234,6 +2258,7 @@ class StarterBotRunner:
         observation_parser: ObservationParser | None = None,
         character_state: CharacterState | None = None,
         objective_level: int = 2,
+        arena_kill_limit: int | None = None,
         resupply_only: bool = False,
         return_home: bool = False,
         city_restock: bool = False,
@@ -2254,6 +2279,7 @@ class StarterBotRunner:
         self.observation_parser = observation_parser or ObservationParser()
         self.character_state = character_state or CharacterState()
         self.objective_level = objective_level
+        self.arena_kill_limit = arena_kill_limit
         self.resupply_only = resupply_only
         self.return_home = return_home
         self.city_restock = city_restock
@@ -2389,6 +2415,7 @@ class StarterBotRunner:
                 self.spec,
                 password,
                 objective_level=self.objective_level,
+                arena_kill_limit=self.arena_kill_limit,
                 resupply_only=self.resupply_only,
                 return_home=self.return_home,
                 city_restock=self.city_restock,
@@ -2541,6 +2568,7 @@ class StarterBotRunner:
                     "stage": policy.stage,
                     "target_subclass": self.spec.subclass,
                     "objective_level": self.objective_level,
+                    "arena_kill_limit": self.arena_kill_limit,
                     "resupply_only": self.resupply_only,
                     "return_home": self.return_home,
                     "city_restock": self.city_restock,
@@ -2658,15 +2686,19 @@ async def run_arena_research_profile(
     path: str | Path,
     *,
     target_level: int = 3,
+    kill_limit: int | None = None,
 ) -> RunResult:
     if not 3 <= target_level <= 10:
         raise ValueError("target_level must be between 3 and 10")
+    if kill_limit is not None and kill_limit < 1:
+        raise ValueError("kill_limit must be positive")
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
     return await StarterBotRunner(
         spec,
         profile_path,
         objective_level=target_level,
+        arena_kill_limit=kill_limit,
     ).run()
 
 

@@ -59,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     arena_research_parser = subcommands.add_parser(
         "arena-research",
-        help="run a bounded level-2 Mud School arena research segment",
+        help="run a bounded Mud School arena progression segment",
     )
     arena_research_parser.add_argument(
         "profile",
@@ -216,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         help="bounded completion level from 3 to 10, default: 3",
+    )
+    arena_research_parser.add_argument(
+        "--kill-limit",
+        type=int,
+        help="save and exit after this many confirmed arena kills",
     )
 
     configure_login_parser = subcommands.add_parser(
@@ -446,6 +451,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_arena_research_profile(
                     args.profile,
                     target_level=args.target_level,
+                    kill_limit=args.kill_limit,
                 )
             )
         except Exception as exc:

@@ -34,6 +34,28 @@ def test_recover_runs_marks_orphaned_records(tmp_path, capsys) -> None:
     assert "Marked 1 interrupted run(s) as failed." in captured.out
 
 
+def test_arena_research_passes_kill_limit_to_runner(tmp_path, capsys, monkeypatch) -> None:
+    captured_args: dict[str, object] = {}
+
+    async def run_arena(profile, *, target_level, kill_limit):
+        captured_args.update(
+            profile=profile,
+            target_level=target_level,
+            kill_limit=kill_limit,
+        )
+        return RunResult(1, "success", tmp_path / "run.jsonl", tmp_path / "runs.sqlite3", {})
+
+    monkeypatch.setattr(dd4tester.cli, "run_arena_research_profile", run_arena)
+
+    exit_code = main(
+        ["arena-research", str(tmp_path / "character.yaml"), "--target-level", "7", "--kill-limit", "2"]
+    )
+
+    assert exit_code == 0
+    assert captured_args["target_level"] == 7
+    assert captured_args["kill_limit"] == 2
+
+
 def test_show_sales_lists_recorded_proceeds(tmp_path, capsys) -> None:
     database, _transcript = _create_recorded_run(tmp_path)
     with RunStorage(database) as storage:
@@ -144,9 +166,15 @@ def test_arena_research_command_runs_with_requested_target(tmp_path, capsys, mon
     transcript = tmp_path / "arena-1.jsonl"
     database = tmp_path / "runs.sqlite3"
 
-    async def fake_arena_research(path: Path, *, target_level: int) -> RunResult:
+    async def fake_arena_research(
+        path: Path,
+        *,
+        target_level: int,
+        kill_limit: int | None,
+    ) -> RunResult:
         assert path == profile
         assert target_level == 3
+        assert kill_limit is None
         return RunResult(8, "success", transcript, database, {"level": 3})
 
     monkeypatch.setattr(dd4tester.cli, "run_arena_research_profile", fake_arena_research)

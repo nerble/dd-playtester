@@ -658,6 +658,31 @@ def test_arena_research_continues_at_level_two_until_its_target() -> None:
     assert "level 3" in leave.reason
 
 
+def test_arena_kill_limit_exits_before_the_target_level() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=7, arena_kill_limit=2)
+    policy.in_world = True
+    policy.arena_queried = True
+    policy.current_room = "3729"
+    policy.prompt_ready = True
+    policy.completed_kills = [
+        {"mob_name": "wild boar", "xp_gained": 20},
+        {"mob_name": "giant lizard", "xp_gained": 20},
+    ]
+    state = CharacterState(
+        level=6,
+        hp=80,
+        max_hp=96,
+        room_name="The Mud School Arena",
+        room_vnum="3729",
+    )
+
+    leave = policy.next_decision(state)
+
+    assert leave is not None
+    assert leave.command == "up"
+    assert "2 kills" in leave.reason
+
+
 def test_arena_prioritizes_wolves_when_multiple_targets_are_observed() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=4)
     policy.in_world = True
