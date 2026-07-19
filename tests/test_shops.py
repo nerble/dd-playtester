@@ -31,6 +31,7 @@ def test_foundry_item_descriptions_are_classified() -> None:
     assert pipe_shop.name == "Weapon Shop"
     assert guards_shop is not None
     assert guards_shop.name == "Leather Shop"
+    assert safe_shop_for_item("a steel barrel-helm") is not None
 
 
 def test_sale_keyword_uses_the_distinctive_final_noun() -> None:

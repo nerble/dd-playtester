@@ -231,6 +231,9 @@ class StarterPolicy:
         self.fastwalk_last_kill_target: str | None = None
         self.pending_fastwalk_outbound_move = False
         self.return_home_recall_started = False
+        self.return_home_gear_checked = False
+        self.return_home_equipment_plan: list[str] | None = None
+        self.return_home_equipment_index = 0
         self.purgatory_recovery_active = False
         self.purgatory_judgement_step = 0
         self.purgatory_portal_entered = False
@@ -718,6 +721,29 @@ class StarterPolicy:
             home = self._return_home_decision(state)
             if home is not None:
                 return home
+            if not self.return_home_gear_checked:
+                self.return_home_gear_checked = True
+                return BotDecision(
+                    "wear all",
+                    "restore equipment after any interrupted or post-death run",
+                )
+            if self.return_home_equipment_plan is None:
+                self.return_home_equipment_plan = [
+                    sale_keyword(description)
+                    for description in _inventory_descriptions(state.inventory)
+                    if safe_shop_for_item(description) is not None
+                ]
+            if self.return_home_equipment_index < len(
+                self.return_home_equipment_plan
+            ):
+                keyword = self.return_home_equipment_plan[
+                    self.return_home_equipment_index
+                ]
+                self.return_home_equipment_index += 1
+                return BotDecision(
+                    f"wear {keyword}",
+                    "let remaining recovered equipment replace a conflicting item",
+                )
             if not self.saved:
                 self.saved = True
                 self.stage = "saving"

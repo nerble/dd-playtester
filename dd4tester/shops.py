@@ -62,6 +62,7 @@ _ARMOUR_WORDS = {
     "circlet",
     "gloves",
     "hat",
+    "helm",
     "helmet",
     "jerkin",
     "guards",

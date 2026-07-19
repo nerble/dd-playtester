@@ -1532,6 +1532,66 @@ def test_return_home_continues_from_common_square_without_another_recall() -> No
     assert decision.command == "north"
 
 
+def test_return_home_restores_equipment_before_saving() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.return_home_recall_started = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        room_flags=["safe"],
+    )
+
+    equip = policy.next_decision(home)
+    assert equip is not None
+    assert equip.command == "wear all"
+    policy.after_command(equip)
+    policy.prompt_ready = True
+
+    save = policy.next_decision(home)
+    assert save is not None
+    assert save.command == "save"
+
+
+def test_return_home_retries_remaining_equipment_after_wear_all() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.return_home_recall_started = True
+    policy.return_home_gear_checked = True
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        room_flags=["safe"],
+        inventory=[
+            [
+                {"short_desc": "a steel barrel-helm", "quan": "1"},
+                {"short_desc": "a big pot pie", "quan": "2"},
+            ]
+        ],
+    )
+
+    equip = policy.next_decision(home)
+
+    assert equip is not None
+    assert equip.command == "wear steel"
+
+
 def test_return_home_uses_recall_for_trapped_emergency_combat() -> None:
     policy = StarterPolicy(_spec(), "swordfish", return_home=True)
     policy.in_world = True
