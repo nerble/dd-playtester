@@ -10,6 +10,10 @@ SQLite databases and JSONL transcripts belong in `runs/` and `transcripts/`;
 both directories are intentionally ignored by Git.
 
 Never modify the Dragons Domain IV core repository from this project.
+Treat its public source and area files as valid read-only evidence for routes,
+resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
+Confirm dynamic behavior such as wandering, prices, and combat risk with live,
+redacted transcripts before promoting it into an autonomous policy.
 
 ## Development Commands
 
