@@ -714,6 +714,41 @@ class RunStorage:
                 return dict(state)
         return None
 
+    def character_has_acquired_item(
+        self,
+        character_name: str,
+        item_name: str,
+    ) -> bool:
+        """Return whether observations show this character acquiring an item."""
+        cursor = self.connection.execute(
+            """
+            SELECT state_json
+            FROM state_snapshots
+            WHERE reason = 'item_acquired'
+            ORDER BY id DESC
+            """
+        )
+        expected_name = character_name.casefold()
+        expected_item = item_name.casefold()
+        for row in cursor:
+            try:
+                state = json.loads(row["state_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            name = state.get("name")
+            if not isinstance(name, str) or name.casefold() != expected_name:
+                continue
+            for acquisition in state.get("acquired_items", []):
+                if not isinstance(acquisition, dict):
+                    continue
+                description = acquisition.get("item")
+                if (
+                    isinstance(description, str)
+                    and expected_item in description.casefold()
+                ):
+                    return True
+        return False
+
     def close(self) -> None:
         self.connection.commit()
         self._events_since_commit = 0

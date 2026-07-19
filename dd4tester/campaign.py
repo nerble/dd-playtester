@@ -110,9 +110,14 @@ class CampaignRunner:
         self.config_path = config_path.resolve()
         self.segment_runner = segment_runner
         self.force_new = force_new
+        self._historical_large_sack = False
 
     async def run(self) -> CampaignResult:
         with RunStorage(self.spec.database) as storage:
+            self._historical_large_sack = storage.character_has_acquired_item(
+                self.spec.character.name,
+                "large sack",
+            )
             campaign_id, state = self._open_campaign(storage)
             checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
             checkpoint_id = int(checkpoint["id"]) if checkpoint is not None else None
@@ -181,7 +186,10 @@ class CampaignRunner:
         return policy_for(
             _level(state),
             self.spec.character.character_class,
-            has_large_sack=_state_has_item(state.get("inventory"), "large sack"),
+            has_large_sack=(
+                self._historical_large_sack
+                or _state_has_item(state.get("inventory"), "large sack")
+            ),
         )
 
     def _open_campaign(self, storage: RunStorage) -> tuple[int, dict[str, Any]]:
@@ -397,15 +405,44 @@ async def _run_policy_segment(
             arena_kill_limit=policy.segment_kill_limit,
         ).run()
     if policy.execution == "midennir-hunt":
+        use_level_eight_loadout = (policy.minimum_level or 0) >= 8
+        circuit_routes = (
+            (),
+            ("east",),
+            ("south",),
+            ("east",),
+            ("south",),
+            ("west",),
+            ("west",),
+            ("north",),
+            ("north",),
+        )
+        hunt_stops = tuple(
+            FieldHuntStop(route if target == "goblin" else (), target)
+            for route in circuit_routes
+            for target in ("goblin", "dark horseman")
+        )
         return await StarterBotRunner(
             spec,
             profile_path,
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("ambush"),
-            fastwalk_explore_direction="east",
-            fastwalk_explore_depth=1,
-            fastwalk_attack_target="goblin",
+            fastwalk_origin_actions=("get all.pie",),
+            fastwalk_hunt_stops=hunt_stops,
+            vault_stow_items=("sack",) if use_level_eight_loadout else (),
+            vault_claim_items=(
+                "sleeves",
+                "vest",
+                "cape",
+                "belt",
+                "bracer",
+                "guards",
+            )
+            if use_level_eight_loadout
+            else (),
+            vault_required_free_weight=30 if use_level_eight_loadout else 0,
             fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=use_level_eight_loadout,
             require_fastwalk_kill=False,
         ).run()
     if policy.execution == "midennir-sack":

@@ -191,6 +191,7 @@ class StarterPolicy:
         fastwalk_attack_target: str | None = None,
         fastwalk_origin_actions: tuple[str, ...] = (),
         vault_stow_items: tuple[str, ...] = (),
+        vault_claim_items: tuple[str, ...] = (),
         vault_required_free_weight: int = 0,
         fastwalk_train_before_departure: bool = False,
         fastwalk_require_invisibility: bool = False,
@@ -235,7 +236,7 @@ class StarterPolicy:
             command
             for item in vault_stow_items
             for command in (f"remove {item}", f"lodge {item}")
-        )
+        ) + tuple(f"claim {item}" for item in vault_claim_items)
         self.vault_stow_command_index = 0
         self.vault_required_free_weight = vault_required_free_weight
         self.vault_stow_audit_requested = False
@@ -301,6 +302,7 @@ class StarterPolicy:
         self.resume_recovery_after_resupply = False
         self.waiting_for_move = False
         self.room_targets: dict[str, list[str]] = {}
+        self.room_target_counts: dict[str, dict[str, int]] = {}
         self.defeated_targets: dict[str, set[str]] = {}
         self.missing_targets: dict[str, set[str]] = {}
         self.active_target: str | None = None
@@ -399,7 +401,6 @@ class StarterPolicy:
                 for phrase in (
                     "looks like an easy kill",
                     "the perfect match",
-                    "do you feel lucky, punk?",
                 )
             ):
                 self.consider_viable = True
@@ -408,6 +409,7 @@ class StarterPolicy:
                 for phrase in (
                     "naked and weaponless",
                     "is no match for you",
+                    "do you feel lucky, punk?",
                     "laughs at you mercilessly",
                     "death will thank you",
                     "could crush you with my little finger",
@@ -512,6 +514,9 @@ class StarterPolicy:
         if self.current_room and targets and not self.combat_active:
             known = self.room_targets.setdefault(self.current_room, [])
             known.extend(target for target in targets if target not in known)
+            self.room_target_counts[self.current_room] = _training_target_counts(
+                self.text
+            )
 
         direction = _DIRECTION.search(self.text)
         if direction is not None and "imp" in folded:
@@ -684,6 +689,8 @@ class StarterPolicy:
                 if room and targets:
                     known = self.room_targets.setdefault(room, [])
                     known.extend(target for target in targets if target not in known)
+                if room:
+                    self.room_target_counts[room] = _training_target_counts(self.text)
                 if state.room_vnum and state.room_vnum.startswith("37"):
                     if _is_training_vnum(state.room_vnum):
                         self.course_started = True
@@ -789,6 +796,7 @@ class StarterPolicy:
         ):
             # A mobile can wander between visits; make this probe depend on this look.
             self.room_targets[self.current_room] = []
+            self.room_target_counts[self.current_room] = {}
         if decision.command == "sleep" and self.waiting_for_heal:
             self.health_check_due = time.monotonic() + _HEALTH_CHECK_WAIT_SECONDS
         if decision.command == "flee":
@@ -1089,6 +1097,31 @@ class StarterPolicy:
                     "flee",
                     "withdraw from unexpected combat before returning home safely",
                 )
+            if self.fastwalk_route is not None and self.fastwalk_attack_started:
+                enemies = _enemy_records(state.enemies)
+                unsafe_level = False
+                if len(enemies) == 1 and state.level is not None:
+                    enemy_level = _int_or_none(enemies[0].get("level"))
+                    unsafe_level = enemy_level is not None and not (
+                        state.level - 5 <= enemy_level <= state.level + 1
+                    )
+                if len(enemies) > 1 or unsafe_level:
+                    cause = (
+                        f"{len(enemies)} active enemies"
+                        if len(enemies) > 1
+                        else "the live enemy level fell outside the safe field band"
+                    )
+                    self.fastwalk_abort_reason = (
+                        f"field combat aborted after GMCP reported {cause}"
+                    )
+                    self.fastwalk_emergency_recall_pending = True
+                    if self.flee_pending:
+                        self.prompt_ready = False
+                        return None
+                    return BotDecision(
+                        "flee",
+                        f"withdraw immediately because GMCP reported {cause}",
+                    )
             if self.fastwalk_route is not None and not self.fastwalk_attack_started:
                 if (
                     self.fastwalk_attack_target is not None
@@ -1793,7 +1826,12 @@ class StarterPolicy:
         if self.vault_stow_command_index < len(self.vault_stow_commands):
             command = self.vault_stow_commands[self.vault_stow_command_index]
             self.vault_stow_command_index += 1
-            return BotDecision(command, "store low-value heavy gear in the town vault")
+            reason = (
+                "reclaim combat armour from the town vault"
+                if command.startswith("claim ")
+                else "store low-value heavy gear in the town vault"
+            )
+            return BotDecision(command, reason)
         if not self.vault_stow_audit_requested:
             self.vault_stow_audit_requested = True
             return BotDecision("score", "verify carry capacity after vault storage")
@@ -2279,32 +2317,19 @@ class StarterPolicy:
                     command,
                     "prepare inventory at the safe fastwalk origin",
                 )
-            if (
-                self.fastwalk_require_invisibility
-                and (state.level or 0) >= 8
-                and not _has_named_affect(state.affects, "invis")
-            ):
-                if (
-                    self.fastwalk_invisibility_unavailable
-                    or self.fastwalk_invisibility_attempts >= 8
-                ):
-                    self.fastwalk_abort_reason = (
+            if self.fastwalk_outbound_index < len(self.fastwalk_route.commands):
+                invisibility = self._fastwalk_invisibility_decision(
+                    state,
+                    failure_command="south",
+                    failure_reason="return safely after invisibility preparation failed",
+                    cast_reason="establish invisibility before entering Miden'nir",
+                    abort_reason=(
                         "Miden'nir expedition could not establish invisibility "
                         "at the safe origin"
-                    )
-                    self.fastwalk_returning = True
-                    return BotDecision(
-                        "south",
-                        "return safely after invisibility preparation failed",
-                    )
-                self.fastwalk_invisibility_attempts += 1
-                self.fastwalk_invisibility_pending = True
-                return BotDecision(
-                    "cast invis",
-                    "establish invisibility before entering Miden'nir",
+                    ),
                 )
-            self.fastwalk_invisibility_pending = False
-            if self.fastwalk_outbound_index < len(self.fastwalk_route.commands):
+                if invisibility is not None:
+                    return invisibility
                 command = self.fastwalk_route.commands[self.fastwalk_outbound_index]
                 self.fastwalk_outbound_index += 1
                 return BotDecision(command, f"follow official fastwalk {self.fastwalk_route.name}")
@@ -2509,6 +2534,34 @@ class StarterPolicy:
         """Use DD4's consider bands before committing a field hunt."""
         assert self.fastwalk_attack_target is not None
         target = self.fastwalk_attack_target
+        target_count = sum(
+            count
+            for observed, count in self.room_target_counts.get(
+                self.current_room or "", {}
+            ).items()
+            if _targets_match(observed, target)
+        )
+        observed_mobile_count = sum(
+            self.room_target_counts.get(self.current_room or "", {}).values()
+        )
+        if target_count > 1 or observed_mobile_count > 1:
+            self.fastwalk_abort_reason = (
+                f"field room contained {observed_mobile_count} observed mobiles "
+                f"while evaluating {target!r}"
+            )
+            self.fastwalk_target_absent = True
+            if self.fastwalk_hunt_stops:
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_attack_started = False
+                return BotDecision(
+                    "look",
+                    "skip a crowded circuit target before committing to combat",
+                )
+            self.fastwalk_returning = True
+            return BotDecision(
+                "recall",
+                "withdraw after finding a crowded field room",
+            )
         if self.consider_target != target:
             self.consider_target = target
             self.consider_viable = None
@@ -2561,6 +2614,18 @@ class StarterPolicy:
                 "recall",
                 "end the field circuit while recovery reserves remain",
             )
+
+        invisibility = self._fastwalk_invisibility_decision(
+            state,
+            failure_command="recall",
+            failure_reason="return safely after field invisibility could not be restored",
+            cast_reason="restore invisibility before moving to the next circuit stop",
+            abort_reason=(
+                "Miden'nir expedition could not restore invisibility in the field"
+            ),
+        )
+        if invisibility is not None:
+            return invisibility
 
         if self.fastwalk_hunt_stop_killed or self.fastwalk_hunt_stop_skipped:
             self.fastwalk_hunt_stop_index += 1
@@ -2619,6 +2684,32 @@ class StarterPolicy:
 
         self.fastwalk_hunt_stop_skipped = True
         return BotDecision("look", "record an absent circuit target before continuing")
+
+    def _fastwalk_invisibility_decision(
+        self,
+        state: CharacterState,
+        *,
+        failure_command: str,
+        failure_reason: str,
+        cast_reason: str,
+        abort_reason: str,
+    ) -> BotDecision | None:
+        if not self.fastwalk_require_invisibility or (state.level or 0) < 8:
+            return None
+        if _has_named_affect(state.affects, "invis"):
+            self.fastwalk_invisibility_pending = False
+            self.fastwalk_invisibility_attempts = 0
+            return None
+        if (
+            self.fastwalk_invisibility_unavailable
+            or self.fastwalk_invisibility_attempts >= 8
+        ):
+            self.fastwalk_abort_reason = abort_reason
+            self.fastwalk_returning = True
+            return BotDecision(failure_command, failure_reason)
+        self.fastwalk_invisibility_attempts += 1
+        self.fastwalk_invisibility_pending = True
+        return BotDecision("cast invis", cast_reason)
 
     def _field_combat_withdraw_ratio(self, state: CharacterState) -> float:
         enemies = _enemy_records(state.enemies)
@@ -3523,6 +3614,7 @@ class StarterBotRunner:
         fastwalk_attack_target: str | None = None,
         fastwalk_origin_actions: tuple[str, ...] = (),
         vault_stow_items: tuple[str, ...] = (),
+        vault_claim_items: tuple[str, ...] = (),
         vault_required_free_weight: int = 0,
         fastwalk_train_before_departure: bool = False,
         fastwalk_require_invisibility: bool = False,
@@ -3553,6 +3645,7 @@ class StarterBotRunner:
         self.fastwalk_attack_target = fastwalk_attack_target
         self.fastwalk_origin_actions = fastwalk_origin_actions
         self.vault_stow_items = vault_stow_items
+        self.vault_claim_items = vault_claim_items
         self.vault_required_free_weight = vault_required_free_weight
         self.fastwalk_train_before_departure = fastwalk_train_before_departure
         self.fastwalk_require_invisibility = fastwalk_require_invisibility
@@ -3711,6 +3804,7 @@ class StarterBotRunner:
                 fastwalk_attack_target=self.fastwalk_attack_target,
                 fastwalk_origin_actions=self.fastwalk_origin_actions,
                 vault_stow_items=self.vault_stow_items,
+                vault_claim_items=self.vault_claim_items,
                 vault_required_free_weight=self.vault_required_free_weight,
                 fastwalk_train_before_departure=self.fastwalk_train_before_departure,
                 fastwalk_require_invisibility=self.fastwalk_require_invisibility,
@@ -4347,6 +4441,10 @@ def _has_named_affect(value: Any, name: str) -> bool:
 
 
 def _training_targets(text: str) -> list[str]:
+    return list(_training_target_counts(text))
+
+
+def _training_target_counts(text: str) -> dict[str, int]:
     pattern = re.compile(
         r"(?:^|\n)\s*(?:\([^)]*\)\s*)*(?:A|An|The)\s+"
         r"(?P<target>[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,3}?)\s+"
@@ -4378,17 +4476,16 @@ def _training_targets(text: str) -> list[str]:
         "wall",
         "yard",
     }
-    targets: list[str] = []
+    targets: Counter[str] = Counter()
     for match in pattern.finditer(text):
         target = " ".join(match.group("target").casefold().split())
         words = set(target.replace("'s", "").split())
         if (
             not words.intersection(ignored_keywords)
             and not target.startswith("imp ")
-            and target not in targets
         ):
-            targets.append(target)
-    return targets
+            targets[target] += 1
+    return dict(targets)
 
 
 def _defeated_mobile(text: str) -> str | None:

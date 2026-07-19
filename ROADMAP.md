@@ -359,3 +359,25 @@ and failure handling before registering each new level-band policy.
   movement, then saved and logged out in the Mage Guild. Her persistent
   inventory now contains the large sack, six pies, and buffalo water skin.
   The campaign can advance to its level-8 Miden'nir goblin hunt policy.
+
+## Progression Evidence Cycle 14
+
+- Run 297 revealed that two identical mountain-goblin room lines represented
+  two attackers. Field policies now preserve mobile multiplicity, reject any
+  inspected room containing more than one mobile, and flee immediately when
+  GMCP reports multiple active enemies.
+- The large sack is now durable campaign evidence and is lodged in the town
+  vault between expeditions. Runs 298-301 reclaimed Ararisa's armour and left
+  43-48 pounds free for loot; run 298 then killed a solitary level-7 goblin
+  for 260 XP while losing only 15 hit points.
+- The northern Miden'nir policy now inspects a nine-room source-backed circuit.
+  At level 8 it establishes invisibility before departure and restores it after
+  each kill, allowing every room to be inspected before combat. Run 300
+  traversed the complete circuit at full health and gained 117 XP.
+- Dark horsemen are now eligible when solitary. They are level 8, have no
+  current-reboot kill penalty, and their resets carry one gold coin. Mixed
+  goblin/horseman rooms remain forbidden. Recall-room pies are collected before
+  departure to extend the food runway.
+- Ararisa ended run 301 safely in the Mage Guild at level 8 with 25,474 XP,
+  full resources, six pies, and a filled water skin. The suite contains 328
+  passing tests.

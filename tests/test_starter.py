@@ -3267,6 +3267,48 @@ def test_vault_preflight_stows_gear_and_verifies_free_weight() -> None:
     assert policy.failure is None
 
 
+def test_vault_preflight_can_lodge_capacity_gear_and_reclaim_armour() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        vault_stow_items=("sack",),
+        vault_claim_items=("vest", "cape"),
+        vault_required_free_weight=30,
+    )
+    policy.in_world = True
+    state = CharacterState(
+        level=8,
+        hp=110,
+        max_hp=110,
+        mana=310,
+        max_mana=310,
+        move=220,
+        max_move=220,
+        room_name="Dragonhoard Bank, Midgaard Branch",
+        room_vnum="3007",
+        stats={"carry_wt": 95, "maxcarry_wt": 140},
+    )
+
+    commands = []
+    for _ in range(6):
+        policy.prompt_ready = True
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+
+    assert commands == [
+        "remove sack",
+        "lodge sack",
+        "claim vest",
+        "claim cape",
+        "score",
+        "west",
+    ]
+    assert policy.failure is None
+
+
 def test_level_eight_midennir_casts_and_verifies_invisibility() -> None:
     route = route_named("ambush")
     policy = StarterPolicy(
@@ -3301,7 +3343,7 @@ def test_level_eight_midennir_casts_and_verifies_invisibility() -> None:
 
     assert move is not None
     assert move.command == "south"
-    assert policy.fastwalk_invisibility_attempts == 1
+    assert policy.fastwalk_invisibility_attempts == 0
 
 
 def test_level_seven_midennir_does_not_require_unavailable_invisibility() -> None:
@@ -3903,6 +3945,7 @@ def test_fastwalk_research_rejects_target_that_is_no_match() -> None:
     policy.fastwalk_outbound_index = len(route.commands)
     policy.fastwalk_arrival_observed = True
     policy.fastwalk_explore_distance = 1
+    policy.current_room = "3506"
     policy.room_targets["4018"] = ["kobold"]
     cave = CharacterState(room_name="The cave", room_vnum="4018", position=7)
 
@@ -3919,6 +3962,131 @@ def test_fastwalk_research_rejects_target_that_is_no_match() -> None:
     assert withdraw.command == "recall"
     assert policy.fastwalk_target_absent is True
     assert policy.combat_active is False
+
+
+def test_fastwalk_research_skips_a_mixed_crowd_before_considering() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+        fastwalk_attack_target="goblin",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_explore_distance = 1
+    policy.current_room = "3506"
+    state = CharacterState(
+        level=8,
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        room_name="The Miden'nir",
+        room_vnum="3506",
+        position=7,
+    )
+    policy.observe_text(
+        "A mountain goblin is wandering about, mumbling to himself.\n"
+        "A dark horseman is here, mounted on his black steed.\n"
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert "crowded field room" in decision.reason
+    assert policy.room_target_counts["3506"]["mountain goblin"] == 1
+    assert policy.room_target_counts["3506"]["dark horseman"] == 1
+
+
+def test_planned_fastwalk_combat_flees_as_soon_as_gmcp_reports_two_enemies() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_attack_target="goblin",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+    state = CharacterState(
+        level=8,
+        hp=108,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        position=6,
+        room_name="The Miden'nir",
+        room_vnum="3506",
+        enemies=[
+            [
+                {"name": "the goblin", "level": "5"},
+                {"name": "the goblin", "level": "5"},
+            ]
+        ],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "2 active enemies" in decision.reason
+    assert policy.fastwalk_emergency_recall_pending is True
+
+
+def test_field_circuit_restores_invisibility_after_a_kill_before_moving() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_require_invisibility=True,
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "goblin"),
+            FieldHuntStop(("east",), "goblin"),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_stop_killed = True
+    state = CharacterState(
+        level=8,
+        hp=115,
+        max_hp=115,
+        mana=300,
+        max_mana=316,
+        move=200,
+        max_move=220,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+        position=7,
+        affects=[[]],
+    )
+
+    cast = policy.next_decision(state)
+
+    assert cast is not None
+    assert cast.command == "cast invis"
+    assert "next circuit stop" in cast.reason
+    policy.after_command(cast)
+    state.affects = [[{"name": "invis", "duration": "10"}]]
+    policy.prompt_ready = True
+
+    move = policy.next_decision(state)
+
+    assert move is not None
+    assert move.command == "east"
+    assert policy.fastwalk_invisibility_attempts == 0
 
 
 def test_fastwalk_pursues_and_reengages_a_fleeing_requested_target() -> None:

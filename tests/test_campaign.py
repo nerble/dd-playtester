@@ -129,6 +129,12 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
     assert before.policy_id == "midennir-sack-8-10"
     assert after.policy_id == "midennir-goblin-8-10"
 
+    runner._historical_large_sack = True
+    after_lodging = runner._policy_for_state(
+        {"level": 8, "inventory": [[{"short_desc": "a big pot pie"}]]}
+    )
+    assert after_lodging.policy_id == "midennir-goblin-8-10"
+
 
 def test_midennir_campaign_hunt_allows_retryable_empty_spawn(
     tmp_path,
@@ -151,14 +157,37 @@ def test_midennir_campaign_hunt_allows_retryable_empty_spawn(
         _run_policy_segment(
             spec.character,
             spec.character_profile,
-            policy_for(7, "mage"),
+            policy_for(8, "mage", has_large_sack=True),
         )
     )
 
-    assert captured["fastwalk_attack_target"] == "goblin"
-    assert captured["fastwalk_explore_direction"] == "east"
-    assert captured["fastwalk_explore_depth"] == 1
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.route for stop in stops if stop.target == "goblin"] == [
+        (),
+        ("east",),
+        ("south",),
+        ("east",),
+        ("south",),
+        ("west",),
+        ("west",),
+        ("north",),
+        ("north",),
+    ]
+    assert all(not stop.route for stop in stops if stop.target == "dark horseman")
+    assert {stop.target for stop in stops} == {"goblin", "dark horseman"}
+    assert captured["vault_stow_items"] == ("sack",)
+    assert captured["vault_claim_items"] == (
+        "sleeves",
+        "vest",
+        "cape",
+        "belt",
+        "bracer",
+        "guards",
+    )
+    assert captured["vault_required_free_weight"] == 30
+    assert captured["fastwalk_origin_actions"] == ("get all.pie",)
     assert captured["fastwalk_train_before_departure"] is True
+    assert captured["fastwalk_require_invisibility"] is True
     assert captured["require_fastwalk_kill"] is False
 
 

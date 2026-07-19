@@ -102,6 +102,33 @@ def test_storage_marks_interrupted_runs_as_failed(tmp_path) -> None:
     assert run["error"] == "test interruption"
 
 
+def test_storage_remembers_historically_acquired_items(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    run_id = storage.create_run(
+        scenario_name="fastwalk-ambush:Ararisa",
+        scenario_path=Path("profile.yaml"),
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="item_acquired",
+        state={
+            "name": "Ararisa",
+            "acquired_items": [{"item": "large sack"}],
+        },
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="inventory_changed",
+        state={"name": "Ararisa", "acquired_items": []},
+    )
+
+    assert storage.character_has_acquired_item("ararisa", "large sack") is True
+    assert storage.character_has_acquired_item("ararisa", "backpack") is False
+    storage.close()
+
+
 def test_storage_scopes_sales_and_kills_by_boot_identity(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     run_id = storage.create_run(
