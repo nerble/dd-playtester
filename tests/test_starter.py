@@ -5592,12 +5592,18 @@ def test_fastwalk_stows_source_identified_sanctuary_potion_before_recall() -> No
     policy.current_room = "4064"
     policy.pending_loot_rooms.add("4064")
     policy.fastwalk_loot_step = 1
+    policy.fastwalk_last_kill_target = "the large hobgoblin"
     state = CharacterState(
         room_name="A Moria tunnel",
         room_vnum="4064",
         position=7,
         inventory=[[{"quan": "1", "short_desc": "a purple potion"}]],
     )
+
+    audit = policy.next_decision(state)
+    assert audit is not None
+    assert audit.command == "inventory"
+    policy.prompt_ready = True
 
     stow = policy.next_decision(state)
     assert stow is not None
@@ -5623,12 +5629,18 @@ def test_fastwalk_does_not_stow_an_unregistered_potion() -> None:
     policy.current_room = "4064"
     policy.pending_loot_rooms.add("4064")
     policy.fastwalk_loot_step = 1
+    policy.fastwalk_last_kill_target = "the large hobgoblin"
     state = CharacterState(
         room_name="A Moria tunnel",
         room_vnum="4064",
         position=7,
         inventory=[[{"quan": "1", "short_desc": "a cloudy potion"}]],
     )
+
+    audit = policy.next_decision(state)
+    assert audit is not None
+    assert audit.command == "inventory"
+    policy.prompt_ready = True
 
     decision = policy.next_decision(state)
 
@@ -5669,6 +5681,31 @@ def test_fastwalk_audits_known_combat_potions_at_recall_before_departure() -> No
     assert departure is not None
     assert departure.command == route.commands[0]
     assert policy.combat_pouch_potions == {"black": 1, "purple": 2}
+
+
+def test_fastwalk_stows_loose_known_potion_at_origin_before_departure() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        audit_combat_pouch=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_pouch_audited = True
+    origin = CharacterState(
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        position=7,
+        inventory=[[{"short_desc": "a purple potion"}]],
+    )
+
+    stow = policy.next_decision(origin)
+
+    assert stow is not None
+    assert stow.command == "put all.purple pouch"
 
 
 def test_combat_uses_identified_pouch_potions_at_bounded_health_thresholds() -> None:

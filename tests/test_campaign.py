@@ -493,6 +493,24 @@ def test_level_nine_campaign_uses_potion_backed_vile_goblin_hunt(
     assert captured["fastwalk_kill_limit"] == 1
 
 
+def test_level_nine_campaign_recognizes_loose_sanctuary_potion(tmp_path) -> None:
+    config_path, _ = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+
+    policy = runner._policy_for_state(
+        {
+            "level": 9,
+            "inventory": [[
+                {"short_desc": "a large sack"},
+                {"short_desc": "a big pot pie"},
+                {"short_desc": "a purple potion"},
+            ]],
+        }
+    )
+
+    assert policy.policy_id == "ambush-vile-goblin-9-10"
+
+
 def test_campaign_liquidates_loot_in_a_safe_dedicated_segment(
     tmp_path,
     monkeypatch,

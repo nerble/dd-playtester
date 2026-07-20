@@ -678,3 +678,22 @@ and failure handling before registering each new level-band policy.
 - Combat preparation retains identified purple sanctuary and black
   cure-critical potions in the worn pouch. Sanctuary is used before avoidable
   combat damage; healing potions remain reserved for 55% health or lower.
+
+## Progression Evidence Cycle 23
+
+- Run 471 bought the reboot-priced light blue potion for 94 copper and verified
+  33 ticks of flight. Run 472 then found a carrier, but a wandering warrior
+  joined on the opening pulse; conservative multi-attacker withdrawal prevented
+  a dangerous unprotected fight.
+- Run 473's war-dog fallback gained 206 XP without taking damage. Runs 474-475
+  discarded only reboot-exhausted duplicate gear, preserved the two worn
+  +damroll collars, bought two pies, and refilled the water skin.
+- Run 476 used flight to find an isolated carrier, gained 405 XP, and stowed its
+  sanctuary potion. Run 477 spent it against the vile goblin for 221 XP while
+  taking only 10 damage. Run 478 gained another 368 XP and a purple potion.
+- Run 478 exposed command-response reordering: corpse cleanup advanced before
+  the delayed loot response made the potion visible, leaving it loose in the
+  backpack. Loot cleanup now issues an explicit inventory synchronization
+  before potion stow. Campaign selection also recognizes a confirmed loose
+  purple potion, and every fastwalk departure moves it into the worn pouch
+  before field combat.

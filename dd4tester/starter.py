@@ -2695,13 +2695,24 @@ class StarterPolicy:
                     f"get all {self.fastwalk_route.loot_container}",
                     "extract money and useful contents from the opened loot container",
                 )
-            if (
-                (
-                    self.fastwalk_loot_step == 1
-                    and self.fastwalk_route.loot_container is None
+            loot_ready = (
+                self.fastwalk_loot_step == 1
+                and self.fastwalk_route.loot_container is None
+            ) or self.fastwalk_loot_step == 3
+            sanctuary_carrier_killed = (
+                self.fastwalk_last_kill_target is not None
+                and _targets_match(
+                    self.fastwalk_last_kill_target.casefold(),
+                    "large hobgoblin",
                 )
-                or self.fastwalk_loot_step == 3
-            ):
+            )
+            if loot_ready and sanctuary_carrier_killed:
+                self.fastwalk_loot_step = 7
+                return BotDecision(
+                    "inventory",
+                    "wait for looted emergency potions before cleaning up the corpse",
+                )
+            if loot_ready or self.fastwalk_loot_step == 7:
                 potion_keyword = _known_combat_potion_keyword(state.inventory)
                 if (
                     potion_keyword is not None
@@ -2865,6 +2876,16 @@ class StarterPolicy:
                 )
                 self.fastwalk_pouch_audit_pending = False
                 self.fastwalk_pouch_audited = True
+            loose_potion = _known_combat_potion_keyword(state.inventory)
+            if (
+                loose_potion is not None
+                and loose_potion not in self.fastwalk_pouch_attempted
+            ):
+                self.fastwalk_pouch_attempted.add(loose_potion)
+                return BotDecision(
+                    f"put all.{loose_potion} pouch",
+                    "move confirmed loose emergency potions into the worn pouch",
+                )
             if self.fastwalk_origin_action_index < len(self.fastwalk_origin_actions):
                 command = self.fastwalk_origin_actions[
                     self.fastwalk_origin_action_index

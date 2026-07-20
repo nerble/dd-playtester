@@ -234,6 +234,7 @@ class CampaignRunner:
                     )
                 )
                 > 0
+                or _state_has_item(state.get("inventory"), "purple potion")
             ),
             has_flight=_state_has_active_affect(state.get("affects"), "fly"),
             can_attempt_flight_purchase=_state_copper_value(state) >= 90,
