@@ -744,3 +744,22 @@ and failure handling before registering each new level-band policy.
 - Run 497 identified the new collar as another 20-pound +1 damroll item,
   preserved the two useful existing collars, donated only the redundant copy,
   saved, and quit safely.
+
+## Progression Evidence Cycle 26
+
+- Runs 498 and 501 confirmed from live `where` output that both Moria potion
+  carriers continue to wander through the registered maze and large-cave
+  circuit. Run 498 completed without an encounter; run 501 intercepted one.
+- During run 501 an orc joined after the initial room audit. Ararisa killed the
+  nearly finished carrier for 250 XP, immediately switched to multi-attacker
+  withdrawal, fled the remaining orc, and accepted an 80-XP escape penalty.
+  She recalled at 32/126 health, recovered fully at the healer, and saved at
+  38,739 XP, 961 short of level 10. The disrupted corpse cleanup yielded no
+  sanctuary potion, so this is safety evidence rather than a clean acquisition.
+- Run 499's exterior fallback killed another war dog safely, but reboot
+  repetition reduced the reward to 102 XP. Its coin raised Ararisa's reserve to
+  65 copper; flight remains unaffordable at the current 94-copper price.
+- Field departures no longer eat a pie or drink the water skin unconditionally.
+  The origin queue now consumes only after a live hunger or thirst signal,
+  while the existing missing-provision and preflight checks remain active.
+  This preserves scarce food during short repeated hunt segments.

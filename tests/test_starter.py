@@ -4038,6 +4038,80 @@ def test_fastwalk_origin_actions_run_before_route_commands() -> None:
     assert commands == ["drop all.piping", "drop cap", "south"]
 
 
+def test_fastwalk_origin_does_not_waste_food_or_water_without_need() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    state = CharacterState(
+        hp=105,
+        max_hp=105,
+        mana=289,
+        max_mana=289,
+        move=210,
+        max_move=210,
+        position=7,
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        inventory=[[
+            {"short_desc": "a big pot pie", "quan": "1"},
+            {"short_desc": "a buffalo water skin", "quan": "1"},
+        ]],
+    )
+
+    commands = []
+    for _ in range(2):
+        policy.prompt_ready = True
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+
+    assert commands == ["get all.pie", "south"]
+
+
+def test_fastwalk_origin_consumes_food_and_water_after_live_warnings() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.needs_food = True
+    policy.needs_drink = True
+    state = CharacterState(
+        hp=105,
+        max_hp=105,
+        mana=289,
+        max_mana=289,
+        move=210,
+        max_move=210,
+        position=7,
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        inventory=[[
+            {"short_desc": "a big pot pie", "quan": "1"},
+            {"short_desc": "a buffalo water skin", "quan": "1"},
+        ]],
+    )
+
+    commands = []
+    for _ in range(4):
+        policy.prompt_ready = True
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+
+    assert commands == ["eat pie", "drink skin", "get all.pie", "south"]
+
+
 def test_vault_preflight_stows_gear_and_verifies_free_weight() -> None:
     policy = StarterPolicy(
         _spec(),

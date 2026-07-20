@@ -2900,11 +2900,17 @@ class StarterPolicy:
                     f"put all.{loose_potion} pouch",
                     "move confirmed loose emergency potions into the worn pouch",
                 )
-            if self.fastwalk_origin_action_index < len(self.fastwalk_origin_actions):
+            while self.fastwalk_origin_action_index < len(
+                self.fastwalk_origin_actions
+            ):
                 command = self.fastwalk_origin_actions[
                     self.fastwalk_origin_action_index
                 ]
                 self.fastwalk_origin_action_index += 1
+                if command == "eat pie" and not self.needs_food:
+                    continue
+                if command == "drink skin" and not self.needs_drink:
+                    continue
                 return BotDecision(
                     command,
                     "prepare inventory at the safe fastwalk origin",
