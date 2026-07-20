@@ -649,3 +649,20 @@ and failure handling before registering each new level-band policy.
   confirmed in the pouch; otherwise it rotates through the verified Moria
   acquisition circuit and falls back to safer exterior kills when the carrier
   is absent.
+
+## Progression Evidence Cycle 22
+
+- Runs 459-461 exercised the autonomous selector end to end. Ararisa gained
+  336 XP from safe exterior targets, killed a large hobgoblin for 432 XP and
+  stowed its purple potion in her pouch, then quaffed it after engaging the
+  vile goblin and killed that target for 309 XP. She finished fully recovered
+  at 34,717 XP.
+- Run 462 found both potion carriers absent, but a level-1 drunk attacked on
+  the Midgaard route. The bot fled and paid DD4's level-scaled 80-XP escape
+  penalty. A lone forced attacker at or below the character's level is now
+  finished regardless of its poor voluntary-hunt XP; higher-level or multiple
+  attackers retain the emergency-flee policy.
+- Runs 463-464 recovered the loss with a 237-XP wounded goblin and a 310-XP
+  large hobgoblin. Ararisa ended fully recovered at 35,184 XP with another
+  purple sanctuary potion stored in her worn pouch and 4,516 XP remaining to
+  level 10.

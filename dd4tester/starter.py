@@ -3440,7 +3440,9 @@ class StarterPolicy:
             or _health_ratio(state) < 0.75
         ):
             return False
-        return state.level - 5 <= self.active_target_level <= state.level
+        # Once a lone mobile has attacked, poor XP is not a reason to flee:
+        # DD4 charges a level-scaled XP penalty for a successful escape.
+        return self.active_target_level <= state.level
 
     @property
     def _arena_kill_limit_reached(self) -> bool:

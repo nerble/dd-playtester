@@ -2438,6 +2438,47 @@ def test_fastwalk_fights_viable_opportunistic_attacker_instead_of_fleeing() -> N
     assert policy.fastwalk_abort_reason is None
 
 
+def test_fastwalk_fights_trivial_attacker_instead_of_paying_flee_penalty() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_attack_target="large hobgoblin",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 4
+    state = CharacterState(
+        level=9,
+        hp=126,
+        max_hp=126,
+        mana=321,
+        max_mana=343,
+        room_name="Main Street",
+        room_vnum="3013",
+        position=6,
+    )
+    policy.observe_events(
+        [
+            GameEvent(
+                "enemies_changed",
+                "gmcp",
+                {"value": [[{"name": "the drunk", "level": "1"}]]},
+            )
+        ],
+        state,
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'chill touch' drunk"
+    assert policy.fastwalk_attack_target == "the drunk"
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_abort_reason is None
+
+
 def test_field_expedition_fights_viable_outbound_attacker_from_gmcp() -> None:
     policy = StarterPolicy(
         _spec(),
