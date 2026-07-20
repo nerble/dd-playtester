@@ -545,3 +545,22 @@ and failure handling before registering each new level-band policy.
   checkpoint 125 at 33,434 XP with full health and mana.
 - Run 421 safely donated the next wooden lance under the same policy, retained
   both combat collars and four pies, and reduced carry weight to 119/140.
+
+## Progression Evidence Cycle 20
+
+- Runs 422-423 searched the source-backed Miden'nir horseman reset room and
+  all four connected trail rooms under invisibility. Both horsemen had
+  wandered elsewhere, so the bot recalled without combat.
+- Runs 424-426 exposed two false crowd signals in the vile-goblin room.
+  Occupancy now uses only the latest room response, and object source parsing
+  retains room descriptions so `A piece of leather armor is here` is not
+  mistaken for a mobile. The fixed prisoner is the only explicitly permitted
+  noncombat bystander; unknown or duplicate mobiles still abort the hunt.
+- Run 427 live-considered the unarmed level-9 vile goblin an easy kill and
+  returned without attacking. Run 428 repeated the check, killed it at full
+  126/126 health for 322 XP, looted and sacrificed the corpse, recalled, and
+  recovered safely. This target is now the verified level-9 rotation after
+  reboot-scoped war-dog and wounded-goblin depletion.
+- Field recovery now latches an approved reserve while walking between the
+  healer and recall. A route no longer reverses for a redundant second sleep
+  merely because normal city movement drops the character just below 90%.

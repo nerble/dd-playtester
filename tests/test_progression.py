@@ -111,6 +111,19 @@ def test_level_nine_mage_expands_ambush_hunt_after_offense_training() -> None:
     assert policy.segment_kill_limit == 2
 
 
+def test_level_nine_mage_rotates_to_vile_goblin_after_ambush_depletion() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        boot_kill_counts={"war dog": 16, "wounded goblin": 4},
+    )
+
+    assert policy.policy_id == "ambush-vile-goblin-9-10"
+    assert policy.execution == "ambush-vile-hunt"
+    assert policy.segment_kill_limit == 1
+
+
 def test_missing_primary_weapon_selects_safe_rearm_maintenance() -> None:
     policy = policy_for(
         9,

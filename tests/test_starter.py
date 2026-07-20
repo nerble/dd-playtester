@@ -26,6 +26,7 @@ from dd4tester.starter import (
     _sellable_inventory_keyword,
     _watchdog_progress_marker,
     ambush_exterior_hunt_stops,
+    ambush_vile_goblin_hunt_stops,
     midennir_horseman_consider_stops,
 )
 from dd4tester.state import CharacterState
@@ -73,16 +74,28 @@ def test_ambush_exterior_research_stays_out_of_the_cave_complex() -> None:
     assert commands[-2:] == ["open south", "south"]
 
 
-def test_midennir_horseman_probe_uses_source_route_and_never_attacks() -> None:
+def test_midennir_horseman_probe_searches_source_trail_and_never_attacks() -> None:
     stops = midennir_horseman_consider_stops()
 
     assert stops == (
         FieldHuntStop(
-            ("west", "south", "south", "west", "west", "south", "west"),
+            ("west", "south", "south", "west"),
             "dark horseman",
             consider_only=True,
         ),
+        FieldHuntStop(("west",), "dark horseman", consider_only=True),
+        FieldHuntStop(("south",), "dark horseman", consider_only=True),
+        FieldHuntStop(("west",), "dark horseman", consider_only=True),
     )
+
+
+def test_vile_goblin_hunt_keeps_bystander_exception_but_allows_combat() -> None:
+    stops = ambush_vile_goblin_hunt_stops()
+
+    assert len(stops) == 1
+    assert stops[0].target == "vile goblin"
+    assert stops[0].allowed_bystanders == ("half clothed human female",)
+    assert stops[0].consider_only is False
 
 
 def test_creation_policy_follows_configured_character_profile() -> None:
@@ -2831,6 +2844,75 @@ def test_fastwalk_completion_does_not_take_a_token_nap_in_mage_lab() -> None:
     assert policy._recovery_decision(home) is None
 
 
+def test_fastwalk_return_does_not_reverse_to_healer_after_recovery() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_returning = True
+    market = CharacterState(
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=204,
+        max_move=230,
+        room_name="Market Square",
+        room_vnum="3014",
+        room_flags=["safe"],
+        position=7,
+    )
+
+    decision = policy.next_decision(market)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert decision.reason == "return from recall to the Mage Guild"
+
+
+def test_fastwalk_outbound_does_not_reverse_after_reserves_are_approved() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    ready = CharacterState(
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=217,
+        max_move=230,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+        position=7,
+    )
+
+    assert policy._recovery_decision(ready) is None
+    assert policy.fastwalk_recovery_ready is True
+
+    market = CharacterState(
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=204,
+        max_move=230,
+        room_name="Market Square",
+        room_vnum="3014",
+        room_flags=["safe"],
+        position=7,
+    )
+
+    assert policy._recovery_decision(market) is None
+
+
 def test_fastwalk_low_reserves_route_from_mage_lab_to_temple_healer() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -4672,6 +4754,60 @@ def test_fastwalk_research_skips_a_mixed_crowd_before_considering() -> None:
     assert "crowded field room" in decision.reason
     assert policy.room_target_counts["3506"]["mountain goblin"] == 1
     assert policy.room_target_counts["3506"]["dark horseman"] == 1
+
+
+def test_field_probe_allows_one_source_verified_noncombat_bystander() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "vile goblin",
+                allowed_bystanders=("half clothed human female",),
+                consider_only=True,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_looked = True
+    policy.current_room = "4519"
+    state = CharacterState(
+        level=9,
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=150,
+        max_move=230,
+        room_name="On a small trail",
+        room_vnum="4519",
+        position=7,
+    )
+    policy.observe_text(
+        "A half clothed human female is here, whimpering.\n"
+        "A goblin is here molesting a human female.\n"
+    )
+    policy.observe_text(
+        "A half clothed human female is here, whimpering.\n"
+        "A goblin is here molesting a human female.\n"
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "consider goblin"
+    assert policy.room_target_counts["4519"] == {
+        "half clothed human female": 1,
+        "goblin": 1,
+    }
 
 
 def test_field_target_count_excludes_source_identified_ground_objects() -> None:

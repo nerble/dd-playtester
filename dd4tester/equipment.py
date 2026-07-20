@@ -67,6 +67,9 @@ class GearCatalog:
             by_name.setdefault(normalize_item_name(item.short_description), []).append(
                 item
             )
+            room_name = normalize_room_item_name(item.room_description)
+            if room_name:
+                by_name.setdefault(room_name, []).append(item)
         self._by_name = by_name
         self._names_by_length = sorted(by_name, key=len, reverse=True)
 
@@ -154,6 +157,15 @@ def normalize_item_name(value: str) -> str:
         if reduced == cleaned:
             return cleaned.strip(" .")
         cleaned = reduced
+
+
+def normalize_room_item_name(value: str) -> str:
+    cleaned = normalize_item_name(value)
+    return re.sub(
+        r"\s+(?:is|are|lies?|sits?|rests?|waits?)\s+here$",
+        "",
+        cleaned,
+    )
 
 
 def item_category(item: ObjectSource) -> str | None:

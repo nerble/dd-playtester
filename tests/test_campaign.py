@@ -333,6 +333,48 @@ def test_level_nine_ambush_campaign_adds_the_wounded_goblin(
     assert captured["fastwalk_kill_limit"] == 2
 
 
+def test_level_nine_campaign_uses_verified_vile_goblin_rotation(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                config_path,
+                {"level": 9, "xp": 33_000},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        boot_kill_counts={"war dog": 16, "wounded goblin": 4},
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["vile goblin"]
+    assert stops[0].allowed_bystanders == ("half clothed human female",)
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["fastwalk_kill_limit"] == 1
+
+
 def test_campaign_liquidates_loot_in_a_safe_dedicated_segment(
     tmp_path,
     monkeypatch,

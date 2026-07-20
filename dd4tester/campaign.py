@@ -19,6 +19,7 @@ from .starter import (
     _sellable_inventory_keyword,
     ambush_exterior_hunt_stops,
     ambush_level_eight_hunt_stops,
+    ambush_vile_goblin_hunt_stops,
 )
 from .storage import RunStorage
 
@@ -466,12 +467,17 @@ async def _run_policy_segment(
             profile_path,
             city_rearm=True,
         ).run()
-    if policy.execution in {"ambush-war-dog-hunt", "ambush-hunt"}:
-        hunt_stops = (
-            ambush_level_eight_hunt_stops()
-            if policy.execution == "ambush-war-dog-hunt"
-            else ambush_exterior_hunt_stops()[:2]
-        )
+    if policy.execution in {
+        "ambush-war-dog-hunt",
+        "ambush-hunt",
+        "ambush-vile-hunt",
+    }:
+        if policy.execution == "ambush-war-dog-hunt":
+            hunt_stops = ambush_level_eight_hunt_stops()
+        elif policy.execution == "ambush-vile-hunt":
+            hunt_stops = ambush_vile_goblin_hunt_stops()
+        else:
+            hunt_stops = ambush_exterior_hunt_stops()[:2]
         return await StarterBotRunner(
             spec,
             profile_path,
@@ -481,7 +487,7 @@ async def _run_policy_segment(
             fastwalk_hunt_stops=hunt_stops,
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=(
-                policy.execution == "ambush-hunt"
+                policy.execution in {"ambush-hunt", "ambush-vile-hunt"}
             ),
             fastwalk_require_invisibility=True,
             require_fastwalk_kill=False,

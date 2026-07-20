@@ -48,6 +48,21 @@ def test_stances_prioritize_damroll_stats_and_recovery_resources() -> None:
     )
 
 
+def test_catalog_matches_source_room_description_to_object() -> None:
+    armor = ObjectSource(
+        4530,
+        "armor hard leather",
+        "hard leather armor",
+        9,
+        (0, 0, 0, 0),
+        45,
+        room_description="A piece of leather armor is here.",
+    )
+    catalog = GearCatalog({armor.vnum: armor})
+
+    assert catalog.match("piece of leather armor") == armor
+
+
 def test_pre_level_priorities_can_target_mage_practices_or_hitpoints() -> None:
     wisdom = _item(4, "wisdom helm", (3, 1))
     constitution = _item(5, "constitution helm", (5, 1))

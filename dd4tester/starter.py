@@ -169,6 +169,7 @@ class FieldHuntStop:
     target: str | None = None
     actions: tuple[str, ...] = ()
     required_items: tuple[str, ...] = ()
+    allowed_bystanders: tuple[str, ...] = ()
     minimum_health_ratio: float = 0.8
     consider_only: bool = False
 
@@ -377,6 +378,7 @@ class StarterPolicy:
         self.fastwalk_recall_started = False
         self.fastwalk_arrival_observed = False
         self.fastwalk_returning = False
+        self.fastwalk_recovery_ready = False
         self.fastwalk_outbound_index = 0
         self.fastwalk_return_index = 0
         self.fastwalk_explore_step = 0
@@ -619,7 +621,7 @@ class StarterPolicy:
             known = self.room_targets.setdefault(self.current_room, [])
             known.extend(target for target in targets if target not in known)
             self.room_target_counts[self.current_room] = _training_target_counts(
-                self.text
+                cleaned
             )
 
         direction = _DIRECTION.search(self.text)
@@ -792,12 +794,12 @@ class StarterPolicy:
                     self.pending_fastwalk_hunt_move = False
                     self.advice_direction = None
                     self.pending_move = None
-                targets = _training_targets(self.text)
-                if room and targets:
-                    known = self.room_targets.setdefault(room, [])
-                    known.extend(target for target in targets if target not in known)
                 if room:
-                    self.room_target_counts[room] = _training_target_counts(self.text)
+                    latest_counts = _training_target_counts(
+                        self.last_response or self.text
+                    )
+                    self.room_targets[room] = list(latest_counts)
+                    self.room_target_counts[room] = latest_counts
                 if state.room_vnum and state.room_vnum.startswith("37"):
                     if _is_training_vnum(state.room_vnum):
                         self.course_started = True
@@ -2805,6 +2807,8 @@ class StarterPolicy:
                 )
                 if invisibility is not None:
                     return invisibility
+                if self.fastwalk_outbound_index == 0:
+                    self.fastwalk_recovery_ready = False
                 command = self.fastwalk_route.commands[self.fastwalk_outbound_index]
                 self.fastwalk_outbound_index += 1
                 return BotDecision(command, f"follow official fastwalk {self.fastwalk_route.name}")
@@ -3018,6 +3022,11 @@ class StarterPolicy:
             ).items()
             if _targets_match(observed, target)
         )
+        allowed_bystanders = (
+            self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index].allowed_bystanders
+            if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+            else ()
+        )
         observed_mobile_count = sum(
             count
             for observed, count in self.room_target_counts.get(
@@ -3025,6 +3034,10 @@ class StarterPolicy:
             ).items()
             if self.gear_catalog is None
             or self.gear_catalog.match(observed) is None
+            if not any(
+                observed == bystander.casefold()
+                for bystander in allowed_bystanders
+            )
         )
         if target_count > 1 or observed_mobile_count > 1:
             self.fastwalk_abort_reason = (
@@ -3732,12 +3745,28 @@ class StarterPolicy:
             or "altar of the temple" in room_name
             or room_name == "safety"
         )
-        if self.fastwalk_returning and state.room_vnum == "3019":
+        at_field_recovery_boundary = bool(
+            self.fastwalk_hunt_stops
+            and (self.fastwalk_outbound_index == 0 or self.fastwalk_returning)
+        )
+        if (
+            self.fastwalk_recovery_ready
+            and at_field_recovery_boundary
+        ) or self.fastwalk_returning and state.room_vnum in {
+            "3001",
+            "3005",
+            "3014",
+            "3013",
+            "3012",
+            "3017",
+            "3018",
+            "3019",
+        }:
             required_move_ratio = 0.4
         elif self.fastwalk_hunt_stops:
             required_move_ratio = (
                 0.9
-                if self.fastwalk_outbound_index == 0 or self.fastwalk_returning
+                if at_field_recovery_boundary
                 else 0.25
             )
         elif self.fastwalk_route is not None:
@@ -3750,6 +3779,8 @@ class StarterPolicy:
                 and _move_ratio(state) >= required_move_ratio
                 and _mana_ratio(state) >= 0.5
             ):
+                if at_field_recovery_boundary:
+                    self.fastwalk_recovery_ready = True
                 return None
             if (
                 (self.fastwalk_route is not None or self.return_home)
@@ -4957,6 +4988,19 @@ def ambush_guard_consider_stops() -> tuple[FieldHuntStop, ...]:
 
 def ambush_vile_goblin_consider_stops() -> tuple[FieldHuntStop, ...]:
     """Reach the unarmed level-nine goblin and consider without attacking."""
+    stop = ambush_vile_goblin_hunt_stops()[0]
+    return (
+        FieldHuntStop(
+            stop.route,
+            stop.target,
+            allowed_bystanders=stop.allowed_bystanders,
+            consider_only=True,
+        ),
+    )
+
+
+def ambush_vile_goblin_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Reach and live-consider one unarmed level-nine goblin before combat."""
     return (
         FieldHuntStop(
             (
@@ -4977,13 +5021,13 @@ def ambush_vile_goblin_consider_stops() -> tuple[FieldHuntStop, ...]:
                 "south",
             ),
             "vile goblin",
-            consider_only=True,
+            allowed_bystanders=("half clothed human female",),
         ),
     )
 
 
 def midennir_horseman_consider_stops() -> tuple[FieldHuntStop, ...]:
-    """Reach the source-backed horseman dead end and consider without attacking."""
+    """Search the horseman trail and consider one isolated target without attacking."""
     return (
         FieldHuntStop(
             (
@@ -4991,13 +5035,13 @@ def midennir_horseman_consider_stops() -> tuple[FieldHuntStop, ...]:
                 "south",
                 "south",
                 "west",
-                "west",
-                "south",
-                "west",
             ),
             "dark horseman",
             consider_only=True,
         ),
+        FieldHuntStop(("west",), "dark horseman", consider_only=True),
+        FieldHuntStop(("south",), "dark horseman", consider_only=True),
+        FieldHuntStop(("west",), "dark horseman", consider_only=True),
     )
 
 
@@ -5007,9 +5051,10 @@ async def run_ambush_research_profile(
     guard_probe: bool = False,
     vile_probe: bool = False,
     horseman_probe: bool = False,
+    vile_hunt: bool = False,
 ) -> RunResult:
     """Live-consider the source-backed exterior Ambush targets and return."""
-    if sum((guard_probe, vile_probe, horseman_probe)) > 1:
+    if sum((guard_probe, vile_probe, horseman_probe, vile_hunt)) > 1:
         raise ValueError("choose only one Ambush probe target")
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
@@ -5020,6 +5065,8 @@ async def run_ambush_research_profile(
         hunt_stops = ambush_vile_goblin_consider_stops()
     elif horseman_probe:
         hunt_stops = midennir_horseman_consider_stops()
+    elif vile_hunt:
+        hunt_stops = ambush_vile_goblin_hunt_stops()
     return await StarterBotRunner(
         spec,
         profile_path,
@@ -5027,8 +5074,9 @@ async def run_ambush_research_profile(
         fastwalk_route=route_named("ambush"),
         fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
         fastwalk_hunt_stops=hunt_stops,
-        fastwalk_train_before_departure=guard_probe,
+        fastwalk_train_before_departure=guard_probe or vile_hunt,
         fastwalk_require_invisibility=True,
+        fastwalk_kill_limit=1 if vile_hunt else None,
         require_fastwalk_kill=False,
         allow_safe_fastwalk_abort=True,
     ).run()

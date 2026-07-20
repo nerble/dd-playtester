@@ -75,6 +75,7 @@ class ObjectSource:
     level: int = 0
     affects: tuple[tuple[int, int], ...] = ()
     extra_flags: int = 0
+    room_description: str = ""
 
 
 @dataclass(frozen=True)
@@ -507,7 +508,7 @@ def _parse_objects(
         index += 1
         keywords, index = _read_tilde(lines, index, end)
         short_description, index = _read_tilde(lines, index, end)
-        _, index = _read_tilde(lines, index, end)
+        room_description, index = _read_tilde(lines, index, end)
         _, index = _read_tilde(lines, index, end)
         if index + 2 >= end:
             break
@@ -557,6 +558,7 @@ def _parse_objects(
             level=level,
             affects=tuple(affects),
             extra_flags=extra_flags,
+            room_description=_clean_text(room_description),
         )
         index = record_end
     return objects

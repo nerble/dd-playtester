@@ -239,6 +239,25 @@ _AMBUSH_LEVEL_NINE_POLICY = ProgressionPolicy(
     segment_kill_limit=2,
 )
 
+_AMBUSH_VILE_LEVEL_NINE_POLICY = ProgressionPolicy(
+    policy_id="ambush-vile-goblin-9-10",
+    minimum_level=9,
+    maximum_level=10,
+    status="verified",
+    execution="ambush-vile-hunt",
+    summary=(
+        "Hunt the unarmed level-nine vile goblin after the lower-level "
+        "Ambush targets become depleted."
+    ),
+    evidence=(
+        "DD4 source places one unarmed level-9 vile goblin with a noncombat prisoner in room 4519.",
+        "Live run 427 considered the reboot-fuzzed vile goblin an easy kill and returned without combat.",
+        "Live run 428 killed it at full health for 322 XP, looted and sacrificed the corpse, and recalled safely.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=1,
+)
+
 _LIQUIDATE_LOOT_POLICY = ProgressionPolicy(
     policy_id="liquidate-loot",
     minimum_level=2,
@@ -333,6 +352,13 @@ def policy_for(
             ):
                 return _MIDENNIR_LEVEL_EIGHT_POLICY
             return _AMBUSH_LEVEL_EIGHT_POLICY
+        war_dog_kills = _boot_kill_count(boot_kill_counts, "war dog")
+        wounded_goblin_kills = _boot_kill_count(
+            boot_kill_counts,
+            "wounded goblin",
+        )
+        if war_dog_kills >= 10 and wounded_goblin_kills >= 3:
+            return _AMBUSH_VILE_LEVEL_NINE_POLICY
         return _AMBUSH_LEVEL_NINE_POLICY
     if normalized_level < 10:
         return replace(
