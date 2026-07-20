@@ -785,3 +785,28 @@ and failure handling before registering each new level-band policy.
   immediately after corpse creation. Combat fastwalks now issue the idempotent
   `config +autoloot` at the safe recall origin, securing potions, equipment,
   and coins before a wandering mobile can interrupt post-kill commands.
+
+## Progression Evidence Cycle 28
+
+- Run 511 spent 94 copper on flight, leaving one copper and three pies. Runs
+  512-513 then completed the Moria carrier loop: the second carrier yielded
+  296 XP, autoloot secured its purple potion synchronously, and Ararisa reached
+  level 10 with 136 HP, 373 mana, and 240 movement.
+- Runs 514, 516, and 517 cleanly exercised the level-10 protected rotation.
+  Two vile goblins yielded 205 and 240 XP, while an isolated large hobgoblin
+  yielded 290 XP and another sanctuary potion. Corpse sacrifices raised the
+  reserve to four silver without consuming the remaining field food.
+- Runs 515 and 518 demonstrate why gross kill rewards cannot drive policy
+  selection. Run 515 withdrew after a warrior joined the carrier fight and
+  lost 52 net XP. Run 518 killed an orc for 224 XP, but three forced escapes
+  and two failed recalls produced a 37-XP net loss before safe recovery.
+- Run 519 returned to an isolated carrier, gained 286 XP, autolooted its
+  potion, and reached six silver. Run 520 found no eligible Ambush target and
+  returned without forcing combat. Ararisa saved at 40,801 XP, 7,699 short of
+  level 11, with full health and mana, two pies, and the water skin.
+- Source inspection identifies the level-8 goblin raider in Ambush room 4506
+  as an untried reboot-fresh candidate carrying six saleable items, but its
+  fuzzed level range reaches 10 and its weapon peak is 125 damage. The new
+  `ambush-research --raider-probe` command follows the exterior route under
+  invisibility and issues `consider` only; combat remains disabled pending
+  live evidence.

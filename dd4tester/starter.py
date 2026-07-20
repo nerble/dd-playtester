@@ -5176,6 +5176,28 @@ def ambush_guard_consider_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def ambush_raider_consider_stops() -> tuple[FieldHuntStop, ...]:
+    """Reach the armed raider's reset under invisibility and consider only."""
+    return (
+        FieldHuntStop(
+            (
+                "west",
+                "south",
+                "south",
+                "west",
+                "south",
+                "west",
+                "south",
+                "south",
+                "west",
+            ),
+            "goblin raider",
+            consider_only=True,
+            exact_target=True,
+        ),
+    )
+
+
 def ambush_vile_goblin_consider_stops() -> tuple[FieldHuntStop, ...]:
     """Reach the unarmed level-nine goblin and consider without attacking."""
     stop = ambush_vile_goblin_hunt_stops()[0]
@@ -5298,11 +5320,12 @@ async def run_ambush_research_profile(
     *,
     guard_probe: bool = False,
     vile_probe: bool = False,
+    raider_probe: bool = False,
     horseman_probe: bool = False,
     vile_hunt: bool = False,
 ) -> RunResult:
     """Live-consider the source-backed exterior Ambush targets and return."""
-    if sum((guard_probe, vile_probe, horseman_probe, vile_hunt)) > 1:
+    if sum((guard_probe, vile_probe, raider_probe, horseman_probe, vile_hunt)) > 1:
         raise ValueError("choose only one Ambush probe target")
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
@@ -5311,6 +5334,8 @@ async def run_ambush_research_profile(
         hunt_stops = ambush_guard_consider_stops()
     elif vile_probe:
         hunt_stops = ambush_vile_goblin_consider_stops()
+    elif raider_probe:
+        hunt_stops = ambush_raider_consider_stops()
     elif horseman_probe:
         hunt_stops = midennir_horseman_consider_stops()
     elif vile_hunt:

@@ -522,12 +522,14 @@ def test_ambush_research_command_runs_exterior_circuit(
         *,
         guard_probe: bool,
         vile_probe: bool,
+        raider_probe: bool,
         horseman_probe: bool,
         vile_hunt: bool,
     ) -> RunResult:
         assert path == profile
         assert guard_probe is True
         assert vile_probe is False
+        assert raider_probe is False
         assert horseman_probe is False
         assert vile_hunt is False
         return RunResult(18, "success", transcript, database, {"level": 9})
@@ -557,12 +559,14 @@ def test_ambush_research_command_selects_vile_goblin_probe(
         *,
         guard_probe: bool,
         vile_probe: bool,
+        raider_probe: bool,
         horseman_probe: bool,
         vile_hunt: bool,
     ) -> RunResult:
         assert path == profile
         assert guard_probe is False
         assert vile_probe is True
+        assert raider_probe is False
         assert horseman_probe is False
         assert vile_hunt is False
         return RunResult(
@@ -582,6 +586,44 @@ def test_ambush_research_command_selects_vile_goblin_probe(
     assert main(["ambush-research", str(profile), "--vile-probe"]) == 0
 
 
+def test_ambush_research_command_selects_raider_probe(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+
+    async def fake_ambush_research(
+        path: Path,
+        *,
+        guard_probe: bool,
+        vile_probe: bool,
+        raider_probe: bool,
+        horseman_probe: bool,
+        vile_hunt: bool,
+    ) -> RunResult:
+        assert path == profile
+        assert guard_probe is False
+        assert vile_probe is False
+        assert raider_probe is True
+        assert horseman_probe is False
+        assert vile_hunt is False
+        return RunResult(
+            20,
+            "success",
+            tmp_path / "ambush-raider.jsonl",
+            tmp_path / "runs.sqlite3",
+            {"level": 10},
+        )
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_ambush_research_profile",
+        fake_ambush_research,
+    )
+
+    assert main(["ambush-research", str(profile), "--raider-probe"]) == 0
+
+
 def test_ambush_research_command_selects_horseman_probe(
     tmp_path,
     monkeypatch,
@@ -593,12 +635,14 @@ def test_ambush_research_command_selects_horseman_probe(
         *,
         guard_probe: bool,
         vile_probe: bool,
+        raider_probe: bool,
         horseman_probe: bool,
         vile_hunt: bool,
     ) -> RunResult:
         assert path == profile
         assert guard_probe is False
         assert vile_probe is False
+        assert raider_probe is False
         assert horseman_probe is True
         assert vile_hunt is False
         return RunResult(
@@ -629,12 +673,14 @@ def test_ambush_research_command_selects_bounded_vile_hunt(
         *,
         guard_probe: bool,
         vile_probe: bool,
+        raider_probe: bool,
         horseman_probe: bool,
         vile_hunt: bool,
     ) -> RunResult:
         assert path == profile
         assert guard_probe is False
         assert vile_probe is False
+        assert raider_probe is False
         assert horseman_probe is False
         assert vile_hunt is True
         return RunResult(

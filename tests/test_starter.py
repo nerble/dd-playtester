@@ -26,6 +26,7 @@ from dd4tester.starter import (
     _sellable_inventory_keyword,
     _watchdog_progress_marker,
     ambush_exterior_hunt_stops,
+    ambush_raider_consider_stops,
     ambush_vile_goblin_hunt_stops,
     midennir_horseman_consider_stops,
     midennir_horseman_probe_route,
@@ -94,6 +95,26 @@ def test_midennir_horseman_probe_searches_source_trail_and_never_attacks() -> No
     ]
     assert all(stop.target == "dark horseman" for stop in stops)
     assert all(stop.consider_only for stop in stops)
+
+
+def test_raider_probe_reaches_reset_and_never_attacks() -> None:
+    stops = ambush_raider_consider_stops()
+
+    assert len(stops) == 1
+    assert stops[0].route == (
+        "west",
+        "south",
+        "south",
+        "west",
+        "south",
+        "west",
+        "south",
+        "south",
+        "west",
+    )
+    assert stops[0].target == "goblin raider"
+    assert stops[0].consider_only is True
+    assert stops[0].exact_target is True
 
 
 def test_vile_goblin_hunt_keeps_bystander_exception_but_allows_combat() -> None:

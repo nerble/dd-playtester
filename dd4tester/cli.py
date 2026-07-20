@@ -218,6 +218,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="consider the unarmed level-9 vile goblin under invisibility without attacking",
     )
     ambush_probe_group.add_argument(
+        "--raider-probe",
+        action="store_true",
+        help="consider the armed goblin raider under invisibility without attacking",
+    )
+    ambush_probe_group.add_argument(
         "--horseman-probe",
         action="store_true",
         help="consider a Miden'nir dark horseman without attacking or entering a crowded room",
@@ -677,6 +682,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.profile,
                     guard_probe=args.guard_probe,
                     vile_probe=args.vile_probe,
+                    raider_probe=args.raider_probe,
                     horseman_probe=args.horseman_probe,
                     vile_hunt=args.vile_hunt,
                 )
