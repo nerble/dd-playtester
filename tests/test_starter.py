@@ -28,6 +28,7 @@ from dd4tester.starter import (
     ambush_exterior_hunt_stops,
     ambush_vile_goblin_hunt_stops,
     midennir_horseman_consider_stops,
+    midennir_horseman_probe_route,
     moria_sanctuary_potion_consider_stops,
     moria_sanctuary_potion_hunt_stops,
 )
@@ -77,18 +78,22 @@ def test_ambush_exterior_research_stays_out_of_the_cave_complex() -> None:
 
 
 def test_midennir_horseman_probe_searches_source_trail_and_never_attacks() -> None:
+    assert midennir_horseman_probe_route().commands == ("south",) * 5
     stops = midennir_horseman_consider_stops()
 
-    assert stops == (
-        FieldHuntStop(
-            ("west", "south", "south", "west"),
-            "dark horseman",
-            consider_only=True,
-        ),
-        FieldHuntStop(("west",), "dark horseman", consider_only=True),
-        FieldHuntStop(("south",), "dark horseman", consider_only=True),
-        FieldHuntStop(("west",), "dark horseman", consider_only=True),
-    )
+    assert [stop.route for stop in stops] == [
+        (),
+        ("south",),
+        ("west",),
+        ("south",),
+        ("south",),
+        ("west",),
+        ("west",),
+        ("south",),
+        ("west",),
+    ]
+    assert all(stop.target == "dark horseman" for stop in stops)
+    assert all(stop.consider_only for stop in stops)
 
 
 def test_vile_goblin_hunt_keeps_bystander_exception_but_allows_combat() -> None:

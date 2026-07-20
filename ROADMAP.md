@@ -719,3 +719,11 @@ and failure handling before registering each new level-band policy.
   Quartermaster purchase was refused. The supply path now becomes visible,
   clears the pending order, and retries instead of walking repeatedly between
   General Supplies and the Mud School entrance.
+- Run 493 live-validated that recovery: Ararisa became visible, used the
+  existing bounded bank advance, bought five pies at the current reboot price,
+  and returned safely.
+- Run 494 stopped the Miden'nir horseman probe at the observed South Bridge
+  wander room. Both coin-carrying horsemen were together there, so the crowd
+  guard skipped consideration and combat before completing the circuit safely.
+  The horseman loop remains research-only until an isolated target is observed
+  and assessed.

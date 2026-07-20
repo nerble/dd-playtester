@@ -5199,21 +5199,28 @@ def ambush_vile_goblin_hunt_stops() -> tuple[FieldHuntStop, ...]:
 
 
 def midennir_horseman_consider_stops() -> tuple[FieldHuntStop, ...]:
-    """Search the horseman trail and consider one isolated target without attacking."""
+    """Search observed wander rooms and the source trail without attacking."""
     return (
-        FieldHuntStop(
-            (
-                "west",
-                "south",
-                "south",
-                "west",
-            ),
-            "dark horseman",
-            consider_only=True,
-        ),
+        FieldHuntStop((), "dark horseman", consider_only=True),
+        FieldHuntStop(("south",), "dark horseman", consider_only=True),
+        FieldHuntStop(("west",), "dark horseman", consider_only=True),
+        FieldHuntStop(("south",), "dark horseman", consider_only=True),
+        FieldHuntStop(("south",), "dark horseman", consider_only=True),
+        FieldHuntStop(("west",), "dark horseman", consider_only=True),
         FieldHuntStop(("west",), "dark horseman", consider_only=True),
         FieldHuntStop(("south",), "dark horseman", consider_only=True),
         FieldHuntStop(("west",), "dark horseman", consider_only=True),
+    )
+
+
+def midennir_horseman_probe_route() -> Fastwalk:
+    """Stop at South Bridge so wandering horsemen are inspected on approach."""
+    return Fastwalk(
+        "midennir horseman approach",
+        6,
+        16,
+        "5s",
+        recall_after_loot=True,
     )
 
 
@@ -5294,7 +5301,11 @@ async def run_ambush_research_profile(
         spec,
         profile_path,
         objective_level=11,
-        fastwalk_route=route_named("ambush"),
+        fastwalk_route=(
+            midennir_horseman_probe_route()
+            if horseman_probe
+            else route_named("ambush")
+        ),
         fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
         fastwalk_hunt_stops=hunt_stops,
         fastwalk_train_before_departure=guard_probe or vile_hunt,
