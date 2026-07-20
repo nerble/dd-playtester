@@ -727,3 +727,20 @@ and failure handling before registering each new level-band policy.
   guard skipped consideration and combat before completing the circuit safely.
   The horseman loop remains research-only until an isolated target is observed
   and assessed.
+
+## Progression Evidence Cycle 25
+
+- Level-10 Mage progression is now registered through two bounded policies:
+  acquire a sanctuary potion from an isolated source-level-10 large
+  hobgoblin, then spend it against the source-level-9 vile goblin. Both
+  policies target level 11 and retain live consider, crowd withdrawal, health
+  retreat, healer recovery, potion-pouch handling, and a one-kill limit.
+- Run 495 found two large hobgoblins elsewhere in Moria but completed the
+  circuit without an eligible encounter. It recalled with 24 movement, slept
+  in the healing room, and returned safely without forcing combat.
+- Run 496 rotated to the proven Ambush exterior, killed one war dog for 204 XP
+  while taking 17 damage, looted a collar and one silver coin, then recovered
+  fully. Ararisa reached 38,467 XP, 1,233 short of level 10.
+- Run 497 identified the new collar as another 20-pound +1 damroll item,
+  preserved the two useful existing collars, donated only the redundant copy,
+  saved, and quit safely.

@@ -280,6 +280,46 @@ _MORIA_SANCTUARY_LEVEL_NINE_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_AMBUSH_VILE_LEVEL_TEN_POLICY = ProgressionPolicy(
+    policy_id="ambush-vile-goblin-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="verified",
+    execution="ambush-vile-hunt",
+    summary=(
+        "Spend one confirmed pouch-held sanctuary potion on the isolated vile "
+        "goblin while progressing from level 10."
+    ),
+    evidence=(
+        "DD4 source places one unarmed source-level-9 vile goblin with a noncombat prisoner in room 4519.",
+        "The source level remains inside the productive range at character level 10, subject to the existing live consider gate.",
+        "Live runs 458, 477, 480, and 487 verified the sanctuary-protected one-kill loop at level 9.",
+        "The level-10 policy preserves the same crowd withdrawal, health retreat, healer recovery, and one-kill limit.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=1,
+)
+
+_MORIA_SANCTUARY_LEVEL_TEN_POLICY = ProgressionPolicy(
+    policy_id="moria-sanctuary-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="verified",
+    execution="moria-sanctuary-hunt",
+    summary=(
+        "Acquire one sanctuary potion from an isolated source-level-10 large "
+        "hobgoblin before the next protected level-10 fight."
+    ),
+    evidence=(
+        "DD4 source places two source-level-10 large hobgoblins carrying purple sanctuary potions in Moria, an official level 5-15 area.",
+        "Live runs 456, 476, 478, and 486 verified the bounded carrier circuit and safe empty-circuit return at level 9.",
+        "The target remains level-appropriate at character level 10 and every candidate still passes live consider and crowd gates.",
+        "The policy keeps the one-kill limit and explicit inventory synchronization before potion stow.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=1,
+)
+
 _LIQUIDATE_LOOT_POLICY = ProgressionPolicy(
     policy_id="liquidate-loot",
     minimum_level=2,
@@ -428,6 +468,16 @@ def policy_for(
                 return _BUY_FLIGHT_POLICY
             return _MORIA_SANCTUARY_LEVEL_NINE_POLICY
         return _AMBUSH_LEVEL_NINE_POLICY
+    if canonical_class == "mage" and normalized_level == 10:
+        if (
+            not has_flight
+            and can_attempt_flight_purchase
+            and not flight_purchase_failed
+        ):
+            return _BUY_FLIGHT_POLICY
+        if has_sanctuary_potion:
+            return _AMBUSH_VILE_LEVEL_TEN_POLICY
+        return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
     if normalized_level < 10:
         return replace(
             _MUD_SCHOOL_RESEARCH_POLICY,

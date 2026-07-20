@@ -227,7 +227,41 @@ def test_sellable_loot_selects_safe_liquidation_before_the_next_hunt() -> None:
     assert policy.execution == "sell-loot"
 
 
-def test_level_ten_and_above_is_explicitly_unavailable() -> None:
+def test_level_ten_mage_acquires_sanctuary_before_hunting() -> None:
+    policy = policy_for(10, "mage", has_large_sack=True)
+
+    assert policy.policy_id == "moria-sanctuary-10-11"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.maximum_level == 11
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_ten_mage_spends_confirmed_sanctuary_on_vile_goblin() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        has_sanctuary_potion=True,
+    )
+
+    assert policy.policy_id == "ambush-vile-goblin-10-11"
+    assert policy.execution == "ambush-vile-hunt"
+    assert policy.maximum_level == 11
+
+
+def test_level_ten_mage_preserves_flight_maintenance() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+
+
+def test_unregistered_class_at_level_ten_is_explicitly_unavailable() -> None:
     policy = policy_for(10, "psionicist")
 
     assert policy.policy_id == "unregistered-10-100"

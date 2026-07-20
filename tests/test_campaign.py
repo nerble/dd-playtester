@@ -333,6 +333,41 @@ def test_level_nine_ambush_campaign_uses_only_proven_war_dog(
     assert captured["fastwalk_kill_limit"] == 1
 
 
+def test_level_ten_mage_campaign_reuses_bounded_moria_carrier_loop(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                config_path,
+                {"level": 10, "xp": 40_000},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(10, "mage", has_large_sack=True),
+        )
+    )
+
+    assert captured["objective_level"] == 11
+    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["require_fastwalk_kill"] is False
+    assert captured["allow_safe_fastwalk_abort"] is True
+
+
 def test_campaign_buys_and_uses_flight_potion_as_maintenance(
     tmp_path,
     monkeypatch,
