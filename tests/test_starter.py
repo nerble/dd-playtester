@@ -26,6 +26,7 @@ from dd4tester.starter import (
     _sellable_inventory_keyword,
     _watchdog_progress_marker,
     ambush_exterior_hunt_stops,
+    midennir_horseman_consider_stops,
 )
 from dd4tester.state import CharacterState
 
@@ -70,6 +71,18 @@ def test_ambush_exterior_research_stays_out_of_the_cave_complex() -> None:
     ]
     assert "down" not in commands
     assert commands[-2:] == ["open south", "south"]
+
+
+def test_midennir_horseman_probe_uses_source_route_and_never_attacks() -> None:
+    stops = midennir_horseman_consider_stops()
+
+    assert stops == (
+        FieldHuntStop(
+            ("west", "south", "south", "west", "west", "south", "west"),
+            "dark horseman",
+            consider_only=True,
+        ),
+    )
 
 
 def test_creation_policy_follows_configured_character_profile() -> None:

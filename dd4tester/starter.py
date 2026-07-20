@@ -4982,14 +4982,34 @@ def ambush_vile_goblin_consider_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def midennir_horseman_consider_stops() -> tuple[FieldHuntStop, ...]:
+    """Reach the source-backed horseman dead end and consider without attacking."""
+    return (
+        FieldHuntStop(
+            (
+                "west",
+                "south",
+                "south",
+                "west",
+                "west",
+                "south",
+                "west",
+            ),
+            "dark horseman",
+            consider_only=True,
+        ),
+    )
+
+
 async def run_ambush_research_profile(
     path: str | Path,
     *,
     guard_probe: bool = False,
     vile_probe: bool = False,
+    horseman_probe: bool = False,
 ) -> RunResult:
     """Live-consider the source-backed exterior Ambush targets and return."""
-    if guard_probe and vile_probe:
+    if sum((guard_probe, vile_probe, horseman_probe)) > 1:
         raise ValueError("choose only one Ambush probe target")
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
@@ -4998,6 +5018,8 @@ async def run_ambush_research_profile(
         hunt_stops = ambush_guard_consider_stops()
     elif vile_probe:
         hunt_stops = ambush_vile_goblin_consider_stops()
+    elif horseman_probe:
+        hunt_stops = midennir_horseman_consider_stops()
     return await StarterBotRunner(
         spec,
         profile_path,

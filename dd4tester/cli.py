@@ -217,6 +217,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="consider the unarmed level-9 vile goblin under invisibility without attacking",
     )
+    ambush_probe_group.add_argument(
+        "--horseman-probe",
+        action="store_true",
+        help="consider a Miden'nir dark horseman without attacking or entering a crowded room",
+    )
     moria_parser = subcommands.add_parser(
         "moria-research",
         help="verify the safe Midgaard-to-Moria approach and return to the Mage Guild",
@@ -656,6 +661,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.profile,
                     guard_probe=args.guard_probe,
                     vile_probe=args.vile_probe,
+                    horseman_probe=args.horseman_probe,
                 )
             )
         except Exception as exc:
