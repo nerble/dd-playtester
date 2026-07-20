@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from dd4tester.hunt_candidates import (
@@ -23,6 +24,7 @@ def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
     assert area.objects[200].source_cost == 100
     assert area.rooms[3001].exits["north"].destination == 3002
     assert area.mob_resets[1].object_vnums == (200, 201)
+    assert area.mob_resets[1].equipment == ((16, 200),)
     assert area.container_contents[201] == [202]
 
 
@@ -90,7 +92,12 @@ def test_candidate_ranking_rejects_route_through_higher_level_aggressor(
     assert candidate.boot_kills == 2
     assert candidate.loot == ("a rusty sword",)
     assert candidate.contained_coins == 50
+    assert candidate.equipped_weapons == ("a rusty sword",)
+    assert candidate.estimated_level_range == (1, 5)
+    assert candidate.estimated_base_hp_range == (8, 65)
+    assert candidate.estimated_peak_round_damage == 60
     assert "route: the dangerous guard L8 in 3002" in candidate.hazards
+    assert any("NPC base damage x1.5" in hazard for hazard in candidate.hazards)
     assert not any("instance limit" in hazard for hazard in candidate.hazards)
 
 
@@ -159,3 +166,31 @@ def test_candidate_ranking_can_include_targets_without_known_loot(monkeypatch) -
         "a cellar rat",
         "the dangerous guard",
     }
+
+
+def test_candidate_ranking_rejects_source_peak_round_above_character_hp(
+    monkeypatch,
+) -> None:
+    area = parse_area_file(FIXTURE)
+    area.mobiles[100] = replace(area.mobiles[100], alignment=100)
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("hunt_area.are",),
+    )
+    world = WorldSource(
+        mobiles=area.mobiles,
+        objects=area.objects,
+        rooms=area.rooms,
+        mob_resets=area.mob_resets,
+        container_contents=area.container_contents,
+        mobile_specials=area.mobile_specials,
+    )
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=10,
+        character_max_hp=50,
+    )[0]
+
+    assert candidate.status == "reject"
+    assert "source peak round 60 >= character max HP 50" in candidate.hazards

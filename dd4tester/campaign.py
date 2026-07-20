@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +24,8 @@ from .storage import RunStorage
 
 
 SegmentRunner = Callable[[CharacterSpec, Path], Awaitable[RunResult]]
+_MAINTENANCE_EXECUTIONS = {"restock", "sell-loot", "rearm-weapon"}
+_ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 @dataclass(frozen=True)
@@ -117,6 +121,7 @@ class CampaignRunner:
         self.segment_runner = segment_runner
         self.force_new = force_new
         self._historical_large_sack = False
+        self._boot_kill_counts: Counter[str] = Counter()
 
     async def run(self) -> CampaignResult:
         with RunStorage(self.spec.database) as storage:
@@ -124,6 +129,15 @@ class CampaignRunner:
                 self.spec.character.name,
                 "large sack",
             )
+            boot_id = storage.latest_boot_id()
+            if boot_id is not None:
+                self._boot_kill_counts.update(
+                    str(row["mob_name"])
+                    for row in storage.list_mob_kills(
+                        self.spec.character.name,
+                        boot_id=boot_id,
+                    )
+                )
             campaign_id, state = self._open_campaign(storage)
             checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
             checkpoint_id = int(checkpoint["id"]) if checkpoint is not None else None
@@ -140,7 +154,10 @@ class CampaignRunner:
 
             policy = self._policy_for_state(state)
             stalled = int(state.get("campaign_stalled_segments", 0))
-            if stalled >= self.spec.max_stalled_segments:
+            if (
+                stalled >= self.spec.max_stalled_segments
+                and policy.execution not in _MAINTENANCE_EXECUTIONS
+            ):
                 message = f"Campaign stalled for {stalled} completed segment(s)."
                 checkpoint_id = self._checkpoint(
                     storage,
@@ -203,6 +220,9 @@ class CampaignRunner:
                 "inventory" not in state
                 or _state_has_item(state.get("inventory"), "pie")
             ),
+            has_weapon=bool(state.get("campaign_has_weapon", True)),
+            boot_kill_counts=self._boot_kill_counts,
+            stalled_segments=int(state.get("campaign_stalled_segments", 0)),
         )
 
     def _open_campaign(self, storage: RunStorage) -> tuple[int, dict[str, Any]]:
@@ -317,12 +337,23 @@ class CampaignRunner:
             command_count=command_count,
             duration_seconds=duration_seconds,
         )
-        stalled = _stalled_count(
-            state,
-            end_state,
-            storage.get_latest_campaign_checkpoint(campaign_id),
+        stalled = (
+            0
+            if policy.execution in _MAINTENANCE_EXECUTIONS
+            else _stalled_count(
+                state,
+                end_state,
+                storage.get_latest_campaign_checkpoint(campaign_id),
+            )
         )
-        checkpoint_state = {**end_state, "campaign_stalled_segments": stalled}
+        checkpoint_state = {
+            **end_state,
+            "campaign_stalled_segments": stalled,
+            "campaign_has_weapon": (
+                bool(state.get("campaign_has_weapon", True))
+                or policy.execution == "rearm-weapon"
+            ),
+        }
         checkpoint_id = self._checkpoint(
             storage,
             campaign_id,
@@ -429,6 +460,12 @@ async def _run_policy_segment(
             profile_path,
             city_restock=True,
         ).run()
+    if policy.execution == "rearm-weapon":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            city_rearm=True,
+        ).run()
     if policy.execution in {"ambush-war-dog-hunt", "ambush-hunt"}:
         hunt_stops = (
             ambush_level_eight_hunt_stops()
@@ -442,6 +479,10 @@ async def _run_policy_segment(
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=hunt_stops,
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=(
+                policy.execution == "ambush-hunt"
+            ),
             fastwalk_require_invisibility=True,
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
@@ -476,6 +517,7 @@ async def _run_policy_segment(
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=hunt_stops,
+            fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=not use_level_eight_loadout,
             fastwalk_require_invisibility=use_level_eight_loadout,
             require_fastwalk_kill=False,
@@ -571,7 +613,7 @@ def _newer_progress_state(
         return checkpoint
     checkpoint_progress = (_level(checkpoint), _numeric_progress(checkpoint, "xp"))
     live_progress = (_level(live), _numeric_progress(live, "xp"))
-    return live if live_progress >= checkpoint_progress else checkpoint
+    return {**checkpoint, **live} if live_progress >= checkpoint_progress else checkpoint
 
 
 def _numeric_progress(state: dict[str, Any], key: str) -> int:
@@ -583,7 +625,7 @@ def _state_has_item(value: Any, item_name: str) -> bool:
     target = item_name.casefold()
     if isinstance(value, str):
         try:
-            decoded = json.loads(value)
+            decoded = json.loads(_ANSI_ESCAPE.sub("", value))
         except json.JSONDecodeError:
             return target in value.casefold()
         return _state_has_item(decoded, item_name)
@@ -598,12 +640,43 @@ def _state_has_item(value: Any, item_name: str) -> bool:
     return False
 
 
+def _state_item_count(value: Any, item_name: str) -> int:
+    target = item_name.casefold()
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(_ANSI_ESCAPE.sub("", value))
+        except json.JSONDecodeError:
+            return int(target in value.casefold())
+        return _state_item_count(decoded, item_name)
+    if isinstance(value, dict):
+        description = next(
+            (
+                value[key]
+                for key in ("short_desc", "name", "item")
+                if isinstance(value.get(key), str)
+            ),
+            None,
+        )
+        if description is not None and target in description.casefold():
+            quantity = value.get("quan", 1)
+            try:
+                return max(1, int(quantity))
+            except (TypeError, ValueError):
+                return 1
+        return sum(_state_item_count(item, item_name) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return sum(_state_item_count(item, item_name) for item in value)
+    return 0
+
+
 def _has_campaign_sellable_loot(state: dict[str, Any]) -> bool:
     keyword = _sellable_inventory_keyword(state.get("inventory"))
     if keyword is None:
         return False
     if keyword != "collar":
         return True
+    if _state_item_count(state.get("inventory"), "war dog collar") <= 2:
+        return False
     stats = state.get("stats")
     if not isinstance(stats, dict):
         return False

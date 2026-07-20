@@ -452,3 +452,66 @@ and failure handling before registering each new level-band policy.
   Optional hunt stops now carry their own health reserve; run 372 verified that
   the 95% looter gate recalled after a 175-XP dog kill instead of forcing the
   second fight. Ararisa ended safely at 28,356 XP.
+- Runs 379-380 proved that even a full-health level-8 mage can suffer extreme
+  looter weapon burst despite a favorable `consider`; run 380 escaped at 2 HP.
+  The level-8 policy is therefore dog-only. Critical recall recovery now moves
+  north from room 3001 to the healer before sleeping.
+- Campaign collar liquidation now requires more than the two active collars as
+  well as carry pressure, so expiry of a temporary Strength effect cannot cause
+  a pointless sale trip.
+
+## Progression Evidence Cycle 18
+
+- Reboot-scoped dog/goblin rotation and one-kill Miden'nir segments moved
+  Ararisa through level 8 without repeating the lethal raider experiment. Run
+  398 reached level 9 at 31,795 XP with 126 hit points and returned safely.
+- Source parsing now ranks candidates using both reset-equipped weapons and
+  DD4's fuzzed mobile level, hit-point, and peak-round damage formulas. The
+  armed fanatical guard, raider, and archer are rejected at Ararisa's current
+  health; the unarmed vile goblin remains consider-only evidence.
+- Run 401 verified carry-aware restocking after reconnecting in the Bakery:
+  four pies were purchased, the skin was filled, and Ararisa returned to the
+  Mage's Laboratory. Invisible shop rejection now uses `vis` and retries.
+- Run 402 trained evocation and `chill touch`, killed the wounded goblin and
+  war dog for 494 XP, and recovered beside the healer. Run 403 repeated the
+  bounded pair for 422 XP. Ararisa is level 9 at 32,711 XP with 6,989 XP to
+  level 10.
+- Field cleanup now loots before sacrificing the corpse for its source-backed
+  level-difference coin. When already hungry, the bot may collect and eat an
+  edible severed body part. Overflow handling preserves stance, stat, food,
+  water, and capacity gear before selling, vaulting, or donating redundant
+  unsellable objects.
+
+## Progression Evidence Cycle 19
+
+- Run 404 verified corpse sacrifice for one silver and safely recalled when the
+  wounded-goblin fight left only 85 of 126 hit points before the optional dog.
+  Ararisa ended at 32,905 XP, 6,795 XP from level 10.
+- Serialized GMCP inventory now strips ANSI colour before quantity parsing.
+  This correctly recognized three collars, and run 405 sold only the redundant
+  third collar while preserving both worn +damroll collars.
+- Missing primary weapons block combat. A dedicated safe Midgaard maintenance
+  policy buys source object 3020, a one-pound dagger, verifies DD4's `[weapon]`
+  equipment slot, and returns to the Mage's Laboratory. Run 406 exposed the
+  display-label mismatch; run 407 recognized the already-wielded dagger,
+  returned home, saved, and checkpointed successfully.
+- DD4 source confirms a worn pouch is the only place a player can draw a potion
+  from while fighting. Field departures now audit pouch contents at recall,
+  stow only identified purple sanctuary and black cure-critical potions, use
+  healing at or below 55% health, and use sanctuary at or below 80% when the
+  effect is absent. Unknown potions are never consumed automatically.
+- Run 408 live-validated the empty-pouch audit and armed field path. Ararisa
+  killed a war dog for 158 XP, stayed above 92 of 126 hit points, gained one
+  silver from corpse sacrifice, recovered fully, and ended at 33,063 XP.
+- Run 409 exposed that generic overflow donation could discard the only water
+  skin. Food and water containers are now protected from sale and donation,
+  and the unsafe Mud School fallback that removed worn armour was deleted.
+- Runs 410-411 stopped safely after exposing a silent connection and an
+  exhausted equipment-maintenance loop. Reads now have a 45-second inactivity
+  timeout with bounded reconnects, exhausted characters sleep before
+  maintenance, and non-movement stalls in safe rooms fail in place instead of
+  repeatedly recalling and consuming movement.
+- Run 412 verified emergency provisioning from an otherwise unaffordable
+  state. The bot took one bounded 300-copper Dragonhoard loan, bought and ate a
+  pie, bought a buffalo water skin, drank, saved, and quit safely at General
+  Supplies with five pies, the skin, full health and mana, and 206 movement.

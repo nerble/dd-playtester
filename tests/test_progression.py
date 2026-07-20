@@ -66,6 +66,42 @@ def test_level_eight_mage_collects_sack_before_resuming_hunts() -> None:
     assert hunt.segment_kill_limit == 1
 
 
+def test_level_eight_mage_rotates_from_repeated_dogs_to_midennir() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        boot_kill_counts={"The war dog": 10, "the goblin": 3},
+    )
+
+    assert policy.policy_id == "midennir-goblin-8-10"
+    assert policy.execution == "midennir-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_eight_mage_balances_reboot_scoped_hunt_repetition() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        boot_kill_counts={"war dog": 10, "goblin": 10},
+    )
+
+    assert policy.policy_id == "ambush-war-dog-8-9"
+
+
+def test_level_eight_mage_falls_back_after_empty_rotated_hunt() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        boot_kill_counts={"war dog": 10, "goblin": 0},
+        stalled_segments=1,
+    )
+
+    assert policy.policy_id == "ambush-war-dog-8-9"
+
+
 def test_level_nine_mage_expands_ambush_hunt_after_offense_training() -> None:
     policy = policy_for(9, "mage", has_large_sack=True)
 
@@ -73,6 +109,18 @@ def test_level_nine_mage_expands_ambush_hunt_after_offense_training() -> None:
     assert policy.execution == "ambush-hunt"
     assert policy.practice_skill == "chill touch"
     assert policy.segment_kill_limit == 2
+
+
+def test_missing_primary_weapon_selects_safe_rearm_maintenance() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        has_weapon=False,
+    )
+
+    assert policy.policy_id == "rearm-primary-weapon"
+    assert policy.execution == "rearm-weapon"
 
 
 def test_sellable_loot_selects_safe_liquidation_before_the_next_hunt() -> None:

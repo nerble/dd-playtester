@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from .character import CLASSES
@@ -264,6 +265,21 @@ _RESTOCK_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_REARM_WEAPON_POLICY = ProgressionPolicy(
+    policy_id="rearm-primary-weapon",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="rearm-weapon",
+    summary="Buy, wield, and verify a lightweight dagger at the safe Midgaard weapon shop.",
+    evidence=(
+        "DD4 source resets object 3020, a one-pound dagger, on the weaponsmith in room 3011.",
+        "DD4 source prices the dagger at 10 copper before the weaponsmith's reboot-fuzzy markup.",
+        "The route between the Mage Laboratory and Weapon Shop uses only safe Midgaard rooms.",
+    ),
+    practice_skill=None,
+)
+
 _UNAVAILABLE_POLICY = ProgressionPolicy(
     policy_id="unregistered-10-100",
     minimum_level=10,
@@ -283,6 +299,9 @@ def policy_for(
     has_large_sack: bool = False,
     has_sellable_loot: bool = False,
     has_food: bool = True,
+    has_weapon: bool = True,
+    boot_kill_counts: Mapping[str, int] | None = None,
+    stalled_segments: int = 0,
 ) -> ProgressionPolicy:
     normalized_level = int(level or 0)
     canonical_class = canonical_class_name(character_class)
@@ -292,6 +311,8 @@ def policy_for(
         return _LIQUIDATE_LOOT_POLICY
     if not has_food:
         return _RESTOCK_POLICY
+    if not has_weapon:
+        return _REARM_WEAPON_POLICY
     if normalized_level < 6:
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,
@@ -303,6 +324,14 @@ def policy_for(
         if not has_large_sack:
             return _MIDENNIR_SACK_POLICY
         if normalized_level == 8:
+            war_dog_kills = _boot_kill_count(boot_kill_counts, "war dog")
+            goblin_kills = _boot_kill_count(boot_kill_counts, "goblin")
+            if (
+                stalled_segments % 2 == 0
+                and war_dog_kills >= 5
+                and goblin_kills < war_dog_kills
+            ):
+                return _MIDENNIR_LEVEL_EIGHT_POLICY
             return _AMBUSH_LEVEL_EIGHT_POLICY
         return _AMBUSH_LEVEL_NINE_POLICY
     if normalized_level < 10:
@@ -315,6 +344,25 @@ def policy_for(
         minimum_level=normalized_level,
         practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
     )
+
+
+def _boot_kill_count(
+    counts: Mapping[str, int] | None,
+    target: str,
+) -> int:
+    expected = _normalize_mob_name(target)
+    return sum(
+        int(count)
+        for name, count in (counts or {}).items()
+        if _normalize_mob_name(name) == expected
+    )
+
+
+def _normalize_mob_name(value: str) -> str:
+    words = value.casefold().split()
+    while words and words[0] in {"a", "an", "the"}:
+        words.pop(0)
+    return " ".join(words)
 
 
 def canonical_class_name(value: str) -> str:

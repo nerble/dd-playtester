@@ -20,6 +20,8 @@ ITEM_CONTAINER = 15
 ITEM_MONEY = 20
 
 RECALL_VNUM = 3001
+WEAR_WIELD = 16
+WEAR_DUAL = 17
 LOW_LEVEL_AREA_FILES = (
     "ambush.are",
     "foundry.are",
@@ -106,6 +108,7 @@ class MobReset:
     room_vnum: int
     maximum_count: int
     object_vnums: tuple[int, ...]
+    equipment: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass
@@ -148,6 +151,10 @@ class HuntCandidate:
     source_value: int
     contained_coins: int
     hazards: tuple[str, ...]
+    equipped_weapons: tuple[str, ...] = ()
+    estimated_level_range: tuple[int, int] = (0, 0)
+    estimated_base_hp_range: tuple[int, int] = (0, 0)
+    estimated_peak_round_damage: int = 0
 
 
 def load_world_source(area_directory: Path) -> WorldSource:
@@ -240,6 +247,7 @@ def rank_hunt_candidates(
     character_level: int,
     boot_kill_counts: Mapping[str, int] | None = None,
     include_xp_only: bool = False,
+    character_max_hp: int | None = None,
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -263,6 +271,26 @@ def rank_hunt_candidates(
             continue
 
         loot_objects = _loot_objects(world, reset.object_vnums)
+        equipped_weapons = tuple(
+            item
+            for wear_location, object_vnum in reset.equipment
+            if wear_location in {WEAR_WIELD, WEAR_DUAL}
+            and (item := world.objects.get(object_vnum)) is not None
+            and item.item_type == ITEM_WEAPON
+        )
+        level_range = _mobile_level_range(mobile.level)
+        hp_range = _mobile_base_hp_range(level_range)
+        peak_round_damage = _mobile_peak_round_damage(
+            level_range[1],
+            wielding=any(
+                wear_location == WEAR_WIELD
+                for wear_location, _ in reset.equipment
+            ),
+            dual_wielding=any(
+                wear_location == WEAR_DUAL
+                for wear_location, _ in reset.equipment
+            ),
+        )
         sellable = [
             item
             for item in loot_objects
@@ -316,6 +344,23 @@ def rank_hunt_candidates(
             hazards.append(f"positive alignment target ({mobile.alignment})")
         if mobile.aggressive:
             hazards.append("target is aggressive")
+        if equipped_weapons:
+            weapon_names = ", ".join(
+                item.short_description for item in equipped_weapons
+            )
+            hazards.append(
+                f"target equips {weapon_names} (NPC base damage x1.5 per wielded hit)"
+            )
+        if (
+            character_max_hp is not None
+            and character_max_hp > 0
+            and peak_round_damage >= character_max_hp
+        ):
+            hazards.append(
+                f"source peak round {peak_round_damage} >= "
+                f"character max HP {character_max_hp}"
+            )
+            dangerous = True
         for special in world.mobile_specials.get(mobile.vnum, ()):
             hazards.append(f"target special: {special}")
         source_value = sum(item.source_cost for item in sellable)
@@ -330,10 +375,13 @@ def rank_hunt_candidates(
             - boot_kills * 15
             - max(mobile.alignment, 0) / 25
             - len(hazards) * 4
+            - len(equipped_weapons) * 24
         )
         status = "reject" if dangerous else "caution" if hazards else "promising"
-        if mobile.alignment > 0:
-            status = "reject" if mobile.alignment >= 500 else "caution"
+        if mobile.alignment >= 500:
+            status = "reject"
+        elif mobile.alignment > 0 and status == "promising":
+            status = "caution"
 
         ranked.append(
             HuntCandidate(
@@ -354,6 +402,12 @@ def rank_hunt_candidates(
                 source_value=source_value,
                 contained_coins=contained_coins,
                 hazards=tuple(dict.fromkeys(hazards)),
+                equipped_weapons=tuple(
+                    item.short_description for item in equipped_weapons
+                ),
+                estimated_level_range=level_range,
+                estimated_base_hp_range=hp_range,
+                estimated_peak_round_damage=peak_round_damage,
             )
         )
 
@@ -582,11 +636,16 @@ def _parse_resets(
                 "maximum_count": int(parts[3]),
                 "room_vnum": int(parts[4]),
                 "object_vnums": [],
+                "equipment": [],
             }
             pending.append(current)
         elif command in {"E", "G"} and current is not None and len(parts) >= 3:
             if _all_ints(parts[1:3]):
                 current["object_vnums"].append(int(parts[2]))  # type: ignore[union-attr]
+                if command == "E" and len(parts) >= 5 and _all_ints(parts[4:5]):
+                    current["equipment"].append(  # type: ignore[union-attr]
+                        (int(parts[4]), int(parts[2]))
+                    )
         elif command == "P" and len(parts) >= 5 and _all_ints(parts[1:5]):
             container_contents.setdefault(int(parts[4]), []).append(int(parts[2]))
         elif command == "D" and len(parts) >= 5 and _all_ints(parts[1:5]):
@@ -614,6 +673,7 @@ def _parse_resets(
             room_vnum=int(item["room_vnum"]),
             maximum_count=int(item["maximum_count"]),
             object_vnums=tuple(item["object_vnums"]),  # type: ignore[arg-type]
+            equipment=tuple(item["equipment"]),  # type: ignore[arg-type]
         )
         for item in pending
     ]
@@ -732,6 +792,13 @@ def _aggregate_mob_resets(
                 for object_vnum in reset.object_vnums
             )
         )
+        equipment = tuple(
+            dict.fromkeys(
+                equipped
+                for reset in group
+                for equipped in reset.equipment
+            )
+        )
         result.append(
             (
                 MobReset(
@@ -739,11 +806,42 @@ def _aggregate_mob_resets(
                     room_vnum=group[0].room_vnum,
                     maximum_count=max(reset.maximum_count for reset in group),
                     object_vnums=object_vnums,
+                    equipment=equipment,
                 ),
                 len(group),
             )
         )
     return result
+
+
+def _mobile_level_range(source_level: int) -> tuple[int, int]:
+    """Account for source-load and runtime ``number_fuzzy`` calls."""
+    return max(1, source_level - 2), source_level + 2
+
+
+def _mobile_base_hp_range(level_range: tuple[int, int]) -> tuple[int, int]:
+    """Mirror the unranked base HP bounds in ``create_mobile``."""
+    low, high = level_range
+    return (
+        low * 8 + low * low // 4,
+        high * 8 + high * high,
+    )
+
+
+def _mobile_peak_round_damage(
+    level: int,
+    *,
+    wielding: bool,
+    dual_wielding: bool,
+) -> int:
+    """Return the raw upper bound when every possible NPC strike lands."""
+    unarmed_hit = level * 3 // 2 + level // 4
+    weapon_hit = unarmed_hit + unarmed_hit // 2
+    cycle_damage = weapon_hit if wielding else unarmed_hit
+    if dual_wielding:
+        cycle_damage += weapon_hit
+    possible_attacks = 5 + int(level >= 20)
+    return cycle_damage * possible_attacks
 
 
 def _area_wandering_aggressors(

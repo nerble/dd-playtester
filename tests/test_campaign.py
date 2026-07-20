@@ -3,6 +3,8 @@ from pathlib import Path
 
 from dd4tester.campaign import (
     CampaignRunner,
+    _has_campaign_sellable_loot,
+    _newer_progress_state,
     _run_policy_segment,
     load_campaign_spec,
     run_campaign_file,
@@ -11,6 +13,36 @@ from dd4tester.progression import policy_for
 from dd4tester.runner import RunResult
 from dd4tester.starter import ambush_exterior_hunt_stops
 from dd4tester.storage import RunStorage
+
+
+def test_live_state_merge_preserves_campaign_checkpoint_metadata() -> None:
+    merged = _newer_progress_state(
+        {
+            "level": 8,
+            "xp": 29_613,
+            "campaign_stalled_segments": 1,
+            "room_name": "Mage's Laboratory",
+        },
+        {
+            "level": 8,
+            "xp": 29_613,
+            "room_name": "The Healer",
+        },
+    )
+
+    assert merged["campaign_stalled_segments"] == 1
+    assert merged["room_name"] == "The Healer"
+
+
+def test_serialized_coloured_inventory_preserves_duplicate_quantity() -> None:
+    state = {
+        "inventory": (
+            '[[{"quan":"3","short_desc":"\u001b[32ma war dog collar\u001b[0m"}]]'
+        ),
+        "stats": {"carry_wt": 129, "maxcarry_wt": 140},
+    }
+
+    assert _has_campaign_sellable_loot(state) is True
 
 
 def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> None:
@@ -159,6 +191,21 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
     )
     assert with_useful_carried_collars.policy_id == "ambush-war-dog-8-9"
 
+    with_two_collars_under_temporary_capacity_pressure = runner._policy_for_state(
+        {
+            "level": 8,
+            "inventory": [[
+                {"short_desc": "a war dog collar", "quan": "2"},
+                {"short_desc": "a big pot pie", "quan": "5"},
+            ]],
+            "stats": {"carry_wt": 126, "maxcarry_wt": 140},
+        }
+    )
+    assert (
+        with_two_collars_under_temporary_capacity_pressure.policy_id
+        == "ambush-war-dog-8-9"
+    )
+
     with_collar_weight_pressure = runner._policy_for_state(
         {
             "level": 8,
@@ -212,7 +259,7 @@ def test_campaign_restock_policy_uses_verified_city_route(
     assert captured == {"city_restock": True}
 
 
-def test_level_eight_ambush_campaign_hunts_dog_then_considers_looter(
+def test_level_eight_ambush_campaign_hunts_only_the_war_dog(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -238,10 +285,9 @@ def test_level_eight_ambush_campaign_hunts_dog_then_considers_looter(
     )
 
     stops = captured["fastwalk_hunt_stops"]
-    assert [stop.target for stop in stops] == ["war dog", "goblin"]
+    assert [stop.target for stop in stops] == ["war dog"]
     exterior = ambush_exterior_hunt_stops()
     assert stops[0].route == exterior[0].route + exterior[1].route
-    assert stops[1].route == ("south", "south")
     assert "vault_stow_items" not in captured
     assert "vault_claim_items" not in captured
     assert "vault_required_free_weight" not in captured
@@ -251,6 +297,7 @@ def test_level_eight_ambush_campaign_hunts_dog_then_considers_looter(
         "drink skin",
     )
     assert captured["fastwalk_require_invisibility"] is True
+    assert captured["fastwalk_kill_limit"] == 1
     assert captured["require_fastwalk_kill"] is False
     assert captured["allow_safe_fastwalk_abort"] is True
 
@@ -282,6 +329,8 @@ def test_level_nine_ambush_campaign_adds_the_wounded_goblin(
 
     stops = captured["fastwalk_hunt_stops"]
     assert [stop.target for stop in stops] == ["wounded goblin", "war dog"]
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["fastwalk_kill_limit"] == 2
 
 
 def test_campaign_liquidates_loot_in_a_safe_dedicated_segment(
@@ -310,6 +359,31 @@ def test_campaign_liquidates_loot_in_a_safe_dedicated_segment(
     )
 
     assert captured == {"liquidate_loot": True}
+
+
+def test_campaign_rearms_in_a_safe_dedicated_segment(tmp_path, monkeypatch) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 9, "xp": 32_000})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(9, "mage", has_large_sack=True, has_weapon=False),
+        )
+    )
+
+    assert captured == {"city_rearm": True}
 
 
 def test_midennir_campaign_sack_requires_verified_invisibility(
@@ -431,6 +505,61 @@ def test_campaign_stops_after_configured_stalled_segments(tmp_path) -> None:
     )
     assert resumed.message == "Campaign stalled for 2 completed segment(s)."
     assert calls == 3
+
+
+def test_campaign_allows_maintenance_to_clear_stall_limit(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path, max_stalled_segments=2)
+    spec = load_campaign_spec(config_path)
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="restock-provisions",
+            reason="stalled",
+            state={
+                "level": 8,
+                "xp": 30_000,
+                "inventory": [[{"short_desc": "a buffalo water skin"}]],
+                "campaign_stalled_segments": 2,
+            },
+        )
+    calls = 0
+
+    async def restock_segment(character, profile_path: Path) -> RunResult:
+        nonlocal calls
+        calls += 1
+        return _record_segment_run(
+            character.database,
+            profile_path,
+            {
+                "level": 8,
+                "xp": 30_000,
+                "inventory": [[{"short_desc": "a big pot pie"}]],
+            },
+        )
+
+    result = asyncio.run(
+        CampaignRunner(
+            spec,
+            config_path,
+            segment_runner=restock_segment,
+        ).run()
+    )
+
+    assert calls == 1
+    assert result.message is not None
+    assert "checkpointed for the next verified segment" in result.message
+    with RunStorage(database) as storage:
+        checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+        assert checkpoint is not None
+        assert '"campaign_stalled_segments": 0' in checkpoint["state_json"]
 
 
 def test_campaign_records_a_returned_failed_segment(tmp_path) -> None:

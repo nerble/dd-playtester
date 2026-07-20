@@ -517,8 +517,15 @@ def test_ambush_research_command_runs_exterior_circuit(
     transcript = tmp_path / "ambush-1.jsonl"
     database = tmp_path / "runs.sqlite3"
 
-    async def fake_ambush_research(path: Path) -> RunResult:
+    async def fake_ambush_research(
+        path: Path,
+        *,
+        guard_probe: bool,
+        vile_probe: bool,
+    ) -> RunResult:
         assert path == profile
+        assert guard_probe is True
+        assert vile_probe is False
         return RunResult(18, "success", transcript, database, {"level": 9})
 
     monkeypatch.setattr(
@@ -527,12 +534,44 @@ def test_ambush_research_command_runs_exterior_circuit(
         fake_ambush_research,
     )
 
-    exit_code = main(["ambush-research", str(profile)])
+    exit_code = main(["ambush-research", str(profile), "--guard-probe"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Run 18 success" in captured.out
     assert f"Transcript: {transcript}" in captured.out
+
+
+def test_ambush_research_command_selects_vile_goblin_probe(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+
+    async def fake_ambush_research(
+        path: Path,
+        *,
+        guard_probe: bool,
+        vile_probe: bool,
+    ) -> RunResult:
+        assert path == profile
+        assert guard_probe is False
+        assert vile_probe is True
+        return RunResult(
+            19,
+            "success",
+            tmp_path / "ambush-2.jsonl",
+            tmp_path / "runs.sqlite3",
+            {"level": 8},
+        )
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_ambush_research_profile",
+        fake_ambush_research,
+    )
+
+    assert main(["ambush-research", str(profile), "--vile-probe"]) == 0
 
 
 def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch) -> None:
@@ -597,6 +636,8 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Current reboot: unknown" in captured.out
+    assert "Character max HP: unknown" in captured.out
+    assert "fuzzed_levels\tbase_hp\tpeak_round\troom" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
     assert "caution\t" in captured.out
     assert "a cellar rat" in captured.out

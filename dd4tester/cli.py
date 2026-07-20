@@ -206,6 +206,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="path to an existing level-9 or higher mage character YAML profile",
     )
+    ambush_probe_group = ambush_parser.add_mutually_exclusive_group()
+    ambush_probe_group.add_argument(
+        "--guard-probe",
+        action="store_true",
+        help="consider the level-10 fanatical guard under invisibility without attacking",
+    )
+    ambush_probe_group.add_argument(
+        "--vile-probe",
+        action="store_true",
+        help="consider the unarmed level-9 vile goblin under invisibility without attacking",
+    )
     moria_parser = subcommands.add_parser(
         "moria-research",
         help="verify the safe Midgaard-to-Moria approach and return to the Mage Guild",
@@ -640,7 +651,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ambush-research":
         try:
-            result = asyncio.run(run_ambush_research_profile(args.profile))
+            result = asyncio.run(
+                run_ambush_research_profile(
+                    args.profile,
+                    guard_probe=args.guard_probe,
+                    vile_probe=args.vile_probe,
+                )
+            )
         except Exception as exc:
             print(f"Ambush research failed: {exc}", file=sys.stderr)
             return 1
@@ -876,9 +893,15 @@ def show_hunt_candidates(
 
     boot_id: str | None = None
     kill_counts: Counter[str] = Counter()
+    character_max_hp: int | None = None
     if database.exists():
         with RunStorage(database) as storage:
             boot_id = storage.latest_boot_id()
+            latest_state = storage.get_latest_character_state(character)
+            if latest_state is not None:
+                raw_max_hp = latest_state.get("max_hp")
+                if isinstance(raw_max_hp, (int, float)) and raw_max_hp > 0:
+                    character_max_hp = int(raw_max_hp)
             if boot_id is not None:
                 kill_counts.update(
                     row["mob_name"]
@@ -892,14 +915,17 @@ def show_hunt_candidates(
         character_level=level,
         boot_kill_counts=kill_counts,
         include_xp_only=include_xp_only,
+        character_max_hp=character_max_hp,
     )
 
     print(f"Source: {source.resolve()}")
     print(f"Character: {character}, level {level}")
+    print(f"Character max HP: {character_max_hp or 'unknown'}")
     print(f"Current reboot: {boot_id or 'unknown'}")
     print(
-        "status\tscore\tarea\ttarget\tlevel\troom\troute\troom_spawns\t"
-        "spawn_limit\tboot_kills\tloot\thazards"
+        "status\tscore\tarea\ttarget\tsource_level\tfuzzed_levels\t"
+        "base_hp\tpeak_round\troom\troute\troom_spawns\tspawn_limit\t"
+        "boot_kills\tloot\thazards"
     )
     for candidate in candidates[:limit]:
         loot = "; ".join(candidate.loot)
@@ -917,6 +943,11 @@ def show_hunt_candidates(
                     candidate.area_file,
                     candidate.target,
                     str(candidate.level),
+                    f"{candidate.estimated_level_range[0]}-"
+                    f"{candidate.estimated_level_range[1]}",
+                    f"{candidate.estimated_base_hp_range[0]}-"
+                    f"{candidate.estimated_base_hp_range[1]}",
+                    str(candidate.estimated_peak_round_damage),
                     f"{candidate.room_vnum} {candidate.room_name}",
                     ";".join(candidate.route),
                     str(candidate.room_spawn_count),
