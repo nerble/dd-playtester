@@ -103,7 +103,7 @@ def test_vile_goblin_hunt_keeps_bystander_exception_but_allows_combat() -> None:
 def test_moria_sanctuary_probe_searches_resets_and_nearby_wander_rooms() -> None:
     stops = moria_sanctuary_potion_consider_stops()
 
-    assert len(stops) == 4
+    assert len(stops) == 13
     assert stops[0].route == (
         "east",
         "north",
@@ -112,17 +112,20 @@ def test_moria_sanctuary_probe_searches_resets_and_nearby_wander_rooms() -> None
         "south",
         "down",
     )
-    assert stops[1].route == (
-        "west",
-        "north",
-        "west",
-        "south",
-        "east",
-        "east",
-        "south",
-    )
-    assert stops[2].route == ("south",)
-    assert stops[3].route == ("east",)
+    assert [stop.route for stop in stops[1:]] == [
+        ("west",),
+        ("north",),
+        ("west",),
+        ("south",),
+        ("east",),
+        ("east",),
+        ("east",),
+        ("west", "south"),
+        ("west",),
+        ("south",),
+        ("east",),
+        ("east",),
+    ]
     assert {stop.target for stop in stops} == {"large hobgoblin"}
     assert all(stop.consider_only for stop in stops)
     assert all(stop.exact_target for stop in stops)
@@ -132,7 +135,7 @@ def test_moria_sanctuary_probe_searches_resets_and_nearby_wander_rooms() -> None
 def test_moria_sanctuary_hunt_requires_full_health_and_enables_combat() -> None:
     stops = moria_sanctuary_potion_hunt_stops()
 
-    assert len(stops) == 4
+    assert len(stops) == 13
     assert all(stop.minimum_health_ratio == 1.0 for stop in stops)
     assert all(stop.consider_only is False for stop in stops)
     assert all(stop.exact_target for stop in stops)
@@ -2836,6 +2839,102 @@ def test_fastwalk_recovery_uses_healer_without_polling_heal_menu() -> None:
     assert sleep is not None
     assert sleep.command == "sleep"
     assert sleep.command != "heal"
+
+
+def test_fastwalk_recovery_casts_invisibility_before_crossing_to_healer() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "large hobgoblin"),),
+        fastwalk_require_invisibility=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    home = CharacterState(
+        level=9,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+        position=7,
+        hp=126,
+        max_hp=126,
+        mana=319,
+        max_mana=343,
+        move=146,
+        max_move=230,
+        affects=[[]],
+    )
+
+    decision = policy.next_decision(home)
+
+    assert decision is not None
+    assert decision.command == "cast invis"
+    assert "healer" in decision.reason
+
+
+def test_recall_accepts_a_prompt_without_a_room_change() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.current_room = "3001"
+
+    policy.after_command(BotDecision("recall", "return safely"))
+
+    assert policy.pending_travel_origin is None
+    policy.last_command_at = time.monotonic() - 1
+    policy.observe_events(
+        [GameEvent("prompt_seen", "text", {})],
+        CharacterState(room_vnum="3001"),
+    )
+    assert policy.prompt_ready is True
+
+
+def test_level_nine_mage_restock_uses_invisibility_between_city_shops() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    home = CharacterState(
+        level=9,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        affects=[[]],
+    )
+
+    departure = policy.next_decision(home)
+
+    assert departure is not None
+    assert departure.command == "cast invis"
+
+    policy.restock_borrowing = True
+    policy.prompt_ready = True
+    bank = CharacterState(
+        level=9,
+        room_name="Dragonhoard Bank",
+        room_vnum="3007",
+        position=7,
+        affects=[[{"name": "invis", "duration": "5"}]],
+    )
+
+    visible = policy.next_decision(bank)
+
+    assert visible is not None
+    assert visible.command == "vis"
+
+    policy.prompt_ready = True
+    policy.restock_borrow_step = 2
+    bank_road = CharacterState(
+        level=9,
+        room_name="East Temple Road",
+        room_vnum="3006",
+        position=7,
+        affects=[[]],
+    )
+
+    protected_return = policy.next_decision(bank_road)
+
+    assert protected_return is not None
+    assert protected_return.command == "cast invis"
 
 
 def test_critical_fastwalk_recovery_reaches_healer_north_of_recall() -> None:

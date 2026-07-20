@@ -903,7 +903,11 @@ class StarterPolicy:
     def after_command(self, decision: BotDecision) -> None:
         self.prompt_ready = False
         self.last_command_at = time.monotonic() if self.in_world else None
-        if decision.command in _MOVEMENT_COMMANDS and self.current_room:
+        if (
+            decision.command in _MOVEMENT_COMMANDS
+            and decision.command != "recall"
+            and self.current_room
+        ):
             self.pending_travel_origin = self.current_room
         if (
             decision.command in _MOVEMENT_COMMANDS
@@ -2243,7 +2247,42 @@ class StarterPolicy:
 
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
+        can_use_city_invisibility = bool(
+            self.spec.character_class == "mage"
+            and (state.level or 0) >= 8
+        )
+        if (
+            can_use_city_invisibility
+            and room_vnum == "3019"
+            and self.city_restock_step < 3
+            and not _has_named_affect(state.affects, "invis")
+        ):
+            return BotDecision(
+                "cast invis",
+                "cross Midgaard safely while travelling to city supplies",
+            )
         if self.restock_borrowing:
+            if (
+                room_vnum == "3007"
+                and (
+                    self.shop_visibility_rejected
+                    or _has_named_affect(state.affects, "invis")
+                )
+            ):
+                self.shop_visibility_rejected = False
+                return BotDecision(
+                    "vis",
+                    "become visible before asking the Dragonhoard banker for credit",
+                )
+            if (
+                can_use_city_invisibility
+                and room_vnum in {"3013", "3006"}
+                and not _has_named_affect(state.affects, "invis")
+            ):
+                return BotDecision(
+                    "cast invis",
+                    "cross Temple Square safely during the emergency bank trip",
+                )
             if room_vnum == "3009" and self.restock_borrow_step >= 2:
                 self.restock_borrowing = False
                 self.restock_borrow_complete = True
@@ -3864,6 +3903,28 @@ class StarterPolicy:
             if self.return_home and ratio < 0.75 and not is_healer_room:
                 return None
             if self.fastwalk_route is not None and not is_healer_room:
+                if (
+                    state.room_vnum == "3019"
+                    and self.fastwalk_require_invisibility
+                ):
+                    invisibility = self._fastwalk_invisibility_decision(
+                        state,
+                        failure_command="sleep",
+                        failure_reason=(
+                            "recover in the safe Mage Guild after invisibility "
+                            "preparation failed"
+                        ),
+                        cast_reason=(
+                            "establish invisibility before crossing Midgaard "
+                            "to the healer"
+                        ),
+                        abort_reason=(
+                            "field recovery could not establish invisibility "
+                            "before crossing Midgaard"
+                        ),
+                    )
+                    if invisibility is not None:
+                        return invisibility
                 healer_routes = {
                     "3724": "down",
                     "3725": "down",
@@ -4752,7 +4813,10 @@ class StarterBotRunner:
                 "success",
                 recorder.path,
                 storage.path,
-                self.character_state.to_dict(),
+                {
+                    **self.character_state.to_dict(),
+                    "combat_pouch_potions": dict(policy.combat_pouch_potions),
+                },
             )
         except Exception as exc:
             if policy is not None:
@@ -5118,32 +5182,36 @@ def midennir_horseman_consider_stops() -> tuple[FieldHuntStop, ...]:
 
 def moria_sanctuary_potion_consider_stops() -> tuple[FieldHuntStop, ...]:
     """Search the potion resets and nearby wander rooms without attacking."""
+    def stop(
+        route: tuple[str, ...],
+        *,
+        actions: tuple[str, ...] = (),
+    ) -> FieldHuntStop:
+        return FieldHuntStop(
+            route,
+            "large hobgoblin",
+            actions=actions,
+            consider_only=True,
+            exact_target=True,
+        )
+
     return (
-        FieldHuntStop(
+        stop(
             ("east", "north", "north", "east", "south", "down"),
-            "large hobgoblin",
             actions=("where hobgoblin",),
-            consider_only=True,
-            exact_target=True,
         ),
-        FieldHuntStop(
-            ("west", "north", "west", "south", "east", "east", "south"),
-            "large hobgoblin",
-            consider_only=True,
-            exact_target=True,
-        ),
-        FieldHuntStop(
-            ("south",),
-            "large hobgoblin",
-            consider_only=True,
-            exact_target=True,
-        ),
-        FieldHuntStop(
-            ("east",),
-            "large hobgoblin",
-            consider_only=True,
-            exact_target=True,
-        ),
+        stop(("west",)),
+        stop(("north",)),
+        stop(("west",)),
+        stop(("south",)),
+        stop(("east",)),
+        stop(("east",)),
+        stop(("east",)),
+        stop(("west", "south")),
+        stop(("west",)),
+        stop(("south",)),
+        stop(("east",)),
+        stop(("east",)),
     )
 
 
@@ -5217,7 +5285,7 @@ async def run_moria_research_profile(
             profile_path,
             objective_level=11,
             fastwalk_route=route_named("moria"),
-            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_origin_actions=("get all.pie", "drink skin"),
             fastwalk_hunt_stops=(
                 moria_sanctuary_potion_hunt_stops()
                 if sanctuary_hunt

@@ -333,7 +333,7 @@ def test_level_nine_ambush_campaign_adds_the_wounded_goblin(
     assert captured["fastwalk_kill_limit"] == 2
 
 
-def test_level_nine_campaign_keeps_safe_exterior_rotation_after_depletion(
+def test_level_nine_campaign_rotates_to_moria_sanctuary_hunt_after_depletion(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -369,9 +369,54 @@ def test_level_nine_campaign_keeps_safe_exterior_rotation_after_depletion(
     )
 
     stops = captured["fastwalk_hunt_stops"]
-    assert [stop.target for stop in stops] == ["wounded goblin", "war dog"]
+    assert {stop.target for stop in stops} == {"large hobgoblin"}
     assert captured["fastwalk_train_before_departure"] is True
-    assert captured["fastwalk_kill_limit"] == 2
+    assert captured["fastwalk_require_invisibility"] is True
+    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["require_fastwalk_kill"] is False
+    assert captured["allow_safe_fastwalk_abort"] is True
+
+
+def test_level_nine_campaign_uses_potion_backed_vile_goblin_hunt(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                config_path,
+                {"level": 9, "xp": 33_000},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        has_sanctuary_potion=True,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["vile goblin"]
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["fastwalk_require_invisibility"] is True
+    assert captured["fastwalk_kill_limit"] == 1
 
 
 def test_campaign_liquidates_loot_in_a_safe_dedicated_segment(

@@ -243,8 +243,8 @@ _AMBUSH_VILE_LEVEL_NINE_POLICY = ProgressionPolicy(
     policy_id="ambush-vile-goblin-9-10",
     minimum_level=9,
     maximum_level=10,
-    status="research",
-    execution=None,
+    status="verified",
+    execution="ambush-vile-hunt",
     summary=(
         "Revalidate the level-nine vile goblin only with sanctuary or healing "
         "potions reserved in the worn pouch."
@@ -254,6 +254,26 @@ _AMBUSH_VILE_LEVEL_NINE_POLICY = ProgressionPolicy(
         "Live run 427 considered the reboot-fuzzed vile goblin an easy kill and returned without combat.",
         "Live run 428 killed it at full health for 322 XP, looted and sacrificed the corpse, and recalled safely.",
         "Live run 432 suffered repeated flee failures and died; one easy kill is not sufficient unattended-safety evidence.",
+        "Live run 458 consumed a pouch-held purple potion in combat, confirmed sanctuary, killed the vile goblin for 465 XP, and returned with 112/126 health.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=1,
+)
+
+_MORIA_SANCTUARY_LEVEL_NINE_POLICY = ProgressionPolicy(
+    policy_id="moria-sanctuary-9-10",
+    minimum_level=9,
+    maximum_level=10,
+    status="verified",
+    execution="moria-sanctuary-hunt",
+    summary=(
+        "Hunt one isolated large hobgoblin for a purple sanctuary potion, "
+        "then keep it in the worn pouch for the next protected fight."
+    ),
+    evidence=(
+        "DD4 source places two level-10 large hobgoblins carrying purple sanctuary potions in Moria.",
+        "Live run 456 found an isolated reboot-fuzzed level-9 carrier in the expanded circuit, killed it for 505 XP, and stowed the potion in the worn pouch.",
+        "Live run 457 completed the same bounded circuit without combat when no eligible carrier was present.",
     ),
     practice_skill="chill touch",
     segment_kill_limit=1,
@@ -320,6 +340,7 @@ def policy_for(
     has_sellable_loot: bool = False,
     has_food: bool = True,
     has_weapon: bool = True,
+    has_sanctuary_potion: bool = False,
     boot_kill_counts: Mapping[str, int] | None = None,
     stalled_segments: int = 0,
 ) -> ProgressionPolicy:
@@ -353,6 +374,25 @@ def policy_for(
             ):
                 return _MIDENNIR_LEVEL_EIGHT_POLICY
             return _AMBUSH_LEVEL_EIGHT_POLICY
+        if has_sanctuary_potion:
+            return _AMBUSH_VILE_LEVEL_NINE_POLICY
+        large_hobgoblin_kills = _boot_kill_count(
+            boot_kill_counts, "large hobgoblin"
+        )
+        vile_goblin_kills = _boot_kill_count(boot_kill_counts, "vile goblin")
+        exterior_kills = (
+            _boot_kill_count(boot_kill_counts, "war dog")
+            + _boot_kill_count(boot_kill_counts, "wounded goblin")
+        )
+        if (
+            boot_kill_counts
+            and stalled_segments == 0
+            and (
+                vile_goblin_kills >= large_hobgoblin_kills > 0
+                or exterior_kills >= 4
+            )
+        ):
+            return _MORIA_SANCTUARY_LEVEL_NINE_POLICY
         return _AMBUSH_LEVEL_NINE_POLICY
     if normalized_level < 10:
         return replace(

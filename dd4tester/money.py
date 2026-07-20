@@ -151,6 +151,9 @@ async def run_money_loop_profile(
                 profile_path,
                 fastwalk_route=route,
                 fastwalk_attack_target=candidate.target_keyword,
+                fastwalk_require_invisibility=(
+                    spec.character_class.casefold() == "mage"
+                ),
             ).run()
         except Exception:
             with RunStorage(spec.database) as storage:

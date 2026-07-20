@@ -608,3 +608,44 @@ and failure handling before registering each new level-band policy.
   source-ranked Foundry target, and run 447 confirmed the two carried war-dog
   collars were not accepted by the current sale plan. Money acquisition remains
   the next blocker before further potion provisioning.
+
+## Progression Evidence Cycle 21
+
+- Run 448 exposed two city-safety faults: a wandering drunk attacked during an
+  unprotected healer route, and recalling from recall left the policy waiting
+  for a room change that could never occur. Mage field and supply routes now
+  cast invisibility before crossing Midgaard, and recall no longer creates a
+  pending travel origin.
+- Runs 449-451 live-validated safe invisible travel and bounded missing-target
+  handling. Uburz and Ushog were absent from the Foundry, so the policies
+  returned without combat instead of waiting inside the area and delaying its
+  reset.
+- Run 452 recorded the level-9 Mage guild state: chill touch, invisibility,
+  evocation, and illusion are practised to 36; alteration is 24, with one
+  physical and no intellectual practices. Source prerequisites require
+  alteration 30 for fly, so the spell cannot yet replace potions.
+- Run 453 showed that the original Moria circuit reached the potion carrier
+  with too little movement when flight was absent. The bounded search now
+  covers the connected maze, cave, and tunnel rooms while preserving a recall
+  reserve.
+- Run 454 used one bounded 300-copper bank loan, safely becoming visible only
+  at the bank and shops, then bought six pies and refilled the water skin. Run
+  455 bought a light blue potion at the current reboot price of 94 copper and
+  verified 33 ticks of flight.
+- Run 456 found an isolated source mob 4055 in the expanded maze circuit,
+  confirmed `The perfect match!`, and killed it from full health for 505 XP.
+  The policy looted its purple sanctuary potion, put it in the worn pouch,
+  recalled, recovered fully beside the healer, and saved at 33,175 XP with
+  6,525 XP remaining to level 10.
+- Run 457 found no second eligible potion carrier. It ignored unrelated veteran
+  warriors, preserved the pouch-held potion, recalled at full health, recovered
+  movement beside the healer, and saved safely.
+- Run 458 live-validated the protected progression loop. Ararisa drew the
+  purple potion from her worn pouch during combat, confirmed sanctuary, and
+  killed the level-9 vile goblin for 465 XP while losing only 14 hit points.
+  She recovered fully and saved at 33,640 XP, 6,060 XP from level 10.
+- Level-9 Mage campaign selection now checkpoints exact emergency-potion
+  quantities. It may choose the vile goblin only when a purple potion is
+  confirmed in the pouch; otherwise it rotates through the verified Moria
+  acquisition circuit and falls back to safer exterior kills when the carrier
+  is absent.

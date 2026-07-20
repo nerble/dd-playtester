@@ -20,6 +20,7 @@ from .starter import (
     ambush_exterior_hunt_stops,
     ambush_level_eight_hunt_stops,
     ambush_vile_goblin_hunt_stops,
+    moria_sanctuary_potion_hunt_stops,
 )
 from .storage import RunStorage
 
@@ -222,6 +223,14 @@ class CampaignRunner:
                 or _state_has_item(state.get("inventory"), "pie")
             ),
             has_weapon=bool(state.get("campaign_has_weapon", True)),
+            has_sanctuary_potion=(
+                int(
+                    dict(state.get("combat_pouch_potions") or {}).get(
+                        "purple", 0
+                    )
+                )
+                > 0
+            ),
             boot_kill_counts=self._boot_kill_counts,
             stalled_segments=int(state.get("campaign_stalled_segments", 0)),
         )
@@ -596,6 +605,19 @@ async def _run_policy_segment(
                 FieldHuntStop(("west", "north", "west"), "large orc"),
                 FieldHuntStop((), "orc"),
             ),
+        ).run()
+    if policy.execution == "moria-sanctuary-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=route_named("moria"),
+            fastwalk_hunt_stops=moria_sanctuary_potion_hunt_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=True,
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
         ).run()
     raise ValueError(f"unsupported executable policy {policy.policy_id}")
 
