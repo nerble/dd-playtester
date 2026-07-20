@@ -2337,15 +2337,16 @@ class StarterPolicy:
                 self.fastwalk_arrival_observed = True
                 return BotDecision("look", "record the official fastwalk endpoint")
             if self.fastwalk_hunt_stops:
-                if (
-                    not self.fastwalk_hunt_preflight_food_attempted
-                    and _has_inventory_item(state.inventory, "pie")
-                ):
+                if not self.fastwalk_hunt_preflight_food_attempted:
                     self.fastwalk_hunt_preflight_food_attempted = True
-                    return BotDecision(
-                        "eat pie",
-                        "eat before beginning the extended field circuit",
-                    )
+                    if self.needs_food and _has_inventory_item(
+                        state.inventory,
+                        "pie",
+                    ):
+                        return BotDecision(
+                            "eat pie",
+                            "address hunger before beginning the field circuit",
+                        )
                 return self._fastwalk_hunt_plan_decision(state)
             if (
                 self.fastwalk_attack_started
@@ -2602,6 +2603,7 @@ class StarterPolicy:
             or self.needs_drink
             or _health_ratio(state) < 0.8
             or _mana_ratio(state) < 0.3
+            or _move_ratio(state) < 0.25
         ):
             missing_items = self._missing_required_field_items(state)
             if missing_items:

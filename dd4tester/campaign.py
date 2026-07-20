@@ -414,13 +414,18 @@ async def _run_policy_segment(
             ("south",),
             ("west",),
             ("west",),
+            ("south",),
+            ("west",),
+            ("south",),
+            ("south",),
+            ("north", "north", "north"),
             ("north",),
+            ("east",),
             ("north",),
         )
         hunt_stops = tuple(
-            FieldHuntStop(route if target == "goblin" else (), target)
+            FieldHuntStop(route, "goblin")
             for route in circuit_routes
-            for target in ("goblin", "dark horseman")
         )
         return await StarterBotRunner(
             spec,
@@ -429,21 +434,10 @@ async def _run_policy_segment(
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("get all.pie",),
             fastwalk_hunt_stops=hunt_stops,
-            vault_stow_items=("sack",) if use_level_eight_loadout else (),
-            vault_claim_items=(
-                "sleeves",
-                "vest",
-                "cape",
-                "belt",
-                "bracer",
-                "guards",
-            )
-            if use_level_eight_loadout
-            else (),
-            vault_required_free_weight=30 if use_level_eight_loadout else 0,
-            fastwalk_train_before_departure=True,
+            fastwalk_train_before_departure=not use_level_eight_loadout,
             fastwalk_require_invisibility=use_level_eight_loadout,
             require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
         ).run()
     if policy.execution == "midennir-sack":
         return await StarterBotRunner(

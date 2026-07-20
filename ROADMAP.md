@@ -381,3 +381,23 @@ and failure handling before registering each new level-band policy.
 - Ararisa ended run 301 safely in the Mage Guild at level 8 with 25,474 XP,
   full resources, six pies, and a filled water skin. The suite contains 328
   passing tests.
+
+## Progression Evidence Cycle 15
+
+- Run 303 proved that reboot fuzz can load a source-level-8 dark horseman at
+  level 9. Although `consider` called it a perfect match, Ararisa could not
+  damage it quickly enough to finish above the 70% health threshold. Horsemen
+  are therefore excluded from the level-8 policy, superseding Cycle 14.
+- Routine hunts no longer revisit the vault or repeat the level-8 training
+  audit. The sack is already vaulted, combat armour is already worn, and
+  repeated preparation introduced response-order and safe-detour failures
+  without improving a field run.
+- Runs 306-310 completed as five consecutive successful campaign segments
+  without manual intervention. Runs 308 and 309 killed three goblins for
+  415 total XP; hunger in run 309 consumed exactly one pie. Ararisa ended at
+  26,025 XP with full resources and four pies.
+- Source resets place ordinary goblins in rooms 3506, 3509, 3512, and 3513,
+  but the mobs wander. The circuit now adds a western sweep through rooms
+  3516, 3515, 3518, 3522, 3511, and 3508 while avoiding the poison wyverns in
+  3521 and the mixed opposition in the goblin headquarters.
+- Field circuits now recall below 25% movement. All 331 tests pass.

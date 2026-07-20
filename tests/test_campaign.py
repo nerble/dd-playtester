@@ -170,25 +170,24 @@ def test_midennir_campaign_hunt_allows_retryable_empty_spawn(
         ("south",),
         ("west",),
         ("west",),
+        ("south",),
+        ("west",),
+        ("south",),
+        ("south",),
+        ("north", "north", "north"),
         ("north",),
+        ("east",),
         ("north",),
     ]
-    assert all(not stop.route for stop in stops if stop.target == "dark horseman")
-    assert {stop.target for stop in stops} == {"goblin", "dark horseman"}
-    assert captured["vault_stow_items"] == ("sack",)
-    assert captured["vault_claim_items"] == (
-        "sleeves",
-        "vest",
-        "cape",
-        "belt",
-        "bracer",
-        "guards",
-    )
-    assert captured["vault_required_free_weight"] == 30
+    assert {stop.target for stop in stops} == {"goblin"}
+    assert "vault_stow_items" not in captured
+    assert "vault_claim_items" not in captured
+    assert "vault_required_free_weight" not in captured
     assert captured["fastwalk_origin_actions"] == ("get all.pie",)
-    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["fastwalk_train_before_departure"] is False
     assert captured["fastwalk_require_invisibility"] is True
     assert captured["require_fastwalk_kill"] is False
+    assert captured["allow_safe_fastwalk_abort"] is True
 
 
 def test_midennir_campaign_sack_requires_verified_invisibility(

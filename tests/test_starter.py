@@ -3034,12 +3034,6 @@ def test_fastwalk_hunt_circuit_skips_an_absent_stop_and_continues() -> None:
     )
 
     policy.prompt_ready = True
-    preflight = policy.next_decision(state)
-    assert preflight is not None
-    assert preflight.command == "eat pie"
-    policy.after_command(preflight)
-
-    policy.prompt_ready = True
     first = policy.next_decision(state)
     assert first is not None
     assert first.command == "north"
@@ -3704,6 +3698,41 @@ def test_fastwalk_hunt_circuit_recalls_between_fights_on_low_reserves() -> None:
     assert decision.command == "recall"
 
 
+def test_fastwalk_hunt_circuit_recalls_before_movement_is_exhausted() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop(("south",), "goblin"),
+        ),
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=50,
+        max_move=220,
+        position=7,
+        room_name="Deep Forest",
+        room_vnum="3514",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_returning is True
+
+
 def test_fastwalk_hunt_circuit_recovers_to_ninety_percent_movement() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -4087,6 +4116,74 @@ def test_field_circuit_restores_invisibility_after_a_kill_before_moving() -> Non
     assert move is not None
     assert move.command == "east"
     assert policy.fastwalk_invisibility_attempts == 0
+
+
+def test_field_circuit_does_not_eat_preflight_pie_when_not_hungry() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(FieldHuntStop((), "goblin"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    state = CharacterState(
+        level=8,
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=200,
+        max_move=220,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+        position=7,
+        inventory=[[{"short_desc": "a big pot pie"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert policy.fastwalk_hunt_preflight_food_attempted is True
+
+
+def test_field_circuit_eats_preflight_pie_when_hungry() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(FieldHuntStop((), "goblin"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.needs_food = True
+    state = CharacterState(
+        level=8,
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=200,
+        max_move=220,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+        position=7,
+        inventory=[[{"short_desc": "a big pot pie"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "eat pie"
 
 
 def test_fastwalk_pursues_and_reengages_a_fleeing_requested_target() -> None:
