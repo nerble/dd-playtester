@@ -535,3 +535,13 @@ and failure handling before registering each new level-band policy.
 - Run 418 safely restored Ararisa to the Mage's Laboratory with full health and
   mana and 143 movement. She remains level 9 at 33,163 XP, 6,537 XP from level
   10, with the 12-pound spear retained pending a lower-risk disposal route.
+- Run 419 verified the risk/value disposal rule: under at least 90% carry
+  pressure, identified class-incompatible loot worth at most 100 copper is
+  donated in the guild instead of risking a shop journey. The spear was removed
+  safely and carry weight fell from 136/140 to 124/140.
+- Run 420 completed a two-kill Ambush segment without disturbing the equipped
+  dagger. The wounded goblin and war dog yielded 271 XP; the bot looted and
+  sacrificed both corpses, recalled, recovered beside the healer, and created
+  checkpoint 125 at 33,434 XP with full health and mana.
+- Run 421 safely donated the next wooden lance under the same policy, retained
+  both combat collars and four pies, and reduced carry weight to 119/140.

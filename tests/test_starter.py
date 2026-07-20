@@ -5568,6 +5568,49 @@ def test_liquidation_donates_known_unsellable_redundant_overflow() -> None:
     assert policy.sale_plan == []
 
 
+def test_liquidation_donates_low_value_class_restricted_loot_under_pressure() -> None:
+    ordinary = ObjectSource(
+        1,
+        "spear",
+        "a wooden spear",
+        5,
+        (0, 6, 6, 0),
+        100,
+        wear_flags=1 << 13,
+    )
+    lance = ObjectSource(
+        2,
+        "wooden spear",
+        "a wooden spear",
+        5,
+        (0, 2, 2, 0),
+        55,
+        wear_flags=1 << 13,
+        extra_flags=1 << 27,
+    )
+    policy = StarterPolicy(
+        _spec(race="elf"),
+        "swordfish",
+        liquidate_loot=True,
+        gear_catalog=GearCatalog({ordinary.vnum: ordinary, lance.vnum: lance}),
+    )
+    policy.gear_audited = True
+    policy.sale_identified_values["spear"] = 55
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        stats={"carry_wt": 136, "maxcarry_wt": 140},
+        inventory=[[{"short_desc": "a wooden spear", "quan": "1"}]],
+    )
+
+    decision = policy._liquidate_loot_decision(home)
+
+    assert decision is not None
+    assert decision.command == "donate spear"
+    assert policy.sale_plan == []
+
+
 def test_liquidation_preserves_water_storage_even_when_unsellable() -> None:
     skin = ObjectSource(
         3138,

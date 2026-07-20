@@ -100,17 +100,31 @@ class GearCatalog:
         result: list[ObjectSource] = []
         for description in descriptions:
             candidates = self._by_name.get(normalize_item_name(description), ())
-            if not candidates or not all(
-                character_can_use_item(
-                    item,
-                    character_class=character_class,
-                    subclass=subclass,
-                )
-                for item in candidates
+            if not self.is_unambiguously_usable(
+                description,
+                character_class=character_class,
+                subclass=subclass,
             ):
                 continue
             result.append(min(candidates, key=lambda item: (item.level, item.vnum)))
         return result
+
+    def is_unambiguously_usable(
+        self,
+        description: str,
+        *,
+        character_class: str,
+        subclass: str | None,
+    ) -> bool:
+        candidates = self._by_name.get(normalize_item_name(description), ())
+        return bool(candidates) and all(
+            character_can_use_item(
+                item,
+                character_class=character_class,
+                subclass=subclass,
+            )
+            for item in candidates
+        )
 
     def match_equipment_text(self, text: str) -> list[ObjectSource]:
         found: list[ObjectSource] = []

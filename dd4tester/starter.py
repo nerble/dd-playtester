@@ -3443,6 +3443,13 @@ class StarterPolicy:
                     )
                     for vnum, count in stance_counts.items():
                         retained_counts[vnum] = max(retained_counts[vnum], count)
+            carry_weight = _state_stat(state, "carry_wt")
+            maximum_weight = _state_stat(state, "maxcarry_wt")
+            carry_pressure = bool(
+                carry_weight is not None
+                and maximum_weight
+                and carry_weight / maximum_weight >= 0.9
+            )
             for description in descriptions:
                 normalized_description = normalize_item_name(description)
                 if (
@@ -3456,6 +3463,21 @@ class StarterPolicy:
                     else None
                 )
                 if self.gear_catalog is not None and item is None:
+                    continue
+                keyword = sale_keyword(description)
+                identified_value = self.sale_identified_values.get(keyword)
+                if (
+                    self.gear_catalog is not None
+                    and carry_pressure
+                    and identified_value is not None
+                    and identified_value <= 100
+                    and not self.gear_catalog.is_unambiguously_usable(
+                        description,
+                        character_class=self.spec.character_class,
+                        subclass=self.spec.subclass,
+                    )
+                ):
+                    self.donation_plan.append(keyword)
                     continue
                 if (
                     item is not None
@@ -3481,7 +3503,6 @@ class StarterPolicy:
                     ),
                 )
                 if shop is not None:
-                    keyword = sale_keyword(description)
                     self.sale_plan.append((keyword, shop))
                     projected_counts[(keyword, shop.name)] += 1
                 elif item is not None:
