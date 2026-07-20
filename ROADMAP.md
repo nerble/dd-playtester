@@ -523,3 +523,15 @@ and failure handling before registering each new level-band policy.
   re-wielded and verified the retained dagger, recalled, changed into recovery
   gear, slept, restored combat gear, and saved safely in the Mage's Laboratory.
   Ararisa is level 9 at 33,243 XP, 6,457 XP from level 10.
+- Runs 415-416 showed that duplicate source prototypes named `a wooden spear`
+  caused the sale planner to retain the unusable lance. Object parsing now
+  preserves DD4 extra flags, applies the Knight-only lance and Ranger-only bow
+  rules, and rejects ambiguous display names if any matching prototype is
+  class-incompatible.
+- Run 417 produced the correct weaponsmith sale route, but a wandering city
+  drunk initiated combat before the shop. The utility policy fled and recalled
+  safely at an 80-XP retreat cost; no sale was attempted. Return-home recovery
+  now moves north from recall to the healer before sleeping.
+- Run 418 safely restored Ararisa to the Mage's Laboratory with full health and
+  mana and 143 movement. She remains level 9 at 33,163 XP, 6,537 XP from level
+  10, with the 12-pound spear retained pending a lower-risk disposal route.

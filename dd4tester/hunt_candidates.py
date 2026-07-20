@@ -74,6 +74,7 @@ class ObjectSource:
     wear_flags: int = 0
     level: int = 0
     affects: tuple[tuple[int, int], ...] = ()
+    extra_flags: int = 0
 
 
 @dataclass(frozen=True)
@@ -523,6 +524,7 @@ def _parse_objects(
         record_end = _next_vnum_marker(lines, index, end)
         try:
             item_type = int(type_parts[0])
+            extra_flags = _parse_bits(type_parts[1]) if len(type_parts) > 1 else 0
             wear_flags = _parse_bits(type_parts[2]) if len(type_parts) > 2 else 0
             source_cost = int(cost_parts[1]) if len(cost_parts) > 1 else 0
             level = int(cost_parts[2]) if len(cost_parts) > 2 else 0
@@ -554,6 +556,7 @@ def _parse_objects(
             wear_flags=wear_flags,
             level=level,
             affects=tuple(affects),
+            extra_flags=extra_flags,
         )
         index = record_end
     return objects

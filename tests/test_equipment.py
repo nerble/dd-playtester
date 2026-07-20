@@ -5,6 +5,7 @@ from dd4tester.equipment import (
     STANCE_COMBAT,
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
+    character_can_use_item,
     item_category,
     item_keyword,
     is_capacity_infrastructure,
@@ -124,6 +125,62 @@ def test_school_source_parser_retains_stat_affects_and_wear_flags() -> None:
     assert diploma.wear_flags & (1 << 14)
     assert stone.affects == ((4, 2),)
     assert stone.wear_flags & (1 << 15)
+
+
+def test_ambush_source_parser_retains_lance_flag_and_class_restriction() -> None:
+    ambush = parse_area_file(
+        Path("runs/dd4-source/server/area/ambush.are"),
+        include_resets=False,
+        include_entities=False,
+        include_objects=True,
+    )
+
+    spear = ambush.objects[4521]
+    assert spear.extra_flags & (1 << 27)
+    assert not character_can_use_item(
+        spear,
+        character_class="mage",
+        subclass="warlock",
+    )
+    assert character_can_use_item(
+        spear,
+        character_class="warrior",
+        subclass="knight",
+    )
+
+
+def test_ambiguous_description_is_not_wearable_if_any_prototype_is_restricted() -> None:
+    ordinary = ObjectSource(
+        1,
+        "spear",
+        "a wooden spear",
+        5,
+        (0, 6, 6, 0),
+        100,
+        wear_flags=1 << 13,
+    )
+    lance = ObjectSource(
+        2,
+        "wooden spear",
+        "a wooden spear",
+        5,
+        (0, 2, 2, 0),
+        55,
+        wear_flags=1 << 13,
+        extra_flags=1 << 27,
+    )
+    catalog = GearCatalog({ordinary.vnum: ordinary, lance.vnum: lance})
+
+    assert catalog.match_many_usable(
+        ["a wooden spear"],
+        character_class="mage",
+        subclass="warlock",
+    ) == []
+    assert catalog.match_many_usable(
+        ["a wooden spear"],
+        character_class="warrior",
+        subclass="knight",
+    ) == [ordinary]
 
 
 def test_school_banner_uses_the_light_slot_and_is_restored_after_death() -> None:

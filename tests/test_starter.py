@@ -3028,6 +3028,30 @@ def test_return_home_routes_low_health_mage_to_healer_before_saving() -> None:
     assert decision.command == "west"
 
 
+def test_return_home_routes_low_movement_from_recall_to_healer() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        position=7,
+        room_flags=["safe"],
+        move=69,
+        max_move=230,
+        mana=343,
+        max_mana=343,
+        hp=126,
+        max_hp=126,
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert "healer" in decision.reason
+
+
 def test_return_home_leaves_mud_school_entrance_after_recall() -> None:
     policy = StarterPolicy(_spec(), "swordfish", return_home=True)
     policy.in_world = True

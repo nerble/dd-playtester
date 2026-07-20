@@ -17,6 +17,8 @@ APPLY_HIT = 13
 APPLY_HITROLL = 18
 APPLY_DAMROLL = 19
 ITEM_LIGHT = 1
+ITEM_LANCE = 1 << 27
+ITEM_BOW = 1 << 30
 
 STANCE_COMBAT = "combat"
 STANCE_PRE_LEVEL = "pre_level"
@@ -86,6 +88,29 @@ class GearCatalog:
             for description in descriptions
             if (item := self.match(description)) is not None
         ]
+
+    def match_many_usable(
+        self,
+        descriptions: Iterable[str],
+        *,
+        character_class: str,
+        subclass: str | None,
+    ) -> list[ObjectSource]:
+        """Exclude ambiguous names when any matching prototype is class-restricted."""
+        result: list[ObjectSource] = []
+        for description in descriptions:
+            candidates = self._by_name.get(normalize_item_name(description), ())
+            if not candidates or not all(
+                character_can_use_item(
+                    item,
+                    character_class=character_class,
+                    subclass=subclass,
+                )
+                for item in candidates
+            ):
+                continue
+            result.append(min(candidates, key=lambda item: (item.level, item.vnum)))
+        return result
 
     def match_equipment_text(self, text: str) -> list[ObjectSource]:
         found: list[ObjectSource] = []
@@ -182,6 +207,22 @@ def protects_from_sale(item: ObjectSource) -> bool:
         location in protected and modifier > 0
         for location, modifier in item.affects
     )
+
+
+def character_can_use_item(
+    item: ObjectSource,
+    *,
+    character_class: str,
+    subclass: str | None,
+) -> bool:
+    """Apply source-backed class restrictions that affect equipment planning."""
+    normalized_class = character_class.casefold()
+    normalized_subclass = (subclass or "").casefold()
+    if item.extra_flags & ITEM_LANCE and normalized_subclass != "knight":
+        return False
+    if item.extra_flags & ITEM_BOW and normalized_class != "ranger":
+        return False
+    return True
 
 
 def is_capacity_infrastructure(item: ObjectSource) -> bool:

@@ -1728,8 +1728,10 @@ class StarterPolicy:
 
         carried = [
             item
-            for item in self.gear_catalog.match_many(
-                _inventory_descriptions(state.inventory)
+            for item in self.gear_catalog.match_many_usable(
+                _inventory_descriptions(state.inventory),
+                character_class=self.spec.character_class,
+                subclass=self.spec.subclass,
             )
             if item_keyword(item) not in self.gear_unusable_keywords
         ]
@@ -3417,7 +3419,11 @@ class StarterPolicy:
                 )
             retained_counts: Counter[int] = Counter()
             if self.gear_catalog is not None:
-                carried = self.gear_catalog.match_many(descriptions)
+                carried = self.gear_catalog.match_many_usable(
+                    descriptions,
+                    character_class=self.spec.character_class,
+                    subclass=self.spec.subclass,
+                )
                 for stance in (
                     STANCE_COMBAT,
                     STANCE_RECOVERY,
@@ -3724,7 +3730,10 @@ class StarterPolicy:
                 and _mana_ratio(state) >= 0.5
             ):
                 return None
-            if self.fastwalk_route is not None and state.room_vnum == "3001":
+            if (
+                (self.fastwalk_route is not None or self.return_home)
+                and state.room_vnum == "3001"
+            ):
                 return BotDecision(
                     "north",
                     "recover faster with the healer north of recall",
