@@ -17,7 +17,6 @@ from .starter import (
     FieldHuntStop,
     StarterBotRunner,
     _sellable_inventory_keyword,
-    ambush_exterior_hunt_stops,
     ambush_level_eight_hunt_stops,
     ambush_vile_goblin_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
@@ -26,7 +25,12 @@ from .storage import RunStorage
 
 
 SegmentRunner = Callable[[CharacterSpec, Path], Awaitable[RunResult]]
-_MAINTENANCE_EXECUTIONS = {"restock", "sell-loot", "rearm-weapon"}
+_MAINTENANCE_EXECUTIONS = {
+    "restock",
+    "sell-loot",
+    "rearm-weapon",
+    "buy-flight",
+}
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
@@ -231,6 +235,9 @@ class CampaignRunner:
                 )
                 > 0
             ),
+            has_flight=_state_has_active_affect(state.get("affects"), "fly"),
+            can_attempt_flight_purchase=_state_copper_value(state) >= 90,
+            flight_purchase_failed=bool(state.get("magic_shop_purchase_failed")),
             boot_kill_counts=self._boot_kill_counts,
             stalled_segments=int(state.get("campaign_stalled_segments", 0)),
         )
@@ -476,6 +483,13 @@ async def _run_policy_segment(
             profile_path,
             city_rearm=True,
         ).run()
+    if policy.execution == "buy-flight":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            magic_shop_research=True,
+            magic_shop_buy_fly=True,
+        ).run()
     if policy.execution in {
         "ambush-war-dog-hunt",
         "ambush-hunt",
@@ -486,7 +500,7 @@ async def _run_policy_segment(
         elif policy.execution == "ambush-vile-hunt":
             hunt_stops = ambush_vile_goblin_hunt_stops()
         else:
-            hunt_stops = ambush_exterior_hunt_stops()[:2]
+            hunt_stops = ambush_level_eight_hunt_stops()
         return await StarterBotRunner(
             spec,
             profile_path,
@@ -695,6 +709,50 @@ def _state_item_count(value: Any, item_name: str) -> int:
     if isinstance(value, (list, tuple)):
         return sum(_state_item_count(item, item_name) for item in value)
     return 0
+
+
+def _state_has_active_affect(value: Any, affect_name: str) -> bool:
+    target = affect_name.casefold()
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(_ANSI_ESCAPE.sub("", value))
+        except json.JSONDecodeError:
+            return target in value.casefold()
+        return _state_has_active_affect(decoded, affect_name)
+    if isinstance(value, dict):
+        name = value.get("name")
+        if isinstance(name, str) and target == name.casefold():
+            duration = value.get("duration")
+            try:
+                return duration is None or int(duration) > 0
+            except (TypeError, ValueError):
+                return True
+        return any(
+            _state_has_active_affect(item, affect_name)
+            for item in value.values()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_state_has_active_affect(item, affect_name) for item in value)
+    return False
+
+
+def _state_copper_value(state: dict[str, Any]) -> int:
+    currencies = state.get("currencies")
+    source = currencies if isinstance(currencies, dict) else state
+
+    def amount(name: str) -> int:
+        value = source.get(name, 0)
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return 0
+
+    return (
+        amount("platinum") * 1_000
+        + amount("gold") * 100
+        + amount("silver") * 10
+        + amount("copper")
+    )
 
 
 def _has_campaign_sellable_loot(state: dict[str, Any]) -> bool:

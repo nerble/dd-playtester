@@ -226,17 +226,18 @@ _AMBUSH_LEVEL_NINE_POLICY = ProgressionPolicy(
     status="verified",
     execution="ambush-hunt",
     summary=(
-        "Use trained chill touch against the wounded goblin and war dog on "
-        "the Ambush exterior."
+        "Use trained chill touch against the proven lower-burst war dog on "
+        "the Ambush exterior while no protection potion is available."
     ),
     evidence=(
-        "DD4 source places the level-6 wounded goblin and war dog on the Ambush exterior.",
-        "Live run 322 killed both targets for 521 XP and returned safely at full resources.",
+        "DD4 source places the level-6 war dog on the Ambush exterior.",
+        "Live runs 326 and 459 killed the reboot-fuzzed war dog safely.",
+        "Live runs 469-470 showed that the reboot-fuzzed wounded goblin can force costly emergency withdrawal at level 9 when Ararisa lacks sanctuary.",
         "DD4 source gives trained chill touch a stronger damage range than the level-8 magic-missile loop.",
         "The route excludes the level-8 raider, level-10 guard, and the cave complex.",
     ),
     practice_skill="chill touch",
-    segment_kill_limit=2,
+    segment_kill_limit=1,
 )
 
 _AMBUSH_VILE_LEVEL_NINE_POLICY = ProgressionPolicy(
@@ -320,6 +321,24 @@ _REARM_WEAPON_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_BUY_FLIGHT_POLICY = ProgressionPolicy(
+    policy_id="buy-flight-potion",
+    minimum_level=5,
+    maximum_level=None,
+    status="verified",
+    execution="buy-flight",
+    summary=(
+        "Check the current Magic Shop price, buy one light blue potion, and "
+        "verify flight before a movement-heavy field route."
+    ),
+    evidence=(
+        "Live run 96 bought the reboot-priced light blue potion for 123 copper and confirmed flight.",
+        "Live run 437 bought the same potion for 94 copper after becoming visible and verifying the purchase.",
+        "The workflow checks current stock and affordability instead of assuming a fixed reboot price.",
+    ),
+    practice_skill=None,
+)
+
 _UNAVAILABLE_POLICY = ProgressionPolicy(
     policy_id="unregistered-10-100",
     minimum_level=10,
@@ -341,6 +360,9 @@ def policy_for(
     has_food: bool = True,
     has_weapon: bool = True,
     has_sanctuary_potion: bool = False,
+    has_flight: bool = True,
+    can_attempt_flight_purchase: bool = False,
+    flight_purchase_failed: bool = False,
     boot_kill_counts: Mapping[str, int] | None = None,
     stalled_segments: int = 0,
 ) -> ProgressionPolicy:
@@ -376,6 +398,13 @@ def policy_for(
             return _AMBUSH_LEVEL_EIGHT_POLICY
         if has_sanctuary_potion:
             return _AMBUSH_VILE_LEVEL_NINE_POLICY
+        if (
+            not has_flight
+            and can_attempt_flight_purchase
+            and not flight_purchase_failed
+            and stalled_segments >= 2
+        ):
+            return _BUY_FLIGHT_POLICY
         large_hobgoblin_kills = _boot_kill_count(
             boot_kill_counts, "large hobgoblin"
         )
@@ -392,6 +421,12 @@ def policy_for(
                 or exterior_kills >= 4
             )
         ):
+            if (
+                not has_flight
+                and can_attempt_flight_purchase
+                and not flight_purchase_failed
+            ):
+                return _BUY_FLIGHT_POLICY
             return _MORIA_SANCTUARY_LEVEL_NINE_POLICY
         return _AMBUSH_LEVEL_NINE_POLICY
     if normalized_level < 10:

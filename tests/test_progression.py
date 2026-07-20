@@ -102,13 +102,54 @@ def test_level_eight_mage_falls_back_after_empty_rotated_hunt() -> None:
     assert policy.policy_id == "ambush-war-dog-8-9"
 
 
-def test_level_nine_mage_expands_ambush_hunt_after_offense_training() -> None:
+def test_level_nine_mage_uses_proven_war_dog_without_protection() -> None:
     policy = policy_for(9, "mage", has_large_sack=True)
 
     assert policy.policy_id == "ambush-exterior-9-10"
     assert policy.execution == "ambush-hunt"
     assert policy.practice_skill == "chill touch"
-    assert policy.segment_kill_limit == 2
+    assert policy.segment_kill_limit == 1
+
+
+def test_stalled_level_nine_mage_buys_flight_before_more_field_work() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        stalled_segments=2,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+def test_level_nine_mage_buys_flight_before_depleted_moria_circuit() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        boot_kill_counts={"war dog": 16, "wounded goblin": 4},
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+
+
+def test_failed_flight_purchase_does_not_loop() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        flight_purchase_failed=True,
+        stalled_segments=2,
+    )
+
+    assert policy.policy_id == "ambush-exterior-9-10"
 
 
 def test_level_nine_mage_rotates_to_sanctuary_acquisition_after_depletion() -> None:

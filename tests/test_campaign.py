@@ -302,7 +302,7 @@ def test_level_eight_ambush_campaign_hunts_only_the_war_dog(
     assert captured["allow_safe_fastwalk_abort"] is True
 
 
-def test_level_nine_ambush_campaign_adds_the_wounded_goblin(
+def test_level_nine_ambush_campaign_uses_only_proven_war_dog(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -328,9 +328,83 @@ def test_level_nine_ambush_campaign_adds_the_wounded_goblin(
     )
 
     stops = captured["fastwalk_hunt_stops"]
-    assert [stop.target for stop in stops] == ["wounded goblin", "war dog"]
+    assert [stop.target for stop in stops] == ["war dog"]
     assert captured["fastwalk_train_before_departure"] is True
-    assert captured["fastwalk_kill_limit"] == 2
+    assert captured["fastwalk_kill_limit"] == 1
+
+
+def test_campaign_buys_and_uses_flight_potion_as_maintenance(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 9})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        stalled_segments=2,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured == {
+        "magic_shop_research": True,
+        "magic_shop_buy_fly": True,
+    }
+
+
+def test_campaign_state_detects_active_flight_and_converts_coins(tmp_path) -> None:
+    config_path, _ = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+
+    policy = runner._policy_for_state(
+        {
+            "level": 9,
+            "inventory": [[
+                {"short_desc": "a large sack"},
+                {"short_desc": "a big pot pie"},
+            ]],
+            "affects": [[{"name": "fly", "duration": "12"}]],
+            "currencies": {"silver": 17},
+            "campaign_stalled_segments": 2,
+        }
+    )
+
+    assert policy.policy_id == "ambush-exterior-9-10"
+
+    expired_policy = runner._policy_for_state(
+        {
+            "level": 9,
+            "inventory": [[
+                {"short_desc": "a large sack"},
+                {"short_desc": "a big pot pie"},
+            ]],
+            "affects": [[{"name": "fly", "duration": "0"}]],
+            "currencies": {"silver": 17},
+            "campaign_stalled_segments": 2,
+        }
+    )
+
+    assert expired_policy.policy_id == "buy-flight-potion"
 
 
 def test_level_nine_campaign_rotates_to_moria_sanctuary_hunt_after_depletion(

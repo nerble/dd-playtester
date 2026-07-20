@@ -666,3 +666,15 @@ and failure handling before registering each new level-band policy.
   large hobgoblin. Ararisa ended fully recovered at 35,184 XP with another
   purple sanctuary potion stored in her worn pouch and 4,516 XP remaining to
   level 10.
+- Runs 465-467 completed the protected loop twice more: two potion-backed vile
+  goblin kills and one Moria carrier kill produced 940 XP, ending at 36,124 XP.
+- Runs 468-470 showed two limitations in the unprotected fallback. A no-flight
+  Moria circuit could not search beyond the first carrier room while preserving
+  a recall reserve, and unlucky wounded-goblin fights forced XP-costly escapes.
+  Level-nine fallback now hunts only the proven lower-burst war dog. When the
+  campaign has at least 90 copper-equivalent and either Moria is selected or
+  progress has stalled twice, it first checks the reboot-fuzzy Magic Shop price,
+  buys one light blue potion, and verifies flight before field work.
+- Combat preparation retains identified purple sanctuary and black
+  cure-critical potions in the worn pouch. Sanctuary is used before avoidable
+  combat damage; healing potions remain reserved for 55% health or lower.
