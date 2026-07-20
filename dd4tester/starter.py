@@ -400,7 +400,7 @@ class StarterPolicy:
         self.fastwalk_pouch_audit_pending = False
         self.fastwalk_pouch_audited = False
         self.fastwalk_pouch_attempted: set[str] = set()
-        self.combat_pouch_potions: set[str] = set()
+        self.combat_pouch_potions: Counter[str] = Counter()
         self.fastwalk_last_kill_target: str | None = None
         self.fastwalk_abort_reason: str | None = None
         self.fastwalk_emergency_recall_pending = False
@@ -517,9 +517,15 @@ class StarterPolicy:
         ):
             self.gear_pending_wear_keyword = None
         if "you put a purple potion" in recent and "pouch" in recent:
-            self.combat_pouch_potions.add("purple")
+            self.combat_pouch_potions["purple"] += max(
+                1,
+                recent.count("you put a purple potion"),
+            )
         if "you put a black potion" in recent and "pouch" in recent:
-            self.combat_pouch_potions.add("black")
+            self.combat_pouch_potions["black"] += max(
+                1,
+                recent.count("you put a black potion"),
+            )
         if any(
             warning in folded
             for warning in ("lack of food", "dying of hunger", "you are hungry")
@@ -841,6 +847,12 @@ class StarterPolicy:
             if event.type == "character_died":
                 self.return_home = True
                 self.purgatory_recovery_active = True
+                self.combat_active = False
+                self.active_target = None
+                self.active_target_level = None
+                self.flee_pending = False
+                self.flee_succeeded = False
+                self.prompt_ready = True
                 self.utility_abort_reason = (
                     "character died; completed Purgatory recovery is required"
                 )
@@ -2631,8 +2643,8 @@ class StarterPolicy:
                 ):
                     self.fastwalk_pouch_attempted.add(potion_keyword)
                     return BotDecision(
-                        f"put {potion_keyword} pouch",
-                        "stow an identified emergency potion for in-combat access",
+                        f"put all.{potion_keyword} pouch",
+                        "stow identified emergency potions for in-combat access",
                     )
                 self.fastwalk_loot_step = 4
                 return BotDecision(
@@ -2778,11 +2790,13 @@ class StarterPolicy:
                         "audit identified emergency potions before field departure",
                     )
                 pouch_text = _ANSI_ESCAPE.sub("", self.last_response).casefold()
-                self.combat_pouch_potions = {
-                    keyword
-                    for keyword in ("black", "purple")
-                    if f"a {keyword} potion" in pouch_text
-                }
+                self.combat_pouch_potions = Counter(
+                    {
+                        keyword: pouch_text.count(f"a {keyword} potion")
+                        for keyword in ("black", "purple")
+                        if f"a {keyword} potion" in pouch_text
+                    }
+                )
                 self.fastwalk_pouch_audit_pending = False
                 self.fastwalk_pouch_audited = True
             if self.fastwalk_origin_action_index < len(self.fastwalk_origin_actions):
@@ -3094,21 +3108,24 @@ class StarterPolicy:
     ) -> BotDecision | None:
         """Use only source-identified emergency potions from the worn pouch."""
         health_ratio = _health_ratio(state)
-        if "black" in self.combat_pouch_potions and health_ratio <= 0.55:
-            self.combat_pouch_potions.remove("black")
+        if self.combat_pouch_potions["black"] and health_ratio <= 0.55:
+            self.combat_pouch_potions["black"] -= 1
+            if self.combat_pouch_potions["black"] <= 0:
+                del self.combat_pouch_potions["black"]
             return BotDecision(
                 "quaff black",
                 "use the identified cure-critical potion at low combat health",
             )
         if (
-            "purple" in self.combat_pouch_potions
-            and health_ratio <= 0.80
+            self.combat_pouch_potions["purple"]
             and not _has_named_affect(state.affects, "sanctuary")
         ):
-            self.combat_pouch_potions.remove("purple")
+            self.combat_pouch_potions["purple"] -= 1
+            if self.combat_pouch_potions["purple"] <= 0:
+                del self.combat_pouch_potions["purple"]
             return BotDecision(
                 "quaff purple",
-                "use the identified sanctuary potion before combat damage becomes critical",
+                "use the identified sanctuary potion before taking avoidable combat damage",
             )
         return None
 
@@ -3682,11 +3699,13 @@ class StarterPolicy:
                 )
             if _is_sleeping(state):
                 self.purgatory_recovery_complete = True
+                self.utility_abort_reason = None
                 return BotDecision(
                     "stand",
                     "wake after post-death recovery before walking home",
                 )
             self.purgatory_recovery_complete = True
+            self.utility_abort_reason = None
             return None
 
         if self.purgatory_recovery_complete:

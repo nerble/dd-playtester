@@ -176,6 +176,10 @@ def test_reboot_login_ignores_stale_in_world_prompt_until_authenticated() -> Non
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
     policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "vile goblin"
+    policy.active_target_level = 9
+    policy.flee_pending = True
     policy.waiting_for_heal = True
     state = CharacterState(
         hp=80,
@@ -3387,6 +3391,9 @@ def test_death_event_enters_recovery_instead_of_blocking_decisions() -> None:
     assert policy.failure is None
     assert decision is not None
     assert decision.command == "north"
+    assert policy.combat_active is False
+    assert policy.active_target is None
+    assert policy.flee_pending is False
 
 
 def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
@@ -3528,6 +3535,9 @@ def test_return_home_loots_corpse_enters_portal_and_sleeps() -> None:
     policy = StarterPolicy(_spec(), "swordfish", return_home=True)
     policy.in_world = True
     policy.prompt_ready = True
+    policy.utility_abort_reason = (
+        "character died; completed Purgatory recovery is required"
+    )
     judgement = CharacterState(
         area="Purgatory",
         room_name="The Judgement Room",
@@ -3583,6 +3593,7 @@ def test_return_home_loots_corpse_enters_portal_and_sleeps() -> None:
     leave = policy.next_decision(healer)
     assert leave is not None
     assert leave.command == "south"
+    assert policy.utility_abort_reason is None
 
 
 def test_prompt_arriving_immediately_after_command_is_ignored_as_stale() -> None:
@@ -5237,7 +5248,7 @@ def test_fastwalk_stows_source_identified_sanctuary_potion_before_recall() -> No
 
     stow = policy.next_decision(state)
     assert stow is not None
-    assert stow.command == "put purple pouch"
+    assert stow.command == "put all.purple pouch"
     policy.observe_text("You put a purple potion in a small leather pouch.\n")
     policy.prompt_ready = True
 
@@ -5245,7 +5256,7 @@ def test_fastwalk_stows_source_identified_sanctuary_potion_before_recall() -> No
 
     assert sacrifice is not None
     assert sacrifice.command == "sacrifice corpse"
-    assert policy.combat_pouch_potions == {"purple"}
+    assert policy.combat_pouch_potions == {"purple": 1}
 
 
 def test_fastwalk_does_not_stow_an_unregistered_potion() -> None:
@@ -5295,6 +5306,7 @@ def test_fastwalk_audits_known_combat_potions_at_recall_before_departure() -> No
     policy.observe_text(
         "A small leather pouch contains:\n"
         "     a purple potion\n"
+        "     a purple potion\n"
         "     a black potion\n"
     )
     policy.prompt_ready = True
@@ -5303,7 +5315,7 @@ def test_fastwalk_audits_known_combat_potions_at_recall_before_departure() -> No
 
     assert departure is not None
     assert departure.command == route.commands[0]
-    assert policy.combat_pouch_potions == {"black", "purple"}
+    assert policy.combat_pouch_potions == {"black": 1, "purple": 2}
 
 
 def test_combat_uses_identified_pouch_potions_at_bounded_health_thresholds() -> None:
@@ -5314,7 +5326,7 @@ def test_combat_uses_identified_pouch_potions_at_bounded_health_thresholds() -> 
     policy.combat_active = True
     policy.fastwalk_attack_started = True
     policy.active_target = "war dog"
-    policy.combat_pouch_potions = {"black", "purple"}
+    policy.combat_pouch_potions.update({"black": 1, "purple": 1})
     state = CharacterState(
         hp=50,
         max_hp=100,
@@ -5335,7 +5347,36 @@ def test_combat_uses_identified_pouch_potions_at_bounded_health_thresholds() -> 
 
     assert protection is not None
     assert protection.command == "quaff purple"
-    assert policy.combat_pouch_potions == set()
+    assert policy.combat_pouch_potions == {}
+
+
+def test_combat_uses_sanctuary_reserve_before_health_falls() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+    policy.active_target = "vile goblin"
+    policy.combat_pouch_potions.update({"purple": 2})
+    state = CharacterState(
+        hp=100,
+        max_hp=100,
+        mana=200,
+        max_mana=250,
+        position=6,
+        room_name="On a small trail",
+        room_vnum="4519",
+    )
+
+    protection = policy.next_decision(state)
+
+    assert protection is not None
+    assert protection.command == "quaff purple"
+    assert policy.combat_pouch_potions == {"purple": 1}
 
 
 def test_fastwalk_research_loots_incidental_kill_before_resuming_route() -> None:

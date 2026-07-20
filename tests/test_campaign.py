@@ -333,7 +333,7 @@ def test_level_nine_ambush_campaign_adds_the_wounded_goblin(
     assert captured["fastwalk_kill_limit"] == 2
 
 
-def test_level_nine_campaign_uses_verified_vile_goblin_rotation(
+def test_level_nine_campaign_keeps_safe_exterior_rotation_after_depletion(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -369,10 +369,9 @@ def test_level_nine_campaign_uses_verified_vile_goblin_rotation(
     )
 
     stops = captured["fastwalk_hunt_stops"]
-    assert [stop.target for stop in stops] == ["vile goblin"]
-    assert stops[0].allowed_bystanders == ("half clothed human female",)
+    assert [stop.target for stop in stops] == ["wounded goblin", "war dog"]
     assert captured["fastwalk_train_before_departure"] is True
-    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["fastwalk_kill_limit"] == 2
 
 
 def test_campaign_liquidates_loot_in_a_safe_dedicated_segment(

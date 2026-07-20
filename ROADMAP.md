@@ -559,8 +559,20 @@ and failure handling before registering each new level-band policy.
 - Run 427 live-considered the unarmed level-9 vile goblin an easy kill and
   returned without attacking. Run 428 repeated the check, killed it at full
   126/126 health for 322 XP, looted and sacrificed the corpse, recalled, and
-  recovered safely. This target is now the verified level-9 rotation after
-  reboot-scoped war-dog and wounded-goblin depletion.
+  recovered safely. Run 430 repeated the kill for 382 XP and returned with
+  99/126 health.
 - Field recovery now latches an approved reserve while walking between the
   healer and recall. A route no longer reverses for a redundant second sleep
   merely because normal city movement drops the character just below 90%.
+- Run 432 disproved unattended safety for the vile goblin: poor combat rolls
+  were followed by repeated flee failures and death, costing 1,219 XP. The
+  target is demoted to research and cannot be selected by the campaign until
+  potion-backed survival is live-validated.
+- Run 433 traversed Purgatory, recovered every corpse item, entered the portal,
+  slept beside the healer, and saved in the Mage's Laboratory at 126/126
+  health. Death now clears stale combat and flee state immediately, and a
+  completed recovery clears its diagnostic failure.
+- Emergency-potion tracking now retains quantities. Loot cleanup puts all
+  exact-known purple sanctuary or black cure-critical potions into the worn
+  pouch. Sanctuary is used before avoidable combat damage; healing remains
+  reserved for health at or below 55%.
