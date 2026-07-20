@@ -715,3 +715,7 @@ and failure handling before registering each new level-band policy.
   potion is now routine level-nine travel preparation rather than a
   stall-triggered fallback; a reboot-price purchase failure still disables
   repeated attempts for that campaign state.
+- Run 492 exposed an emergency-provision loop after the invisible bot's
+  Quartermaster purchase was refused. The supply path now becomes visible,
+  clears the pending order, and retries instead of walking repeatedly between
+  General Supplies and the Mud School entrance.

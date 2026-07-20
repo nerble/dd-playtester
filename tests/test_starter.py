@@ -1714,6 +1714,37 @@ def test_resupply_policy_retries_affordable_quartermaster_quantity() -> None:
     assert policy.affordable_pies_ordered is True
 
 
+def test_emergency_resupply_becomes_visible_and_retries_rejected_order() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.needs_food = True
+    policy.food_ordered = True
+    policy.observe_text(
+        "The Quartermaster says 'I don't trade with folks I can't see.'"
+    )
+    supplies = CharacterState(
+        room_name="General Supplies",
+        room_vnum="3724",
+        position=7,
+        affects=[[{"name": "invis", "duration": "8"}]],
+    )
+
+    visible = policy.next_decision(supplies)
+
+    assert visible is not None
+    assert visible.command == "vis"
+    assert policy.food_ordered is False
+    policy.after_command(visible)
+    policy.prompt_ready = True
+    supplies.affects = [[]]
+
+    retry = policy.next_decision(supplies)
+
+    assert retry is not None
+    assert retry.command == "buy 6 pie"
+
+
 def test_city_restock_policy_uses_fountain_then_bakery() -> None:
     policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
     policy.in_world = True

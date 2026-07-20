@@ -1882,6 +1882,20 @@ class StarterPolicy:
                 return BotDecision(direction, "reach the healer before further recovery")
 
         if room_vnum == "3724" or room_name == "general supplies":
+            if (
+                self.shop_visibility_rejected
+                or _has_named_affect(state.affects, "invis")
+            ):
+                self.shop_visibility_rejected = False
+                if self.needs_food:
+                    self.food_ordered = False
+                    self.affordable_pies_ordered = False
+                if self.needs_drink:
+                    self.skin_ordered = False
+                return BotDecision(
+                    "vis",
+                    "become visible before asking the Quartermaster to trade",
+                )
             if self.insufficient_funds:
                 if not self.emergency_borrow_complete:
                     self.emergency_borrowing = True
