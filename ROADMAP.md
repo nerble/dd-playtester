@@ -515,3 +515,11 @@ and failure handling before registering each new level-band policy.
   state. The bot took one bounded 300-copper Dragonhoard loan, bought and ate a
   pie, bought a buffalo water skin, drank, saved, and quit safely at General
   Supplies with five pies, the skin, full health and mana, and 206 movement.
+- Run 413 killed a wounded goblin for 180 XP but exposed an equipment loop:
+  DD4 classed the looted wooden spear as a lance that Ararisa could not use.
+  Explicit wear rejections now blacklist that item for the run, discard the
+  stale stance plan, and force a fresh paper-doll audit.
+- Run 414 live-validated that recovery. The bot rejected the spear once,
+  re-wielded and verified the retained dagger, recalled, changed into recovery
+  gear, slept, restored combat gear, and saved safely in the Mage's Laboratory.
+  Ararisa is level 9 at 33,243 XP, 6,457 XP from level 10.

@@ -7145,6 +7145,73 @@ def test_equipment_audit_retries_when_hunger_tick_replaces_response() -> None:
     assert "interrupted" in retry.reason
 
 
+def test_rejected_weapon_is_blacklisted_and_previous_weapon_is_rearmed() -> None:
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 1, 2, 0),
+        10,
+        wear_flags=1 << 13,
+    )
+    spear = ObjectSource(
+        4801,
+        "wooden spear lance",
+        "a wooden spear",
+        5,
+        (0, 4, 4, 0),
+        20,
+        wear_flags=1 << 13,
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({dagger.vnum: dagger, spear.vnum: spear}),
+    )
+    policy.in_world = True
+    policy.gear_audited = True
+    policy.gear_worn = [dagger]
+    state = CharacterState(
+        level=9,
+        hp=100,
+        max_hp=100,
+        mana=200,
+        max_mana=200,
+        move=200,
+        max_move=200,
+        position=7,
+        room_name="In a forest clearing",
+        room_vnum="4510",
+        inventory=[[{"short_desc": "a wooden spear"}]],
+    )
+
+    remove = policy._gear_decision(state)
+    assert remove is not None
+    assert remove.command == "remove dagger"
+    policy.after_command(remove)
+
+    wear = policy._gear_decision(state)
+    assert wear is not None
+    assert wear.command == "wear spear"
+    policy.after_command(wear)
+    policy.observe_text("You cannot use lances.")
+
+    state.inventory = [[
+        {"short_desc": "a wooden spear"},
+        {"short_desc": "a dagger"},
+    ]]
+    audit = policy._gear_decision(state)
+    assert audit is not None
+    assert audit.command == "equipment"
+
+    policy.observe_text("You are not using any equipment.")
+    rearm = policy._gear_decision(state)
+    assert rearm is not None
+    assert rearm.command == "wear dagger"
+    assert policy.gear_unusable_keywords == {"spear"}
+
+
 def test_gear_stance_switches_to_stats_only_near_level_gain() -> None:
     policy = StarterPolicy(
         _spec(),

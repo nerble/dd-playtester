@@ -422,6 +422,8 @@ class StarterPolicy:
         self.gear_applied_stance: str | None = None
         self.gear_inventory_signature: tuple[str, ...] = ()
         self.gear_confirmation_required = False
+        self.gear_pending_wear_keyword: str | None = None
+        self.gear_unusable_keywords: set[str] = set()
         self.emergency_sale_in_progress = False
 
     def observe_text(self, text: str) -> None:
@@ -496,6 +498,22 @@ class StarterPolicy:
             )
             self.disarm_recovery_step = 1
             self.gear_applied_stance = None
+        if (
+            self.gear_pending_wear_keyword is not None
+            and "you cannot use " in recent
+        ):
+            self.gear_unusable_keywords.add(self.gear_pending_wear_keyword)
+            self.gear_pending_wear_keyword = None
+            self.gear_command_queue.clear()
+            self.gear_audit_pending = False
+            self.gear_audited = False
+            self.gear_confirmation_required = False
+            self.gear_applied_stance = None
+            self.gear_inventory_signature = ()
+        elif self.gear_pending_wear_keyword is not None and any(
+            phrase in recent for phrase in ("you wear ", "you wield ")
+        ):
+            self.gear_pending_wear_keyword = None
         if "you put a purple potion" in recent and "pouch" in recent:
             self.combat_pouch_potions.add("purple")
         if "you put a black potion" in recent and "pouch" in recent:
@@ -909,6 +927,13 @@ class StarterPolicy:
         if decision.command == "flee":
             self.flee_pending = True
             self.flee_succeeded = False
+        if (
+            decision.command.startswith("wear ")
+            and decision.reason.startswith("equip ")
+        ):
+            self.gear_pending_wear_keyword = decision.command.removeprefix(
+                "wear "
+            ).strip()
         if decision.command == "quit":
             self.done = True
 
@@ -1701,7 +1726,13 @@ class StarterPolicy:
                 f"audit worn items before applying the {stance.replace('_', ' ')} stance",
             )
 
-        carried = self.gear_catalog.match_many(_inventory_descriptions(state.inventory))
+        carried = [
+            item
+            for item in self.gear_catalog.match_many(
+                _inventory_descriptions(state.inventory)
+            )
+            if item_keyword(item) not in self.gear_unusable_keywords
+        ]
         removals, additions = plan_stance_swaps(
             carried,
             self.gear_worn,
