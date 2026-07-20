@@ -102,6 +102,36 @@ def test_storage_marks_interrupted_runs_as_failed(tmp_path) -> None:
     assert run["error"] == "test interruption"
 
 
+def test_storage_marks_interrupted_campaign_work_as_failed(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="Ararisa to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    storage.start_campaign_segment(
+        campaign_id,
+        phase="ambush-exterior-8-10",
+        start_state={"name": "Ararisa", "level": 8},
+    )
+
+    segments, campaigns = storage.fail_interrupted_campaign_segments(
+        reason="test interruption"
+    )
+    campaign = storage.get_campaign(campaign_id)
+    segment = storage.list_campaign_segments(campaign_id)[0]
+    storage.close()
+
+    assert (segments, campaigns) == (1, 1)
+    assert campaign is not None
+    assert campaign["status"] == "failed"
+    assert campaign["error"] == "test interruption"
+    assert segment["status"] == "failed"
+    assert segment["error"] == "test interruption"
+    assert segment["finished_at"] is not None
+
+
 def test_storage_remembers_historically_acquired_items(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     run_id = storage.create_run(

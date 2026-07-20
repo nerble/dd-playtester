@@ -25,6 +25,7 @@ from dd4tester.starter import (
     _practice_balances,
     _sellable_inventory_keyword,
     _watchdog_progress_marker,
+    ambush_exterior_hunt_stops,
 )
 from dd4tester.state import CharacterState
 
@@ -54,6 +55,21 @@ def _respond(
     result = (decision.command, decision.secret)
     policy.after_command(decision)
     return result
+
+
+def test_ambush_exterior_research_stays_out_of_the_cave_complex() -> None:
+    stops = ambush_exterior_hunt_stops()
+    commands = [command for stop in stops for command in stop.route]
+
+    assert [stop.target for stop in stops] == [
+        "wounded goblin",
+        "war dog",
+        "goblin",
+        "goblin looter",
+        "goblin archer",
+    ]
+    assert "down" not in commands
+    assert commands[-2:] == ["open south", "south"]
 
 
 def test_creation_policy_follows_configured_character_profile() -> None:

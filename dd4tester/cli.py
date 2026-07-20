@@ -24,6 +24,7 @@ from .progression import policy_for
 from .report import build_run_report, render_json, render_markdown
 from .runner import run_scenario_file
 from .starter import (
+    run_ambush_research_profile,
     run_arena_research_profile,
     run_guildmaster_research_profile,
     run_fastwalk_research_profile,
@@ -196,6 +197,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="path to an existing character YAML profile",
     )
+    ambush_parser = subcommands.add_parser(
+        "ambush-research",
+        help="live-consider the exterior Ambush goblin circuit and return safely",
+    )
+    ambush_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing level-9 or higher mage character YAML profile",
+    )
     moria_parser = subcommands.add_parser(
         "moria-research",
         help="verify the safe Midgaard-to-Moria approach and return to the Mage Guild",
@@ -318,7 +328,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     recover_runs_parser = subcommands.add_parser(
         "recover-runs",
-        help="mark orphaned running records as interrupted after their process has ended",
+        help="mark orphaned run and campaign records as interrupted",
     )
     recover_runs_parser.add_argument(
         "--database",
@@ -628,6 +638,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Database: {result.database_path}")
         return 0
 
+    if args.command == "ambush-research":
+        try:
+            result = asyncio.run(run_ambush_research_profile(args.profile))
+        except Exception as exc:
+            print(f"Ambush research failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
     if args.command == "moria-research":
         try:
             result = asyncio.run(
@@ -785,8 +806,13 @@ def recover_runs(database: Path, *, reason: str) -> int:
         return 1
     with RunStorage(database) as storage:
         recovered = storage.fail_interrupted_runs(reason=reason)
+        segments, campaigns = storage.fail_interrupted_campaign_segments(reason=reason)
     print(f"Database: {database.resolve()}")
     print(f"Marked {recovered} interrupted run(s) as failed.")
+    print(
+        f"Marked {segments} interrupted campaign segment(s) "
+        f"across {campaigns} campaign(s) as failed."
+    )
     return 0
 
 

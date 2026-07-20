@@ -11,7 +11,13 @@ from .fastwalks import route_named
 from .progression import ProgressionPolicy, policy_for
 from .runner import RunResult
 from .scenario import load_yaml_mapping
-from .starter import FieldHuntStop, StarterBotRunner
+from .starter import (
+    FieldHuntStop,
+    StarterBotRunner,
+    _sellable_inventory_keyword,
+    ambush_exterior_hunt_stops,
+    ambush_war_dog_hunt_stops,
+)
 from .storage import RunStorage
 
 
@@ -189,6 +195,9 @@ class CampaignRunner:
             has_large_sack=(
                 self._historical_large_sack
                 or _state_has_item(state.get("inventory"), "large sack")
+            ),
+            has_sellable_loot=(
+                _sellable_inventory_keyword(state.get("inventory")) is not None
             ),
         )
 
@@ -403,6 +412,29 @@ async def _run_policy_segment(
             profile_path,
             objective_level=policy.maximum_level or 10,
             arena_kill_limit=policy.segment_kill_limit,
+        ).run()
+    if policy.execution == "sell-loot":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            liquidate_loot=True,
+        ).run()
+    if policy.execution in {"ambush-war-dog-hunt", "ambush-hunt"}:
+        hunt_stops = (
+            ambush_war_dog_hunt_stops()
+            if policy.execution == "ambush-war-dog-hunt"
+            else ambush_exterior_hunt_stops()[:2]
+        )
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=route_named("ambush"),
+            fastwalk_origin_actions=("get all.pie",),
+            fastwalk_hunt_stops=hunt_stops,
+            fastwalk_require_invisibility=True,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
         ).run()
     if policy.execution == "midennir-hunt":
         use_level_eight_loadout = (policy.minimum_level or 0) >= 8

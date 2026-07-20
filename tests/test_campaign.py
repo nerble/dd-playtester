@@ -9,6 +9,7 @@ from dd4tester.campaign import (
 )
 from dd4tester.progression import policy_for
 from dd4tester.runner import RunResult
+from dd4tester.starter import ambush_exterior_hunt_stops
 from dd4tester.storage import RunStorage
 
 
@@ -127,16 +128,21 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
     )
 
     assert before.policy_id == "midennir-sack-8-10"
-    assert after.policy_id == "midennir-goblin-8-10"
+    assert after.policy_id == "ambush-war-dog-8-9"
 
     runner._historical_large_sack = True
     after_lodging = runner._policy_for_state(
         {"level": 8, "inventory": [[{"short_desc": "a big pot pie"}]]}
     )
-    assert after_lodging.policy_id == "midennir-goblin-8-10"
+    assert after_lodging.policy_id == "ambush-war-dog-8-9"
+
+    with_loot = runner._policy_for_state(
+        {"level": 8, "inventory": [[{"short_desc": "hard leather boots"}]]}
+    )
+    assert with_loot.policy_id == "liquidate-loot"
 
 
-def test_midennir_campaign_hunt_allows_retryable_empty_spawn(
+def test_level_eight_ambush_campaign_hunts_only_the_war_dog(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -162,32 +168,73 @@ def test_midennir_campaign_hunt_allows_retryable_empty_spawn(
     )
 
     stops = captured["fastwalk_hunt_stops"]
-    assert [stop.route for stop in stops if stop.target == "goblin"] == [
-        (),
-        ("east",),
-        ("south",),
-        ("east",),
-        ("south",),
-        ("west",),
-        ("west",),
-        ("south",),
-        ("west",),
-        ("south",),
-        ("south",),
-        ("north", "north", "north"),
-        ("north",),
-        ("east",),
-        ("north",),
-    ]
-    assert {stop.target for stop in stops} == {"goblin"}
+    assert [stop.target for stop in stops] == ["war dog"]
+    exterior = ambush_exterior_hunt_stops()
+    assert stops[0].route == exterior[0].route + exterior[1].route
     assert "vault_stow_items" not in captured
     assert "vault_claim_items" not in captured
     assert "vault_required_free_weight" not in captured
     assert captured["fastwalk_origin_actions"] == ("get all.pie",)
-    assert captured["fastwalk_train_before_departure"] is False
     assert captured["fastwalk_require_invisibility"] is True
     assert captured["require_fastwalk_kill"] is False
     assert captured["allow_safe_fastwalk_abort"] is True
+
+
+def test_level_nine_ambush_campaign_adds_the_wounded_goblin(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 9, "xp": 32_000})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(9, "mage", has_large_sack=True),
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["wounded goblin", "war dog"]
+
+
+def test_campaign_liquidates_loot_in_a_safe_dedicated_segment(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 8, "xp": 25_000})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(8, "mage", has_sellable_loot=True),
+        )
+    )
+
+    assert captured == {"liquidate_loot": True}
 
 
 def test_midennir_campaign_sack_requires_verified_invisibility(

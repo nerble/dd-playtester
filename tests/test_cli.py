@@ -27,12 +27,30 @@ def test_recover_runs_marks_orphaned_records(tmp_path, capsys) -> None:
     database, _transcript = _create_recorded_run(tmp_path)
     with RunStorage(database) as storage:
         storage.create_run(scenario_name="arena", scenario_path=tmp_path / "arena.yaml")
+        campaign_id = storage.create_campaign(
+            name="Ararisa to HERO",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        storage.start_campaign_segment(
+            campaign_id,
+            phase="ambush-exterior-8-10",
+            start_state={"name": "Ararisa", "level": 8},
+        )
 
     exit_code = main(["recover-runs", "--database", str(database)])
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Marked 1 interrupted run(s) as failed." in captured.out
+    assert (
+        "Marked 1 interrupted campaign segment(s) across 1 campaign(s) as failed."
+        in captured.out
+    )
+    with RunStorage(database) as storage:
+        assert storage.get_campaign(campaign_id)["status"] == "failed"
+        assert storage.list_campaign_segments(campaign_id)[0]["status"] == "failed"
 
 
 def test_arena_research_passes_kill_limit_to_runner(tmp_path, capsys, monkeypatch) -> None:
@@ -488,6 +506,33 @@ def test_midennir_research_command_collects_large_sack(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Run 17 success" in captured.out
+
+
+def test_ambush_research_command_runs_exterior_circuit(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "ambush-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_ambush_research(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(18, "success", transcript, database, {"level": 9})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_ambush_research_profile",
+        fake_ambush_research,
+    )
+
+    exit_code = main(["ambush-research", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 18 success" in captured.out
+    assert f"Transcript: {transcript}" in captured.out
 
 
 def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch) -> None:

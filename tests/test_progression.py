@@ -61,8 +61,30 @@ def test_level_eight_mage_collects_sack_before_resuming_hunts() -> None:
     assert sack.policy_id == "midennir-sack-8-10"
     assert sack.execution == "midennir-sack"
     assert sack.practice_skill == "invis"
-    assert hunt.policy_id == "midennir-goblin-8-10"
-    assert hunt.execution == "midennir-hunt"
+    assert hunt.policy_id == "ambush-war-dog-8-9"
+    assert hunt.execution == "ambush-war-dog-hunt"
+    assert hunt.segment_kill_limit == 1
+
+
+def test_level_nine_mage_expands_ambush_hunt_after_offense_training() -> None:
+    policy = policy_for(9, "mage", has_large_sack=True)
+
+    assert policy.policy_id == "ambush-exterior-9-10"
+    assert policy.execution == "ambush-hunt"
+    assert policy.practice_skill == "chill touch"
+    assert policy.segment_kill_limit == 2
+
+
+def test_sellable_loot_selects_safe_liquidation_before_the_next_hunt() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        has_sellable_loot=True,
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
 
 
 def test_level_ten_and_above_is_explicitly_unavailable() -> None:

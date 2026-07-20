@@ -59,6 +59,10 @@ they use Windows Credential Manager through `keyring`. `DD4_USERNAME`,
 overrides. Transcript and database records must redact credentials. Use direct
 Telnet/GMCP for primary testing and reserve Mudlet-in-VM automation for
 client-specific validation.
+For live progression, prefer one bounded multi-segment campaign process over
+repeated one-shot connections. Before launching, verify no tester process is
+already active. Retry a failed launch approval once, then continue local work
+instead of waiting indefinitely.
 
 ## Commits And Pull Requests
 

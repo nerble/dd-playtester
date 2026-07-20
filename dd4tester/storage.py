@@ -253,6 +253,34 @@ class RunStorage:
         self.connection.commit()
         return int(cursor.rowcount)
 
+    def fail_interrupted_campaign_segments(self, *, reason: str) -> tuple[int, int]:
+        """Close orphaned campaign work after its runner process has ended."""
+        timestamp = _now()
+        campaigns = self.connection.execute(
+            """
+            UPDATE campaigns
+            SET status = 'failed', error = ?, updated_at = ?
+            WHERE status = 'running'
+              AND EXISTS (
+                  SELECT 1
+                  FROM campaign_segments
+                  WHERE campaign_segments.campaign_id = campaigns.id
+                    AND campaign_segments.status = 'running'
+              )
+            """,
+            (reason, timestamp),
+        )
+        segments = self.connection.execute(
+            """
+            UPDATE campaign_segments
+            SET finished_at = ?, status = 'failed', error = ?
+            WHERE status = 'running'
+            """,
+            (timestamp, reason),
+        )
+        self.connection.commit()
+        return int(segments.rowcount), int(campaigns.rowcount)
+
     def list_runs(self, *, limit: int = 20) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """

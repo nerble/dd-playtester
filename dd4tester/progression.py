@@ -198,6 +198,59 @@ _MIDENNIR_LEVEL_EIGHT_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_AMBUSH_LEVEL_EIGHT_POLICY = ProgressionPolicy(
+    policy_id="ambush-war-dog-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="verified",
+    execution="ambush-war-dog-hunt",
+    summary=(
+        "Hunt the lower-HP war dog on the Ambush exterior, then recall for "
+        "healer recovery."
+    ),
+    evidence=(
+        "DD4 source places the level-6 war dog in room 4505 and gives its collar +1 damroll.",
+        "Live run 326 killed a reboot-fuzzed level-7 war dog for 249 XP and returned safely to the Midgaard healer.",
+        "Live run 327 lost 44 XP after three magic-missile attempts failed to finish the higher-HP wounded goblin.",
+        "The route excludes the level-8 raider, level-10 guard, and the cave complex.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=1,
+)
+
+_AMBUSH_LEVEL_NINE_POLICY = ProgressionPolicy(
+    policy_id="ambush-exterior-9-10",
+    minimum_level=9,
+    maximum_level=10,
+    status="verified",
+    execution="ambush-hunt",
+    summary=(
+        "Use trained chill touch against the wounded goblin and war dog on "
+        "the Ambush exterior."
+    ),
+    evidence=(
+        "DD4 source places the level-6 wounded goblin and war dog on the Ambush exterior.",
+        "Live run 322 killed both targets for 521 XP and returned safely at full resources.",
+        "DD4 source gives trained chill touch a stronger damage range than the level-8 magic-missile loop.",
+        "The route excludes the level-8 raider, level-10 guard, and the cave complex.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=2,
+)
+
+_LIQUIDATE_LOOT_POLICY = ProgressionPolicy(
+    policy_id="liquidate-loot",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="sell-loot",
+    summary="Sell expendable equipment at compatible safe Midgaard shops.",
+    evidence=(
+        "Live run 323 sold Ambush armour, returned to the Mage Guild, saved, and quit safely.",
+    ),
+    practice_skill=None,
+)
+
 _UNAVAILABLE_POLICY = ProgressionPolicy(
     policy_id="unregistered-10-100",
     minimum_level=10,
@@ -215,11 +268,14 @@ def policy_for(
     character_class: str,
     *,
     has_large_sack: bool = False,
+    has_sellable_loot: bool = False,
 ) -> ProgressionPolicy:
     normalized_level = int(level or 0)
     canonical_class = canonical_class_name(character_class)
     if normalized_level < 2:
         return _STARTER_POLICY
+    if has_sellable_loot:
+        return _LIQUIDATE_LOOT_POLICY
     if normalized_level < 6:
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,
@@ -228,11 +284,11 @@ def policy_for(
     if canonical_class == "mage" and normalized_level == 7:
         return _MIDENNIR_LEVEL_SEVEN_POLICY
     if canonical_class == "mage" and 8 <= normalized_level < 10:
-        return (
-            _MIDENNIR_LEVEL_EIGHT_POLICY
-            if has_large_sack
-            else _MIDENNIR_SACK_POLICY
-        )
+        if not has_large_sack:
+            return _MIDENNIR_SACK_POLICY
+        if normalized_level == 8:
+            return _AMBUSH_LEVEL_EIGHT_POLICY
+        return _AMBUSH_LEVEL_NINE_POLICY
     if normalized_level < 10:
         return replace(
             _MUD_SCHOOL_RESEARCH_POLICY,

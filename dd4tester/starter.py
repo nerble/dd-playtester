@@ -4228,6 +4228,63 @@ async def run_midennir_research_profile(path: str | Path) -> RunResult:
     ).run()
 
 
+def ambush_exterior_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Return the source-backed lower-risk exterior Ambush circuit."""
+    return (
+        FieldHuntStop(
+            (
+                "west",
+                "south",
+                "south",
+                "west",
+                "south",
+                "west",
+                "south",
+                "south",
+                "west",
+                "south",
+                "south",
+            ),
+            "wounded goblin",
+        ),
+        FieldHuntStop(
+            ("north", "north", "east", "east"),
+            "war dog",
+        ),
+        FieldHuntStop(("south",), "goblin"),
+        FieldHuntStop(("south",), "goblin looter"),
+        FieldHuntStop(("open south", "south"), "goblin archer"),
+    )
+
+
+def ambush_war_dog_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Go directly to the lower-HP Ambush target from the fastwalk endpoint."""
+    exterior = ambush_exterior_hunt_stops()
+    return (
+        FieldHuntStop(
+            exterior[0].route + exterior[1].route,
+            "war dog",
+        ),
+    )
+
+
+async def run_ambush_research_profile(path: str | Path) -> RunResult:
+    """Live-consider the source-backed exterior Ambush targets and return."""
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        objective_level=11,
+        fastwalk_route=route_named("ambush"),
+        fastwalk_origin_actions=("get all.pie",),
+        fastwalk_hunt_stops=ambush_exterior_hunt_stops(),
+        fastwalk_require_invisibility=True,
+        require_fastwalk_kill=False,
+        allow_safe_fastwalk_abort=True,
+    ).run()
+
+
 async def run_moria_research_profile(
     path: str | Path,
     *,

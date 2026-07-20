@@ -401,3 +401,25 @@ and failure handling before registering each new level-band policy.
   3516, 3515, 3518, 3522, 3511, and 3508 while avoiding the poison wyverns in
   3521 and the mixed opposition in the goblin headquarters.
 - Field circuits now recall below 25% movement. All 331 tests pass.
+
+## Progression Evidence Cycle 16
+
+- Runs 311-320 sustained the expanded Miden'nir circuit through ten successful
+  autonomous campaign segments. Ararisa reached 27,904 XP at level 8 before
+  Ambush research began.
+- Run 321 rejected the source-level-8 raider after a safe flee and net 9-XP
+  loss. Run 322 killed the wounded goblin and war dog for 521 XP, returned at
+  full resources, and supplied saleable armour; run 323 sold that loot safely.
+- Campaign runs 324-326 proved automatic Ambush hunting and liquidation. They
+  gained 372 XP from a reboot-fuzzed level-7 wounded goblin and 249 XP from the
+  war dog, then returned to the Midgaard healer. Interrupted-run recovery now
+  closes orphaned runs, campaign segments, and campaign status records before
+  a resume.
+- Run 327 exposed a poor level-8 matchup: three magic-missile attempts left the
+  higher-HP wounded goblin unfinished, producing a net 44-XP loss after the
+  safety flee. The level-8 campaign now goes directly to the lower-HP war dog
+  and defers the wounded goblin until level 9's `chill touch` training.
+- Run 328 validated the revised route with a 294-XP war-dog kill, only 22 hit
+  points lost, full recovery, safe logout, and a successful campaign
+  checkpoint. DD4 source confirms the retained collar grants +1 damroll. All
+  338 tests pass.
