@@ -242,6 +242,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="number of additional northbound Moria trail rooms to inspect, default: 0",
     )
+    moria_mode = moria_parser.add_mutually_exclusive_group()
+    moria_mode.add_argument(
+        "--sanctuary-probe",
+        action="store_true",
+        help="consider the nearest potion-carrying large hobgoblin without attacking",
+    )
+    moria_mode.add_argument(
+        "--sanctuary-hunt",
+        action="store_true",
+        help="hunt at most one isolated large hobgoblin for its sanctuary potion",
+    )
 
     fastwalks_parser = subcommands.add_parser(
         "show-fastwalks",
@@ -681,7 +692,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "moria-research":
         try:
             result = asyncio.run(
-                run_moria_research_profile(args.profile, depth=args.depth)
+                run_moria_research_profile(
+                    args.profile,
+                    depth=args.depth,
+                    sanctuary_probe=args.sanctuary_probe,
+                    sanctuary_hunt=args.sanctuary_hunt,
+                )
             )
         except Exception as exc:
             print(f"Moria research failed: {exc}", file=sys.stderr)

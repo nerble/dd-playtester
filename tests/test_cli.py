@@ -659,9 +659,17 @@ def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch
     transcript = tmp_path / "moria-1.jsonl"
     database = tmp_path / "runs.sqlite3"
 
-    async def fake_moria_research(path: Path, *, depth: int) -> RunResult:
+    async def fake_moria_research(
+        path: Path,
+        *,
+        depth: int,
+        sanctuary_probe: bool,
+        sanctuary_hunt: bool,
+    ) -> RunResult:
         assert path == profile
         assert depth == 0
+        assert sanctuary_probe is False
+        assert sanctuary_hunt is False
         return RunResult(12, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(
@@ -676,6 +684,77 @@ def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch
     assert exit_code == 0
     assert "Run 12 success" in captured.out
     assert f"Transcript: {transcript}" in captured.out
+
+
+def test_moria_research_command_selects_sanctuary_probe(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+
+    async def fake_moria_research(
+        path: Path,
+        *,
+        depth: int,
+        sanctuary_probe: bool,
+        sanctuary_hunt: bool,
+    ) -> RunResult:
+        assert path == profile
+        assert depth == 0
+        assert sanctuary_probe is True
+        assert sanctuary_hunt is False
+        return RunResult(
+            22,
+            "success",
+            tmp_path / "moria-sanctuary.jsonl",
+            tmp_path / "runs.sqlite3",
+            {"level": 9},
+        )
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_moria_research_profile",
+        fake_moria_research,
+    )
+
+    assert (
+        main(["moria-research", str(profile), "--sanctuary-probe"])
+        == 0
+    )
+
+
+def test_moria_research_command_selects_sanctuary_hunt(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+
+    async def fake_moria_research(
+        path: Path,
+        *,
+        depth: int,
+        sanctuary_probe: bool,
+        sanctuary_hunt: bool,
+    ) -> RunResult:
+        assert path == profile
+        assert depth == 0
+        assert sanctuary_probe is False
+        assert sanctuary_hunt is True
+        return RunResult(
+            23,
+            "success",
+            tmp_path / "moria-sanctuary-hunt.jsonl",
+            tmp_path / "runs.sqlite3",
+            {"level": 9},
+        )
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_moria_research_profile",
+        fake_moria_research,
+    )
+
+    assert main(["moria-research", str(profile), "--sanctuary-hunt"]) == 0
 
 
 def test_show_fastwalks_filters_official_routes_by_level(capsys) -> None:

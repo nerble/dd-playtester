@@ -576,3 +576,35 @@ and failure handling before registering each new level-band policy.
   exact-known purple sanctuary or black cure-critical potions into the worn
   pouch. Sanctuary is used before avoidable combat damage; healing remains
   reserved for health at or below 55%.
+- Run 434 live-validated the invisible route from the Moria fastwalk endpoint
+  to the first sanctuary-potion reset in room 4064. The large hobgoblin had
+  wandered, so the consider-only policy recalled, recovered, and saved without
+  combat.
+- Run 436 exposed a false-positive fly-potion purchase while invisible. The
+  Magic Shop workflow now becomes visible, repeats the listing, verifies the
+  potion in inventory, and only then quaffs it. Run 437 bought the reboot-priced
+  potion for 94 copper and confirmed 34 ticks of flight.
+- Runs 438-440 used flight to verify both potion resets and DD4's `where`
+  locator. Source flags confirm the large hobgoblins are scavengers that stay
+  in Moria but are not sentinels, and live output showed both wandering between
+  generic tunnel and cave rooms.
+- Run 441 safely considered one large hobgoblin in room 4071: DD4 reported
+  `The perfect match!` and that Ararisa was slightly healthier. Consider-only
+  probes may assess a target around bystanders, but attack-capable policies
+  retain the strict isolated-target gate. The bounded search now checks rooms
+  4064, 4069, 4071, and 4072 before recalling.
+- Run 442 exposed a zero-duration invisibility affect that was being treated as
+  active. An aggressive orc initiated combat, but the policy recalled safely,
+  recovered at the healer, and saved. Affect checks now require a positive
+  duration when DD4 supplies one.
+- Run 443 exposed ambiguous `hobgoblin` command targeting: a small hobgoblin was
+  considered and attacked when the large carrier was absent. The policy fled
+  at high health and recovered safely. Moria potion stops now require the exact
+  large-hobgoblin room description and reject any second mob sharing the
+  `hobgoblin` command keyword. No sanctuary potion has been recovered yet.
+- Run 445 live-validated the corrected targeting policy. It ignored a small
+  hobgoblin and unrelated mobiles throughout the four-stop circuit, issued no
+  combat command, and returned at full health. Run 446 then found no fresh
+  source-ranked Foundry target, and run 447 confirmed the two carried war-dog
+  collars were not accepted by the current sale plan. Money acquisition remains
+  the next blocker before further potion provisioning.

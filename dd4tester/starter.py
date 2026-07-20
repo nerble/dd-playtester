@@ -172,6 +172,7 @@ class FieldHuntStop:
     allowed_bystanders: tuple[str, ...] = ()
     minimum_health_ratio: float = 0.8
     consider_only: bool = False
+    exact_target: bool = False
 
 
 class StarterPolicy:
@@ -582,6 +583,12 @@ class StarterPolicy:
                 self.food_ordered = False
             if self.sale_phase == "inventory":
                 self.sale_phase = "sell"
+        if (
+            self.magic_shop_research
+            and self.magic_shop_buy_fly
+            and "you do not have that potion" in recent
+        ):
+            self.magic_shop_purchase_failed = True
         if completed_sale is not None and self.emergency_sale_in_progress:
             self.emergency_sale_in_progress = False
             self.gear_audited = False
@@ -2536,6 +2543,16 @@ class StarterPolicy:
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
         if room_vnum == "3033" or room_name == "the magic shop":
+            if (
+                self.shop_visibility_rejected
+                or _has_named_affect(state.affects, "invis")
+            ):
+                self.shop_visibility_rejected = False
+                self.magic_shop_step = 0
+                return BotDecision(
+                    "vis",
+                    "become visible before asking the Magic Shop wizard to trade",
+                )
             if self.magic_shop_purchase_failed:
                 return BotDecision(
                     "south",
@@ -2550,6 +2567,16 @@ class StarterPolicy:
                         ("quaff light", "use the light blue travel potion"),
                         ("affects", "record the potion's active travel effect"),
                     )
+                )
+            if (
+                self.magic_shop_buy_fly
+                and self.magic_shop_step == 3
+                and not _has_inventory_item(state.inventory, "light blue potion")
+            ):
+                self.magic_shop_purchase_failed = True
+                return BotDecision(
+                    "south",
+                    "return because the light blue potion purchase was not confirmed",
                 )
             if self.magic_shop_step < len(commands):
                 command, reason = commands[self.magic_shop_step]
@@ -3029,17 +3056,27 @@ class StarterPolicy:
         """Use DD4's consider bands before committing a field hunt."""
         assert self.fastwalk_attack_target is not None
         target = self.fastwalk_attack_target
+        stop = (
+            self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+            if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+            else None
+        )
         target_count = sum(
             count
             for observed, count in self.room_target_counts.get(
                 self.current_room or "", {}
             ).items()
-            if _targets_match(observed, target)
+            if _stop_target_matches(observed, target, stop)
         )
         allowed_bystanders = (
             self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index].allowed_bystanders
             if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
             else ()
+        )
+        consider_only = (
+            self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index].consider_only
+            if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+            else False
         )
         observed_mobile_count = sum(
             count
@@ -3053,7 +3090,19 @@ class StarterPolicy:
                 for bystander in allowed_bystanders
             )
         )
-        if target_count > 1 or observed_mobile_count > 1:
+        keyword_match_count = sum(
+            count
+            for observed, count in self.room_target_counts.get(
+                self.current_room or "", {}
+            ).items()
+            if _target_keyword(observed) == _target_keyword(target)
+        )
+        ambiguous_keyword = keyword_match_count > target_count
+        if (
+            target_count > 1
+            or (consider_only and ambiguous_keyword)
+            or (not consider_only and observed_mobile_count > 1)
+        ):
             self.fastwalk_abort_reason = (
                 f"field room contained {observed_mobile_count} observed mobiles "
                 f"while evaluating {target!r}"
@@ -3233,7 +3282,10 @@ class StarterPolicy:
             return BotDecision("look", "record the completed field-expedition stop")
 
         targets = self.room_targets.get(state.room_vnum or "", [])
-        if any(_targets_match(target, stop.target) for target in targets):
+        if any(
+            _stop_target_matches(target, stop.target, stop)
+            for target in targets
+        ):
             if (
                 stop.consider_only
                 and self.consider_target == stop.target
@@ -5064,6 +5116,53 @@ def midennir_horseman_consider_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def moria_sanctuary_potion_consider_stops() -> tuple[FieldHuntStop, ...]:
+    """Search the potion resets and nearby wander rooms without attacking."""
+    return (
+        FieldHuntStop(
+            ("east", "north", "north", "east", "south", "down"),
+            "large hobgoblin",
+            actions=("where hobgoblin",),
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("west", "north", "west", "south", "east", "east", "south"),
+            "large hobgoblin",
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("south",),
+            "large hobgoblin",
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("east",),
+            "large hobgoblin",
+            consider_only=True,
+            exact_target=True,
+        ),
+    )
+
+
+def moria_sanctuary_potion_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one isolated potion carrier along the verified search circuit."""
+    return tuple(
+        FieldHuntStop(
+            stop.route,
+            stop.target,
+            actions=stop.actions,
+            required_items=stop.required_items,
+            allowed_bystanders=stop.allowed_bystanders,
+            minimum_health_ratio=1.0,
+            exact_target=stop.exact_target,
+        )
+        for stop in moria_sanctuary_potion_consider_stops()
+    )
+
+
 async def run_ambush_research_profile(
     path: str | Path,
     *,
@@ -5105,9 +5204,31 @@ async def run_moria_research_profile(
     path: str | Path,
     *,
     depth: int = 0,
+    sanctuary_probe: bool = False,
+    sanctuary_hunt: bool = False,
 ) -> RunResult:
+    if sanctuary_probe and sanctuary_hunt:
+        raise ValueError("choose either a sanctuary probe or sanctuary hunt")
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
+    if sanctuary_probe or sanctuary_hunt:
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=11,
+            fastwalk_route=route_named("moria"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=(
+                moria_sanctuary_potion_hunt_stops()
+                if sanctuary_hunt
+                else moria_sanctuary_potion_consider_stops()
+            ),
+            fastwalk_train_before_departure=sanctuary_hunt,
+            fastwalk_require_invisibility=True,
+            fastwalk_kill_limit=1 if sanctuary_hunt else None,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+        ).run()
     return await StarterBotRunner(
         spec,
         profile_path,
@@ -5308,6 +5429,12 @@ def _has_named_affect(value: Any, name: str) -> bool:
     if isinstance(value, Mapping):
         affect_name = value.get("name")
         if isinstance(affect_name, str) and affect_name.casefold() == target:
+            duration = value.get("duration")
+            if duration is not None:
+                try:
+                    return int(duration) > 0
+                except (TypeError, ValueError):
+                    pass
             return True
         return any(_has_named_affect(item, name) for item in value.values())
     if isinstance(value, (list, tuple)):
@@ -5385,6 +5512,16 @@ def _target_keyword(target: str) -> str:
 def _targets_match(observed: str, requested: str) -> bool:
     """Treat a requested descriptor and the MUD's shorter mobile name as equivalent."""
     return observed == requested or _target_keyword(observed) == _target_keyword(requested)
+
+
+def _stop_target_matches(
+    observed: str,
+    requested: str,
+    stop: FieldHuntStop | None,
+) -> bool:
+    if stop is not None and stop.exact_target:
+        return observed == requested
+    return _targets_match(observed, requested)
 
 
 def _arena_target_priority(target: str) -> tuple[int, str]:

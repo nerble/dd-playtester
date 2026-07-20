@@ -28,6 +28,8 @@ from dd4tester.starter import (
     ambush_exterior_hunt_stops,
     ambush_vile_goblin_hunt_stops,
     midennir_horseman_consider_stops,
+    moria_sanctuary_potion_consider_stops,
+    moria_sanctuary_potion_hunt_stops,
 )
 from dd4tester.state import CharacterState
 
@@ -96,6 +98,45 @@ def test_vile_goblin_hunt_keeps_bystander_exception_but_allows_combat() -> None:
     assert stops[0].target == "vile goblin"
     assert stops[0].allowed_bystanders == ("half clothed human female",)
     assert stops[0].consider_only is False
+
+
+def test_moria_sanctuary_probe_searches_resets_and_nearby_wander_rooms() -> None:
+    stops = moria_sanctuary_potion_consider_stops()
+
+    assert len(stops) == 4
+    assert stops[0].route == (
+        "east",
+        "north",
+        "north",
+        "east",
+        "south",
+        "down",
+    )
+    assert stops[1].route == (
+        "west",
+        "north",
+        "west",
+        "south",
+        "east",
+        "east",
+        "south",
+    )
+    assert stops[2].route == ("south",)
+    assert stops[3].route == ("east",)
+    assert {stop.target for stop in stops} == {"large hobgoblin"}
+    assert all(stop.consider_only for stop in stops)
+    assert all(stop.exact_target for stop in stops)
+    assert stops[0].actions == ("where hobgoblin",)
+
+
+def test_moria_sanctuary_hunt_requires_full_health_and_enables_combat() -> None:
+    stops = moria_sanctuary_potion_hunt_stops()
+
+    assert len(stops) == 4
+    assert all(stop.minimum_health_ratio == 1.0 for stop in stops)
+    assert all(stop.consider_only is False for stop in stops)
+    assert all(stop.exact_target for stop in stops)
+    assert stops[0].actions == ("where hobgoblin",)
 
 
 def test_creation_policy_follows_configured_character_profile() -> None:
@@ -4821,6 +4862,178 @@ def test_field_probe_allows_one_source_verified_noncombat_bystander() -> None:
     }
 
 
+def test_consider_only_probe_can_assess_a_target_in_a_crowded_room() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "large hobgoblin", consider_only=True),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_looked = True
+    policy.current_room = "4071"
+    state = CharacterState(
+        level=9,
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=167,
+        max_move=230,
+        room_name="The large cave",
+        room_vnum="4071",
+        position=7,
+    )
+    policy.observe_text(
+        "An orc is here, looking for something to eat.\n"
+        "A large hobgoblin is here wondering if he should tear you apart.\n"
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "consider hobgoblin"
+    assert policy.fastwalk_hunt_stop_skipped is False
+
+
+def test_exact_field_target_ignores_smaller_same_keyword_mobile() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "large hobgoblin",
+                consider_only=True,
+                exact_target=True,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_looked = True
+    policy.current_room = "4069"
+    state = CharacterState(
+        level=9,
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=167,
+        max_move=230,
+        room_name="The tunnel",
+        room_vnum="4069",
+        position=7,
+    )
+    policy.observe_text(
+        "A veteran warrior is preparing for battle.\n"
+        "A small, beat-up hobgoblin is here.\n"
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert policy.consider_target is None
+
+
+def test_exact_field_probe_rejects_ambiguous_hobgoblin_keyword() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "large hobgoblin",
+                consider_only=True,
+                exact_target=True,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_looked = True
+    policy.current_room = "4071"
+    state = CharacterState(
+        level=9,
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=167,
+        max_move=230,
+        room_name="The large cave",
+        room_vnum="4071",
+        position=7,
+    )
+    policy.observe_text(
+        "A large hobgoblin is here wondering if he should tear you apart.\n"
+        "A small hobgoblin is looking for someone to bully.\n"
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert policy.fastwalk_abort_reason is not None
+
+
+def test_field_circuit_recasts_a_zero_duration_invisibility_affect() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(FieldHuntStop(("west",), "large hobgoblin"),),
+        fastwalk_require_invisibility=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    state = CharacterState(
+        level=9,
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=186,
+        max_move=230,
+        room_name="The tunnel",
+        room_vnum="4064",
+        position=7,
+        affects=[[{"name": "invis", "duration": "0"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast invis"
+    assert policy.fastwalk_hunt_move_index == 0
+
+
 def test_field_target_count_excludes_source_identified_ground_objects() -> None:
     collar = ObjectSource(
         4500,
@@ -6340,7 +6553,11 @@ def test_magic_shop_research_can_buy_and_verify_a_fly_potion() -> None:
     shop = CharacterState(room_name="The Magic Shop", room_vnum="3033", position=7)
 
     commands = []
-    for _ in range(5):
+    for index in range(5):
+        if index >= 3:
+            shop.inventory = (
+                '[[{"quan": "1", "short_desc": "a light blue potion"}]]'
+            )
         decision = policy.next_decision(shop)
         assert decision is not None
         commands.append(decision.command)
@@ -6367,6 +6584,61 @@ def test_magic_shop_research_returns_when_flight_potion_price_is_unaffordable() 
 
     decision = policy.next_decision(
         CharacterState(room_name="The Magic Shop", room_vnum="3033", position=7)
+    )
+
+    assert decision is not None
+    assert decision.command == "south"
+    assert policy.magic_shop_purchase_failed is True
+
+
+def test_magic_shop_research_becomes_visible_and_restarts_stock_check() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        magic_shop_research=True,
+        magic_shop_buy_fly=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.magic_shop_step = 2
+    policy.observe_text("The wizard says 'I don't trade with folks I can't see.'")
+    shop = CharacterState(
+        room_name="The Magic Shop",
+        room_vnum="3033",
+        position=7,
+    )
+
+    visible = policy.next_decision(shop)
+
+    assert visible is not None
+    assert visible.command == "vis"
+    assert policy.magic_shop_step == 0
+    policy.after_command(visible)
+    policy.prompt_ready = True
+
+    listing = policy.next_decision(shop)
+    assert listing is not None
+    assert listing.command == "list"
+
+
+def test_magic_shop_research_does_not_quaff_an_unconfirmed_purchase() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        magic_shop_research=True,
+        magic_shop_buy_fly=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.magic_shop_step = 3
+
+    decision = policy.next_decision(
+        CharacterState(
+            room_name="The Magic Shop",
+            room_vnum="3033",
+            position=7,
+            inventory="[]",
+        )
     )
 
     assert decision is not None
