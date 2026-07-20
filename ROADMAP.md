@@ -763,3 +763,25 @@ and failure handling before registering each new level-band policy.
   The origin queue now consumes only after a live hunger or thirst signal,
   while the existing missing-provision and preflight checks remain active.
   This preserves scarce food during short repeated hunt segments.
+
+## Progression Evidence Cycle 27
+
+- Runs 502-503 live-validated conservative target selection and provision
+  preservation. Moria's carrier shared a room with a brown snake and was
+  skipped; the Ambush fallback then killed a war dog for 152 XP without
+  consuming any of the three carried pies.
+- Runs 506-507 repeated the bounded rotation. The empty Moria circuit caused
+  no loss, and a war dog produced another 135 XP for only 11 damage. Ararisa
+  retained all food and recovered fully.
+- Run 509 killed a wandering large hobgoblin for 290 XP, but an orc arrived
+  before corpse looting completed and a snake attacked after the first escape.
+  Fleeing and recalling from the two combats cost 80 XP each, leaving a net
+  gain of 130 XP and no potion.
+- Run 510 intercepted another isolated carrier, gained 339 XP, looted and
+  pouched its purple sanctuary potion, sacrificed the corpse for one silver,
+  and recovered safely. Ararisa saved at 39,495 XP, only 205 short of level
+  10, with 95 copper-equivalent and three pies.
+- DD4 source confirms `check_autoloot()` runs synchronously inside the kill
+  immediately after corpse creation. Combat fastwalks now issue the idempotent
+  `config +autoloot` at the safe recall origin, securing potions, equipment,
+  and coins before a wandering mobile can interrupt post-kill commands.

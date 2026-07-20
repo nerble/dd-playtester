@@ -4038,6 +4038,36 @@ def test_fastwalk_origin_actions_run_before_route_commands() -> None:
     assert commands == ["drop all.piping", "drop cap", "south"]
 
 
+def test_combat_fastwalk_enables_autoloot_before_origin_actions() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="war dog",
+        fastwalk_origin_actions=("drop cap",),
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    state = CharacterState(
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        position=7,
+    )
+
+    policy.prompt_ready = True
+    configure = policy.next_decision(state)
+    assert configure is not None
+    assert configure.command == "config +autoloot"
+    policy.after_command(configure)
+
+    policy.prompt_ready = True
+    prepare = policy.next_decision(state)
+
+    assert prepare is not None
+    assert prepare.command == "drop cap"
+
+
 def test_fastwalk_origin_does_not_waste_food_or_water_without_need() -> None:
     policy = StarterPolicy(
         _spec(),

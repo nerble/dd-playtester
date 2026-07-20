@@ -249,6 +249,7 @@ class StarterPolicy:
         self.fastwalk_requested_target = fastwalk_attack_target
         self.fastwalk_origin_actions = fastwalk_origin_actions
         self.fastwalk_origin_action_index = 0
+        self.fastwalk_autoloot_configured = False
         self.vault_stow_commands = tuple(
             command
             for item in vault_stow_items
@@ -2899,6 +2900,17 @@ class StarterPolicy:
                 return BotDecision(
                     f"put all.{loose_potion} pouch",
                     "move confirmed loose emergency potions into the worn pouch",
+                )
+            if (
+                room_vnum == "3001"
+                and self.fastwalk_outbound_index == 0
+                and (self.fastwalk_attack_target or self.fastwalk_hunt_stops)
+                and not self.fastwalk_autoloot_configured
+            ):
+                self.fastwalk_autoloot_configured = True
+                return BotDecision(
+                    "config +autoloot",
+                    "secure corpse loot inside the kill before another mobile can interrupt",
                 )
             while self.fastwalk_origin_action_index < len(
                 self.fastwalk_origin_actions
