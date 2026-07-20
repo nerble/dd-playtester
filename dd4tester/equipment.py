@@ -16,6 +16,7 @@ APPLY_MANA = 12
 APPLY_HIT = 13
 APPLY_HITROLL = 18
 APPLY_DAMROLL = 19
+ITEM_LIGHT = 1
 
 STANCE_COMBAT = "combat"
 STANCE_PRE_LEVEL = "pre_level"
@@ -117,6 +118,8 @@ def normalize_item_name(value: str) -> str:
 
 
 def item_category(item: ObjectSource) -> str | None:
+    if item.item_type == ITEM_LIGHT:
+        return "light"
     for bit, category in _WEAR_CATEGORIES.items():
         if item.wear_flags & (1 << bit):
             return category
@@ -175,7 +178,7 @@ def protects_from_sale(item: ObjectSource) -> bool:
         APPLY_HITROLL,
         APPLY_DAMROLL,
     }
-    return is_capacity_infrastructure(item) or any(
+    return item.item_type == ITEM_LIGHT or is_capacity_infrastructure(item) or any(
         location in protected and modifier > 0
         for location, modifier in item.affects
     )
@@ -311,9 +314,18 @@ def plan_stance_swaps(
 
 
 def item_keyword(item: ObjectSource) -> str:
-    return item.keywords.split()[0] if item.keywords.split() else normalize_item_name(
-        item.short_description
-    ).split()[0]
+    description_words = normalize_item_name(item.short_description).split()
+    keyword_words = item.keywords.split()
+    if description_words and keyword_words:
+        noun = description_words[-1]
+        if noun in keyword_words and len(noun) >= 5:
+            return noun
+        if noun not in keyword_words:
+            return keyword_words[0]
+        return max(keyword_words, key=len)
+    if keyword_words:
+        return keyword_words[0]
+    return description_words[-1] if description_words else ""
 
 
 def _bonus_totals(item: ObjectSource) -> dict[int, int]:

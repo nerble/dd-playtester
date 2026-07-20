@@ -12,12 +12,17 @@ both directories are intentionally ignored by Git.
 Never modify the Dragons Domain IV core repository from this project.
 Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
+Before source-backed research, and at least once per active working day,
+fast-forward `runs/dd4-source` from upstream with `git pull --ff-only`; record
+the revision used for consequential policy decisions.
 Confirm dynamic behavior such as wandering, prices, and combat risk with live,
 redacted transcripts before promoting it into an autonomous policy. Scope
 prices, kill repetition, applicable object instance limits, and observed spawn
 counts to the `DD was started at ...` reboot identity; never carry them across
 reboots. Instance limiting applies only to the few objects whose source
 definitions use it, not to mobiles.
+Before HERO renaming is available, use source-backed keywords and keep active
+gear directly accessible; put spare ambiguous items in containers or the vault.
 Leave a depleted hunt area before waiting because occupied areas reset more
 slowly.
 

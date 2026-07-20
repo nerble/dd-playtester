@@ -5,6 +5,8 @@ from dd4tester.equipment import (
     STANCE_COMBAT,
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
+    item_category,
+    item_keyword,
     is_capacity_infrastructure,
     plan_stance_swaps,
     protects_from_sale,
@@ -124,6 +126,28 @@ def test_school_source_parser_retains_stat_affects_and_wear_flags() -> None:
     assert stone.wear_flags & (1 << 15)
 
 
+def test_school_banner_uses_the_light_slot_and_is_restored_after_death() -> None:
+    school = parse_area_file(
+        Path("runs/dd4-source/server/area/school.are"),
+        include_resets=False,
+        include_entities=False,
+        include_objects=True,
+    )
+    banner = school.objects[3716]
+
+    removals, additions = plan_stance_swaps(
+        [banner],
+        [],
+        STANCE_COMBAT,
+    )
+
+    assert item_category(banner) == "light"
+    assert item_keyword(banner) == "illumination"
+    assert protects_from_sale(banner)
+    assert removals == []
+    assert additions == [banner]
+
+
 def test_catalog_matches_unidentified_inventory_prefix() -> None:
     diploma = _item(3715, "Mud School diploma", (3, 1))
     catalog = GearCatalog({diploma.vnum: diploma})
@@ -144,3 +168,35 @@ def test_catalog_matches_set_prefix_and_protects_foundry_circlet() -> None:
     assert catalog.match("[SET] a silver circlet") == circlet
     assert circlet.affects == ((3, 1),)
     assert protects_from_sale(circlet)
+
+
+def test_item_keyword_uses_the_displayed_noun_instead_of_a_shared_adjective() -> None:
+    circlet = ObjectSource(
+        108,
+        "silver circlet",
+        "a silver circlet",
+        9,
+        (1, 0, 0, 0),
+        26,
+        wear_flags=1 | (1 << 4),
+    )
+
+    assert item_keyword(circlet) == "circlet"
+
+
+def test_item_keyword_avoids_abbreviations_and_requires_a_source_keyword() -> None:
+    iron_cap = _item(109, "iron cap")
+    velvet_cape = _item(3711, "velvet cape", wear_bit=10)
+    belt = ObjectSource(
+        3712,
+        "belt silver leather",
+        "a black belt with a silver buckle",
+        9,
+        (2, 0, 0, 0),
+        5,
+        wear_flags=1 | (1 << 11),
+    )
+
+    assert item_keyword(iron_cap) == "iron"
+    assert item_keyword(velvet_cape) == "velvet"
+    assert item_keyword(belt) == "belt"

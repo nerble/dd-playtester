@@ -423,3 +423,24 @@ and failure handling before registering each new level-band policy.
   points lost, full recovery, safe logout, and a successful campaign
   checkpoint. DD4 source confirms the retained collar grants +1 damroll. All
   338 tests pass.
+- The read-only DD4 mirror was fast-forwarded from `9bdd510` to upstream
+  `0482387` on 2026-07-20 before planning the next level band. Consequential
+  source-backed research now begins with a once-per-working-day refresh.
+
+## Progression Evidence Cycle 17
+
+- A live raider probe showed that favorable `consider` text is not sufficient
+  protection from weapon burst. Run 363 died after a failed flee; the bot then
+  found room 427 in Purgatory, looted the corpse, entered the portal, and
+  recovered beside the Midgaard healer. Purgatory recovery now keys on area and
+  room identity as well as the transient death flag.
+- Source-backed equipment keywords now avoid ambiguous abbreviations, and light
+  objects have an explicit equipment slot. Run 367 verified the recovered
+  illumination banner in the light slot, killed a war dog and goblin looter for
+  733 XP, recalled, recovered fully, and logged out safely at 27,980 XP.
+- Ambush departures now eat and drink at the safe origin. Routine healer
+  recovery no longer polls the hard-coded `heal` menu before sleeping.
+- Containers reduce item count and isolate duplicate keywords, but DD4 includes
+  their contents in carried weight. Use the 50-pound large sack for organization
+  only when capacity permits; use the vault for actual weight relief, and keep
+  the active light, provisions, water, and selected loadout directly accessible.

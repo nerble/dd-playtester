@@ -16,7 +16,7 @@ from .starter import (
     StarterBotRunner,
     _sellable_inventory_keyword,
     ambush_exterior_hunt_stops,
-    ambush_war_dog_hunt_stops,
+    ambush_level_eight_hunt_stops,
 )
 from .storage import RunStorage
 
@@ -197,7 +197,7 @@ class CampaignRunner:
                 or _state_has_item(state.get("inventory"), "large sack")
             ),
             has_sellable_loot=(
-                _sellable_inventory_keyword(state.get("inventory")) is not None
+                _has_campaign_sellable_loot(state)
             ),
         )
 
@@ -421,7 +421,7 @@ async def _run_policy_segment(
         ).run()
     if policy.execution in {"ambush-war-dog-hunt", "ambush-hunt"}:
         hunt_stops = (
-            ambush_war_dog_hunt_stops()
+            ambush_level_eight_hunt_stops()
             if policy.execution == "ambush-war-dog-hunt"
             else ambush_exterior_hunt_stops()[:2]
         )
@@ -430,7 +430,7 @@ async def _run_policy_segment(
             profile_path,
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("ambush"),
-            fastwalk_origin_actions=("get all.pie",),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=hunt_stops,
             fastwalk_require_invisibility=True,
             require_fastwalk_kill=False,
@@ -464,7 +464,7 @@ async def _run_policy_segment(
             profile_path,
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("ambush"),
-            fastwalk_origin_actions=("get all.pie",),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=hunt_stops,
             fastwalk_train_before_departure=not use_level_eight_loadout,
             fastwalk_require_invisibility=use_level_eight_loadout,
@@ -580,6 +580,24 @@ def _state_has_item(value: Any, item_name: str) -> bool:
     if isinstance(value, (list, tuple)):
         return any(_state_has_item(item, item_name) for item in value)
     return False
+
+
+def _has_campaign_sellable_loot(state: dict[str, Any]) -> bool:
+    keyword = _sellable_inventory_keyword(state.get("inventory"))
+    if keyword is None:
+        return False
+    if keyword != "collar":
+        return True
+    stats = state.get("stats")
+    if not isinstance(stats, dict):
+        return False
+    carry_weight = stats.get("carry_wt")
+    maximum_weight = stats.get("maxcarry_wt")
+    if not isinstance(carry_weight, (int, float)):
+        return False
+    if not isinstance(maximum_weight, (int, float)) or maximum_weight <= 0:
+        return False
+    return carry_weight / maximum_weight >= 0.85
 
 
 def _budget_failure(spec: CampaignSpec, totals: Any) -> str | None:

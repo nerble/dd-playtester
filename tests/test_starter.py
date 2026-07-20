@@ -146,6 +146,67 @@ def test_existing_character_login_enters_world() -> None:
     assert policy.in_world is True
 
 
+def test_reboot_login_ignores_stale_in_world_prompt_until_authenticated() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.waiting_for_heal = True
+    state = CharacterState(
+        hp=80,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=50,
+        max_move=100,
+        position=4,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+    )
+
+    name = _respond(policy, state, "Enter thy Name:")
+
+    assert name == ("Rulemage", False)
+    assert policy.in_world is False
+    stale_prompt = GameEvent("prompt_seen", "gmcp", {"package": "Core.Prompt"})
+    state.apply(stale_prompt)
+    policy.observe_events([stale_prompt], state)
+    assert policy.next_decision(state) is None
+
+    assert _respond(policy, state, "Password:") == ("swordfish", True)
+    assert _respond(
+        policy,
+        state,
+        "To Enter the Dragons Domain press <Return>.",
+    ) == ("", False)
+    assert policy.login_authenticated is True
+
+
+def test_existing_character_direct_reconnect_authenticates_from_server_prompt() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    state = CharacterState(
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        room_name="The Trail to Miden'nir",
+        room_vnum="2300",
+    )
+
+    assert _respond(policy, state, "Enter thy Name:") == ("Rulemage", False)
+    assert _respond(policy, state, "Password:") == ("swordfish", True)
+    policy.observe_text(
+        "Reconnecting.\n"
+        "You must take a few moments to adjust to your new surroundings...\n"
+    )
+    policy.prompt_ready = True
+
+    policy.next_decision(state)
+    assert policy.login_authenticated is True
+    assert policy.in_world is True
+
+
 def test_course_policy_asks_imp_then_follows_direction() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
@@ -283,6 +344,8 @@ def test_sanctuary_waits_for_healing_then_stands() -> None:
     assert sleep is not None
     assert sleep.command == "sleep"
     policy.after_command(sleep)
+    policy.observe_text("You sleep.")
+    state.position = 4
 
     policy.prompt_ready = True
     assert policy.next_decision(state) is None
@@ -1174,6 +1237,8 @@ def test_arena_safety_room_sleeps_until_health_recovers() -> None:
     assert sleep is not None
     assert sleep.command == "sleep"
     policy.after_command(sleep)
+    policy.observe_text("You sleep.")
+    state.position = 4
     state.hp = 68
     policy.prompt_ready = True
     stand = policy.next_decision(state)
@@ -2491,15 +2556,110 @@ def test_fastwalk_recovery_uses_healer_north_of_recall() -> None:
         move=40,
         max_move=200,
     )
-    menu = policy.next_decision(at_healer)
-    assert menu is not None
-    assert menu.command == "heal"
-
-    policy.after_command(menu)
-    policy.prompt_ready = True
     sleep = policy.next_decision(at_healer)
     assert sleep is not None
     assert sleep.command == "sleep"
+
+
+def test_fastwalk_completion_does_not_take_a_token_nap_in_mage_lab() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    policy.fastwalk_returning = True
+    home = CharacterState(
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=196,
+        max_move=220,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+    )
+
+    assert policy._recovery_decision(home) is None
+
+
+def test_fastwalk_low_reserves_route_from_mage_lab_to_temple_healer() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    home = CharacterState(
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=100,
+        max_move=220,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+    )
+
+    decision = policy._recovery_decision(home)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert "temple healer" in decision.reason
+
+
+def test_fastwalk_low_reserves_leave_general_supplies_for_temple_healer() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    supplies = CharacterState(
+        hp=87,
+        max_hp=115,
+        mana=251,
+        max_mana=316,
+        move=46,
+        max_move=220,
+        room_name="General Supplies",
+        room_vnum="3724",
+        room_flags=["safe"],
+        position=7,
+    )
+
+    decision = policy._recovery_decision(supplies)
+
+    assert decision is not None
+    assert decision.command == "down"
+    assert "temple healer" in decision.reason
+
+
+def test_field_hunt_does_not_recover_again_after_outbound_departure() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    policy.fastwalk_outbound_index = 3
+    dump = CharacterState(
+        hp=115,
+        max_hp=115,
+        mana=303,
+        max_mana=316,
+        move=194,
+        max_move=220,
+        room_name="The Dump",
+        room_vnum="3030",
+        room_flags=["safe"],
+        position=7,
+    )
+
+    assert policy._recovery_decision(dump) is None
+    assert policy._desired_gear_stance(dump) == STANCE_COMBAT
 
 
 def test_short_fastwalk_continues_from_safe_city_room_at_forty_percent_move() -> None:
@@ -2529,7 +2689,7 @@ def test_short_fastwalk_continues_from_safe_city_room_at_forty_percent_move() ->
     assert decision.command == "east"
 
 
-def test_deep_field_circuit_keeps_ninety_percent_move_reserve() -> None:
+def test_deep_field_circuit_routes_to_healer_for_ninety_percent_reserve() -> None:
     policy = StarterPolicy(
         _spec(),
         "swordfish",
@@ -2554,7 +2714,8 @@ def test_deep_field_circuit_keeps_ninety_percent_move_reserve() -> None:
     decision = policy.next_decision(state)
 
     assert decision is not None
-    assert decision.command == "sleep"
+    assert decision.command == "east"
+    assert "temple healer" in decision.reason
 
 
 def test_return_home_recalls_then_follows_verified_mage_guild_route() -> None:
@@ -2828,6 +2989,51 @@ def test_return_home_follows_randomized_purgatory_exit_by_destination() -> None:
     assert decision is not None
     assert decision.command in {"north", "down"}
     assert decision.command != "recall"
+
+
+def test_reconnect_in_purgatory_recovers_even_without_transient_dead_flag() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.prompt_ready = True
+    purgatory = CharacterState(
+        area="Purgatory",
+        room_name="The Purgatory",
+        room_vnum="401",
+        dead=False,
+        position=7,
+        exits={"west": "410", "down": "410"},
+    )
+
+    decision = policy.next_decision(purgatory)
+
+    assert decision is not None
+    assert decision.command in {"west", "down"}
+    assert policy.return_home is True
+    assert policy.purgatory_recovery_active is True
+
+
+def test_death_event_enters_recovery_instead_of_blocking_decisions() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.prompt_ready = True
+    purgatory = CharacterState(
+        area="Purgatory",
+        room_name="The Purgatory",
+        room_vnum="401",
+        dead=True,
+        position=7,
+        exits={"north": "410"},
+    )
+
+    policy.observe_events(
+        [GameEvent("character_died", "text", {})],
+        purgatory,
+    )
+    decision = policy.next_decision(purgatory)
+
+    assert policy.failure is None
+    assert decision is not None
+    assert decision.command == "north"
 
 
 def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
@@ -4049,6 +4255,59 @@ def test_fastwalk_research_skips_a_mixed_crowd_before_considering() -> None:
     assert policy.room_target_counts["3506"]["dark horseman"] == 1
 
 
+def test_field_target_count_excludes_source_identified_ground_objects() -> None:
+    collar = ObjectSource(
+        4500,
+        "war dog collar",
+        "a war dog collar",
+        9,
+        (1, 0, 0, 0),
+        30,
+        wear_flags=1 | (1 << 4),
+        affects=((19, 1),),
+    )
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+        gear_catalog=GearCatalog({collar.vnum: collar}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_looked = True
+    policy.current_room = "4505"
+    policy.gear_audited = True
+    state = CharacterState(
+        level=8,
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=200,
+        max_move=220,
+        room_name="In a forest clearing",
+        room_vnum="4505",
+        position=7,
+    )
+    policy.observe_text(
+        "A war dog collar is here.\n"
+        "A war dog collar is here.\n"
+        "A war dog is here, eating carrion.\n"
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "consider dog"
+    assert policy.failure is None
+
+
 def test_planned_fastwalk_combat_flees_as_soon_as_gmcp_reports_two_enemies() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -4710,6 +4969,71 @@ def test_liquidation_plans_distinct_items_for_best_safe_shops() -> None:
         ("buckler", "Leather Shop"),
         ("rod", "Weapon Shop"),
     ]
+
+
+def test_liquidation_uses_vis_before_shop_travel_or_trade() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    home = CharacterState(
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        position=7,
+        affects=[[{"name": "invis", "duration": "5"}]],
+        inventory=[[{"short_desc": "a war dog collar"}]],
+    )
+
+    decision = policy._liquidate_loot_decision(home)
+
+    assert decision is not None
+    assert decision.command == "vis"
+    assert policy.sale_plan == []
+
+
+def test_invisible_shop_rejection_retries_the_unsold_item_after_vis() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.sale_phase = "inventory"
+    policy.observe_text("The armourer says 'I don't trade with folks I can't see.'")
+    shop = safe_shop_for_item("a war dog collar", item_type=9)
+    assert shop is not None
+    policy.sale_plan = [("collar", shop)]
+    policy.sale_index = 0
+    at_shop = CharacterState(
+        room_name=shop.name,
+        room_vnum=shop.room_vnum,
+        position=7,
+    )
+
+    visible = policy._liquidate_loot_decision(at_shop)
+
+    assert visible is not None
+    assert visible.command == "vis"
+    assert policy.sale_phase == "sell"
+    retry = policy._liquidate_loot_decision(at_shop)
+    assert retry is not None
+    assert retry.command == "sell collar"
+
+
+def test_liquidation_recalls_an_interrupted_field_character_before_planning() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    field = CharacterState(
+        area="Miden'nir",
+        room_name="The Trail to Miden'nir",
+        room_vnum="2300",
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=220,
+        max_move=220,
+        position=7,
+    )
+
+    recall = policy.next_decision(field)
+
+    assert recall is not None
+    assert recall.command == "recall"
+    assert policy.failure is None
 
 
 def test_human_identifies_loot_and_keeps_stat_circlet_before_sale() -> None:
@@ -5673,6 +5997,48 @@ def test_mage_casts_again_after_the_previous_spell_misses() -> None:
     assert decision.command == "cast 'magic missile' Olog"
 
 
+def test_pending_flee_suppresses_a_late_spell_response() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+    policy.active_target = "The war dog"
+    policy.flee_pending = True
+    state = CharacterState(
+        level=8,
+        hp=75,
+        max_hp=115,
+        mana=281,
+        max_mana=316,
+        position=6,
+        room_name="In a forest clearing",
+        room_vnum="4505",
+        enemies=[[
+            {
+                "name": "The war dog",
+                "level": "7",
+                "hp": "40",
+                "maxhp": "80",
+            }
+        ]],
+    )
+
+    policy.observe_text(
+        "You launch a volley of 4 magic missiles at The war dog!\n"
+        "Your spell grazes The war dog.\n"
+    )
+    decision = policy.next_decision(state)
+
+    assert decision is None
+    assert policy.flee_pending is True
+
+
 def test_mage_preserves_low_mana_for_arena_recovery() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=6)
     policy.in_world = True
@@ -5892,6 +6258,61 @@ def test_recovery_gear_is_equipped_before_sleeping() -> None:
     assert sleep.command == "sleep"
 
 
+def test_sleep_waits_for_server_confirmation_before_queued_gear_commands() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({}),
+    )
+    policy.in_world = True
+    policy.gear_command_queue = [
+        ("remove collar", "switch away from combat gear"),
+    ]
+    awake = CharacterState(
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=50,
+        max_move=100,
+        position=7,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+    )
+    sleep = BotDecision("sleep", "recover movement in a safe room")
+
+    policy.after_command(sleep)
+    policy.prompt_ready = True
+    assert policy.next_decision(awake) is None
+    assert policy.sleep_confirmation_pending is True
+
+    sleeping = CharacterState(
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=50,
+        max_move=100,
+        position=4,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+    )
+    policy.prompt_ready = True
+    decision = policy.next_decision(sleeping)
+
+    assert decision is not None
+    assert decision.command == "stand"
+    assert policy.gear_command_queue == [
+        ("remove collar", "switch away from combat gear"),
+    ]
+    policy.after_command(decision)
+    policy.observe_text("You wake and ready yourself for action.")
+    assert policy.sleep_confirmation_pending is False
+    assert policy.sleep_gear_locked is False
+
+
 def test_equipment_audit_retries_when_hunger_tick_replaces_response() -> None:
     recovery = _gear_item(
         9001,
@@ -5968,6 +6389,28 @@ def test_gear_stance_switches_to_stats_only_near_level_gain() -> None:
     assert policy._desired_gear_stance(ordinary) == STANCE_RECOVERY
 
 
+def test_field_hunt_keeps_recovery_gear_until_ninety_percent_move() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    healer = CharacterState(
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=160,
+        max_move=220,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe"],
+    )
+
+    assert policy._desired_gear_stance(healer) == STANCE_RECOVERY
+
+
 def test_emergency_sale_protects_bonus_gear_and_capacity_items() -> None:
     damage = _gear_item(9001, "helm damage", "a damage helm", (19, 2))
     backpack = ObjectSource(
@@ -5990,6 +6433,12 @@ def test_emergency_sale_protects_bonus_gear_and_capacity_items() -> None:
     ]]
 
     assert _sellable_inventory_keyword(inventory, catalog) == "helm"
+
+
+def test_sellable_inventory_schedules_carried_war_dog_collars_for_audit() -> None:
+    one_collar = [[{"short_desc": "a war dog collar", "quan": "1"}]]
+
+    assert _sellable_inventory_keyword(one_collar) == "collar"
 
 
 def test_resupply_sells_duplicate_plain_worn_armour_when_broke() -> None:
@@ -6026,7 +6475,7 @@ def test_resupply_sells_duplicate_plain_worn_armour_when_broke() -> None:
 
     remove = policy._resupply_decision(state)
     assert remove is not None
-    assert remove.command == "remove dark"
+    assert remove.command == "remove cloak"
     assert policy.emergency_sale_in_progress
 
     state.inventory = [[

@@ -266,6 +266,9 @@ class StarterPolicy:
         self.failure: str | None = None
         self.awaiting_reconnect = False
         self.in_world = False
+        self.login_authenticated = False
+        self.sleep_confirmation_pending = False
+        self.sleep_gear_locked = False
         self.prompt_ready = False
         self.last_command_at: float | None = None
         self.pending_travel_origin: str | None = None
@@ -297,7 +300,6 @@ class StarterPolicy:
         self.flee_succeeded = False
         self.needs_stand = False
         self.waiting_for_heal = False
-        self.healer_menu_checked = False
         self.health_check_due: float | None = None
         self.resume_recovery_after_resupply = False
         self.waiting_for_move = False
@@ -338,6 +340,7 @@ class StarterPolicy:
         self.sale_route_index = 0
         self.sale_phase = "plan"
         self.sale_offer_coins: int | None = None
+        self.shop_visibility_rejected = False
         self.completed_sales: list[dict[str, Any]] = []
         self.sale_container_step = 0
         self.sale_identify_plan: list[str] | None = None
@@ -395,6 +398,18 @@ class StarterPolicy:
         if practice_balances != (None, None):
             self.latest_practice_balances = practice_balances
         folded = self.text.casefold()
+        if "you sleep." in recent:
+            self.sleep_confirmation_pending = False
+        if any(
+            phrase in recent
+            for phrase in (
+                "you wake",
+                "you stand up",
+                "you are already standing",
+            )
+        ):
+            self.sleep_confirmation_pending = False
+            self.sleep_gear_locked = False
         if self.consider_target is not None:
             if any(
                 phrase in recent
@@ -470,6 +485,10 @@ class StarterPolicy:
         if offer is not None:
             self.sale_offer_coins = int(offer.group("coins"))
         completed_sale = _SALE_COMPLETED.search(cleaned)
+        if "i don't trade with folks i can't see" in recent:
+            self.shop_visibility_rejected = True
+            if self.sale_phase == "inventory":
+                self.sale_phase = "sell"
         if completed_sale is not None and self.emergency_sale_in_progress:
             self.emergency_sale_in_progress = False
             self.gear_audited = False
@@ -730,7 +749,11 @@ class StarterPolicy:
                 self.gear_audit_pending = False
                 self.gear_audited = True
             if event.type == "character_died":
-                self.failure = "character died during starter training"
+                self.return_home = True
+                self.purgatory_recovery_active = True
+                self.utility_abort_reason = (
+                    "character died; completed Purgatory recovery is required"
+                )
         if self.waiting_for_move and _move_ratio(state) >= 0.5:
             self.prompt_ready = True
         if self.waiting_for_heal and _health_ratio(state) >= 0.5:
@@ -750,12 +773,22 @@ class StarterPolicy:
         if login is not None:
             return login
 
-        if not self.in_world and self.prompt_ready and state.room_name:
+        if (
+            not self.in_world
+            and self.login_authenticated
+            and self.prompt_ready
+            and state.room_name
+        ):
             self.in_world = True
             self.stage = "tutorial"
 
         if not self.in_world or not self.prompt_ready:
             return None
+        if self.sleep_confirmation_pending:
+            if not _is_sleeping(state):
+                self.prompt_ready = False
+                return None
+            self.sleep_confirmation_pending = False
         return self._tutorial_decision(state)
 
     def after_command(self, decision: BotDecision) -> None:
@@ -799,6 +832,9 @@ class StarterPolicy:
             self.room_target_counts[self.current_room] = {}
         if decision.command == "sleep" and self.waiting_for_heal:
             self.health_check_due = time.monotonic() + _HEALTH_CHECK_WAIT_SECONDS
+        if decision.command == "sleep":
+            self.sleep_confirmation_pending = True
+            self.sleep_gear_locked = True
         if decision.command == "flee":
             self.flee_pending = True
             self.flee_succeeded = False
@@ -849,6 +885,9 @@ class StarterPolicy:
         folded = self.text.casefold()
 
         if "enter thy name:" in folded:
+            self.in_world = False
+            self.login_authenticated = False
+            self.last_command_at = None
             self.stage = "login_name"
             return BotDecision(self.spec.name, "submit configured character name")
         if "did i get that right" in folded:
@@ -930,15 +969,26 @@ class StarterPolicy:
                 "finish character generation before reconnecting",
             )
         if "to enter the dragons domain press <return>" in folded:
+            self.login_authenticated = True
             self.stage = "enter_world"
             return BotDecision("", "enter the game after the message of the day")
+        if "reconnecting." in folded and self.prompt_ready:
+            self.login_authenticated = True
+            self.in_world = True
+            self.stage = "tutorial"
         if "welcome to the dragons domain" in folded and self.prompt_ready:
+            self.login_authenticated = True
             self.in_world = True
             self.stage = "tutorial"
         return None
 
     def _tutorial_decision(self, state: CharacterState) -> BotDecision | None:
-        if state.dead:
+        in_purgatory = (
+            (state.area or "").casefold() == "purgatory"
+            or state.room_vnum in _PURGATORY_DESTINATION_PATH
+            or state.room_vnum == "427"
+        )
+        if state.dead or in_purgatory:
             self.return_home = True
             self.purgatory_recovery_active = True
             if self.utility_abort_reason is None:
@@ -1087,6 +1137,9 @@ class StarterPolicy:
                 )
 
         if self.combat_active:
+            if self.flee_pending:
+                self.prompt_ready = False
+                return None
             if self._is_noncombat_utility_run:
                 self.return_home = True
                 self.utility_emergency_recall_pending = True
@@ -1448,6 +1501,8 @@ class StarterPolicy:
             or state.dead
             or self.combat_active
             or _is_sleeping(state)
+            or self.sleep_gear_locked
+            or self.waiting_for_heal
             or self.liquidate_loot
             or self.emergency_sale_in_progress
             or (state.area or "").casefold() == "purgatory"
@@ -1543,6 +1598,14 @@ class StarterPolicy:
             or room_name == "safety"
             or "safe" in state.room_flags
         )
+        recovery_move_ratio = (
+            0.9
+            if self.fastwalk_hunt_stops
+            and (self.fastwalk_outbound_index == 0 or self.fastwalk_returning)
+            else 0.25
+            if self.fastwalk_hunt_stops
+            else 0.5
+        )
         recovery_due = (
             self.waiting_for_heal
             or self.arena_respawn_due is not None
@@ -1551,7 +1614,7 @@ class StarterPolicy:
                 and (
                     _health_ratio(state) < 0.95
                     or _mana_ratio(state) < 0.5
-                    or _move_ratio(state) < 0.5
+                    or _move_ratio(state) < recovery_move_ratio
                 )
             )
         )
@@ -2543,7 +2606,12 @@ class StarterPolicy:
             if _targets_match(observed, target)
         )
         observed_mobile_count = sum(
-            self.room_target_counts.get(self.current_room or "", {}).values()
+            count
+            for observed, count in self.room_target_counts.get(
+                self.current_room or "", {}
+            ).items()
+            if self.gear_catalog is None
+            or self.gear_catalog.match(observed) is None
         )
         if target_count > 1 or observed_mobile_count > 1:
             self.fastwalk_abort_reason = (
@@ -2807,10 +2875,18 @@ class StarterPolicy:
     def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
         """Sell known equipment through source-backed safe Midgaard shops."""
         room_vnum = state.room_vnum
+        if (
+            self.shop_visibility_rejected
+            or _has_named_affect(state.affects, "invis")
+        ):
+            self.shop_visibility_rejected = False
+            return BotDecision(
+                "vis",
+                "become visible before asking a Midgaard shopkeeper to trade",
+            )
         if self.sale_phase == "plan":
             if room_vnum != "3019":
-                self.failure = "safe loot liquidation must start in the Mage's Laboratory"
-                return None
+                return self._return_home_decision(state)
             if self.gear_catalog is not None and not self.gear_audited:
                 if self.gear_audit_pending:
                     audited_items = self.gear_catalog.match_equipment_text(self.text)
@@ -3149,13 +3225,18 @@ class StarterPolicy:
             or "altar of the temple" in room_name
             or room_name == "safety"
         )
-        required_move_ratio = (
-            0.9
-            if self.fastwalk_hunt_stops
-            else 0.4
-            if self.fastwalk_route is not None
-            else 0.5
-        )
+        if self.fastwalk_returning and state.room_vnum == "3019":
+            required_move_ratio = 0.4
+        elif self.fastwalk_hunt_stops:
+            required_move_ratio = (
+                0.9
+                if self.fastwalk_outbound_index == 0 or self.fastwalk_returning
+                else 0.25
+            )
+        elif self.fastwalk_route is not None:
+            required_move_ratio = 0.4
+        else:
+            required_move_ratio = 0.5
         if ratio >= 0.25:
             if (
                 ratio >= 0.95
@@ -3170,15 +3251,27 @@ class StarterPolicy:
                 )
             if self.return_home and ratio < 0.75 and not is_healer_room:
                 return None
+            if self.fastwalk_route is not None and not is_healer_room:
+                healer_routes = {
+                    "3724": "down",
+                    "3725": "down",
+                    "3019": "west",
+                    "3018": "north",
+                    "3017": "north",
+                    "3012": "east",
+                    "3013": "east",
+                    "3014": "north",
+                    "3005": "north",
+                    "3001": "north",
+                }
+                direction = healer_routes.get(state.room_vnum or "")
+                if direction is not None:
+                    return BotDecision(
+                        direction,
+                        "use the temple healer for field-run recovery",
+                    )
             if not is_safe_room:
                 return None
-            if (
-                self.fastwalk_route is not None
-                and state.room_vnum == "3054"
-                and not self.healer_menu_checked
-            ):
-                self.healer_menu_checked = True
-                return BotDecision("heal", "record the healer's current services")
             self.waiting_for_heal = True
             return BotDecision("sleep", "recover movement or mana in a safe room")
 
@@ -4268,6 +4361,18 @@ def ambush_war_dog_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def ambush_level_eight_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt the proven dog, then consider the source-level-seven looter."""
+    exterior = ambush_exterior_hunt_stops()
+    return (
+        FieldHuntStop(
+            exterior[0].route + exterior[1].route,
+            "war dog",
+        ),
+        FieldHuntStop(("south", "south"), "goblin"),
+    )
+
+
 async def run_ambush_research_profile(path: str | Path) -> RunResult:
     """Live-consider the source-backed exterior Ambush targets and return."""
     profile_path = Path(path)
@@ -4277,7 +4382,7 @@ async def run_ambush_research_profile(path: str | Path) -> RunResult:
         profile_path,
         objective_level=11,
         fastwalk_route=route_named("ambush"),
-        fastwalk_origin_actions=("get all.pie",),
+        fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
         fastwalk_hunt_stops=ambush_exterior_hunt_stops(),
         fastwalk_require_invisibility=True,
         require_fastwalk_kill=False,
@@ -4605,6 +4710,8 @@ def _sellable_inventory_keyword(
 ) -> str | None:
     """Choose a conservative equipment keyword, never food or water storage."""
     names = _inventory_descriptions(value)
+    if any("war dog collar" in name.casefold() for name in names):
+        return "collar"
     equipment_words = {
         "armor", "axe", "belt", "blade", "boots", "bracer", "cape", "cloak",
         "dagger", "gloves", "helm", "leggings", "mace", "shield", "sleeves",

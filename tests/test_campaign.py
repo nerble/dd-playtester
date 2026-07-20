@@ -141,8 +141,26 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
     )
     assert with_loot.policy_id == "liquidate-loot"
 
+    with_useful_carried_collars = runner._policy_for_state(
+        {
+            "level": 8,
+            "inventory": [[{"short_desc": "a war dog collar", "quan": "2"}]],
+            "stats": {"carry_wt": 102, "maxcarry_wt": 140},
+        }
+    )
+    assert with_useful_carried_collars.policy_id == "ambush-war-dog-8-9"
 
-def test_level_eight_ambush_campaign_hunts_only_the_war_dog(
+    with_collar_weight_pressure = runner._policy_for_state(
+        {
+            "level": 8,
+            "inventory": [[{"short_desc": "a war dog collar", "quan": "3"}]],
+            "stats": {"carry_wt": 126, "maxcarry_wt": 140},
+        }
+    )
+    assert with_collar_weight_pressure.policy_id == "liquidate-loot"
+
+
+def test_level_eight_ambush_campaign_hunts_dog_then_considers_looter(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -168,13 +186,18 @@ def test_level_eight_ambush_campaign_hunts_only_the_war_dog(
     )
 
     stops = captured["fastwalk_hunt_stops"]
-    assert [stop.target for stop in stops] == ["war dog"]
+    assert [stop.target for stop in stops] == ["war dog", "goblin"]
     exterior = ambush_exterior_hunt_stops()
     assert stops[0].route == exterior[0].route + exterior[1].route
+    assert stops[1].route == ("south", "south")
     assert "vault_stow_items" not in captured
     assert "vault_claim_items" not in captured
     assert "vault_required_free_weight" not in captured
-    assert captured["fastwalk_origin_actions"] == ("get all.pie",)
+    assert captured["fastwalk_origin_actions"] == (
+        "get all.pie",
+        "eat pie",
+        "drink skin",
+    )
     assert captured["fastwalk_require_invisibility"] is True
     assert captured["require_fastwalk_kill"] is False
     assert captured["allow_safe_fastwalk_abort"] is True
