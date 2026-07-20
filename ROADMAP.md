@@ -444,3 +444,11 @@ and failure handling before registering each new level-band policy.
   their contents in carried weight. Use the 50-pound large sack for organization
   only when capacity permits; use the vault for actual weight relief, and keep
   the active light, provisions, water, and selected loadout directly accessible.
+- Runs 368-370 verified the campaign maintenance cycle: sell looter armour,
+  refill the skin, and buy a reboot-priced food reserve. Known inventories with
+  no pie now select restocking before combat, including GMCP inventories stored
+  as serialized JSON.
+- Run 371 showed that a reboot-fuzzed looter can force a safe flee after the dog.
+  Optional hunt stops now carry their own health reserve; run 372 verified that
+  the 95% looter gate recalled after a 175-XP dog kill instead of forcing the
+  second fight. Ararisa ended safely at 28,356 XP.

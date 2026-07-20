@@ -251,6 +251,19 @@ _LIQUIDATE_LOOT_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_RESTOCK_POLICY = ProgressionPolicy(
+    policy_id="restock-provisions",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="restock",
+    summary="Fill the water skin and buy a safe food reserve in Midgaard.",
+    evidence=(
+        "Live run 223 verified the fountain, Bakery, Mage Guild return, save, and safe quit route.",
+    ),
+    practice_skill=None,
+)
+
 _UNAVAILABLE_POLICY = ProgressionPolicy(
     policy_id="unregistered-10-100",
     minimum_level=10,
@@ -269,6 +282,7 @@ def policy_for(
     *,
     has_large_sack: bool = False,
     has_sellable_loot: bool = False,
+    has_food: bool = True,
 ) -> ProgressionPolicy:
     normalized_level = int(level or 0)
     canonical_class = canonical_class_name(character_class)
@@ -276,6 +290,8 @@ def policy_for(
         return _STARTER_POLICY
     if has_sellable_loot:
         return _LIQUIDATE_LOOT_POLICY
+    if not has_food:
+        return _RESTOCK_POLICY
     if normalized_level < 6:
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,

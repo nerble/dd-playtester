@@ -3920,6 +3920,47 @@ def test_fastwalk_hunt_circuit_recalls_between_fights_on_low_reserves() -> None:
     assert decision.command == "recall"
 
 
+def test_optional_second_hunt_requires_its_stop_specific_health_reserve() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "war dog"),
+            FieldHuntStop(
+                ("south", "south"),
+                "goblin",
+                minimum_health_ratio=0.95,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_stop_killed = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=104,
+        max_hp=115,
+        mana=248,
+        max_mana=316,
+        move=108,
+        max_move=220,
+        position=7,
+        room_name="In a forest clearing",
+        room_vnum="4505",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_returning is True
+
+
 def test_fastwalk_hunt_circuit_recalls_before_movement_is_exhausted() -> None:
     route = route_named("ambush")
     policy = StarterPolicy(

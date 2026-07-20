@@ -124,7 +124,13 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
         {"level": 8, "inventory": [[{"short_desc": "a big pot pie"}]]}
     )
     after = runner._policy_for_state(
-        {"level": 8, "inventory": [[{"short_desc": "a large sack"}]]}
+        {
+            "level": 8,
+            "inventory": [[
+                {"short_desc": "a large sack"},
+                {"short_desc": "a big pot pie"},
+            ]],
+        }
     )
 
     assert before.policy_id == "midennir-sack-8-10"
@@ -144,7 +150,10 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
     with_useful_carried_collars = runner._policy_for_state(
         {
             "level": 8,
-            "inventory": [[{"short_desc": "a war dog collar", "quan": "2"}]],
+            "inventory": [[
+                {"short_desc": "a war dog collar", "quan": "2"},
+                {"short_desc": "a big pot pie"},
+            ]],
             "stats": {"carry_wt": 102, "maxcarry_wt": 140},
         }
     )
@@ -158,6 +167,49 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
         }
     )
     assert with_collar_weight_pressure.policy_id == "liquidate-loot"
+
+    without_food = runner._policy_for_state(
+        {
+            "level": 8,
+            "inventory": [[{"short_desc": "a buffalo water skin"}]],
+            "stats": {"carry_wt": 102, "maxcarry_wt": 250},
+        }
+    )
+    assert without_food.policy_id == "restock-provisions"
+
+    with_serialized_food = runner._policy_for_state(
+        {
+            "level": 8,
+            "inventory": (
+                '[[{"quan":"10","short_desc":"a big pot pie"},'
+                '{"quan":"1","short_desc":"a buffalo water skin"}]]'
+            ),
+        }
+    )
+    assert with_serialized_food.policy_id == "ambush-war-dog-8-9"
+
+
+def test_campaign_restock_policy_uses_verified_city_route(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 8})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(8, "mage", has_large_sack=True, has_food=False)
+
+    asyncio.run(_run_policy_segment(spec.character, spec.character_profile, policy))
+
+    assert captured == {"city_restock": True}
 
 
 def test_level_eight_ambush_campaign_hunts_dog_then_considers_looter(

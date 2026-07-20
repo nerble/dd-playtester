@@ -163,6 +163,7 @@ class FieldHuntStop:
     target: str | None = None
     actions: tuple[str, ...] = ()
     required_items: tuple[str, ...] = ()
+    minimum_health_ratio: float = 0.8
 
 
 class StarterPolicy:
@@ -2714,6 +2715,12 @@ class StarterPolicy:
             return BotDecision("recall", "return after completing the field circuit")
 
         stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+        if _health_ratio(state) < stop.minimum_health_ratio:
+            self.fastwalk_returning = True
+            return BotDecision(
+                "recall",
+                "skip the next field target without its required health reserve",
+            )
         self.fastwalk_attack_target = stop.target
         if self.fastwalk_hunt_move_index < len(stop.route):
             command = stop.route[self.fastwalk_hunt_move_index]
@@ -4369,7 +4376,11 @@ def ambush_level_eight_hunt_stops() -> tuple[FieldHuntStop, ...]:
             exterior[0].route + exterior[1].route,
             "war dog",
         ),
-        FieldHuntStop(("south", "south"), "goblin"),
+        FieldHuntStop(
+            ("south", "south"),
+            "goblin",
+            minimum_health_ratio=0.95,
+        ),
     )
 
 

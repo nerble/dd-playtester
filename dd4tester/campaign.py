@@ -199,6 +199,10 @@ class CampaignRunner:
             has_sellable_loot=(
                 _has_campaign_sellable_loot(state)
             ),
+            has_food=(
+                "inventory" not in state
+                or _state_has_item(state.get("inventory"), "pie")
+            ),
         )
 
     def _open_campaign(self, storage: RunStorage) -> tuple[int, dict[str, Any]]:
@@ -419,6 +423,12 @@ async def _run_policy_segment(
             profile_path,
             liquidate_loot=True,
         ).run()
+    if policy.execution == "restock":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            city_restock=True,
+        ).run()
     if policy.execution in {"ambush-war-dog-hunt", "ambush-hunt"}:
         hunt_stops = (
             ambush_level_eight_hunt_stops()
@@ -571,6 +581,12 @@ def _numeric_progress(state: dict[str, Any], key: str) -> int:
 
 def _state_has_item(value: Any, item_name: str) -> bool:
     target = item_name.casefold()
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return target in value.casefold()
+        return _state_has_item(decoded, item_name)
     if isinstance(value, dict):
         for key in ("short_desc", "name", "item"):
             description = value.get(key)
