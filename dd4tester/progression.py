@@ -396,15 +396,14 @@ def policy_for(
             ):
                 return _MIDENNIR_LEVEL_EIGHT_POLICY
             return _AMBUSH_LEVEL_EIGHT_POLICY
-        if has_sanctuary_potion:
-            return _AMBUSH_VILE_LEVEL_NINE_POLICY
         if (
             not has_flight
             and can_attempt_flight_purchase
             and not flight_purchase_failed
-            and stalled_segments >= 2
         ):
             return _BUY_FLIGHT_POLICY
+        if has_sanctuary_potion:
+            return _AMBUSH_VILE_LEVEL_NINE_POLICY
         large_hobgoblin_kills = _boot_kill_count(
             boot_kill_counts, "large hobgoblin"
         )

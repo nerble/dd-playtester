@@ -697,3 +697,21 @@ and failure handling before registering each new level-band policy.
   before potion stow. Campaign selection also recognizes a confirmed loose
   purple potion, and every fastwalk departure moves it into the worn pouch
   before field combat.
+
+## Progression Evidence Cycle 24
+
+- Runs 479-480 live-validated the synchronization repair end to end: the loose
+  purple potion was moved into the worn pouch at departure, quaffed before the
+  vile-goblin fight, and produced a protected 269-XP kill.
+- Runs 482-486 rotated between conservative Moria searches and verified
+  exterior targets. Run 486 killed an isolated large hobgoblin for 288 XP,
+  then explicitly synchronized inventory and stowed the newly looted sanctuary
+  potion in the pouch.
+- Run 487 drew that potion from the pouch, confirmed sanctuary, and killed the
+  vile goblin for 333 XP. Ararisa recovered fully at 38,143 XP, 1,557 short of
+  level 10, and run 488 replenished food.
+- Run 486 also exposed that recent XP progress could suppress flight
+  maintenance and permit an unflown Moria departure. An affordable light blue
+  potion is now routine level-nine travel preparation rather than a
+  stall-triggered fallback; a reboot-price purchase failure still disables
+  repeated attempts for that campaign state.

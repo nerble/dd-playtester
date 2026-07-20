@@ -407,6 +407,28 @@ def test_campaign_state_detects_active_flight_and_converts_coins(tmp_path) -> No
     assert expired_policy.policy_id == "buy-flight-potion"
 
 
+def test_campaign_buys_affordable_flight_without_waiting_for_a_stall(
+    tmp_path,
+) -> None:
+    config_path, _ = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+
+    policy = runner._policy_for_state(
+        {
+            "level": 9,
+            "inventory": [[
+                {"short_desc": "a large sack"},
+                {"short_desc": "a big pot pie"},
+            ]],
+            "affects": [],
+            "currencies": {"silver": 17},
+            "campaign_stalled_segments": 0,
+        }
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+
+
 def test_level_nine_campaign_rotates_to_moria_sanctuary_hunt_after_depletion(
     tmp_path,
     monkeypatch,

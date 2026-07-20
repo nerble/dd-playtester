@@ -111,18 +111,30 @@ def test_level_nine_mage_uses_proven_war_dog_without_protection() -> None:
     assert policy.segment_kill_limit == 1
 
 
-def test_stalled_level_nine_mage_buys_flight_before_more_field_work() -> None:
+def test_level_nine_mage_buys_flight_before_more_field_work() -> None:
     policy = policy_for(
         9,
         "mage",
         has_large_sack=True,
         has_flight=False,
         can_attempt_flight_purchase=True,
-        stalled_segments=2,
     )
 
     assert policy.policy_id == "buy-flight-potion"
     assert policy.execution == "buy-flight"
+
+
+def test_level_nine_mage_buys_flight_before_spending_sanctuary_potion() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        has_sanctuary_potion=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
 
 
 def test_level_nine_mage_buys_flight_before_depleted_moria_circuit() -> None:
