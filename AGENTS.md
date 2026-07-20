@@ -66,8 +66,20 @@ Telnet/GMCP for primary testing and reserve Mudlet-in-VM automation for
 client-specific validation.
 For live progression, prefer one bounded multi-segment campaign process over
 repeated one-shot connections. Before launching, verify no tester process is
-already active. Retry a failed launch approval once, then continue local work
-instead of waiting indefinitely.
+already active.
+
+## Operational Fail-Fast Policy
+
+Never wait, poll, or suspend useful work for an invisible permission review.
+If an external action reports an approval timeout, retry that exact action once
+immediately. If the retry also times out or fails, abandon the action for the
+current pass, report it briefly, and continue with the best local or offline
+work available. Retry the deferred action only after completing another useful
+work unit or when the user explicitly requests it. Do not repeatedly poll for
+approval, leave a required shell call hanging, or describe the task as blocked
+while local implementation, testing, evidence analysis, or documentation can
+still progress. A failed push or live connection must never prevent local
+commits and verification.
 
 ## Commits And Pull Requests
 
