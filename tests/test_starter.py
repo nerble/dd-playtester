@@ -1422,7 +1422,7 @@ def test_completed_arena_patrol_forgets_stale_room_sightings() -> None:
     assert policy.arena_respawn_due is not None
 
 
-def test_underlevel_arena_patrol_finishes_without_waiting_for_respawn() -> None:
+def test_outside_safe_band_arena_patrol_finishes_without_waiting_for_respawn() -> None:
     policy = StarterPolicy(
         _spec(),
         "swordfish",
@@ -1432,7 +1432,7 @@ def test_underlevel_arena_patrol_finishes_without_waiting_for_respawn() -> None:
     policy.in_world = True
     policy.arena_queried = True
     policy.prompt_ready = True
-    policy.arena_skipped_underlevel = True
+    policy.arena_skipped_outside_safe_band = True
     policy.arena_visited_rooms.update(str(vnum) for vnum in range(3728, 3738))
     policy.room_query_counts["3736"] = 1
     state = CharacterState(
@@ -1448,7 +1448,7 @@ def test_underlevel_arena_patrol_finishes_without_waiting_for_respawn() -> None:
 
     assert decision is not None
     assert decision.command == "up"
-    assert "under-level" in decision.reason
+    assert "outside the safe live-consider band" in decision.reason
     assert policy.arena_segment_leaving is True
     assert policy.arena_no_viable_targets is True
     assert policy.arena_respawn_due is None

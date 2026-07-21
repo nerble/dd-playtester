@@ -312,7 +312,7 @@ class StarterPolicy:
         self.arena_queried = False
         self.arena_segment_leaving = False
         self.arena_no_viable_targets = False
-        self.arena_skipped_underlevel = False
+        self.arena_skipped_outside_safe_band = False
         self.arena_viable_target_seen = False
         self.arena_visited_rooms: set[str] = set()
         self.arena_respawn_due: float | None = None
@@ -1634,7 +1634,7 @@ class StarterPolicy:
                     self._arena_segment_completion_reason,
                 )
             self.stage = "complete"
-            return BotDecision("quit", "starter objective complete")
+            return BotDecision("quit", "starter segment checkpoint complete")
 
         if room_vnum == "3001" or "temple of midgaard" in room_name:
             return BotDecision("up", "return to the Mud School entrance")
@@ -3512,7 +3512,10 @@ class StarterPolicy:
         if self._arena_kill_limit_reached:
             return f"finish the bounded arena segment after {self.arena_kill_limit} kills"
         if self.arena_no_viable_targets:
-            return "finish the bounded arena segment because all observed opponents are under-level"
+            return (
+                "finish the bounded arena segment because all observed opponents "
+                "are outside the safe live-consider band"
+            )
         return f"leave the arena after reaching level {self.objective_level}"
 
     def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
@@ -4387,12 +4390,12 @@ class StarterPolicy:
                 )
             if self.consider_viable is False:
                 self.defeated_targets.setdefault(key, set()).add(target)
-                self.arena_skipped_underlevel = True
+                self.arena_skipped_outside_safe_band = True
                 self.consider_target = None
                 self.consider_viable = None
                 return BotDecision(
                     "look",
-                    f"skip under-level arena opponent {target}",
+                    f"skip arena opponent {target} outside the safe live-consider band",
                 )
             if self.consider_viable is None:
                 self.prompt_ready = False
@@ -4414,7 +4417,7 @@ class StarterPolicy:
         direction = _unvisited_arena_exit(state, self.arena_visited_rooms)
         if direction is not None:
             return BotDecision(direction, "search the next arena section")
-        if self.arena_skipped_underlevel and not self.arena_viable_target_seen:
+        if self.arena_skipped_outside_safe_band and not self.arena_viable_target_seen:
             self.arena_no_viable_targets = True
             self.arena_segment_leaving = True
             self._reset_arena_patrol()
@@ -4429,7 +4432,7 @@ class StarterPolicy:
     def _reset_arena_patrol(self) -> None:
         """Forget stale creature sightings before a fresh arena circuit."""
         self.arena_visited_rooms.clear()
-        self.arena_skipped_underlevel = False
+        self.arena_skipped_outside_safe_band = False
         self.arena_viable_target_seen = False
         for room in tuple(self.room_query_counts):
             if _is_arena_vnum(room):

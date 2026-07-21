@@ -879,3 +879,17 @@ and failure handling before registering each new level-band policy.
   navigation, `look` is research, and spell casts are combat even when their
   free-form reasons mention another domain. Starter practice selection also
   comes directly from the archetype registry rather than a duplicate class map.
+
+## Character-Independent Autonomy Cycle 3
+
+- Run 527 resumed Kestrel after the shared Mud School reset. The thief defeated
+  the restored final gladiator, completed the tutorial, provisioned, practiced,
+  and then used bounded arena patrols with recovery at the Temple healer.
+- Kestrel saved and quit safely at level 1 with 2,182 XP, only 118 XP short of
+  level 2. The run succeeded as a completed policy segment while campaign 4
+  correctly remained blocked and checkpointed for continued progression.
+- Live `consider` rejected a reboot-fuzzed wolf whose difficulty was outside
+  the safe combat band. Decision text now says "outside the safe live-consider
+  band" rather than incorrectly assuming every rejection is an under-level
+  mobile, and safe segment exits no longer claim that the campaign objective is
+  complete.
