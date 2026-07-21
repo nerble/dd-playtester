@@ -2390,6 +2390,29 @@ def test_guildmaster_research_sleeps_to_recover_in_a_safe_city_room() -> None:
     assert policy.waiting_for_heal is True
 
 
+def test_liquidation_routes_movement_recovery_to_temple_healer() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    state = CharacterState(
+        hp=157,
+        max_hp=157,
+        mana=133,
+        max_mana=133,
+        move=104,
+        max_move=210,
+        position=7,
+        room_name="Mage's Bar",
+        room_vnum="3018",
+        room_flags=["safe"],
+    )
+
+    decision = policy._recovery_decision(state)
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert "temple healer" in decision.reason
+    assert policy.waiting_for_heal is False
+
+
 def test_safe_room_recovery_checks_health_without_waking() -> None:
     policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
     policy.in_world = True

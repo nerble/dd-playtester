@@ -1378,3 +1378,17 @@ and failure handling before registering each new level-band policy.
   physical practice was preserved by the one-lesson-per-type-per-level rule.
   Run 633 safely found the Foundry depleted after Kestrel's pass and left the
   area at full health so its faster unoccupied reset could begin.
+- DD4's `HELP PRACTICE`, `do_practice`, and `advance_level` confirm the practice
+  tradeoff. The Loremaster teaches the starter knowledge groups to 60%; lesson
+  gain depends on teacher knowledge, current proficiency, and character
+  penalties. Unspent physical and intellectual practices do not accumulate:
+  they convert 1:1 into hit points and mana respectively at the next level.
+- Run 634 returned after the unoccupied reset and let Dorrik kill Uburz for 155
+  XP. At 145/157 HP he declined the full-health Ushog stop, recalled, and
+  recovered to full health. Runs 635-636 then sold fresh armour and jewellery,
+  retained the best worn pieces and usable weapons, and removed rejected
+  duplicates without progress loops.
+- Run 636 exposed movement recovery sleeping in safe Mage's Bar instead of the
+  temple healing room. Ordinary level-above-two and maintenance recovery now
+  follows the known Midgaard route to room 3054 whenever at least 10% movement
+  remains; field routes retain their separate invisibility-aware handling.

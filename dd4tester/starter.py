@@ -134,6 +134,18 @@ _TRAINING_SIDE_ROOMS = {
     "3719": "3716",
     "3720": "3716",
 }
+_MIDGAARD_HEALER_ROUTES = {
+    "3724": "down",
+    "3725": "down",
+    "3019": "west",
+    "3018": "north",
+    "3017": "north",
+    "3012": "east",
+    "3013": "east",
+    "3014": "north",
+    "3005": "north",
+    "3001": "north",
+}
 _ARENA_RESPAWN_WAIT_SECONDS = 90
 _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
@@ -4247,11 +4259,11 @@ class StarterPolicy:
                 return None
             healer_approach = {
                 "3737": "enter portal",
-                "3725": "down",
-                "3001": "north",
+                **_MIDGAARD_HEALER_ROUTES,
             }.get(state.room_vnum or "")
             if (
-                self.objective_level > 2
+                self.fastwalk_route is None
+                and (self.objective_level > 2 or self._is_noncombat_utility_run)
                 and healer_approach is not None
                 and _move_ratio(state) >= 0.1
             ):
@@ -4292,19 +4304,7 @@ class StarterPolicy:
                     )
                     if invisibility is not None:
                         return invisibility
-                healer_routes = {
-                    "3724": "down",
-                    "3725": "down",
-                    "3019": "west",
-                    "3018": "north",
-                    "3017": "north",
-                    "3012": "east",
-                    "3013": "east",
-                    "3014": "north",
-                    "3005": "north",
-                    "3001": "north",
-                }
-                direction = healer_routes.get(state.room_vnum or "")
+                direction = _MIDGAARD_HEALER_ROUTES.get(state.room_vnum or "")
                 if direction is not None:
                     return BotDecision(
                         direction,
