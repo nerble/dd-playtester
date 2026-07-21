@@ -454,6 +454,14 @@ class StarterPolicy:
         ):
             self.sleep_confirmation_pending = False
             self.sleep_gear_locked = False
+        if "not while you are fighting" in recent:
+            # A second mobile can engage after a kill but before a queued sleep
+            # reaches the server. The rejected command never changed posture.
+            self.sleep_confirmation_pending = False
+            self.sleep_gear_locked = False
+            self.waiting_for_heal = False
+            self.health_check_due = None
+            self.combat_active = True
         if self.consider_target is not None:
             if any(
                 phrase in recent

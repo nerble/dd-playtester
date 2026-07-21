@@ -893,3 +893,8 @@ and failure handling before registering each new level-band policy.
   band" rather than incorrectly assuming every rejection is an under-level
   mobile, and safe segment exits no longer claim that the campaign objective is
   complete.
+- Run 528 advanced Aeloria from level 2 to level 3 before exposing a command
+  race: a second boar attacked after the first kill but before a queued `sleep`
+  reached DD4. The rejected sleep left stale recovery state, so the operator
+  interrupted the run safely and recorded it as failed. Rejected sleep now
+  clears the unconfirmed posture and recovery locks and resumes combat handling.

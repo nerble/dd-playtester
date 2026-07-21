@@ -7981,6 +7981,22 @@ def test_sleep_waits_for_server_confirmation_before_queued_gear_commands() -> No
     assert policy.sleep_gear_locked is False
 
 
+def test_rejected_sleep_clears_recovery_lock_and_resumes_combat() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.waiting_for_heal = True
+    policy.active_target = "a wild boar"
+    policy.after_command(BotDecision("sleep", "recover in a safe room"))
+
+    policy.observe_text("Not while you are fighting!")
+
+    assert policy.sleep_confirmation_pending is False
+    assert policy.sleep_gear_locked is False
+    assert policy.waiting_for_heal is False
+    assert policy.health_check_due is None
+    assert policy.combat_active is True
+
+
 def test_equipment_audit_retries_when_hunger_tick_replaces_response() -> None:
     recovery = _gear_item(
         9001,
