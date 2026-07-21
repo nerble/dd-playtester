@@ -1467,6 +1467,9 @@ class StarterPolicy:
                 return None
             if self._is_noncombat_utility_run:
                 if self._utility_attacker_is_trivial(state):
+                    combat = self._combat_spell_decision(state)
+                    if combat is not None:
+                        return combat
                     self.prompt_ready = False
                     return None
                 if (

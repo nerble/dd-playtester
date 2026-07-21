@@ -4224,7 +4224,7 @@ def test_noncombat_utility_waits_for_enemy_assessment_before_fleeing() -> None:
     assert policy.return_home is False
 
 
-def test_noncombat_utility_finishes_trivial_safe_room_attacker() -> None:
+def test_noncombat_utility_attacks_trivial_safe_room_attacker() -> None:
     policy = StarterPolicy(_spec(race="drow"), "swordfish", liquidate_loot=True)
     policy.in_world = True
     policy.prompt_ready = True
@@ -4244,7 +4244,37 @@ def test_noncombat_utility_finishes_trivial_safe_room_attacker() -> None:
 
     decision = policy.next_decision(state)
 
-    assert decision is None
+    assert decision is not None
+    assert decision.command == "cast 'magic missile' drunk"
+    assert policy.return_home is False
+    assert policy.utility_abort_reason is None
+
+
+def test_noncombat_mage_uses_known_spell_on_trivial_safe_room_attacker() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "the drunk"
+    policy.active_target_level = 2
+    policy.known_skills.add("chill touch")
+    state = CharacterState(
+        level=7,
+        hp=108,
+        max_hp=110,
+        mana=234,
+        max_mana=293,
+        room_name="The Main Street",
+        room_vnum="3015",
+        room_flags=["safe"],
+        position=6,
+        enemies=[[{"name": "the drunk", "level": "2"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'chill touch' drunk"
     assert policy.return_home is False
     assert policy.utility_abort_reason is None
 

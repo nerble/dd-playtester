@@ -1483,3 +1483,9 @@ and failure handling before registering each new level-band policy.
   for the current level, preventing repeated Loremaster detours while retaining
   the point's next-level HP or mana conversion and reconsidering it after the
   level changes.
+- Source mobile 3064 is a level-2 Midgaard drunk whose greet program explicitly
+  attacks passing players and whose attack is only `1d6`. Run 655 showed that
+  merely waiting for automatic rounds let him reduce Aeloria from 108 to 75 HP
+  before evacuation. A lone, sufficiently lower-level safe-room attacker now
+  receives the class's strongest known combat action while every existing
+  health, crowd, food, thirst, room, and level safety gate remains enforced.
