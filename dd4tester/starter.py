@@ -103,7 +103,9 @@ _MOB_LEAVES = re.compile(
 )
 _MOB_ATTACKS_YOU = re.compile(
     r"\b[A-Za-z][A-Za-z '-]{0,60}'s .{0,80}\b(?:misses|hits|"
-    r"scratches|wounds|mauls|decimates) you\b",
+    r"scratches|grazes|injures|wounds|mauls|decimates|mangles|maims|"
+    r"mutilates|disembowels|eviscerates|massacres|demolishes|devastates|"
+    r"annihilates|obliterates|ravages|cripples|brutalises|vapourises) you\b",
     re.IGNORECASE,
 )
 _SEVERED_BODY_PART = re.compile(
@@ -1450,7 +1452,10 @@ class StarterPolicy:
                     self.prompt_ready = False
                     return None
                 if (
-                    self.fastwalk_attack_target is not None
+                    (
+                        self.fastwalk_attack_target is not None
+                        or self.fastwalk_hunt_stops
+                    )
                     and self.active_target_level is None
                     and not self.awaiting_enemy_assessment
                 ):
@@ -1509,11 +1514,10 @@ class StarterPolicy:
                 return BotDecision("flee", "leave combat before emergency resupply")
             if self.disarm_recovery_step == 1:
                 if self.disarmed_weapon_keyword is None:
-                    if self.fastwalk_route is not None:
-                        self.fastwalk_emergency_recall_pending = True
+                    self.disarm_recovery_step = 2
                     return BotDecision(
-                        "flee",
-                        "withdraw because the disarmed weapon keyword is unknown",
+                        "get all",
+                        "recover an unidentified weapon dropped by a combat disarm",
                     )
                 self.disarm_recovery_step = 2
                 return BotDecision(
@@ -1522,6 +1526,24 @@ class StarterPolicy:
                 )
             if self.disarm_recovery_step == 2:
                 self.disarm_recovery_step = 0
+                if self.disarmed_weapon_keyword is None and self.gear_catalog is not None:
+                    recovered = next(
+                        (
+                            item
+                            for item in self.gear_catalog.match_many_usable(
+                                _inventory_descriptions(state.inventory),
+                                character_class=self.spec.character_class,
+                                subclass=self.spec.subclass,
+                            )
+                            if item_category(item) == "wield"
+                        ),
+                        None,
+                    )
+                    if recovered is not None:
+                        self.disarmed_weapon_keyword = item_keyword(recovered)
+                if self.disarmed_weapon_keyword is None:
+                    self.prompt_ready = False
+                    return None
                 return BotDecision(
                     f"wield {self.disarmed_weapon_keyword}",
                     "rearm the recovered weapon during combat",
@@ -5481,7 +5503,7 @@ def foundry_level_six_hunt_stops() -> tuple[FieldHuntStop, ...]:
     """Return the bounded source-backed Foundry circuit for level six."""
     return (
         FieldHuntStop(
-            ("south", "west", "west", "down", "east"),
+            ("south", "south", "west", "west", "down", "east"),
             "uburz",
         ),
         FieldHuntStop(
@@ -5497,6 +5519,7 @@ def foundry_level_six_hunt_stops() -> tuple[FieldHuntStop, ...]:
                 "south",
             ),
             "ushog",
+            minimum_health_ratio=1.0,
         ),
     )
 

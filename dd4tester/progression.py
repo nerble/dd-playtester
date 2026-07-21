@@ -179,7 +179,7 @@ _FOUNDRY_LEVEL_SIX_POLICY = ProgressionPolicy(
         "live consider, crowd, and health gates before every attack."
     ),
     evidence=(
-        "DD4 source: the existing Foundry fastwalk ends in room 108; rooms 107, 117, 118, 119, and 120 lead to Uburz, then rooms 109, 111, and 112 lead to Ushog.",
+        "DD4 source: the existing Foundry fastwalk ends in room 109; rooms 108, 107, 117, 118, 119, and 120 lead to Uburz, then rooms 109, 111, and 112 lead to Ushog.",
         "DD4 source: Uburz loads near level 4 and Ushog near level 5; live consider remains authoritative because mobile levels are fuzzed and both can wander.",
         "Live run 220: a level-6 character killed an incidental Olog and Ushog for 208 XP total and finished at full health.",
         "Live run 572: level-6 Dorrik killed Uburz for 106 XP without losing health and recovered three sellable equipment drops.",

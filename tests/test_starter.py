@@ -84,7 +84,14 @@ def test_foundry_level_six_circuit_links_two_source_backed_targets() -> None:
     stops = foundry_level_six_hunt_stops()
 
     assert [stop.target for stop in stops] == ["uburz", "ushog"]
-    assert stops[0].route == ("south", "west", "west", "down", "east")
+    assert stops[0].route == (
+        "south",
+        "south",
+        "west",
+        "west",
+        "down",
+        "east",
+    )
     assert stops[1].route == (
         "west",
         "up",
@@ -97,6 +104,8 @@ def test_foundry_level_six_circuit_links_two_source_backed_targets() -> None:
         "south",
     )
     assert all(not stop.consider_only for stop in stops)
+    assert stops[0].minimum_health_ratio == 0.8
+    assert stops[1].minimum_health_ratio == 1.0
 
 
 def test_midennir_horseman_probe_searches_source_trail_and_never_attacks() -> None:
@@ -2564,6 +2573,88 @@ def test_fastwalk_unexpected_combat_flees_then_recalls_and_records_failure() -> 
     assert recall is not None
     assert recall.command == "recall"
     assert "unexpected combat" in recall.reason
+
+
+def test_field_hunt_waits_for_delayed_gmcp_enemy_assessment() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "Olog"
+    state = CharacterState(
+        level=6,
+        hp=138,
+        max_hp=138,
+        position=6,
+        room_name="Muddy Tunnel",
+        room_vnum="109",
+    )
+
+    assessment_wait = policy.next_decision(state)
+
+    assert assessment_wait is None
+    assert policy.awaiting_enemy_assessment is True
+    assert policy.fastwalk_emergency_recall_pending is False
+
+    policy.observe_events(
+        [
+            GameEvent(
+                "enemies_changed",
+                "gmcp",
+                {"value": [[{"name": "Olog", "level": "2"}]]},
+            )
+        ],
+        state,
+    )
+    decision = policy.next_decision(state)
+
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_attack_target == "Olog"
+    assert decision is None
+    assert policy.fastwalk_emergency_recall_pending is False
+
+
+def test_incoming_damage_text_blocks_field_navigation_before_gmcp_enemy() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(policy.fastwalk_route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_stop_index = 1
+    policy.fastwalk_hunt_move_index = len(
+        policy.fastwalk_hunt_stops[1].route
+    )
+    state = CharacterState(
+        level=6,
+        hp=74,
+        max_hp=100,
+        mana=147,
+        max_mana=267,
+        move=131,
+        max_move=200,
+        position=7,
+        room_name="Ushog's Quarters",
+        room_vnum="112",
+    )
+
+    policy.observe_text("Ushog's slash injures you! Ushog is in excellent condition.")
+    decision = policy.next_decision(state)
+
+    assert policy.combat_active is True
+    assert policy.awaiting_enemy_assessment is True
+    assert decision is None
+    assert policy.fastwalk_returning is False
 
 
 def test_fastwalk_defends_against_the_configured_endpoint_target() -> None:
@@ -8041,6 +8132,64 @@ def test_combat_disarm_recovers_and_rearms_audited_weapon() -> None:
 
     assert recover is not None
     assert recover.command == "get dagger"
+    assert rearm is not None
+    assert rearm.command == "wield dagger"
+
+
+def test_combat_disarm_recovers_unknown_weapon_without_fleeing() -> None:
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+        gear_catalog=GearCatalog({dagger.vnum: dagger}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+    policy.active_target = "Uburz"
+    fighting = CharacterState(
+        level=6,
+        hp=111,
+        max_hp=111,
+        mana=138,
+        max_mana=138,
+        position=6,
+        room_name="Muddy Tunnel",
+        room_vnum="117",
+    )
+
+    policy.observe_text("Uburz DISARMS you!")
+    recover = policy.next_decision(fighting)
+
+    assert recover is not None
+    assert recover.command == "get all"
+    assert policy.fastwalk_emergency_recall_pending is False
+    policy.prompt_ready = True
+    rearm = policy.next_decision(
+        CharacterState(
+            level=6,
+            hp=111,
+            max_hp=111,
+            mana=138,
+            max_mana=138,
+            position=6,
+            room_name="Muddy Tunnel",
+            room_vnum="117",
+            inventory=[[{"short_desc": "a dagger", "quan": "1"}]],
+        )
+    )
+
     assert rearm is not None
     assert rearm.command == "wield dagger"
 

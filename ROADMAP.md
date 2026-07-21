@@ -1202,7 +1202,7 @@ and failure handling before registering each new level-band policy.
 ## Character-Independent Autonomy Cycle 13
 
 - Level 6 now starts with a generic two-target Foundry circuit. The existing
-  recall-origin fastwalk reaches room 108; source-backed relative routes visit
+  recall-origin fastwalk reaches room 109; source-backed relative routes visit
   Uburz in room 120 and Ushog in room 112 while avoiding the poison-bearing
   room 122. Every target still passes live presence, crowd, `consider`, and
   health gates, and the circuit recalls safely after two kills or exhaustion.
@@ -1223,3 +1223,25 @@ and failure handling before registering each new level-band policy.
   read-only listing before travel, restoring learned combat capabilities after
   reconnect so source-correct between-round attacks such as `kick` are never
   forgotten or invented.
+- Runs 581 and 582 exposed two escape-cost regressions. The official Foundry
+  fastwalk ends in room 109, so the Uburz leg required a second `south`; an
+  aggressive endpoint mobile could also arrive after the text prompt but
+  before its GMCP enemy record. The bot paid 98 XP in run 581 by fleeing and
+  then recalling, and 19 net XP in run 582 after fleeing when a disarm left
+  the in-memory weapon keyword unknown.
+- Field combat now waits for delayed GMCP assessment before deciding whether a
+  lone attacker is safe to finish. If a combat disarm has no remembered weapon
+  keyword, the bot uses `get all`, identifies a source-backed wieldable item
+  from the refreshed inventory, and rearms it instead of paying an avoidable
+  escape penalty. Multiple or out-of-band enemies retain the immediate safety
+  withdrawal.
+- Runs 583 and 585 validated the corrected room graph and incoming-combat text
+  detection. Aeloria reached rooms 120 and 112, used confirmed `chill touch`,
+  and gained 413 net XP across four kills. Run 583 exposed a recall race after
+  the previously unrecognized source damage verb `injures`; the recognizer now
+  covers DD4's complete damage-message ladder before navigation decisions.
+- Run 585's remaining flee was an intentional 70-percent-health withdrawal:
+  Aeloria entered Ushog at only 80 percent health and the target still had 82
+  percent health when the threshold fired. Ushog is now a full-health-only
+  second stop, so a damaging first encounter ends the circuit before entering
+  his aggressive room.
