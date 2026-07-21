@@ -1279,3 +1279,33 @@ and failure handling before registering each new level-band policy.
 - Run 598 live-validated the repaired Kestrel route. It completed in 44 seconds
   with no combat event or utility abort, retained his sole usable metal-piping
   weapon plus food and water, and saved and quit from room 3019 at 111/111 HP.
+
+## Character-Independent Autonomy Cycle 15
+
+- Run 600 advanced Dorrik by 273 XP through one defensive city kill plus Olog
+  and Uburz, with no escape penalty and full final health. Run 599 had already
+  sold his prior Foundry drops, leaving eight pies, water, and `3g 13s 34c`.
+- Run 601 killed Ushog for 126 XP, but delayed corpse-cleanup output arrived
+  after Aeloria sent `recall`. The policy treated that stale same-room prompt as
+  the recall result and closed in room 112. Dedicated run 602 immediately
+  recovered her to room 3019 at full health and mana.
+- Recall commands now remain pending until GMCP reports a room transition.
+  Source-defined rejection messages clear the pending state and retain the
+  clean failure path. Run 604 live-validated extraction after two Foundry kills:
+  Aeloria recalled, recovered, saved, and quit at full health without error.
+- Run 604 gained only 85 XP in 133 seconds because repeated reboot-local
+  Foundry kills had heavily reduced Aeloria's rewards. Level-6 policy selection
+  now totals Olog, Uburz, and Ushog kills for the current character and reboot;
+  at eight kills it rotates to the verified arena fallback. Fresh Foundry loops
+  remain available after reboots and to other characters below that threshold.
+- Run 606 proved the rotation and advanced Aeloria to level 7. Ten arena kills
+  added 838 XP; maximum HP rose from 100 to 110, mana from 267 to 293, and
+  movement from 200 to 210. She checkpointed by the healer at full health.
+- Run 607 advanced Kestrel by 369 XP through Olog, Uburz, and Ushog, with full
+  final health and no error. Run 609 added another 266 XP from the same circuit,
+  but a level-1 drunk attacked on the Midgaard return after the final hunt-stop
+  index had been exhausted. Defensive-kill bookkeeping indexed beyond the stop
+  tuple and failed the process; run 610 recovered Kestrel safely to room 3019.
+- Post-circuit attackers are now recorded only after a hunt-stop bounds check.
+  A focused regression reproduces the completed-circuit city attack, preserves
+  its XP record, and leaves the final field-stop state unchanged.

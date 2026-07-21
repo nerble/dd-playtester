@@ -531,7 +531,11 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             practice_skill=context.practice_skill,
         )
     if normalized_level == 6:
-        if context.stalled_segments % 2 == 1:
+        foundry_kills = sum(
+            _boot_kill_count(context.boot_kill_counts, target)
+            for target in ("Olog", "Uburz", "Ushog")
+        )
+        if context.stalled_segments % 2 == 1 or foundry_kills >= 8:
             return replace(
                 _MUD_SCHOOL_RESEARCH_POLICY,
                 practice_skill=context.practice_skill,

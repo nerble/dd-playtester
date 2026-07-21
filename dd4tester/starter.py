@@ -310,6 +310,7 @@ class StarterPolicy:
         self.prompt_ready = False
         self.last_command_at: float | None = None
         self.pending_travel_origin: str | None = None
+        self.pending_recall_origin: str | None = None
         self.text = ""
         self.last_response = ""
         self.roll_count = 0
@@ -728,6 +729,8 @@ class StarterPolicy:
                     if (
                         self.fastwalk_hunt_stops
                         and self.active_target is not None
+                        and self.fastwalk_hunt_stop_index
+                        < len(self.fastwalk_hunt_stops)
                         and self.fastwalk_hunt_stops[
                             self.fastwalk_hunt_stop_index
                         ].target is not None
@@ -818,6 +821,19 @@ class StarterPolicy:
         if "you failed to flee" in recent or "you couldn't escape" in recent:
             self.flee_pending = False
             self.flee_succeeded = False
+        if self.pending_recall_origin is not None and any(
+            phrase in recent
+            for phrase in (
+                "not in your current form",
+                "too powerful to rely on the gods",
+                "you are completely lost",
+                "god has forsaken you",
+                "your enemy must die",
+                "you failed!  you lose",
+                "gods will not assist carriers of cursed items",
+            )
+        ):
+            self.pending_recall_origin = None
         if "aren't here" in recent or "do not see that here" in recent:
             self.combat_active = False
             if self.current_room and self.active_target:
@@ -894,6 +910,12 @@ class StarterPolicy:
                     self.prompt_ready = True
             if event.type in {"room_entered", "room_updated"}:
                 room = _room_key(state)
+                if (
+                    self.pending_recall_origin is not None
+                    and room
+                    and room != self.pending_recall_origin
+                ):
+                    self.pending_recall_origin = None
                 if room and room != self.current_room:
                     if self.body_part_cleanup_step == 0:
                         self._clear_body_part_cleanup()
@@ -992,6 +1014,11 @@ class StarterPolicy:
 
         if not self.in_world or not self.prompt_ready:
             return None
+        if self.pending_recall_origin is not None:
+            if _room_key(state) == self.pending_recall_origin:
+                self.prompt_ready = False
+                return None
+            self.pending_recall_origin = None
         if self.sleep_confirmation_pending:
             if not _is_sleeping(state):
                 self.prompt_ready = False
@@ -1008,6 +1035,8 @@ class StarterPolicy:
             and self.current_room
         ):
             self.pending_travel_origin = self.current_room
+        if decision.command == "recall" and self.current_room:
+            self.pending_recall_origin = self.current_room
         if (
             decision.command in _MOVEMENT_COMMANDS
             and decision.reason.startswith("follow official fastwalk")

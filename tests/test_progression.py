@@ -59,6 +59,33 @@ def test_level_six_policy_falls_back_to_arena_after_empty_field_segment(
     assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
 
 
+def test_level_six_policy_rotates_after_reboot_local_foundry_kills_degrade_xp() -> None:
+    policy = policy_for(
+        6,
+        "mage",
+        boot_kill_counts={
+            "Olog": 3,
+            "the Uburz": 3,
+            "Ushog": 2,
+            "the drunk": 4,
+        },
+    )
+
+    assert policy.policy_id == "mud-school-6-10"
+    assert policy.execution == "arena"
+
+
+def test_level_six_policy_keeps_fresh_foundry_targets_below_rotation_limit() -> None:
+    policy = policy_for(
+        6,
+        "warrior",
+        boot_kill_counts={"Olog": 2, "Uburz": 2, "Ushog": 3},
+    )
+
+    assert policy.policy_id == "foundry-circuit-6-7"
+    assert policy.execution == "foundry-hunt"
+
+
 def test_level_seven_mage_uses_verified_midennir_hunt() -> None:
     policy = policy_for(7, "mage")
 

@@ -6634,6 +6634,32 @@ def test_fastwalk_records_mob_kill_and_observed_xp() -> None:
     ]
 
 
+def test_fastwalk_records_post_circuit_attacker_without_indexing_finished_stop() -> None:
+    route = route_named("foundry")
+    policy = StarterPolicy(
+        _spec(race="drow"),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+    )
+    policy.current_room = "3013"
+    policy.fastwalk_returning = True
+    policy.fastwalk_hunt_stop_index = len(policy.fastwalk_hunt_stops)
+    policy.combat_active = True
+    policy.active_target = "the drunk"
+
+    policy.observe_text(
+        "The drunk is DEAD!!\n"
+        "You receive 10 experience points for the kill.\n"
+        "You gained a total of 20 experience points!\n"
+    )
+
+    assert policy.fastwalk_hunt_stop_killed is False
+    assert policy.completed_kills == [
+        {"mob_name": "the drunk", "xp_gained": 20}
+    ]
+
+
 def test_fastwalk_research_recognizes_existing_room_combat() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -6675,6 +6701,80 @@ def test_recall_only_fastwalk_with_door_command_fails_cleanly_if_recall_fails() 
     decision = policy.next_decision(foundry)
 
     assert decision is None
+    assert policy.failure is not None
+    assert policy.failure.startswith("recall-only fastwalk did not reach")
+
+
+def test_fastwalk_recall_ignores_delayed_same_room_prompt_until_room_changes() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry captain"),
+        fastwalk_attack_target="Ushog",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_returning = True
+    policy.current_room = "112"
+    policy.after_command(BotDecision("recall", "return after field combat"))
+    policy.prompt_ready = True
+    foundry = CharacterState(
+        area="The Foundry",
+        room_name="Ushog's Quarters",
+        room_vnum="112",
+        position=7,
+    )
+
+    delayed_prompt = policy.next_decision(foundry)
+
+    assert delayed_prompt is None
+    assert policy.failure is None
+    assert policy.pending_recall_origin == "112"
+
+    temple = CharacterState(
+        area="Midgaard",
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        position=7,
+    )
+    policy.observe_events(
+        [GameEvent("room_entered", "gmcp", {"value": {"vnum": "3001"}})],
+        temple,
+    )
+    policy.prompt_ready = True
+
+    homeward = policy.next_decision(temple)
+
+    assert homeward is not None
+    assert homeward.command == "south"
+    assert policy.pending_recall_origin is None
+
+
+def test_fastwalk_recall_rejection_clears_pending_wait_and_fails_cleanly() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry captain"),
+        fastwalk_attack_target="Ushog",
+    )
+    policy.in_world = True
+    policy.fastwalk_returning = True
+    policy.current_room = "112"
+    policy.after_command(BotDecision("recall", "return after field combat"))
+
+    policy.observe_text("God has forsaken you.\n")
+    policy.prompt_ready = True
+    decision = policy.next_decision(
+        CharacterState(
+            area="The Foundry",
+            room_name="Ushog's Quarters",
+            room_vnum="112",
+            position=7,
+        )
+    )
+
+    assert decision is None
+    assert policy.pending_recall_origin is None
     assert policy.failure is not None
     assert policy.failure.startswith("recall-only fastwalk did not reach")
 
