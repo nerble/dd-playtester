@@ -323,6 +323,8 @@ class StarterPolicy:
         self.practice_plan: tuple[TrainingChoice, ...] = ()
         self.practice_plan_index = 0
         self.known_skills: set[str] = set()
+        self.capability_audit_pending = False
+        self.capability_audit_complete = False
         self.pending_practice_choice: TrainingChoice | None = None
         self.rejected_practice_skills: set[str] = set()
         self.pending_training_events: list[GameEvent] = []
@@ -460,6 +462,11 @@ class StarterPolicy:
         self.last_response = cleaned
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
+        if self.capability_audit_pending and "skills known:" in recent:
+            listing = parse_practice_listing(cleaned)
+            self.known_skills.update(listing.known)
+            self.capability_audit_pending = False
+            self.capability_audit_complete = True
         if self.pending_practice_choice is not None:
             if "i hope my knowledge helps you" in recent:
                 self._resolve_pending_practice("accepted", "trainer confirmed the lesson")
@@ -861,6 +868,9 @@ class StarterPolicy:
     ) -> None:
         for event in events:
             if event.type == "prompt_seen":
+                if self.capability_audit_pending:
+                    self.capability_audit_pending = False
+                    self.capability_audit_complete = True
                 if self.pending_practice_choice is not None:
                     self._resolve_pending_practice(
                         "rejected",
@@ -1764,6 +1774,15 @@ class StarterPolicy:
             return self._loremaster_decision(state)
 
         if room_vnum == "3728" or "arena" in room_name:
+            if self.login_authenticated and not self.capability_audit_complete:
+                if self.capability_audit_pending:
+                    self.prompt_ready = False
+                    return None
+                self.capability_audit_pending = True
+                return BotDecision(
+                    "practice",
+                    "refresh known combat capabilities before arena decisions",
+                )
             return self._arena_decision(state)
 
         if self.course_started or _is_training_vnum(room_vnum):

@@ -1072,3 +1072,19 @@ and failure handling before registering each new level-band policy.
   in 120 commands, remained above 98 percent health, and checkpointed safely.
   Kick was visible but both practice pools were zero, so it was neither falsely
   credited nor issued in combat.
+
+## Character-Independent Autonomy Cycle 9
+
+- Run 551 live-validated the arena-center repair after the failed run 548. The
+  mage completed ten kills in 119 commands, gained 566 XP, vacated Mud School
+  for the reset window, recovered beside the healer, and moved north from room
+  3732 before climbing and checkpointing safely.
+- Resumed segments previously began arena combat with an empty in-memory skill
+  set. DD4's no-argument `practice` command calls `prac_slist` before trainer or
+  posture checks, so the bot now uses it once per authenticated arena session
+  to refresh actual known capabilities. A returned prompt closes an incomplete
+  audit rather than leaving the session waiting.
+- Run 552 proved the refresh order. Aeloria's authoritative listing was parsed
+  before the Imp or target decisions, and the first and subsequent combat casts
+  used known `chill touch` instead of the weaker fallback `magic missile`. She
+  gained 790 XP from ten kills and checkpointed safely with full health.

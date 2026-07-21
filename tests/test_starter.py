@@ -7779,6 +7779,64 @@ def test_level_nine_mage_falls_back_when_chill_touch_is_unknown() -> None:
     assert decision.command == "cast 'magic missile' goblin"
 
 
+def test_reconnected_arena_session_refreshes_known_skills_before_combat() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=6)
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=5,
+        hp=90,
+        max_hp=90,
+        mana=245,
+        max_mana=245,
+        room_name="The Mud School Arena",
+        room_vnum="3732",
+    )
+
+    audit = policy.next_decision(state)
+
+    assert audit is not None
+    assert audit.command == "practice"
+    assert "refresh known combat capabilities" in audit.reason
+    policy.after_command(audit)
+    policy.observe_text(
+        """
+Skills known:
+                 magic missile:  46%                   chill touch:  23%
+You have 2 physical and 2 intellectual practices remaining.
+"""
+    )
+    policy.prompt_ready = True
+    next_decision = policy.next_decision(state)
+
+    assert policy.capability_audit_complete is True
+    assert {"magic missile", "chill touch"} <= policy.known_skills
+    assert next_decision is not None
+    assert next_decision.command == "look imp"
+
+
+def test_reconnected_capability_audit_cannot_wait_past_prompt() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=6)
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=5,
+        hp=90,
+        max_hp=90,
+        room_name="The Mud School Arena",
+        room_vnum="3732",
+    )
+    audit = policy.next_decision(state)
+    assert audit is not None
+
+    policy.observe_events([GameEvent("prompt_seen", "text", {})], state)
+
+    assert policy.capability_audit_pending is False
+    assert policy.capability_audit_complete is True
+
+
 def test_combat_disarm_recovers_and_rearms_audited_weapon() -> None:
     dagger = ObjectSource(
         3020,
