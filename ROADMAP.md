@@ -1178,3 +1178,8 @@ and failure handling before registering each new level-band policy.
   3054: with adequate movement it takes the portal and temple route to the real
   healing room. Level-2 tutorial sequencing and low-movement emergency sleep
   remain unchanged.
+- Run 570 completed the level-6 comparison for the mage. Campaign evidence
+  prevented duplicate level-6 lessons, Aeloria used confirmed `chill touch`
+  only after combat began, and healer-room reset waits restored the mana spent
+  on each patrol. Ten kills added 890 XP; she checkpointed in room 3054 at
+  100/100 HP, 219/267 mana, and 186/200 movement, with 3,130 XP left to level 7.
