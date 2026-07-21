@@ -111,6 +111,21 @@ def test_planner_spends_at_most_one_practice_of_each_type_per_level() -> None:
     assert [choice.skill for choice in choices] == ["evocation magiks"]
 
 
+def test_planner_preserves_a_practice_type_spent_by_an_earlier_segment() -> None:
+    choices = plan_training(
+        "warrior",
+        _listing(
+            "second attack: 42%    armed combat knowledge: 36%",
+            "kick: 0%",
+            physical=1,
+            intellectual=0,
+        ),
+        excluded_practice_types=frozenset({"physical"}),
+    )
+
+    assert choices == ()
+
+
 def test_thief_begins_source_prerequisite_chain_for_backstab() -> None:
     choices = plan_training(
         "thief",

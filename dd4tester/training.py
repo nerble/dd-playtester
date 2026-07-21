@@ -115,7 +115,12 @@ def parse_practice_listing(text: str) -> PracticeListing:
     )
 
 
-def plan_training(character_class: str, text: str) -> tuple[TrainingChoice, ...]:
+def plan_training(
+    character_class: str,
+    text: str,
+    *,
+    excluded_practice_types: set[str] | frozenset[str] = frozenset(),
+) -> tuple[TrainingChoice, ...]:
     listing = parse_practice_listing(text)
     budgets = {
         "physical": listing.physical_practices or 0,
@@ -124,7 +129,7 @@ def plan_training(character_class: str, text: str) -> tuple[TrainingChoice, ...]
     skills = listing.trainable
     choices: list[TrainingChoice] = []
     priorities = training_priorities().get(_normalize(character_class), ())
-    spent_types: set[str] = set()
+    spent_types = set(excluded_practice_types)
 
     for selected in priorities:
         if (

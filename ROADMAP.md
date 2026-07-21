@@ -1128,3 +1128,28 @@ and failure handling before registering each new level-band policy.
   weapon damage more frequently than an 8-pulse active kick. Dorrik preserved
   one physical practice, issued no unlearned `kick` command, gained 954 XP from
   ten kills, and checkpointed at 121/121 HP.
+
+## Character-Independent Autonomy Cycle 11
+
+- Runs 560 through 562 advanced Kestrel another 2,402 XP through three safe,
+  bounded arena segments. One confirmed stealth-techniques lesson raised the
+  prerequisite group from 35 to 41 percent; later segments observed the
+  exhausted intellectual pool and made no unsupported backstab attempt.
+- Run 563 crossed the thief boundary after five kills and stopped immediately
+  at the level objective. Kestrel reached level 6, maximum HP rose from 99 to
+  111, maximum mana from 130 to 138, and maximum movement from 190 to 200; the
+  bot recovered, left the arena, saved, and quit from Safety.
+- That progression exposed a cross-process conservation defect: the in-memory
+  one-lesson-per-type limit reset at every bounded campaign segment. A character
+  could therefore spend another practice of the same type before levelling,
+  reducing the points converted into maximum HP or mana.
+- Campaign execution now reconstructs accepted practice types from successful
+  run evidence whose segment began at the current level. Those types are passed
+  into the next deterministic training plan and excluded until the level
+  changes. This works for existing campaign history without schema migration
+  and naturally gives the new level a fresh allowance.
+- Run 564 live-validated the repair against the warrior case. Dorrik's listing
+  showed one physical practice and learnable kick, but campaign history showed
+  that both practice types had already been spent at level 5. The bot issued
+  only read-only practice listings, preserved the point, gained 763 XP from ten
+  kills, and checkpointed at 121/121 HP with no failure.

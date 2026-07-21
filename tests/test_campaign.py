@@ -3,6 +3,7 @@ from pathlib import Path
 
 from dd4tester.campaign import (
     CampaignRunner,
+    _campaign_practice_types_spent,
     _has_campaign_sellable_loot,
     _newer_progress_state,
     _run_policy_segment,
@@ -84,6 +85,84 @@ def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> No
     assert resumed.campaign_id == result.campaign_id
     assert resumed.status == "blocked"
     assert "checkpointed for the next verified segment" in resumed.message
+
+
+def test_campaign_recovers_practice_types_spent_at_current_level(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        run_id = storage.create_run(
+            scenario_name="starter:Campaignmage",
+            scenario_path=config_path,
+        )
+        storage.record_event(
+            run_id,
+            kind="game_event",
+            payload={
+                "type": "training_completed",
+                "source": "text",
+                "data": {"practice_type": "intellectual"},
+            },
+        )
+        storage.finish_run(run_id, status="success")
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="mud-school-2-6",
+            start_state={"level": 5, "xp": 10_000},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=run_id,
+            end_state={"level": 5, "xp": 10_500},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        at_level_five = _campaign_practice_types_spent(
+            storage, campaign_id, level=5
+        )
+        at_level_six = _campaign_practice_types_spent(
+            storage, campaign_id, level=6
+        )
+
+    assert at_level_five == frozenset({"intellectual"})
+    assert at_level_six == frozenset()
+
+
+def test_arena_segment_receives_campaign_practice_history(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 5})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(5, "mage"),
+            practice_types_spent=frozenset({"intellectual"}),
+        )
+    )
+
+    assert captured["practice_types_spent"] == frozenset({"intellectual"})
 
 
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:

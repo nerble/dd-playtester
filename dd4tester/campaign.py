@@ -299,7 +299,14 @@ class CampaignRunner:
                 result = await self.segment_runner(adjusted_character, self.spec.character_profile)
             else:
                 result = await _run_policy_segment(
-                    adjusted_character, self.spec.character_profile, policy
+                    adjusted_character,
+                    self.spec.character_profile,
+                    policy,
+                    practice_types_spent=_campaign_practice_types_spent(
+                        storage,
+                        campaign_id,
+                        level=_level(state),
+                    ),
                 )
         except Exception as exc:
             message = f"{policy.policy_id} segment failed: {exc}"
@@ -454,10 +461,37 @@ def load_campaign_spec(path: str | Path) -> CampaignSpec:
     return CampaignSpec.from_mapping(load_yaml_mapping(config_path), path=config_path)
 
 
+def _campaign_practice_types_spent(
+    storage: RunStorage,
+    campaign_id: int,
+    *,
+    level: int,
+) -> frozenset[str]:
+    spent: set[str] = set()
+    for segment in storage.list_campaign_segments(campaign_id):
+        if segment["status"] != "success" or segment["run_id"] is None:
+            continue
+        start_state = json.loads(segment["start_state_json"] or "{}")
+        if _level(start_state) != level:
+            continue
+        for event in storage.list_events(int(segment["run_id"])):
+            if event["kind"] != "game_event":
+                continue
+            payload = json.loads(event["payload_json"])
+            if payload.get("type") != "training_completed":
+                continue
+            practice_type = str(payload.get("data", {}).get("practice_type", ""))
+            if practice_type in {"physical", "intellectual"}:
+                spent.add(practice_type)
+    return frozenset(spent)
+
+
 async def _run_policy_segment(
     spec: CharacterSpec,
     profile_path: Path,
     policy: ProgressionPolicy,
+    *,
+    practice_types_spent: frozenset[str] = frozenset(),
 ) -> RunResult:
     if policy.execution == "starter":
         return await StarterBotRunner(spec, profile_path).run()
@@ -467,6 +501,7 @@ async def _run_policy_segment(
             profile_path,
             objective_level=policy.maximum_level or 10,
             arena_kill_limit=policy.segment_kill_limit,
+            practice_types_spent=practice_types_spent,
         ).run()
     if policy.execution == "sell-loot":
         return await StarterBotRunner(

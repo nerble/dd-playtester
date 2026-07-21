@@ -227,6 +227,7 @@ class StarterPolicy:
         moria_research: bool = False,
         moria_depth: int = 0,
         gear_catalog: GearCatalog | None = None,
+        practice_types_spent: frozenset[str] = frozenset(),
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
@@ -295,6 +296,7 @@ class StarterPolicy:
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.gear_catalog = gear_catalog
+        self.practice_types_spent = set(practice_types_spent)
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -4465,6 +4467,7 @@ class StarterPolicy:
             self.practice_plan = plan_training(
                 self.spec.character_class,
                 self.text,
+                excluded_practice_types=frozenset(self.practice_types_spent),
             )
             total_practices = sum(
                 value or 0
@@ -4500,6 +4503,7 @@ class StarterPolicy:
         self.practice_plan_index += 1
         if outcome == "accepted":
             self.known_skills.add(choice.skill)
+            self.practice_types_spent.add(choice.practice_type)
             if choice.skill == "chill touch":
                 self.chill_touch_unavailable = False
             event_type = "training_completed"
@@ -4695,6 +4699,7 @@ class StarterBotRunner:
         moria_research: bool = False,
         moria_depth: int = 0,
         gear_catalog: GearCatalog | None = None,
+        practice_types_spent: frozenset[str] = frozenset(),
         inactivity_timeout: float = 45.0,
     ) -> None:
         if inactivity_timeout <= 0:
@@ -4731,6 +4736,7 @@ class StarterBotRunner:
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.gear_catalog = gear_catalog
+        self.practice_types_spent = practice_types_spent
         self.inactivity_timeout = inactivity_timeout
         self._last_gmcp_messages: dict[str, str] = {}
 
@@ -4918,6 +4924,7 @@ class StarterBotRunner:
                 moria_research=self.moria_research,
                 moria_depth=self.moria_depth,
                 gear_catalog=gear_catalog,
+                practice_types_spent=self.practice_types_spent,
             )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
