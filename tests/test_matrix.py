@@ -4,13 +4,19 @@ from pathlib import Path
 import pytest
 
 from dd4tester.campaign import CampaignResult
-from dd4tester.matrix import load_matrix_spec, run_matrix_file
+from dd4tester.credentials import CredentialStoreError
+from dd4tester.matrix import (
+    load_matrix_spec,
+    provision_matrix_passwords,
+    run_matrix_file,
+)
 
 
 def test_repository_matrix_covers_requested_contrasting_classes() -> None:
     spec = load_matrix_spec(Path("matrices/level-10.yaml"))
 
     assert spec.target_level == 10
+    assert spec.inter_character_delay == 75
     assert [entry.campaign.character.character_class for entry in spec.entries] == [
         "mage",
         "thief",
@@ -72,10 +78,64 @@ def test_matrix_rejects_repeated_classes(tmp_path) -> None:
         load_matrix_spec(matrix_path)
 
 
+def test_matrix_applies_reset_delay_even_after_an_entry_failure(tmp_path) -> None:
+    matrix_path = _write_matrix(tmp_path, inter_character_delay=12)
+    slept: list[float] = []
+
+    async def failing_runner(path, **_kwargs):
+        if Path(path).stem == "mage":
+            raise RuntimeError("depleted tutorial")
+        return CampaignResult(1, "blocked", None, None, {"level": 2})
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    asyncio.run(
+        run_matrix_file(
+            matrix_path,
+            campaign_runner=failing_runner,
+            sleep=fake_sleep,
+        )
+    )
+
+    assert slept == [12, 12]
+
+
+def test_matrix_password_provisioning_preserves_existing_credentials(tmp_path) -> None:
+    matrix_path = _write_matrix(tmp_path)
+    stored = {"character:matrim": "existing-password"}
+
+    def load(name: str) -> str:
+        try:
+            return stored[name]
+        except KeyError as error:
+            raise CredentialStoreError("missing") from error
+
+    def save(name: str, password: str) -> None:
+        stored[name] = password
+
+    results = provision_matrix_passwords(
+        matrix_path,
+        password_loader=load,
+        password_saver=save,
+        password_factory=lambda: "generated-password",
+    )
+
+    assert [result.status for result in results] == [
+        "existing",
+        "generated",
+        "generated",
+    ]
+    assert stored["character:matrim"] == "existing-password"
+    assert stored["character:selene"] == "generated-password"
+    assert stored["character:dorrin"] == "generated-password"
+
+
 def _write_matrix(
     root: Path,
     *,
     classes: tuple[str, str, str] = ("mage", "thief", "warrior"),
+    inter_character_delay: float = 0,
 ) -> Path:
     entries: list[str] = []
     subclasses = {"mage": "warlock", "thief": "ninja", "warrior": "knight"}
@@ -120,6 +180,7 @@ def _write_matrix(
             [
                 "name: test matrix",
                 "target_level: 10",
+                f"inter_character_delay: {inter_character_delay}",
                 "entries:",
                 *entries,
             ]

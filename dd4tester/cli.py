@@ -18,7 +18,7 @@ from .credentials import (
 from .evidence import collect_run_evidence, render_evidence_json
 from .fastwalks import FASTWALKS, routes_for_level
 from .hunt_candidates import load_world_source, rank_hunt_candidates
-from .matrix import run_matrix_file
+from .matrix import provision_matrix_passwords, run_matrix_file
 from .money import run_money_loop_profile
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
@@ -385,6 +385,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="campaign segments per character in each round, default: 1",
+    )
+
+    configure_matrix_parser = subcommands.add_parser(
+        "configure-matrix-passwords",
+        help="generate and securely store missing passwords for a character matrix",
+    )
+    configure_matrix_parser.add_argument(
+        "config",
+        type=Path,
+        help="path to the matrix YAML configuration",
     )
 
     show_runs_parser = subcommands.add_parser("show-runs", help="list stored scenario runs")
@@ -834,6 +844,19 @@ def main(argv: list[str] | None = None) -> int:
                 f"{entry.campaign_id or '-'}\t{entry.message or '-'}"
             )
         return 0 if result.status == "success" else 1
+
+    if args.command == "configure-matrix-passwords":
+        try:
+            results = provision_matrix_passwords(args.config)
+        except Exception as exc:
+            print(f"Matrix credential setup failed: {exc}", file=sys.stderr)
+            return 1
+        for result in results:
+            print(
+                f"{result.entry_id}: {result.status} credential "
+                f"{result.credential_name}"
+            )
+        return 0
 
     if args.command == "show-runs":
         return show_runs(args.database, limit=args.limit)

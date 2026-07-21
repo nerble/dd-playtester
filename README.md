@@ -133,9 +133,14 @@ python -m dd4tester matrix matrices/level-10.yaml --rounds 1 --segments-per-char
 ```
 
 The command runs campaigns round-robin, prints every character's level and
-status, and continues the other entries if one needs more evidence. Each
+status, waits for the shared Mud School area to reset between characters, and
+continues the other entries if one needs more evidence. Each
 profile uses its own Windows Credential Manager key; configure the three local
-passwords with `configure-character-password` before a live first run.
+passwords before a live first run without displaying them:
+
+```powershell
+python -m dd4tester configure-matrix-passwords matrices/level-10.yaml
+```
 
 ## Progression Evidence
 

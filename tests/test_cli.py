@@ -4,7 +4,11 @@ from pathlib import Path
 import dd4tester.cli
 from dd4tester.campaign import CampaignResult
 from dd4tester.cli import main
-from dd4tester.matrix import MatrixEntryResult, MatrixResult
+from dd4tester.matrix import (
+    MatrixCredentialResult,
+    MatrixEntryResult,
+    MatrixResult,
+)
 from dd4tester.money import MoneyLoopResult
 from dd4tester.runner import RunResult
 from dd4tester.storage import RunStorage
@@ -967,6 +971,31 @@ def test_matrix_cli_reports_each_character_without_hiding_incomplete_work(
     assert "mage\tAeloria\tmage\t10\tsuccess\t1\t-" in captured.out
     assert "thief\tKestrel\tthief\t8\tblocked\t2\tawaiting policy evidence" in captured.out
     assert "warrior\tDorrik\twarrior\t10\tsuccess\t3\t-" in captured.out
+
+
+def test_configure_matrix_passwords_reports_status_without_secrets(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "provision_matrix_passwords",
+        lambda _path: (
+            MatrixCredentialResult("mage", "character:aeloria", "existing"),
+            MatrixCredentialResult("thief", "character:kestrel", "generated"),
+        ),
+    )
+
+    exit_code = main(
+        ["configure-matrix-passwords", str(tmp_path / "matrix.yaml")]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "mage: existing credential character:aeloria" in captured.out
+    assert "thief: generated credential character:kestrel" in captured.out
+    assert "password" not in captured.out.casefold()
 
 
 def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:

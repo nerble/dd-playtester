@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import secrets
+import string
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
 
 from .campaign import CampaignResult, CampaignSpec, load_campaign_spec, run_campaign_file
+from .credentials import (
+    CredentialStoreError,
+    load_character_password,
+    save_character_password,
+)
 from .scenario import load_yaml_mapping
 
 
@@ -23,6 +31,7 @@ class MatrixSpec:
     name: str
     target_level: int
     entries: tuple[MatrixEntry, ...]
+    inter_character_delay: float = 0.0
 
     @classmethod
     def from_mapping(cls, data: dict[str, object], *, path: Path) -> "MatrixSpec":
@@ -32,6 +41,9 @@ class MatrixSpec:
         target_level = int(data.get("target_level", 10))
         if not 2 <= target_level <= 100:
             raise ValueError("matrix target_level must be between 2 and 100")
+        inter_character_delay = float(data.get("inter_character_delay", 0))
+        if not 0 <= inter_character_delay <= 900:
+            raise ValueError("inter_character_delay must be between 0 and 900 seconds")
         raw_entries = data.get("entries")
         if not isinstance(raw_entries, list) or len(raw_entries) < 3:
             raise ValueError("matrix must define at least three entries")
@@ -57,7 +69,7 @@ class MatrixSpec:
             entries.append(MatrixEntry(entry_id, campaign_path, campaign))
 
         _validate_representative_entries(entries)
-        return cls(name, target_level, tuple(entries))
+        return cls(name, target_level, tuple(entries), inter_character_delay)
 
 
 @dataclass(frozen=True)
@@ -79,9 +91,41 @@ class MatrixResult:
     entries: tuple[MatrixEntryResult, ...]
 
 
+@dataclass(frozen=True)
+class MatrixCredentialResult:
+    entry_id: str
+    credential_name: str
+    status: str
+
+
 def load_matrix_spec(path: str | Path) -> MatrixSpec:
     matrix_path = Path(path).resolve()
     return MatrixSpec.from_mapping(load_yaml_mapping(matrix_path), path=matrix_path)
+
+
+def provision_matrix_passwords(
+    path: str | Path,
+    *,
+    password_loader: Callable[[str], str] = load_character_password,
+    password_saver: Callable[[str, str], None] = save_character_password,
+    password_factory: Callable[[], str] | None = None,
+) -> tuple[MatrixCredentialResult, ...]:
+    spec = load_matrix_spec(path)
+    make_password = password_factory or _generated_password
+    results: list[MatrixCredentialResult] = []
+    for entry in spec.entries:
+        credential_name = entry.campaign.character.credential_name
+        try:
+            password_loader(credential_name)
+        except CredentialStoreError:
+            password_saver(credential_name, make_password())
+            status = "generated"
+        else:
+            status = "existing"
+        results.append(
+            MatrixCredentialResult(entry.entry_id, credential_name, status)
+        )
+    return tuple(results)
 
 
 async def run_matrix_file(
@@ -91,6 +135,7 @@ async def run_matrix_file(
     segments_per_character: int = 1,
     force_new: bool = False,
     campaign_runner: CampaignFileRunner = run_campaign_file,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> MatrixResult:
     if rounds < 1:
         raise ValueError("rounds must be positive")
@@ -100,7 +145,7 @@ async def run_matrix_file(
     latest: dict[str, MatrixEntryResult] = {}
 
     for round_index in range(rounds):
-        for entry in spec.entries:
+        for entry_index, entry in enumerate(spec.entries):
             previous = latest.get(entry.entry_id)
             if previous is not None and previous.level >= spec.target_level:
                 continue
@@ -120,6 +165,12 @@ async def run_matrix_file(
                     previous.level if previous is not None else 0,
                     str(error),
                 )
+                more_work_follows = (
+                    entry_index < len(spec.entries) - 1
+                    or round_index < rounds - 1
+                )
+                if spec.inter_character_delay and more_work_follows:
+                    await sleep(spec.inter_character_delay)
                 continue
             level = _level(result.state)
             latest[entry.entry_id] = MatrixEntryResult(
@@ -131,6 +182,11 @@ async def run_matrix_file(
                 level,
                 result.message,
             )
+            more_work_follows = (
+                entry_index < len(spec.entries) - 1 or round_index < rounds - 1
+            )
+            if spec.inter_character_delay and more_work_follows:
+                await sleep(spec.inter_character_delay)
         if all(
             latest.get(entry.entry_id) is not None
             and latest[entry.entry_id].level >= spec.target_level
@@ -162,3 +218,8 @@ def _validate_representative_entries(entries: list[MatrixEntry]) -> None:
 def _level(state: dict[str, object]) -> int:
     value = state.get("level")
     return int(value) if isinstance(value, (int, float)) else 0
+
+
+def _generated_password() -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(16))

@@ -47,7 +47,25 @@ def classify_decision(command: str, reason: str, stage: str) -> DecisionMetadata
         "wear",
     }:
         return DecisionMetadata("inventory")
-    if verb in {"kill", "murder", "backstab", "bash", "kick"} or _contains(
+    if verb in {
+        "north",
+        "east",
+        "south",
+        "west",
+        "up",
+        "down",
+        "out",
+        "enter",
+        "recall",
+        "open",
+        "unlock",
+    }:
+        return DecisionMetadata("navigation")
+    if verb in {"consider", "help", "identify", "list", "look", "score", "time", "where"}:
+        return DecisionMetadata("research")
+    if verb in {"save", "quit"}:
+        return DecisionMetadata("checkpoint")
+    if verb in {"cast", "kill", "murder", "backstab", "bash", "kick"} or _contains(
         reason_text, "fight", "combat", "attack", "quaff"
     ):
         return DecisionMetadata("combat")
@@ -56,7 +74,13 @@ def classify_decision(command: str, reason: str, stage: str) -> DecisionMetadata
     ):
         return DecisionMetadata("recovery")
     if verb in {"eat", "drink", "fill"} or _contains(
-        reason_text, "food", "thirst", "provision", "water skin", "restock"
+        reason_text,
+        "food",
+        "thirst",
+        "provision",
+        "water container",
+        "water skin",
+        "restock",
     ):
         return DecisionMetadata("provisioning")
     if verb in {"practice", "train", "gain"} or _contains(
@@ -78,21 +102,7 @@ def classify_decision(command: str, reason: str, stage: str) -> DecisionMetadata
         "wear",
     } or _contains(reason_text, "gear", "inventory", "loot", "sale"):
         return DecisionMetadata("inventory")
-    if verb in {"consider", "help", "identify", "list", "look", "score", "time", "where"}:
-        return DecisionMetadata("research")
-    if verb in {"save", "quit"}:
-        return DecisionMetadata("checkpoint")
-    if verb in {
-        "north",
-        "east",
-        "south",
-        "west",
-        "up",
-        "down",
-        "recall",
-        "open",
-        "unlock",
-    } or _contains(reason_text, "route", "travel", "fastwalk", "return home"):
+    if _contains(reason_text, "route", "travel", "fastwalk", "return home"):
         return DecisionMetadata("navigation")
     return DecisionMetadata("other")
 

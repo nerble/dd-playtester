@@ -854,3 +854,28 @@ and failure handling before registering each new level-band policy.
   neuter dwarf knight-target warrior Dorrik. The `matrix` CLI advances their
   durable campaigns round-robin and succeeds only when all three reach level
   10. Unit coverage validates orchestration, but live runs remain required.
+
+## Character-Independent Autonomy Cycle 2
+
+- The first live matrix round created all three configured characters with
+  generated passwords stored only in Windows Credential Manager. Run 524
+  created female human mage Aeloria, completed every tutorial stage, reached
+  level 2, practiced magic missile, provisioned food and water, saved, and
+  quit at full health and mana.
+- Run 525 created male drow thief Kestrel correctly, but Aeloria had just
+  depleted the shared tutorial mobiles. Kestrel reached the empty final room
+  at level 1, where an unchecked empty target list caused `list index out of
+  range`. The matrix isolated the failure and continued instead of hiding it.
+- Run 526 created neuter dwarf warrior Dorrik after the area reset, completed
+  the same tutorial without character-specific rules, reached level 2, saved,
+  and quit successfully. Mage and warrior now have live creation-to-level-2
+  matrix proof; thief remains pending a reset-aware retry.
+- DD4 `area_update()` documents that Mud School resets every three minutes
+  while occupied and on the next eligible update once no player remains. The
+  matrix now waits 75 seconds between characters, including after a failed
+  entry. An absent final gladiator now produces `look`, `save`, and `quit` with
+  an explicit reset-retry reason instead of indexing an empty target list.
+- Decision classification now gives explicit commands precedence: movement is
+  navigation, `look` is research, and spell casts are combat even when their
+  free-form reasons mention another domain. Starter practice selection also
+  comes directly from the archetype registry rather than a duplicate class map.

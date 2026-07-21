@@ -8,13 +8,16 @@ from dd4tester.decisions import classify_decision
     [
         ("mage", "select base class", "create_class", "creation", False),
         ("kill wolf", "fight the tutorial wolf", "course", "combat", False),
+        ("cast 'magic missile' wolf", "cast a combat spell", "course", "combat", False),
         ("sleep", "recover health and mana", "arena", "recovery", False),
         ("drink skin", "satisfy thirst", "field", "provisioning", False),
         ("practice backstab", "practice class skill", "arena", "training", False),
         ("flee", "withdraw below 25 percent health", "field", "safety", True),
         ("wear sword", "equip combat gear", "field", "inventory", False),
         ("north", "follow verified route", "field", "navigation", False),
+        ("east", "return to the combat corridor", "course", "navigation", False),
         ("consider guard", "assess target", "field", "research", False),
+        ("look", "identify the combat opponent", "course", "research", False),
         ("save", "save progress", "home", "checkpoint", False),
     ],
 )

@@ -106,17 +106,6 @@ _DIRECTION_SHORTCUTS = {
     "u": "up",
     "d": "down",
 }
-_STARTER_SKILLS = {
-    "mage": "magic missile",
-    "cleric": "cure light",
-    "thief": "backstab",
-    "warrior": "kick",
-    "psionic": "mind thrust",
-    "shifter": "shapeshift",
-    "brawler": "kick",
-    "ranger": "kick",
-    "smithy": "repair",
-}
 _TRAINING_CENTERS = {
     "3712": (("3713", "3714"), "3715"),
     "3715": (("3717", "3718"), "3716"),
@@ -309,6 +298,7 @@ class StarterPolicy:
         self.roll_count = 0
         self.course_started = False
         self.course_complete = False
+        self.tutorial_abort_step = 0
         self.visited_course_rooms: set[str] = set()
         self.room_query_counts: dict[str, int] = {}
         self.current_room: str | None = None
@@ -4231,8 +4221,32 @@ class StarterPolicy:
 
     def _final_combat_decision(self, state: CharacterState) -> BotDecision:
         key = _room_key(state)
+        if self.tutorial_abort_step == 1:
+            self.tutorial_abort_step = 2
+            self.stage = "complete"
+            return BotDecision(
+                "quit",
+                "leave the depleted tutorial safely for an area-reset retry",
+            )
         if key not in self.cleared_training_rooms:
-            targets = self.room_targets.get(key, ["gladiator"])
+            targets = self.room_targets.get(key)
+            if not targets:
+                if self.room_query_counts.get(key, 0) == 0:
+                    self.room_query_counts[key] = 1
+                    return BotDecision(
+                        "look",
+                        "confirm whether the final tutorial gladiator has reset",
+                    )
+                self.utility_abort_reason = (
+                    "final tutorial gladiator absent; saved and quit for "
+                    "an area-reset retry"
+                )
+                self.tutorial_abort_step = 1
+                self.stage = "saving"
+                return BotDecision(
+                    "save",
+                    "checkpoint safely after finding the tutorial depleted",
+                )
             target = targets[0]
             self.combat_active = True
             self.active_target = target
@@ -4265,7 +4279,7 @@ class StarterPolicy:
         if self.loremaster_step == 2:
             self.loremaster_step = 3
             candidates = _practice_candidates(self.text)
-            preferred = _STARTER_SKILLS[self.spec.character_class]
+            preferred = self.spec.identity.practice_skill
             balances = _practice_balances(self.text)
             relevant_practices = (
                 balances[1]

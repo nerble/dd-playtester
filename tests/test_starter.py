@@ -8275,3 +8275,19 @@ def test_final_combat_loots_and_unlocks_after_kill() -> None:
 
     assert decision is not None
     assert decision.command == "unlock north"
+
+
+def test_absent_final_gladiator_saves_and_quits_for_reset_retry() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    state = CharacterState(
+        hp=50,
+        max_hp=50,
+        room_name="Final Combat",
+        room_vnum="3722",
+        exits={"n": "3723", "s": "3716"},
+    )
+
+    assert policy._final_combat_decision(state).command == "look"
+    assert policy._final_combat_decision(state).command == "save"
+    assert "area-reset retry" in str(policy.utility_abort_reason)
+    assert policy._final_combat_decision(state).command == "quit"

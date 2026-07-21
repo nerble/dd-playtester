@@ -1,5 +1,6 @@
 name: Mage Thief Warrior Level 10 Matrix
 target_level: 10
+inter_character_delay: 75
 entries:
   - id: mage
     campaign: ../campaigns/matrix-mage-level-10.yaml
