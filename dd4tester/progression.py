@@ -126,6 +126,7 @@ _MUD_SCHOOL_ARENA_POLICY = ProgressionPolicy(
         "Live run 82: the paced arena policy reached level 6, saved, and quit after a giant-lizard level-up.",
     ),
     practice_skill=None,
+    segment_kill_limit=10,
 )
 
 _MUD_SCHOOL_RESEARCH_POLICY = replace(

@@ -26,6 +26,7 @@ def test_level_two_to_six_policy_is_verified_and_executable(
     assert policy.status == "verified"
     assert policy.executable is True
     assert policy.execution == "arena"
+    assert policy.segment_kill_limit == 10
     assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
     assert any("Live run 76" in item for item in policy.evidence)
     assert any("Live run 82" in item for item in policy.evidence)

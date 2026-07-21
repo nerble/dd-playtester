@@ -898,3 +898,8 @@ and failure handling before registering each new level-band policy.
   reached DD4. The rejected sleep left stale recovery state, so the operator
   interrupted the run safely and recorded it as failed. Rejected sleep now
   clears the unconfirmed posture and recovery locks and resumes combat handling.
+- Run 529 validated that repair across repeated sleep, wake, live-consider, and
+  combat cycles, gaining 1,244 XP before a safe operator stop at the Temple
+  healer. It also showed that the level-2-to-6 policy could cycle arena resets
+  until its runtime expired. That policy now checkpoints after at most ten
+  kills, matching the established bounded level-6-to-10 arena policy.
