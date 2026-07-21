@@ -1309,3 +1309,31 @@ and failure handling before registering each new level-band policy.
 - Post-circuit attackers are now recorded only after a hunt-stop bounds check.
   A focused regression reproduces the completed-circuit city attack, preserves
   its XP record, and leaves the final field-stop state unchanged.
+
+## Character-Independent Autonomy Cycle 16
+
+- Runs 607 and 609 advanced Kestrel by 635 XP through two three-kill Foundry
+  circuits. A harmless level-1 city attacker exposed the completed-stop index
+  defect in run 609; run 610 recovered him at full health, and the source-safe
+  bounds repair was published before progression resumed.
+- Kestrel's reboot-local Foundry count then selected the arena automatically.
+  An externally short five-minute wrapper interrupted run 611 while he was
+  safely asleep beside the healer after gaining 416 XP; the child process was
+  terminated explicitly, orphaned records were repaired, and run 612 saved the
+  character home. Arena runs now retain their established 15-minute ceiling.
+- Runs 613 and 614 added another 1,315 XP across nineteen kills. Run 614 advanced
+  Kestrel to level 7, raising maximum HP from 111 to 123, mana from 138 to 145,
+  and movement from 200 to 210. He checkpointed beside the healer at full HP.
+- Repeated Foundry sales reduced Dorrik's guards and four piping copies below
+  every compatible shop's minimum offer. Runs 617-619 showed two maintenance
+  loops: an uninterested item remained classified as sellable, and repeated
+  duplicate `value piping` commands triggered the progress watchdog.
+- An uninterested response from the best compatible shop now collapses every
+  remaining plan entry with that keyword and schedules one home donation per
+  carried copy. Run 621 live-validated four pipe donations plus one guards
+  donation, then saved at full health with only food and water in inventory.
+- Dorrik's reboot-local Foundry count, including the earlier run 572 Uburz kill,
+  reached the eight-kill rotation threshold. Runs 622 and 623 completed twenty
+  safe arena kills for 1,529 XP while preserving his unspent physical practice.
+  Run 624 found no eligible respawn and made a clean zero-kill healer checkpoint
+  with 918 XP remaining to level 7.

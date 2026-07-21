@@ -652,6 +652,30 @@ class StarterPolicy:
         offer = _VALUE_OFFER.search(cleaned)
         if offer is not None:
             self.sale_offer_coins = int(offer.group("coins"))
+        if (
+            "looks uninterested in" in recent
+            and self.sale_phase == "sell"
+            and self.sale_index < len(self.sale_plan)
+        ):
+            keyword, _ = self.sale_plan[self.sale_index]
+            rejected_count = sum(
+                1
+                for planned_keyword, _ in self.sale_plan[self.sale_index :]
+                if planned_keyword == keyword
+            )
+            self.donation_plan.extend(
+                [keyword]
+                * max(0, rejected_count - self.donation_plan.count(keyword))
+            )
+            self.sale_plan = [
+                *self.sale_plan[: self.sale_index + 1],
+                *(
+                    sale
+                    for sale in self.sale_plan[self.sale_index + 1 :]
+                    if sale[0] != keyword
+                ),
+            ]
+            self.sale_phase = "inventory"
         completed_sale = _SALE_COMPLETED.search(cleaned)
         if "i don't trade with folks i can't see" in recent:
             self.shop_visibility_rejected = True

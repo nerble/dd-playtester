@@ -6919,6 +6919,48 @@ def test_liquidation_donates_low_value_class_restricted_loot_under_pressure() ->
     assert policy.sale_plan == []
 
 
+def test_liquidation_donates_expendable_item_after_best_shop_is_uninterested() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    shop = safe_shop_for_item("some leather leg guards")
+    assert shop is not None
+    policy.sale_plan = [("guards", shop)]
+    policy.sale_phase = "sell"
+
+    policy.observe_text("The armourer looks uninterested in some leather leg guards.\n")
+
+    assert policy.sale_phase == "inventory"
+    assert policy.donation_plan == ["guards"]
+
+    policy.observe_text("The armourer looks uninterested in some leather leg guards.\n")
+
+    assert policy.donation_plan == ["guards"]
+
+
+def test_liquidation_collapses_rejected_duplicate_keyword_into_donations() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    weapon_shop = safe_shop_for_item("a length of metal piping")
+    armour_shop = safe_shop_for_item("some leather leg guards")
+    assert weapon_shop is not None
+    assert armour_shop is not None
+    policy.sale_plan = [
+        ("piping", weapon_shop),
+        ("piping", weapon_shop),
+        ("piping", weapon_shop),
+        ("piping", weapon_shop),
+        ("guards", armour_shop),
+    ]
+    policy.sale_phase = "sell"
+
+    policy.observe_text("The weaponsmith looks uninterested in metal piping.\n")
+
+    assert policy.sale_plan == [
+        ("piping", weapon_shop),
+        ("guards", armour_shop),
+    ]
+    assert policy.donation_plan == ["piping"] * 4
+    assert policy.sale_phase == "inventory"
+
+
 def test_liquidation_preserves_water_storage_even_when_unsellable() -> None:
     skin = ObjectSource(
         3138,
