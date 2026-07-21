@@ -1198,3 +1198,28 @@ and failure handling before registering each new level-band policy.
   guards for 57 copper, and finished with nine pies and a filled water skin.
   The complete 162-second hunt-sale-restock cycle is an economic and equipment
   loop; it does not yet outperform arena XP enough to replace that policy.
+
+## Character-Independent Autonomy Cycle 13
+
+- Level 6 now starts with a generic two-target Foundry circuit. The existing
+  recall-origin fastwalk reaches room 108; source-backed relative routes visit
+  Uburz in room 120 and Ushog in room 112 while avoiding the poison-bearing
+  room 122. Every target still passes live presence, crowd, `consider`, and
+  health gates, and the circuit recalls safely after two kills or exhaustion.
+- Run 575 live-validated the combined route. Uburz was absent, a roaming Olog
+  engaged on the connecting path, and Ushog was present. Dorrik killed both for
+  208 XP, recovered five equipment drops, recalled, slept at healer room 3054,
+  and checkpointed at 138/138 HP in 146 seconds.
+- Runs 576 and 577 applied the same policy to Kestrel and Aeloria. The Foundry
+  was depleted, so both made clean no-kill returns and finished at full health
+  in 76 and 65 seconds. After an empty level-6 field segment, policy selection
+  now alternates to the verified ten-kill arena batch instead of immediately
+  revisiting the same depleted rooms.
+- Run 578 live-validated that adaptive fallback. Aeloria killed ten wild boars
+  for 781 XP in 547 seconds, finished at 100/100 HP with 225/267 mana, and
+  checkpointed beside the temple healer with 2,349 XP left to level 7.
+- DD4's no-argument `practice` command calls `prac_slist` before any trainer or
+  posture requirement. Every authenticated field-hunt process now uses that
+  read-only listing before travel, restoring learned combat capabilities after
+  reconnect so source-correct between-round attacks such as `kick` are never
+  forgotten or invented.

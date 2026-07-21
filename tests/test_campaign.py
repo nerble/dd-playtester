@@ -165,6 +165,45 @@ def test_arena_segment_receives_campaign_practice_history(
     assert captured["practice_types_spent"] == frozenset({"intellectual"})
 
 
+def test_level_six_foundry_campaign_uses_bounded_two_target_circuit(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 6})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(6, "warrior"),
+            practice_types_spent=frozenset({"physical"}),
+        )
+    )
+
+    assert captured["objective_level"] == 7
+    assert captured["fastwalk_route"].name == "foundry"
+    assert [
+        stop.target for stop in captured["fastwalk_hunt_stops"]
+    ] == ["uburz", "ushog"]
+    assert captured["fastwalk_kill_limit"] == 2
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["fastwalk_require_invisibility"] is False
+    assert captured["require_fastwalk_kill"] is False
+    assert captured["allow_safe_fastwalk_abort"] is True
+    assert captured["practice_types_spent"] == frozenset({"physical"})
+
+
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:
     config_path, database = _write_campaign_files(tmp_path, target_level=2)
 

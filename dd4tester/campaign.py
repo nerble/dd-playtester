@@ -20,6 +20,7 @@ from .starter import (
     ambush_level_eight_hunt_stops,
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
+    foundry_level_six_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
 )
 from .storage import RunStorage
@@ -501,6 +502,21 @@ async def _run_policy_segment(
             profile_path,
             objective_level=policy.maximum_level or 10,
             arena_kill_limit=policy.segment_kill_limit,
+            practice_types_spent=practice_types_spent,
+        ).run()
+    if policy.execution == "foundry-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 7,
+            fastwalk_route=route_named("foundry"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,
         ).run()
     if policy.execution == "sell-loot":

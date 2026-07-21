@@ -1679,6 +1679,19 @@ class StarterPolicy:
                 return None
 
         if self.fastwalk_route is not None:
+            if (
+                self.fastwalk_hunt_stops
+                and self.login_authenticated
+                and not self.capability_audit_complete
+            ):
+                if self.capability_audit_pending:
+                    self.prompt_ready = False
+                    return None
+                self.capability_audit_pending = True
+                return BotDecision(
+                    "practice",
+                    "refresh known combat capabilities before field decisions",
+                )
             research = self._fastwalk_research_decision(state)
             if research is not None:
                 return research
@@ -5461,6 +5474,30 @@ def ambush_exterior_hunt_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(("south",), "goblin"),
         FieldHuntStop(("south",), "goblin looter"),
         FieldHuntStop(("open south", "south"), "goblin archer"),
+    )
+
+
+def foundry_level_six_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Return the bounded source-backed Foundry circuit for level six."""
+    return (
+        FieldHuntStop(
+            ("south", "west", "west", "down", "east"),
+            "uburz",
+        ),
+        FieldHuntStop(
+            (
+                "west",
+                "up",
+                "east",
+                "east",
+                "north",
+                "north",
+                "west",
+                "open south",
+                "south",
+            ),
+            "ushog",
+        ),
     )
 
 

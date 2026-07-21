@@ -32,15 +32,31 @@ def test_level_two_to_six_policy_is_verified_and_executable(
     assert any("Live run 82" in item for item in policy.evidence)
 
 
-def test_level_six_to_ten_policy_uses_verified_bounded_arena_segments() -> None:
-    policy = policy_for(6, "mage")
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])
+def test_level_six_policy_uses_verified_bounded_foundry_circuit(
+    character_class: str,
+) -> None:
+    policy = policy_for(6, character_class)
+
+    assert policy.policy_id == "foundry-circuit-6-7"
+    assert policy.status == "verified"
+    assert policy.execution == "foundry-hunt"
+    assert policy.segment_kill_limit == 2
+    assert policy.executable is True
+    assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
+    assert any("Live run 572" in item for item in policy.evidence)
+
+
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])
+def test_level_six_policy_falls_back_to_arena_after_empty_field_segment(
+    character_class: str,
+) -> None:
+    policy = policy_for(6, character_class, stalled_segments=1)
 
     assert policy.policy_id == "mud-school-6-10"
-    assert policy.status == "verified"
     assert policy.execution == "arena"
     assert policy.segment_kill_limit == 10
-    assert policy.executable is True
-    assert any("Guildmaster" in item for item in policy.evidence)
+    assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
 
 
 def test_level_seven_mage_uses_verified_midennir_hunt() -> None:

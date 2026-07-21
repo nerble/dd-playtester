@@ -29,6 +29,7 @@ from dd4tester.starter import (
     ambush_raider_consider_stops,
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
+    foundry_level_six_hunt_stops,
     midennir_horseman_consider_stops,
     midennir_horseman_probe_route,
     moria_sanctuary_potion_consider_stops,
@@ -77,6 +78,25 @@ def test_ambush_exterior_research_stays_out_of_the_cave_complex() -> None:
     ]
     assert "down" not in commands
     assert commands[-2:] == ["open south", "south"]
+
+
+def test_foundry_level_six_circuit_links_two_source_backed_targets() -> None:
+    stops = foundry_level_six_hunt_stops()
+
+    assert [stop.target for stop in stops] == ["uburz", "ushog"]
+    assert stops[0].route == ("south", "west", "west", "down", "east")
+    assert stops[1].route == (
+        "west",
+        "up",
+        "east",
+        "east",
+        "north",
+        "north",
+        "west",
+        "open south",
+        "south",
+    )
+    assert all(not stop.consider_only for stop in stops)
 
 
 def test_midennir_horseman_probe_searches_source_trail_and_never_attacks() -> None:
@@ -7913,6 +7933,51 @@ You have 2 physical and 2 intellectual practices remaining.
     assert {"magic missile", "chill touch"} <= policy.known_skills
     assert next_decision is not None
     assert next_decision.command == "look imp"
+
+
+def test_reconnected_field_session_refreshes_known_skills_before_travel() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        objective_level=7,
+        fastwalk_route=route_named("foundry"),
+        fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=6,
+        hp=120,
+        max_hp=120,
+        mana=100,
+        max_mana=100,
+        move=200,
+        max_move=200,
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+    )
+
+    audit = policy.next_decision(state)
+
+    assert audit is not None
+    assert audit.command == "practice"
+    assert "field decisions" in audit.reason
+    policy.after_command(audit)
+    policy.observe_text(
+        """
+Skills known:
+                 second attack:  43%                           kick:  31%
+You have 1 physical and 0 intellectual practices remaining.
+"""
+    )
+    policy.prompt_ready = True
+    next_decision = policy.next_decision(state)
+
+    assert policy.capability_audit_complete is True
+    assert {"second attack", "kick"} <= policy.known_skills
+    assert next_decision is not None
+    assert next_decision.command == "config +autoloot"
 
 
 def test_reconnected_capability_audit_cannot_wait_past_prompt() -> None:

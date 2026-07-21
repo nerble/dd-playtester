@@ -168,6 +168,29 @@ _MUD_SCHOOL_RESEARCH_POLICY = replace(
     ),
 )
 
+_FOUNDRY_LEVEL_SIX_POLICY = ProgressionPolicy(
+    policy_id="foundry-circuit-6-7",
+    minimum_level=6,
+    maximum_level=7,
+    status="verified",
+    execution="foundry-hunt",
+    summary=(
+        "A bounded Foundry circuit through two source-backed targets, with "
+        "live consider, crowd, and health gates before every attack."
+    ),
+    evidence=(
+        "DD4 source: the existing Foundry fastwalk ends in room 108; rooms 107, 117, 118, 119, and 120 lead to Uburz, then rooms 109, 111, and 112 lead to Ushog.",
+        "DD4 source: Uburz loads near level 4 and Ushog near level 5; live consider remains authoritative because mobile levels are fuzzed and both can wander.",
+        "Live run 220: a level-6 character killed an incidental Olog and Ushog for 208 XP total and finished at full health.",
+        "Live run 572: level-6 Dorrik killed Uburz for 106 XP without losing health and recovered three sellable equipment drops.",
+        "Live run 575: the combined circuit safely skipped absent Uburz, killed a roaming Olog and Ushog for 208 XP, recovered five drops, and returned at full health.",
+        "Live runs 576-577: depleted circuits for thief and mage returned safely at full health, establishing the need for an arena fallback after an empty pass.",
+        "The route avoids the poison-bearing pit beast in room 122 and permits a safe no-kill recall when a target is absent or unsuitable.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+)
+
 _MORIA_SNAKE_POLICY = ProgressionPolicy(
     policy_id="moria-circuit-7-10",
     minimum_level=7,
@@ -505,6 +528,16 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
     if normalized_level < 6:
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,
+            practice_skill=context.practice_skill,
+        )
+    if normalized_level == 6:
+        if context.stalled_segments % 2 == 1:
+            return replace(
+                _MUD_SCHOOL_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _FOUNDRY_LEVEL_SIX_POLICY,
             practice_skill=context.practice_skill,
         )
     field_caster = context.progression_track == "verified-field-caster"
