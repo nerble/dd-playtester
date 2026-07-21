@@ -1489,3 +1489,16 @@ and failure handling before registering each new level-band policy.
   before evacuation. A lone, sufficiently lower-level safe-room attacker now
   receives the class's strongest known combat action while every existing
   health, crowd, food, thirst, room, and level safety gate remains enforced.
+- Run 658 exposed maintenance resetting Aeloria's transient stall state and
+  selecting Miden'nir again. The exact mountain-goblin stop was empty, so she
+  returned safely but spent a full segment for no progress. Level-7 selection
+  now uses the expanded Foundry circuit for every class; Miden'nir remains
+  recorded evidence rather than the default caster route.
+- Run 659 live-validated that cross-class selection for Aeloria. She killed
+  Oshu, Golgog, and Uburz for 200 XP, collected six items, honored the Ushog
+  health gate, and returned at full health.
+- Run 659 also showed a delayed `Skills known:` response arriving after a stale
+  prompt had cleared the capability-audit pending flag. The listing contained
+  chill touch at 36%, but the bot had ignored it and used magic missile. Skill
+  listings are now parsed whenever observed, so asynchronous prompt ordering
+  cannot discard known combat capabilities.

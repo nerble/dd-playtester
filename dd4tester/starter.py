@@ -485,7 +485,7 @@ class StarterPolicy:
         self.last_response = cleaned
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
-        if self.capability_audit_pending and "skills known:" in recent:
+        if "skills known:" in recent:
             listing = parse_practice_listing(cleaned)
             self.known_skills.update(listing.known)
             self.capability_audit_pending = False

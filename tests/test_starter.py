@@ -8629,6 +8629,33 @@ def test_reconnected_capability_audit_cannot_wait_past_prompt() -> None:
     assert policy.capability_audit_complete is True
 
 
+def test_late_skill_listing_survives_prompt_before_audit_response() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=6)
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=5,
+        hp=90,
+        max_hp=90,
+        room_name="The Mud School Arena",
+        room_vnum="3732",
+    )
+    audit = policy.next_decision(state)
+    assert audit is not None
+
+    policy.observe_events([GameEvent("prompt_seen", "text", {})], state)
+    policy.observe_text(
+        """
+Skills known:
+                 magic missile:  46%                   chill touch:  23%
+You have 2 physical and 2 intellectual practices remaining.
+"""
+    )
+
+    assert {"magic missile", "chill touch"} <= policy.known_skills
+
+
 def test_combat_disarm_recovers_and_rearms_audited_weapon() -> None:
     dagger = ObjectSource(
         3020,

@@ -86,13 +86,14 @@ def test_level_six_policy_keeps_fresh_foundry_targets_below_rotation_limit() -> 
     assert policy.execution == "foundry-hunt"
 
 
-def test_level_seven_mage_uses_verified_midennir_hunt() -> None:
+def test_level_seven_mage_uses_cross_class_foundry_policy() -> None:
     policy = policy_for(7, "mage")
 
-    assert policy.policy_id == "midennir-goblin-7-8"
+    assert policy.policy_id == "foundry-circuit-7-8"
     assert policy.status == "verified"
-    assert policy.execution == "midennir-hunt"
-    assert policy.segment_kill_limit == 1
+    assert policy.execution == "foundry-hunt"
+    assert policy.segment_kill_limit == 5
+    assert policy.practice_skill == "magic missile"
     assert policy.executable is True
 
 

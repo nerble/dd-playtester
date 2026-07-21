@@ -285,7 +285,7 @@ def test_level_seven_foundry_campaign_uses_bounded_six_target_sweep(
     assert captured["fastwalk_kill_limit"] == 5
 
 
-def test_level_seven_midennir_campaign_targets_only_the_reset_backed_goblin(
+def test_level_seven_mage_campaign_uses_the_same_bounded_foundry_sweep(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -310,11 +310,15 @@ def test_level_seven_midennir_campaign_targets_only_the_reset_backed_goblin(
         )
     )
 
-    stops = captured["fastwalk_hunt_stops"]
-    assert len(stops) == 1
-    assert stops[0].route == ("east",)
-    assert stops[0].target == "mountain goblin"
-    assert stops[0].exact_target is True
+    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
+        "oshu",
+        "golgog",
+        "shargook",
+        "lobuk",
+        "uburz",
+        "ushog",
+    ]
+    assert captured["fastwalk_kill_limit"] == 5
 
 
 def test_level_seven_foundry_fallback_runs_toward_level_eight(
@@ -408,7 +412,7 @@ def test_campaign_resumes_from_newer_external_character_state(tmp_path) -> None:
     assert resumed.campaign_id == initial.campaign_id
     with RunStorage(database) as storage:
         segments = storage.list_campaign_segments(resumed.campaign_id)
-    assert segments[-1]["phase"] == "midennir-goblin-7-8"
+    assert segments[-1]["phase"] == "foundry-circuit-7-8"
 
 
 def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:

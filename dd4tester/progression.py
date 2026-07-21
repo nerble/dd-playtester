@@ -198,8 +198,8 @@ _FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     status="verified",
     execution="foundry-hunt",
     summary=(
-        "Use a bounded source-backed Foundry sweep for level-7 melee progress "
-        "and as the caster fallback after an empty primary segment."
+        "Use a bounded source-backed Foundry sweep as the primary level-7 "
+        "progression route for every class."
     ),
     evidence=(
         *_FOUNDRY_LEVEL_SIX_POLICY.evidence,
@@ -208,6 +208,8 @@ _FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "The same live-considered Foundry targets are lower risk at level 7, and an empty circuit returns safely instead of forcing combat.",
         "DD4 source: Oshu, Golgog, Shargook, Lobuk, Uburz, and Ushog occupy a connected circuit that does not enter the poison-bearing pit beast room 122.",
         "Live run 648: Dorrik traversed every expanded stop, killed Olog, Oshu, and Uburz for 295 XP, skipped absent targets, and recalled before Ushog because he was below its full-health gate.",
+        "Live runs 653, 654, and 657 proved the expanded circuit for mage, warrior, and thief respectively, with safe full-health returns.",
+        "Live runs 652 and 658 showed the level-7 Miden'nir route can impose flee penalties or consume an empty segment, so it is no longer the default caster route.",
     ),
     practice_skill=None,
     segment_kill_limit=5,
@@ -567,12 +569,6 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             practice_skill=context.practice_skill,
         )
     field_caster = context.progression_track == "verified-field-caster"
-    if (
-        field_caster
-        and normalized_level == 7
-        and context.stalled_segments == 0
-    ):
-        return _MIDENNIR_LEVEL_SEVEN_POLICY
     if field_caster and 8 <= normalized_level < 10:
         if not context.has_large_sack:
             return _MIDENNIR_SACK_POLICY
@@ -640,9 +636,7 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 return _AMBUSH_RAIDER_LEVEL_TEN_POLICY
             return _AMBUSH_VILE_LEVEL_TEN_POLICY
         return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
-    if normalized_level == 7 and (
-        not field_caster or context.stalled_segments > 0
-    ):
+    if normalized_level == 7:
         return replace(
             _FOUNDRY_LEVEL_SEVEN_POLICY,
             practice_skill=context.practice_skill,
