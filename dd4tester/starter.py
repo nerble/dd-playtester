@@ -1988,6 +1988,15 @@ class StarterPolicy:
     def _combat_spell_decision(self, state: CharacterState) -> BotDecision | None:
         if not self.active_target or self.magic_missile_cast:
             return None
+        if (
+            self.spec.character_class == "warrior"
+            and "kick" in self.known_skills
+        ):
+            self.magic_missile_cast = True
+            return BotDecision(
+                "kick",
+                "use kick for extra damage between automatic combat rounds",
+            )
         if _mana_ratio(state) < 0.15:
             return None
         class_spells = {

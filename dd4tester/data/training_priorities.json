@@ -44,12 +44,12 @@
       {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 40, "utility": "damage-gateway", "reason": "unlocks enhanced damage and third attack"},
       {"skill": "enhanced damage", "type": "physical", "target": 30, "utility": "damage", "reason": "adds half its proficiency as a percentage bonus to weapon damage"},
       {"skill": "second attack", "type": "physical", "target": 50, "utility": "damage", "reason": "further raises automatic extra-attack frequency after enhanced damage is learned"},
+      {"skill": "unarmed combat knowledge", "source_skill": "group unarmed", "type": "intellectual", "target": 20, "utility": "damage-gateway", "reason": "unlocks kick as a tested between-round combat action"},
+      {"skill": "kick", "type": "physical", "target": 30, "utility": "damage", "reason": "adds level/2 plus 1-to-level damage between automatic combat rounds"},
       {"skill": "third attack", "type": "physical", "target": 50, "utility": "damage", "reason": "adds another weapon attack"},
       {"skill": "shield block", "type": "physical", "target": 40, "utility": "mitigation", "reason": "blocks incoming weapon attacks"},
       {"skill": "defense knowledge", "source_skill": "group defense", "type": "intellectual", "target": 40, "utility": "mitigation-gateway", "reason": "unlocks dodge and parry"},
       {"skill": "dodge", "type": "physical", "target": 45, "utility": "mitigation", "reason": "avoids incoming attacks"},
-      {"skill": "unarmed combat knowledge", "source_skill": "group unarmed", "type": "intellectual", "target": 20, "utility": "damage-gateway", "reason": "unlocks kick as a combat action", "automated": false},
-      {"skill": "kick", "type": "physical", "target": 40, "utility": "damage", "reason": "adds active combat damage", "automated": false},
       {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "reduces recovery downtime"}
     ],
     "psionic": [

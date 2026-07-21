@@ -1009,3 +1009,24 @@ and failure handling before registering each new level-band policy.
   it, and the report explained both the `chill touch` damage unlock and the four
   points preserved for future HP or mana. Aeloria gained another 690 XP over ten
   kills and saved at full health in Safety with no detected failure.
+- Run 542 live-validated the thief branch. Kestrel spent one of two intellectual
+  practices on `armed combat knowledge`, preserved both physical points and the
+  remaining intellectual point, gained another bounded ten kills, and saved
+  safely at level 3. An explicit-command precedence fix ensures the report
+  classifies `practice armed combat knowledge` as training rather than combat.
+- Run 543 validated both intended warrior purchases before exposing stale state:
+  Dorrik trained `second attack` and `armed combat knowledge`, preserved one
+  physical point, and completed six safe kills. After a wolf died, GMCP reported
+  no enemies while a stale text-derived combat target remained; periodic affect
+  updates kept the generic watchdog alive. The session was terminated at full
+  health in a safe room and recovered as interrupted rather than left hanging.
+- Empty GMCP enemy snapshots now authoritatively clear combat state. Source and
+  `HELP KICK` confirm that kick is a fighting-position action with an 8-pulse
+  wait, learned-percent success, and `level / 2 + random(1, level)` player
+  damage. Warriors now use it between automatic rounds, and its prerequisite
+  and first lesson become eligible after the higher-value automatic damage
+  passives.
+- Run 544 live-validated the stale-combat repair: Dorrik completed ten kills,
+  gained 894 XP, left the depleted arena, slept through the bounded reset
+  window beside the healer, resumed hunting, and checkpointed safely. An empty
+  GMCP enemy snapshot ended combat immediately after each kill.

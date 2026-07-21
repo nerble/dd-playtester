@@ -12,6 +12,13 @@ from dd4tester.decisions import classify_decision
         ("sleep", "recover health and mana", "arena", "recovery", False),
         ("drink skin", "satisfy thirst", "field", "provisioning", False),
         ("practice backstab", "practice class skill", "arena", "training", False),
+        (
+            "practice armed combat knowledge",
+            "train a damage gateway",
+            "arena",
+            "training",
+            False,
+        ),
         ("flee", "withdraw below 25 percent health", "field", "safety", True),
         ("wear sword", "equip combat gear", "field", "inventory", False),
         ("north", "follow verified route", "field", "navigation", False),

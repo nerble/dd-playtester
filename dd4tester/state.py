@@ -186,6 +186,9 @@ class CharacterState:
         if event.type == "enemies_changed":
             value = data.get("value", _payload(data))
             self.enemies = deepcopy(value)
+            if _enemy_snapshot_empty(value):
+                self.in_combat = False
+                self.combat_target = None
             return
 
         if event.type == "item_acquired":
@@ -216,6 +219,16 @@ def replay_events(
     for event in events:
         state.apply(event)
     return state
+
+
+def _enemy_snapshot_empty(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, list):
+        return all(_enemy_snapshot_empty(item) for item in value)
+    if isinstance(value, dict):
+        return not value
+    return False
 
 
 def _payload(data: dict[str, Any], *, keep_text: bool = False) -> dict[str, Any]:

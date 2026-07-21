@@ -7490,6 +7490,32 @@ def test_caster_classes_use_strongest_known_automated_spell(
     assert decision.command == f"cast '{expected}' boar"
 
 
+def test_warrior_uses_kick_between_automatic_combat_rounds() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "a wild boar"
+    policy.known_skills.add("kick")
+    state = CharacterState(
+        level=5,
+        hp=100,
+        max_hp=110,
+        position=6,
+        room_name="The Mud School Arena",
+        room_vnum="3730",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "kick"
+    assert "between automatic combat rounds" in decision.reason
+
+
 def test_level_eight_mage_keeps_magic_missile_until_offense_training() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=9)
     policy.in_world = True

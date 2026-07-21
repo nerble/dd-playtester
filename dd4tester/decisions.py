@@ -65,6 +65,8 @@ def classify_decision(command: str, reason: str, stage: str) -> DecisionMetadata
         return DecisionMetadata("research")
     if verb in {"save", "quit"}:
         return DecisionMetadata("checkpoint")
+    if verb in {"practice", "train", "gain"}:
+        return DecisionMetadata("training")
     if verb in {"cast", "kill", "murder", "backstab", "bash", "kick"} or _contains(
         reason_text, "fight", "combat", "attack", "quaff"
     ):
@@ -83,7 +85,7 @@ def classify_decision(command: str, reason: str, stage: str) -> DecisionMetadata
         "restock",
     ):
         return DecisionMetadata("provisioning")
-    if verb in {"practice", "train", "gain"} or _contains(
+    if _contains(
         reason_text, "practice", "training", "guildmaster"
     ):
         return DecisionMetadata("training")

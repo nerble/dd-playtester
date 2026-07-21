@@ -82,6 +82,13 @@ def test_state_changes_only_when_event_changes_domain_state() -> None:
     assert state.enemies[0][0]["level"] == "4"
 
     assert state.apply(
+        GameEvent("enemies_changed", "gmcp", {"value": []})
+    )
+    assert state.enemies == []
+    assert state.in_combat is False
+    assert state.combat_target is None
+
+    assert state.apply(
         GameEvent(
             "equipment_changed",
             "gmcp",
