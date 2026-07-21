@@ -21,6 +21,7 @@ from .starter import (
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
     foundry_level_six_hunt_stops,
+    foundry_level_seven_hunt_stops,
     midennir_mountain_goblin_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
 )
@@ -506,13 +507,18 @@ async def _run_policy_segment(
             practice_types_spent=practice_types_spent,
         ).run()
     if policy.execution == "foundry-hunt":
+        hunt_stops = (
+            foundry_level_seven_hunt_stops()
+            if policy.minimum_level >= 7
+            else foundry_level_six_hunt_stops()
+        )
         return await StarterBotRunner(
             spec,
             profile_path,
             objective_level=policy.maximum_level or 7,
             fastwalk_route=route_named("foundry"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
-            fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+            fastwalk_hunt_stops=hunt_stops,
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=False,

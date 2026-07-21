@@ -204,6 +204,42 @@ def test_level_six_foundry_campaign_uses_bounded_two_target_circuit(
     assert captured["practice_types_spent"] == frozenset({"physical"})
 
 
+def test_level_seven_foundry_campaign_uses_bounded_six_target_sweep(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 7})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(7, "warrior"),
+        )
+    )
+
+    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
+        "oshu",
+        "golgog",
+        "shargook",
+        "lobuk",
+        "uburz",
+        "ushog",
+    ]
+    assert captured["fastwalk_kill_limit"] == 5
+
+
 def test_level_seven_midennir_campaign_targets_only_the_reset_backed_goblin(
     tmp_path,
     monkeypatch,
@@ -264,8 +300,8 @@ def test_level_seven_foundry_fallback_runs_toward_level_eight(
     assert captured["objective_level"] == 8
     assert [
         stop.target for stop in captured["fastwalk_hunt_stops"]
-    ] == ["uburz", "ushog"]
-    assert captured["fastwalk_kill_limit"] == 2
+    ] == ["oshu", "golgog", "shargook", "lobuk", "uburz", "ushog"]
+    assert captured["fastwalk_kill_limit"] == 5
 
 
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:

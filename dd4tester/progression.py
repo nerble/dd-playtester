@@ -198,7 +198,7 @@ _FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     status="verified",
     execution="foundry-hunt",
     summary=(
-        "Use the bounded two-target Foundry circuit for level-7 melee progress "
+        "Use a bounded source-backed Foundry sweep for level-7 melee progress "
         "and as the caster fallback after an empty primary segment."
     ),
     evidence=(
@@ -206,9 +206,11 @@ _FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "Live run 629: the level-7 arena population had no viable opponents and returned safely with zero XP.",
         "Live run 630: a reboot-fuzzed level-8 mountain goblin auto-attacked the level-7 thief before consideration, so the caster field route is not a generic melee fallback.",
         "The same live-considered Foundry targets are lower risk at level 7, and an empty circuit returns safely instead of forcing combat.",
+        "DD4 source: Oshu, Golgog, Shargook, Lobuk, Uburz, and Ushog occupy a connected circuit that does not enter the poison-bearing pit beast room 122.",
+        "Live run 648: Dorrik traversed every expanded stop, killed Olog, Oshu, and Uburz for 295 XP, skipped absent targets, and recalled before Ushog because he was below its full-health gate.",
     ),
     practice_skill=None,
-    segment_kill_limit=2,
+    segment_kill_limit=5,
 )
 
 _MORIA_SNAKE_POLICY = ProgressionPolicy(

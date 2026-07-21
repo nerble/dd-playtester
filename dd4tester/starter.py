@@ -1485,8 +1485,9 @@ class StarterPolicy:
                 unsafe_level = False
                 if len(enemies) == 1 and state.level is not None:
                     enemy_level = _int_or_none(enemies[0].get("level"))
-                    unsafe_level = enemy_level is not None and not (
-                        state.level - 5 <= enemy_level <= state.level + 1
+                    unsafe_level = (
+                        enemy_level is not None
+                        and enemy_level > state.level + 1
                     )
                 if len(enemies) > 1 or unsafe_level:
                     cause = (
@@ -5623,6 +5624,45 @@ def foundry_level_six_hunt_stops() -> tuple[FieldHuntStop, ...]:
                 "south",
             ),
             "ushog",
+            minimum_health_ratio=1.0,
+        ),
+    )
+
+
+def foundry_level_seven_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Sweep the source-backed Foundry rooms while avoiding the poison pit."""
+    return (
+        FieldHuntStop(("open east", "east"), "oshu", exact_target=True),
+        FieldHuntStop(
+            ("west", "south", "south", "east"),
+            "golgog",
+            exact_target=True,
+        ),
+        FieldHuntStop(("south",), "shargook", exact_target=True),
+        FieldHuntStop(
+            ("north", "west", "west"),
+            "lobuk",
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("west", "down", "east"),
+            "uburz",
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            (
+                "west",
+                "up",
+                "east",
+                "east",
+                "north",
+                "north",
+                "west",
+                "open south",
+                "south",
+            ),
+            "ushog",
+            exact_target=True,
             minimum_health_ratio=1.0,
         ),
     )

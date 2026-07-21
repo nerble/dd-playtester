@@ -30,6 +30,7 @@ from dd4tester.starter import (
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
     foundry_level_six_hunt_stops,
+    foundry_level_seven_hunt_stops,
     midennir_horseman_consider_stops,
     midennir_horseman_probe_route,
     moria_sanctuary_potion_consider_stops,
@@ -106,6 +107,22 @@ def test_foundry_level_six_circuit_links_two_source_backed_targets() -> None:
     assert all(not stop.consider_only for stop in stops)
     assert stops[0].minimum_health_ratio == 0.8
     assert stops[1].minimum_health_ratio == 1.0
+
+
+def test_foundry_level_seven_sweep_links_named_targets_around_poison_pit() -> None:
+    stops = foundry_level_seven_hunt_stops()
+
+    assert [stop.target for stop in stops] == [
+        "oshu",
+        "golgog",
+        "shargook",
+        "lobuk",
+        "uburz",
+        "ushog",
+    ]
+    assert all(stop.exact_target for stop in stops)
+    assert all("down" not in stop.route for stop in stops[:3])
+    assert stops[-1].minimum_health_ratio == 1.0
 
 
 def test_midennir_horseman_probe_searches_source_trail_and_never_attacks() -> None:
@@ -5990,6 +6007,43 @@ def test_planned_fastwalk_combat_flees_as_soon_as_gmcp_reports_two_enemies() -> 
     assert decision.command == "flee"
     assert "2 active enemies" in decision.reason
     assert policy.fastwalk_emergency_recall_pending is True
+
+
+def test_field_sweep_finishes_a_lone_trivial_interceptor_instead_of_fleeing() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_hunt_stops=foundry_level_seven_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(policy.fastwalk_route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.active_target = "Olog"
+    policy.current_room = "108"
+    fighting = CharacterState(
+        level=7,
+        hp=123,
+        max_hp=123,
+        mana=145,
+        max_mana=145,
+        position=6,
+        room_name="Muddy Tunnel",
+        room_vnum="108",
+        enemies=[[{"name": "Olog", "level": "1", "hp": "3", "maxhp": "9"}]],
+    )
+
+    decision = policy.next_decision(fighting)
+
+    assert decision is None
+    assert policy.combat_active is True
+    assert policy.active_target == "Olog"
+    assert policy.fastwalk_emergency_recall_pending is False
+    assert policy.fastwalk_abort_reason is None
 
 
 def test_field_circuit_restores_invisibility_after_a_kill_before_moving() -> None:

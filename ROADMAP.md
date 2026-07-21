@@ -1417,3 +1417,21 @@ and failure handling before registering each new level-band policy.
   Uburz, and Ushog kills worth 365 XP and eight loot items. His current skill
   listing showed passive second attack at 44% while kick remained learnable at
   0%; the bot never issued the unpractised action and finished at full health.
+- Run 644 live-validated uninterrupted safe-shop routing after the recovery
+  fix. Dorrik sold three item types through three compatible shops, returned
+  to the Mage Laboratory, and finished at full health.
+- Run 647 proved the old level-7 circuit was still too narrow. Kestrel killed
+  Olog and Oshu, but a level-1 Golgog auto-attacked before consideration; the
+  bot incorrectly treated the low level as unsafe, fled for a 58-XP penalty,
+  and kept only 38 net XP. A lone attacker below the useful XP band is no
+  longer classified as dangerous: once combat has begun, only an over-level
+  or crowded encounter triggers that safety evacuation.
+- The level-7 Foundry policy now follows source exits through Oshu, Golgog,
+  Shargook, Lobuk, Uburz, and Ushog, with exact names, live consideration,
+  crowd checks, reserve gates, and a five-kill bound. It never enters room 122,
+  whose pit beast has the poison special. The level-6 two-target circuit is
+  unchanged.
+- Run 648 live-validated every expanded waypoint for Dorrik. Olog, Oshu, and
+  Uburz produced 295 XP and seven items; absent Golgog, Shargook, and Lobuk
+  were skipped. At 147/157 HP the full-health Ushog gate recalled instead of
+  taking the final fight, and Dorrik recovered, saved, and quit at full health.
