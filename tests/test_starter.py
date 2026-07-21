@@ -7516,6 +7516,85 @@ def test_warrior_uses_kick_between_automatic_combat_rounds() -> None:
     assert "between automatic combat rounds" in decision.reason
 
 
+def test_thief_opens_with_backstab_only_with_a_verified_piercing_weapon() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+    )
+    policy.known_skills.add("backstab")
+    policy.gear_worn = [
+        ObjectSource(
+            3701,
+            "jewel-studded dagger",
+            "a jewel-studded dagger",
+            5,
+            (0, 2, 3, 11),
+            5,
+            wear_flags=1 << 13,
+        )
+    ]
+
+    decision = policy._combat_opener_decision(
+        "a wild boar",
+        "fight arena opponent a wild boar",
+    )
+
+    assert decision.command == "backstab boar"
+    assert "piercing weapon" in decision.reason
+
+
+def test_rejected_backstab_falls_back_to_normal_attack_once() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+    )
+    policy.known_skills.add("backstab")
+    policy.gear_worn = [
+        ObjectSource(
+            3701,
+            "jewel-studded dagger",
+            "a jewel-studded dagger",
+            5,
+            (0, 2, 3, 11),
+            5,
+            wear_flags=1 << 13,
+        )
+    ]
+    policy._combat_opener_decision("a wolf", "fight arena opponent a wolf")
+
+    policy.observe_text("A wolf is hurt and suspicious... you can't sneak up on him.\n")
+    decision = policy._combat_opener_decision(
+        "a wolf",
+        "fight arena opponent a wolf",
+    )
+
+    assert decision.command == "kill wolf"
+    assert policy.backstab_pending_target is None
+
+
+def test_enemy_snapshot_clears_successful_backstab_pending_marker() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+    )
+    policy.backstab_pending_target = "a wolf"
+    state = CharacterState()
+
+    policy.observe_events(
+        [
+            GameEvent(
+                "enemies_changed",
+                "gmcp",
+                {"value": [[{"name": "a wolf", "level": "4"}]]},
+            )
+        ],
+        state,
+    )
+
+    assert policy.backstab_pending_target is None
+    assert policy.combat_active is True
+
+
 def test_level_eight_mage_keeps_magic_missile_until_offense_training() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=9)
     policy.in_world = True

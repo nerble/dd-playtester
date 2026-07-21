@@ -20,6 +20,7 @@ from .equipment import (
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
     is_capacity_infrastructure,
+    is_piercing_weapon,
     item_category,
     item_keyword,
     load_gear_catalog,
@@ -340,6 +341,8 @@ class StarterPolicy:
         self.cleared_training_rooms: set[str] = set()
         self.post_kill_steps: dict[str, int] = {}
         self.magic_missile_cast = False
+        self.backstab_pending_target: str | None = None
+        self.backstab_skip_once_target: str | None = None
         self.chill_touch_unavailable = False
         self.store_step = 0
         self.provisioned = False
@@ -505,6 +508,22 @@ class StarterPolicy:
             else:
                 self.chill_touch_unavailable = True
             self.magic_missile_cast = False
+        if self.backstab_pending_target is not None and any(
+            phrase in recent
+            for phrase in (
+                "you need to wield a piercing or stabbing weapon",
+                "you can't backstab a combatant",
+                "is too large for you to backstab",
+                "is hurt and suspicious",
+                "they aren't here",
+                "leave the assassin trade to thieves",
+                "how can you sneak up on yourself",
+            )
+        ):
+            self.backstab_skip_once_target = self.backstab_pending_target
+            self.backstab_pending_target = None
+            self.combat_active = False
+            self.prompt_ready = True
         if "disarms you" in recent:
             wielded = next(
                 (
@@ -708,6 +727,7 @@ class StarterPolicy:
                 self.post_kill_steps.setdefault(self.current_room, 0)
             self.active_target = None
             self.magic_missile_cast = False
+            self.backstab_pending_target = None
             self.consider_target = None
             self.consider_viable = None
         severed_body_part = _SEVERED_BODY_PART.search(cleaned)
@@ -859,12 +879,14 @@ class StarterPolicy:
                     self.course_complete = True
             if event.type == "combat_started":
                 self.combat_active = True
+                self.backstab_pending_target = None
                 target = event.data.get("target", event.data.get("name"))
                 if isinstance(target, str) and target.strip():
                     self.active_target = target.strip()
             if event.type == "enemies_changed":
                 enemies = _enemy_records(event.data.get("value"))
                 if enemies:
+                    self.backstab_pending_target = None
                     enemy = enemies[0]
                     target = enemy.get("name")
                     if isinstance(target, str) and target.strip():
@@ -2021,6 +2043,36 @@ class StarterPolicy:
             f"{spell}, against {self.active_target}",
         )
 
+    def _combat_opener_decision(
+        self,
+        target: str,
+        reason: str,
+        *,
+        allow_backstab: bool = True,
+    ) -> BotDecision:
+        """Choose a source-valid opening attack for the current loadout."""
+        keyword = _target_keyword(target)
+        skip_backstab = self.backstab_skip_once_target == target
+        if skip_backstab:
+            self.backstab_skip_once_target = None
+        if (
+            allow_backstab
+            and not skip_backstab
+            and self.spec.character_class == "thief"
+            and "backstab" in self.known_skills
+            and any(
+                item_category(item) == "wield" and is_piercing_weapon(item)
+                for item in self.gear_worn
+            )
+        ):
+            self.backstab_pending_target = target
+            return BotDecision(
+                f"backstab {keyword}",
+                f"open against {target} with source-verified backstab damage "
+                "while wielding a piercing weapon",
+            )
+        return BotDecision(f"kill {keyword}", reason)
+
     def _needs_fastwalk_training(self, state: CharacterState) -> bool:
         physical, intellectual = self.latest_practice_balances
         relevant_practices = (
@@ -3027,9 +3079,10 @@ class StarterPolicy:
                 ):
                     self.active_target = self.fastwalk_attack_target
                     self.combat_active = True
-                    return BotDecision(
-                        f"kill {_target_keyword(self.fastwalk_attack_target or '')}",
+                    return self._combat_opener_decision(
+                        self.fastwalk_attack_target or "",
                         "re-engage the requested target after bounded pursuit",
+                        allow_backstab=False,
                     )
                 self.fastwalk_target_absent = True
                 if (
@@ -3251,8 +3304,8 @@ class StarterPolicy:
             self.fastwalk_attack_started = True
             self.active_target = target
             self.combat_active = True
-            return BotDecision(
-                f"kill {_target_keyword(target)}",
+            return self._combat_opener_decision(
+                target,
                 "attack the considered viable fastwalk target",
             )
         if self.consider_viable is False:
@@ -4279,8 +4332,8 @@ class StarterPolicy:
                 return self._return_from_training_room(state, return_vnum)
             self.combat_active = True
             self.active_target = target
-            return BotDecision(
-                f"kill {_target_keyword(target)}",
+            return self._combat_opener_decision(
+                target,
                 f"fight required tutorial opponent {target}",
             )
 
@@ -4328,8 +4381,8 @@ class StarterPolicy:
             self.combat_active = True
             self.active_target = target
             self.magic_missile_cast = False
-            return BotDecision(
-                f"kill {_target_keyword(target)}",
+            return self._combat_opener_decision(
+                target,
                 "defeat the final tutorial gladiator",
             )
 
@@ -4459,8 +4512,8 @@ class StarterPolicy:
             self.consider_viable = None
             self.combat_active = True
             self.active_target = target
-            return BotDecision(
-                f"kill {_target_keyword(target)}",
+            return self._combat_opener_decision(
+                target,
                 f"fight arena opponent {target}",
             )
 

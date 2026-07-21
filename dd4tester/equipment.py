@@ -17,8 +17,10 @@ APPLY_HIT = 13
 APPLY_HITROLL = 18
 APPLY_DAMROLL = 19
 ITEM_LIGHT = 1
+ITEM_WEAPON = 5
 ITEM_LANCE = 1 << 27
 ITEM_BOW = 1 << 30
+PIERCING_DAMAGE_TYPES = frozenset({2, 11})
 
 STANCE_COMBAT = "combat"
 STANCE_PRE_LEVEL = "pre_level"
@@ -175,6 +177,15 @@ def item_category(item: ObjectSource) -> str | None:
         if item.wear_flags & (1 << bit):
             return category
     return None
+
+
+def is_piercing_weapon(item: ObjectSource) -> bool:
+    """Mirror DD4's is_piercing_weapon check for backstab-capable weapons."""
+    return (
+        item.item_type == ITEM_WEAPON
+        and len(item.values) > 3
+        and item.values[3] in PIERCING_DAMAGE_TYPES
+    )
 
 
 def stance_score(

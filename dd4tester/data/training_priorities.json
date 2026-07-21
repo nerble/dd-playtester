@@ -33,8 +33,10 @@
     "thief": [
       {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 40, "utility": "damage-gateway", "reason": "quickly unlocks second attack"},
       {"skill": "second attack", "type": "physical", "target": 35, "utility": "damage", "reason": "raises the automatic extra-attack chance from 45 plus half proficiency"},
-      {"skill": "stealth techniques", "source_skill": "group stealth", "type": "intellectual", "target": 55, "utility": "damage-gateway", "reason": "opens backstab and later stealth attacks", "automated": false},
-      {"skill": "backstab", "type": "physical", "target": 50, "utility": "damage", "reason": "triples opening weapon damage at low levels", "automated": false},
+      {"skill": "stealth techniques", "source_skill": "group stealth", "type": "intellectual", "target": 60, "utility": "damage-gateway", "reason": "satisfies the exact 60% group prerequisite for backstab"},
+      {"skill": "hide", "type": "physical", "target": 20, "utility": "damage-gateway", "reason": "satisfies the first prerequisite for sneak on thief races that do not begin with it"},
+      {"skill": "sneak", "type": "physical", "target": 40, "utility": "damage-gateway", "reason": "satisfies the exact 40% prerequisite for backstab"},
+      {"skill": "backstab", "type": "physical", "target": 50, "utility": "damage", "reason": "opens combat at three times weapon damage below level 15 when wielding a piercing weapon"},
       {"skill": "defense knowledge", "source_skill": "group defense", "type": "intellectual", "target": 40, "utility": "mitigation-gateway", "reason": "unlocks dodge and parry"},
       {"skill": "dodge", "type": "physical", "target": 45, "utility": "mitigation", "reason": "avoids incoming attacks"},
       {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "reduces recovery downtime"}

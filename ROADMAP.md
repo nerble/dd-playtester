@@ -998,8 +998,8 @@ and failure handling before registering each new level-band policy.
 - Skills that need unsupported commands or equipment preparation are recorded
   but marked ineligible for autonomous spending. The shared combat controller
   now uses the strongest known damage spell for mages, clerics, and psionics;
-  thief openers, shifter forms, ranged attacks, and smithing preparations remain
-  gated until their execution policies are implemented and tested.
+  shifter forms, ranged attacks, and smithing preparations remain gated until
+  their execution policies are implemented and tested.
 - Run 540 live-validated conservation with an exhausted intellectual pool. The
   planner spent nothing, preserved two physical practices, and Aeloria's next
   level raised maximum HP from 81 to 90 before issuing a fresh practice pool.
@@ -1030,3 +1030,18 @@ and failure handling before registering each new level-band policy.
   gained 894 XP, left the depleted arena, slept through the bounded reset
   window beside the healer, resumed hunting, and checkpointed safely. An empty
   GMCP enemy snapshot ended combat immediately after each kill.
+- Source revision `0482387` and `HELP BACKSTAB` show that backstab requires
+  `sneak` at 40 percent, `stealth techniques` at 60 percent, thief base at 30
+  percent, and a wielded weapon whose damage type is pierce or stab. The generic
+  thief plan now trains hide before sneak for races without racial sneak, uses
+  the exact prerequisite thresholds, and opens only fresh fights with a
+  catalog-verified piercing weapon. A rejected opener falls back to `kill` once.
+- Runs 545 and 546 advanced Kestrel from level 3 to level 4 and then to 8,022
+  XP. Across twenty safe kills he trained armed combat from 23 through the
+  40-percent gateway and second attack from 0 through the 35-percent target,
+  while preserving unused practices and checkpointing at full health.
+- Run 547 live-validated the repaired thief branch. The listing showed armed
+  combat at 41 percent, second attack at 35 percent, racial sneak at 99 percent,
+  and stealth techniques at 0 percent. The planner spent its sole intellectual
+  point on stealth toward the exact 60-percent backstab prerequisite, preserved
+  its physical point, gained 841 XP over ten kills, and checkpointed safely.

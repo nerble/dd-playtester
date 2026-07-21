@@ -9,6 +9,7 @@ from dd4tester.equipment import (
     item_category,
     item_keyword,
     is_capacity_infrastructure,
+    is_piercing_weapon,
     plan_stance_swaps,
     protects_from_sale,
     stance_score,
@@ -140,6 +141,18 @@ def test_school_source_parser_retains_stat_affects_and_wear_flags() -> None:
     assert diploma.wear_flags & (1 << 14)
     assert stone.affects == ((4, 2),)
     assert stone.wear_flags & (1 << 15)
+
+
+def test_school_dagger_is_source_verified_for_backstab_but_sword_is_not() -> None:
+    school = parse_area_file(
+        Path("runs/dd4-source/server/area/school.are"),
+        include_resets=False,
+        include_entities=False,
+        include_objects=True,
+    )
+
+    assert is_piercing_weapon(school.objects[3701])
+    assert not is_piercing_weapon(school.objects[3702])
 
 
 def test_ambush_source_parser_retains_lance_flag_and_class_restriction() -> None:

@@ -111,7 +111,7 @@ def test_planner_spends_at_most_one_practice_of_each_type_per_level() -> None:
     assert [choice.skill for choice in choices] == ["evocation magiks"]
 
 
-def test_planner_preserves_points_for_unsupported_active_skill() -> None:
+def test_thief_begins_source_prerequisite_chain_for_backstab() -> None:
     choices = plan_training(
         "thief",
         _listing(
@@ -122,7 +122,32 @@ def test_planner_preserves_points_for_unsupported_active_skill() -> None:
         ),
     )
 
-    assert choices == ()
+    assert [choice.skill for choice in choices] == ["stealth techniques"]
+    assert choices[0].target_percent == 60
+
+
+def test_generic_thief_trains_hide_then_sneak_before_backstab() -> None:
+    hide = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 40%",
+            "hide: 0%    stealth techniques: 30%",
+            physical=1,
+            intellectual=0,
+        ),
+    )
+    sneak = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 40%    hide: 30%    stealth techniques: 60%",
+            "sneak: 0%",
+            physical=1,
+            intellectual=0,
+        ),
+    )
+
+    assert [choice.skill for choice in hide] == ["hide"]
+    assert [choice.skill for choice in sneak] == ["sneak"]
 
 
 def test_every_supported_base_class_has_combat_training_priorities() -> None:
