@@ -27,6 +27,7 @@ from dd4tester.starter import (
     _watchdog_progress_marker,
     ambush_exterior_hunt_stops,
     ambush_raider_consider_stops,
+    ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
     midennir_horseman_consider_stops,
     midennir_horseman_probe_route,
@@ -114,6 +115,17 @@ def test_raider_probe_reaches_reset_and_never_attacks() -> None:
     )
     assert stops[0].target == "goblin raider"
     assert stops[0].consider_only is True
+    assert stops[0].exact_target is True
+
+
+def test_raider_hunt_requires_full_health_and_enables_combat() -> None:
+    stops = ambush_raider_hunt_stops()
+
+    assert len(stops) == 1
+    assert stops[0].route == ambush_raider_consider_stops()[0].route
+    assert stops[0].target == "goblin raider"
+    assert stops[0].minimum_health_ratio == 1.0
+    assert stops[0].consider_only is False
     assert stops[0].exact_target is True
 
 

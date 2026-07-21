@@ -300,6 +300,26 @@ _AMBUSH_VILE_LEVEL_TEN_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_AMBUSH_RAIDER_LEVEL_TEN_POLICY = ProgressionPolicy(
+    policy_id="ambush-goblin-raider-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="verified",
+    execution="ambush-raider-hunt",
+    summary=(
+        "Spend one confirmed pouch-held sanctuary potion on the isolated "
+        "goblin raider while its reboot-local kill count remains fresh."
+    ),
+    evidence=(
+        "DD4 source places one armed source-level-8 goblin raider with six saleable equipment drops in Ambush room 4506.",
+        "Live run 521 found the reboot-fuzzed raider an easy kill while Ararisa was healthier, without initiating combat.",
+        "Live run 522 killed the level-8 raider for 368 XP under sanctuary with no hit-point loss, then autolooted and sold its helmet safely.",
+        "The route requires full health, an exact isolated target, favorable live consider text, sanctuary, and a one-kill limit because historical unprotected combat was lethal.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=1,
+)
+
 _MORIA_SANCTUARY_LEVEL_TEN_POLICY = ProgressionPolicy(
     policy_id="moria-sanctuary-10-11",
     minimum_level=10,
@@ -476,6 +496,14 @@ def policy_for(
         ):
             return _BUY_FLIGHT_POLICY
         if has_sanctuary_potion:
+            raider_kills = _boot_kill_count(
+                boot_kill_counts, "goblin raider"
+            )
+            vile_goblin_kills = _boot_kill_count(
+                boot_kill_counts, "vile goblin"
+            )
+            if raider_kills <= vile_goblin_kills:
+                return _AMBUSH_RAIDER_LEVEL_TEN_POLICY
             return _AMBUSH_VILE_LEVEL_TEN_POLICY
         return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
     if normalized_level < 10:

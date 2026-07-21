@@ -550,6 +550,53 @@ def test_level_nine_campaign_uses_potion_backed_vile_goblin_hunt(
     assert captured["fastwalk_kill_limit"] == 1
 
 
+def test_level_ten_campaign_uses_protected_fresh_raider_hunt(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                config_path,
+                {"level": 10, "xp": 41_169},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        has_sanctuary_potion=True,
+        boot_kill_counts={"goblin raider": 1, "vile goblin": 11},
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["goblin raider"]
+    assert stops[0].minimum_health_ratio == 1.0
+    assert stops[0].exact_target is True
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["fastwalk_require_invisibility"] is True
+    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["require_fastwalk_kill"] is False
+    assert captured["allow_safe_fastwalk_abort"] is True
+
+
 def test_level_nine_campaign_recognizes_loose_sanctuary_potion(tmp_path) -> None:
     config_path, _ = _write_campaign_files(tmp_path)
     runner = CampaignRunner(load_campaign_spec(config_path), config_path)

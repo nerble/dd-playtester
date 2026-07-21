@@ -810,3 +810,23 @@ and failure handling before registering each new level-band policy.
   `ambush-research --raider-probe` command follows the exterior route under
   invisibility and issues `consider` only; combat remains disabled pending
   live evidence.
+
+## Progression Evidence Cycle 29
+
+- Run 521 reached the exact goblin raider in Ambush room 4506 under
+  invisibility. Live `consider` reported an easy kill with Ararisa healthier,
+  and the probe returned without starting combat.
+- Run 522 repeated the gated route at full health, quaffed a confirmed purple
+  sanctuary potion after engaging, and killed the level-8 raider for 368 XP
+  without losing a hit point. Autoloot secured its hard leather helmet, the
+  corpse yielded one silver, and Ararisa returned to heal, save, and quit at
+  41,169 XP, 7,331 short of level 11.
+- Run 523 identified the 30-pound helmet as level-7 armour and sold it safely
+  for 54 copper. The bank diverted half toward Ararisa's loan, leaving 98
+  copper-equivalent in hand and reducing carried weight from 139/140 to
+  110/140 while preserving food, water, and stat gear.
+- The level-10 policy now treats the raider as a protected target only: exact
+  isolated target, favorable live consider, full health, sanctuary, and one
+  kill per segment. Reboot-local kill counts rotate sanctuary expenditure
+  between the raider and vile goblin so repeated kills do not crowd out the
+  fresher productive target.

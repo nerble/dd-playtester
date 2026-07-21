@@ -236,12 +236,26 @@ def test_level_ten_mage_acquires_sanctuary_before_hunting() -> None:
     assert policy.segment_kill_limit == 1
 
 
-def test_level_ten_mage_spends_confirmed_sanctuary_on_vile_goblin() -> None:
+def test_level_ten_mage_spends_confirmed_sanctuary_on_fresh_raider() -> None:
     policy = policy_for(
         10,
         "mage",
         has_large_sack=True,
         has_sanctuary_potion=True,
+    )
+
+    assert policy.policy_id == "ambush-goblin-raider-10-11"
+    assert policy.execution == "ambush-raider-hunt"
+    assert policy.maximum_level == 11
+
+
+def test_level_ten_mage_rotates_from_repeated_raider_to_vile_goblin() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        has_sanctuary_potion=True,
+        boot_kill_counts={"goblin raider": 2, "vile goblin": 1},
     )
 
     assert policy.policy_id == "ambush-vile-goblin-10-11"

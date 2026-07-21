@@ -18,6 +18,7 @@ from .starter import (
     StarterBotRunner,
     _sellable_inventory_keyword,
     ambush_level_eight_hunt_stops,
+    ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
 )
@@ -494,10 +495,13 @@ async def _run_policy_segment(
     if policy.execution in {
         "ambush-war-dog-hunt",
         "ambush-hunt",
+        "ambush-raider-hunt",
         "ambush-vile-hunt",
     }:
         if policy.execution == "ambush-war-dog-hunt":
             hunt_stops = ambush_level_eight_hunt_stops()
+        elif policy.execution == "ambush-raider-hunt":
+            hunt_stops = ambush_raider_hunt_stops()
         elif policy.execution == "ambush-vile-hunt":
             hunt_stops = ambush_vile_goblin_hunt_stops()
         else:
@@ -511,7 +515,8 @@ async def _run_policy_segment(
             fastwalk_hunt_stops=hunt_stops,
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=(
-                policy.execution in {"ambush-hunt", "ambush-vile-hunt"}
+                policy.execution
+                in {"ambush-hunt", "ambush-raider-hunt", "ambush-vile-hunt"}
             ),
             fastwalk_require_invisibility=True,
             require_fastwalk_kill=False,

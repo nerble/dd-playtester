@@ -624,6 +624,39 @@ def test_ambush_research_command_selects_raider_probe(
     assert main(["ambush-research", str(profile), "--raider-probe"]) == 0
 
 
+def test_ambush_research_command_selects_bounded_raider_hunt(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+
+    async def fake_ambush_research(path: Path, **options: bool) -> RunResult:
+        assert path == profile
+        assert options == {
+            "guard_probe": False,
+            "vile_probe": False,
+            "raider_probe": False,
+            "raider_hunt": True,
+            "horseman_probe": False,
+            "vile_hunt": False,
+        }
+        return RunResult(
+            21,
+            "success",
+            tmp_path / "ambush-raider-hunt.jsonl",
+            tmp_path / "runs.sqlite3",
+            {"level": 10},
+        )
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_ambush_research_profile",
+        fake_ambush_research,
+    )
+
+    assert main(["ambush-research", str(profile), "--raider-hunt"]) == 0
+
+
 def test_ambush_research_command_selects_horseman_probe(
     tmp_path,
     monkeypatch,

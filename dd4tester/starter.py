@@ -5198,6 +5198,19 @@ def ambush_raider_consider_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def ambush_raider_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Live-consider one isolated raider with a full-health reserve."""
+    stop = ambush_raider_consider_stops()[0]
+    return (
+        FieldHuntStop(
+            stop.route,
+            stop.target,
+            minimum_health_ratio=1.0,
+            exact_target=True,
+        ),
+    )
+
+
 def ambush_vile_goblin_consider_stops() -> tuple[FieldHuntStop, ...]:
     """Reach the unarmed level-nine goblin and consider without attacking."""
     stop = ambush_vile_goblin_hunt_stops()[0]
@@ -5321,11 +5334,24 @@ async def run_ambush_research_profile(
     guard_probe: bool = False,
     vile_probe: bool = False,
     raider_probe: bool = False,
+    raider_hunt: bool = False,
     horseman_probe: bool = False,
     vile_hunt: bool = False,
 ) -> RunResult:
     """Live-consider the source-backed exterior Ambush targets and return."""
-    if sum((guard_probe, vile_probe, raider_probe, horseman_probe, vile_hunt)) > 1:
+    if (
+        sum(
+            (
+                guard_probe,
+                vile_probe,
+                raider_probe,
+                raider_hunt,
+                horseman_probe,
+                vile_hunt,
+            )
+        )
+        > 1
+    ):
         raise ValueError("choose only one Ambush probe target")
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
@@ -5336,6 +5362,8 @@ async def run_ambush_research_profile(
         hunt_stops = ambush_vile_goblin_consider_stops()
     elif raider_probe:
         hunt_stops = ambush_raider_consider_stops()
+    elif raider_hunt:
+        hunt_stops = ambush_raider_hunt_stops()
     elif horseman_probe:
         hunt_stops = midennir_horseman_consider_stops()
     elif vile_hunt:
@@ -5351,9 +5379,9 @@ async def run_ambush_research_profile(
         ),
         fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
         fastwalk_hunt_stops=hunt_stops,
-        fastwalk_train_before_departure=guard_probe or vile_hunt,
+        fastwalk_train_before_departure=guard_probe or raider_hunt or vile_hunt,
         fastwalk_require_invisibility=True,
-        fastwalk_kill_limit=1 if vile_hunt else None,
+        fastwalk_kill_limit=1 if raider_hunt or vile_hunt else None,
         require_fastwalk_kill=False,
         allow_safe_fastwalk_abort=True,
     ).run()

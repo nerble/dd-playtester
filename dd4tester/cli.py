@@ -223,6 +223,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="consider the armed goblin raider under invisibility without attacking",
     )
     ambush_probe_group.add_argument(
+        "--raider-hunt",
+        action="store_true",
+        help="live-consider and attack at most one isolated goblin raider",
+    )
+    ambush_probe_group.add_argument(
         "--horseman-probe",
         action="store_true",
         help="consider a Miden'nir dark horseman without attacking or entering a crowded room",
@@ -677,14 +682,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ambush-research":
         try:
+            research_options = {
+                "guard_probe": args.guard_probe,
+                "vile_probe": args.vile_probe,
+                "raider_probe": args.raider_probe,
+                "horseman_probe": args.horseman_probe,
+                "vile_hunt": args.vile_hunt,
+            }
+            if args.raider_hunt:
+                research_options["raider_hunt"] = True
             result = asyncio.run(
                 run_ambush_research_profile(
                     args.profile,
-                    guard_probe=args.guard_probe,
-                    vile_probe=args.vile_probe,
-                    raider_probe=args.raider_probe,
-                    horseman_probe=args.horseman_probe,
-                    vile_hunt=args.vile_hunt,
+                    **research_options,
                 )
             )
         except Exception as exc:
