@@ -5102,6 +5102,81 @@ def test_fastwalk_audits_unknown_practice_balance_before_departure() -> None:
     assert "practices" in audit.reason
 
 
+def test_fastwalk_retries_score_after_interleaved_healer_output() -> None:
+    policy = StarterPolicy(
+        _spec(
+            name="Kestrel",
+            race="drow",
+            gender="male",
+            **{"class": "thief", "subclass": "ninja"},
+        ),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=7,
+        hp=123,
+        max_hp=123,
+        mana=145,
+        max_mana=145,
+        move=210,
+        max_move=210,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+    )
+
+    first = policy.next_decision(state)
+    assert first is not None
+    assert first.command == "score"
+    policy.after_command(first)
+    policy.observe_text("The Healer utters the word 'Sifircas'.\n")
+    policy.prompt_ready = True
+
+    retry = policy.next_decision(state)
+
+    assert retry is not None
+    assert retry.command == "score"
+    assert "interleaved" in retry.reason
+    assert policy.failure is None
+
+
+def test_fastwalk_fails_after_three_missing_practice_audits() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    state = CharacterState(
+        level=7,
+        hp=110,
+        max_hp=110,
+        mana=293,
+        max_mana=293,
+        move=210,
+        max_move=210,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+    )
+
+    for _ in range(3):
+        policy.prompt_ready = True
+        decision = policy.next_decision(state)
+        assert decision is not None
+        assert decision.command == "score"
+        policy.after_command(decision)
+
+    policy.prompt_ready = True
+    assert policy.next_decision(state) is None
+    assert policy.failure == (
+        "score did not report the practice balance before field departure"
+    )
+
+
 def test_fastwalk_remembers_practice_balance_during_loremaster_travel() -> None:
     policy = StarterPolicy(
         _spec(),

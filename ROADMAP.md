@@ -1502,3 +1502,12 @@ and failure handling before registering each new level-band policy.
   chill touch at 36%, but the bot had ignored it and used magic missile. Skill
   listings are now parsed whenever observed, so asynchronous prompt ordering
   cannot discard known combat capabilities.
+- Run 661 exposed the same asynchronous ordering risk in the predeparture
+  practice audit: a healer spell and prompt arrived before the requested
+  `score`, causing a safe but unnecessary segment failure. Practice-balance
+  audits now make at most three bounded attempts when unrelated room output is
+  interleaved, rather than failing after the first missing response.
+- Run 662 live-validated the bounded retry path. Kestrel parsed the practice
+  balance, recorded a structured deferred physical lesson when the Loremaster
+  offered no useful option, then gained 300 XP in the Foundry and returned at
+  full health.

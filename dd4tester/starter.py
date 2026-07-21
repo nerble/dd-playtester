@@ -299,6 +299,7 @@ class StarterPolicy:
         self.fastwalk_train_before_departure = fastwalk_train_before_departure
         self.fastwalk_training_started = False
         self.fastwalk_practice_audit_requested = False
+        self.fastwalk_practice_audit_attempts = 0
         self.latest_practice_balances: tuple[int | None, int | None] = (None, None)
         self.fastwalk_require_invisibility = fastwalk_require_invisibility
         self.fastwalk_invisibility_attempts = 0
@@ -2306,15 +2307,20 @@ class StarterPolicy:
             return self._loremaster_decision(state)
         physical, intellectual = self.latest_practice_balances
         if physical is None or intellectual is None:
-            if self.fastwalk_practice_audit_requested:
+            if self.fastwalk_practice_audit_attempts >= 3:
                 self.failure = (
                     "score did not report the practice balance before field departure"
                 )
                 return None
             self.fastwalk_practice_audit_requested = True
+            self.fastwalk_practice_audit_attempts += 1
             return BotDecision(
                 "score",
-                "audit class-relevant practices before field departure",
+                (
+                    "audit class-relevant practices before field departure"
+                    if self.fastwalk_practice_audit_attempts == 1
+                    else "retry the practice audit after interleaved room output"
+                ),
             )
         available = {
             "physical": physical,
