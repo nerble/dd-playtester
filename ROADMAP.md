@@ -1183,3 +1183,18 @@ and failure handling before registering each new level-band policy.
   only after combat began, and healer-room reset waits restored the mana spent
   on each patrol. Ten kills added 890 XP; she checkpointed in room 3054 at
   100/100 HP, 219/267 mana, and 186/200 movement, with 3,130 XP left to level 7.
+- Run 571 preserved Kestrel's three remaining practices and gained 603 XP from
+  eight safe kills. It stopped when the live consider sweep found no remaining
+  viable target, providing direct evidence that Mud School spawn availability,
+  rather than combat risk, is now limiting level-6 throughput.
+- Source scoring rejected the denser Miden'nir goblins for level-6 autonomy
+  because a source-level-7 lieutenant can fuzz higher and wander through the
+  area. Foundry's Uburz ranked as the best non-rejected alternative: source
+  level 4, fuzzed range 2-6, estimated 75 peak round damage, and three distinct
+  sellable drops.
+- Runs 572-574 live-validated that alternative with Dorrik. He killed Uburz for
+  106 XP without losing health, replaced a plain cloak with the source-backed
+  silver circlet (`APPLY_STR +1`), sold the displaced cloak, piping, and leg
+  guards for 57 copper, and finished with nine pies and a filled water skin.
+  The complete 162-second hunt-sale-restock cycle is an economic and equipment
+  loop; it does not yet outperform arena XP enough to replace that policy.
