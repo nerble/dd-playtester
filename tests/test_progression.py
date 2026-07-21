@@ -103,6 +103,15 @@ def test_level_seven_non_mage_keeps_the_arena_policy() -> None:
     assert policy.execution == "arena"
 
 
+def test_stalled_level_seven_non_mage_uses_foundry_fallback() -> None:
+    policy = policy_for(7, "thief", stalled_segments=1)
+
+    assert policy.policy_id == "foundry-fallback-7-8"
+    assert policy.execution == "foundry-hunt"
+    assert policy.maximum_level == 8
+    assert policy.practice_skill == "backstab"
+
+
 @pytest.mark.parametrize(
     ("character_class", "subclass", "practice_skill"),
     [

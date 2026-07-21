@@ -191,6 +191,26 @@ _FOUNDRY_LEVEL_SIX_POLICY = ProgressionPolicy(
     segment_kill_limit=2,
 )
 
+_FOUNDRY_LEVEL_SEVEN_FALLBACK_POLICY = ProgressionPolicy(
+    policy_id="foundry-fallback-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="foundry-hunt",
+    summary=(
+        "Return to the bounded two-target Foundry circuit after a level-7 "
+        "arena segment produces no progress."
+    ),
+    evidence=(
+        *_FOUNDRY_LEVEL_SIX_POLICY.evidence,
+        "Live run 629: the level-7 arena population had no viable opponents and returned safely with zero XP.",
+        "Live run 630: a reboot-fuzzed level-8 mountain goblin auto-attacked the level-7 thief before consideration, so the caster field route is not a generic melee fallback.",
+        "The same live-considered Foundry targets are lower risk at level 7, and an empty circuit returns safely instead of forcing combat.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+)
+
 _MORIA_SNAKE_POLICY = ProgressionPolicy(
     policy_id="moria-circuit-7-10",
     minimum_level=7,
@@ -614,6 +634,11 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 return _AMBUSH_RAIDER_LEVEL_TEN_POLICY
             return _AMBUSH_VILE_LEVEL_TEN_POLICY
         return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
+    if normalized_level == 7 and context.stalled_segments > 0:
+        return replace(
+            _FOUNDRY_LEVEL_SEVEN_FALLBACK_POLICY,
+            practice_skill=context.practice_skill,
+        )
     if normalized_level < 10:
         return replace(
             _MUD_SCHOOL_RESEARCH_POLICY,

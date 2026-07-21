@@ -1364,3 +1364,17 @@ and failure handling before registering each new level-band policy.
   between-round wait and deals `level/2 + random(1, level)` on success. Passive
   second attack remains the warrior's first damage investment; kick follows
   after its unarmed-knowledge prerequisite and is repeated only during combat.
+- Run 629 found no level-7 arena opponent in the viable consider band and
+  returned Kestrel without combat or XP loss. Run 630 then disproved a generic
+  Miden'nir fallback: the reboot-fuzzed level-8 mountain goblin auto-attacked
+  the level-7 thief before consideration, forcing a safe flee at a 58-XP cost.
+- A stalled level-7 non-caster now falls back to the already proven Uburz and
+  Ushog Foundry circuit with a level-8 objective boundary. Run 631 validated it
+  for Kestrel with Olog, Uburz, and Ushog kills worth 307 XP total. His passive
+  second attacks fired, two disarms were recovered in combat, and he finished
+  at full health with sellable drops.
+- Run 632 raised Dorrik's armed knowledge from 39% to 40%, unlocking enhanced
+  damage, and raised passive second attack from 43% to 44%. His remaining
+  physical practice was preserved by the one-lesson-per-type-per-level rule.
+  Run 633 safely found the Foundry depleted after Kestrel's pass and left the
+  area at full health so its faster unoccupied reset could begin.
