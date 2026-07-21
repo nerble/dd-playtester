@@ -1,0 +1,150 @@
+{
+  "classes": {
+    "mage": {
+      "aliases": ["mage"],
+      "primary_stat": "int",
+      "practice_skill": "magic missile",
+      "level_gain_priorities": [
+        "intellectual_practices",
+        "mana",
+        "hitpoints",
+        "movement",
+        "physical_practices"
+      ],
+      "progression_track": "verified-field-caster",
+      "capabilities": ["mana", "spellcasting", "invisibility"]
+    },
+    "cleric": {
+      "aliases": ["cleric"],
+      "primary_stat": "wis",
+      "practice_skill": "cure light",
+      "level_gain_priorities": [
+        "intellectual_practices",
+        "mana",
+        "hitpoints",
+        "movement",
+        "physical_practices"
+      ],
+      "progression_track": "tutorial-arena",
+      "capabilities": ["healing", "mana", "spellcasting"]
+    },
+    "thief": {
+      "aliases": ["thief"],
+      "primary_stat": "dex",
+      "practice_skill": "backstab",
+      "level_gain_priorities": [
+        "physical_practices",
+        "hitpoints",
+        "movement",
+        "intellectual_practices",
+        "mana"
+      ],
+      "progression_track": "tutorial-arena",
+      "capabilities": ["stealth", "weapon-combat"]
+    },
+    "warrior": {
+      "aliases": ["warrior"],
+      "primary_stat": "str",
+      "practice_skill": "kick",
+      "level_gain_priorities": [
+        "physical_practices",
+        "hitpoints",
+        "movement",
+        "intellectual_practices",
+        "mana"
+      ],
+      "progression_track": "tutorial-arena",
+      "capabilities": ["armour", "weapon-combat"]
+    },
+    "psionic": {
+      "aliases": ["psionic", "psionicist"],
+      "primary_stat": "int",
+      "practice_skill": "mind thrust",
+      "level_gain_priorities": [
+        "intellectual_practices",
+        "mana",
+        "hitpoints",
+        "movement",
+        "physical_practices"
+      ],
+      "progression_track": "tutorial-arena",
+      "capabilities": ["mana", "psionics"]
+    },
+    "shifter": {
+      "aliases": ["shifter", "shape shifter"],
+      "primary_stat": "con",
+      "practice_skill": "shapeshift",
+      "level_gain_priorities": [
+        "physical_practices",
+        "hitpoints",
+        "movement",
+        "intellectual_practices",
+        "mana"
+      ],
+      "progression_track": "tutorial-arena",
+      "capabilities": ["natural-combat", "shapeshifting"]
+    },
+    "brawler": {
+      "aliases": ["brawler"],
+      "primary_stat": "str",
+      "practice_skill": "kick",
+      "level_gain_priorities": [
+        "physical_practices",
+        "hitpoints",
+        "movement",
+        "intellectual_practices",
+        "mana"
+      ],
+      "progression_track": "tutorial-arena",
+      "capabilities": ["unarmed-combat"]
+    },
+    "ranger": {
+      "aliases": ["ranger"],
+      "primary_stat": "dex",
+      "practice_skill": "kick",
+      "level_gain_priorities": [
+        "physical_practices",
+        "hitpoints",
+        "movement",
+        "intellectual_practices",
+        "mana"
+      ],
+      "progression_track": "tutorial-arena",
+      "capabilities": ["tracking", "weapon-combat"]
+    },
+    "smithy": {
+      "aliases": ["smithy"],
+      "primary_stat": "str",
+      "practice_skill": "repair",
+      "level_gain_priorities": [
+        "physical_practices",
+        "hitpoints",
+        "movement",
+        "intellectual_practices",
+        "mana"
+      ],
+      "progression_track": "tutorial-arena",
+      "capabilities": ["crafting", "weapon-combat"]
+    }
+  },
+  "subclasses": {
+    "necromancer": {"base_class": "mage", "available": true, "capabilities": ["necromancy"]},
+    "warlock": {"base_class": "mage", "available": true, "capabilities": ["warlock-magic"]},
+    "templar": {"base_class": "cleric", "available": true, "capabilities": ["martial-divine"]},
+    "druid": {"base_class": "cleric", "available": true, "capabilities": ["nature-magic"]},
+    "ninja": {"base_class": "thief", "available": true, "capabilities": ["ninjutsu"]},
+    "bounty hunter": {"base_class": "thief", "available": true, "capabilities": ["bounty-hunting"]},
+    "knight": {"base_class": "warrior", "available": true, "capabilities": ["lance-combat"]},
+    "thug": {"base_class": "warrior", "available": true, "capabilities": ["street-fighting"]},
+    "infernalist": {"base_class": "psionic", "available": true, "capabilities": ["infernal-psionics"]},
+    "witch": {"base_class": "psionic", "available": true, "capabilities": ["witchcraft"]},
+    "monk": {"base_class": "brawler", "available": true, "capabilities": ["monastic-combat"]},
+    "martial artist": {"base_class": "brawler", "available": true, "capabilities": ["martial-arts"]},
+    "werewolf": {"base_class": "shifter", "available": true, "capabilities": ["lycanthropy"]},
+    "vampire": {"base_class": "shifter", "available": true, "capabilities": ["vampirism"]},
+    "barbarian": {"base_class": "ranger", "available": true, "capabilities": ["berserking"]},
+    "bard": {"base_class": "ranger", "available": true, "capabilities": ["performance"]},
+    "engineer": {"base_class": "smithy", "available": false, "capabilities": ["engineering"]},
+    "runesmith": {"base_class": "smithy", "available": false, "capabilities": ["rune-crafting"]}
+  }
+}

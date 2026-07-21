@@ -21,6 +21,8 @@ def test_subclass_derives_required_base_class() -> None:
     assert spec.character_class == "mage"
     assert spec.subclass == "warlock"
     assert spec.primary_stat == "int"
+    assert spec.identity.progression_track == "verified-field-caster"
+    assert {"spellcasting", "warlock-magic"} <= spec.identity.capabilities
 
 
 def test_profile_derives_stable_credential_name() -> None:
@@ -104,3 +106,31 @@ def test_load_character_spec_from_yaml(tmp_path: Path) -> None:
     assert spec.character_class == "ranger"
     assert spec.colour is False
     assert spec.max_commands == 99
+
+
+@pytest.mark.parametrize(
+    ("character_class", "subclass", "practice_skill", "capability"),
+    [
+        ("mage", "warlock", "magic missile", "spellcasting"),
+        ("thief", "ninja", "backstab", "stealth"),
+        ("warrior", "knight", "kick", "weapon-combat"),
+    ],
+)
+def test_representative_matrix_derives_data_driven_identity(
+    character_class: str,
+    subclass: str,
+    practice_skill: str,
+    capability: str,
+) -> None:
+    spec = CharacterSpec.from_mapping(
+        {
+            "name": "Matrixhero",
+            "race": "human",
+            "gender": "neuter",
+            "class": character_class,
+            "subclass": subclass,
+        }
+    )
+
+    assert spec.identity.practice_skill == practice_skill
+    assert capability in spec.identity.capabilities

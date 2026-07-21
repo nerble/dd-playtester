@@ -18,6 +18,7 @@ from .credentials import (
 from .evidence import collect_run_evidence, render_evidence_json
 from .fastwalks import FASTWALKS, routes_for_level
 from .hunt_candidates import load_world_source, rank_hunt_candidates
+from .matrix import run_matrix_file
 from .money import run_money_loop_profile
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
@@ -357,6 +358,33 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="run up to this many ready checkpoint segments, default: 1",
+    )
+
+    matrix_parser = subcommands.add_parser(
+        "matrix",
+        help="run or resume a representative character campaign matrix",
+    )
+    matrix_parser.add_argument(
+        "config",
+        type=Path,
+        help="path to the matrix YAML configuration",
+    )
+    matrix_parser.add_argument(
+        "--new",
+        action="store_true",
+        help="start new campaigns during the first matrix round",
+    )
+    matrix_parser.add_argument(
+        "--rounds",
+        type=int,
+        default=1,
+        help="maximum round-robin passes, default: 1",
+    )
+    matrix_parser.add_argument(
+        "--segments-per-character",
+        type=int,
+        default=1,
+        help="campaign segments per character in each round, default: 1",
     )
 
     show_runs_parser = subcommands.add_parser("show-runs", help="list stored scenario runs")
@@ -782,6 +810,30 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Checkpoint: {result.checkpoint_id}")
         print(f"Level: {result.state.get('level', '-')}")
         return 0 if result.status == "success" or result.ready_for_next_segment else 1
+
+    if args.command == "matrix":
+        try:
+            result = asyncio.run(
+                run_matrix_file(
+                    args.config,
+                    rounds=args.rounds,
+                    segments_per_character=args.segments_per_character,
+                    force_new=args.new,
+                )
+            )
+        except Exception as exc:
+            print(f"Matrix failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Matrix: {result.name}")
+        print(f"Status: {result.status}; target level: {result.target_level}")
+        print("entry\tcharacter\tclass\tlevel\tstatus\tcampaign\tmessage")
+        for entry in result.entries:
+            print(
+                f"{entry.entry_id}\t{entry.character_name}\t"
+                f"{entry.character_class}\t{entry.level}\t{entry.status}\t"
+                f"{entry.campaign_id or '-'}\t{entry.message or '-'}"
+            )
+        return 0 if result.status == "success" else 1
 
     if args.command == "show-runs":
         return show_runs(args.database, limit=args.limit)

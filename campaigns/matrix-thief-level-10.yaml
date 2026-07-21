@@ -1,0 +1,7 @@
+character_profile: ../profiles/matrix-thief.yaml
+name: Kestrel thief matrix proof
+target_level: 10
+max_segments: 200
+max_total_runtime: 86400
+max_total_commands: 25000
+max_stalled_segments: 10

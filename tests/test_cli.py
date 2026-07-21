@@ -4,6 +4,7 @@ from pathlib import Path
 import dd4tester.cli
 from dd4tester.campaign import CampaignResult
 from dd4tester.cli import main
+from dd4tester.matrix import MatrixEntryResult, MatrixResult
 from dd4tester.money import MoneyLoopResult
 from dd4tester.runner import RunResult
 from dd4tester.storage import RunStorage
@@ -920,6 +921,52 @@ def test_configure_character_password_uses_profile_credential(tmp_path, capsys, 
     assert exit_code == 0
     assert configured == ["character:rulemira"]
     assert "Stored character password credential: character:rulemira" in captured.out
+
+
+def test_matrix_cli_reports_each_character_without_hiding_incomplete_work(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    async def fake_run_matrix_file(*_args, **_kwargs):
+        return MatrixResult(
+            "Mage Thief Warrior",
+            10,
+            "incomplete",
+            (
+                MatrixEntryResult("mage", "Aeloria", "mage", 1, "success", 10, None),
+                MatrixEntryResult(
+                    "thief",
+                    "Kestrel",
+                    "thief",
+                    2,
+                    "blocked",
+                    8,
+                    "awaiting policy evidence",
+                ),
+                MatrixEntryResult("warrior", "Dorrik", "warrior", 3, "success", 10, None),
+            ),
+        )
+
+    monkeypatch.setattr(dd4tester.cli, "run_matrix_file", fake_run_matrix_file)
+
+    exit_code = main(
+        [
+            "matrix",
+            str(tmp_path / "matrix.yaml"),
+            "--rounds",
+            "2",
+            "--segments-per-character",
+            "3",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Matrix: Mage Thief Warrior" in captured.out
+    assert "mage\tAeloria\tmage\t10\tsuccess\t1\t-" in captured.out
+    assert "thief\tKestrel\tthief\t8\tblocked\t2\tawaiting policy evidence" in captured.out
+    assert "warrior\tDorrik\twarrior\t10\tsuccess\t3\t-" in captured.out
 
 
 def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:

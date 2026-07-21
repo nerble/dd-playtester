@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping
 from .character import CharacterSpec, load_character_spec
 from .connection import ReadResult, TelnetConnection
 from .credentials import CredentialStoreError, load_character_password
+from .decisions import classify_decision
 from .equipment import (
     GearCatalog,
     STANCE_COMBAT,
@@ -161,6 +162,18 @@ class BotDecision:
     command: str
     reason: str
     secret: bool = False
+
+
+def _decision_payload(decision: BotDecision, stage: str) -> dict[str, Any]:
+    metadata = classify_decision(decision.command, decision.reason, stage)
+    return {
+        "stage": stage,
+        "reason": decision.reason,
+        "command": "[REDACTED]" if decision.secret else decision.command,
+        "redacted": decision.secret,
+        "category": metadata.category,
+        "safety_critical": metadata.safety_critical,
+    }
 
 
 @dataclass(frozen=True)
@@ -4611,6 +4624,28 @@ class StarterBotRunner:
             )
 
         try:
+            record(
+                "run_context",
+                {
+                    "character": {
+                        "name": self.spec.name,
+                        "race": self.spec.race,
+                        "gender": self.spec.gender,
+                        "class": self.spec.character_class,
+                        "subclass": self.spec.subclass,
+                        "progression_track": self.spec.identity.progression_track,
+                        "capabilities": sorted(self.spec.identity.capabilities),
+                    },
+                    "objective": {
+                        "level": self.objective_level,
+                        "arena_kill_limit": self.arena_kill_limit,
+                        "fastwalk_route": (
+                            self.fastwalk_route.name if self.fastwalk_route else None
+                        ),
+                        "fastwalk_target": self.fastwalk_attack_target,
+                    },
+                },
+            )
             if password is None:
                 try:
                     password = load_character_password(self.spec.credential_name)
@@ -4733,12 +4768,7 @@ class StarterBotRunner:
                     repeated_command = ""
                     repeated_count = 0
                     watchdog_progress = current_progress
-                decision_payload = {
-                    "stage": policy.stage,
-                    "reason": decision.reason,
-                    "command": "[REDACTED]" if decision.secret else decision.command,
-                    "redacted": decision.secret,
-                }
+                decision_payload = _decision_payload(decision, policy.stage)
                 if decision.command == repeated_command:
                     repeated_count += 1
                 else:
@@ -4779,14 +4809,7 @@ class StarterBotRunner:
                     if recovery is None:
                         continue
                     decision = recovery
-                    decision_payload = {
-                        "stage": policy.stage,
-                        "reason": decision.reason,
-                        "command": (
-                            "[REDACTED]" if decision.secret else decision.command
-                        ),
-                        "redacted": decision.secret,
-                    }
+                    decision_payload = _decision_payload(decision, policy.stage)
                     repeated_command = decision.command
                     repeated_count = 1
                 record("decision", decision_payload)

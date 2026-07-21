@@ -35,6 +35,18 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
             {"item": "a metal buckler", "shop": "Leather Shop", "coins": 10}
         ],
     }
+    assert report["character"] == {
+        "name": "Reportmage",
+        "race": "human",
+        "gender": "female",
+        "class": "mage",
+        "subclass": "warlock",
+    }
+    assert report["decision_analysis"]["category_counts"] == {
+        "combat": 1,
+        "safety": 1,
+    }
+    assert report["decision_analysis"]["safety_critical_count"] == 1
     assert report["failures"] == [
         "command budget reached",
         "Character died 1 time(s).",
@@ -52,6 +64,8 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     markdown = render_markdown(report)
     assert "# Run 1: starter:Reportmage" in markdown
     assert "## Balance Signals" in markdown
+    assert "## Decision Analysis" in markdown
+    assert "Character: Reportmage, female, human, mage (warlock)" in markdown
     assert "Confirmed kills: tutorial wolf (+75 XP)" in markdown
     assert "Loot sales: 1 item(s) for 10 coins" in markdown
     assert "**critical - health pressure:** Health reached 10% of maximum." in markdown
@@ -106,6 +120,21 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
         scenario_name="starter:Reportmage",
         scenario_path=Path("profiles/reportmage.yaml"),
     )
+    storage.record_event(
+        run_id,
+        kind="run_context",
+        payload={
+            "character": {
+                "name": "Reportmage",
+                "race": "human",
+                "gender": "female",
+                "class": "mage",
+                "subclass": "warlock",
+            },
+            "objective": {"level": 2},
+        },
+        timestamp="2026-07-17T23:59:58+00:00",
+    )
     initial_event = storage.record_event(
         run_id,
         kind="game_event",
@@ -157,6 +186,19 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
             "data": {"target": "tutorial wolf"},
         },
         timestamp="2026-07-18T00:00:02+00:00",
+    )
+    storage.record_event(
+        run_id,
+        kind="decision",
+        payload={
+            "stage": "course",
+            "reason": "withdraw below 25 percent health",
+            "command": "flee",
+            "redacted": False,
+            "category": "safety",
+            "safety_critical": True,
+        },
+        timestamp="2026-07-18T00:00:02.500000+00:00",
     )
     low_health_event = storage.record_event(
         run_id,

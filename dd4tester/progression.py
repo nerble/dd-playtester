@@ -3,19 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
-from .character import CLASSES
+from .archetypes import archetype_registry
 
 
+_ARCHETYPES = archetype_registry()
 CLASS_PRACTICE_SKILLS = {
-    "mage": "magic missile",
-    "cleric": "cure light",
-    "thief": "backstab",
-    "warrior": "kick",
-    "psionic": "mind thrust",
-    "shifter": "shapeshift",
-    "brawler": "kick",
-    "ranger": "kick",
-    "smithy": "repair",
+    name: profile.practice_skill
+    for name, profile in _ARCHETYPES.classes.items()
 }
 
 
@@ -44,6 +38,57 @@ class ProgressionPolicy:
         return (
             f"No policy is registered for level {self.minimum_level}+ "
             f"{character_class} progression."
+        )
+
+
+@dataclass(frozen=True)
+class ProgressionContext:
+    level: int
+    character_class: str
+    subclass: str | None
+    progression_track: str
+    practice_skill: str
+    capabilities: frozenset[str]
+    has_large_sack: bool = False
+    has_sellable_loot: bool = False
+    has_food: bool = True
+    has_weapon: bool = True
+    has_sanctuary_potion: bool = False
+    has_flight: bool = True
+    can_attempt_flight_purchase: bool = False
+    flight_purchase_failed: bool = False
+    boot_kill_counts: Mapping[str, int] | None = None
+    stalled_segments: int = 0
+
+    @classmethod
+    def from_values(
+        cls,
+        level: int | float | None,
+        character_class: str,
+        *,
+        subclass: str | None = None,
+        **state: object,
+    ) -> "ProgressionContext":
+        class_profile = _ARCHETYPES.class_profile(character_class)
+        capabilities = set(class_profile.capabilities)
+        canonical_subclass = None
+        if subclass is not None:
+            subclass_profile = _ARCHETYPES.subclass_profile(subclass)
+            if subclass_profile.base_class != class_profile.name:
+                raise ValueError(
+                    f"subclass {subclass_profile.name!r} requires base class "
+                    f"{subclass_profile.base_class!r}"
+                )
+            canonical_subclass = subclass_profile.name
+            capabilities.update(subclass_profile.capabilities)
+        return cls(
+            level=int(level or 0),
+            character_class=class_profile.name,
+            subclass=canonical_subclass,
+            progression_track=class_profile.progression_track,
+            practice_skill=class_profile.practice_skill,
+            capabilities=frozenset(capabilities),
+            **state,
         )
 
 
@@ -415,6 +460,7 @@ def policy_for(
     level: int | float | None,
     character_class: str,
     *,
+    subclass: str | None = None,
     has_large_sack: bool = False,
     has_sellable_loot: bool = False,
     has_food: bool = True,
@@ -426,81 +472,105 @@ def policy_for(
     boot_kill_counts: Mapping[str, int] | None = None,
     stalled_segments: int = 0,
 ) -> ProgressionPolicy:
-    normalized_level = int(level or 0)
-    canonical_class = canonical_class_name(character_class)
+    return select_policy(
+        ProgressionContext.from_values(
+            level,
+            character_class,
+            subclass=subclass,
+            has_large_sack=has_large_sack,
+            has_sellable_loot=has_sellable_loot,
+            has_food=has_food,
+            has_weapon=has_weapon,
+            has_sanctuary_potion=has_sanctuary_potion,
+            has_flight=has_flight,
+            can_attempt_flight_purchase=can_attempt_flight_purchase,
+            flight_purchase_failed=flight_purchase_failed,
+            boot_kill_counts=boot_kill_counts,
+            stalled_segments=stalled_segments,
+        )
+    )
+
+
+def select_policy(context: ProgressionContext) -> ProgressionPolicy:
+    normalized_level = context.level
     if normalized_level < 2:
         return _STARTER_POLICY
-    if has_sellable_loot:
+    if context.has_sellable_loot:
         return _LIQUIDATE_LOOT_POLICY
-    if not has_food:
+    if not context.has_food:
         return _RESTOCK_POLICY
-    if not has_weapon:
+    if not context.has_weapon:
         return _REARM_WEAPON_POLICY
     if normalized_level < 6:
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,
-            practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
+            practice_skill=context.practice_skill,
         )
-    if canonical_class == "mage" and normalized_level == 7:
+    field_caster = context.progression_track == "verified-field-caster"
+    if field_caster and normalized_level == 7:
         return _MIDENNIR_LEVEL_SEVEN_POLICY
-    if canonical_class == "mage" and 8 <= normalized_level < 10:
-        if not has_large_sack:
+    if field_caster and 8 <= normalized_level < 10:
+        if not context.has_large_sack:
             return _MIDENNIR_SACK_POLICY
         if normalized_level == 8:
-            war_dog_kills = _boot_kill_count(boot_kill_counts, "war dog")
-            goblin_kills = _boot_kill_count(boot_kill_counts, "goblin")
+            war_dog_kills = _boot_kill_count(
+                context.boot_kill_counts, "war dog"
+            )
+            goblin_kills = _boot_kill_count(context.boot_kill_counts, "goblin")
             if (
-                stalled_segments % 2 == 0
+                context.stalled_segments % 2 == 0
                 and war_dog_kills >= 5
                 and goblin_kills < war_dog_kills
             ):
                 return _MIDENNIR_LEVEL_EIGHT_POLICY
             return _AMBUSH_LEVEL_EIGHT_POLICY
         if (
-            not has_flight
-            and can_attempt_flight_purchase
-            and not flight_purchase_failed
+            not context.has_flight
+            and context.can_attempt_flight_purchase
+            and not context.flight_purchase_failed
         ):
             return _BUY_FLIGHT_POLICY
-        if has_sanctuary_potion:
+        if context.has_sanctuary_potion:
             return _AMBUSH_VILE_LEVEL_NINE_POLICY
         large_hobgoblin_kills = _boot_kill_count(
-            boot_kill_counts, "large hobgoblin"
+            context.boot_kill_counts, "large hobgoblin"
         )
-        vile_goblin_kills = _boot_kill_count(boot_kill_counts, "vile goblin")
+        vile_goblin_kills = _boot_kill_count(
+            context.boot_kill_counts, "vile goblin"
+        )
         exterior_kills = (
-            _boot_kill_count(boot_kill_counts, "war dog")
-            + _boot_kill_count(boot_kill_counts, "wounded goblin")
+            _boot_kill_count(context.boot_kill_counts, "war dog")
+            + _boot_kill_count(context.boot_kill_counts, "wounded goblin")
         )
         if (
-            boot_kill_counts
-            and stalled_segments == 0
+            context.boot_kill_counts
+            and context.stalled_segments == 0
             and (
                 vile_goblin_kills >= large_hobgoblin_kills > 0
                 or exterior_kills >= 4
             )
-        ):
+            ):
             if (
-                not has_flight
-                and can_attempt_flight_purchase
-                and not flight_purchase_failed
+                not context.has_flight
+                and context.can_attempt_flight_purchase
+                and not context.flight_purchase_failed
             ):
                 return _BUY_FLIGHT_POLICY
             return _MORIA_SANCTUARY_LEVEL_NINE_POLICY
         return _AMBUSH_LEVEL_NINE_POLICY
-    if canonical_class == "mage" and normalized_level == 10:
+    if field_caster and normalized_level == 10:
         if (
-            not has_flight
-            and can_attempt_flight_purchase
-            and not flight_purchase_failed
+            not context.has_flight
+            and context.can_attempt_flight_purchase
+            and not context.flight_purchase_failed
         ):
             return _BUY_FLIGHT_POLICY
-        if has_sanctuary_potion:
+        if context.has_sanctuary_potion:
             raider_kills = _boot_kill_count(
-                boot_kill_counts, "goblin raider"
+                context.boot_kill_counts, "goblin raider"
             )
             vile_goblin_kills = _boot_kill_count(
-                boot_kill_counts, "vile goblin"
+                context.boot_kill_counts, "vile goblin"
             )
             if raider_kills <= vile_goblin_kills:
                 return _AMBUSH_RAIDER_LEVEL_TEN_POLICY
@@ -509,12 +579,12 @@ def policy_for(
     if normalized_level < 10:
         return replace(
             _MUD_SCHOOL_RESEARCH_POLICY,
-            practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
+            practice_skill=context.practice_skill,
         )
     return replace(
         _UNAVAILABLE_POLICY,
         minimum_level=normalized_level,
-        practice_skill=CLASS_PRACTICE_SKILLS[canonical_class],
+        practice_skill=context.practice_skill,
     )
 
 
@@ -538,9 +608,4 @@ def _normalize_mob_name(value: str) -> str:
 
 
 def canonical_class_name(value: str) -> str:
-    normalized = " ".join(value.strip().casefold().replace("-", " ").split())
-    try:
-        return CLASSES[normalized]
-    except KeyError as exc:
-        available = ", ".join(sorted(CLASSES))
-        raise ValueError(f"unknown class {value!r}; choose one of: {available}") from exc
+    return _ARCHETYPES.class_profile(value).name

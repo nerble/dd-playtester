@@ -5,6 +5,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
+from .decisions import classify_decision
 from .storage import RunStorage
 
 
@@ -31,6 +32,14 @@ def build_run_report(
     final_state = snapshots[-1]["state"] if snapshots else {}
     game_events = [event for event in events if event["kind"] == "game_event"]
     decisions = [event for event in events if event["kind"] == "decision"]
+    run_context = next(
+        (
+            event["payload"]
+            for event in reversed(events)
+            if event["kind"] == "run_context"
+        ),
+        {},
+    )
     game_event_counts = Counter(
         str(event["payload"].get("type", "unknown")) for event in game_events
     )
@@ -64,7 +73,10 @@ def build_run_report(
             "duration_seconds": duration_seconds,
             "transcript_path": run["transcript_path"],
         },
+        "character": dict(run_context.get("character") or {}),
+        "objective": dict(run_context.get("objective") or {}),
         "progress": progress,
+        "decision_analysis": _decision_analysis(decisions),
         "failures": failures,
         "balance_signals": balance_signals,
         "commentary": commentary,
@@ -80,6 +92,8 @@ def render_markdown(report: dict[str, Any]) -> str:
     """Render a compact, human-readable form of a run report."""
     run = report["run"]
     progress = report["progress"]
+    character = report.get("character") or {}
+    identity = _format_identity(character)
     lines = [
         f"# Run {run['id']}: {run['scenario_name']}",
         "",
@@ -88,6 +102,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Finished: {run['finished_at'] or '-'}",
         f"Duration: {_format_duration(run['duration_seconds'])}",
         f"Transcript: {run['transcript_path'] or '-'}",
+        f"Character: {identity}",
         "",
         "## Progress",
         "",
@@ -107,9 +122,31 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Quests received: {progress['quests_received']}  ",
         f"Loot sales: {_format_sales(progress['loot_sales'])}",
         "",
+        "## Decision Analysis",
+        "",
+        _count_line(
+            "Decision categories",
+            report["decision_analysis"]["category_counts"],
+        ),
+        (
+            "Safety-critical decisions: "
+            f"{report['decision_analysis']['safety_critical_count']}"
+        ),
+        "",
+        "Notable choices:",
+    ]
+    notable_decisions = report["decision_analysis"]["notable_decisions"]
+    lines.extend(
+        f"- **{decision['category']}:** {decision['reason']}"
+        for decision in notable_decisions
+    )
+    if not notable_decisions:
+        lines.append("- No decision explanations were recorded.")
+    lines.extend([
+        "",
         "## Failures",
         "",
-    ]
+    ])
     lines.extend(f"- {failure}" for failure in report["failures"])
     if not report["failures"]:
         lines.append("- None detected.")
@@ -198,6 +235,40 @@ def _progress_summary(
         "items_acquired": sum(_is_item_acquisition(event) for event in game_events),
         "quests_received": game_event_counts["quest_received"],
         "loot_sales": _sales_summary(sales),
+    }
+
+
+def _decision_analysis(decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    categories: Counter[str] = Counter()
+    safety_critical_count = 0
+    notable: list[dict[str, Any]] = []
+    seen_reasons: set[str] = set()
+    for event in decisions:
+        payload = event["payload"]
+        reason = str(payload.get("reason", "")).strip()
+        stage = str(payload.get("stage", ""))
+        command = str(payload.get("command", ""))
+        metadata = classify_decision(command, reason, stage)
+        category = str(payload.get("category") or metadata.category)
+        safety_critical = bool(
+            payload.get("safety_critical", metadata.safety_critical)
+        )
+        categories[category] += 1
+        safety_critical_count += int(safety_critical)
+        if reason and reason not in seen_reasons and len(notable) < 12:
+            notable.append(
+                {
+                    "category": category,
+                    "reason": reason,
+                    "stage": stage,
+                    "safety_critical": safety_critical,
+                }
+            )
+            seen_reasons.add(reason)
+    return {
+        "category_counts": dict(sorted(categories.items())),
+        "safety_critical_count": safety_critical_count,
+        "notable_decisions": notable,
     }
 
 
@@ -497,6 +568,21 @@ def _display(value: Any) -> str:
 
 def _format_duration(seconds: float | None) -> str:
     return "-" if seconds is None else f"{seconds:g} seconds"
+
+
+def _format_identity(character: dict[str, Any]) -> str:
+    if not character:
+        return "-"
+    parts = [
+        str(character.get("name") or "unknown"),
+        str(character.get("gender") or "unknown"),
+        str(character.get("race") or "unknown"),
+        str(character.get("class") or "unknown"),
+    ]
+    subclass = character.get("subclass")
+    if subclass:
+        parts[-1] = f"{parts[-1]} ({subclass})"
+    return ", ".join(parts)
 
 
 def _count_line(label: str, counts: dict[str, int]) -> str:

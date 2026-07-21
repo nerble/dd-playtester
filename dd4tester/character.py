@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .archetypes import ClassProfile, archetype_registry
 from .scenario import load_yaml_mapping
 
 
@@ -36,42 +37,14 @@ RACES = {
     "duergar": "y",
 }
 
-CLASSES = {
-    "mage": "mage",
-    "cleric": "cleric",
-    "thief": "thief",
-    "warrior": "warrior",
-    "psionic": "psionic",
-    "psionicist": "psionic",
-    "shifter": "shifter",
-    "shape shifter": "shifter",
-    "brawler": "brawler",
-    "ranger": "ranger",
-    "smithy": "smithy",
-}
-
+_ARCHETYPES = archetype_registry()
+CLASSES = dict(_ARCHETYPES.class_aliases)
 SUBCLASS_BASE_CLASSES = {
-    "necromancer": "mage",
-    "warlock": "mage",
-    "templar": "cleric",
-    "druid": "cleric",
-    "ninja": "thief",
-    "bounty hunter": "thief",
-    "knight": "warrior",
-    "thug": "warrior",
-    "infernalist": "psionic",
-    "witch": "psionic",
-    "monk": "brawler",
-    "martial artist": "brawler",
-    "werewolf": "shifter",
-    "vampire": "shifter",
-    "barbarian": "ranger",
-    "bard": "ranger",
-    "engineer": "smithy",
-    "runesmith": "smithy",
+    name: profile.base_class for name, profile in _ARCHETYPES.subclasses.items()
 }
-
-UNAVAILABLE_SUBCLASSES = {"engineer", "runesmith"}
+UNAVAILABLE_SUBCLASSES = {
+    name for name, profile in _ARCHETYPES.subclasses.items() if not profile.available
+}
 
 GENDERS = {
     "male": "m",
@@ -80,15 +53,7 @@ GENDERS = {
 }
 
 PRIMARY_STATS = {
-    "mage": "int",
-    "cleric": "wis",
-    "thief": "dex",
-    "warrior": "str",
-    "psionic": "int",
-    "shifter": "con",
-    "brawler": "str",
-    "ranger": "dex",
-    "smithy": "str",
+    name: profile.primary_stat for name, profile in _ARCHETYPES.classes.items()
 }
 
 LEVEL_GAIN_METRICS = {
@@ -100,35 +65,20 @@ LEVEL_GAIN_METRICS = {
 }
 
 CLASS_LEVEL_GAIN_PRIORITIES = {
-    "mage": (
-        "intellectual_practices",
-        "mana",
-        "hitpoints",
-        "movement",
-        "physical_practices",
-    ),
-    "cleric": (
-        "intellectual_practices",
-        "mana",
-        "hitpoints",
-        "movement",
-        "physical_practices",
-    ),
-    "psionic": (
-        "intellectual_practices",
-        "mana",
-        "hitpoints",
-        "movement",
-        "physical_practices",
-    ),
+    name: profile.level_gain_priorities
+    for name, profile in _ARCHETYPES.classes.items()
 }
-_PHYSICAL_LEVEL_GAIN_PRIORITIES = (
-    "physical_practices",
-    "hitpoints",
-    "movement",
-    "intellectual_practices",
-    "mana",
-)
+
+
+@dataclass(frozen=True)
+class CharacterIdentity:
+    race: str
+    gender: str
+    character_class: str
+    subclass: str | None
+    progression_track: str
+    practice_skill: str
+    capabilities: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -162,16 +112,34 @@ class CharacterSpec:
 
     @property
     def primary_stat(self) -> str:
-        return PRIMARY_STATS[self.character_class]
+        return self.class_profile.primary_stat
+
+    @property
+    def class_profile(self) -> ClassProfile:
+        return _ARCHETYPES.class_profile(self.character_class)
+
+    @property
+    def identity(self) -> CharacterIdentity:
+        capabilities = set(self.class_profile.capabilities)
+        if self.subclass is not None:
+            capabilities.update(
+                _ARCHETYPES.subclass_profile(self.subclass).capabilities
+            )
+        return CharacterIdentity(
+            race=self.race,
+            gender=self.gender,
+            character_class=self.character_class,
+            subclass=self.subclass,
+            progression_track=self.class_profile.progression_track,
+            practice_skill=self.class_profile.practice_skill,
+            capabilities=frozenset(capabilities),
+        )
 
     @property
     def effective_level_gain_priorities(self) -> tuple[str, ...]:
         if self.level_gain_priorities:
             return self.level_gain_priorities
-        return CLASS_LEVEL_GAIN_PRIORITIES.get(
-            self.character_class,
-            _PHYSICAL_LEVEL_GAIN_PRIORITIES,
-        )
+        return self.class_profile.level_gain_priorities
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "CharacterSpec":

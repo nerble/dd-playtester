@@ -1,0 +1,14 @@
+name: Dorrik
+password_env: DD4_DORRIK_PASSWORD
+credential_name: character:dorrik
+race: dwarf
+gender: neuter
+class: warrior
+subclass: knight
+colour: true
+max_attribute_rolls: 1
+minimum_primary_stat: 0
+max_runtime: 900
+max_commands: 250
+database: runs/dd4tester.sqlite3
+transcript_dir: transcripts

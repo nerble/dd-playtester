@@ -1,6 +1,11 @@
 import pytest
 
-from dd4tester.progression import CLASS_PRACTICE_SKILLS, policy_for
+from dd4tester.progression import (
+    CLASS_PRACTICE_SKILLS,
+    ProgressionContext,
+    policy_for,
+    select_policy,
+)
 
 
 def test_starter_policy_is_executable_before_level_two() -> None:
@@ -52,6 +57,32 @@ def test_level_seven_non_mage_keeps_the_arena_policy() -> None:
 
     assert policy.policy_id == "mud-school-6-10"
     assert policy.execution == "arena"
+
+
+@pytest.mark.parametrize(
+    ("character_class", "subclass", "practice_skill"),
+    [
+        ("mage", "warlock", "magic missile"),
+        ("thief", "ninja", "backstab"),
+        ("warrior", "knight", "kick"),
+    ],
+)
+def test_representative_matrix_uses_data_driven_progression_context(
+    character_class: str,
+    subclass: str,
+    practice_skill: str,
+) -> None:
+    context = ProgressionContext.from_values(
+        5,
+        character_class,
+        subclass=subclass,
+    )
+
+    policy = select_policy(context)
+
+    assert context.practice_skill == practice_skill
+    assert policy.policy_id == "mud-school-2-6"
+    assert policy.practice_skill == practice_skill
 
 
 def test_level_eight_mage_collects_sack_before_resuming_hunts() -> None:

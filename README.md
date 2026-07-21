@@ -118,11 +118,24 @@ python -m dd4tester show-campaign 1
 python -m dd4tester campaign campaigns/hero.example.yaml --new
 ```
 
-Milestone 5 registers the proven creation/tutorial policy as its first segment.
-Once it reaches level 2, the campaign checkpoints and blocks cleanly until a
-verified leveling policy is added. It never fabricates a route or repeatedly
-grinds unknown content; this safety boundary lets future policies extend the
-same character toward HERO without losing campaign history.
+Campaign policy selection uses a structured progression context containing the
+character's data-driven archetype, capabilities, live resources, inventory,
+effects, and reboot-local kill history. Character names are never behavior
+selectors. See `docs/AUTONOMY_ARCHITECTURE.md` for the architectural boundary.
+
+## Representative matrix
+
+The first character-independent proof uses mage, thief, and warrior campaigns
+with contrasting races, genders, and subclass targets:
+
+```powershell
+python -m dd4tester matrix matrices/level-10.yaml --rounds 1 --segments-per-character 1
+```
+
+The command runs campaigns round-robin, prints every character's level and
+status, and continues the other entries if one needs more evidence. Each
+profile uses its own Windows Credential Manager key; configure the three local
+passwords with `configure-character-password` before a live first run.
 
 ## Progression Evidence
 
@@ -134,11 +147,11 @@ python -m dd4tester show-policies --level 2 --class mage
 ```
 
 The registry distinguishes `verified`, `research`, and `unavailable` policies.
-The starter band is verified through level 2. Existing live DD4 captures register
-the Mud School, Loremaster, and arena as a research-gated level-2-to-10 band for
-every supported base class, including its class-specific practice candidate. The
-campaign will checkpoint rather than attack until that combat and XP loop has
-been demonstrated in sanitized evidence.
+Creation and the complete tutorial are verified, and bounded Mud School arena
+segments are registered through level 10. Training defaults now come from the
+packaged archetype registry. Mage field policies retain their deeper live
+evidence; thief and warrior still require separate live matrix proof before the
+cross-class claim is complete.
 
 Export a compact evidence record from a bounded research run for review:
 
@@ -214,7 +227,7 @@ python -m dd4tester report 1 --format json --output reports/run-1.json
 python -m dd4tester report 1 --output reports/run-1.md
 ```
 
-Reports cover progression, failures, health and combat signals, and concise
-first-person commentary derived from recorded evidence. They do not make AI
-decisions or invent events. The optional `reports/` directory is local output
-and is ignored by Git.
+Reports cover progression, failures, health and combat signals, structured
+decision categories, safety interventions, and concise first-person commentary
+derived from recorded evidence. They do not make AI decisions or invent events.
+The optional `reports/` directory is local output and is ignored by Git.

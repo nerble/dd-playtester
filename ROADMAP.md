@@ -830,3 +830,27 @@ and failure handling before registering each new level-band policy.
   kill per segment. Reboot-local kill counts rotate sanctuary expenditure
   between the raider and vile goblin so repeated kills do not crowd out the
   fresher productive target.
+
+## Character-Independent Autonomy Cycle 1
+
+- The master objective is now arbitrary valid race, gender, base-class, and
+  subclass-target progression from creation to HERO, with evidence-derived
+  feedback, analysis, and human-readable commentary. Character names may
+  identify credentials and history but must never choose behavior.
+- `dd4tester/data/archetypes.json` is the single source for base-class aliases,
+  subclass relationships and availability, primary stats, initial practice
+  skills, level-gain priorities, capabilities, and progression tracks.
+  `CharacterSpec` and `ProgressionContext` consume the same registry.
+- Existing mage field evidence now enters policy selection through the
+  `verified-field-caster` data track instead of a direct mage branch. Shared
+  creation, tutorial, arena, maintenance, safety, and reporting behavior remains
+  available to every registered class.
+- Every new starter run records its full non-secret character/objective context.
+  Decisions add stable categories and a safety-critical flag; deterministic
+  reports summarize those fields alongside progress, balance signals, and
+  first-person commentary.
+- `matrices/level-10.yaml` defines the first representative live proof: female
+  human warlock-target mage Aeloria, male drow ninja-target thief Kestrel, and
+  neuter dwarf knight-target warrior Dorrik. The `matrix` CLI advances their
+  durable campaigns round-robin and succeeds only when all three reach level
+  10. Unit coverage validates orchestration, but live runs remain required.

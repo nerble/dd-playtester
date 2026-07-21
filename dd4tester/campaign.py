@@ -216,6 +216,7 @@ class CampaignRunner:
         return policy_for(
             _level(state),
             self.spec.character.character_class,
+            subclass=self.spec.character.subclass,
             has_large_sack=(
                 self._historical_large_sack
                 or _state_has_item(state.get("inventory"), "large sack")

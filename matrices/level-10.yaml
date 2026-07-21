@@ -1,0 +1,9 @@
+name: Mage Thief Warrior Level 10 Matrix
+target_level: 10
+entries:
+  - id: mage
+    campaign: ../campaigns/matrix-mage-level-10.yaml
+  - id: thief
+    campaign: ../campaigns/matrix-thief-level-10.yaml
+  - id: warrior
+    campaign: ../campaigns/matrix-warrior-level-10.yaml
