@@ -2814,6 +2814,43 @@ def test_fastwalk_fights_viable_opportunistic_attacker_instead_of_fleeing() -> N
     assert policy.fastwalk_abort_reason is None
 
 
+def test_fastwalk_failed_recall_does_not_adopt_a_pursuing_mobile() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_attack_target="mountain goblin",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(policy.fastwalk_route.commands)
+    policy.fastwalk_returning = True
+    policy.fastwalk_abort_reason = "unexpected combat interrupted the field hunt"
+    policy.combat_active = True
+    policy.active_target = "the goblin lieutenant"
+    state = CharacterState(
+        level=7,
+        hp=110,
+        max_hp=110,
+        mana=293,
+        max_mana=293,
+        room_name="Deep in the Forest of Miden'nir",
+        room_vnum="3556",
+        position=6,
+        enemies=[[{"name": "the goblin lieutenant", "level": "7"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "recall was interrupted" in decision.reason
+    assert policy.fastwalk_emergency_recall_pending is True
+    assert policy.fastwalk_attack_target == "mountain goblin"
+    assert policy.fastwalk_attack_started is False
+
+
 def test_fastwalk_fights_trivial_attacker_instead_of_paying_flee_penalty() -> None:
     policy = StarterPolicy(
         _spec(),

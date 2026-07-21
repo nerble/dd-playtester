@@ -21,6 +21,7 @@ from .starter import (
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
     foundry_level_six_hunt_stops,
+    midennir_mountain_goblin_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
 )
 from .storage import RunStorage
@@ -576,34 +577,13 @@ async def _run_policy_segment(
         ).run()
     if policy.execution == "midennir-hunt":
         use_level_eight_loadout = (policy.minimum_level or 0) >= 8
-        circuit_routes = (
-            (),
-            ("east",),
-            ("south",),
-            ("east",),
-            ("south",),
-            ("west",),
-            ("west",),
-            ("south",),
-            ("west",),
-            ("south",),
-            ("south",),
-            ("north", "north", "north"),
-            ("north",),
-            ("east",),
-            ("north",),
-        )
-        hunt_stops = tuple(
-            FieldHuntStop(route, "goblin")
-            for route in circuit_routes
-        )
         return await StarterBotRunner(
             spec,
             profile_path,
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
-            fastwalk_hunt_stops=hunt_stops,
+            fastwalk_hunt_stops=midennir_mountain_goblin_hunt_stops(),
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=not use_level_eight_loadout,
             fastwalk_require_invisibility=use_level_eight_loadout,

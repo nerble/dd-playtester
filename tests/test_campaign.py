@@ -204,6 +204,38 @@ def test_level_six_foundry_campaign_uses_bounded_two_target_circuit(
     assert captured["practice_types_spent"] == frozenset({"physical"})
 
 
+def test_level_seven_midennir_campaign_targets_only_the_reset_backed_goblin(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 7})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(7, "mage"),
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    assert len(stops) == 1
+    assert stops[0].route == ("east",)
+    assert stops[0].target == "mountain goblin"
+    assert stops[0].exact_target is True
+
+
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:
     config_path, database = _write_campaign_files(tmp_path, target_level=2)
 

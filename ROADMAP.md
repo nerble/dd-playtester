@@ -1346,3 +1346,21 @@ and failure handling before registering each new level-band policy.
   same data-driven level-band selector, while preserving class-specific skill,
   equipment, practice, commentary, transcript, and safety behavior. No policy
   branch contains a matrix character name.
+
+## Character-Independent Autonomy Cycle 17
+
+- Run 627 exposed an unsafe mismatch in the level-7 Miden'nir policy. The
+  broad `goblin` keyword and a long roaming circuit reached a goblin lieutenant;
+  two flee penalties and one failed recall cost 163 XP against a 332-XP kill.
+- The policy now visits only room 3506, one east of the official Ambush
+  fastwalk endpoint, and requires the exact observed `mountain goblin` name
+  backed by the area reset. A failed or interrupted recall keeps evacuation
+  state sticky and cannot promote a pursuer into the requested hunt target.
+- Run 628 live-validated the correction. With no mountain goblin loaded, Aeloria
+  returned without combat or XP loss, recovered in the temple healing room,
+  and saved and quit from room 3019 at full health and mana.
+- DD4's `HELP KICK`, `do_kick`, and warrior prerequisite table agree that kick
+  is a practiced in-combat action, not an opener. It consumes the configured
+  between-round wait and deals `level/2 + random(1, level)` on success. Passive
+  second attack remains the warrior's first damage investment; kick follows
+  after its unarmed-knowledge prerequisite and is repeated only during combat.

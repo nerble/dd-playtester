@@ -1461,6 +1461,12 @@ class StarterPolicy:
                     "flee",
                     "withdraw from unexpected combat before returning home safely",
                 )
+            if self.fastwalk_route is not None and self.fastwalk_returning:
+                self.fastwalk_emergency_recall_pending = True
+                return BotDecision(
+                    "flee",
+                    "continue withdrawing after fastwalk recall was interrupted",
+                )
             if self.fastwalk_route is not None and self.fastwalk_attack_started:
                 enemies = _enemy_records(state.enemies)
                 unsafe_level = False
@@ -5574,6 +5580,17 @@ def ambush_exterior_hunt_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(("south",), "goblin"),
         FieldHuntStop(("south",), "goblin looter"),
         FieldHuntStop(("open south", "south"), "goblin archer"),
+    )
+
+
+def midennir_mountain_goblin_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt the reset-backed mountain goblin one east of the fastwalk endpoint."""
+    return (
+        FieldHuntStop(
+            ("east",),
+            "mountain goblin",
+            exact_target=True,
+        ),
     )
 
 
