@@ -4934,6 +4934,76 @@ def test_level_eight_fastwalk_detours_to_loremaster_with_new_practices() -> None
     assert "Loremaster" in decision.reason
 
 
+def test_level_seven_warrior_fastwalk_trains_unspent_combat_practice() -> None:
+    policy = StarterPolicy(
+        _spec(
+            name="Dorrik",
+            race="dwarf",
+            gender="neuter",
+            **{"class": "warrior", "subclass": "knight"},
+        ),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.observe_text("Physical pracs: 1.  Intellectual pracs: 0.\n")
+    state = CharacterState(
+        level=7,
+        practice=1,
+        hp=157,
+        max_hp=157,
+        mana=133,
+        max_mana=133,
+        move=210,
+        max_move=210,
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "up"
+    assert "Loremaster" in decision.reason
+
+
+def test_fastwalk_skips_practice_type_already_spent_at_current_level() -> None:
+    policy = StarterPolicy(
+        _spec(
+            name="Kestrel",
+            race="drow",
+            gender="male",
+            **{"class": "thief", "subclass": "ninja"},
+        ),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_train_before_departure=True,
+        practice_types_spent=frozenset({"physical", "intellectual"}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.observe_text("Physical pracs: 2.  Intellectual pracs: 1.\n")
+    state = CharacterState(
+        level=7,
+        practice=1,
+        hp=123,
+        max_hp=123,
+        mana=145,
+        max_mana=145,
+        move=210,
+        max_move=210,
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "south"
+
+
 def test_fastwalk_audits_unknown_practice_balance_before_departure() -> None:
     policy = StarterPolicy(
         _spec(),

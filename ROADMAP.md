@@ -1445,3 +1445,27 @@ and failure handling before registering each new level-band policy.
   without that item. Run 651 live-validated a single rejected `wear buckler`
   with no retry, then gained 194 XP from Olog, Uburz, and Ushog, recovered and
   rewielded a disarmed weapon, and finished safely at 123/123 HP.
+
+## Character-Independent Autonomy Cycle 18
+
+- Run 652 found the intended level-8 mountain goblin and a wandering level-7
+  goblin lieutenant on Aeloria's exact Miden'nir route. She escaped both and
+  recovered at the healer, but the two flee penalties cost 116 XP. The stalled
+  checkpoint correctly selected the lower-risk Foundry fallback next.
+- Run 653 gained Aeloria 188 XP from Olog, Oshu, and Uburz, collected seven
+  items, and returned her to the Mage Laboratory at full health and mana.
+- DD4 help and `fight.c` now anchor the matrix skill choices: kick is an active
+  8-beat between-round attack; second attack is an automatic `45 + skill/2`
+  chance; enhanced damage adds `skill/200` of weapon damage; dodge and parry
+  use half proficiency, with parry requiring a weapon; and backstab is a
+  piercing-weapon opener with triple damage below level 15.
+- Field-run training had an accidental mage-only, level-8-to-9 gate. It now
+  considers every class's automated combat priorities and both practice types,
+  while respecting the campaign ledger's one physical and one intellectual
+  lesson per level. This lets thieves progress toward backstab and warriors
+  toward enhanced damage without inventing skills absent from the trainer.
+- Run 654 confirmed that Dorrik's level-7 lesson ledger remained intact: run
+  632 had already raised second attack to 44% and armed knowledge to 40%, so
+  the remaining physical point was preserved for level-up HP instead of being
+  double-spent. He then gained 307 XP from four Foundry targets, collected 11
+  items, and finished at 157/157 HP.

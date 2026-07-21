@@ -35,7 +35,12 @@ from .runner import RunResult
 from .shops import SafeShop, safe_shop_for_item, sale_keyword
 from .state import CharacterState
 from .storage import RunStorage
-from .training import TrainingChoice, parse_practice_listing, plan_training
+from .training import (
+    TrainingChoice,
+    parse_practice_listing,
+    plan_training,
+    training_priorities,
+)
 from .transcript import TranscriptRecorder
 
 
@@ -2260,24 +2265,29 @@ class StarterPolicy:
 
     def _needs_fastwalk_training(self, state: CharacterState) -> bool:
         physical, intellectual = self.latest_practice_balances
-        relevant_practices = (
-            intellectual
-            if self.spec.character_class in {"mage", "cleric", "psionic"}
-            else physical
+        balances = {
+            "physical": physical,
+            "intellectual": intellectual,
+        }
+        useful_types = {
+            priority.practice_type
+            for priority in training_priorities().get(
+                self.spec.character_class.casefold(), ()
+            )
+            if priority.automated
+        }
+        has_unspent_practice = any(
+            practice_type in useful_types
+            and practice_type not in self.practice_types_spent
+            and (balance is None or balance > 0)
+            for practice_type, balance in balances.items()
         )
         return bool(
             self.fastwalk_route is not None
             and self.fastwalk_train_before_departure
             and not self.fastwalk_returning
             and not self.practiced
-            and self.spec.character_class == "mage"
-            and (state.level or 0) in {8, 9}
-            and (
-                self.fastwalk_training_started
-                or relevant_practices is None
-                or (relevant_practices is not None and relevant_practices > 0)
-                or (state.practice or 0) > 1
-            )
+            and has_unspent_practice
         )
 
     def _fastwalk_training_decision(
@@ -2292,12 +2302,7 @@ class StarterPolicy:
         if room_vnum == "3726" or "loremaster" in room_name:
             return self._loremaster_decision(state)
         physical, intellectual = self.latest_practice_balances
-        relevant_practices = (
-            intellectual
-            if self.spec.character_class in {"mage", "cleric", "psionic"}
-            else physical
-        )
-        if relevant_practices is None:
+        if physical is None or intellectual is None:
             if self.fastwalk_practice_audit_requested:
                 self.failure = (
                     "score did not report the practice balance before field departure"
@@ -2308,7 +2313,23 @@ class StarterPolicy:
                 "score",
                 "audit class-relevant practices before field departure",
             )
-        if relevant_practices == 0:
+        available = {
+            "physical": physical,
+            "intellectual": intellectual,
+        }
+        useful_types = {
+            priority.practice_type
+            for priority in training_priorities().get(
+                self.spec.character_class.casefold(), ()
+            )
+            if priority.automated
+        }
+        if not any(
+            balance > 0
+            and practice_type in useful_types
+            and practice_type not in self.practice_types_spent
+            for practice_type, balance in available.items()
+        ):
             self.practiced = True
             return None
         routes = {
