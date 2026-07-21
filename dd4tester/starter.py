@@ -392,7 +392,9 @@ class StarterPolicy:
         self.fastwalk_withdrawing = False
         self.fastwalk_return_steps_remaining = 0
         self.fastwalk_attack_started = False
-        self.fastwalk_body_part_keyword: str | None = None
+        self.body_part_keyword: str | None = None
+        self.body_part_cleanup_step = 0
+        self.body_part_eat_rejected = False
         self.disarmed_weapon_keyword: str | None = None
         self.disarm_recovery_step = 0
         self.fastwalk_pursuit_direction: str | None = None
@@ -706,7 +708,17 @@ class StarterPolicy:
             self.consider_viable = None
         severed_body_part = _SEVERED_BODY_PART.search(cleaned)
         if severed_body_part is not None:
-            self.fastwalk_body_part_keyword = severed_body_part.group("part").casefold()
+            self.body_part_keyword = severed_body_part.group("part").casefold()
+            self.body_part_cleanup_step = 0
+            self.body_part_eat_rejected = False
+        if self.body_part_cleanup_step == 2 and any(
+            phrase in recent
+            for phrase in (
+                "you are too full to eat more",
+                "that's not edible",
+            )
+        ):
+            self.body_part_eat_rejected = True
         fleeing_mobile = _MOB_LEAVES.search(cleaned)
         if (
             fleeing_mobile is not None
@@ -812,6 +824,8 @@ class StarterPolicy:
             if event.type in {"room_entered", "room_updated"}:
                 room = _room_key(state)
                 if room and room != self.current_room:
+                    if self.body_part_cleanup_step == 0:
+                        self._clear_body_part_cleanup()
                     self.previous_room = self.current_room
                     self.current_room = room
                     self.pending_travel_origin = None
@@ -1446,6 +1460,10 @@ class StarterPolicy:
                 return spell
             self.prompt_ready = False
             return None
+
+        body_part = self._body_part_cleanup_decision(state)
+        if body_part is not None:
+            return body_part
 
         if self.query_world_time and not self.world_time_queried:
             self.world_time_queried = True
@@ -2754,27 +2772,7 @@ class StarterPolicy:
                     "sacrifice corpse",
                     "sacrifice the emptied field corpse for its level-band coin",
                 )
-            if (
-                self.fastwalk_loot_step == 4
-                and self.needs_food
-                and self.fastwalk_body_part_keyword is not None
-            ):
-                self.fastwalk_loot_step = 5
-                return BotDecision(
-                    f"get {self.fastwalk_body_part_keyword}",
-                    "collect fresh edible body-part food while hungry",
-                )
-            if (
-                self.fastwalk_loot_step == 5
-                and self.fastwalk_body_part_keyword is not None
-            ):
-                self.fastwalk_loot_step = 6
-                return BotDecision(
-                    f"eat {self.fastwalk_body_part_keyword}",
-                    "eat the fresh body part instead of consuming purchased food",
-                )
             self.fastwalk_loot_step = 0
-            self.fastwalk_body_part_keyword = None
             self.fastwalk_pouch_attempted.clear()
             self.pending_loot_rooms.discard(room_key)
             objective_killed = (
@@ -3900,6 +3898,55 @@ class StarterPolicy:
         }
         direction = return_routes.get(state.room_vnum or "", "south")
         return BotDecision(direction, "return from Moria to the West Gate")
+
+    def _body_part_cleanup_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Consume fresh body-part food, sacrificing it only as a fallback."""
+        keyword = self.body_part_keyword
+        if (
+            keyword is None
+            or state.dead
+            or self.combat_active
+            or _is_sleeping(state)
+            or _health_ratio(state) < 0.5
+        ):
+            return None
+        if self.body_part_cleanup_step == 0:
+            self.body_part_cleanup_step = 1
+            return BotDecision(
+                f"get {keyword}",
+                "collect a fresh severed body part before it decays",
+            )
+        if self.body_part_cleanup_step == 1:
+            self.body_part_cleanup_step = 2
+            return BotDecision(
+                f"eat {keyword}",
+                "try free body-part food before spending carried provisions",
+            )
+        if self.body_part_cleanup_step == 2:
+            if self.body_part_eat_rejected:
+                self.body_part_cleanup_step = 3
+                return BotDecision(
+                    f"drop {keyword}",
+                    "return an uneaten body part to the room for sacrifice",
+                )
+            self._clear_body_part_cleanup()
+            return None
+        if self.body_part_cleanup_step == 3:
+            self.body_part_cleanup_step = 4
+            return BotDecision(
+                f"sacrifice {keyword}",
+                "sacrifice the body part after eating was rejected",
+            )
+        self._clear_body_part_cleanup()
+        return None
+
+    def _clear_body_part_cleanup(self) -> None:
+        self.body_part_keyword = None
+        self.body_part_cleanup_step = 0
+        self.body_part_eat_rejected = False
 
     def _recovery_decision(
         self,

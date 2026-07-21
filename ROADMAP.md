@@ -937,3 +937,20 @@ and failure handling before registering each new level-band policy.
 - The matrix remains incomplete at mage level 4 with 7,684 XP, thief level 2
   with 3,577 XP, and warrior level 3 with 5,753 XP. Every campaign has a durable
   next-segment checkpoint and no live process remains after the round.
+
+## Character-Independent Autonomy Cycle 6
+
+- Run 536 advanced Aeloria by another 961 XP through ten bounded kills. The
+  mage saved and quit from Safety at level 4 with 8,645 XP, 1,405 short of
+  level 5. The matrix launcher was stopped during its inter-character delay,
+  with no active connection or unfinished run, to add resource-preserving
+  body-part cleanup.
+- DD4 source defines organic severed heads, hearts, arms, and legs as takeable
+  food. `do_eat` rejects food above the fullness threshold, while inorganic
+  mobiles convert their body parts to trash. `do_sacrifice` accepts either type
+  from the room, but does not search carried inventory.
+- Shared post-combat cleanup now tries `get` and `eat` for every observed
+  severed part without waiting for hunger. A fullness or inedibility rejection
+  triggers `drop` followed by `sacrifice`, preserving pies when possible and
+  still clearing unusable objects. Active combat, sleep, death, and health below
+  50 percent prevent opportunistic cleanup from outranking safety.

@@ -2688,7 +2688,7 @@ def test_fastwalk_continues_to_requested_target_after_safe_incidental_loot() -> 
     assert policy.fastwalk_attack_started is False
 
 
-def test_hungry_fastwalk_eats_fresh_body_part_after_sacrificing_corpse() -> None:
+def test_fastwalk_eats_fresh_body_part_without_waiting_for_hunger() -> None:
     policy = StarterPolicy(
         _spec(),
         "swordfish",
@@ -2698,7 +2698,7 @@ def test_hungry_fastwalk_eats_fresh_body_part_after_sacrificing_corpse() -> None
     policy.prompt_ready = True
     policy.current_room = "4505"
     policy.pending_loot_rooms.add("4505")
-    policy.needs_food = True
+    policy.needs_food = False
     policy.observe_text("The war dog's leg is sliced from his body.")
     state = CharacterState(
         room_name="In a forest clearing",
@@ -2715,12 +2715,58 @@ def test_hungry_fastwalk_eats_fresh_body_part_after_sacrificing_corpse() -> None
         policy.prompt_ready = True
 
     assert commands == [
-        "get all corpse",
-        "sacrifice corpse",
         "get leg",
         "eat leg",
+        "get all corpse",
+        "sacrifice corpse",
         "inventory",
     ]
+
+
+@pytest.mark.parametrize(
+    "rejection",
+    [
+        "You are too full to eat more.",
+        "That's not edible.",
+    ],
+)
+def test_uneaten_body_part_is_dropped_and_sacrificed(rejection: str) -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.current_room = "4505"
+    policy.pending_loot_rooms.add("4505")
+    policy.observe_text("The war dog's head is separated from his body.")
+    state = CharacterState(
+        hp=60,
+        max_hp=60,
+        room_name="In a forest clearing",
+        room_vnum="4505",
+        position=7,
+    )
+
+    commands: list[str] = []
+    for _ in range(2):
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    policy.observe_text(rejection)
+    policy.prompt_ready = True
+    for _ in range(2):
+        decision = policy.next_decision(state)
+        assert decision is not None
+        commands.append(decision.command)
+        policy.after_command(decision)
+        policy.prompt_ready = True
+
+    assert commands == ["get head", "eat head", "drop head", "sacrifice head"]
 
 
 def test_fastwalk_waits_for_enemy_snapshot_before_fleeing() -> None:
