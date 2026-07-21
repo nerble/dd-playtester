@@ -4745,6 +4745,7 @@ class StarterPolicy:
                     "target_percent": choice.target_percent,
                     "outcome": outcome,
                     "reason": reason,
+                    "source_refs": list(choice.source_refs),
                 },
             )
         )

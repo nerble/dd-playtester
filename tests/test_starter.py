@@ -1132,9 +1132,9 @@ You have 1 physical and 1 intellectual practices remaining.
 
     assert "magic missile" in policy.known_skills
     assert policy.practice_plan_index == 1
-    assert [event.type for event in policy.drain_training_events()] == [
-        "training_completed"
-    ]
+    events = policy.drain_training_events()
+    assert [event.type for event in events] == ["training_completed"]
+    assert any("magic.c" in ref for ref in events[0].data["source_refs"])
 
 
 def test_loremaster_rejection_preserves_point_and_records_reason() -> None:

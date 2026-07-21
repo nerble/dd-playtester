@@ -26,6 +26,7 @@ class TrainingPriority:
     utility: str
     reason: str
     automated: bool
+    source_refs: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class TrainingChoice:
     current_percent: int
     target_percent: int
     reason: str
+    source_refs: tuple[str, ...]
 
     @property
     def explanation(self) -> str:
@@ -76,6 +78,7 @@ def training_priorities() -> dict[str, tuple[TrainingPriority, ...]]:
                 utility=str(item["utility"]),
                 reason=str(item["reason"]),
                 automated=bool(item.get("automated", True)),
+                source_refs=tuple(str(ref) for ref in item.get("source_refs", ())),
             )
             for item in values
         )
@@ -149,6 +152,7 @@ def plan_training(
                 current_percent=current,
                 target_percent=selected.target_percent,
                 reason=selected.reason,
+                source_refs=selected.source_refs,
             )
         )
         spent_types.add(selected.practice_type)

@@ -1542,7 +1542,21 @@ and failure handling before registering each new level-band policy.
   for unfamiliar, unprotected equipment.
 - Run 669 live-validated the repaired handoff by selecting `sell-loot` and
   valuing `piping`. A level-2 drunk interrupted the return; after GMCP reported
-  two byte-identical records for the one observed attacker, the crowd gate
-  fled and recalled safely. Kestrel finished unharmed at the Mage Laboratory,
-  but the flee and partial-damage awards produced a net 49-XP loss. Identical
-  enemy-record normalization is required without weakening real crowd checks.
+  two byte-identical drunk records, the transcript showed a vagabond joining
+  the fight. The records represented two real attackers even though the server
+  duplicated the current target's details. The crowd gate therefore fled and
+  recalled correctly. Kestrel finished unharmed at the Mage Laboratory, but
+  the flee and partial-damage awards produced a net 49-XP loss. Enemy records
+  must retain multiplicity; identical entries are not safe to deduplicate.
+- The matrix training audit now pairs each automated mage, thief, and warrior
+  choice with current help, prerequisite, trainer, and implementation source
+  references. It records the Loremaster's 60% group ceiling and
+  attribute-penalized practice formula, and corrects thief armed-combat
+  training from an unnecessary 40% target to the exact 20% second-attack
+  prerequisite. Completed training events retain the evidence references that
+  justified spending the practice point.
+- Run 670 retried Kestrel's liquidation without weakening crowd safety. It
+  sold the circlet, confirmed that the compatible keepers were uninterested in
+  the piping, jerkin, and cap, donated those redundant pieces, and returned to
+  the Mage's Laboratory at full health. Carry weight fell from 113/115 to
+  85/115 with no combat or XP loss.

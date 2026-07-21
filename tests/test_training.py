@@ -88,6 +88,14 @@ def test_thief_uses_intellectual_point_to_unlock_second_attack() -> None:
     assert "unlocks second attack" in choices[0].reason
 
 
+def test_thief_stops_armed_gateway_at_exact_second_attack_threshold() -> None:
+    armed = training_priorities()["thief"][0]
+
+    assert armed.skill == "armed combat knowledge"
+    assert armed.target_percent == 20
+    assert "pre_req-thief.c" in " ".join(armed.source_refs)
+
+
 def test_planner_never_invents_a_skill_missing_from_trainer_listing() -> None:
     choices = plan_training(
         "warrior",
@@ -197,3 +205,14 @@ def test_kick_priority_records_source_verified_between_round_timing() -> None:
 
     assert "8-pulse wait" in kick.reason
     assert "without replacing 12-pulse automatic weapon rounds" in kick.reason
+
+
+def test_matrix_training_choices_carry_help_and_source_evidence() -> None:
+    priorities = training_priorities()
+
+    for class_name in ("mage", "thief", "warrior"):
+        automated = [item for item in priorities[class_name] if item.automated]
+        assert automated
+        for item in automated:
+            assert item.source_refs, f"{class_name}:{item.skill} lacks evidence"
+            assert any("server/" in ref for ref in item.source_refs)

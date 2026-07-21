@@ -4,19 +4,25 @@
     "revision": "048238786b5dfbfba637fa015fa5c121946fb50b",
     "trainer": "Mud School Loremaster (mobile 3700)",
     "teacher_base_level": 1,
-    "group_teaching_percent": 60
+    "group_teaching_percent": 60,
+    "practice_formula": "(current percent - attribute penalty + effective teacher percent) / 2",
+    "practice_sources": [
+      "server/area/school.are: mobile 3700",
+      "server/src/act_info.c: do_practice and has_groups",
+      "server/src/handler.c: get_phys_penalty and get_int_penalty"
+    ]
   },
   "classes": {
     "mage": [
-      {"skill": "evocation magiks", "source_skill": "group evocation", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "unlocks chill touch, whose 10-20 plus level damage exceeds low-level magic missile"},
-      {"skill": "chill touch", "type": "intellectual", "target": 30, "utility": "damage", "reason": "learns the stronger 10-20 plus level direct-damage spell"},
-      {"skill": "magic missile", "type": "intellectual", "target": 30, "utility": "damage", "reason": "modestly improves cast success; proficiency does not change its damage"},
+      {"skill": "evocation magiks", "source_skill": "group evocation", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "reaches the exact 30% prerequisite for chill touch", "source_refs": ["server/src/pre_reqs/pre_req-mage.c: chill touch requires group evocation 30", "server/area/helpfile.are: evocation magiks"]},
+      {"skill": "chill touch", "type": "intellectual", "target": 30, "utility": "damage", "reason": "adds 10-20 plus level damage for 10 mana and can apply -2 strength for six ticks", "source_refs": ["server/area/helpfile.are: HELP CHILL TOUCH", "server/src/const.c: skill_table chill touch", "server/src/magic.c: spell_chill_touch"]},
+      {"skill": "magic missile", "type": "intellectual", "target": 30, "utility": "damage", "reason": "improves cast success for a 5-mana volley of min((level+1)/2, 10) missiles dealing 2-5 each; proficiency does not change its damage", "source_refs": ["server/area/helpfile.are: HELP MAGIC MISSILE", "server/src/const.c: skill_table magic missile", "server/src/magic.c: spell_magic_missile"]},
       {"skill": "protective magiks", "source_skill": "group protection", "type": "intellectual", "target": 30, "utility": "defense-gateway", "reason": "unlocks armor and later defensive spells", "automated": false},
       {"skill": "armor", "type": "intellectual", "target": 30, "utility": "mitigation", "reason": "applies a fixed 20-point armor-class improvement", "automated": false},
-      {"skill": "illusion magiks", "source_skill": "group illusion", "type": "intellectual", "target": 30, "utility": "safety-gateway", "reason": "unlocks invisibility for safer travel"},
-      {"skill": "invis", "type": "intellectual", "target": 40, "utility": "safety", "reason": "reduces unwanted field combat"},
-      {"skill": "alteration magiks", "source_skill": "group alteration", "type": "intellectual", "target": 30, "utility": "mobility-gateway", "reason": "opens the route to flight and combat buffs"},
-      {"skill": "fly", "type": "intellectual", "target": 40, "utility": "mobility", "reason": "cuts movement cost during levelling routes"}
+      {"skill": "illusion magiks", "source_skill": "group illusion", "type": "intellectual", "target": 30, "utility": "safety-gateway", "reason": "reaches the exact 30% prerequisite for invis", "source_refs": ["server/src/pre_reqs/pre_req-mage.c: invis requires group illusion 30", "server/area/helpfile.are: illusion magiks"]},
+      {"skill": "invis", "type": "intellectual", "target": 40, "utility": "safety", "reason": "provides level+2 ticks of safer travel but ends when the character attacks", "source_refs": ["server/area/helpfile.are: HELP INVIS", "server/src/const.c: skill_table invis", "server/src/magic.c: spell_invis"]},
+      {"skill": "alteration magiks", "source_skill": "group alteration", "type": "intellectual", "target": 30, "utility": "mobility-gateway", "reason": "reaches the exact common 30% prerequisite for fly", "source_refs": ["server/src/pre_reqs/pre_req-common.c: fly requires group alteration 30", "server/area/helpfile.are: alteration magiks"]},
+      {"skill": "fly", "type": "intellectual", "target": 40, "utility": "mobility", "reason": "provides level+3 ticks of flight for 10 mana and cuts ordinary movement cost to one third, minimum one", "source_refs": ["server/area/helpfile.are: HELP FLY", "server/src/const.c: skill_table fly", "server/src/magic.c: spell_fly", "server/src/act_move.c: move_char flight movement cost"]}
     ],
     "cleric": [
       {"skill": "healing magiks", "source_skill": "group healing", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "is the first prerequisite for harmful magiks and stronger cause wounds spells"},
@@ -31,28 +37,28 @@
       {"skill": "second attack", "type": "physical", "target": 35, "utility": "damage", "reason": "raises the automatic extra-attack chance from 45 plus half proficiency"}
     ],
     "thief": [
-      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 40, "utility": "damage-gateway", "reason": "quickly unlocks second attack"},
-      {"skill": "second attack", "type": "physical", "target": 35, "utility": "damage", "reason": "raises the automatic extra-attack chance from 45 plus half proficiency"},
-      {"skill": "stealth techniques", "source_skill": "group stealth", "type": "intellectual", "target": 60, "utility": "damage-gateway", "reason": "satisfies the exact 60% group prerequisite for backstab"},
-      {"skill": "hide", "type": "physical", "target": 20, "utility": "damage-gateway", "reason": "satisfies the first prerequisite for sneak on thief races that do not begin with it"},
-      {"skill": "sneak", "type": "physical", "target": 40, "utility": "damage-gateway", "reason": "satisfies the exact 40% prerequisite for backstab"},
-      {"skill": "backstab", "type": "physical", "target": 50, "utility": "damage", "reason": "opens combat at three times weapon damage below level 15 when wielding a piercing weapon"},
-      {"skill": "defense knowledge", "source_skill": "group defense", "type": "intellectual", "target": 40, "utility": "mitigation-gateway", "reason": "unlocks dodge and parry"},
-      {"skill": "dodge", "type": "physical", "target": 45, "utility": "mitigation", "reason": "avoids incoming attacks"},
-      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "reduces recovery downtime"}
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 20, "utility": "damage-gateway", "reason": "reaches the exact 20% prerequisite and unlocks second attack without overspending practices", "source_refs": ["server/src/pre_reqs/pre_req-thief.c: second attack requires group armed 20", "server/area/helpfile.are: HELP ARMED COMBAT KNOWLEDGE"]},
+      {"skill": "second attack", "type": "physical", "target": 35, "utility": "damage", "reason": "adds an automatic attack each round with a 45 plus half proficiency percent chance", "source_refs": ["server/area/helpfile.are: HELP SECOND ATTACK", "server/src/fight.c: multi_hit second attack"]},
+      {"skill": "stealth techniques", "source_skill": "group stealth", "type": "intellectual", "target": 60, "utility": "damage-gateway", "reason": "reaches the exact 60% group prerequisite for backstab", "source_refs": ["server/src/pre_reqs/pre_req-thief.c: backstab requires group stealth 60", "server/area/helpfile.are: HELP STEALTH TECHNIQUES"]},
+      {"skill": "hide", "type": "physical", "target": 20, "utility": "damage-gateway", "reason": "reaches the exact 20% prerequisite for sneak on races that do not begin with it", "source_refs": ["server/src/pre_reqs/pre_req-thief.c: sneak requires hide 20", "server/area/helpfile.are: HELP HIDE"]},
+      {"skill": "sneak", "type": "physical", "target": 40, "utility": "damage-gateway", "reason": "reaches the exact 40% prerequisite for backstab", "source_refs": ["server/src/pre_reqs/pre_req-thief.c: backstab requires sneak 40", "server/area/helpfile.are: HELP SNEAK"]},
+      {"skill": "backstab", "type": "physical", "target": 50, "utility": "damage", "reason": "opens against an unwounded noncombatant at three times weapon damage below level 15 and requires a piercing weapon", "source_refs": ["server/area/helpfile.are: HELP BACKSTAB", "server/src/const.c: skill_table backstab", "server/src/fight.c: do_backstab and one_hit backstab multiplier"]},
+      {"skill": "defense knowledge", "source_skill": "group defense", "type": "intellectual", "target": 20, "utility": "mitigation-gateway", "reason": "reaches the exact 20% prerequisite for dodge", "source_refs": ["server/src/pre_reqs/pre_req-thief.c: dodge requires group defense 20", "server/area/helpfile.are: HELP DEFENSE KNOWLEDGE"]},
+      {"skill": "dodge", "type": "physical", "target": 45, "utility": "mitigation", "reason": "automatically avoids attacks at half proficiency, adjusted by level difference and status effects", "source_refs": ["server/area/helpfile.are: HELP DODGE", "server/src/fight.c: check_dodge"]},
+      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "automatically increases each hit-point recovery tick by its proficiency percentage", "source_refs": ["server/area/helpfile.are: HELP FAST HEALING", "server/src/update.c: hit_gain"]}
     ],
     "warrior": [
-      {"skill": "second attack", "type": "physical", "target": 35, "utility": "damage", "reason": "raises the automatic extra-attack chance from 45 plus half proficiency"},
-      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 40, "utility": "damage-gateway", "reason": "unlocks enhanced damage and third attack"},
-      {"skill": "enhanced damage", "type": "physical", "target": 30, "utility": "damage", "reason": "adds half its proficiency as a percentage bonus to weapon damage"},
-      {"skill": "second attack", "type": "physical", "target": 50, "utility": "damage", "reason": "further raises automatic extra-attack frequency after enhanced damage is learned"},
-      {"skill": "unarmed combat knowledge", "source_skill": "group unarmed", "type": "intellectual", "target": 20, "utility": "damage-gateway", "reason": "unlocks kick as a source-verified between-round combat action"},
-      {"skill": "kick", "type": "physical", "target": 30, "utility": "damage", "reason": "adds level/2 plus 1-to-level damage during its 8-pulse wait without replacing 12-pulse automatic weapon rounds"},
-      {"skill": "third attack", "type": "physical", "target": 50, "utility": "damage", "reason": "adds another weapon attack"},
-      {"skill": "shield block", "type": "physical", "target": 40, "utility": "mitigation", "reason": "blocks incoming weapon attacks"},
-      {"skill": "defense knowledge", "source_skill": "group defense", "type": "intellectual", "target": 40, "utility": "mitigation-gateway", "reason": "unlocks dodge and parry"},
-      {"skill": "dodge", "type": "physical", "target": 45, "utility": "mitigation", "reason": "avoids incoming attacks"},
-      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "reduces recovery downtime"}
+      {"skill": "second attack", "type": "physical", "target": 35, "utility": "damage", "reason": "adds an automatic attack each round with a 45 plus half proficiency percent chance", "source_refs": ["server/area/helpfile.are: HELP SECOND ATTACK", "server/src/fight.c: multi_hit second attack"]},
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 40, "utility": "damage-gateway", "reason": "reaches the exact 40% prerequisites for enhanced damage and third attack", "source_refs": ["server/src/pre_reqs/pre_req-warrior.c: enhanced damage and third attack require group armed 40", "server/area/helpfile.are: HELP ARMED COMBAT KNOWLEDGE"]},
+      {"skill": "enhanced damage", "type": "physical", "target": 30, "utility": "damage", "reason": "automatically adds half its proficiency as a percentage bonus to weapon damage", "source_refs": ["server/area/helpfile.are: HELP ENHANCED DAMAGE", "server/src/fight.c: one_hit enhanced damage"]},
+      {"skill": "second attack", "type": "physical", "target": 50, "utility": "damage", "reason": "further raises automatic extra-attack frequency before the 60% third-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-warrior.c: third attack requires second attack 60", "server/src/fight.c: multi_hit second attack"]},
+      {"skill": "unarmed combat knowledge", "source_skill": "group unarmed", "type": "intellectual", "target": 20, "utility": "damage-gateway", "reason": "reaches the exact 20% prerequisite for kick", "source_refs": ["server/src/pre_reqs/pre_req-warrior.c: kick requires group unarmed 20", "server/area/helpfile.are: HELP UNARMED COMBAT KNOWLEDGE"]},
+      {"skill": "kick", "type": "physical", "target": 30, "utility": "damage", "reason": "adds level/2 plus 1-to-level damage during its 8-pulse wait without replacing 12-pulse automatic weapon rounds", "source_refs": ["server/area/helpfile.are: HELP KICK", "server/src/const.c: skill_table kick", "server/src/fight.c: do_kick", "server/src/update.c: violence_update"]},
+      {"skill": "third attack", "type": "physical", "target": 50, "utility": "damage", "reason": "adds an automatic attack each round with a 35 plus half proficiency percent chance after second attack succeeds", "source_refs": ["server/area/helpfile.are: HELP THIRD ATTACK", "server/src/fight.c: multi_hit third attack"]},
+      {"skill": "shield block", "type": "physical", "target": 40, "utility": "mitigation", "reason": "automatically blocks weapon attacks at half proficiency while a shield is equipped", "source_refs": ["server/area/helpfile.are: HELP SHIELD BLOCK", "server/src/fight.c: check_shield_block"]},
+      {"skill": "defense knowledge", "source_skill": "group defense", "type": "intellectual", "target": 40, "utility": "mitigation-gateway", "reason": "reaches the exact 40% prerequisite for dodge", "source_refs": ["server/src/pre_reqs/pre_req-warrior.c: dodge requires group defense 40", "server/area/helpfile.are: HELP DEFENSE KNOWLEDGE"]},
+      {"skill": "dodge", "type": "physical", "target": 45, "utility": "mitigation", "reason": "automatically avoids attacks at half proficiency, adjusted by level difference and status effects", "source_refs": ["server/area/helpfile.are: HELP DODGE", "server/src/fight.c: check_dodge"]},
+      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "automatically increases each hit-point recovery tick by its proficiency percentage", "source_refs": ["server/area/helpfile.are: HELP FAST HEALING", "server/src/update.c: hit_gain"]}
     ],
     "psionic": [
       {"skill": "mind thrust", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "unlocks psychic crush while improving starter-spell success"},
