@@ -4207,6 +4207,14 @@ class StarterPolicy:
             self.health_check_due = None
             self.waiting_for_heal = False
             return BotDecision("stand", "resume training after sanctuary recovery")
+        if (
+            self.liquidate_loot
+            and self.sale_phase != "plan"
+            and ratio >= 0.25
+        ):
+            # Shop routes are bounded and safe. Diverting to the healer would
+            # make the remaining route index resume from the wrong room.
+            return None
         room_name = (state.room_name or "").casefold()
         is_safe_room = (
             state.room_vnum in {"3054", "3721", "3737"}

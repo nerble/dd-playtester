@@ -1402,3 +1402,18 @@ and failure handling before registering each new level-band policy.
   HP Kestrel declined the full-health Ushog stop, recalled, and recovered at
   the healer. Room 3726 is now also on the standard healer route, preventing
   future movement sleeps at the Loremaster.
+- Run 640 live-validated the stalled level-7 mage fallback. Aeloria killed
+  Olog, Uburz, and Ushog for 303 XP, collected six loot items, recovered from
+  70/110 to full health at the temple healer, saved, and quit safely. Run 641
+  then exposed recovery interrupting the final step of an otherwise safe shop
+  return: the cached direction resumed from the healer instead of Mage's Bar.
+  Healthy liquidation routes now complete without a mid-route healer detour;
+  critical-health recovery still takes precedence.
+- Run 642 recovered Aeloria from Donation Temple, rebuilt the liquidation plan
+  from current inventory, completed both safe shop routes, and checkpointed at
+  the Mage Laboratory with full health. The two sales completed before run
+  641's route failure remained recorded instead of being replayed.
+- Run 643 live-validated the promoted Foundry policy for Dorrik with Olog,
+  Uburz, and Ushog kills worth 365 XP and eight loot items. His current skill
+  listing showed passive second attack at 44% while kick remained learnable at
+  0%; the bot never issued the unpractised action and finished at full health.
