@@ -21,7 +21,7 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     assert report["progress"]["experience"]["change"] == 75
     assert report["progress"]["health"]["lowest_fraction"] == 0.1
     assert report["progress"]["combat_starts"] == 1
-    assert report["progress"]["combat_decisions"] == 1
+    assert report["progress"]["combat_decisions"] == 2
     assert report["progress"]["confirmed_kills"] == [
         {"mob_name": "tutorial wolf", "xp_gained": 75}
     ]
@@ -49,7 +49,7 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
         "subclass": "warlock",
     }
     assert report["decision_analysis"]["category_counts"] == {
-        "combat": 1,
+        "combat": 2,
         "safety": 1,
     }
     assert report["decision_analysis"]["safety_critical_count"] == 1
@@ -183,6 +183,19 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
             "redacted": False,
         },
         timestamp="2026-07-18T00:00:01+00:00",
+    )
+    storage.record_event(
+        run_id,
+        kind="decision",
+        payload={
+            "stage": "course",
+            "reason": "use the strongest known mage combat spell, chill touch",
+            "command": "cast 'chill touch' wolf",
+            "redacted": False,
+            "category": "combat",
+            "safety_critical": False,
+        },
+        timestamp="2026-07-18T00:00:01.500000+00:00",
     )
     storage.record_event(
         run_id,

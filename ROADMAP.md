@@ -1518,3 +1518,15 @@ and failure handling before registering each new level-band policy.
   pulses. The policy therefore treats kick as additive between-round damage,
   never as an opener or a replacement for automatic weapon attacks. Future
   skill automation must record equivalent help and implementation evidence.
+- Run 664 live-validated delayed capability capture and the cross-class
+  Foundry policy together. Aeloria used confirmed `chill touch` throughout,
+  killed Olog, Oshu, Golgog, and Uburz for 339 XP, collected seven items, then
+  recalled and recovered to full health before checkpointing safely.
+- The run-664 report exposed a summary mismatch: decision analysis classified
+  19 combat actions correctly, while the progress counter looked only for the
+  word `fight` and reported zero. Combat totals now honor the stored category
+  and fall back to the shared decision classifier, covering casts, kicks,
+  backstabs, and other combat commands. The regenerated report records all 19.
+- Run 665 sold Aeloria's source-classified loot through the compatible safe
+  shops, reduced carried weight from 140 to 101, and returned to the Mage
+  Laboratory without combat or route failures.

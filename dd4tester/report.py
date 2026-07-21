@@ -460,8 +460,16 @@ def _noteworthy_reason(reason: str) -> bool:
 
 
 def _is_combat_decision(event: dict[str, Any]) -> bool:
-    reason = event["payload"].get("reason")
-    return isinstance(reason, str) and "fight" in reason.casefold()
+    payload = event["payload"]
+    category = payload.get("category")
+    if isinstance(category, str) and category.casefold() == "combat":
+        return True
+    metadata = classify_decision(
+        str(payload.get("command", "")),
+        str(payload.get("reason", "")),
+        str(payload.get("stage", "")),
+    )
+    return metadata.category == "combat"
 
 
 def _is_item_acquisition(event: dict[str, Any]) -> bool:
