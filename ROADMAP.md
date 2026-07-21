@@ -1337,3 +1337,12 @@ and failure handling before registering each new level-band policy.
   safe arena kills for 1,529 XP while preserving his unspent physical practice.
   Run 624 found no eligible respawn and made a clean zero-kill healer checkpoint
   with 918 XP remaining to level 7.
+- After a full outside-area reset interval, run 625 gained 849 XP from ten kills
+  and left Dorrik 69 XP short. Run 626 completed the boundary after seven kills,
+  raising maximum HP from 138 to 157, mana from 127 to 133, and movement from
+  200 to 210. He retained two practices and checkpointed beside the healer at
+  157/157 HP with no error.
+- Aeloria, Kestrel, and Dorrik have therefore all reached level 7 through the
+  same data-driven level-band selector, while preserving class-specific skill,
+  equipment, practice, commentary, transcript, and safety behavior. No policy
+  branch contains a matrix character name.
