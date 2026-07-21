@@ -1153,3 +1153,28 @@ and failure handling before registering each new level-band policy.
   that both practice types had already been spent at level 5. The bot issued
   only read-only practice listings, preserved the point, gained 763 XP from ten
   kills, and checkpointed at 121/121 HP with no failure.
+
+## Character-Independent Autonomy Cycle 12
+
+- Runs 565 and 566 added another 1,690 XP across twenty safe warrior kills.
+  Both bounded processes reconstructed the prior level-5 physical lesson and
+  preserved Dorrik's remaining practice instead of spending it on kick.
+- Run 567 crossed the warrior boundary after three kills. Dorrik reached level
+  6, maximum HP rose from 121 to 138, maximum mana from 122 to 127, maximum
+  movement from 190 to 200, and strength from 22 to 23. The preserved practice
+  therefore contributed to the intended level-gain resource pool.
+- Run 568 live-validated the shared level-6 policy for the thief. Kestrel raised
+  stealth techniques from 41 percent toward backstab's exact 60-percent gate,
+  preserved three practices, gained 735 XP from ten kills, and used the temple
+  healer during arena reset waits and before the final checkpoint.
+- Run 569 supplied the warrior comparison. Dorrik raised armed combat knowledge
+  through the 40-percent enhanced-damage and third-attack gateway, raised
+  second attack toward 50 percent, and preserved one practice. He gained 720 XP
+  from ten kills at full final health, then followed `enter portal`, `down`, and
+  `north` from arena Safety to healer room 3054 before saving and quitting.
+- Arena completion now outranks ordinary safe-room recovery, so reaching a kill
+  or level boundary cannot make the bot sleep inside the arena. Post-tutorial
+  recovery also treats Safety as merely safe rather than equivalent to room
+  3054: with adequate movement it takes the portal and temple route to the real
+  healing room. Level-2 tutorial sequencing and low-movement emergency sleep
+  remain unchanged.

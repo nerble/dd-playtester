@@ -1612,6 +1612,10 @@ class StarterPolicy:
             self.stage = "complete"
             return BotDecision("quit", "emergency resupply complete")
 
+        arena_completion = self._arena_completion_route_decision(state)
+        if arena_completion is not None:
+            return arena_completion
+
         recovery = self._recovery_decision(state)
         if recovery is not None:
             return recovery
@@ -1712,7 +1716,10 @@ class StarterPolicy:
 
         if (
             (
-                (self.objective_level <= 2 or state.room_vnum == "3737")
+                (
+                    self.objective_level <= 2
+                    or state.room_vnum in {"3054", "3737"}
+                )
                 and (
                     state.level is not None
                     and state.level >= self.objective_level
@@ -4134,6 +4141,20 @@ class StarterPolicy:
                 if at_field_recovery_boundary:
                     self.fastwalk_recovery_ready = True
                 return None
+            healer_approach = {
+                "3737": "enter portal",
+                "3725": "down",
+                "3001": "north",
+            }.get(state.room_vnum or "")
+            if (
+                self.objective_level > 2
+                and healer_approach is not None
+                and _move_ratio(state) >= 0.1
+            ):
+                return BotDecision(
+                    healer_approach,
+                    "use the temple healer instead of recovering in a merely safe room",
+                )
             if (
                 (self.fastwalk_route is not None or self.return_home)
                 and state.room_vnum == "3001"
@@ -4198,6 +4219,20 @@ class StarterPolicy:
             return BotDecision(
                 "north",
                 "reach the temple healer before critical field-run recovery",
+            )
+        healer_approach = {
+            "3737": "enter portal",
+            "3725": "down",
+            "3001": "north",
+        }.get(state.room_vnum or "")
+        if (
+            self.objective_level > 2
+            and healer_approach is not None
+            and _move_ratio(state) >= 0.1
+        ):
+            return BotDecision(
+                healer_approach,
+                "reach the temple healer before critical recovery",
             )
         if is_safe_room:
             if self.return_home and not is_healer_room:
@@ -4629,6 +4664,48 @@ class StarterPolicy:
             state,
             "reset arena route through the safe entrance",
         )
+
+    def _arena_completion_route_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        objective_reached = (
+            self.objective_level > 2
+            and state.level is not None
+            and state.level >= self.objective_level
+        )
+        if not (
+            self.arena_segment_leaving
+            or self._arena_kill_limit_reached
+            or objective_reached
+        ):
+            return None
+        if not (
+            _is_arena_vnum(state.room_vnum)
+            or state.room_vnum in {"3001", "3054", "3725"}
+        ):
+            return None
+
+        self.arena_segment_leaving = True
+        reason = self._arena_segment_completion_reason
+        if state.room_vnum == "3737":
+            return BotDecision(
+                "enter portal",
+                f"leave arena Safety for healer recovery before: {reason}",
+            )
+        if state.room_vnum == "3725":
+            return BotDecision(
+                "down",
+                f"descend toward the temple healer before: {reason}",
+            )
+        if state.room_vnum == "3001":
+            return BotDecision(
+                "north",
+                f"reach the temple healer before: {reason}",
+            )
+        if state.room_vnum == "3054":
+            return None
+        return self._arena_exit_decision(state, reason)
 
     def _arena_exit_decision(
         self,

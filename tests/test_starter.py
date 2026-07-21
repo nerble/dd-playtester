@@ -1277,7 +1277,7 @@ def test_arena_kill_limit_exits_before_the_target_level() -> None:
     assert "2 kills" in leave.reason
 
 
-def test_arena_kill_limit_saves_from_safety_not_the_arena() -> None:
+def test_arena_kill_limit_routes_from_safety_to_the_healer() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=7, arena_kill_limit=2)
     policy.in_world = True
     policy.prompt_ready = True
@@ -1300,10 +1300,11 @@ def test_arena_kill_limit_saves_from_safety_not_the_arena() -> None:
     decision = policy.next_decision(safety)
 
     assert decision is not None
-    assert decision.command == "save"
+    assert decision.command == "enter portal"
+    assert "healer recovery" in decision.reason
 
 
-def test_target_level_exits_to_safety_before_saving() -> None:
+def test_target_level_exits_to_healer_before_saving() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=7)
     policy.in_world = True
     policy.prompt_ready = True
@@ -1324,7 +1325,7 @@ def test_target_level_exits_to_safety_before_saving() -> None:
     assert leave.command == "up"
 
     policy.prompt_ready = True
-    save = policy.next_decision(
+    leave_safety = policy.next_decision(
         CharacterState(
             level=7,
             hp=105,
@@ -1334,8 +1335,76 @@ def test_target_level_exits_to_safety_before_saving() -> None:
         )
     )
 
+    assert leave_safety is not None
+    assert leave_safety.command == "enter portal"
+
+    policy.prompt_ready = True
+    descend = policy.next_decision(
+        CharacterState(
+            level=7,
+            hp=105,
+            max_hp=105,
+            room_name="The Entrance to the Mud School",
+            room_vnum="3725",
+        )
+    )
+    assert descend is not None
+    assert descend.command == "down"
+
+    policy.prompt_ready = True
+    reach_healer = policy.next_decision(
+        CharacterState(
+            level=7,
+            hp=105,
+            max_hp=105,
+            room_name="The Temple Of Midgaard",
+            room_vnum="3001",
+        )
+    )
+    assert reach_healer is not None
+    assert reach_healer.command == "north"
+
+    policy.prompt_ready = True
+    save = policy.next_decision(
+        CharacterState(
+            level=7,
+            hp=105,
+            max_hp=105,
+            move=200,
+            max_move=200,
+            mana=100,
+            max_mana=100,
+            room_name="By the Temple Altar",
+            room_vnum="3054",
+            room_flags=["safe", "healing"],
+        )
+    )
     assert save is not None
     assert save.command == "save"
+
+
+def test_target_level_exit_precedes_safe_arena_recovery() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=7)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=7,
+        hp=90,
+        max_hp=120,
+        mana=80,
+        max_mana=100,
+        move=180,
+        max_move=200,
+        room_name="The Mud School Arena",
+        room_vnum="3729",
+        room_flags=["safe"],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "up"
+    assert policy.waiting_for_heal is False
 
 
 def test_arena_prioritizes_wolves_when_multiple_targets_are_observed() -> None:
@@ -1442,7 +1511,7 @@ def test_low_movement_sleeps_without_repeating_movement_commands() -> None:
     assert policy.next_decision(state) is None
 
 
-def test_arena_safety_room_sleeps_until_health_recovers() -> None:
+def test_arena_safety_room_routes_to_the_temple_healer() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=4)
     policy.in_world = True
     policy.prompt_ready = True
@@ -1454,18 +1523,11 @@ def test_arena_safety_room_sleeps_until_health_recovers() -> None:
         room_vnum="3737",
     )
 
-    sleep = policy.next_decision(state)
+    route = policy.next_decision(state)
 
-    assert sleep is not None
-    assert sleep.command == "sleep"
-    policy.after_command(sleep)
-    policy.observe_text("You sleep.")
-    state.position = 4
-    state.hp = 68
-    policy.prompt_ready = True
-    stand = policy.next_decision(state)
-    assert stand is not None
-    assert stand.command == "stand"
+    assert route is not None
+    assert route.command == "enter portal"
+    assert "temple healer" in route.reason
 
 
 def test_missing_arena_target_is_removed_before_the_next_decision() -> None:
@@ -7512,6 +7574,43 @@ def test_gmcp_health_recovery_reopens_safe_room_decisions() -> None:
     )
 
     assert policy.prompt_ready is True
+
+
+@pytest.mark.parametrize(
+    ("room_name", "room_vnum", "command"),
+    [
+        ("Safety", "3737", "enter portal"),
+        ("The Entrance to the Mud School", "3725", "down"),
+        ("The Temple Of Midgaard", "3001", "north"),
+    ],
+)
+def test_arena_recovery_routes_to_the_temple_healer(
+    room_name: str,
+    room_vnum: str,
+    command: str,
+) -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=10)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=6,
+        hp=87,
+        max_hp=138,
+        mana=127,
+        max_mana=127,
+        move=200,
+        max_move=200,
+        position=7,
+        room_name=room_name,
+        room_vnum=room_vnum,
+        room_flags=["safe"],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == command
+    assert "temple healer" in decision.reason
 
 
 def test_normal_arena_policy_wakes_before_leaving_safety() -> None:
