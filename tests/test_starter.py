@@ -955,12 +955,13 @@ def test_victory_room_uses_completion_portal() -> None:
     assert decision.command == "enter portal"
 
 
-def test_loremaster_prefers_class_skill_from_real_practice_list() -> None:
+def test_loremaster_prefers_combat_damage_from_real_practice_list() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
     policy.loremaster_step = 2
     policy.prompt_ready = True
     policy.text = """
+Skills known:
 Skills which may be learned:
                continual light:   0%                   detect good:   0%
                  magic missile:   0%               summon familiar:   0%
@@ -977,9 +978,10 @@ You have 1 physical and 3 intellectual practices remaining.
 
     assert decision is not None
     assert decision.command == "practice magic missile"
+    assert "proficiency does not change its damage" in decision.reason
 
 
-def test_level_eight_mage_practices_illusion_then_invisibility() -> None:
+def test_level_eight_mage_only_trains_skills_in_current_listing() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
     policy.loremaster_step = 2
@@ -998,7 +1000,7 @@ You have 2 physical and 3 intellectual practices remaining.
     )
 
     commands: list[str] = []
-    for _ in range(4):
+    for _ in range(2):
         decision = policy.next_decision(state)
         assert decision is not None
         commands.append(decision.command)
@@ -1007,14 +1009,12 @@ You have 2 physical and 3 intellectual practices remaining.
 
     assert commands == [
         "practice illusion magiks",
-        "practice invis",
-        "practice invis",
         "west",
     ]
     assert policy.chill_touch_unavailable is False
 
 
-def test_level_nine_mage_practices_evocation_then_chill_touch() -> None:
+def test_level_nine_mage_trains_damage_gateway_before_utility() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
     policy.loremaster_step = 2
@@ -1033,7 +1033,7 @@ You have 2 physical and 3 intellectual practices remaining.
     )
 
     commands: list[str] = []
-    for _ in range(4):
+    for _ in range(2):
         decision = policy.next_decision(state)
         assert decision is not None
         commands.append(decision.command)
@@ -1042,8 +1042,6 @@ You have 2 physical and 3 intellectual practices remaining.
 
     assert commands == [
         "practice evocation magiks",
-        "practice chill touch",
-        "practice chill touch",
         "west",
     ]
 
@@ -2516,6 +2514,7 @@ def test_fastwalk_fights_trivial_attacker_instead_of_paying_flee_penalty() -> No
     )
     policy.in_world = True
     policy.prompt_ready = True
+    policy.known_skills.add("chill touch")
     policy.fastwalk_recall_started = True
     policy.fastwalk_outbound_index = 4
     state = CharacterState(
@@ -7434,6 +7433,7 @@ def test_level_nine_mage_prefers_chill_touch() -> None:
     policy.prompt_ready = True
     policy.combat_active = True
     policy.active_target = "a mountain goblin"
+    policy.known_skills.add("chill touch")
     state = CharacterState(
         level=9,
         hp=105,
@@ -7449,6 +7449,45 @@ def test_level_nine_mage_prefers_chill_touch() -> None:
 
     assert decision is not None
     assert decision.command == "cast 'chill touch' goblin"
+
+
+@pytest.mark.parametrize(
+    ("character_class", "subclass", "skills", "expected"),
+    [
+        ("cleric", "templar", {"cause light", "cause serious"}, "cause serious"),
+        ("psionic", "witch", {"mind thrust", "psychic crush"}, "psychic crush"),
+    ],
+)
+def test_caster_classes_use_strongest_known_automated_spell(
+    character_class: str,
+    subclass: str,
+    skills: set[str],
+    expected: str,
+) -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": character_class, "subclass": subclass}),
+        "swordfish",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "a wild boar"
+    policy.known_skills.update(skills)
+    state = CharacterState(
+        level=5,
+        hp=90,
+        max_hp=100,
+        mana=120,
+        max_mana=150,
+        position=6,
+        room_name="The Mud School Arena",
+        room_vnum="3730",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == f"cast '{expected}' boar"
 
 
 def test_level_eight_mage_keeps_magic_missile_until_offense_training() -> None:

@@ -961,3 +961,51 @@ and failure handling before registering each new level-band policy.
 - Run 538 supplied the no-op comparison: no severed part appeared, so Dorrik
   performed only ordinary corpse cleanup. The warrior gained 1,176 XP, reached
   level 4 with 103 HP, and saved and quit from Safety after ten kills.
+
+## Character-Independent Autonomy Cycle 7
+
+- Run 539 advanced Aeloria to 9,837 XP, only 213 short of level 5, through
+  another bounded arena segment, then saved and quit safely before the matrix
+  handoff. The launcher was stopped during its inter-character delay so
+  training policy could be audited without interrupting a live character.
+- DD4 source revision `0482387` confirms that the Mud School Loremaster teaches
+  from level 1 and has 60-percent knowledge in broad combat, defense, stealth,
+  magic, psionic, morphing, ranger, and smithing groups. The server's live
+  `practice` listing filters skills through the character's satisfied
+  prerequisites before the bot sees them.
+- Training is now ranked for every supported base class, with separate physical
+  and intellectual budgets. Immediate damage, damage gateways, mitigation, and
+  sustain outrank non-combat utility; each command records the skill's current
+  and target proficiency and its combat rationale.
+- The planner uses both already-known and newly learnable skills, never invents
+  a skill absent from the current trainer listing, and validates every ranked
+  skill against the bundled source prerequisite snapshot. This corrects
+  live-observed waste such as choosing `detect invis` over a weak
+  `magic missile`, or an unarmed gateway before a warrior's low
+  `second attack`.
+- Source inspection refined the policy further: spell proficiency changes cast
+  success but not damage, second attack fires at `45 + proficiency / 2`,
+  enhanced damage adds `proficiency / 2` percent weapon damage, and dodge,
+  parry, and shield block use half proficiency as their base chance. At low
+  levels, chill touch's `10-20 + level` damage substantially exceeds magic
+  missile's `2-5` damage per missile, so evocation now outranks reinforcing the
+  starter spell.
+- Practices are not ordinary accumulating currency. On level-up, unspent
+  physical practices add maximum hit points, unspent intellectual practices add
+  maximum mana, and both pools are then replaced by the new level's allotment.
+  The planner therefore buys at most one high-value skill of each type per
+  level and explicitly reports why it preserves the rest.
+- Skills that need unsupported commands or equipment preparation are recorded
+  but marked ineligible for autonomous spending. The shared combat controller
+  now uses the strongest known damage spell for mages, clerics, and psionics;
+  thief openers, shifter forms, ranged attacks, and smithing preparations remain
+  gated until their execution policies are implemented and tested.
+- Run 540 live-validated conservation with an exhausted intellectual pool. The
+  planner spent nothing, preserved two physical practices, and Aeloria's next
+  level raised maximum HP from 81 to 90 before issuing a fresh practice pool.
+  She reached level 5, gained 852 XP across ten kills, and checkpointed safely.
+- Run 541 presented 2 physical and 3 intellectual practices. The planner bought
+  exactly one `evocation magiks` lesson at 24 percent, the Loremaster accepted
+  it, and the report explained both the `chill touch` damage unlock and the four
+  points preserved for future HP or mana. Aeloria gained another 690 XP over ten
+  kills and saved at full health in Safety with no detected failure.

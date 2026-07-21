@@ -34,6 +34,7 @@ from .runner import RunResult
 from .shops import SafeShop, safe_shop_for_item, sale_keyword
 from .state import CharacterState
 from .storage import RunStorage
+from .training import TrainingChoice, parse_practice_listing, plan_training
 from .transcript import TranscriptRecorder
 
 
@@ -307,8 +308,10 @@ class StarterPolicy:
         self.pending_move: str | None = None
         self.loremaster_step = 0
         self.practiced = False
-        self.practice_plan: tuple[str, ...] = ()
+        self.practice_plan: tuple[TrainingChoice, ...] = ()
         self.practice_plan_index = 0
+        self.known_skills: set[str] = set()
+        self.practice_exit_reason = "return to the Mud School entrance"
         self.arena_queried = False
         self.arena_segment_leaving = False
         self.arena_no_viable_targets = False
@@ -488,11 +491,12 @@ class StarterPolicy:
                 )
             ):
                 self.consider_viable = False
-        if (
+        if self.magic_missile_cast and (
             "you launch a volley of" in recent
-            and "magic missile" in recent
+            or "you launch a magic missile" in recent
             or "chilling touch" in recent
             or "your spell" in recent
+            or re.search(r"<\d+/\d+ hits .*? move \[", recent) is not None
         ):
             self.magic_missile_cast = False
         if "don't know any spells of that name" in recent:
@@ -1982,24 +1986,30 @@ class StarterPolicy:
         return None
 
     def _combat_spell_decision(self, state: CharacterState) -> BotDecision | None:
-        if (
-            self.spec.character_class != "mage"
-            or not self.active_target
-            or self.magic_missile_cast
-        ):
+        if not self.active_target or self.magic_missile_cast:
             return None
         if _mana_ratio(state) < 0.15:
             return None
-        target = _target_keyword(self.active_target)
-        spell = (
-            "chill touch"
-            if (state.level or 0) >= 9 and not self.chill_touch_unavailable
-            else "magic missile"
+        class_spells = {
+            "mage": ("chill touch", "magic missile"),
+            "cleric": ("cause critical", "cause serious", "cause light"),
+            "psionic": ("psychic crush", "mind thrust"),
+        }
+        spells = class_spells.get(self.spec.character_class)
+        if spells is None:
+            return None
+        spell = next(
+            (candidate for candidate in spells if candidate in self.known_skills),
+            spells[-1],
         )
+        if spell == "chill touch" and self.chill_touch_unavailable:
+            spell = "magic missile"
+        target = _target_keyword(self.active_target)
         self.magic_missile_cast = True
         return BotDecision(
             f"cast '{spell}' {target}",
-            f"cast {spell} at arena opponent {self.active_target}",
+            f"use the strongest known {self.spec.character_class} combat spell, "
+            f"{spell}, against {self.active_target}",
         )
 
     def _needs_fastwalk_training(self, state: CharacterState) -> bool:
@@ -4336,58 +4346,38 @@ class StarterPolicy:
             return BotDecision("practice", "list skills available to practice")
         if self.loremaster_step == 2:
             self.loremaster_step = 3
-            candidates = _practice_candidates(self.text)
-            preferred = self.spec.identity.practice_skill
-            balances = _practice_balances(self.text)
-            relevant_practices = (
-                balances[1]
-                if self.spec.character_class in {"mage", "cleric", "psionic"}
-                else balances[0]
+            listing = parse_practice_listing(self.text)
+            self.known_skills.update(listing.known)
+            self.practice_plan = plan_training(
+                self.spec.character_class,
+                self.text,
             )
-            if (
-                self.spec.character_class == "mage"
-                and (state.level or 0) >= 8
-                and (relevant_practices is None or relevant_practices > 0)
-            ):
-                available = relevant_practices if relevant_practices is not None else 1
-                plan: list[str] = []
-                if (state.level or 0) == 8:
-                    illusion = _skill_percent(self.text, "illusion magiks")
-                    if illusion is None or illusion < 30:
-                        plan.append("illusion magiks")
-                    plan.extend(
-                        "invis"
-                        for _ in range(max(0, min(2, available - len(plan))))
-                    )
-                else:
-                    evocation = _skill_percent(self.text, "evocation magiks")
-                    if evocation is None or evocation < 30:
-                        plan.append("evocation magiks")
-                    plan.extend(
-                        "chill touch"
-                        for _ in range(max(0, min(2, available - len(plan))))
-                    )
-                self.practice_plan = tuple(plan)
-            elif relevant_practices == 0:
-                self.practice_plan = ()
-            else:
-                skill = (
-                    preferred
-                    if preferred in candidates
-                    else candidates[0] if candidates else preferred
+            total_practices = sum(
+                value or 0
+                for value in (
+                    listing.physical_practices,
+                    listing.intellectual_practices,
                 )
-                self.practice_plan = (skill,)
+            )
+            preserved = max(0, total_practices - len(self.practice_plan))
+            if preserved:
+                self.practice_exit_reason = (
+                    f"preserve {preserved} practice point"
+                    f"{'s' if preserved != 1 else ''} for next-level hit-point "
+                    "or mana gains after buying only immediately useful skills"
+                )
         if self.practice_plan_index < len(self.practice_plan):
-            skill = self.practice_plan[self.practice_plan_index]
+            choice = self.practice_plan[self.practice_plan_index]
             self.practice_plan_index += 1
-            if skill == "chill touch":
+            self.known_skills.add(choice.skill)
+            if choice.skill == "chill touch":
                 self.chill_touch_unavailable = False
             return BotDecision(
-                f"practice {skill}",
-                f"follow the level-aware {self.spec.character_class} practice plan",
+                f"practice {choice.skill}",
+                choice.explanation,
             )
         self.practiced = True
-        return BotDecision("west", "return to the Mud School entrance")
+        return BotDecision("west", self.practice_exit_reason)
 
     def _arena_decision(self, state: CharacterState) -> BotDecision:
         if self._arena_kill_limit_reached:
@@ -5658,23 +5648,6 @@ def _direction_to_destination(
     return None
 
 
-def _practice_candidates(text: str) -> list[str]:
-    marker = "skills which may be learned:"
-    folded = text.casefold()
-    marker_index = folded.find(marker)
-    if marker_index == -1:
-        return []
-    section = text[marker_index + len(marker) :]
-    section = section.split("You have", maxsplit=1)[0]
-    candidates: list[str] = []
-    pattern = re.compile(r"([A-Za-z][A-Za-z '-]{1,30}?):\s*\d+%")
-    for match in pattern.finditer(section):
-        candidate = " ".join(match.group(1).casefold().split())
-        if candidate not in candidates:
-            candidates.append(candidate)
-    return candidates
-
-
 def _practice_balances(text: str) -> tuple[int | None, int | None]:
     cleaned = _ANSI_ESCAPE.sub("", text)
     matches = [
@@ -5686,16 +5659,6 @@ def _practice_balances(text: str) -> tuple[int | None, int | None]:
         return None, None
     match = max(matches, key=lambda candidate: candidate.start())
     return int(match.group("physical")), int(match.group("intellectual"))
-
-
-def _skill_percent(text: str, skill: str) -> int | None:
-    cleaned = _ANSI_ESCAPE.sub("", text)
-    match = re.search(
-        rf"\b{re.escape(skill)}\s*:\s*(?P<percent>\d+)%",
-        cleaned,
-        re.IGNORECASE,
-    )
-    return int(match.group("percent")) if match else None
 
 
 def _state_stat(state: CharacterState, name: str) -> int | None:
