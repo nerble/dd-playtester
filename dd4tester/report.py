@@ -120,6 +120,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Observed level gains: {progress['level_gains_observed']}  ",
         f"Items acquired: {progress['items_acquired']}  ",
         f"Quests received: {progress['quests_received']}  ",
+        f"Training: {_format_training(progress['training'])}  ",
         f"Loot sales: {_format_sales(progress['loot_sales'])}",
         "",
         "## Decision Analysis",
@@ -234,6 +235,7 @@ def _progress_summary(
         "level_gains_observed": game_event_counts["level_gained"],
         "items_acquired": sum(_is_item_acquisition(event) for event in game_events),
         "quests_received": game_event_counts["quest_received"],
+        "training": _training_summary(game_events),
         "loot_sales": _sales_summary(sales),
     }
 
@@ -409,6 +411,11 @@ def _comment_for_event(event: dict[str, Any]) -> tuple[int, str] | None:
         return 1, f"I received the quest {data['name']}."
     if event_type == "level_gained" and data.get("level") is not None:
         return 0, f"I reached level {data['level']}."
+    if event_type == "training_completed" and data.get("skill"):
+        return 1, f"I trained {data['skill']} after the trainer confirmed the lesson."
+    if event_type == "training_rejected" and data.get("skill"):
+        reason = data.get("reason", "the trainer rejected the lesson")
+        return 1, f"I preserved a practice when {data['skill']} was rejected: {reason}."
     if event_type == "character_died":
         return 0, "I died and need to review this part of the run."
     return None
@@ -482,6 +489,21 @@ def _completed_kills(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return []
 
 
+def _training_summary(game_events: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for event in game_events:
+        event_type = event["payload"].get("type")
+        if event_type not in {"training_completed", "training_rejected"}:
+            continue
+        data = event["payload"].get("data")
+        if not isinstance(data, dict):
+            continue
+        target = accepted if event_type == "training_completed" else rejected
+        target.append(dict(data))
+    return {"accepted": accepted, "rejected": rejected}
+
+
 def _format_confirmed_kills(kills: list[dict[str, Any]]) -> str:
     entries: list[str] = []
     for kill in kills:
@@ -511,6 +533,17 @@ def _format_sales(sales: dict[str, Any]) -> str:
     if not sales["count"]:
         return "none"
     return f"{sales['count']} item(s) for {sales['coins']} coins"
+
+
+def _format_training(training: dict[str, list[dict[str, Any]]]) -> str:
+    accepted = ", ".join(str(item.get("skill")) for item in training["accepted"])
+    rejected = ", ".join(str(item.get("skill")) for item in training["rejected"])
+    parts = []
+    if accepted:
+        parts.append(f"accepted {accepted}")
+    if rejected:
+        parts.append(f"rejected {rejected}")
+    return "; ".join(parts) or "none"
 
 
 def _change(initial: Any, final: Any) -> dict[str, int | float | None]:

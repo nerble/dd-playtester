@@ -77,6 +77,17 @@ _SCORE_PRACTICE_BALANCE = re.compile(
     r"Intellectual pracs:\s*(?P<intellectual>\d+)\.",
     re.IGNORECASE,
 )
+_PRACTICE_REJECTIONS = (
+    ("you're in no position to learn anything right now", "invalid posture"),
+    ("not in your current form", "invalid form"),
+    ("who is going to teach you", "no trainer present"),
+    ("i have never heard of that ability", "unknown ability"),
+    ("not yet of the right calibre for my knowledge", "trainer level requirement"),
+    ("haven't the potential to obtain further knowledge", "no intellectual practices"),
+    ("haven't the ability to learn more skills", "no physical practices"),
+    ("i have insufficient knowledge to help you", "trainer proficiency cap"),
+    ("you are not ready for that knowledge", "unmet prerequisites"),
+)
 _IDENTIFIED_VALUE = re.compile(
     r"\bis worth\s+(?P<coins>\d+)\s+copper coins?\b",
     re.IGNORECASE,
@@ -312,6 +323,9 @@ class StarterPolicy:
         self.practice_plan: tuple[TrainingChoice, ...] = ()
         self.practice_plan_index = 0
         self.known_skills: set[str] = set()
+        self.pending_practice_choice: TrainingChoice | None = None
+        self.rejected_practice_skills: set[str] = set()
+        self.pending_training_events: list[GameEvent] = []
         self.practice_exit_reason = "return to the Mud School entrance"
         self.arena_queried = False
         self.arena_segment_leaving = False
@@ -446,6 +460,20 @@ class StarterPolicy:
         self.last_response = cleaned
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
+        if self.pending_practice_choice is not None:
+            if "i hope my knowledge helps you" in recent:
+                self._resolve_pending_practice("accepted", "trainer confirmed the lesson")
+            else:
+                rejection = next(
+                    (
+                        reason
+                        for phrase, reason in _PRACTICE_REJECTIONS
+                        if phrase in recent
+                    ),
+                    None,
+                )
+                if rejection is not None:
+                    self._resolve_pending_practice("rejected", rejection)
         practice_balances = _practice_balances(cleaned)
         if practice_balances != (None, None):
             self.latest_practice_balances = practice_balances
@@ -833,6 +861,11 @@ class StarterPolicy:
     ) -> None:
         for event in events:
             if event.type == "prompt_seen":
+                if self.pending_practice_choice is not None:
+                    self._resolve_pending_practice(
+                        "rejected",
+                        "trainer returned without confirming the lesson",
+                    )
                 if (
                     (
                         self.pending_travel_origin is None
@@ -4428,12 +4461,11 @@ class StarterPolicy:
                     f"{'s' if preserved != 1 else ''} for next-level hit-point "
                     "or mana gains after buying only immediately useful skills"
                 )
+        if self.pending_practice_choice is not None:
+            return None
         if self.practice_plan_index < len(self.practice_plan):
             choice = self.practice_plan[self.practice_plan_index]
-            self.practice_plan_index += 1
-            self.known_skills.add(choice.skill)
-            if choice.skill == "chill touch":
-                self.chill_touch_unavailable = False
+            self.pending_practice_choice = choice
             return BotDecision(
                 f"practice {choice.skill}",
                 choice.explanation,
@@ -4441,19 +4473,55 @@ class StarterPolicy:
         self.practiced = True
         return BotDecision("west", self.practice_exit_reason)
 
+    def _resolve_pending_practice(self, outcome: str, reason: str) -> None:
+        choice = self.pending_practice_choice
+        if choice is None:
+            return
+        self.pending_practice_choice = None
+        self.practice_plan_index += 1
+        if outcome == "accepted":
+            self.known_skills.add(choice.skill)
+            if choice.skill == "chill touch":
+                self.chill_touch_unavailable = False
+            event_type = "training_completed"
+        else:
+            self.rejected_practice_skills.add(choice.skill)
+            self.practice_exit_reason = (
+                f"preserve the practice point after {choice.skill} was rejected: {reason}"
+            )
+            event_type = "training_rejected"
+        self.pending_training_events.append(
+            GameEvent(
+                event_type,
+                "text",
+                {
+                    "skill": choice.skill,
+                    "practice_type": choice.practice_type,
+                    "target_percent": choice.target_percent,
+                    "outcome": outcome,
+                    "reason": reason,
+                },
+            )
+        )
+
+    def drain_training_events(self) -> list[GameEvent]:
+        events = self.pending_training_events
+        self.pending_training_events = []
+        return events
+
     def _arena_decision(self, state: CharacterState) -> BotDecision:
         if self._arena_kill_limit_reached:
             self.arena_segment_leaving = True
-            return BotDecision(
-                "up",
+            return self._arena_exit_decision(
+                state,
                 self._arena_segment_completion_reason,
             )
         if (
             state.level is not None
             and state.level >= self.objective_level
         ):
-            return BotDecision(
-                "up",
+            return self._arena_exit_decision(
+                state,
                 self._arena_segment_completion_reason,
             )
 
@@ -4528,13 +4596,28 @@ class StarterPolicy:
             self.arena_no_viable_targets = True
             self.arena_segment_leaving = True
             self._reset_arena_patrol()
-            return BotDecision(
-                "up",
+            return self._arena_exit_decision(
+                state,
                 self._arena_segment_completion_reason,
             )
         self._reset_arena_patrol()
         self.arena_respawn_due = time.monotonic() + _ARENA_RESPAWN_WAIT_SECONDS
-        return BotDecision("up", "reset arena route through the safe entrance")
+        return self._arena_exit_decision(
+            state,
+            "reset arena route through the safe entrance",
+        )
+
+    def _arena_exit_decision(
+        self,
+        state: CharacterState,
+        reason: str,
+    ) -> BotDecision:
+        if state.room_vnum == "3732":
+            return BotDecision(
+                "north",
+                f"reach an arena wall before: {reason}",
+            )
+        return BotDecision("up", reason)
 
     def _reset_arena_patrol(self) -> None:
         """Forget stale creature sightings before a fresh arena circuit."""
@@ -5074,6 +5157,8 @@ class StarterBotRunner:
                 },
             )
         self._record_game_events(events, record, policy)
+        for event in policy.drain_training_events():
+            record("game_event", event.as_payload())
 
     def _flush_observations(
         self,

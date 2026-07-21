@@ -1000,11 +1000,15 @@ You have 2 physical and 3 intellectual practices remaining.
     )
 
     commands: list[str] = []
-    for _ in range(2):
+    for index in range(2):
         decision = policy.next_decision(state)
         assert decision is not None
         commands.append(decision.command)
         policy.after_command(decision)
+        if index == 0:
+            policy.observe_text(
+                "The Loremaster says 'I hope my knowledge helps you, Rulemage.'\n"
+            )
         policy.prompt_ready = True
 
     assert commands == [
@@ -1033,17 +1037,125 @@ You have 2 physical and 3 intellectual practices remaining.
     )
 
     commands: list[str] = []
-    for _ in range(2):
+    for index in range(2):
         decision = policy.next_decision(state)
         assert decision is not None
         commands.append(decision.command)
         policy.after_command(decision)
+        if index == 0:
+            policy.observe_text(
+                "The Loremaster says 'I hope my knowledge helps you, Rulemage.'\n"
+            )
         policy.prompt_ready = True
 
     assert commands == [
         "practice evocation magiks",
         "west",
     ]
+
+
+def test_loremaster_credits_skill_only_after_trainer_confirmation() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.loremaster_step = 2
+    policy.prompt_ready = True
+    policy.text = """
+Skills known:
+Skills which may be learned:
+                 magic missile:   0%
+You have 1 physical and 1 intellectual practices remaining.
+"""
+    state = CharacterState(
+        level=1,
+        hp=60,
+        max_hp=60,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "practice magic missile"
+    assert "magic missile" not in policy.known_skills
+    assert policy.practice_plan_index == 0
+
+    policy.observe_text(
+        "The Loremaster says 'I hope my knowledge helps you, Rulemage.'\n"
+    )
+
+    assert "magic missile" in policy.known_skills
+    assert policy.practice_plan_index == 1
+    assert [event.type for event in policy.drain_training_events()] == [
+        "training_completed"
+    ]
+
+
+def test_loremaster_rejection_preserves_point_and_records_reason() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.loremaster_step = 2
+    policy.prompt_ready = True
+    policy.text = """
+Skills known:
+Skills which may be learned:
+                 magic missile:   0%
+You have 1 physical and 1 intellectual practices remaining.
+"""
+    state = CharacterState(
+        level=1,
+        hp=60,
+        max_hp=60,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+    decision = policy.next_decision(state)
+    assert decision is not None
+
+    policy.observe_text(
+        "The Loremaster says 'I'm sorry Rulemage, but you are not ready for that "
+        "knowledge.'\n"
+    )
+    events = policy.drain_training_events()
+
+    assert "magic missile" not in policy.known_skills
+    assert policy.rejected_practice_skills == {"magic missile"}
+    assert policy.practice_plan_index == 1
+    assert events[0].type == "training_rejected"
+    assert events[0].data["reason"] == "unmet prerequisites"
+    assert "preserve the practice point" in policy.practice_exit_reason
+
+
+def test_loremaster_unconfirmed_prompt_cannot_leave_training_pending() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.loremaster_step = 2
+    policy.prompt_ready = True
+    policy.text = """
+Skills known:
+Skills which may be learned:
+                 magic missile:   0%
+You have 1 physical and 1 intellectual practices remaining.
+"""
+    state = CharacterState(
+        level=1,
+        hp=60,
+        max_hp=60,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+    decision = policy.next_decision(state)
+    assert decision is not None
+
+    policy.observe_events([GameEvent("prompt_seen", "text", {})], state)
+    events = policy.drain_training_events()
+
+    assert policy.pending_practice_choice is None
+    assert policy.practice_plan_index == 1
+    assert events[0].type == "training_rejected"
+    assert events[0].data["reason"] == (
+        "trainer returned without confirming the lesson"
+    )
 
 
 def test_loremaster_does_not_practice_without_relevant_points() -> None:
@@ -1417,6 +1529,30 @@ def test_completed_arena_patrol_forgets_stale_room_sightings() -> None:
     assert "3728" not in policy.room_targets
     assert policy.room_targets["3713"] == ["snake"]
     assert "3728" not in policy.defeated_targets
+    assert policy.arena_respawn_due is not None
+
+
+def test_completed_arena_patrol_leaves_center_via_a_wall() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=6)
+    policy.in_world = True
+    policy.arena_queried = True
+    policy.prompt_ready = True
+    policy.arena_visited_rooms.update(str(vnum) for vnum in range(3728, 3738))
+    policy.room_query_counts["3732"] = 1
+    state = CharacterState(
+        level=5,
+        hp=90,
+        max_hp=90,
+        room_name="The Mud School Arena",
+        room_vnum="3732",
+        exits={"n": "3728", "e": "3733", "s": "3735", "w": "3731"},
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert "reach an arena wall" in decision.reason
     assert policy.arena_respawn_due is not None
 
 

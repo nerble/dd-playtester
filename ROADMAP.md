@@ -1045,3 +1045,30 @@ and failure handling before registering each new level-band policy.
   and stealth techniques at 0 percent. The planner spent its sole intellectual
   point on stealth toward the exact 60-percent backstab prerequisite, preserved
   its physical point, gained 841 XP over ten kills, and checkpointed safely.
+
+## Character-Independent Autonomy Cycle 8
+
+- Practice commands are now outcome-driven. A skill is added to the active
+  capability set only after DD4's `I hope my knowledge helps you` response.
+  Every source-defined rejection records a structured `training_rejected`
+  event, preserves the point, and advances the bounded plan. A prompt without a
+  recognized response is treated as unconfirmed instead of leaving the bot
+  waiting indefinitely.
+- Run reports now list accepted and rejected lessons and turn both outcomes
+  into first-person commentary. Run 548 live-validated `training_completed`
+  when Aeloria learned `chill touch`; she then gained 653 XP from eight kills
+  without falling below 93 percent health.
+- Run 548 also exposed a source-map routing bug after arena depletion: room
+  3732 is the center and has no upward exit, while every wall section exits up
+  to Safety. Arena completion and reset routes now move north from the center
+  before climbing, rather than alternating an invalid `up` with `look` until
+  the command budget expires.
+- Run 549 validated the repaired exit over a complete thief segment. Kestrel
+  gained 1,050 XP from ten kills in 130 commands, remained above 91 percent
+  health, and checkpointed safely. The trainer showed one physical and zero
+  intellectual practices, so the bot preserved the point while waiting for the
+  intellectual lesson needed to raise stealth toward backstab's prerequisite.
+- Run 550 supplied the warrior comparison: Dorrik gained 949 XP from ten kills
+  in 120 commands, remained above 98 percent health, and checkpointed safely.
+  Kick was visible but both practice pools were zero, so it was neither falsely
+  credited nor issued in combat.

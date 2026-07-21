@@ -27,6 +27,12 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     ]
     assert report["progress"]["level_gains_observed"] == 1
     assert report["progress"]["items_acquired"] == 1
+    assert [item["skill"] for item in report["progress"]["training"]["accepted"]] == [
+        "magic missile"
+    ]
+    assert [item["skill"] for item in report["progress"]["training"]["rejected"]] == [
+        "kick"
+    ]
     assert report["progress"]["loot_sales"] == {
         "count": 1,
         "coins": 10,
@@ -68,6 +74,7 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     assert "Character: Reportmage, female, human, mage (warlock)" in markdown
     assert "Confirmed kills: tutorial wolf (+75 XP)" in markdown
     assert "Loot sales: 1 item(s) for 10 coins" in markdown
+    assert "Training: accepted magic missile; rejected kick" in markdown
     assert "**critical - health pressure:** Health reached 10% of maximum." in markdown
 
 
@@ -233,6 +240,36 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
             "data": {"item": "a training sword"},
         },
         timestamp="2026-07-18T00:00:04+00:00",
+    )
+    storage.record_event(
+        run_id,
+        kind="game_event",
+        payload={
+            "type": "training_completed",
+            "source": "text",
+            "data": {
+                "skill": "magic missile",
+                "practice_type": "intellectual",
+                "outcome": "accepted",
+                "reason": "trainer confirmed the lesson",
+            },
+        },
+        timestamp="2026-07-18T00:00:04.100000+00:00",
+    )
+    storage.record_event(
+        run_id,
+        kind="game_event",
+        payload={
+            "type": "training_rejected",
+            "source": "text",
+            "data": {
+                "skill": "kick",
+                "practice_type": "physical",
+                "outcome": "rejected",
+                "reason": "unmet prerequisites",
+            },
+        },
+        timestamp="2026-07-18T00:00:04.200000+00:00",
     )
     level_event = storage.record_event(
         run_id,
