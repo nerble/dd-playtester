@@ -152,6 +152,31 @@ _MIDGAARD_HEALER_ROUTES = {
     "3005": "north",
     "3001": "north",
 }
+_MIDGAARD_CITY_HEALER_ROOMS = frozenset(
+    {"3019", "3018", "3017", "3012", "3013", "3014", "3005", "3001"}
+)
+_MIDGAARD_HEALER_RETURN_ROUTES = {
+    "3724": ("south", "up", "up"),
+    "3725": ("south", "up"),
+    "3726": ("south", "up", "east"),
+    "3019": (
+        "south",
+        "south",
+        "south",
+        "west",
+        "west",
+        "south",
+        "south",
+        "east",
+    ),
+    "3018": ("south", "south", "south", "west", "west", "south", "south"),
+    "3017": ("south", "south", "south", "west", "west", "south"),
+    "3012": ("south", "south", "south", "west", "west"),
+    "3013": ("south", "south", "south", "west"),
+    "3014": ("south", "south", "south"),
+    "3005": ("south", "south"),
+    "3001": ("south",),
+}
 _ARENA_RESPAWN_WAIT_SECONDS = 90
 _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
@@ -370,6 +395,8 @@ class StarterPolicy:
         self.health_check_due: float | None = None
         self.resume_recovery_after_resupply = False
         self.waiting_for_move = False
+        self.movement_recovery_return_route: tuple[str, ...] = ()
+        self.movement_recovery_return_index = 0
         self.room_targets: dict[str, list[str]] = {}
         self.room_target_counts: dict[str, dict[str, int]] = {}
         self.defeated_targets: dict[str, set[str]] = {}
@@ -1033,8 +1060,16 @@ class StarterPolicy:
                 self.utility_abort_reason = (
                     "character died; completed Purgatory recovery is required"
                 )
-        if self.waiting_for_move and _move_ratio(state) >= 0.5:
-            self.prompt_ready = True
+        if self.waiting_for_move:
+            movement = state.move or 0
+            if (
+                _move_ratio(state) >= 0.5
+                or (
+                    state.room_vnum in _MIDGAARD_HEALER_ROUTES
+                    and movement >= 2
+                )
+            ):
+                self.prompt_ready = True
         if self.waiting_for_heal and _health_ratio(state) >= 0.5:
             self.prompt_ready = True
         if (
@@ -1333,20 +1368,30 @@ class StarterPolicy:
             self.waiting_for_move = True
 
         if self.waiting_for_move:
-            if _move_ratio(state) < 0.5:
-                if not _is_sleeping(state) and "safe" in state.room_flags:
-                    return BotDecision(
-                        "sleep",
-                        "sleep in the safe room after movement exhaustion",
-                    )
-                self.prompt_ready = False
+            movement_recovery = self._movement_recovery_decision(state)
+            if movement_recovery is not None:
+                return movement_recovery
+            if self.waiting_for_move:
                 return None
-            self.waiting_for_move = False
-            self.needs_stand = True
 
         if self.needs_stand:
             self.needs_stand = False
             return BotDecision("stand", "stand before continuing tutorial actions")
+
+        if self.movement_recovery_return_route:
+            if self.movement_recovery_return_index < len(
+                self.movement_recovery_return_route
+            ):
+                command = self.movement_recovery_return_route[
+                    self.movement_recovery_return_index
+                ]
+                self.movement_recovery_return_index += 1
+                return BotDecision(
+                    command,
+                    "return to the route interrupted by healer recovery",
+                )
+            self.movement_recovery_return_route = ()
+            self.movement_recovery_return_index = 0
 
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
@@ -1845,7 +1890,7 @@ class StarterPolicy:
 
         if _move_ratio(state) <= 0.1:
             self.waiting_for_move = True
-            return BotDecision("sleep", "recover movement before continuing arena patrol")
+            return self._movement_recovery_decision(state)
 
         if (
             (
@@ -4239,6 +4284,55 @@ class StarterPolicy:
         self.body_part_cleanup_step = 0
         self.body_part_eat_rejected = False
 
+    def _movement_recovery_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Route exhausted Midgaard characters to the healer and back."""
+        room_vnum = state.room_vnum or ""
+        if (
+            not self.movement_recovery_return_route
+            and room_vnum in _MIDGAARD_HEALER_RETURN_ROUTES
+        ):
+            self.movement_recovery_return_route = (
+                _MIDGAARD_HEALER_RETURN_ROUTES[room_vnum]
+            )
+            self.movement_recovery_return_index = 0
+
+        if _move_ratio(state) >= 0.5:
+            self.waiting_for_move = False
+            self.needs_stand = _is_sleeping(state)
+            return None
+
+        if room_vnum == "3054":
+            if not _is_sleeping(state):
+                return BotDecision(
+                    "sleep",
+                    "sleep beside the Midgaard healer after movement exhaustion",
+                )
+            self.prompt_ready = False
+            return None
+
+        healer_direction = _MIDGAARD_HEALER_ROUTES.get(room_vnum)
+        movement = state.move or 0
+        if healer_direction is not None and movement >= 2:
+            return BotDecision(
+                healer_direction,
+                "reach the Midgaard healer before sleeping",
+            )
+        if healer_direction is not None:
+            # Remain awake until natural regeneration provides the next city step.
+            self.prompt_ready = False
+            return None
+
+        if not _is_sleeping(state):
+            return BotDecision(
+                "sleep",
+                "sleep in the tutorial safe room after movement exhaustion",
+            )
+        self.prompt_ready = False
+        return None
+
     def _recovery_decision(
         self,
         state: CharacterState,
@@ -4313,9 +4407,13 @@ class StarterPolicy:
             }.get(state.room_vnum or "")
             if (
                 self.fastwalk_route is None
-                and (self.objective_level > 2 or self._is_noncombat_utility_run)
+                and (
+                    self.objective_level > 2
+                    or self._is_noncombat_utility_run
+                    or state.room_vnum in _MIDGAARD_CITY_HEALER_ROOMS
+                )
                 and healer_approach is not None
-                and _move_ratio(state) >= 0.1
+                and (state.move is None or state.move >= 2)
             ):
                 return BotDecision(
                     healer_approach,
@@ -4338,10 +4436,10 @@ class StarterPolicy:
                 ):
                     invisibility = self._fastwalk_invisibility_decision(
                         state,
-                        failure_command="sleep",
+                        failure_command="west",
                         failure_reason=(
-                            "recover in the safe Mage Guild after invisibility "
-                            "preparation failed"
+                            "leave the Mage Guild for healer recovery after "
+                            "invisibility preparation failed"
                         ),
                         cast_reason=(
                             "establish invisibility before crossing Midgaard "
@@ -4376,13 +4474,15 @@ class StarterPolicy:
             )
         healer_approach = {
             "3737": "enter portal",
-            "3725": "down",
-            "3001": "north",
+            **_MIDGAARD_HEALER_ROUTES,
         }.get(state.room_vnum or "")
         if (
-            self.objective_level > 2
+            (
+                self.objective_level > 2
+                or state.room_vnum in _MIDGAARD_CITY_HEALER_ROOMS
+            )
             and healer_approach is not None
-            and _move_ratio(state) >= 0.1
+            and (state.move is None or state.move >= 2)
         ):
             return BotDecision(
                 healer_approach,

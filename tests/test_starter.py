@@ -2387,7 +2387,7 @@ def test_guildmaster_research_leaves_an_arena_room_before_city_travel() -> None:
     assert decision.command == "up"
 
 
-def test_guildmaster_research_sleeps_to_recover_in_a_safe_city_room() -> None:
+def test_guildmaster_research_routes_to_healer_instead_of_sleeping_at_mage_lab() -> None:
     policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
     policy.in_world = True
     policy.prompt_ready = True
@@ -2403,8 +2403,8 @@ def test_guildmaster_research_sleeps_to_recover_in_a_safe_city_room() -> None:
     decision = policy.next_decision(state)
 
     assert decision is not None
-    assert decision.command == "sleep"
-    assert policy.waiting_for_heal is True
+    assert decision.command == "west"
+    assert "healer" in decision.reason
 
 
 def test_liquidation_routes_movement_recovery_to_temple_healer() -> None:
@@ -8115,7 +8115,7 @@ def test_moria_research_probes_the_verified_north_branch_and_returns() -> None:
     assert return_south.command == "south"
 
 
-def test_safe_room_recovery_waits_for_movement_before_travel() -> None:
+def test_mage_lab_recovery_routes_to_healer_before_sleeping() -> None:
     policy = StarterPolicy(_spec(), "swordfish", moria_research=True)
     policy.in_world = True
     policy.prompt_ready = True
@@ -8132,16 +8132,22 @@ def test_safe_room_recovery_waits_for_movement_before_travel() -> None:
         room_flags=["safe"],
     )
 
+    route = policy.next_decision(resting)
+    assert route is not None
+    assert route.command == "west"
+    assert "healer" in route.reason
+    policy.after_command(route)
+    policy.prompt_ready = True
+
+    resting.room_name = "The Altar of the Temple"
+    resting.room_vnum = "3054"
     sleep = policy.next_decision(resting)
     assert sleep is not None
     assert sleep.command == "sleep"
     policy.after_command(sleep)
-    policy.prompt_ready = True
 
+    policy.prompt_ready = True
     resting.position = 4
-    assert policy.next_decision(resting) is None
-
-    policy.prompt_ready = True
     resting.move = 100
     resting.hp = 96
     wake = policy.next_decision(resting)
@@ -8241,7 +8247,7 @@ def test_gmcp_recovery_vitals_resume_waiting_arena_policy() -> None:
     assert decision.command == "stand"
 
 
-def test_movement_exhaustion_sleeps_immediately_in_a_safe_room() -> None:
+def test_movement_exhaustion_routes_from_mud_school_to_healer() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True
     policy.prompt_ready = True
@@ -8249,7 +8255,7 @@ def test_movement_exhaustion_sleeps_immediately_in_a_safe_room() -> None:
     state = CharacterState(
         hp=79,
         max_hp=79,
-        move=1,
+        move=2,
         max_move=180,
         position=7,
         room_name="The Entrance to the Mud School",
@@ -8260,10 +8266,11 @@ def test_movement_exhaustion_sleeps_immediately_in_a_safe_room() -> None:
     decision = policy.next_decision(state)
 
     assert decision is not None
-    assert decision.command == "sleep"
+    assert decision.command == "down"
+    assert "healer" in decision.reason
 
 
-def test_low_movement_sleep_precedes_emergency_supply_travel() -> None:
+def test_low_movement_routes_to_healer_before_emergency_supply_travel() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True
     policy.prompt_ready = True
@@ -8282,7 +8289,88 @@ def test_low_movement_sleep_precedes_emergency_supply_travel() -> None:
     decision = policy.next_decision(state)
 
     assert decision is not None
-    assert decision.command == "sleep"
+    assert decision.command == "north"
+    assert "healer" in decision.reason
+
+
+@pytest.mark.parametrize(
+    ("room_name", "room_vnum", "command"),
+    [
+        ("Mage's Laboratory", "3019", "west"),
+        ("Entrance to Mage's Guild", "3017", "north"),
+        ("The Temple Of Midgaard", "3001", "north"),
+    ],
+)
+def test_exhausted_midgaard_character_routes_to_healer_instead_of_sleeping(
+    room_name: str,
+    room_vnum: str,
+    command: str,
+) -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=10)
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        hp=79,
+        max_hp=79,
+        move=20,
+        max_move=220,
+        position=7,
+        room_name=room_name,
+        room_vnum=room_vnum,
+        room_flags=["safe"],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == command
+    assert "healer" in decision.reason
+
+
+def test_healer_movement_recovery_returns_to_interrupted_mage_lab_route() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=10)
+    policy.in_world = True
+    policy.prompt_ready = True
+    exhausted = CharacterState(
+        hp=79,
+        max_hp=79,
+        move=20,
+        max_move=220,
+        position=7,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+    )
+
+    outbound = policy.next_decision(exhausted)
+
+    assert outbound is not None
+    assert outbound.command == "west"
+    assert policy.movement_recovery_return_route
+
+    recovered = CharacterState(
+        hp=79,
+        max_hp=79,
+        move=150,
+        max_move=220,
+        position=4,
+        room_name="The Altar of the Temple",
+        room_vnum="3054",
+        room_flags=["safe"],
+    )
+    policy.prompt_ready = True
+    stand = policy.next_decision(recovered)
+
+    assert stand is not None
+    assert stand.command == "stand"
+
+    recovered.position = 7
+    policy.prompt_ready = True
+    return_step = policy.next_decision(recovered)
+
+    assert return_step is not None
+    assert return_step.command == "south"
+    assert return_step.reason == "return to the route interrupted by healer recovery"
 
 
 def test_gmcp_health_recovery_reopens_safe_room_decisions() -> None:
