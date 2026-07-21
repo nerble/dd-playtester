@@ -191,15 +191,15 @@ _FOUNDRY_LEVEL_SIX_POLICY = ProgressionPolicy(
     segment_kill_limit=2,
 )
 
-_FOUNDRY_LEVEL_SEVEN_FALLBACK_POLICY = ProgressionPolicy(
-    policy_id="foundry-fallback-7-8",
+_FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="foundry-circuit-7-8",
     minimum_level=7,
     maximum_level=8,
     status="verified",
     execution="foundry-hunt",
     summary=(
-        "Return to the bounded two-target Foundry circuit after a level-7 "
-        "arena segment produces no progress."
+        "Use the bounded two-target Foundry circuit for level-7 melee progress "
+        "and as the caster fallback after an empty primary segment."
     ),
     evidence=(
         *_FOUNDRY_LEVEL_SIX_POLICY.evidence,
@@ -565,7 +565,11 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             practice_skill=context.practice_skill,
         )
     field_caster = context.progression_track == "verified-field-caster"
-    if field_caster and normalized_level == 7:
+    if (
+        field_caster
+        and normalized_level == 7
+        and context.stalled_segments == 0
+    ):
         return _MIDENNIR_LEVEL_SEVEN_POLICY
     if field_caster and 8 <= normalized_level < 10:
         if not context.has_large_sack:
@@ -634,9 +638,11 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 return _AMBUSH_RAIDER_LEVEL_TEN_POLICY
             return _AMBUSH_VILE_LEVEL_TEN_POLICY
         return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
-    if normalized_level == 7 and context.stalled_segments > 0:
+    if normalized_level == 7 and (
+        not field_caster or context.stalled_segments > 0
+    ):
         return replace(
-            _FOUNDRY_LEVEL_SEVEN_FALLBACK_POLICY,
+            _FOUNDRY_LEVEL_SEVEN_POLICY,
             practice_skill=context.practice_skill,
         )
     if normalized_level < 10:

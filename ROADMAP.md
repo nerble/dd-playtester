@@ -1392,3 +1392,13 @@ and failure handling before registering each new level-band policy.
   temple healing room. Ordinary level-above-two and maintenance recovery now
   follows the known Midgaard route to room 3054 whenever at least 10% movement
   remains; field routes retain their separate invisibility-aware handling.
+- Runs 637 and 639 rechecked the arena after a long unoccupied interval for
+  Kestrel and Dorrik. Both found only below-band opponents and exited without
+  XP or damage. The repeated cross-character evidence promotes the level-7
+  Foundry circuit to the primary thief/warrior policy; a stalled mage also uses
+  it instead of retrying this reboot's aggressive level-8 mountain goblin.
+- Run 638 added another 107 XP for Kestrel through Olog and Uburz. Reboot-local
+  repetition reduced Olog to 10 XP, while Uburz remained worth 97. At 111/123
+  HP Kestrel declined the full-health Ushog stop, recalled, and recovered at
+  the healer. Room 3726 is now also on the standard healer route, preventing
+  future movement sleeps at the Loremaster.

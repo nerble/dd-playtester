@@ -96,20 +96,28 @@ def test_level_seven_mage_uses_verified_midennir_hunt() -> None:
     assert policy.executable is True
 
 
-def test_level_seven_non_mage_keeps_the_arena_policy() -> None:
+def test_level_seven_non_mage_uses_foundry_policy() -> None:
     policy = policy_for(7, "warrior")
 
-    assert policy.policy_id == "mud-school-6-10"
-    assert policy.execution == "arena"
+    assert policy.policy_id == "foundry-circuit-7-8"
+    assert policy.execution == "foundry-hunt"
 
 
 def test_stalled_level_seven_non_mage_uses_foundry_fallback() -> None:
     policy = policy_for(7, "thief", stalled_segments=1)
 
-    assert policy.policy_id == "foundry-fallback-7-8"
+    assert policy.policy_id == "foundry-circuit-7-8"
     assert policy.execution == "foundry-hunt"
     assert policy.maximum_level == 8
     assert policy.practice_skill == "backstab"
+
+
+def test_stalled_level_seven_mage_uses_foundry_fallback() -> None:
+    policy = policy_for(7, "mage", stalled_segments=1)
+
+    assert policy.policy_id == "foundry-circuit-7-8"
+    assert policy.execution == "foundry-hunt"
+    assert policy.practice_skill == "magic missile"
 
 
 @pytest.mark.parametrize(

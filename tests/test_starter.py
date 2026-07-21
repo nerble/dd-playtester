@@ -2413,6 +2413,28 @@ def test_liquidation_routes_movement_recovery_to_temple_healer() -> None:
     assert policy.waiting_for_heal is False
 
 
+def test_leveling_routes_loremaster_recovery_to_temple_healer() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=8)
+    state = CharacterState(
+        hp=123,
+        max_hp=123,
+        mana=145,
+        max_mana=145,
+        move=95,
+        max_move=210,
+        position=7,
+        room_name="The Loremaster",
+        room_vnum="3726",
+        room_flags=["safe"],
+    )
+
+    decision = policy._recovery_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert "temple healer" in decision.reason
+
+
 def test_safe_room_recovery_checks_health_without_waking() -> None:
     policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
     policy.in_world = True

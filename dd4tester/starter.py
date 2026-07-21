@@ -137,6 +137,7 @@ _TRAINING_SIDE_ROOMS = {
 _MIDGAARD_HEALER_ROUTES = {
     "3724": "down",
     "3725": "down",
+    "3726": "west",
     "3019": "west",
     "3018": "north",
     "3017": "north",
