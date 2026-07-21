@@ -9563,6 +9563,15 @@ def test_emergency_sale_protects_bonus_gear_and_capacity_items() -> None:
     assert _sellable_inventory_keyword(inventory, catalog) == "helm"
 
 
+def test_sellable_inventory_uses_source_keyword_for_unfamiliar_equipment() -> None:
+    jerkin = _gear_item(9004, "jerkin leather", "a leather jerkin")
+
+    assert _sellable_inventory_keyword(
+        [[{"short_desc": "a leather jerkin"}]],
+        GearCatalog({jerkin.vnum: jerkin}),
+    ) == "jerkin"
+
+
 def test_sellable_inventory_schedules_carried_war_dog_collars_for_audit() -> None:
     one_collar = [[{"short_desc": "a war dog collar", "quan": "1"}]]
 

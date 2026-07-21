@@ -1530,3 +1530,19 @@ and failure handling before registering each new level-band policy.
 - Run 665 sold Aeloria's source-classified loot through the compatible safe
   shops, reduced carried weight from 140 to 101, and returned to the Mage
   Laboratory without combat or route failures.
+- Run 666 safely liquidated Kestrel's previously recognized Foundry overflow.
+  Run 667 then killed Olog, Oshu, Uburz, and Ushog for 377 XP, recovered and
+  rewielded a disarmed weapon during the final fight, and returned at full
+  health with 186 movement.
+- Run 668 exposed a campaign-layer blind spot: Kestrel carried 113/115 pounds
+  of source-known `piping`, `jerkin`, `cap`, `circlet`, and `buckler`, but the
+  quick selector recognized only a small generic noun list and spent an empty
+  Foundry circuit instead of liquidating. Campaign selection now loads the
+  same source gear catalog as execution and uses source-backed item keywords
+  for unfamiliar, unprotected equipment.
+- Run 669 live-validated the repaired handoff by selecting `sell-loot` and
+  valuing `piping`. A level-2 drunk interrupted the return; after GMCP reported
+  two byte-identical records for the one observed attacker, the crowd gate
+  fled and recalled safely. Kestrel finished unharmed at the Mage Laboratory,
+  but the flee and partial-damage awards produced a net 49-XP loss. Identical
+  enemy-record normalization is required without weakening real crowd checks.

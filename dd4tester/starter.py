@@ -6360,6 +6360,8 @@ def _sellable_inventory_keyword(
         for word in reversed(words):
             if word in equipment_words:
                 return word
+        if item is not None and item_category(item) is not None:
+            return item_keyword(item)
     return None
 
 

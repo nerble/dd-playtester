@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .character import CharacterSpec, load_character_spec
+from .equipment import GearCatalog, load_gear_catalog
 from .fastwalks import route_named
 from .progression import ProgressionPolicy, policy_for
 from .runner import RunResult
@@ -132,9 +133,15 @@ class CampaignRunner:
         self.force_new = force_new
         self._historical_large_sack = False
         self._boot_kill_counts: Counter[str] = Counter()
+        self._gear_catalog: GearCatalog | None = None
 
     async def run(self) -> CampaignResult:
         with RunStorage(self.spec.database) as storage:
+            source_directory = Path("runs/dd4-source/server/area")
+            if self._gear_catalog is None and source_directory.is_dir():
+                self._gear_catalog = load_gear_catalog(
+                    str(source_directory.resolve())
+                )
             self._historical_large_sack = storage.character_has_acquired_item(
                 self.spec.character.name,
                 "large sack",
@@ -225,7 +232,10 @@ class CampaignRunner:
                 or _state_has_item(state.get("inventory"), "large sack")
             ),
             has_sellable_loot=(
-                _has_campaign_sellable_loot(state)
+                _has_campaign_sellable_loot(
+                    state,
+                    gear_catalog=self._gear_catalog,
+                )
             ),
             has_food=(
                 "inventory" not in state
@@ -802,8 +812,15 @@ def _state_copper_value(state: dict[str, Any]) -> int:
     )
 
 
-def _has_campaign_sellable_loot(state: dict[str, Any]) -> bool:
-    keyword = _sellable_inventory_keyword(state.get("inventory"))
+def _has_campaign_sellable_loot(
+    state: dict[str, Any],
+    *,
+    gear_catalog: GearCatalog | None = None,
+) -> bool:
+    keyword = _sellable_inventory_keyword(
+        state.get("inventory"),
+        gear_catalog,
+    )
     if keyword is None:
         return False
     if keyword != "collar":

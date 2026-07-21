@@ -10,6 +10,8 @@ from dd4tester.campaign import (
     load_campaign_spec,
     run_campaign_file,
 )
+from dd4tester.equipment import GearCatalog
+from dd4tester.hunt_candidates import ObjectSource
 from dd4tester.progression import policy_for
 from dd4tester.runner import RunResult
 from dd4tester.starter import ambush_exterior_hunt_stops
@@ -44,6 +46,30 @@ def test_serialized_coloured_inventory_preserves_duplicate_quantity() -> None:
     }
 
     assert _has_campaign_sellable_loot(state) is True
+
+
+def test_campaign_source_catalog_recognizes_unfamiliar_sellable_loot() -> None:
+    piping = ObjectSource(
+        9010,
+        "piping metal",
+        "a length of metal piping",
+        5,
+        (0, 1, 4, 6),
+        8,
+        wear_flags=1 | (1 << 13),
+    )
+    state = {
+        "inventory": (
+            '[[{"quan":"2","short_desc":"a length of metal piping"},'
+            '{"quan":"2","short_desc":"a big pot pie"}]]'
+        ),
+        "stats": {"carry_wt": 112, "maxcarry_wt": 115},
+    }
+
+    assert _has_campaign_sellable_loot(
+        state,
+        gear_catalog=GearCatalog({piping.vnum: piping}),
+    ) is True
 
 
 def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> None:
