@@ -1245,3 +1245,37 @@ and failure handling before registering each new level-band policy.
   percent health when the threshold fired. Ushog is now a full-health-only
   second stop, so a damaging first encounter ends the circuit before entering
   his aggressive room.
+
+## Character-Independent Autonomy Cycle 14
+
+- Run 587 live-validated the full-health gate. Aeloria killed an Olog, Uburz,
+  and Ushog for 514 XP with no flee or escape penalty, recovered eight items,
+  and returned at full health. Runs 590 and 593 added another 493 XP from five
+  Foundry kills without a safety withdrawal; she is now 929 XP from level 7.
+- Runs 589 and 596 advanced Dorrik by 1,003 XP through ten arena kills and one
+  Ushog kill. His live listing still showed one physical practice and learnable
+  kick, but the bot preserved it because campaign history had already spent the
+  level-6 physical lesson. It issued no unlearned active attack and finished at
+  138/138 HP with 2,896 XP left to level 7.
+- Runs 592 and 595 advanced Kestrel by 907 XP through ten arena kills and two
+  Foundry kills. Backstab remained unavailable behind its exact stealth and
+  sneak prerequisites; no unsupported opener was attempted. He finished at
+  111/111 HP with 1,901 XP left to level 7.
+- Source revision `0482387` confirms the action economics used by the warrior
+  plan. `second attack` is automatic each combat round at `45 + proficiency/2`
+  percent. `kick` requires an existing fight, consumes its 8-pulse wait, tests
+  learned proficiency, and deals `level/2 + random(1, level)` player damage.
+  Armed knowledge toward enhanced damage therefore remains ahead of kick, while
+  known kick is issued only by the between-round combat decision path.
+- Run 597 sold Kestrel's Foundry armour but a level-2 drunk attacked the drow on
+  safe-flagged Main Street. The bot recovered at full health and saved safely,
+  yet correctly exposed the interruption as a failed utility segment. Safe room
+  flags do not guarantee race-neutral travel.
+- Noncombat utility runs now wait for GMCP enemy assessment and may defend only
+  against one attacker at least three levels lower, in a flagged safe room,
+  while at 90 percent health or better and neither hungry nor thirsty. Every
+  unknown, multiple, peer-level, unsafe-room, or low-health encounter retains
+  flee, recall, healer recovery, save, and quit behavior.
+- Run 598 live-validated the repaired Kestrel route. It completed in 44 seconds
+  with no combat event or utility abort, retained his sole usable metal-piping
+  weapon plus food and water, and saved and quit from room 3019 at 111/111 HP.

@@ -1389,6 +1389,16 @@ class StarterPolicy:
                 self.prompt_ready = False
                 return None
             if self._is_noncombat_utility_run:
+                if self._utility_attacker_is_trivial(state):
+                    self.prompt_ready = False
+                    return None
+                if (
+                    self.active_target_level is None
+                    and not self.awaiting_enemy_assessment
+                ):
+                    self.awaiting_enemy_assessment = True
+                    self.prompt_ready = False
+                    return None
                 self.return_home = True
                 self.utility_emergency_recall_pending = True
                 self.utility_abort_reason = (
@@ -4595,6 +4605,21 @@ class StarterPolicy:
                     "reason": reason,
                 },
             )
+        )
+
+    def _utility_attacker_is_trivial(self, state: CharacterState) -> bool:
+        """Allow a healthy character to finish one harmless safe-room attacker."""
+        enemies = _enemy_records(state.enemies)
+        if len(enemies) != 1 or state.level is None:
+            return False
+        enemy_level = _int_or_none(enemies[0].get("level"))
+        return (
+            enemy_level is not None
+            and "safe" in state.room_flags
+            and enemy_level <= max(1, state.level - 3)
+            and _health_ratio(state) >= 0.9
+            and not self.needs_food
+            and not self.needs_drink
         )
 
     def drain_training_events(self) -> list[GameEvent]:

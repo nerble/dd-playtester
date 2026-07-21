@@ -4005,9 +4005,19 @@ def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
     policy.in_world = True
     policy.prompt_ready = True
     policy.combat_active = True
+    policy.active_target_level = 4
 
     flee = policy.next_decision(
-        CharacterState(room_name="Main Street", room_vnum="3012", position=7)
+        CharacterState(
+            level=6,
+            hp=111,
+            max_hp=111,
+            room_name="Main Street",
+            room_vnum="3012",
+            room_flags=["safe"],
+            position=7,
+            enemies=[[{"name": "the vagabond", "level": "4"}]],
+        )
     )
 
     assert flee is not None
@@ -4040,6 +4050,97 @@ def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
 
     assert recall is not None
     assert recall.command == "recall"
+
+
+def test_noncombat_utility_waits_for_enemy_assessment_before_fleeing() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+
+    decision = policy.next_decision(
+        CharacterState(room_name="Main Street", room_vnum="3012", position=6)
+    )
+
+    assert decision is None
+    assert policy.awaiting_enemy_assessment is True
+    assert policy.return_home is False
+
+
+def test_noncombat_utility_finishes_trivial_safe_room_attacker() -> None:
+    policy = StarterPolicy(_spec(race="drow"), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "the drunk"
+    policy.active_target_level = 2
+    state = CharacterState(
+        level=6,
+        hp=111,
+        max_hp=111,
+        room_name="Main Street",
+        room_vnum="3012",
+        room_flags=["safe"],
+        position=6,
+        enemies=[[{"name": "the drunk", "level": "2"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is None
+    assert policy.return_home is False
+    assert policy.utility_abort_reason is None
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        CharacterState(
+            level=6,
+            hp=111,
+            max_hp=111,
+            room_vnum="3012",
+            room_flags=["safe"],
+            enemies=[[{"name": "the vagabond", "level": "4"}]],
+        ),
+        CharacterState(
+            level=6,
+            hp=80,
+            max_hp=111,
+            room_vnum="3012",
+            room_flags=["safe"],
+            enemies=[[{"name": "the drunk", "level": "2"}]],
+        ),
+        CharacterState(
+            level=6,
+            hp=111,
+            max_hp=111,
+            room_vnum="3012",
+            room_flags=["safe"],
+            enemies=[
+                [
+                    {"name": "the drunk", "level": "2"},
+                    {"name": "the vagabond", "level": "2"},
+                ]
+            ],
+        ),
+    ],
+)
+def test_noncombat_utility_withdraws_from_nontrivial_attackers(
+    state: CharacterState,
+) -> None:
+    policy = StarterPolicy(_spec(race="drow"), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target_level = 2
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.return_home is True
+    assert policy.utility_abort_reason is not None
 
 
 def test_progress_watchdog_recalls_a_stalled_noncombat_run() -> None:
