@@ -593,7 +593,13 @@ class StarterPolicy:
             self.gear_applied_stance = None
         if (
             self.gear_pending_wear_keyword is not None
-            and "you cannot use " in recent
+            and any(
+                phrase in recent
+                for phrase in (
+                    "you cannot use ",
+                    "your profession prohibits wearing anything in that location",
+                )
+            )
         ):
             self.gear_unusable_keywords.add(self.gear_pending_wear_keyword)
             self.gear_pending_wear_keyword = None

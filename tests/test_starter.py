@@ -9202,6 +9202,32 @@ def test_rejected_weapon_is_blacklisted_and_previous_weapon_is_rearmed() -> None
     assert policy.gear_unusable_keywords == {"spear"}
 
 
+def test_profession_rejected_wear_is_blacklisted_without_retrying() -> None:
+    policy = StarterPolicy(_spec(race="drow"), "swordfish")
+    policy.gear_command_queue = [
+        ("wear buckler", "equip combat gear: a metal buckler")
+    ]
+    policy.gear_audit_pending = True
+    policy.gear_audited = True
+    policy.gear_confirmation_required = True
+    policy.gear_applied_stance = STANCE_COMBAT
+    policy.after_command(
+        BotDecision("wear buckler", "equip combat gear: a metal buckler")
+    )
+
+    policy.observe_text(
+        "Your profession prohibits wearing anything in that location."
+    )
+
+    assert policy.gear_unusable_keywords == {"buckler"}
+    assert policy.gear_pending_wear_keyword is None
+    assert policy.gear_command_queue == []
+    assert policy.gear_audit_pending is False
+    assert policy.gear_audited is False
+    assert policy.gear_confirmation_required is False
+    assert policy.gear_applied_stance is None
+
+
 def test_gear_stance_switches_to_stats_only_near_level_gain() -> None:
     policy = StarterPolicy(
         _spec(),

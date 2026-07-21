@@ -1435,3 +1435,13 @@ and failure handling before registering each new level-band policy.
   Uburz produced 295 XP and seven items; absent Golgog, Shargook, and Lobuk
   were skipped. At 147/157 HP the full-health Ushog gate recalled instead of
   taking the final fight, and Dorrik recovered, saved, and quit at full health.
+- Run 650 gained 20 XP but exposed an equipment-state loop after Golgog dropped
+  a metal buckler: the drow thief repeatedly tried to wear it even though DD4
+  reported that his profession prohibited that wear location. The process was
+  terminated with Kestrel alive at full health and the orphaned run and
+  campaign records were recovered immediately.
+- Profession-rejected wear commands now use the existing generic unusable-item
+  path: blacklist the pending keyword, discard the queued stance, and re-audit
+  without that item. Run 651 live-validated a single rejected `wear buckler`
+  with no retry, then gained 194 XP from Olog, Uburz, and Ushog, recovered and
+  rewielded a disarmed weapon, and finished safely at 123/123 HP.
