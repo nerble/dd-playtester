@@ -1469,3 +1469,17 @@ and failure handling before registering each new level-band policy.
   the remaining physical point was preserved for level-up HP instead of being
   double-spent. He then gained 307 XP from four Foundry targets, collected 11
   items, and finished at 157/157 HP.
+- Run 655 was interrupted on the Midgaard shop route by a wandering level-2
+  drunk. Aeloria fled, recalled, recovered, saved, and quit at full health, but
+  the 48-XP flee cost correctly failed the noncombat segment. Run 656 rebuilt
+  the plan from live inventory, sold the sole worthwhile jerkin, and returned
+  safely without replaying stale state.
+- Run 657 live-proved the generalized level-7 training gate for Kestrel. The
+  Loremaster had no immediately useful physical lesson after his intellectual
+  lesson was already spent, so the bot preserved both physical points, then
+  gained 179 XP in the Foundry and recovered safely.
+- An empty trainer plan now emits a structured `training_deferred` event for
+  each useful, unspent practice type. The campaign treats that type as handled
+  for the current level, preventing repeated Loremaster detours while retaining
+  the point's next-level HP or mana conversion and reconsidering it after the
+  level changes.

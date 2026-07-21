@@ -136,6 +136,51 @@ def test_campaign_recovers_practice_types_spent_at_current_level(tmp_path) -> No
     assert at_level_six == frozenset()
 
 
+def test_campaign_remembers_deferred_practice_type_at_current_level(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        run_id = storage.create_run(
+            scenario_name="fastwalk-foundry:Campaignmage",
+            scenario_path=config_path,
+        )
+        storage.record_event(
+            run_id,
+            kind="game_event",
+            payload={
+                "type": "training_deferred",
+                "source": "text",
+                "data": {"practice_type": "physical"},
+            },
+        )
+        storage.finish_run(run_id, status="success")
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="foundry-circuit-7-8",
+            start_state={"level": 7, "xp": 20_000},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=run_id,
+            end_state={"level": 7, "xp": 20_100},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        handled = _campaign_practice_types_spent(
+            storage, campaign_id, level=7
+        )
+
+    assert handled == frozenset({"physical"})
+
+
 def test_arena_segment_receives_campaign_practice_history(
     tmp_path,
     monkeypatch,

@@ -4659,6 +4659,39 @@ class StarterPolicy:
                     f"{'s' if preserved != 1 else ''} for next-level hit-point "
                     "or mana gains after buying only immediately useful skills"
                 )
+            if not self.practice_plan:
+                balances = {
+                    "physical": listing.physical_practices or 0,
+                    "intellectual": listing.intellectual_practices or 0,
+                }
+                useful_types = {
+                    priority.practice_type
+                    for priority in training_priorities().get(
+                        self.spec.character_class.casefold(), ()
+                    )
+                    if priority.automated
+                }
+                for practice_type, balance in balances.items():
+                    if (
+                        balance > 0
+                        and practice_type in useful_types
+                        and practice_type not in self.practice_types_spent
+                    ):
+                        self.practice_types_spent.add(practice_type)
+                        self.pending_training_events.append(
+                            GameEvent(
+                                "training_deferred",
+                                "text",
+                                {
+                                    "practice_type": practice_type,
+                                    "outcome": "deferred",
+                                    "reason": (
+                                        "no immediately useful listed skill for "
+                                        "this practice type"
+                                    ),
+                                },
+                            )
+                        )
         if self.pending_practice_choice is not None:
             return None
         if self.practice_plan_index < len(self.practice_plan):

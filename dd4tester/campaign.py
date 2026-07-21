@@ -481,7 +481,10 @@ def _campaign_practice_types_spent(
             if event["kind"] != "game_event":
                 continue
             payload = json.loads(event["payload_json"])
-            if payload.get("type") != "training_completed":
+            if payload.get("type") not in {
+                "training_completed",
+                "training_deferred",
+            }:
                 continue
             practice_type = str(payload.get("data", {}).get("practice_type", ""))
             if practice_type in {"physical", "intellectual"}:

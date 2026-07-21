@@ -2471,6 +2471,45 @@ def test_leveling_routes_loremaster_recovery_to_temple_healer() -> None:
     assert "temple healer" in decision.reason
 
 
+def test_loremaster_records_unspendable_combat_practice_as_deferred() -> None:
+    policy = StarterPolicy(
+        _spec(
+            name="Kestrel",
+            race="drow",
+            gender="male",
+            **{"class": "thief", "subclass": "ninja"},
+        ),
+        "swordfish",
+        practice_types_spent=frozenset({"intellectual"}),
+    )
+    policy.in_world = True
+    policy.loremaster_step = 2
+    policy.prompt_ready = True
+    policy.text = """
+Skills known:
+                 hide:  23%                 second attack:  35%
+                sneak:  99%             stealth techniques:  45%
+       armed combat knowledge:  41%
+You have 2 physical and 1 intellectual practices remaining.
+"""
+    state = CharacterState(
+        level=7,
+        hp=123,
+        max_hp=123,
+        room_name="The Loremaster",
+        room_vnum="3726",
+    )
+
+    decision = policy.next_decision(state)
+    events = policy.drain_training_events()
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert [event.type for event in events] == ["training_deferred"]
+    assert events[0].data["practice_type"] == "physical"
+    assert policy.practice_types_spent == {"physical", "intellectual"}
+
+
 def test_safe_room_recovery_checks_health_without_waking() -> None:
     policy = StarterPolicy(_spec(), "swordfish", guildmaster_research=True)
     policy.in_world = True
