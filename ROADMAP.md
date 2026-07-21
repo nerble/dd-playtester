@@ -1116,3 +1116,15 @@ and failure handling before registering each new level-band policy.
   knowledge or 30 percent warrior-base knowledge before kick. Those exact
   gateways remain in the data-driven training plan; kick competes for precious
   practice points only after higher-value passive damage and defense choices.
+- Run 558 applied the class-specific thief plan at level 5. Kestrel's live
+  listing showed stealth techniques at 23 percent and two practices of each
+  type; the Loremaster confirmed one intellectual lesson to 35 percent while
+  the bot preserved three points. He gained 856 XP from ten kills, ate severed
+  body parts opportunistically, and checkpointed at 99/99 HP. Backstab remained
+  gated by its exact 60-percent stealth prerequisite and was never attempted.
+- Run 559 applied the contrasting warrior plan. Kick became learnable after
+  unarmed-combat knowledge reached 21 percent, but the planner first bought
+  confirmed armed-combat and second-attack lessons because they improve passive
+  weapon damage more frequently than an 8-pulse active kick. Dorrik preserved
+  one physical practice, issued no unlearned `kick` command, gained 954 XP from
+  ten kills, and checkpointed at 121/121 HP.
