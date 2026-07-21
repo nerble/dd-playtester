@@ -954,3 +954,10 @@ and failure handling before registering each new level-band policy.
   triggers `drop` followed by `sacrifice`, preserving pies when possible and
   still clearing unusable objects. Active combat, sleep, death, and health below
   50 percent prevent opportunistic cleanup from outranking safety.
+- Run 537 live-validated the consumption path immediately: Kestrel severed a
+  boar leg, collected it, and ate it without a hunger signal before ordinary
+  corpse cleanup. The thief preserved carried food, gained 1,204 XP across ten
+  kills, reached level 3, and saved and quit from Safety at full resources.
+- Run 538 supplied the no-op comparison: no severed part appeared, so Dorrik
+  performed only ordinary corpse cleanup. The warrior gained 1,176 XP, reached
+  level 4 with 103 HP, and saved and quit from Safety after ten kills.
