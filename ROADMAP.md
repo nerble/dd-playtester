@@ -1088,3 +1088,31 @@ and failure handling before registering each new level-band policy.
   before the Imp or target decisions, and the first and subsequent combat casts
   used known `chill touch` instead of the weaker fallback `magic missile`. She
   gained 790 XP from ten kills and checkpointed safely with full health.
+
+## Character-Independent Autonomy Cycle 10
+
+- Runs 553 and 554 advanced the contrasting thief and warrior from level 4 to
+  level 5. Kestrel gained 720 XP and 13 maximum HP; Dorrik gained 762 XP and 18
+  maximum HP. Both completed ten kills, used the pre-level equipment stance,
+  and checkpointed safely at full health without inventing unavailable skills.
+- Runs 555 and 556 carried Aeloria across the next boundary. The first ten-kill
+  segment gained 670 XP and stopped 92 XP short; the bounded follow-up reached
+  level 6 after two kills, raised maximum HP from 90 to 100 and maximum mana
+  from 245 to 267, and immediately left the arena after satisfying its level
+  objective.
+- Run 557 live-validated the actual `mud-school-6-10` handoff. Aeloria refreshed
+  her known skills before fighting, used `chill touch`, gained 787 XP from ten
+  confirmed kills, and finished at 100/100 HP in Safety with no detected
+  failure. This is evidence that the level-band selector does more than merely
+  advertise the next policy.
+- DD4 source revision `0482387`, `HELP KICK`, the skill table, and `do_kick`
+  agree that kick is an in-battle attack: it is rejected unless the character
+  is already fighting, consumes an 8-pulse skill wait, and on success deals
+  `level / 2 + random(1, level)` damage for a player. The bot therefore issues
+  it only from the between-round combat decision path, after an automatic
+  round has returned a prompt, and only after the live skill listing confirms
+  it is known.
+- The warrior prerequisite source requires either 20 percent unarmed-combat
+  knowledge or 30 percent warrior-base knowledge before kick. Those exact
+  gateways remain in the data-driven training plan; kick competes for precious
+  practice points only after higher-value passive damage and defense choices.
