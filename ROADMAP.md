@@ -903,3 +903,37 @@ and failure handling before registering each new level-band policy.
   healer. It also showed that the level-2-to-6 policy could cycle arena resets
   until its runtime expired. That policy now checkpoints after at most ten
   kills, matching the established bounded level-6-to-10 arena policy.
+
+## Character-Independent Autonomy Cycle 4
+
+- Run 530 exercised the new ten-kill bound with Aeloria. The mage gained 1,334
+  XP, reached level 4, recovered between spellcasting fights, then saved and
+  quit from Safety immediately after the tenth confirmed kill.
+- Run 531 reconciled Kestrel's live state by replaying the tutorial fights that
+  were not retained from the earlier retry. The drow thief applied pre-level
+  gear, reached level 2, provisioned, practiced `hide`, saved, and quit at full
+  health and mana. This completes live creation-to-level-2 proof for all three
+  representative classes.
+- Run 532 advanced Dorrik through ten bounded arena kills. The dwarf warrior
+  gained 1,385 XP, reached level 3, and checkpointed from Safety at full health.
+- All three successful reports contain the configured non-secret character
+  identity, decision-category counts, confirmed-kill evidence, progress deltas,
+  checkpoint reasons, and deterministic first-person commentary. The matrix
+  remains correctly incomplete at mage 4, thief 2, and warrior 3.
+
+## Character-Independent Autonomy Cycle 5
+
+- The second bounded round completed without intervention. Run 533 gained 930
+  XP for Aeloria, run 534 gained 1,231 XP for Kestrel, and run 535 gained 1,353
+  XP for Dorrik. Each run stopped after exactly ten confirmed arena kills,
+  saved, and quit from Safety.
+- Aeloria safely handled a second wolf engaging just as the kill cap triggered:
+  DD4 rejected the attempted exit, the existing combat-reentry rule finished
+  the attacker, and checkpointing waited until combat and recovery completed.
+- Kestrel's report records a reboot-fuzzed boar outside the safe live-consider
+  band and a suitable wolf selected instead. Repeated same-reboot arena kills
+  produced visibly declining progress, providing balance and policy-rotation
+  evidence without compromising safety.
+- The matrix remains incomplete at mage level 4 with 7,684 XP, thief level 2
+  with 3,577 XP, and warrior level 3 with 5,753 XP. Every campaign has a durable
+  next-segment checkpoint and no live process remains after the round.
