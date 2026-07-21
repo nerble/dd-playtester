@@ -1511,3 +1511,10 @@ and failure handling before registering each new level-band policy.
   balance, recorded a structured deferred physical lesson when the Loremaster
   offered no useful option, then gained 300 XP in the Foundry and returned at
   full health.
+- A fresh audit of `HELP KICK`, the skill table, `do_kick`, `comm.c`,
+  `update.c`, and the pulse macros clarified its exact action economy. Kick is
+  legal only while fighting, uses an 8-pulse command wait, and deals
+  `level/2 + 1..level`; automatic combat still runs independently every 12
+  pulses. The policy therefore treats kick as additive between-round damage,
+  never as an opener or a replacement for automatic weapon attacks. Future
+  skill automation must record equivalent help and implementation evidence.

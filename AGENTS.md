@@ -12,6 +12,10 @@ both directories are intentionally ignored by Git.
 Never modify the Dragons Domain IV core repository from this project.
 Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
+Before training or automating a skill, read both its current in-game help and
+its source implementation. Record whether it is active or passive, its legal
+position and target, pulse/mana cost, effect formula, prerequisites, and any
+equipment or status constraints; never infer behavior from the skill name.
 Before source-backed research, and at least once per active working day,
 fast-forward `runs/dd4-source` from upstream with `git pull --ff-only`; record
 the revision used for consequential policy decisions.

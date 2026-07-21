@@ -186,3 +186,14 @@ def test_prioritized_skills_exist_in_bundled_prerequisite_graph() -> None:
             known_skills(prerequisites, class_name=class_name)
         )
         assert {item.source_skill for item in class_priorities} <= source_skills
+
+
+def test_kick_priority_records_source_verified_between_round_timing() -> None:
+    kick = next(
+        item
+        for item in training_priorities()["warrior"]
+        if item.skill == "kick"
+    )
+
+    assert "8-pulse wait" in kick.reason
+    assert "without replacing 12-pulse automatic weapon rounds" in kick.reason

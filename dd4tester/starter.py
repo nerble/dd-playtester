@@ -380,7 +380,7 @@ class StarterPolicy:
         self.pending_loot_rooms: set[str] = set()
         self.cleared_training_rooms: set[str] = set()
         self.post_kill_steps: dict[str, int] = {}
-        self.magic_missile_cast = False
+        self.between_round_action_issued = False
         self.backstab_pending_target: str | None = None
         self.backstab_skip_once_target: str | None = None
         self.chill_touch_unavailable = False
@@ -553,20 +553,20 @@ class StarterPolicy:
                 )
             ):
                 self.consider_viable = False
-        if self.magic_missile_cast and (
+        if self.between_round_action_issued and (
             "you launch a volley of" in recent
             or "you launch a magic missile" in recent
             or "chilling touch" in recent
             or "your spell" in recent
             or re.search(r"<\d+/\d+ hits .*? move \[", recent) is not None
         ):
-            self.magic_missile_cast = False
+            self.between_round_action_issued = False
         if "don't know any spells of that name" in recent:
             if self.fastwalk_invisibility_pending:
                 self.fastwalk_invisibility_unavailable = True
             else:
                 self.chill_touch_unavailable = True
-            self.magic_missile_cast = False
+            self.between_round_action_issued = False
         if self.backstab_pending_target is not None and any(
             phrase in recent
             for phrase in (
@@ -817,7 +817,7 @@ class StarterPolicy:
                     self.cleared_training_rooms.add(self.current_room)
                 self.post_kill_steps.setdefault(self.current_room, 0)
             self.active_target = None
-            self.magic_missile_cast = False
+            self.between_round_action_issued = False
             self.backstab_pending_target = None
             self.consider_target = None
             self.consider_viable = None
@@ -846,7 +846,7 @@ class StarterPolicy:
         ):
             self.combat_active = False
             self.active_target = None
-            self.magic_missile_cast = False
+            self.between_round_action_issued = False
             self.fastwalk_pursuit_direction = fleeing_mobile.group(
                 "direction"
             ).casefold()
@@ -860,11 +860,11 @@ class StarterPolicy:
         if "aren't fighting anyone" in recent:
             self.combat_active = False
             self.active_target = None
-            self.magic_missile_cast = False
+            self.between_round_action_issued = False
         if "you flee from combat" in recent:
             self.combat_active = False
             self.active_target = None
-            self.magic_missile_cast = False
+            self.between_round_action_issued = False
             self.flee_pending = False
             self.flee_succeeded = True
         if "you failed to flee" in recent or "you couldn't escape" in recent:
@@ -896,7 +896,7 @@ class StarterPolicy:
                     target for target in targets if target != self.active_target
                 ]
             self.active_target = None
-            self.magic_missile_cast = False
+            self.between_round_action_issued = False
         if "too relaxed" in folded or "you must be standing" in folded:
             self.needs_stand = True
         if "you are still fighting" in recent:
@@ -1468,7 +1468,7 @@ class StarterPolicy:
                 return None
             if self._is_noncombat_utility_run:
                 if self._utility_attacker_is_trivial(state):
-                    combat = self._combat_spell_decision(state)
+                    combat = self._between_round_combat_decision(state)
                     if combat is not None:
                         return combat
                     self.prompt_ready = False
@@ -1530,7 +1530,7 @@ class StarterPolicy:
                     self.fastwalk_arrival_observed = True
                     self.fastwalk_attack_started = True
                     self.active_target = self.fastwalk_attack_target
-                    spell = self._combat_spell_decision(state)
+                    spell = self._between_round_combat_decision(state)
                     if spell is not None:
                         return spell
                     self.prompt_ready = False
@@ -1544,7 +1544,7 @@ class StarterPolicy:
                 ):
                     self.fastwalk_attack_target = self.active_target
                     self.fastwalk_attack_started = True
-                    spell = self._combat_spell_decision(state)
+                    spell = self._between_round_combat_decision(state)
                     if spell is not None:
                         return spell
                     self.prompt_ready = False
@@ -1646,7 +1646,7 @@ class StarterPolicy:
                     f"wield {self.disarmed_weapon_keyword}",
                     "rearm the recovered weapon during combat",
                 )
-            spell = self._combat_spell_decision(state)
+            spell = self._between_round_combat_decision(state)
             if spell is not None:
                 return spell
             self.prompt_ready = False
@@ -2201,17 +2201,21 @@ class StarterPolicy:
             return BotDecision("south", "return from the Temple toward supplies")
         return None
 
-    def _combat_spell_decision(self, state: CharacterState) -> BotDecision | None:
-        if not self.active_target or self.magic_missile_cast:
+    def _between_round_combat_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Issue one active action while automatic combat rounds continue."""
+        if not self.active_target or self.between_round_action_issued:
             return None
         if (
             self.spec.character_class == "warrior"
             and "kick" in self.known_skills
         ):
-            self.magic_missile_cast = True
+            self.between_round_action_issued = True
             return BotDecision(
                 "kick",
-                "use kick for extra damage between automatic combat rounds",
+                "add kick damage between automatic weapon rounds",
             )
         if _mana_ratio(state) < 0.15:
             return None
@@ -2230,7 +2234,7 @@ class StarterPolicy:
         if spell == "chill touch" and self.chill_touch_unavailable:
             spell = "magic missile"
         target = _target_keyword(self.active_target)
-        self.magic_missile_cast = True
+        self.between_round_action_issued = True
         return BotDecision(
             f"cast '{spell}' {target}",
             f"use the strongest known {self.spec.character_class} combat spell, "
@@ -4619,7 +4623,7 @@ class StarterPolicy:
             target = targets[0]
             self.combat_active = True
             self.active_target = target
-            self.magic_missile_cast = False
+            self.between_round_action_issued = False
             return self._combat_opener_decision(
                 target,
                 "defeat the final tutorial gladiator",

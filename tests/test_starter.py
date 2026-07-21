@@ -8471,7 +8471,22 @@ def test_warrior_uses_kick_between_automatic_combat_rounds() -> None:
 
     assert decision is not None
     assert decision.command == "kick"
-    assert "between automatic combat rounds" in decision.reason
+    assert "between automatic weapon rounds" in decision.reason
+
+
+def test_warrior_does_not_use_kick_as_a_combat_opener() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+    )
+    policy.known_skills.add("kick")
+
+    decision = policy._combat_opener_decision(
+        "a wild boar",
+        "fight arena opponent a wild boar",
+    )
+
+    assert decision.command == "kill boar"
 
 
 def test_thief_opens_with_backstab_only_with_a_verified_piercing_weapon() -> None:
@@ -8582,7 +8597,7 @@ def test_level_nine_mage_falls_back_when_chill_touch_is_unknown() -> None:
     policy.prompt_ready = True
     policy.combat_active = True
     policy.active_target = "a mountain goblin"
-    policy.magic_missile_cast = True
+    policy.between_round_action_issued = True
     state = CharacterState(
         level=9,
         hp=105,
@@ -8896,7 +8911,7 @@ def test_mage_casts_again_after_the_server_confirms_the_previous_volley() -> Non
     policy.prompt_ready = True
     policy.combat_active = True
     policy.active_target = "a prowling wolf"
-    policy.magic_missile_cast = True
+    policy.between_round_action_issued = True
     state = CharacterState(
         hp=70,
         max_hp=96,
@@ -8926,7 +8941,7 @@ def test_mage_casts_again_after_the_previous_spell_misses() -> None:
     policy.fastwalk_attack_started = True
     policy.combat_active = True
     policy.active_target = "Olog"
-    policy.magic_missile_cast = True
+    policy.between_round_action_issued = True
     state = CharacterState(
         hp=90,
         max_hp=100,
