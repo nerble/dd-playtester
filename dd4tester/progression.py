@@ -309,11 +309,11 @@ _MIDENNIR_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     policy_id="midennir-goblin-7-8",
     minimum_level=7,
     maximum_level=8,
-    status="verified",
-    execution="midennir-hunt",
+    status="research",
+    execution=None,
     summary=(
-        "One bounded, live-considered Miden'nir goblin hunt with conservative "
-        "multi-attacker withdrawal, recall, and healer recovery."
+        "Source-backed Miden'nir goblin route awaiting a safe approach policy "
+        "for wandering aggressive targets."
     ),
     evidence=(
         "Live runs 268, 270, 272, and 275 killed Miden'nir goblins for 361, 210, 244, and 216 XP.",
@@ -321,6 +321,7 @@ _MIDENNIR_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "Live run 275 returned to the Mage Guild at full health and mana after one bounded kill.",
         "DD4 source resets a mountain goblin in room 3506, exactly one east of the official fastwalk endpoint.",
         "Empty or crowded spawn windows are retryable campaign checkpoints, not reasons to force combat.",
+        "Live run 777: a level-7 mountain goblin wandered to the arrival room and auto-attacked before the planned stop; the generic field safety policy fled, lost 58 XP, and recovered safely. The route must not be selected for level 7 until an approach can retain live-consider safety.",
     ),
     practice_skill="magic missile",
     segment_kill_limit=1,
@@ -745,11 +746,6 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                     practice_skill=context.practice_skill,
                 )
             if context.last_policy_id == _GNOME_LEVEL_SEVEN_POLICY.policy_id:
-                return replace(
-                    _MIDENNIR_LEVEL_SEVEN_POLICY,
-                    practice_skill=context.practice_skill,
-                )
-            if context.last_policy_id == _MIDENNIR_LEVEL_SEVEN_POLICY.policy_id:
                 return replace(
                     _DAYCARE_LEVEL_SEVEN_POLICY,
                     practice_skill=context.practice_skill,
