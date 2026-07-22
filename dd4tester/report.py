@@ -389,6 +389,8 @@ def _commentary(
             comments.append((0, f"I gained {amount} experience points."))
         elif amount < 0:
             comments.append((0, f"I lost {abs(amount)} experience points."))
+        elif not progress["confirmed_kills"]:
+            comments.append((0, "I made no experience progress this run."))
 
     ending = (
         "I completed the run successfully."

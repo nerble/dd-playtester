@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from dd4tester.cli import main
-from dd4tester.report import build_run_report, render_markdown
+from dd4tester.report import _commentary, build_run_report, render_markdown
 from dd4tester.storage import RunStorage
 
 
@@ -119,6 +119,21 @@ def test_report_cli_rejects_invalid_limit(tmp_path, capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 2
     assert "--commentary-limit must be at least 1" in captured.err
+
+
+def test_commentary_explains_an_empty_run_has_no_experience_progress() -> None:
+    commentary = _commentary(
+        [],
+        "success",
+        None,
+        {"experience": {"change": 0}, "confirmed_kills": []},
+        3,
+    )
+
+    assert commentary == [
+        "I made no experience progress this run.",
+        "I completed the run successfully.",
+    ]
 
 
 def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
