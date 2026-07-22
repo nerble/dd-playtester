@@ -113,6 +113,13 @@ _MOB_ATTACKS_YOU = re.compile(
     r"annihilates|obliterates|ravages|cripples|brutalises|vapourises) you\b",
     re.IGNORECASE,
 )
+_MOB_DIRECT_ATTACKS_YOU = re.compile(
+    r"\b(?P<attacker>[A-Za-z][A-Za-z '-]{0,60}?)\s+(?:misses|hits|"
+    r"scratches|grazes|injures|wounds|mauls|decimates|mangles|maims|"
+    r"mutilates|disembowels|eviscerates|massacres|demolishes|devastates|"
+    r"annihilates|obliterates|ravages|cripples|brutalises|vapourises) you\b",
+    re.IGNORECASE,
+)
 _CONSIDER_VIABLE_FRAGMENTS = (
     "looks like an easy kill",
     "looks like it would be easy to destroy",
@@ -252,6 +259,7 @@ class FieldHuntStop:
     minimum_health_ratio: float = 0.8
     consider_only: bool = False
     exact_target: bool = False
+    maximum_target_count: int = 1
 
 
 class StarterPolicy:
@@ -912,7 +920,10 @@ class StarterPolicy:
             self.fastwalk_pursuit_direction = fleeing_mobile.group(
                 "direction"
             ).casefold()
-        attacking_mobile = _MOB_ATTACKS_YOU.search(cleaned)
+        attacking_mobile = (
+            _MOB_ATTACKS_YOU.search(cleaned)
+            or _MOB_DIRECT_ATTACKS_YOU.search(cleaned)
+        )
         if (
             "you attack " in recent
             or " attacks you" in recent
@@ -3688,10 +3699,11 @@ class StarterPolicy:
             if _target_keyword(observed) == _target_keyword(target)
         )
         ambiguous_keyword = keyword_match_count > target_count
+        maximum_target_count = stop.maximum_target_count if stop is not None else 1
         if (
-            target_count > 1
+            (not consider_only and target_count > maximum_target_count)
             or (consider_only and ambiguous_keyword)
-            or (not consider_only and observed_mobile_count > 1)
+            or (not consider_only and observed_mobile_count > target_count)
         ):
             self.fastwalk_abort_reason = (
                 f"field room contained {observed_mobile_count} observed mobiles "
@@ -6014,9 +6026,28 @@ async def run_fastwalk_research_profile(
     explore_direction: str | None = None,
     explore_depth: int = 1,
     attack_target: str | None = None,
+    consider_target: str | None = None,
+    maximum_target_count: int = 1,
 ) -> RunResult:
+    if attack_target is not None and consider_target is not None:
+        raise ValueError("attack_target and consider_target are mutually exclusive")
+    if maximum_target_count < 1:
+        raise ValueError("maximum_target_count must be positive")
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
+    target = consider_target or attack_target
+    hunt_stops = (
+        (
+            FieldHuntStop(
+                (),
+                target,
+                consider_only=consider_target is not None,
+                maximum_target_count=maximum_target_count,
+            ),
+        )
+        if target is not None
+        else ()
+    )
     return await StarterBotRunner(
         spec,
         profile_path,
@@ -6024,6 +6055,10 @@ async def run_fastwalk_research_profile(
         fastwalk_explore_direction=explore_direction,
         fastwalk_explore_depth=explore_depth,
         fastwalk_attack_target=attack_target,
+        fastwalk_hunt_stops=hunt_stops,
+        fastwalk_kill_limit=1 if attack_target is not None else None,
+        require_fastwalk_kill=False,
+        allow_safe_fastwalk_abort=True,
     ).run()
 
 

@@ -184,10 +184,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="maximum rooms to inspect through --exit, from 1 to 6, default: 1",
     )
-    fastwalk_parser.add_argument(
+    fastwalk_target_group = fastwalk_parser.add_mutually_exclusive_group()
+    fastwalk_target_group.add_argument(
         "--attack",
         dest="attack_target",
         help="attack one explicit target after the one-room inspection",
+    )
+    fastwalk_target_group.add_argument(
+        "--consider",
+        dest="consider_target",
+        help="live-consider one endpoint target without attacking it",
+    )
+    fastwalk_parser.add_argument(
+        "--max-matching-targets",
+        dest="maximum_target_count",
+        type=int,
+        default=1,
+        help="maximum identical target mobiles permitted for --attack, default: 1",
     )
     midennir_parser = subcommands.add_parser(
         "midennir-research",
@@ -697,6 +710,8 @@ def main(argv: list[str] | None = None) -> int:
                     explore_direction=args.explore_direction,
                     explore_depth=args.depth,
                     attack_target=args.attack_target,
+                    consider_target=args.consider_target,
+                    maximum_target_count=args.maximum_target_count,
                 )
             )
         except Exception as exc:

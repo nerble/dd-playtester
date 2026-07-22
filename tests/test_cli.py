@@ -425,12 +425,16 @@ def test_fastwalk_research_command_runs_named_route(tmp_path, capsys, monkeypatc
         explore_direction: str | None = None,
         explore_depth: int = 1,
         attack_target: str | None = None,
+        consider_target: str | None = None,
+        maximum_target_count: int = 1,
     ) -> RunResult:
         assert path == profile
         assert route == "moria"
         assert explore_direction is None
         assert explore_depth == 1
         assert attack_target is None
+        assert consider_target is None
+        assert maximum_target_count == 1
         return RunResult(15, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(
@@ -458,12 +462,16 @@ def test_fastwalk_research_command_can_inspect_one_exit(tmp_path, capsys, monkey
         explore_direction: str | None = None,
         explore_depth: int = 1,
         attack_target: str | None = None,
+        consider_target: str | None = None,
+        maximum_target_count: int = 1,
     ) -> RunResult:
         assert path == profile
         assert route == "moria"
         assert explore_direction == "north"
         assert explore_depth == 2
         assert attack_target is None
+        assert consider_target is None
+        assert maximum_target_count == 1
         return RunResult(16, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(
@@ -487,6 +495,53 @@ def test_fastwalk_research_command_can_inspect_one_exit(tmp_path, capsys, monkey
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Run 16 success" in captured.out
+
+
+def test_fastwalk_research_command_can_consider_without_attacking(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "fastwalk-consider.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_fastwalk_research(
+        path: Path,
+        route: str,
+        *,
+        explore_direction: str | None = None,
+        explore_depth: int = 1,
+        attack_target: str | None = None,
+        consider_target: str | None = None,
+        maximum_target_count: int = 1,
+    ) -> RunResult:
+        assert path == profile
+        assert route == "gnome mine"
+        assert explore_direction is None
+        assert explore_depth == 1
+        assert attack_target is None
+        assert consider_target == "hobgoblin miner"
+        assert maximum_target_count == 1
+        return RunResult(17, "success", transcript, database, {"level": 7})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_fastwalk_research_profile",
+        fake_fastwalk_research,
+    )
+
+    exit_code = main(
+        [
+            "fastwalk-research",
+            str(profile),
+            "gnome mine",
+            "--consider",
+            "hobgoblin miner",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 17 success" in captured.out
 
 
 def test_midennir_research_command_collects_large_sack(

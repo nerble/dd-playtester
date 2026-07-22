@@ -6594,6 +6594,94 @@ def test_consider_only_probe_can_assess_a_target_in_a_crowded_room() -> None:
     assert policy.fastwalk_hunt_stop_skipped is False
 
 
+def test_consider_only_probe_can_assess_duplicate_matching_targets() -> None:
+    route = route_named("gnome mine")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "hobgoblin miner", consider_only=True),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_looked = True
+    policy.current_room = "1563"
+    state = CharacterState(
+        level=7,
+        hp=157,
+        max_hp=157,
+        mana=138,
+        max_mana=138,
+        move=145,
+        max_move=210,
+        room_name="Mine Shaft",
+        room_vnum="1563",
+        position=7,
+    )
+    policy.observe_text(
+        "A hobgoblin miner stands here looking for gold.\n"
+        "A hobgoblin miner stands here looking for gold.\n"
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "consider miner"
+    assert policy.fastwalk_hunt_stop_skipped is False
+
+
+def test_field_hunt_can_allow_a_bounded_count_of_identical_targets() -> None:
+    route = route_named("gnome mine")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "hobgoblin miner",
+                maximum_target_count=2,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.fastwalk_hunt_looked = True
+    policy.current_room = "1563"
+    state = CharacterState(
+        level=7,
+        hp=157,
+        max_hp=157,
+        mana=138,
+        max_mana=138,
+        move=145,
+        max_move=210,
+        room_name="Mine Shaft",
+        room_vnum="1563",
+        position=7,
+    )
+    policy.observe_text(
+        "A hobgoblin miner stands here looking for gold.\n"
+        "A hobgoblin miner stands here looking for gold.\n"
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "consider miner"
+    assert policy.fastwalk_hunt_stop_skipped is False
+
+
 def test_exact_field_target_ignores_smaller_same_keyword_mobile() -> None:
     route = route_named("moria")
     policy = StarterPolicy(
@@ -7554,6 +7642,39 @@ def test_fastwalk_recognizes_mob_attack_text_on_its_final_route_step() -> None:
     assert policy.fastwalk_arrival_observed is True
     assert decision is not None
     assert decision.command == "cast 'magic missile' Olog"
+
+
+def test_fastwalk_flees_a_directly_worded_unapproved_attacker() -> None:
+    route = route_named("gnome mine")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="hobgoblin miner",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 4
+    state = CharacterState(
+        room_name="The Main Street",
+        room_vnum="3016",
+        hp=157,
+        max_hp=157,
+        mana=138,
+        max_mana=138,
+        move=193,
+        max_move=210,
+        position=6,
+    )
+
+    policy.observe_text("The drunk misses you.\n")
+    decision = policy.next_decision(state)
+
+    assert policy.unapproved_field_attacker == "The drunk"
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "unapproved attacker" in decision.reason
 
 
 def test_fastwalk_research_does_not_claim_unrelated_corpse() -> None:

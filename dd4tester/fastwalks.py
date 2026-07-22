@@ -106,6 +106,13 @@ MAP_ROUTES = (
         loot_container="purse",
     ),
     Fastwalk(
+        "gnome mine",
+        5,
+        10,
+        "2s5es6ene",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
         "foundry captain",
         7,
         7,
