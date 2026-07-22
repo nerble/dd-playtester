@@ -481,6 +481,8 @@ class StarterPolicy:
         self.guildmaster_step = 0
         self.magic_shop_step = 0
         self.magic_shop_purchase_failed = False
+        self.magic_shop_capacity_relief_attempted = False
+        self.magic_shop_capacity_relief_pending = False
         self.sale_plan: list[tuple[str, SafeShop]] = []
         self.sale_index = 0
         self.sale_route_index = 0
@@ -736,6 +738,12 @@ class StarterPolicy:
                 self.magic_shop_purchase_failed = True
         if "you can't carry that much weight" in folded:
             self.purchase_carry_rejected = True
+        if self.magic_shop_capacity_relief_pending and (
+            "you eat" in recent or "you are full" in recent
+        ):
+            self.magic_shop_capacity_relief_pending = False
+            self.purchase_carry_rejected = False
+            self.magic_shop_step = 1
         if (
             self.city_restock
             and "can't carry that much weight" in folded
@@ -1246,7 +1254,10 @@ class StarterPolicy:
         if self.consider_response_pending:
             self.prompt_ready = False
             return None
-        if self.city_restock_capacity_relief_pending:
+        if (
+            self.city_restock_capacity_relief_pending
+            or self.magic_shop_capacity_relief_pending
+        ):
             # Room messages can arrive before DD4 processes the queued eat
             # command. Do not mistake their prompt for the food result.
             self.prompt_ready = False
@@ -3234,6 +3245,22 @@ class StarterPolicy:
                 return BotDecision(
                     "south",
                     "return after the current light blue potion price was unaffordable",
+                )
+            if self.purchase_carry_rejected:
+                if (
+                    not self.magic_shop_capacity_relief_attempted
+                    and _has_inventory_item(state.inventory, "pie")
+                ):
+                    self.magic_shop_capacity_relief_attempted = True
+                    self.magic_shop_capacity_relief_pending = True
+                    return BotDecision(
+                        "eat pie",
+                        "consume confirmed carried food to free capacity for flight",
+                    )
+                self.magic_shop_purchase_failed = True
+                return BotDecision(
+                    "south",
+                    "return because no safe capacity relief was available for flight",
                 )
             commands = [("list", "record Magic Shop stock and potion prices")]
             if self.magic_shop_buy_fly:
@@ -5952,6 +5979,7 @@ class StarterBotRunner:
             final_state = {
                 **self.character_state.to_dict(),
                 "combat_pouch_potions": dict(policy.combat_pouch_potions),
+                "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
             }
             if policy.primary_weapon_observed is not None:
                 final_state["campaign_has_weapon"] = (

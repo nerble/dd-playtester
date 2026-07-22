@@ -8875,6 +8875,42 @@ def test_magic_shop_research_returns_when_flight_potion_price_is_unaffordable() 
     assert policy.magic_shop_purchase_failed is True
 
 
+def test_magic_shop_retries_flight_purchase_after_using_carried_food() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        magic_shop_research=True,
+        magic_shop_buy_fly=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.magic_shop_step = 2
+    policy.observe_text("You can't carry that much weight.")
+    shop = CharacterState(
+        room_name="The Magic Shop",
+        room_vnum="3033",
+        position=7,
+        inventory=[[{"short_desc": "a big pot pie"}]],
+    )
+
+    relief = policy.next_decision(shop)
+
+    assert relief is not None
+    assert relief.command == "eat pie"
+
+    policy.prompt_ready = True
+    assert policy.next_decision(shop) is None
+    assert policy.prompt_ready is False
+
+    policy.observe_text("You eat a big pot pie.")
+    policy.prompt_ready = True
+    retry = policy.next_decision(shop)
+
+    assert retry is not None
+    assert retry.command == "buy light"
+    assert policy.magic_shop_purchase_failed is False
+
+
 def test_magic_shop_research_becomes_visible_and_restarts_stock_check() -> None:
     policy = StarterPolicy(
         _spec(),
