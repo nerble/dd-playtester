@@ -506,6 +506,7 @@ class StarterPolicy:
         self.fastwalk_target_absent = False
         self.consider_target: str | None = None
         self.consider_viable: bool | None = None
+        self.consider_response_pending = False
         self.fastwalk_loot_step = 0
         self.fastwalk_recall_after_loot = False
         self.fastwalk_pouch_audit_pending = False
@@ -553,6 +554,9 @@ class StarterPolicy:
                 # retain the existing retry behavior rather than waiting for a
                 # response that may never arrive.
                 self.gear_response_expectation = None
+        if self.consider_response_pending:
+            if _consider_response_matches(recent):
+                self.consider_response_pending = False
         if "skills known:" in recent:
             listing = parse_practice_listing(cleaned)
             self.known_skills.update(listing.known)
@@ -1163,6 +1167,9 @@ class StarterPolicy:
         if self.gear_response_expectation is not None:
             self.prompt_ready = False
             return None
+        if self.consider_response_pending:
+            self.prompt_ready = False
+            return None
         return self._tutorial_decision(state)
 
     def after_command(self, decision: BotDecision) -> None:
@@ -1235,6 +1242,8 @@ class StarterPolicy:
                 self.gear_response_expectation = "wear"
             elif decision.reason.startswith("remove lower-priority gear"):
                 self.gear_response_expectation = "remove"
+        if decision.command.startswith("consider "):
+            self.consider_response_pending = True
         if decision.command == "quit":
             self.done = True
 
@@ -6672,6 +6681,14 @@ def _is_stale_gear_ack(recent: str) -> bool:
         r"\s*<\d+/\d+ hits .*?\[[^]]+\]>\s*",
         recent,
     ) is not None
+
+
+def _consider_response_matches(recent: str) -> bool:
+    """Recognize a DD4 consideration result after a delayed command pulse."""
+    return any(
+        phrase in recent
+        for phrase in (*_CONSIDER_VIABLE_FRAGMENTS, *_CONSIDER_REJECTED_FRAGMENTS)
+    )
 
 
 def _policy_inactivity_due(

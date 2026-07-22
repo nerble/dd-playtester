@@ -6358,6 +6358,42 @@ def test_fastwalk_research_rejects_target_that_is_no_match() -> None:
     assert policy.combat_active is False
 
 
+def test_fastwalk_consider_waits_for_its_delayed_response() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_explore_direction="north",
+        fastwalk_attack_target="kobold",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_explore_distance = 1
+    policy.current_room = "3506"
+    policy.room_targets["4018"] = ["kobold"]
+    cave = CharacterState(room_name="The cave", room_vnum="4018", position=7)
+
+    consider = policy.next_decision(cave)
+    assert consider is not None
+    assert consider.command == "consider kobold"
+    policy.after_command(consider)
+    policy.observe_text("You discover a toy soldier's hands in your wallet!\n")
+    policy.prompt_ready = True
+
+    assert policy.next_decision(cave) is None
+
+    policy.observe_text("The kobold looks like an easy kill.\n")
+    policy.prompt_ready = True
+    attack = policy.next_decision(cave)
+
+    assert attack is not None
+    assert attack.command == "kill kobold"
+
+
 def test_fastwalk_research_skips_a_mixed_crowd_before_considering() -> None:
     route = route_named("moria")
     policy = StarterPolicy(
