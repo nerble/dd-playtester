@@ -190,6 +190,44 @@ def test_level_seven_rotates_from_shire_to_moria() -> None:
     assert policy.execution == "moria-orc-hunt"
 
 
+def test_level_seven_uses_warrior_shire_fallback_after_depleted_foundry() -> None:
+    policy = policy_for(
+        7,
+        "warrior",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        last_policy_id="midennir-goblin-7-8",
+    )
+
+    assert policy.policy_id == "shire-bull-warrior-7-8"
+    assert policy.execution == "shire-bull-hunt"
+    assert policy.executable is True
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seven_keeps_shire_fallback_research_gated_for_thief() -> None:
+    policy = policy_for(
+        7,
+        "thief",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        last_policy_id="midennir-goblin-7-8",
+    )
+
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
+
+
+def test_level_seven_rotates_warrior_shire_fallback_to_moria() -> None:
+    policy = policy_for(
+        7,
+        "warrior",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        last_policy_id="shire-bull-warrior-7-8",
+    )
+
+    assert policy.policy_id == "moria-orc-circuit-7-8"
+    assert policy.execution == "moria-orc-hunt"
+
+
 def test_level_seven_rotates_from_moria_to_gnome_hermit() -> None:
     policy = policy_for(
         7,

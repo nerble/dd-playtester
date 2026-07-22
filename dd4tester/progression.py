@@ -285,6 +285,26 @@ _SHIRE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_SHIRE_WARRIOR_LEVEL_SEVEN_POLICY = replace(
+    _SHIRE_LEVEL_SEVEN_POLICY,
+    policy_id="shire-bull-warrior-7-8",
+    status="verified",
+    execution="shire-bull-hunt",
+    summary=(
+        "A one-kill, live-considered Shire bull fallback for the resilient "
+        "warrior archetype after the Foundry is depleted."
+    ),
+    evidence=(
+        *_SHIRE_LEVEL_SEVEN_POLICY.evidence,
+        "The executable policy is deliberately restricted to warriors: the "
+        "source-estimated peak round is below Dorrik's verified 157 HP, while "
+        "the thief evidence demonstrated that the wandering-Thain risk is not "
+        "a generic low-health route.",
+        "The one-kill limit, exact target identity, full-health gate, and "
+        "generic multi-attacker withdrawal remain mandatory.",
+    ),
+)
+
 _GNOME_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     policy_id="gnome-hermit-7-8",
     minimum_level=7,
@@ -732,9 +752,18 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 context.boot_kill_counts,
                 "nanny",
             )
+            if (
+                context.character_class == "warrior"
+                and context.last_policy_id == _MIDENNIR_LEVEL_SEVEN_POLICY.policy_id
+            ):
+                return replace(
+                    _SHIRE_WARRIOR_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
             if context.last_policy_id in {
                 _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
                 _SHIRE_LEVEL_SEVEN_POLICY.policy_id,
+                _SHIRE_WARRIOR_LEVEL_SEVEN_POLICY.policy_id,
             }:
                 return replace(
                     _MORIA_LEVEL_SEVEN_ORC_POLICY,
