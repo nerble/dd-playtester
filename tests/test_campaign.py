@@ -85,6 +85,32 @@ def test_equipment_audit_without_wield_slot_records_weapon_loss(tmp_path) -> Non
         assert _run_has_unrecovered_weapon_loss(storage, run_id) is True
 
 
+def test_equipment_audit_ignores_stale_response_before_wield_slot(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="delayed-equipment",
+            scenario_path=tmp_path / "profile.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="command",
+            payload={"command": "equipment"},
+        )
+        storage.record_event(
+            run_id,
+            kind="response",
+            payload={"text": "Ok.\n<157/157 hits 138/138 mana 210/210 move [Midgaard]>"},
+        )
+        storage.record_event(
+            run_id,
+            kind="response",
+            payload={"text": "[weapon] a sharp steel broadsword"},
+        )
+
+        assert _run_has_unrecovered_weapon_loss(storage, run_id) is False
+
+
 def test_serialized_coloured_inventory_preserves_duplicate_quantity() -> None:
     state = {
         "inventory": (

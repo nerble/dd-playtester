@@ -860,10 +860,11 @@ def _run_has_unrecovered_weapon_loss(
         response = str(payload.get("text", "")).casefold()
         if awaiting_equipment_response:
             cleaned = _ANSI_ESCAPE.sub("", response)
-            weapon_present = bool(
-                re.search(r"(?:\[weapon\]|<[^>]*wield[^>]*>)", cleaned)
-            )
-            awaiting_equipment_response = False
+            if _is_equipment_audit_response(cleaned):
+                weapon_present = bool(
+                    re.search(r"(?:\[weapon\]|<[^>]*wield[^>]*>)", cleaned)
+                )
+                awaiting_equipment_response = False
         if (
             "disarms you" in response
             or "your weapon slips from your hand" in response
@@ -872,6 +873,13 @@ def _run_has_unrecovered_weapon_loss(
         if "you wield " in response:
             weapon_present = True
     return weapon_present is False
+
+
+def _is_equipment_audit_response(response: str) -> bool:
+    """Reject stale command pulses while reconstructing an equipment audit."""
+    return "you are not using any equipment" in response or bool(
+        re.search(r"(?:\[weapon\]|\[held\]|<[^>]*worn[^>]*>)", response)
+    )
 
 
 def _state_has_item(value: Any, item_name: str) -> bool:
