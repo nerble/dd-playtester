@@ -746,6 +746,11 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 )
             if context.last_policy_id == _GNOME_LEVEL_SEVEN_POLICY.policy_id:
                 return replace(
+                    _MIDENNIR_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if context.last_policy_id == _MIDENNIR_LEVEL_SEVEN_POLICY.policy_id:
+                return replace(
                     _DAYCARE_LEVEL_SEVEN_POLICY,
                     practice_skill=context.practice_skill,
                 )

@@ -727,6 +727,7 @@ async def _run_policy_segment(
             fastwalk_require_invisibility=use_level_eight_loadout,
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
         ).run()
     if policy.execution == "midennir-sack":
         return await StarterBotRunner(

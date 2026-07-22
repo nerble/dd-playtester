@@ -203,12 +203,24 @@ def test_level_seven_rotates_from_moria_to_gnome_hermit() -> None:
     assert policy.segment_kill_limit == 1
 
 
-def test_level_seven_rotates_from_gnome_hermit_to_daycare() -> None:
+def test_level_seven_rotates_from_gnome_hermit_to_midennir() -> None:
     policy = policy_for(
         7,
         "mage",
         boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
         last_policy_id="gnome-hermit-7-8",
+    )
+
+    assert policy.policy_id == "midennir-goblin-7-8"
+    assert policy.execution == "midennir-hunt"
+
+
+def test_level_seven_rotates_from_midennir_to_daycare() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        last_policy_id="midennir-goblin-7-8",
     )
 
     assert policy.policy_id == "daycare-nanny-circuit-7-8"
