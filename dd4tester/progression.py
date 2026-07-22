@@ -261,6 +261,7 @@ _DAYCARE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "Live runs 706 and 707 traversed both reset rooms and returned safely to healer room 3054; both nannies were absent in that reboot window, so the campaign rotates areas instead of repeating indefinitely.",
         "Live run 712 considered a reboot-fuzzed level-4 nanny in room 6604, killed her for 149 XP, collected her robe, potion, and food drop, and recovered at healer room 3054; blindness was not selected in that fight.",
         "Live run 790: level-7 dwarf warrior Dorrik considered and killed a nanny for 192 XP. Its cleric blindness triggered recall and healer recovery; the completed save-and-quit was recorded as a successful campaign segment.",
+        "Live run 798: level-7 drow thief Kestrel killed a nanny for 69 XP, recovered an amber potion, woke to address hunger and thirst during healer recovery, and returned safely to room 3054.",
     ),
     practice_skill=None,
     segment_kill_limit=2,
