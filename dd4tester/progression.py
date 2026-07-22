@@ -215,27 +215,30 @@ _FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     segment_kill_limit=5,
 )
 
-_MORIA_SNAKE_POLICY = ProgressionPolicy(
-    policy_id="moria-garter-snake-7-8",
+_MORIA_LEVEL_SEVEN_ORC_POLICY = ProgressionPolicy(
+    policy_id="moria-orc-circuit-7-8",
     minimum_level=7,
     maximum_level=8,
     status="verified",
-    execution="moria-snake-hunt",
+    execution="moria-orc-hunt",
     summary=(
-        "One bounded, live-considered garter-snake hunt two rooms north of "
-        "the official Moria fastwalk endpoint."
+        "A bounded, live-considered first-level Moria circuit: two poison-free "
+        "orcs, then an optional snake immediately before healer recovery."
     ),
     evidence=(
-        "DD4 source: the official Moria fastwalk reaches room 4014; two north moves reach room 4025.",
-        "DD4 source: room 4025 has one level-7 garter-snake reset and no other mobile reset.",
-        "Live run 252: level-7 mage Ararisa considered the snake a perfect match, killed it for 373 XP, and returned to room 3019 at full health and mana.",
+        "DD4 source: the official Moria fastwalk reaches room 4014; poison-free source-level-7 and source-level-5 orcs reset in rooms 4022 and 4015.",
+        "DD4 source: the large orc carries a yellow and green ring, while the level-7 garter snake has spec_poison.",
         "Area-file mobile levels are approximate; every field target is checked with live consider output before combat.",
         "Live run 264: a deeper multi-target Moria circuit encountered a wandering veteran warrior and is deliberately excluded from this isolated policy.",
-        "DD4 source revision 0482387: the Moria fastwalk and room-4025 path have no reachable above-level aggressive reset under reset door state.",
+        "DD4 source revision 0482387: the circuit remains on Moria level 1 and does not enter the level-2 graph containing aggressive veteran warriors.",
         "Live run 693: level-7 thief Kestrel considered the snake a perfect match, killed it for 334 XP, and returned to healer room 3054; repeated poison made his heavy weapon slip, so the campaign must checkpoint and rearm before another hunt.",
+        "Live run 697: a repeated snake kill yielded only 11 XP while poisoning Kestrel, disqualifying it as a primary repeatable progression target.",
+        "The snake is sequenced last and requires full health so recall and healer cure-poison recovery follow immediately.",
+        "Live run 701 considered a reboot-fuzzed level-6 orc a perfect match; an exact duplicate GMCP enemy row caused a conservative flee and motivated protocol-level deduplication before revalidation.",
+        "Live run 702 completed the flight-enabled last-stop snake kill for 392 XP, then recovered from 99/123 to full health at healer room 3054 with no remaining poison affect or weapon loss.",
     ),
     practice_skill=None,
-    segment_kill_limit=1,
+    segment_kill_limit=3,
 )
 
 _MIDENNIR_LEVEL_SEVEN_POLICY = ProgressionPolicy(
@@ -470,7 +473,7 @@ _REARM_WEAPON_POLICY = ProgressionPolicy(
     evidence=(
         "DD4 source resets object 3020, a one-pound dagger, on the weaponsmith in room 3011.",
         "DD4 source prices the dagger at 10 copper before the weaponsmith's reboot-fuzzy markup.",
-        "The route between the Mage Laboratory and Weapon Shop uses only safe Midgaard rooms.",
+        "The route between healer room 3054 and Weapon Shop room 3011 uses only safe Midgaard rooms.",
     ),
     practice_skill=None,
 )
@@ -489,6 +492,7 @@ _BUY_FLIGHT_POLICY = ProgressionPolicy(
         "Live run 96 bought the reboot-priced light blue potion for 123 copper and confirmed flight.",
         "Live run 437 bought the same potion for 94 copper after becoming visible and verifying the purchase.",
         "The workflow checks current stock and affordability instead of assuming a fixed reboot price.",
+        "DD4 fight.c suppresses NPC trip attempts against flying, fly-affected, or levitating targets.",
     ),
     practice_skill=None,
 )
@@ -651,8 +655,14 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             )
         )
         if foundry_kills >= 12:
+            if (
+                not context.has_flight
+                and context.can_attempt_flight_purchase
+                and not context.flight_purchase_failed
+            ):
+                return _BUY_FLIGHT_POLICY
             return replace(
-                _MORIA_SNAKE_POLICY,
+                _MORIA_LEVEL_SEVEN_ORC_POLICY,
                 practice_skill=context.practice_skill,
             )
         return replace(

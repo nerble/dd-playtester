@@ -120,9 +120,9 @@ def test_level_seven_rotates_from_repeated_foundry_kills(
         },
     )
 
-    assert policy.policy_id == "moria-garter-snake-7-8"
-    assert policy.execution == "moria-snake-hunt"
-    assert policy.segment_kill_limit == 1
+    assert policy.policy_id == "moria-orc-circuit-7-8"
+    assert policy.execution == "moria-orc-hunt"
+    assert policy.segment_kill_limit == 3
     assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
 
 
@@ -145,8 +145,21 @@ def test_level_seven_keeps_depleted_foundry_rotation_after_a_stalled_segment() -
         stalled_segments=1,
     )
 
-    assert policy.policy_id == "moria-garter-snake-7-8"
-    assert policy.execution == "moria-snake-hunt"
+    assert policy.policy_id == "moria-orc-circuit-7-8"
+    assert policy.execution == "moria-orc-hunt"
+
+
+def test_level_seven_buys_flight_before_depleted_moria_rotation() -> None:
+    policy = policy_for(
+        7,
+        "thief",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
 
 
 def test_stalled_level_seven_non_mage_uses_foundry_fallback() -> None:

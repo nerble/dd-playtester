@@ -35,7 +35,7 @@ from dd4tester.starter import (
     foundry_level_seven_hunt_stops,
     midennir_horseman_consider_stops,
     midennir_horseman_probe_route,
-    moria_garter_snake_hunt_stops,
+    moria_level_seven_orc_hunt_stops,
     moria_sanctuary_potion_consider_stops,
     moria_sanctuary_potion_hunt_stops,
 )
@@ -157,34 +157,42 @@ def test_foundry_level_seven_sweep_links_named_targets_around_poison_pit() -> No
     assert stops[-1].minimum_health_ratio == 1.0
 
 
-def test_moria_level_seven_hunt_is_one_exact_isolated_snake() -> None:
-    stops = moria_garter_snake_hunt_stops()
+def test_moria_level_seven_hunt_puts_poison_target_last() -> None:
+    stops = moria_level_seven_orc_hunt_stops()
 
-    assert len(stops) == 1
-    assert stops[0].route == ("north", "north")
-    assert stops[0].target == "small green garter snake"
-    assert stops[0].exact_target is True
+    assert [stop.target for stop in stops] == [
+        "large orc",
+        "orc",
+        "small green garter snake",
+    ]
+    assert stops[0].route == ("west", "west", "north", "west", "south")
+    assert stops[1].route == (
+        "north", "east", "south", "east", "east", "east"
+    )
+    assert stops[1].allowed_bystanders == ("small green garter snake",)
+    assert stops[2].route == ()
+    assert stops[2].minimum_health_ratio == 1.0
+    assert all(stop.exact_target for stop in stops)
 
 
-def test_moria_level_seven_stop_matches_captured_snake_description() -> None:
+def test_moria_level_seven_stop_matches_captured_large_orc_description() -> None:
     policy = StarterPolicy(
         _spec(**{"class": "thief", "subclass": "ninja"}),
         "swordfish",
         fastwalk_route=route_named("moria"),
-        fastwalk_hunt_stops=moria_garter_snake_hunt_stops(),
+        fastwalk_hunt_stops=moria_level_seven_orc_hunt_stops(),
     )
     policy.in_world = True
-    policy.current_room = "4025"
+    policy.current_room = "4022"
     policy.observe_text(
-        "This orc is frothing around the mouth. Better stay away.\n"
-        "A small green garter snake slithers along the floor.\n"
+        "This large orc is looking for someone small to pick on.\n"
     )
 
-    stop = moria_garter_snake_hunt_stops()[0]
+    stop = moria_level_seven_orc_hunt_stops()[0]
 
-    assert policy.room_targets["4025"] == ["small green garter snake"]
+    assert policy.room_targets["4022"] == ["large orc"]
     assert _stop_target_matches(
-        policy.room_targets["4025"][0],
+        policy.room_targets["4022"][0],
         stop.target or "",
         stop,
     )
@@ -3094,7 +3102,7 @@ def test_fastwalk_defends_against_one_level_higher_interceptor() -> None:
         _spec(**{"class": "thief", "subclass": "ninja"}),
         "swordfish",
         fastwalk_route=route_named("ambush"),
-        fastwalk_hunt_stops=moria_garter_snake_hunt_stops(),
+        fastwalk_hunt_stops=moria_level_seven_orc_hunt_stops(),
     )
     policy.in_world = True
     policy.prompt_ready = True
@@ -3134,7 +3142,7 @@ def test_fastwalk_does_not_adopt_multiple_opportunistic_attackers() -> None:
         _spec(),
         "swordfish",
         fastwalk_route=route_named("ambush"),
-        fastwalk_hunt_stops=moria_garter_snake_hunt_stops(),
+        fastwalk_hunt_stops=moria_level_seven_orc_hunt_stops(),
     )
     policy.in_world = True
     policy.prompt_ready = True
@@ -8117,15 +8125,18 @@ def test_liquidation_captures_offer_and_completed_sale() -> None:
     ]
 
 
-def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> None:
+def test_magic_shop_research_lists_stock_and_returns_to_healer() -> None:
     policy = StarterPolicy(_spec(), "swordfish", magic_shop_research=True)
     policy.in_world = True
     policy.prompt_ready = True
 
     outward = (
-        ("Mage's Laboratory", "3019", "west"),
-        ("Mage's Bar", "3018", "north"),
-        ("Entrance to Mage's Guild", "3017", "north"),
+        ("By the Temple Altar", "3054", "south"),
+        ("Temple Square", "3001", "south"),
+        ("The Fountain", "3005", "south"),
+        ("Market Square", "3006", "west"),
+        ("Main Street", "3014", "west"),
+        ("Main Street", "3013", "west"),
         ("Main Street", "3012", "north"),
     )
     for room_name, room_vnum, expected_command in outward:
@@ -8149,9 +8160,12 @@ def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> Non
     assert leave_shop.command == "south"
 
     return_path = (
-        ("Main Street", "3012", "south"),
-        ("Entrance to Mage's Guild", "3017", "south"),
-        ("Mage's Bar", "3018", "east"),
+        ("Main Street", "3012", "east"),
+        ("Main Street", "3013", "east"),
+        ("Main Street", "3014", "north"),
+        ("Market Square", "3006", "north"),
+        ("The Fountain", "3005", "north"),
+        ("Temple Square", "3001", "north"),
     )
     for room_name, room_vnum, expected_command in return_path:
         decision = policy.next_decision(
@@ -8163,10 +8177,10 @@ def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> Non
         policy.prompt_ready = True
 
     finish = policy.next_decision(
-        CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
+        CharacterState(room_name="By the Temple Altar", room_vnum="3054", position=7)
     )
     assert finish is not None
-    assert finish.command == "west"
+    assert finish.command == "save"
 
 
 def test_magic_shop_research_can_buy_and_verify_a_fly_potion() -> None:
@@ -9098,6 +9112,60 @@ def test_enemy_snapshot_clears_successful_backstab_pending_marker() -> None:
 
     assert policy.backstab_pending_target is None
     assert policy.combat_active is True
+
+
+def test_enemy_snapshot_collapses_exact_duplicate_gmcp_rows() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    state = CharacterState()
+    enemy = {
+        "name": "the orc",
+        "level": "6",
+        "hp": "34",
+        "maxhp": "81",
+        "isnpc": "4004",
+    }
+
+    policy.observe_events(
+        [GameEvent("enemies_changed", "gmcp", {"value": [[enemy, enemy.copy()]]})],
+        state,
+    )
+
+    assert policy.active_enemy_count == 1
+
+
+def test_enemy_snapshot_preserves_distinct_same_vnum_attackers() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    state = CharacterState()
+
+    policy.observe_events(
+        [
+            GameEvent(
+                "enemies_changed",
+                "gmcp",
+                {
+                    "value": [[
+                        {
+                            "name": "the orc",
+                            "level": "6",
+                            "hp": "34",
+                            "maxhp": "81",
+                            "isnpc": "4004",
+                        },
+                        {
+                            "name": "the orc",
+                            "level": "6",
+                            "hp": "81",
+                            "maxhp": "81",
+                            "isnpc": "4004",
+                        },
+                    ]]
+                },
+            )
+        ],
+        state,
+    )
+
+    assert policy.active_enemy_count == 2
 
 
 def test_level_eight_mage_keeps_magic_missile_until_offense_training() -> None:

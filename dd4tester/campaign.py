@@ -25,7 +25,7 @@ from .starter import (
     foundry_level_six_hunt_stops,
     foundry_level_seven_hunt_stops,
     midennir_mountain_goblin_hunt_stops,
-    moria_garter_snake_hunt_stops,
+    moria_level_seven_orc_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
 )
 from .storage import RunStorage
@@ -254,7 +254,10 @@ class CampaignRunner:
                 > 0
                 or _state_has_item(state.get("inventory"), "purple potion")
             ),
-            has_flight=_state_has_active_affect(state.get("affects"), "fly"),
+            has_flight=any(
+                _state_has_active_affect(state.get("affects"), effect)
+                for effect in ("fly", "levitation")
+            ),
             can_attempt_flight_purchase=_state_copper_value(state) >= 90,
             flight_purchase_failed=bool(state.get("magic_shop_purchase_failed")),
             boot_kill_counts=self._boot_kill_counts,
@@ -579,14 +582,14 @@ async def _run_policy_segment(
             allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,
         ).run()
-    if policy.execution == "moria-snake-hunt":
+    if policy.execution == "moria-orc-hunt":
         return await StarterBotRunner(
             spec,
             profile_path,
             objective_level=policy.maximum_level or 8,
             fastwalk_route=route_named("moria"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
-            fastwalk_hunt_stops=moria_garter_snake_hunt_stops(),
+            fastwalk_hunt_stops=moria_level_seven_orc_hunt_stops(),
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=False,

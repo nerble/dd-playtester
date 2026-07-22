@@ -547,7 +547,7 @@ def test_level_seven_foundry_fallback_runs_toward_level_eight(
     assert captured["fastwalk_kill_limit"] == 5
 
 
-def test_depleted_level_seven_foundry_rotates_to_isolated_moria_snake(
+def test_depleted_level_seven_foundry_rotates_to_moria_orc_circuit(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -581,9 +581,14 @@ def test_depleted_level_seven_foundry_rotates_to_isolated_moria_snake(
     assert captured["objective_level"] == 8
     assert captured["fastwalk_route"].name == "moria"
     assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
-        "small green garter snake"
+        "large orc",
+        "orc",
+        "small green garter snake",
     ]
-    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["fastwalk_hunt_stops"][1].allowed_bystanders == (
+        "small green garter snake",
+    )
+    assert captured["fastwalk_kill_limit"] == 3
     assert captured["fastwalk_require_invisibility"] is False
     assert captured["practice_types_spent"] == frozenset({"physical"})
 
@@ -957,6 +962,21 @@ def test_campaign_state_detects_active_flight_and_converts_coins(tmp_path) -> No
     )
 
     assert expired_policy.policy_id == "buy-flight-potion"
+
+    levitating_policy = runner._policy_for_state(
+        {
+            "level": 9,
+            "inventory": [[
+                {"short_desc": "a large sack"},
+                {"short_desc": "a big pot pie"},
+            ]],
+            "affects": [[{"name": "levitation", "duration": "12"}]],
+            "currencies": {"silver": 17},
+            "campaign_stalled_segments": 2,
+        }
+    )
+
+    assert levitating_policy.policy_id == "ambush-exterior-9-10"
 
 
 def test_campaign_buys_affordable_flight_without_waiting_for_a_stall(

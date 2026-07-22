@@ -3099,10 +3099,16 @@ class StarterPolicy:
                 command, reason = commands[self.magic_shop_step]
                 self.magic_shop_step += 1
                 return BotDecision(command, reason)
-            return BotDecision("south", "return from the Magic Shop to the Mage Guild")
+            return BotDecision("south", "return from the Magic Shop to the healer")
 
         if self.magic_shop_step == 0:
             outward_routes = {
+                "3054": "south",
+                "3001": "south",
+                "3005": "south",
+                "3006": "west",
+                "3014": "west",
+                "3013": "west",
                 "3019": "west",
                 "3018": "north",
                 "3017": "north",
@@ -3113,14 +3119,17 @@ class StarterPolicy:
                 return BotDecision(direction, "follow the verified route to the Magic Shop")
         else:
             return_routes = {
-                "3012": "south",
-                "3017": "south",
-                "3018": "east",
+                "3012": "east",
+                "3013": "east",
+                "3014": "north",
+                "3006": "north",
+                "3005": "north",
+                "3001": "north",
             }
             direction = return_routes.get(room_vnum or "")
             if direction is not None:
-                return BotDecision(direction, "return from the Magic Shop to the Mage Guild")
-            if room_vnum == "3019" or "mage's laboratory" in room_name:
+                return BotDecision(direction, "return from the Magic Shop to the healer")
+            if room_vnum == "3054":
                 return None
 
         self.failure = (
@@ -5982,12 +5991,24 @@ def midennir_mountain_goblin_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
-def moria_garter_snake_hunt_stops() -> tuple[FieldHuntStop, ...]:
-    """Hunt the isolated reset-backed snake north of the Moria fastwalk."""
+def moria_level_seven_orc_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt two orcs, then optionally a poison target before recall."""
     return (
         FieldHuntStop(
-            ("north", "north"),
+            ("west", "west", "north", "west", "south"),
+            "large orc",
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("north", "east", "south", "east", "east", "east"),
+            "orc",
+            allowed_bystanders=("small green garter snake",),
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            (),
             "small green garter snake",
+            minimum_health_ratio=1.0,
             exact_target=True,
         ),
     )
@@ -6373,17 +6394,30 @@ def _move_ratio(state: CharacterState) -> float:
 
 
 def _enemy_records(value: Any) -> list[dict[str, Any]]:
-    if isinstance(value, dict):
-        records = [value] if isinstance(value.get("name"), str) else []
-        for item in value.values():
-            records.extend(_enemy_records(item))
-        return records
-    if isinstance(value, list):
-        records: list[dict[str, Any]] = []
-        for item in value:
-            records.extend(_enemy_records(item))
-        return records
-    return []
+    records: list[dict[str, Any]] = []
+
+    def collect(item: Any) -> None:
+        if isinstance(item, dict):
+            if isinstance(item.get("name"), str):
+                records.append(item)
+            for nested in item.values():
+                collect(nested)
+        elif isinstance(item, list):
+            for nested in item:
+                collect(nested)
+
+    collect(value)
+    unique: list[dict[str, Any]] = []
+    signatures: set[str] = set()
+    for record in records:
+        if not {"name", "isnpc", "hp", "maxhp"}.issubset(record):
+            unique.append(record)
+            continue
+        signature = json.dumps(record, sort_keys=True, default=str)
+        if signature not in signatures:
+            signatures.add(signature)
+            unique.append(record)
+    return unique
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -6554,7 +6588,7 @@ def _training_targets(text: str) -> list[str]:
 
 def _training_target_counts(text: str) -> dict[str, int]:
     pattern = re.compile(
-        r"(?:^|\n)\s*(?:\([^)]*\)\s*)*(?:A|An|The)\s+"
+        r"(?:^|\n)\s*(?:\([^)]*\)\s*)*(?:A|An|The|This)\s+"
         r"(?P<target>[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,3}?)\s+"
         r"(?:[A-Za-z]+ly\s+)?"
         r"(?:is|are|sits?|circles?|stands?|waits?|prepares?|paces?|growls?|"
