@@ -132,11 +132,61 @@ def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -
     )
     world.rooms[3001].exits["west"] = ExitSource("west", 6008, 0, -1)
     world.rooms[6008].exits["west"] = ExitSource("west", 7001, 0, -1)
+    world.rooms[6009].exits["south"] = ExitSource("south", 6008, 0, -1)
 
     candidates = rank_hunt_candidates(world, character_level=6)
 
     assert candidates[0].status == "reject"
-    assert "route-area wanderer: a large grey wolf L8" in candidates[0].hazards
+    assert "reachable wanderer: a large grey wolf L8" in candidates[0].hazards
+
+
+def test_candidate_ranking_excludes_wanderer_behind_reset_closed_door(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "rat", "a cellar rat", 5, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "guard",
+                "a dangerous guard",
+                10,
+                (1 << 5) | (1 << 6),
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Forest track", "target.are"),
+            7002: RoomSource(7002, "Rat cellar", "target.are"),
+            7003: RoomSource(7003, "Guard post", "target.are"),
+        },
+        objects={},
+        mob_resets=[MobReset(100, 7002, 1, ()), MobReset(200, 7003, 1, ())],
+    )
+    world.rooms[3001].exits["west"] = ExitSource("west", 7001, 0, -1)
+    world.rooms[7001].exits["west"] = ExitSource("west", 7002, 0, -1)
+    world.rooms[7003].exits["north"] = ExitSource(
+        "north",
+        7001,
+        0,
+        -1,
+        reset_state=1,
+    )
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=7,
+        include_xp_only=True,
+    )[0]
+
+    assert candidate.status == "promising"
+    assert not any("wanderer" in hazard for hazard in candidate.hazards)
 
 
 def test_candidate_ranking_can_include_targets_without_known_loot(monkeypatch) -> None:

@@ -8,6 +8,7 @@ from dd4tester.campaign import (
     _campaign_practice_types_spent,
     _has_campaign_sellable_loot,
     _newer_progress_state,
+    _run_has_unrecovered_weapon_loss,
     _run_policy_segment,
     load_campaign_spec,
     run_campaign_file,
@@ -37,6 +38,51 @@ def test_live_state_merge_preserves_campaign_checkpoint_metadata() -> None:
 
     assert merged["campaign_stalled_segments"] == 1
     assert merged["room_name"] == "The Healer"
+
+
+def test_recorded_weapon_loss_requires_a_later_wield_to_clear(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="weapon-loss",
+            scenario_path=tmp_path / "profile.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="response",
+            payload={"text": "Your weapon slips from your hand."},
+        )
+
+        assert _run_has_unrecovered_weapon_loss(storage, run_id) is True
+
+        storage.record_event(
+            run_id,
+            kind="response",
+            payload={"text": "You wield a spiked metal rod."},
+        )
+
+        assert _run_has_unrecovered_weapon_loss(storage, run_id) is False
+
+
+def test_equipment_audit_without_wield_slot_records_weapon_loss(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="false-rearm",
+            scenario_path=tmp_path / "profile.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="command",
+            payload={"command": "equipment"},
+        )
+        storage.record_event(
+            run_id,
+            kind="response",
+            payload={"text": "<worn on head> a steel barrel-helm\n[held] a diploma"},
+        )
+
+        assert _run_has_unrecovered_weapon_loss(storage, run_id) is True
 
 
 def test_serialized_coloured_inventory_preserves_duplicate_quantity() -> None:
@@ -501,6 +547,47 @@ def test_level_seven_foundry_fallback_runs_toward_level_eight(
     assert captured["fastwalk_kill_limit"] == 5
 
 
+def test_depleted_level_seven_foundry_rotates_to_isolated_moria_snake(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 7})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        7,
+        "thief",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            practice_types_spent=frozenset({"physical"}),
+        )
+    )
+
+    assert captured["objective_level"] == 8
+    assert captured["fastwalk_route"].name == "moria"
+    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
+        "small green garter snake"
+    ]
+    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["fastwalk_require_invisibility"] is False
+    assert captured["practice_types_spent"] == frozenset({"physical"})
+
+
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:
     config_path, database = _write_campaign_files(tmp_path, target_level=2)
 
@@ -588,7 +675,6 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
         {"level": 8, "inventory": [[{"short_desc": "a big pot pie"}]]}
     )
     assert after_lodging.policy_id == "ambush-war-dog-8-9"
-
     with_loot = runner._policy_for_state(
         {"level": 8, "inventory": [[{"short_desc": "hard leather boots"}]]}
     )
@@ -649,6 +735,22 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
         }
     )
     assert with_serialized_food.policy_id == "ambush-war-dog-8-9"
+
+
+def test_campaign_selects_rearm_after_persisted_weapon_loss(tmp_path) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+
+    policy = runner._policy_for_state(
+        {
+            "level": 7,
+            "inventory": [[{"short_desc": "a big pot pie"}]],
+            "campaign_has_weapon": False,
+        }
+    )
+
+    assert policy.policy_id == "rearm-primary-weapon"
+    assert policy.execution == "rearm-weapon"
 
 
 def test_campaign_restock_policy_uses_verified_city_route(

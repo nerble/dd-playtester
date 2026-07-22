@@ -11,7 +11,10 @@ from typing import Iterable, Mapping
 
 ACT_SENTINEL = 1 << 1
 ACT_AGGRESSIVE = 1 << 5
+ACT_STAY_AREA = 1 << 6
 ACT_NO_EXPERIENCE = 1 << 24
+
+ROOM_NO_MOB = 1 << 2
 
 ITEM_TREASURE = 8
 ITEM_WEAPON = 5
@@ -62,6 +65,10 @@ class MobileSource:
     def sentinel(self) -> bool:
         return bool(self.act_flags & ACT_SENTINEL)
 
+    @property
+    def stay_area(self) -> bool:
+        return bool(self.act_flags & ACT_STAY_AREA)
+
 
 @dataclass(frozen=True)
 class ObjectSource:
@@ -102,6 +109,11 @@ class RoomSource:
     area_file: str
     exits: dict[str, ExitSource] = field(default_factory=dict)
     random_exits: bool = False
+    room_flags: int = 0
+
+    @property
+    def no_mob(self) -> bool:
+        return bool(self.room_flags & ROOM_NO_MOB)
 
 
 @dataclass(frozen=True)
@@ -258,10 +270,7 @@ def rank_hunt_candidates(
     }
     resets_by_room = _resets_by_room(world)
     candidate_area_files = set(LOW_LEVEL_AREA_FILES)
-    area_aggressors = _area_wandering_aggressors(
-        world,
-        {room.area_file for room in world.rooms.values()},
-    )
+    wandering_aggressors = _wandering_aggressors(world)
     ranked: list[HuntCandidate] = []
 
     for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
@@ -326,19 +335,24 @@ def rank_hunt_candidates(
                 if hazard.level > character_level:
                     dangerous = True
 
-        for area_file in {
-            world.rooms[path_room].area_file
-            for path_room in path_rooms
-            if path_room in world.rooms
-        }:
-            for hazard in area_aggressors.get(area_file, ()):
-                if hazard.vnum == mobile.vnum:
-                    continue
-                hazards.append(
-                    f"route-area wanderer: {hazard.short_description} L{hazard.level}"
+        path_room_set = set(path_rooms)
+        for hazard, hazard_reset in wandering_aggressors:
+            if (
+                hazard.vnum == mobile.vnum
+                or hazard_reset.room_vnum in path_room_set
+                or not _wanderer_can_reach_any(
+                    world,
+                    hazard,
+                    hazard_reset.room_vnum,
+                    path_room_set,
                 )
-                if hazard.level > character_level:
-                    dangerous = True
+            ):
+                continue
+            hazards.append(
+                f"reachable wanderer: {hazard.short_description} L{hazard.level}"
+            )
+            if hazard.level > character_level:
+                dangerous = True
 
         if closed_doors:
             hazards.append(f"{closed_doors} closed door(s) on route")
@@ -586,8 +600,15 @@ def _parse_rooms(
         _, index = _read_tilde(lines, index, end)
         if index >= end:
             break
+        room_header = lines[index].split()
         index += 1
-        room = RoomSource(vnum, _clean_text(name), area_file)
+        room_flags = _parse_bits(room_header[1]) if len(room_header) >= 2 else 0
+        room = RoomSource(
+            vnum,
+            _clean_text(name),
+            area_file,
+            room_flags=room_flags,
+        )
         while index < end:
             token = lines[index].strip()
             index += 1
@@ -849,21 +870,53 @@ def _mobile_peak_round_damage(
     return cycle_damage * possible_attacks
 
 
-def _area_wandering_aggressors(
+def _wandering_aggressors(
     world: WorldSource,
-    area_files: set[str],
-) -> dict[str, list[MobileSource]]:
-    result: dict[str, list[MobileSource]] = {}
-    reset_vnums = {reset.mobile_vnum for reset in world.mob_resets}
-    for mobile in world.mobiles.values():
-        if (
-            mobile.area_file in area_files
-            and mobile.vnum in reset_vnums
-            and mobile.aggressive
-            and not mobile.sentinel
-        ):
-            result.setdefault(mobile.area_file, []).append(mobile)
-    return result
+) -> tuple[tuple[MobileSource, MobReset], ...]:
+    return tuple(
+        (mobile, reset)
+        for reset in world.mob_resets
+        if (mobile := world.mobiles.get(reset.mobile_vnum)) is not None
+        and mobile.aggressive
+        and not mobile.sentinel
+    )
+
+
+def _wanderer_can_reach_any(
+    world: WorldSource,
+    mobile: MobileSource,
+    origin: int,
+    destinations: set[int],
+) -> bool:
+    origin_room = world.rooms.get(origin)
+    if origin_room is None:
+        return False
+    pending = [origin]
+    visited = {origin}
+    while pending:
+        room_vnum = pending.pop()
+        if room_vnum in destinations:
+            return True
+        room = world.rooms.get(room_vnum)
+        if room is None:
+            continue
+        for exit_source in room.exits.values():
+            destination = world.rooms.get(exit_source.destination)
+            if (
+                destination is None
+                or destination.vnum in visited
+                or exit_source.closed
+                or exit_source.locked
+                or destination.no_mob
+                or (
+                    mobile.stay_area
+                    and destination.area_file != origin_room.area_file
+                )
+            ):
+                continue
+            visited.add(destination.vnum)
+            pending.append(destination.vnum)
+    return False
 
 
 def _read_tilde(

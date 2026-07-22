@@ -24,6 +24,7 @@ from dd4tester.starter import (
     _max_consecutive_command,
     _practice_balances,
     _sellable_inventory_keyword,
+    _stop_target_matches,
     _watchdog_progress_marker,
     _policy_inactivity_due,
     ambush_exterior_hunt_stops,
@@ -34,6 +35,7 @@ from dd4tester.starter import (
     foundry_level_seven_hunt_stops,
     midennir_horseman_consider_stops,
     midennir_horseman_probe_route,
+    moria_garter_snake_hunt_stops,
     moria_sanctuary_potion_consider_stops,
     moria_sanctuary_potion_hunt_stops,
 )
@@ -153,6 +155,39 @@ def test_foundry_level_seven_sweep_links_named_targets_around_poison_pit() -> No
     assert all(stop.exact_target for stop in stops)
     assert all("down" not in stop.route for stop in stops[:3])
     assert stops[-1].minimum_health_ratio == 1.0
+
+
+def test_moria_level_seven_hunt_is_one_exact_isolated_snake() -> None:
+    stops = moria_garter_snake_hunt_stops()
+
+    assert len(stops) == 1
+    assert stops[0].route == ("north", "north")
+    assert stops[0].target == "small green garter snake"
+    assert stops[0].exact_target is True
+
+
+def test_moria_level_seven_stop_matches_captured_snake_description() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=moria_garter_snake_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.current_room = "4025"
+    policy.observe_text(
+        "This orc is frothing around the mouth. Better stay away.\n"
+        "A small green garter snake slithers along the floor.\n"
+    )
+
+    stop = moria_garter_snake_hunt_stops()[0]
+
+    assert policy.room_targets["4025"] == ["small green garter snake"]
+    assert _stop_target_matches(
+        policy.room_targets["4025"][0],
+        stop.target or "",
+        stop,
+    )
 
 
 def test_midennir_horseman_probe_searches_source_trail_and_never_attacks() -> None:
@@ -3052,6 +3087,79 @@ def test_fastwalk_fights_viable_opportunistic_attacker_instead_of_fleeing() -> N
     assert policy.fastwalk_attack_target == "Olog"
     assert policy.fastwalk_attack_started is True
     assert policy.fastwalk_abort_reason is None
+
+
+def test_fastwalk_defends_against_one_level_higher_interceptor() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=moria_garter_snake_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    state = CharacterState(
+        level=7,
+        hp=123,
+        max_hp=123,
+        mana=145,
+        max_mana=145,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+        position=6,
+        enemies=[[{"name": "the goblin", "level": "8", "hp": "86"}]],
+    )
+    policy.observe_events(
+        [
+            GameEvent(
+                "enemies_changed",
+                "gmcp",
+                {"value": [[{"name": "the goblin", "level": "8"}]]},
+            )
+        ],
+        state,
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is None
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_attack_target == "the goblin"
+    assert policy.fastwalk_emergency_recall_pending is False
+
+
+def test_fastwalk_does_not_adopt_multiple_opportunistic_attackers() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=moria_garter_snake_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.combat_active = True
+    policy.active_target = "the goblin"
+    policy.active_target_level = 7
+    state = CharacterState(
+        level=7,
+        hp=110,
+        max_hp=110,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+        position=6,
+        enemies=[[
+            {"name": "the goblin", "level": "7"},
+            {"name": "the goblin lieutenant", "level": "7"},
+        ]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.fastwalk_emergency_recall_pending is True
 
 
 def test_fastwalk_failed_recall_does_not_adopt_a_pursuing_mobile() -> None:
@@ -9214,6 +9322,54 @@ def test_combat_disarm_recovers_and_rearms_audited_weapon() -> None:
     assert rearm.command == "wield dagger"
 
 
+def test_poison_strength_weapon_slip_is_persisted_until_rearmed() -> None:
+    rod = ObjectSource(
+        3021,
+        "spiked metal rod",
+        "a spiked metal rod",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        gear_catalog=GearCatalog({rod.vnum: rod}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+    policy.active_target = "the garter snake"
+    policy.gear_worn = [rod]
+    state = CharacterState(
+        level=7,
+        hp=119,
+        max_hp=123,
+        mana=145,
+        max_mana=145,
+        position=6,
+        room_name="The cave",
+        room_vnum="4025",
+    )
+
+    policy.observe_text(
+        "A spiked metal rod is too heavy for you to hold!\n"
+        "Your weapon slips from your hand."
+    )
+    recover = policy.next_decision(state)
+
+    assert policy.primary_weapon_lost is True
+    assert recover is not None
+    assert recover.command == "get spiked"
+
+    policy.observe_text("You wield a spiked metal rod.")
+
+    assert policy.primary_weapon_lost is False
+
+
 def test_combat_disarm_recovers_unknown_weapon_without_fleeing() -> None:
     dagger = ObjectSource(
         3020,
@@ -9276,7 +9432,7 @@ def test_city_rearm_buys_verifies_and_returns_with_source_dagger() -> None:
     policy = StarterPolicy(_spec(), "swordfish", city_rearm=True)
     policy.in_world = True
     policy.prompt_ready = True
-    policy.city_rearm_route_index = 8
+    policy.city_rearm_route_index = 6
     shop = CharacterState(
         room_name="The Weapon Shop",
         room_vnum="3011",
@@ -9327,6 +9483,96 @@ def test_city_rearm_resumes_from_weapon_shop_when_dagger_is_already_wielded() ->
 
     assert decision is not None
     assert decision.command == "south"
+
+
+def test_city_rearm_departs_from_and_returns_to_midgaard_healer() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_rearm=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    healer = CharacterState(
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        position=7,
+        stats={"carry_wt": 90, "maxcarry_wt": 100},
+    )
+
+    departure = policy._city_rearm_decision(healer)
+
+    assert departure is not None
+    assert departure.command == "south"
+
+    policy.city_rearm_returning = True
+    policy.city_rearm_route_index = 6
+
+    assert policy._city_rearm_decision(healer) is None
+    assert policy.failure is None
+
+
+def test_city_rearm_donates_carried_gear_when_one_pound_will_not_fit() -> None:
+    buckler = ObjectSource(
+        9010,
+        "metal buckler",
+        "a metal buckler",
+        9,
+        (3, 0, 0, 0),
+        20,
+        wear_flags=1 | (1 << 9),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        city_rearm=True,
+        gear_catalog=GearCatalog({buckler.vnum: buckler}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    full = CharacterState(
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        position=7,
+        inventory=[[{"short_desc": "a metal buckler", "quan": "1"}]],
+        stats={"carry_wt": 102, "maxcarry_wt": 100},
+    )
+
+    donation = policy._city_rearm_decision(full)
+
+    assert donation is not None
+    assert donation.command == "donate buckler"
+
+    freed = CharacterState(
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        position=7,
+        inventory=[[]],
+        stats={"carry_wt": 99, "maxcarry_wt": 100},
+    )
+
+    departure = policy._city_rearm_decision(freed)
+
+    assert departure is not None
+    assert departure.command == "south"
+
+
+def test_city_rearm_stops_after_shop_rejects_purchase_weight() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_rearm=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.city_rearm_route_index = 6
+    policy.city_rearm_capacity_checked = True
+    shop = CharacterState(
+        room_name="The Weapon Shop",
+        room_vnum="3011",
+        position=7,
+    )
+
+    buy = policy._city_rearm_decision(shop)
+    policy.observe_text("You can't carry that much weight.")
+    after_rejection = policy._city_rearm_decision(shop)
+
+    assert buy is not None
+    assert buy.command == "buy dagger"
+    assert after_rejection is None
+    assert policy.failure == "insufficient carry capacity for the source-backed dagger"
 
 
 def test_mage_casts_again_after_the_server_confirms_the_previous_volley() -> None:

@@ -424,6 +424,7 @@ class StarterPolicy:
         self.missing_targets: dict[str, set[str]] = {}
         self.active_target: str | None = None
         self.active_target_level: int | None = None
+        self.active_enemy_count: int | None = None
         self.awaiting_enemy_assessment = False
         self.pending_loot_rooms: set[str] = set()
         self.cleared_training_rooms: set[str] = set()
@@ -450,6 +451,9 @@ class StarterPolicy:
         self.city_rearm_step = 0
         self.city_rearm_route_index = 0
         self.city_rearm_returning = False
+        self.city_rearm_capacity_item: str | None = None
+        self.city_rearm_capacity_checked = False
+        self.purchase_carry_rejected = False
         self.affordable_pies: int | None = None
         self.affordable_pies_ordered = False
         self.pie_order_limit = 6
@@ -494,6 +498,8 @@ class StarterPolicy:
         self.body_part_eat_rejected = False
         self.disarmed_weapon_keyword: str | None = None
         self.disarm_recovery_step = 0
+        self.primary_weapon_lost = False
+        self.primary_weapon_observed: bool | None = None
         self.fastwalk_pursuit_direction: str | None = None
         self.fastwalk_pursuit_steps = 0
         self.fastwalk_target_absent = False
@@ -615,7 +621,7 @@ class StarterPolicy:
             self.backstab_pending_target = None
             self.combat_active = False
             self.prompt_ready = True
-        if "disarms you" in recent:
+        if "disarms you" in recent or "your weapon slips from your hand" in recent:
             wielded = next(
                 (
                     item
@@ -628,6 +634,8 @@ class StarterPolicy:
                 item_keyword(wielded) if wielded is not None else None
             )
             self.disarm_recovery_step = 1
+            self.primary_weapon_lost = True
+            self.primary_weapon_observed = False
             self.gear_applied_stance = None
         if (
             self.gear_pending_wear_keyword is not None
@@ -651,6 +659,9 @@ class StarterPolicy:
             phrase in recent for phrase in ("you wear ", "you wield ")
         ):
             self.gear_pending_wear_keyword = None
+        if "you wield " in recent:
+            self.primary_weapon_lost = False
+            self.primary_weapon_observed = True
         if "you put a purple potion" in recent and "pouch" in recent:
             self.combat_pouch_potions["purple"] += max(
                 1,
@@ -690,6 +701,8 @@ class StarterPolicy:
                 self.skin_ordered = False
             if self.magic_shop_research and self.magic_shop_buy_fly:
                 self.magic_shop_purchase_failed = True
+        if "you can't carry that much weight" in folded:
+            self.purchase_carry_rejected = True
         if (
             self.city_restock
             and "can't carry that much weight" in folded
@@ -849,6 +862,7 @@ class StarterPolicy:
                     self.cleared_training_rooms.add(self.current_room)
                 self.post_kill_steps.setdefault(self.current_room, 0)
             self.active_target = None
+            self.active_enemy_count = 0
             self.between_round_action_issued = False
             self.backstab_pending_target = None
             self.consider_target = None
@@ -878,6 +892,7 @@ class StarterPolicy:
         ):
             self.combat_active = False
             self.active_target = None
+            self.active_enemy_count = 0
             self.between_round_action_issued = False
             self.fastwalk_pursuit_direction = fleeing_mobile.group(
                 "direction"
@@ -892,10 +907,12 @@ class StarterPolicy:
         if "aren't fighting anyone" in recent:
             self.combat_active = False
             self.active_target = None
+            self.active_enemy_count = 0
             self.between_round_action_issued = False
         if "you flee from combat" in recent:
             self.combat_active = False
             self.active_target = None
+            self.active_enemy_count = 0
             self.between_round_action_issued = False
             self.flee_pending = False
             self.flee_succeeded = True
@@ -928,6 +945,7 @@ class StarterPolicy:
                     target for target in targets if target != self.active_target
                 ]
             self.active_target = None
+            self.active_enemy_count = 0
             self.between_round_action_issued = False
         if "too relaxed" in folded or "you must be standing" in folded:
             self.needs_stand = True
@@ -1029,12 +1047,14 @@ class StarterPolicy:
                     self.course_complete = True
             if event.type == "combat_started":
                 self.combat_active = True
+                self.active_enemy_count = None
                 self.backstab_pending_target = None
                 target = event.data.get("target", event.data.get("name"))
                 if isinstance(target, str) and target.strip():
                     self.active_target = target.strip()
             if event.type == "enemies_changed":
                 enemies = _enemy_records(event.data.get("value"))
+                self.active_enemy_count = len(enemies)
                 if enemies:
                     self.backstab_pending_target = None
                     enemy = enemies[0]
@@ -1057,6 +1077,11 @@ class StarterPolicy:
                 self.gear_worn = self.gear_catalog.match_many(
                     _equipment_descriptions(event.data.get("value", event.data))
                 )
+                self.primary_weapon_observed = any(
+                    item_category(item) == "wield" for item in self.gear_worn
+                )
+                if self.primary_weapon_observed:
+                    self.primary_weapon_lost = False
                 self.gear_audit_pending = False
                 self.gear_audited = True
             if event.type == "character_died":
@@ -1065,6 +1090,7 @@ class StarterPolicy:
                 self.combat_active = False
                 self.active_target = None
                 self.active_target_level = None
+                self.active_enemy_count = 0
                 self.flee_pending = False
                 self.flee_succeeded = False
                 self.prompt_ready = True
@@ -2557,11 +2583,9 @@ class StarterPolicy:
     def _city_rearm_decision(self, state: CharacterState) -> BotDecision | None:
         """Buy and verify a lightweight primary weapon through safe Midgaard."""
         outbound = (
-            "west",
-            "north",
-            "north",
-            "east",
-            "east",
+            "south",
+            "south",
+            "south",
             "east",
             "east",
             "north",
@@ -2581,9 +2605,61 @@ class StarterPolicy:
         if (
             not self.city_rearm_returning
             and self.city_rearm_route_index == 0
-            and room_vnum != "3019"
+            and room_vnum != "3054"
         ):
-            return self._return_home_decision(state)
+            home = self._return_home_decision(state)
+            if home is not None:
+                return home
+            self.failure = (
+                f"primary-weapon rearm could not reach healer room 3054 from "
+                f"{state.room_name!r} ({room_vnum})"
+            )
+            return None
+
+        if (
+            not self.city_rearm_returning
+            and self.city_rearm_route_index == 0
+            and room_vnum == "3054"
+            and not self.city_rearm_capacity_checked
+        ):
+            carry_weight = _state_stat(state, "carry_wt")
+            maximum_weight = _state_stat(state, "maxcarry_wt")
+            if carry_weight is None or maximum_weight is None:
+                self.failure = "carry capacity was unavailable before primary-weapon rearm"
+                return None
+            if maximum_weight - carry_weight < 1:
+                keyword = _sellable_inventory_keyword(
+                    state.inventory,
+                    self.gear_catalog,
+                )
+                if keyword is None:
+                    self.failure = (
+                        "primary-weapon rearm needs one pound of free capacity, "
+                        "but no disposable carried equipment was available"
+                    )
+                    return None
+                self.city_rearm_capacity_item = keyword
+                self.city_rearm_capacity_checked = True
+                return BotDecision(
+                    f"donate {keyword}",
+                    "free one pound for a primary weapon at the safe healer checkpoint",
+                )
+            self.city_rearm_capacity_checked = True
+
+        if self.city_rearm_capacity_item is not None:
+            carry_weight = _state_stat(state, "carry_wt")
+            maximum_weight = _state_stat(state, "maxcarry_wt")
+            if (
+                carry_weight is None
+                or maximum_weight is None
+                or maximum_weight - carry_weight < 1
+            ):
+                self.failure = (
+                    f"donating {self.city_rearm_capacity_item} did not free "
+                    "one pound for the primary weapon"
+                )
+                return None
+            self.city_rearm_capacity_item = None
 
         if not self.city_rearm_returning:
             if self.city_rearm_route_index < len(outbound):
@@ -2605,11 +2681,14 @@ class StarterPolicy:
                 self.city_rearm_step = 1
                 return BotDecision(
                     "buy dagger",
-                    "buy the one-pound source dagger as a mage primary weapon",
+                    "buy the one-pound source dagger as a lightweight primary weapon",
                 )
             if self.city_rearm_step == 1:
                 if self.insufficient_funds:
                     self.failure = "insufficient funds for the source-backed dagger"
+                    return None
+                if self.purchase_carry_rejected:
+                    self.failure = "insufficient carry capacity for the source-backed dagger"
                     return None
                 self.city_rearm_step = 2
                 return BotDecision("wield dagger", "equip the purchased primary weapon")
@@ -2623,6 +2702,8 @@ class StarterPolicy:
             ):
                 self.failure = "equipment audit did not verify the purchased dagger as wielded"
                 return None
+            self.primary_weapon_observed = True
+            self.primary_weapon_lost = False
             self.city_rearm_returning = True
             self.city_rearm_route_index = 0
 
@@ -2630,10 +2711,10 @@ class StarterPolicy:
             command = returning[self.city_rearm_route_index]
             self.city_rearm_route_index += 1
             return BotDecision(command, "return safely from the Midgaard weapon shop")
-        if room_vnum != "3019":
+        if room_vnum != "3054":
             self.failure = (
                 f"weapon-shop return reached {state.room_name!r} ({room_vnum}), "
-                "expected the Mage's Laboratory"
+                "expected healer room 3054"
             )
         return None
 
@@ -3822,6 +3903,9 @@ class StarterPolicy:
         state: CharacterState,
     ) -> bool:
         enemies = _enemy_records(state.enemies)
+        enemy_count = len(enemies) if enemies else self.active_enemy_count
+        if enemy_count != 1:
+            return False
         if enemies:
             enemy = enemies[0]
             if self.active_target is None:
@@ -3839,9 +3923,9 @@ class StarterPolicy:
             or _health_ratio(state) < 0.75
         ):
             return False
-        # Once a lone mobile has attacked, poor XP is not a reason to flee:
-        # DD4 charges a level-scaled XP penalty for a successful escape.
-        return self.active_target_level <= state.level
+        # This is defensive combat, not target selection: after a lone mobile
+        # attacks, a safe-band kill avoids DD4's level-scaled flee penalty.
+        return self.active_target_level <= state.level + 1
 
     @property
     def _arena_kill_limit_reached(self) -> bool:
@@ -5613,15 +5697,21 @@ class StarterBotRunner:
             )
             persist_policy_research()
             storage.finish_run(run_id, status="success")
+            final_state = {
+                **self.character_state.to_dict(),
+                "combat_pouch_potions": dict(policy.combat_pouch_potions),
+            }
+            if policy.primary_weapon_observed is not None:
+                final_state["campaign_has_weapon"] = (
+                    policy.primary_weapon_observed
+                    and not policy.primary_weapon_lost
+                )
             return RunResult(
                 run_id,
                 "success",
                 recorder.path,
                 storage.path,
-                {
-                    **self.character_state.to_dict(),
-                    "combat_pouch_potions": dict(policy.combat_pouch_potions),
-                },
+                final_state,
             )
         except Exception as exc:
             if policy is not None:
@@ -5887,6 +5977,17 @@ def midennir_mountain_goblin_hunt_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             ("east",),
             "mountain goblin",
+            exact_target=True,
+        ),
+    )
+
+
+def moria_garter_snake_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt the isolated reset-backed snake north of the Moria fastwalk."""
+    return (
+        FieldHuntStop(
+            ("north", "north"),
+            "small green garter snake",
             exact_target=True,
         ),
     )

@@ -25,6 +25,7 @@ from .starter import (
     foundry_level_six_hunt_stops,
     foundry_level_seven_hunt_stops,
     midennir_mountain_goblin_hunt_stops,
+    moria_garter_snake_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
 )
 from .storage import RunStorage
@@ -282,6 +283,15 @@ class CampaignRunner:
         state = _newer_progress_state(checkpoint_state, live_state)
         if (
             checkpoint is not None
+            and checkpoint["run_id"] is not None
+            and _run_has_unrecovered_weapon_loss(
+                storage,
+                int(checkpoint["run_id"]),
+            )
+        ):
+            state["campaign_has_weapon"] = False
+        if (
+            checkpoint is not None
             and checkpoint["phase"] == "liquidate-loot"
             and checkpoint["reason"] == "segment_complete"
             and _LIQUIDATION_BASELINE_KEY not in state
@@ -404,8 +414,12 @@ class CampaignRunner:
             **end_state,
             "campaign_stalled_segments": stalled,
             "campaign_has_weapon": (
-                bool(state.get("campaign_has_weapon", True))
-                or policy.execution == "rearm-weapon"
+                bool(
+                    end_state.get(
+                        "campaign_has_weapon",
+                        state.get("campaign_has_weapon", True),
+                    )
+                )
             ),
         }
         previous_liquidation_baseline = state.get(_LIQUIDATION_BASELINE_KEY)
@@ -558,6 +572,21 @@ async def _run_policy_segment(
             fastwalk_route=route_named("foundry"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=hunt_stops,
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+        ).run()
+    if policy.execution == "moria-snake-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 8,
+            fastwalk_route=route_named("moria"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=moria_garter_snake_hunt_stops(),
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=False,
@@ -744,6 +773,39 @@ def _newer_progress_state(
 def _numeric_progress(state: dict[str, Any], key: str) -> int:
     value = state.get(key)
     return int(value) if isinstance(value, (int, float)) else 0
+
+
+def _run_has_unrecovered_weapon_loss(
+    storage: RunStorage,
+    run_id: int,
+) -> bool:
+    """Reconstruct the final weapon state for legacy or interrupted runs."""
+    weapon_present: bool | None = None
+    awaiting_equipment_response = False
+    for event in storage.list_events(run_id):
+        payload = json.loads(event["payload_json"])
+        if event["kind"] == "command":
+            awaiting_equipment_response = (
+                str(payload.get("command", "")).casefold() == "equipment"
+            )
+            continue
+        if event["kind"] != "response":
+            continue
+        response = str(payload.get("text", "")).casefold()
+        if awaiting_equipment_response:
+            cleaned = _ANSI_ESCAPE.sub("", response)
+            weapon_present = bool(
+                re.search(r"(?:\[weapon\]|<[^>]*wield[^>]*>)", cleaned)
+            )
+            awaiting_equipment_response = False
+        if (
+            "disarms you" in response
+            or "your weapon slips from your hand" in response
+        ):
+            weapon_present = False
+        if "you wield " in response:
+            weapon_present = True
+    return weapon_present is False
 
 
 def _state_has_item(value: Any, item_name: str) -> bool:

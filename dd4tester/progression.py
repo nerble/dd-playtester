@@ -216,24 +216,25 @@ _FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
 )
 
 _MORIA_SNAKE_POLICY = ProgressionPolicy(
-    policy_id="moria-circuit-7-10",
+    policy_id="moria-garter-snake-7-8",
     minimum_level=7,
-    maximum_level=10,
-    status="research",
-    execution=None,
+    maximum_level=8,
+    status="verified",
+    execution="moria-snake-hunt",
     summary=(
-        "Mage field progression through three live-considered Moria targets, "
-        "with one recall after the bounded circuit."
+        "One bounded, live-considered garter-snake hunt two rooms north of "
+        "the official Moria fastwalk endpoint."
     ),
     evidence=(
         "DD4 source: the official Moria fastwalk reaches room 4014; two north moves reach room 4025.",
         "DD4 source: room 4025 has one level-7 garter-snake reset and no other mobile reset.",
         "Live run 252: level-7 mage Ararisa considered the snake a perfect match, killed it for 373 XP, and returned to room 3019 at full health and mana.",
-        "DD4 source: the circuit links a level-6 hobgoblin in room 4059, a level-5 centipede in room 4060, and a level-7 large orc in room 4022; same-room hobgoblin and orc fallbacks cover wandering mobiles.",
         "Area-file mobile levels are approximate; every field target is checked with live consider output before combat.",
-        "Live run 264: a wandering veteran warrior intercepted the static route, forced repeated combat extraction, and produced a net XP loss; the circuit is not safe for unattended execution.",
+        "Live run 264: a deeper multi-target Moria circuit encountered a wandering veteran warrior and is deliberately excluded from this isolated policy.",
+        "DD4 source revision 0482387: the Moria fastwalk and room-4025 path have no reachable above-level aggressive reset under reset door state.",
+        "Live run 693: level-7 thief Kestrel considered the snake a perfect match, killed it for 334 XP, and returned to healer room 3054; repeated poison made his heavy weapon slip, so the campaign must checkpoint and rearm before another hunt.",
     ),
-    practice_skill="magic missile",
+    practice_skill=None,
     segment_kill_limit=1,
 )
 
@@ -649,17 +650,9 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 "Ushog",
             )
         )
-        midennir_kills = _boot_kill_count(
-            context.boot_kill_counts,
-            "mountain goblin",
-        )
-        if (
-            context.stalled_segments == 0
-            and foundry_kills >= 12
-            and midennir_kills < foundry_kills
-        ):
+        if foundry_kills >= 12:
             return replace(
-                _MIDENNIR_LEVEL_SEVEN_POLICY,
+                _MORIA_SNAKE_POLICY,
                 practice_skill=context.practice_skill,
             )
         return replace(
