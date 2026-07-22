@@ -142,6 +142,7 @@ class CampaignRunner:
         self.force_new = force_new
         self._historical_large_sack = False
         self._boot_kill_counts: Counter[str] = Counter()
+        self._policy_xp_deltas: dict[str, int] = {}
         self._gear_catalog: GearCatalog | None = None
 
     async def run(self) -> CampaignResult:
@@ -165,6 +166,9 @@ class CampaignRunner:
                     )
                 )
             campaign_id, state = self._open_campaign(storage)
+            self._policy_xp_deltas = _campaign_policy_xp_deltas(
+                storage.list_campaign_segments(campaign_id)
+            )
             checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
             checkpoint_id = int(checkpoint["id"]) if checkpoint is not None else None
 
@@ -267,6 +271,7 @@ class CampaignRunner:
             can_attempt_flight_purchase=_state_copper_value(state) >= 90,
             flight_purchase_failed=bool(state.get("magic_shop_purchase_failed")),
             boot_kill_counts=self._boot_kill_counts,
+            policy_xp_deltas=self._policy_xp_deltas,
             stalled_segments=int(state.get("campaign_stalled_segments", 0)),
             last_policy_id=(
                 str(state["campaign_last_policy"])
@@ -384,6 +389,7 @@ class CampaignRunner:
         command_count = storage.count_events(result.run_id, kind="command")
         duration_seconds = _run_duration(storage.get_run(result.run_id))
         end_state = result.final_state
+        self._policy_xp_deltas[policy.policy_id] = _xp_delta(state, end_state)
         if result.status != "success":
             message = f"starter segment returned status {result.status}"
             storage.finish_campaign_segment(
@@ -822,6 +828,26 @@ def _checkpoint_state(checkpoint: Any) -> dict[str, Any]:
 def _level(state: dict[str, Any]) -> int:
     level = state.get("level")
     return int(level) if isinstance(level, (int, float)) else 0
+
+
+def _campaign_policy_xp_deltas(segments: list[Any]) -> dict[str, int]:
+    """Return the most recent same-campaign XP result for each policy."""
+    results: dict[str, int] = {}
+    for segment in segments:
+        if segment["status"] != "success":
+            continue
+        start = json.loads(segment["start_state_json"] or "{}")
+        end = json.loads(segment["end_state_json"] or "{}")
+        results[str(segment["phase"])] = _xp_delta(start, end)
+    return results
+
+
+def _xp_delta(before: dict[str, Any], after: dict[str, Any]) -> int:
+    """Treat a level gain as progress even when DD4 resets cumulative XP."""
+    level_delta = _level(after) - _level(before)
+    if level_delta > 0:
+        return max(1, level_delta)
+    return _numeric_progress(after, "xp") - _numeric_progress(before, "xp")
 
 
 def _newer_progress_state(

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dd4tester.campaign import (
     CampaignRunner,
+    _campaign_policy_xp_deltas,
     _campaign_liquidation_signature,
     _campaign_practice_types_spent,
     _has_campaign_sellable_loot,
@@ -38,6 +39,60 @@ def test_live_state_merge_preserves_campaign_checkpoint_metadata() -> None:
 
     assert merged["campaign_stalled_segments"] == 1
     assert merged["room_name"] == "The Healer"
+
+
+def test_campaign_policy_xp_deltas_reconstruct_latest_segment_result(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="outcomes",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=10,
+        )
+        first = storage.start_campaign_segment(
+            campaign_id,
+            phase="gnome-hermit-7-8",
+            start_state={"level": 7, "xp": 24_100},
+        )
+        storage.finish_campaign_segment(
+            first,
+            status="success",
+            run_id=None,
+            end_state={"level": 7, "xp": 24_220},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+        second = storage.start_campaign_segment(
+            campaign_id,
+            phase="gnome-hermit-7-8",
+            start_state={"level": 7, "xp": 24_220},
+        )
+        storage.finish_campaign_segment(
+            second,
+            status="success",
+            run_id=None,
+            end_state={"level": 7, "xp": 24_220},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+        level_gain = storage.start_campaign_segment(
+            campaign_id,
+            phase="foundry-circuit-7-8",
+            start_state={"level": 7, "xp": 24_700},
+        )
+        storage.finish_campaign_segment(
+            level_gain,
+            status="success",
+            run_id=None,
+            end_state={"level": 8, "xp": 25_000},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        results = _campaign_policy_xp_deltas(storage.list_campaign_segments(campaign_id))
+
+    assert results == {"gnome-hermit-7-8": 0, "foundry-circuit-7-8": 1}
 
 
 def test_recorded_weapon_loss_requires_a_later_wield_to_clear(tmp_path) -> None:

@@ -203,6 +203,16 @@ _MIDGAARD_HEALER_RETURN_ROUTES = {
     "3005": ("south", "south"),
     "3001": ("south",),
 }
+_MIDGAARD_HEALER_TO_MAGE_LAB_ROUTES = {
+    "3054": "south",
+    "3001": "south",
+    "3005": "south",
+    "3014": "west",
+    "3013": "west",
+    "3012": "south",
+    "3017": "south",
+    "3018": "east",
+}
 _ARENA_RESPAWN_WAIT_SECONDS = 90
 _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
@@ -693,6 +703,9 @@ class StarterPolicy:
         if "you wield " in recent:
             self.primary_weapon_lost = False
             self.primary_weapon_observed = True
+        if "[weapon]" in recent:
+            self.primary_weapon_lost = False
+            self.primary_weapon_observed = True
         if "you put a purple potion" in recent and "pouch" in recent:
             self.combat_pouch_potions["purple"] += max(
                 1,
@@ -1175,10 +1188,9 @@ class StarterPolicy:
                 self.gear_worn = self.gear_catalog.match_many(
                     _equipment_descriptions(event.data.get("value", event.data))
                 )
-                self.primary_weapon_observed = any(
-                    item_category(item) == "wield" for item in self.gear_worn
-                )
-                if self.primary_weapon_observed:
+                equipment_text = str(event.data.get("value", event.data)).casefold()
+                if "[weapon]" in equipment_text:
+                    self.primary_weapon_observed = True
                     self.primary_weapon_lost = False
                 self.gear_audit_pending = False
                 self.gear_audited = True
@@ -2732,13 +2744,11 @@ class StarterPolicy:
         )
         returning = _reverse_fastwalk_commands(outbound)
         room_vnum = state.room_vnum
-        dagger_wielded = any(
-            item_category(item) == "wield"
-            and "dagger" in normalize_item_name(item.short_description)
-            for item in self.gear_worn
-        )
+        weapon_wielded = bool(self.primary_weapon_observed) and not self.primary_weapon_lost
 
-        if room_vnum == "3011" and dagger_wielded:
+        if room_vnum == "3011" and weapon_wielded:
+            self.primary_weapon_observed = True
+            self.primary_weapon_lost = False
             self.city_rearm_returning = True
             self.city_rearm_route_index = 0
 
@@ -4180,7 +4190,24 @@ class StarterPolicy:
             )
         if self.sale_phase == "plan":
             if room_vnum != "3019":
-                return self._return_home_decision(state)
+                direction = _MIDGAARD_HEALER_TO_MAGE_LAB_ROUTES.get(
+                    room_vnum or ""
+                )
+                if direction is not None:
+                    return BotDecision(
+                        direction,
+                        "walk awake through safe Midgaard to plan loot sales",
+                    )
+                if room_vnum not in _MIDGAARD_CITY_HEALER_ROOMS:
+                    return BotDecision(
+                        "recall",
+                        "return from the field before planning safe loot sales",
+                    )
+                self.failure = (
+                    "safe loot-sale route could not reach Mage's Laboratory from "
+                    f"{state.room_name!r} ({room_vnum})"
+                )
+                return None
             if self.gear_catalog is not None and not self.gear_audited:
                 if self.gear_audit_pending:
                     audited_items = self.gear_catalog.match_equipment_text(self.text)

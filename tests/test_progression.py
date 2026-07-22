@@ -279,6 +279,32 @@ def test_level_seven_thief_does_not_return_to_depleted_hermit_after_moria() -> N
     assert policy.execution == "daycare-nanny-hunt"
 
 
+def test_level_seven_rechecks_foundry_after_a_zero_xp_field_route() -> None:
+    policy = policy_for(
+        7,
+        "thief",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        policy_xp_deltas={"gnome-hermit-7-8": 0},
+        last_policy_id="gnome-hermit-7-8",
+    )
+
+    assert policy.policy_id == "foundry-circuit-7-8"
+    assert policy.execution == "foundry-hunt"
+
+
+def test_level_seven_repeats_foundry_after_a_meaningful_segment() -> None:
+    policy = policy_for(
+        7,
+        "thief",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        policy_xp_deltas={"foundry-circuit-7-8": 170},
+        last_policy_id="foundry-circuit-7-8",
+    )
+
+    assert policy.policy_id == "foundry-circuit-7-8"
+    assert policy.execution == "foundry-hunt"
+
+
 def test_level_seven_rotates_from_gnome_hermit_to_daycare() -> None:
     policy = policy_for(
         7,

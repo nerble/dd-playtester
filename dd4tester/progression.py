@@ -7,6 +7,7 @@ from .archetypes import archetype_registry
 
 
 _ARCHETYPES = archetype_registry()
+_MEANINGFUL_FIELD_SEGMENT_XP = 50
 CLASS_PRACTICE_SKILLS = {
     name: profile.practice_skill
     for name, profile in _ARCHETYPES.classes.items()
@@ -58,6 +59,7 @@ class ProgressionContext:
     can_attempt_flight_purchase: bool = False
     flight_purchase_failed: bool = False
     boot_kill_counts: Mapping[str, int] | None = None
+    policy_xp_deltas: Mapping[str, int] | None = None
     stalled_segments: int = 0
     last_policy_id: str | None = None
 
@@ -593,6 +595,7 @@ def policy_for(
     can_attempt_flight_purchase: bool = False,
     flight_purchase_failed: bool = False,
     boot_kill_counts: Mapping[str, int] | None = None,
+    policy_xp_deltas: Mapping[str, int] | None = None,
     stalled_segments: int = 0,
     last_policy_id: str | None = None,
 ) -> ProgressionPolicy:
@@ -610,6 +613,7 @@ def policy_for(
             can_attempt_flight_purchase=can_attempt_flight_purchase,
             flight_purchase_failed=flight_purchase_failed,
             boot_kill_counts=boot_kill_counts,
+            policy_xp_deltas=policy_xp_deltas,
             stalled_segments=stalled_segments,
             last_policy_id=last_policy_id,
         )
@@ -733,6 +737,18 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 and not context.flight_purchase_failed
             ):
                 return _BUY_FLIGHT_POLICY
+            if (
+                context.last_policy_id == _FOUNDRY_LEVEL_SEVEN_POLICY.policy_id
+                and (context.policy_xp_deltas or {}).get(
+                    _FOUNDRY_LEVEL_SEVEN_POLICY.policy_id,
+                    0,
+                )
+                >= _MEANINGFUL_FIELD_SEGMENT_XP
+            ):
+                return replace(
+                    _FOUNDRY_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
             nanny_kills = _boot_kill_count(
                 context.boot_kill_counts,
                 "nanny",
@@ -741,6 +757,22 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 context.boot_kill_counts,
                 "hermit",
             )
+            if (
+                context.last_policy_id
+                in {
+                    _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
+                    _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id,
+                    _GNOME_LEVEL_SEVEN_POLICY.policy_id,
+                }
+                and (context.policy_xp_deltas or {}).get(
+                    context.last_policy_id,
+                    1,
+                ) <= 0
+            ):
+                return replace(
+                    _FOUNDRY_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
             if (
                 context.character_class == "thief"
                 and hermit_kills < 9

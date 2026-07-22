@@ -8159,6 +8159,22 @@ def test_liquidation_plans_distinct_items_for_best_safe_shops() -> None:
     ]
 
 
+def test_liquidation_leaves_healer_awake_before_planning_sales() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    healer = CharacterState(
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        position=7,
+        inventory=[[{"short_desc": "a length of metal piping", "quan": "1"}]],
+    )
+
+    decision = policy._liquidate_loot_decision(healer)
+
+    assert decision is not None
+    assert decision.command == "south"
+    assert "awake" in decision.reason
+
+
 def test_liquidation_uses_vis_before_shop_travel_or_trade() -> None:
     policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
     home = CharacterState(
@@ -10204,21 +10220,11 @@ def test_city_rearm_buys_verifies_and_returns_with_source_dagger() -> None:
     assert return_move.command == "south"
 
 
-def test_city_rearm_resumes_from_weapon_shop_when_dagger_is_already_wielded() -> None:
+def test_city_rearm_resumes_from_weapon_shop_with_any_wielded_weapon() -> None:
     policy = StarterPolicy(_spec(), "swordfish", city_rearm=True)
     policy.in_world = True
     policy.prompt_ready = True
-    policy.gear_worn = [
-        ObjectSource(
-            3020,
-            "dagger",
-            "a dagger",
-            5,
-            (0, 2, 4, 11),
-            10,
-            wear_flags=1 | (1 << 13),
-        )
-    ]
+    policy.observe_text("[weapon] a length of metal piping\n")
     shop = CharacterState(
         room_name="The Weapon Shop",
         room_vnum="3011",
@@ -10229,6 +10235,7 @@ def test_city_rearm_resumes_from_weapon_shop_when_dagger_is_already_wielded() ->
 
     assert decision is not None
     assert decision.command == "south"
+    assert policy.primary_weapon_observed is True
 
 
 def test_city_rearm_departs_from_and_returns_to_midgaard_healer() -> None:
