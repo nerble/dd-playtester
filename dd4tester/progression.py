@@ -259,6 +259,7 @@ _DAYCARE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "DD4 source: nanny mobile 6606 uses spec_cast_cleric, whose level-zero spell case can cast blindness; healer.c confirms the Midgaard healer can cast cure blindness.",
         "Every nanny must pass the existing exact-description, room-crowd, full state, and live-consider gates before combat.",
         "Live runs 706 and 707 traversed both reset rooms and returned safely to healer room 3054; both nannies were absent in that reboot window, so the campaign rotates areas instead of repeating indefinitely.",
+        "Live run 712 considered a reboot-fuzzed level-4 nanny in room 6604, killed her for 149 XP, collected her robe, potion, and food drop, and recovered at healer room 3054; blindness was not selected in that fight.",
     ),
     practice_skill=None,
     segment_kill_limit=2,
