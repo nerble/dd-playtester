@@ -27,6 +27,8 @@ prices, kill repetition, applicable object instance limits, and observed spawn
 counts to the `DD was started at ...` reboot identity; never carry them across
 reboots. Instance limiting applies only to the few objects whose source
 definitions use it, not to mobiles.
+Never attack for XP when `consider` returns a `do_consider` result from the
+`diff <= -5` or `diff <= -10` branches; those targets are too low to be useful.
 Before HERO renaming is available, use source-backed keywords and keep active
 gear directly accessible; put spare ambiguous items in containers or the vault.
 Leave a depleted hunt area before waiting because occupied areas reset more

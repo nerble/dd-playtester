@@ -653,7 +653,11 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             context.boot_kill_counts,
             "mountain goblin",
         )
-        if foundry_kills >= 12 and midennir_kills < foundry_kills:
+        if (
+            context.stalled_segments == 0
+            and foundry_kills >= 12
+            and midennir_kills < foundry_kills
+        ):
             return replace(
                 _MIDENNIR_LEVEL_SEVEN_POLICY,
                 practice_skill=context.practice_skill,

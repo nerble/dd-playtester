@@ -137,6 +137,18 @@ def test_level_seven_keeps_fresh_foundry_targets() -> None:
     assert policy.execution == "foundry-hunt"
 
 
+def test_level_seven_abandons_midennir_after_a_stalled_segment() -> None:
+    policy = policy_for(
+        7,
+        "thief",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        stalled_segments=1,
+    )
+
+    assert policy.policy_id == "foundry-circuit-7-8"
+    assert policy.execution == "foundry-hunt"
+
+
 def test_stalled_level_seven_non_mage_uses_foundry_fallback() -> None:
     policy = policy_for(7, "thief", stalled_segments=1)
 

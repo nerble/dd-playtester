@@ -113,6 +113,25 @@ _MOB_ATTACKS_YOU = re.compile(
     r"annihilates|obliterates|ravages|cripples|brutalises|vapourises) you\b",
     re.IGNORECASE,
 )
+_CONSIDER_VIABLE_FRAGMENTS = (
+    "looks like an easy kill",
+    "looks like it would be easy to destroy",
+    "the perfect match",
+    "the perfect match for your destructive inclinations",
+)
+_CONSIDER_REJECTED_FRAGMENTS = (
+    # Source do_consider branches at level differences <= -10 and <= -5.
+    "naked and weaponless",
+    "is no match for you",
+    "is no match for your offensive capabilities",
+    "do you feel lucky, punk?",
+    "laughs at you mercilessly",
+    "death will thank you",
+    "could crush you with my little finger",
+    "puny insect",
+    "unimaginably more powerful",
+    "they're not here",
+)
 _SEVERED_BODY_PART = re.compile(
     r"\b(?P<part>head|heart|arm|leg|tail) is "
     r"(?:separated|torn|sliced)\b",
@@ -416,6 +435,9 @@ class StarterPolicy:
         self.store_step = 0
         self.provisioned = False
         self.saved = False
+        self.midgaard_logout_pending = False
+        self.midgaard_logout_save_reason = "persist safe Midgaard checkpoint"
+        self.midgaard_logout_quit_reason = "safe Midgaard checkpoint complete"
         self.needs_food = resupply_only
         self.needs_drink = resupply_only
         self.food_attempted = False
@@ -559,28 +581,9 @@ class StarterPolicy:
             self.health_check_due = None
             self.combat_active = True
         if self.consider_target is not None:
-            if any(
-                phrase in recent
-                for phrase in (
-                    "looks like an easy kill",
-                    "the perfect match",
-                )
-            ):
+            if any(phrase in recent for phrase in _CONSIDER_VIABLE_FRAGMENTS):
                 self.consider_viable = True
-            elif any(
-                phrase in recent
-                for phrase in (
-                    "naked and weaponless",
-                    "is no match for you",
-                    "do you feel lucky, punk?",
-                    "laughs at you mercilessly",
-                    "death will thank you",
-                    "could crush you with my little finger",
-                    "puny insect",
-                    "unimaginably more powerful",
-                    "they're not here",
-                )
-            ):
+            elif any(phrase in recent for phrase in _CONSIDER_REJECTED_FRAGMENTS):
                 self.consider_viable = False
         if self.between_round_action_issued and (
             "you launch a volley of" in recent
@@ -1375,6 +1378,9 @@ class StarterPolicy:
                 "wake because Midgaard recovery is only permitted at the healer",
             )
 
+        if self.midgaard_logout_pending:
+            return self._midgaard_logout_decision(state)
+
         if self.vault_stow_complete and not _is_sleeping(state):
             gear = self._gear_decision(state)
             if gear is not None:
@@ -1764,17 +1770,11 @@ class StarterPolicy:
                 return restock
             if self.failure:
                 return None
-            if state.room_vnum != "3019":
-                self.failure = (
-                    "city restock attempted to complete outside the Mage's Laboratory"
-                )
-                return None
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist city food-and-water restock")
-            self.stage = "complete"
-            return BotDecision("quit", "city food-and-water restock complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist city food-and-water restock",
+                quit_reason="city food-and-water restock complete",
+            )
 
         if self.city_rearm:
             rearm = self._city_rearm_decision(state)
@@ -1782,17 +1782,11 @@ class StarterPolicy:
                 return rearm
             if self.failure:
                 return None
-            if state.room_vnum != "3019":
-                self.failure = (
-                    "primary-weapon rearm attempted to complete outside the Mage's Laboratory"
-                )
-                return None
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist the verified primary weapon")
-            self.stage = "complete"
-            return BotDecision("quit", "safe primary-weapon rearm complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist the verified primary weapon",
+                quit_reason="safe primary-weapon rearm complete",
+            )
 
         resupply = self._resupply_decision(state)
         if resupply is not None:
@@ -1801,12 +1795,11 @@ class StarterPolicy:
             return None
 
         if self.resupply_only and self.food_attempted and self.drink_attempted:
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist emergency resupply recovery")
-            self.stage = "complete"
-            return BotDecision("quit", "emergency resupply complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist emergency resupply recovery",
+                quit_reason="emergency resupply complete",
+            )
 
         arena_completion = self._arena_completion_route_decision(state)
         if arena_completion is not None:
@@ -1820,45 +1813,41 @@ class StarterPolicy:
             home = self._return_home_decision(state)
             if home is not None:
                 return home
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist safe recall recovery")
-            self.stage = "complete"
-            return BotDecision("quit", "safe recall recovery complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist safe recall recovery",
+                quit_reason="safe recall recovery complete",
+            )
 
         if self.guildmaster_research:
             research = self._guildmaster_research_decision(state)
             if research is not None:
                 return research
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist mage Guildmaster route evidence")
-            self.stage = "complete"
-            return BotDecision("quit", "mage Guildmaster route research complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist mage Guildmaster route evidence",
+                quit_reason="mage Guildmaster route research complete",
+            )
 
         if self.magic_shop_research:
             research = self._magic_shop_research_decision(state)
             if research is not None:
                 return research
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist Magic Shop stock evidence")
-            self.stage = "complete"
-            return BotDecision("quit", "Magic Shop research complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist Magic Shop stock evidence",
+                quit_reason="Magic Shop research complete",
+            )
 
         if self.liquidate_loot:
             sale = self._liquidate_loot_decision(state)
             if sale is not None:
                 return sale
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist safe Midgaard loot sales")
-            self.stage = "complete"
-            return BotDecision("quit", "safe loot liquidation complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist safe Midgaard loot sales",
+                quit_reason="safe loot liquidation complete",
+            )
 
         if not self.vault_stow_complete:
             vault = self._vault_stow_decision(state)
@@ -1893,23 +1882,21 @@ class StarterPolicy:
                 return research
             if self.failure is not None:
                 return None
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist official fastwalk route evidence")
-            self.stage = "complete"
-            return BotDecision("quit", "official fastwalk research complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist official fastwalk route evidence",
+                quit_reason="official fastwalk research complete",
+            )
 
         if self.moria_research:
             research = self._moria_research_decision(state)
             if research is not None:
                 return research
-            if not self.saved:
-                self.saved = True
-                self.stage = "saving"
-                return BotDecision("save", "persist Moria approach route evidence")
-            self.stage = "complete"
-            return BotDecision("quit", "Moria approach route research complete")
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist Moria approach route evidence",
+                quit_reason="Moria approach route research complete",
+            )
 
         if room_vnum == "3724" or room_name == "general supplies":
             if self.provisioned:
@@ -3449,45 +3436,28 @@ class StarterPolicy:
             return BotDecision("recall", "return from the fastwalk endpoint")
 
         if room_vnum == "3054":
-            return BotDecision("south", "leave the healer after fastwalk recovery")
+            return None
         if room_vnum == "3724":
             return BotDecision("down", "leave General Supplies after fastwalk recovery")
         if room_vnum == "3725":
             return BotDecision("down", "leave the Mud School after fastwalk recovery")
-        if room_vnum == "3001":
-            home_routes = {
-                "3001": "south",
-                "3005": "south",
-                "3014": "west",
-                "3013": "west",
-                "3012": "south",
-                "3017": "south",
-                "3018": "east",
-            }
-            return BotDecision("south", "return from recall to the Mage Guild")
-        if room_vnum in {"3005", "3014", "3013", "3012", "3017", "3018"}:
-            home_routes = {
-                "3005": "south",
-                "3014": "west",
-                "3013": "west",
-                "3012": "south",
-                "3017": "south",
-                "3018": "east",
-            }
-            return BotDecision(home_routes[room_vnum], "return from recall to the Mage Guild")
-        if room_vnum == "3019" or "mage's laboratory" in room_name:
-            return None
+        healer_direction = _MIDGAARD_HEALER_ROUTES.get(room_vnum or "")
+        if healer_direction is not None:
+            return BotDecision(
+                healer_direction,
+                "finish the fastwalk at the Midgaard healer",
+            )
 
         if self.fastwalk_route.recall_after_loot:
             self.failure = (
-                "recall-only fastwalk did not reach Midgaard Temple or Mage Guild "
+                "recall-only fastwalk did not reach the Midgaard healer route "
                 f"from room {state.room_name!r} ({state.room_vnum})"
             )
             return None
         reverse = _reverse_fastwalk_commands(self.fastwalk_route.commands)
         if self.fastwalk_return_index >= len(reverse):
             self.failure = (
-                "fastwalk return did not reach Midgaard Temple or Mage Guild from "
+                "fastwalk return did not reach the Midgaard healer route from "
                 f"room {state.room_name!r} ({state.room_vnum})"
             )
             return None
@@ -4142,28 +4112,66 @@ class StarterPolicy:
         self.sale_phase = "outbound"
         return self._liquidate_loot_decision(state)
 
+    def _begin_midgaard_logout(
+        self,
+        state: CharacterState,
+        *,
+        save_reason: str,
+        quit_reason: str,
+    ) -> BotDecision | None:
+        self.midgaard_logout_pending = True
+        self.midgaard_logout_save_reason = save_reason
+        self.midgaard_logout_quit_reason = quit_reason
+        return self._midgaard_logout_decision(state)
+
+    def _midgaard_logout_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        if state.room_vnum == "3054":
+            if _is_sleeping(state):
+                return BotDecision("stand", "wake before saving at the Midgaard healer")
+            if not self.saved:
+                self.saved = True
+                self.stage = "saving"
+                return BotDecision("save", self.midgaard_logout_save_reason)
+            self.stage = "complete"
+            return BotDecision("quit", self.midgaard_logout_quit_reason)
+
+        healer_routes = {
+            "3063": "north",
+            "3060": "down",
+            "3737": "enter portal",
+            "3025": "north",
+            "3009": "south",
+            "3033": "south",
+            **_MIDGAARD_HEALER_ROUTES,
+        }
+        direction = healer_routes.get(state.room_vnum or "")
+        if direction is not None:
+            return BotDecision(
+                direction,
+                "reach the Midgaard healer before saving and quitting",
+            )
+        return BotDecision(
+            "recall",
+            "return to Midgaard before saving and quitting at the healer",
+        )
+
     def _return_home_decision(self, state: CharacterState) -> BotDecision | None:
-        """Recall from an interrupted field run and return to the Mage Guild."""
+        """Recall from an interrupted field run and return to the healer."""
         room_vnum = state.room_vnum
-        room_name = (state.room_name or "").casefold()
         home_routes = {
             "3063": "north",
             "3060": "down",
             "3724": "down",
             "3725": "down",
-            "3054": "south",
             "3025": "north",
-            "3001": "south",
-            "3005": "south",
-            "3014": "west",
-            "3013": "west",
-            "3012": "south",
-            "3017": "south",
-            "3018": "east",
+            **_MIDGAARD_HEALER_ROUTES,
         }
         if not self.return_home_recall_started:
             self.return_home_recall_started = True
-            if room_vnum not in home_routes and room_vnum != "3019":
+            if room_vnum not in home_routes and room_vnum != "3054":
                 return BotDecision("recall", "recover an interrupted character to Midgaard")
         if _health_ratio(state) < 0.95:
             healer_routes = {
@@ -4183,8 +4191,8 @@ class StarterPolicy:
                 return BotDecision(direction, "reach the healer before completing recovery")
         direction = home_routes.get(room_vnum or "")
         if direction is not None:
-            return BotDecision(direction, "return from recall to the Mage Guild")
-        if room_vnum == "3019" or "mage's laboratory" in room_name:
+            return BotDecision(direction, "return from recall to the Midgaard healer")
+        if room_vnum == "3054":
             return None
         self.failure = (
             "recall recovery did not reach Midgaard from "

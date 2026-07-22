@@ -1543,6 +1543,24 @@ def test_arena_skips_runtime_target_in_the_no_match_band() -> None:
     assert consider_boar.command == "consider boar"
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "You can kill a wolf naked and weaponless.\n",
+        "A wolf is no match for you.\n",
+        "You can destroy a dummy naked and weaponless.\n",
+        "A dummy is no match for your offensive capabilities.\n",
+    ],
+)
+def test_consider_rejects_every_low_xp_branch(message: str) -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.consider_target = "target"
+
+    policy.observe_text(message)
+
+    assert policy.consider_viable is False
+
+
 def test_arena_waits_for_gmcp_combat_to_end_before_issuing_another_kill() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=7)
     policy.in_world = True
@@ -1876,6 +1894,21 @@ def test_resupply_policy_returns_from_limbo_then_eats_and_drinks() -> None:
     policy.prompt_ready = True
     decision = policy.next_decision(safety)
     assert decision is not None
+    assert decision.command == "enter portal"
+    policy.after_command(decision)
+
+    policy.prompt_ready = True
+    decision = policy.next_decision(
+        CharacterState(room_name="The Temple Of Midgaard", room_vnum="3001", position=7)
+    )
+    assert decision is not None
+    assert decision.command == "north"
+
+    policy.prompt_ready = True
+    decision = policy.next_decision(
+        CharacterState(room_name="By the Temple Altar", room_vnum="3054", position=7)
+    )
+    assert decision is not None
     assert decision.command == "save"
 
 
@@ -2094,6 +2127,13 @@ def test_city_restock_policy_uses_fountain_then_bakery() -> None:
 
     decision = policy.next_decision(
         CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
+    )
+    assert decision is not None
+    assert decision.command == "west"
+
+    policy.prompt_ready = True
+    decision = policy.next_decision(
+        CharacterState(room_name="By the Temple Altar", room_vnum="3054", position=7)
     )
     assert decision is not None
     assert decision.command == "save"
@@ -2413,6 +2453,13 @@ def test_guildmaster_research_reaches_mage_laboratory_and_records_training() -> 
         CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
     )
     assert decision is not None
+    assert decision.command == "west"
+
+    policy.prompt_ready = True
+    decision = policy.next_decision(
+        CharacterState(room_name="By the Temple Altar", room_vnum="3054", position=7)
+    )
+    assert decision is not None
     assert decision.command == "save"
 
 
@@ -2686,6 +2733,13 @@ def test_moria_research_reaches_the_entry_and_returns_to_mage_laboratory() -> No
 
     decision = policy.next_decision(
         CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
+    )
+    assert decision is not None
+    assert decision.command == "west"
+
+    policy.prompt_ready = True
+    decision = policy.next_decision(
+        CharacterState(room_name="By the Temple Altar", room_vnum="3054", position=7)
     )
     assert decision is not None
     assert decision.command == "save"
@@ -3701,8 +3755,43 @@ def test_fastwalk_return_does_not_reverse_to_healer_after_recovery() -> None:
     decision = policy.next_decision(market)
 
     assert decision is not None
-    assert decision.command == "west"
-    assert decision.reason == "return from recall to the Mage Guild"
+    assert decision.command == "north"
+    assert decision.reason == "finish the fastwalk at the Midgaard healer"
+
+
+def test_fastwalk_completion_saves_and_quits_at_midgaard_healer() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "war dog"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_returning = True
+    healer = CharacterState(
+        area="Midgaard",
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+        hp=126,
+        max_hp=126,
+        mana=145,
+        max_mana=145,
+        move=210,
+        max_move=210,
+        position=7,
+    )
+
+    save = policy.next_decision(healer)
+    assert save is not None
+    assert save.command == "save"
+    policy.after_command(save)
+    policy.prompt_ready = True
+
+    quit_decision = policy.next_decision(healer)
+    assert quit_decision is not None
+    assert quit_decision.command == "quit"
 
 
 def test_fastwalk_outbound_does_not_reverse_after_reserves_are_approved() -> None:
@@ -3891,7 +3980,7 @@ def test_return_home_recalls_then_follows_verified_mage_guild_route() -> None:
     policy.after_command(recall)
     policy.prompt_ready = True
 
-    south = policy.next_decision(
+    north = policy.next_decision(
         CharacterState(
             room_name="The Temple Of Midgaard",
             room_vnum="3001",
@@ -3905,8 +3994,8 @@ def test_return_home_recalls_then_follows_verified_mage_guild_route() -> None:
             max_hp=100,
         )
     )
-    assert south is not None
-    assert south.command == "south"
+    assert north is not None
+    assert north.command == "north"
 
 
 def test_return_home_continues_from_common_square_without_another_recall() -> None:
@@ -4100,9 +4189,9 @@ def test_return_home_saves_without_blindly_replacing_scored_equipment() -> None:
         room_flags=["safe"],
     )
 
-    save = policy.next_decision(home)
-    assert save is not None
-    assert save.command == "save"
+    healer_route = policy.next_decision(home)
+    assert healer_route is not None
+    assert healer_route.command == "west"
 
 
 def test_return_home_does_not_cycle_stacked_carried_equipment() -> None:
@@ -4129,10 +4218,10 @@ def test_return_home_does_not_cycle_stacked_carried_equipment() -> None:
         ],
     )
 
-    save = policy.next_decision(home)
+    healer_route = policy.next_decision(home)
 
-    assert save is not None
-    assert save.command == "save"
+    assert healer_route is not None
+    assert healer_route.command == "west"
 
 
 def test_return_home_uses_recall_for_trapped_emergency_combat() -> None:
@@ -4597,9 +4686,9 @@ def test_return_home_loots_corpse_enters_portal_and_sleeps() -> None:
     policy.prompt_ready = True
 
     healer.position = 7
-    leave = policy.next_decision(healer)
-    assert leave is not None
-    assert leave.command == "south"
+    save = policy.next_decision(healer)
+    assert save is not None
+    assert save.command == "save"
     assert policy.utility_abort_reason is None
 
 
@@ -7230,7 +7319,7 @@ def test_fastwalk_recall_ignores_delayed_same_room_prompt_until_room_changes() -
     homeward = policy.next_decision(temple)
 
     assert homeward is not None
-    assert homeward.command == "south"
+    assert homeward.command == "north"
     assert policy.pending_recall_origin is None
 
 
@@ -7576,7 +7665,7 @@ def test_human_identifies_loot_and_keeps_stat_circlet_before_sale() -> None:
     assert identify_cap is not None
     assert identify_cap.command == "cast 'identify' cap"
     assert first_move is not None
-    assert first_move.command == "save"
+    assert first_move.command == "west"
     assert policy.sale_plan == []
 
 
@@ -7969,7 +8058,7 @@ def test_magic_shop_research_lists_stock_and_returns_to_mage_laboratory() -> Non
         CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
     )
     assert finish is not None
-    assert finish.command == "save"
+    assert finish.command == "west"
 
 
 def test_magic_shop_research_can_buy_and_verify_a_fly_potion() -> None:
