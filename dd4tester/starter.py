@@ -6036,10 +6036,15 @@ async def run_fastwalk_research_profile(
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
     target = consider_target or attack_target
+    hunt_route = (
+        (explore_direction,) * explore_depth
+        if target is not None and explore_direction is not None
+        else ()
+    )
     hunt_stops = (
         (
             FieldHuntStop(
-                (),
+                hunt_route,
                 target,
                 consider_only=consider_target is not None,
                 maximum_target_count=maximum_target_count,

@@ -3,6 +3,7 @@ import time
 
 import pytest
 
+from dd4tester import starter
 from dd4tester.character import CharacterSpec
 from dd4tester.connection import ReadResult
 from dd4tester.equipment import (
@@ -6194,6 +6195,36 @@ def test_fastwalk_hunt_circuit_recovers_to_ninety_percent_movement() -> None:
     stand = policy.next_decision(state)
     assert stand is not None
     assert stand.command == "stand"
+
+
+def test_fastwalk_research_builds_a_target_stop_at_requested_exit(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class CapturingRunner:
+        def __init__(self, *_args, **kwargs) -> None:
+            captured.update(kwargs)
+
+        async def run(self) -> None:
+            return None
+
+    monkeypatch.setattr(starter, "StarterBotRunner", CapturingRunner)
+    monkeypatch.setattr(starter, "load_character_spec", lambda _path: _spec())
+
+    asyncio.run(
+        starter.run_fastwalk_research_profile(
+            "profiles/test.yaml",
+            "gnome mine",
+            explore_direction="north",
+            explore_depth=3,
+            attack_target="hermit",
+        )
+    )
+
+    assert captured["fastwalk_hunt_stops"] == (
+        FieldHuntStop(("north", "north", "north"), "hermit"),
+    )
 
 
 def test_fastwalk_research_can_inspect_one_endpoint_exit_and_return() -> None:
