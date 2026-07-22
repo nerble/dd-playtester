@@ -60,7 +60,13 @@ def build_run_report(
     )
     failures = _failures(run, game_event_counts)
     balance_signals = _balance_signals(progress, game_event_counts)
-    commentary = _commentary(events, run["status"], run["error"], commentary_limit)
+    commentary = _commentary(
+        events,
+        run["status"],
+        run["error"],
+        progress,
+        commentary_limit,
+    )
 
     return {
         "run": {
@@ -365,6 +371,7 @@ def _commentary(
     events: list[dict[str, Any]],
     status: str,
     error: str | None,
+    progress: dict[str, Any],
     limit: int,
 ) -> list[str]:
     comments: list[tuple[int, str]] = []
@@ -374,6 +381,14 @@ def _commentary(
         if comment and comment[1] not in seen:
             comments.append(comment)
             seen.add(comment[1])
+
+    experience_change = progress["experience"]["change"]
+    if experience_change is not None:
+        amount = int(experience_change)
+        if amount > 0:
+            comments.append((0, f"I gained {amount} experience points."))
+        elif amount < 0:
+            comments.append((0, f"I lost {abs(amount)} experience points."))
 
     ending = (
         "I completed the run successfully."

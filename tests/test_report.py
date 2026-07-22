@@ -65,6 +65,7 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     }
     assert "I chose to fight the tutorial wolf." in report["commentary"]
     assert "I reached level 2." in report["commentary"]
+    assert "I gained 75 experience points." in report["commentary"]
     assert report["commentary"][-1] == "The run stopped: command budget reached."
 
     markdown = render_markdown(report)
