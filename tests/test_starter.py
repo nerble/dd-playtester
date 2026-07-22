@@ -8397,6 +8397,138 @@ def test_healer_movement_recovery_returns_to_interrupted_mage_lab_route() -> Non
     assert return_step.reason == "return to the route interrupted by healer recovery"
 
 
+def test_healer_route_waits_for_each_room_transition_and_round_trips() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=10)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.current_room = "3019"
+    state = CharacterState(
+        area="Midgaard",
+        hp=79,
+        max_hp=79,
+        move=20,
+        max_move=220,
+        position=7,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+    )
+    outbound = [
+        ("west", "3018"),
+        ("north", "3017"),
+        ("north", "3012"),
+        ("east", "3013"),
+        ("east", "3014"),
+        ("north", "3005"),
+        ("north", "3001"),
+        ("north", "3054"),
+    ]
+
+    for command, destination in outbound:
+        decision = policy.next_decision(state)
+        assert decision is not None
+        assert decision.command == command
+        policy.after_command(decision)
+
+        policy.observe_events([GameEvent("vitals_changed", "gmcp", {})], state)
+        assert policy.next_decision(state) is None
+
+        state.apply(
+            GameEvent(
+                "room_updated",
+                "gmcp",
+                {"area": "Midgaard", "name": destination, "vnum": destination},
+            )
+        )
+        policy.last_command_at = time.monotonic() - 1
+        policy.observe_events(
+            [
+                GameEvent("room_updated", "gmcp", {}),
+                GameEvent("prompt_seen", "text", {}),
+            ],
+            state,
+        )
+
+    sleep = policy.next_decision(state)
+    assert sleep is not None
+    assert sleep.command == "sleep"
+    policy.after_command(sleep)
+    state.position = 4
+    state.move = 150
+    policy.observe_events([GameEvent("vitals_changed", "gmcp", {})], state)
+
+    stand = policy.next_decision(state)
+    assert stand is not None
+    assert stand.command == "stand"
+    policy.after_command(stand)
+    state.position = 7
+    policy.last_command_at = time.monotonic() - 1
+    policy.observe_events([GameEvent("prompt_seen", "text", {})], state)
+
+    returning = [
+        ("south", "3001"),
+        ("south", "3005"),
+        ("south", "3014"),
+        ("west", "3013"),
+        ("west", "3012"),
+        ("south", "3017"),
+        ("south", "3018"),
+        ("east", "3019"),
+    ]
+    for command, destination in returning:
+        decision = policy.next_decision(state)
+        assert decision is not None
+        assert decision.command == command
+        policy.after_command(decision)
+        state.apply(
+            GameEvent(
+                "room_updated",
+                "gmcp",
+                {"area": "Midgaard", "name": destination, "vnum": destination},
+            )
+        )
+        policy.last_command_at = time.monotonic() - 1
+        policy.observe_events(
+            [
+                GameEvent("room_updated", "gmcp", {}),
+                GameEvent("prompt_seen", "text", {}),
+            ],
+            state,
+        )
+
+    assert policy.movement_recovery_return_index == len(returning)
+
+
+@pytest.mark.parametrize("position, command", [(7, "recall"), (4, "stand")])
+def test_diverted_midgaard_recovery_never_sleeps_in_magic_shop(
+    position: int,
+    command: str,
+) -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=10)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.waiting_for_move = True
+    policy.movement_recovery_return_route = ("south",)
+    state = CharacterState(
+        area="Midgaard",
+        hp=79,
+        max_hp=79,
+        move=20,
+        max_move=220,
+        position=position,
+        room_name="The Magic Shop",
+        room_vnum="3033",
+        room_flags=["safe"],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == command
+    assert decision.command != "sleep"
+    assert "healer" in decision.reason or "recall" in decision.reason
+
+
 def test_gmcp_health_recovery_reopens_safe_room_decisions() -> None:
     policy = StarterPolicy(_spec(), "swordfish", objective_level=5)
     policy.in_world = True

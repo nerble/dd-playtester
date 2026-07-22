@@ -397,6 +397,7 @@ class StarterPolicy:
         self.waiting_for_move = False
         self.movement_recovery_return_route: tuple[str, ...] = ()
         self.movement_recovery_return_index = 0
+        self.movement_recovery_reached_healer = False
         self.room_targets: dict[str, list[str]] = {}
         self.room_target_counts: dict[str, dict[str, int]] = {}
         self.defeated_targets: dict[str, set[str]] = {}
@@ -1103,6 +1104,11 @@ class StarterPolicy:
                 self.prompt_ready = False
                 return None
             self.pending_recall_origin = None
+        if self.pending_travel_origin is not None:
+            if _room_key(state) == self.pending_travel_origin:
+                self.prompt_ready = False
+                return None
+            self.pending_travel_origin = None
         if self.sleep_confirmation_pending:
             if not _is_sleeping(state):
                 self.prompt_ready = False
@@ -1345,7 +1351,17 @@ class StarterPolicy:
                     "character died; completed Purgatory recovery is required"
                 )
 
-        if self.vault_stow_complete:
+        if (
+            _is_sleeping(state)
+            and (state.area or "").casefold() == "midgaard"
+            and state.room_vnum != "3054"
+        ):
+            return BotDecision(
+                "stand",
+                "wake because Midgaard recovery is only permitted at the healer",
+            )
+
+        if self.vault_stow_complete and not _is_sleeping(state):
             gear = self._gear_decision(state)
             if gear is not None:
                 return gear
@@ -1392,6 +1408,7 @@ class StarterPolicy:
                 )
             self.movement_recovery_return_route = ()
             self.movement_recovery_return_index = 0
+            self.movement_recovery_reached_healer = False
 
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
@@ -4298,8 +4315,15 @@ class StarterPolicy:
                 _MIDGAARD_HEALER_RETURN_ROUTES[room_vnum]
             )
             self.movement_recovery_return_index = 0
+            self.movement_recovery_reached_healer = False
 
-        if _move_ratio(state) >= 0.5:
+        if room_vnum == "3054":
+            self.movement_recovery_reached_healer = True
+
+        if _move_ratio(state) >= 0.5 and (
+            not self.movement_recovery_return_route
+            or self.movement_recovery_reached_healer
+        ):
             self.waiting_for_move = False
             self.needs_stand = _is_sleeping(state)
             return None
@@ -4324,6 +4348,17 @@ class StarterPolicy:
             # Remain awake until natural regeneration provides the next city step.
             self.prompt_ready = False
             return None
+
+        if (state.area or "").casefold() == "midgaard":
+            if _is_sleeping(state):
+                return BotDecision(
+                    "stand",
+                    "wake because Midgaard recovery is only permitted at the healer",
+                )
+            return BotDecision(
+                "recall",
+                "abort for safety and restart a diverted healer route from recall",
+            )
 
         if not _is_sleeping(state):
             return BotDecision(
@@ -4364,6 +4399,7 @@ class StarterPolicy:
             or "altar of the temple" in room_name
             or room_name == "safety"
         )
+        is_midgaard = (state.area or "").casefold() == "midgaard"
         at_field_recovery_boundary = bool(
             self.fastwalk_hunt_stops
             and (self.fastwalk_outbound_index == 0 or self.fastwalk_returning)
@@ -4458,6 +4494,24 @@ class StarterPolicy:
                         direction,
                         "use the temple healer for field-run recovery",
                     )
+            if (
+                is_midgaard
+                and not is_healer_room
+                and (
+                    self.objective_level > 2
+                    or self.fastwalk_route is not None
+                    or self._is_noncombat_utility_run
+                )
+            ):
+                if _is_sleeping(state):
+                    return BotDecision(
+                        "stand",
+                        "wake because Midgaard recovery is only permitted at the healer",
+                    )
+                return BotDecision(
+                    "recall",
+                    "abort for safety and restart recovery after leaving the healer route",
+                )
             if not is_safe_room:
                 return None
             self.waiting_for_heal = True
@@ -4495,6 +4549,24 @@ class StarterPolicy:
             return BotDecision(
                 healer_approach,
                 "reach the temple healer before critical recovery",
+            )
+        if (
+            is_midgaard
+            and not is_healer_room
+            and (
+                self.objective_level > 2
+                or self.fastwalk_route is not None
+                or self._is_noncombat_utility_run
+            )
+        ):
+            if _is_sleeping(state):
+                return BotDecision(
+                    "stand",
+                    "wake because Midgaard recovery is only permitted at the healer",
+                )
+            return BotDecision(
+                "recall",
+                "abort for safety and restart critical recovery after a route diversion",
             )
         if is_safe_room:
             if self.return_home and not is_healer_room:
