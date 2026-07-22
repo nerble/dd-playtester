@@ -1044,6 +1044,12 @@ class StarterPolicy:
                     self.prompt_ready = True
                 else:
                     self.active_target_level = None
+                    self.combat_active = False
+                    self.active_target = None
+                    self.between_round_action_issued = False
+                    self.backstab_pending_target = None
+                    self.awaiting_enemy_assessment = False
+                    self.prompt_ready = True
             if event.type == "equipment_changed" and self.gear_catalog is not None:
                 self.gear_worn = self.gear_catalog.match_many(
                     _equipment_descriptions(event.data.get("value", event.data))
@@ -5384,7 +5390,9 @@ class StarterBotRunner:
             repeated_command = ""
             repeated_count = 0
             watchdog_progress = _watchdog_progress_marker(self.character_state)
-            last_connection_activity = asyncio.get_running_loop().time()
+            loop = asyncio.get_running_loop()
+            last_connection_activity = loop.time()
+            last_policy_progress = loop.time()
 
             while not policy.done:
                 if policy.failure:
@@ -5445,14 +5453,39 @@ class StarterBotRunner:
                     self._record_read(result, record, policy)
 
                 decision = policy.next_decision(self.character_state)
-                if decision is None:
-                    continue
-
                 current_progress = _watchdog_progress_marker(self.character_state)
                 if current_progress != watchdog_progress:
                     repeated_command = ""
                     repeated_count = 0
                     watchdog_progress = current_progress
+                    last_policy_progress = loop.time()
+                if decision is None:
+                    if not _policy_inactivity_due(
+                        policy,
+                        now=loop.time(),
+                        last_progress=last_policy_progress,
+                        timeout=self.inactivity_timeout,
+                    ):
+                        continue
+                    recovery = policy.recover_from_stall(
+                        self.character_state,
+                        "no policy decision",
+                    )
+                    record(
+                        "state",
+                        {
+                            "state": "policy_inactivity_watchdog",
+                            "idle_seconds": round(loop.time() - last_policy_progress, 3),
+                            "recovery_command": (
+                                recovery.command if recovery is not None else None
+                            ),
+                        },
+                    )
+                    last_policy_progress = loop.time()
+                    if recovery is None:
+                        continue
+                    decision = recovery
+
                 decision_payload = _decision_payload(decision, policy.stage)
                 if decision.command == repeated_command:
                     repeated_count += 1
@@ -5508,6 +5541,7 @@ class StarterBotRunner:
                 )
                 await connection.send_command(decision.command)
                 last_connection_activity = asyncio.get_running_loop().time()
+                last_policy_progress = last_connection_activity
                 commands += 1
                 policy.after_command(decision)
 
@@ -6311,6 +6345,24 @@ def _watchdog_progress_marker(state: CharacterState) -> tuple[object, ...]:
         state.dead,
         state.position,
     )
+
+
+def _policy_inactivity_due(
+    policy: StarterPolicy,
+    *,
+    now: float,
+    last_progress: float,
+    timeout: float,
+) -> bool:
+    wait_deadlines = (
+        deadline
+        for deadline in (policy.arena_respawn_due, policy.health_check_due)
+        if deadline is not None
+    )
+    wait_until = max(wait_deadlines, default=None)
+    if wait_until is not None and now < wait_until:
+        return False
+    return now - last_progress >= timeout
 
 
 def _opposite_direction(direction: str) -> str:

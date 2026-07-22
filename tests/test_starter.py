@@ -25,6 +25,7 @@ from dd4tester.starter import (
     _practice_balances,
     _sellable_inventory_keyword,
     _watchdog_progress_marker,
+    _policy_inactivity_due,
     ambush_exterior_hunt_stops,
     ambush_raider_consider_stops,
     ambush_raider_hunt_stops,
@@ -4486,6 +4487,55 @@ def test_progress_watchdog_marker_tracks_combat_resource_changes() -> None:
     )
 
     assert _watchdog_progress_marker(before) != _watchdog_progress_marker(after_cast)
+
+
+def test_empty_gmcp_enemy_list_releases_combat_policy() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.combat_active = True
+    policy.active_target = "Olog"
+    policy.active_target_level = 1
+    policy.between_round_action_issued = True
+    policy.awaiting_enemy_assessment = True
+    policy.prompt_ready = False
+    state = CharacterState(room_vnum="108", position=7)
+
+    policy.observe_events(
+        [GameEvent("enemies_changed", "gmcp", {"value": []})],
+        state,
+    )
+
+    assert policy.combat_active is False
+    assert policy.active_target is None
+    assert policy.active_target_level is None
+    assert policy.between_round_action_issued is False
+    assert policy.awaiting_enemy_assessment is False
+    assert policy.prompt_ready is True
+
+
+def test_policy_inactivity_watchdog_respects_deliberate_waits() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+
+    assert _policy_inactivity_due(
+        policy,
+        now=60.0,
+        last_progress=0.0,
+        timeout=45.0,
+    )
+
+    policy.health_check_due = 90.0
+    assert not _policy_inactivity_due(
+        policy,
+        now=60.0,
+        last_progress=0.0,
+        timeout=45.0,
+    )
+    assert _policy_inactivity_due(
+        policy,
+        now=90.0,
+        last_progress=0.0,
+        timeout=45.0,
+    )
 
 
 def test_return_home_loots_corpse_enters_portal_and_sleeps() -> None:
