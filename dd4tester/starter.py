@@ -912,7 +912,16 @@ class StarterPolicy:
         ):
             self.body_part_eat_rejected = True
         fleeing_mobile = _MOB_LEAVES.search(cleaned)
-        if (
+        target_left_during_consider = (
+            fleeing_mobile is not None
+            and self.consider_response_pending
+            and self.consider_target is not None
+            and _targets_match(
+                fleeing_mobile.group("target").casefold(),
+                self.consider_target.casefold(),
+            )
+        )
+        target_fled_combat = (
             fleeing_mobile is not None
             and self.fastwalk_attack_target is not None
             and self.active_target is not None
@@ -920,7 +929,8 @@ class StarterPolicy:
                 fleeing_mobile.group("target").casefold(),
                 self.fastwalk_attack_target.casefold(),
             )
-        ):
+        )
+        if target_left_during_consider or target_fled_combat:
             self.combat_active = False
             self.active_target = None
             self.active_enemy_count = 0
@@ -928,6 +938,10 @@ class StarterPolicy:
             self.fastwalk_pursuit_direction = fleeing_mobile.group(
                 "direction"
             ).casefold()
+            if target_left_during_consider:
+                self.consider_response_pending = False
+                self.consider_target = None
+                self.consider_viable = None
         attacking_mobile = (
             _MOB_ATTACKS_YOU.search(cleaned)
             or _MOB_DIRECT_ATTACKS_YOU.search(cleaned)
@@ -3867,6 +3881,19 @@ class StarterPolicy:
         )
         if invisibility is not None:
             return invisibility
+
+        if (
+            self.fastwalk_pursuit_direction is not None
+            and self.fastwalk_pursuit_steps < 1
+        ):
+            direction = self.fastwalk_pursuit_direction
+            self.fastwalk_pursuit_direction = None
+            self.fastwalk_pursuit_steps += 1
+            self.fastwalk_hunt_looked = False
+            return BotDecision(
+                direction,
+                "follow the observed departing target once for a fresh safety check",
+            )
 
         if self.fastwalk_hunt_stop_killed or self.fastwalk_hunt_stop_skipped:
             self.fastwalk_hunt_stop_index += 1

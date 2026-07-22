@@ -4077,6 +4077,43 @@ def test_blind_character_waits_at_healer_until_affect_is_cured() -> None:
     assert policy.utility_abort_reason is None
 
 
+def test_field_hunt_follows_considered_target_once_after_observed_departure() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "nanny"),),
+    )
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_attack_target = "nanny"
+    policy.consider_target = "nanny"
+    policy.consider_response_pending = True
+
+    policy.observe_text("The nanny leaves east.\n")
+    state = CharacterState(
+        room_vnum="6604",
+        hp=123,
+        max_hp=123,
+        mana=145,
+        max_mana=145,
+        move=210,
+        max_move=210,
+        position=7,
+    )
+
+    follow = policy._fastwalk_hunt_plan_decision(state)
+
+    assert follow is not None
+    assert follow.command == "east"
+    assert "fresh safety check" in follow.reason
+    assert policy.consider_response_pending is False
+    assert policy.consider_target is None
+
+    look = policy._fastwalk_hunt_plan_decision(state)
+    assert look is not None
+    assert look.command == "look"
+
+
 def test_fastwalk_completion_does_not_take_a_token_nap_in_mage_lab() -> None:
     policy = StarterPolicy(
         _spec(),
