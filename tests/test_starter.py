@@ -4056,6 +4056,7 @@ def test_blind_character_waits_at_healer_until_affect_is_cured() -> None:
     assert stand is not None
     assert stand.command == "stand"
     assert policy.blindness_recovery_active is False
+    assert policy.utility_abort_reason is None
 
 
 def test_fastwalk_completion_does_not_take_a_token_nap_in_mage_lab() -> None:

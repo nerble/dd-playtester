@@ -4817,6 +4817,10 @@ class StarterPolicy:
         blinded = _has_named_affect(state.affects, "blindness")
         if not blinded:
             self.blindness_recovery_active = False
+            if self.utility_abort_reason == (
+                "blindness triggered healer recovery before further field activity"
+            ):
+                self.utility_abort_reason = None
             return None
 
         self.blindness_recovery_active = True
