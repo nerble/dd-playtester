@@ -304,6 +304,7 @@ _GNOME_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "The target must pass exact identity and GMCP enemy-level gates; full starting health and the generic field withdrawal threshold bound the aggressive encounter.",
         "Live run 720 killed the hermit for 143 XP, looted and sacrificed its corpse, then recalled and checkpointed at healer room 3054 with 150/157 health and no adverse affect.",
         "Live run 788: level-7 drow thief Kestrel killed the hermit for 91 XP, used an observed body-part food drop before consuming carried provisions, and returned at full health to healer room 3054.",
+        "Live run 814: level-7 drow thief Kestrel killed the hermit for 131 XP and returned safely; same-reboot Day Care and Moria probes then recorded no kills or XP, so a thief may take one additional hermit segment before the general rotation resumes.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -736,6 +737,23 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 context.boot_kill_counts,
                 "nanny",
             )
+            hermit_kills = _boot_kill_count(
+                context.boot_kill_counts,
+                "hermit",
+            )
+            if (
+                context.character_class == "thief"
+                and hermit_kills < 2
+                and context.last_policy_id
+                in {
+                    _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
+                    _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id,
+                }
+            ):
+                return replace(
+                    _GNOME_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
             if context.last_policy_id in {
                 _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
                 _SHIRE_LEVEL_SEVEN_POLICY.policy_id,
