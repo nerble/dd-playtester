@@ -401,6 +401,68 @@ def test_campaign_remembers_deferred_practice_type_at_current_level(tmp_path) ->
     assert handled == frozenset({"physical"})
 
 
+def test_campaign_uses_live_practice_balance_over_segment_history(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    async def policy_segment(character, profile_path, policy, **kwargs):
+        captured.update(kwargs)
+        return _record_segment_run(database, profile_path, {"level": 5, "xp": 10_500})
+
+    monkeypatch.setattr("dd4tester.campaign._run_policy_segment", policy_segment)
+
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        prior_run_id = storage.create_run(
+            scenario_name="mud-school:Campaignmage",
+            scenario_path=config_path,
+        )
+        storage.record_event(
+            prior_run_id,
+            kind="game_event",
+            payload={
+                "type": "training_completed",
+                "source": "text",
+                "data": {"practice_type": "intellectual"},
+            },
+        )
+        storage.finish_run(prior_run_id, status="success")
+        prior_segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="mud-school-2-6",
+            start_state={"level": 5, "xp": 10_000},
+        )
+        storage.finish_campaign_segment(
+            prior_segment_id,
+            status="success",
+            run_id=prior_run_id,
+            end_state={"level": 5, "xp": 10_400},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+        runner = CampaignRunner(spec, config_path)
+        asyncio.run(
+            runner._run_starter(
+                storage,
+                campaign_id,
+                {"level": 5, "xp": 10_400},
+                storage.campaign_totals(campaign_id),
+                policy_for(5, "mage"),
+            )
+        )
+
+    assert captured["practice_types_spent"] == frozenset()
+
+
 def test_arena_segment_receives_campaign_practice_history(
     tmp_path,
     monkeypatch,

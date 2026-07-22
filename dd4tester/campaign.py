@@ -355,11 +355,9 @@ class CampaignRunner:
                     adjusted_character,
                     self.spec.character_profile,
                     policy,
-                    practice_types_spent=_campaign_practice_types_spent(
-                        storage,
-                        campaign_id,
-                        level=_level(state),
-                    ),
+                    # The current practice listing is authoritative.  A character may
+                    # earn another practice before the next bounded campaign segment.
+                    practice_types_spent=frozenset(),
                 )
         except Exception as exc:
             message = f"{policy.policy_id} segment failed: {exc}"
