@@ -2939,6 +2939,7 @@ class StarterPolicy:
                 )
         if self.city_restock_step < 3:
             fountain_routes = {
+                "3054": "south",
                 "3019": "west",
                 "3018": "north",
                 "3017": "north",

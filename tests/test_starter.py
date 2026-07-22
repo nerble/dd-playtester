@@ -2358,6 +2358,24 @@ def test_city_restock_policy_reaches_fountain_from_mage_laboratory() -> None:
     assert at_fountain.command == "fill skin"
 
 
+def test_city_restock_policy_leaves_healer_for_temple_route() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(
+            room_name="By the Temple Altar",
+            room_vnum="3054",
+            position=7,
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "south"
+    assert "fountain" in decision.reason
+
+
 def test_city_restock_restarts_safely_when_reconnected_in_bakery() -> None:
     policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
     policy.in_world = True
