@@ -2243,10 +2243,10 @@ def test_city_restock_policy_uses_fountain_then_bakery() -> None:
         ("The Bakery", "3009", "buy 6 pie"),
         ("The Bakery", "3009", "inventory"),
         ("The Bakery", "3009", "south"),
-        ("Main Street", "3013", "west"),
-        ("Main Street", "3012", "south"),
-        ("Entrance to Mage's Guild", "3017", "south"),
-        ("Mage's Bar", "3018", "east"),
+        ("Main Street", "3013", "east"),
+        ("Market Square", "3014", "north"),
+        ("The Temple Square", "3005", "north"),
+        ("The Temple Of Midgaard", "3001", "north"),
     )
     for room_name, room_vnum, expected_command in rooms_and_commands:
         decision = policy.next_decision(
@@ -2262,13 +2262,6 @@ def test_city_restock_policy_uses_fountain_then_bakery() -> None:
         policy.after_command(decision)
         policy.prompt_ready = True
 
-    decision = policy.next_decision(
-        CharacterState(room_name="Mage's Laboratory", room_vnum="3019", position=7)
-    )
-    assert decision is not None
-    assert decision.command == "west"
-
-    policy.prompt_ready = True
     decision = policy.next_decision(
         CharacterState(room_name="By the Temple Altar", room_vnum="3054", position=7)
     )
@@ -2474,6 +2467,77 @@ def test_city_restock_caps_pie_order_to_free_carry_weight() -> None:
 
     assert decision is not None
     assert decision.command == "buy 5 pie"
+
+
+def test_city_restock_audits_then_uses_carried_food_to_free_capacity() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.city_restock_step = 4
+    full_bakery = CharacterState(
+        room_name="The Bakery",
+        room_vnum="3009",
+        position=7,
+        stats={"carry_wt": 89, "maxcarry_wt": 90},
+        inventory=[[]],
+    )
+
+    audit = policy.next_decision(full_bakery)
+
+    assert audit is not None
+    assert audit.command == "inventory"
+
+    policy.prompt_ready = True
+    audited_bakery = CharacterState(
+        room_name="The Bakery",
+        room_vnum="3009",
+        position=7,
+        stats={"carry_wt": 89, "maxcarry_wt": 90},
+        inventory=[[{"short_desc": "a big pot pie"}]],
+    )
+    relief = policy.next_decision(audited_bakery)
+
+    assert relief is not None
+    assert relief.command == "eat pie"
+
+    policy.prompt_ready = True
+    assert policy.next_decision(audited_bakery) is None
+    assert policy.prompt_ready is False
+
+    policy.observe_text("You eat a big pot pie.")
+    policy.prompt_ready = True
+    decision = policy.next_decision(
+        CharacterState(
+            room_name="The Bakery",
+            room_vnum="3009",
+            position=7,
+            stats={"carry_wt": 84, "maxcarry_wt": 90},
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "buy 1 pie"
+
+
+def test_city_restock_fails_after_a_capacity_audit_finds_no_food() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_restock=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.city_restock_step = 4
+    full_bakery = CharacterState(
+        room_name="The Bakery",
+        room_vnum="3009",
+        position=7,
+        stats={"carry_wt": 89, "maxcarry_wt": 90},
+        inventory=[[]],
+    )
+
+    assert policy.next_decision(full_bakery) is not None
+    policy.prompt_ready = True
+    decision = policy.next_decision(full_bakery)
+
+    assert decision is None
+    assert policy.failure == "no carry capacity remained for one essential pie"
 
 
 def test_city_restock_backs_off_after_weight_rejection() -> None:

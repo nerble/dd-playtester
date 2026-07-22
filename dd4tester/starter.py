@@ -469,6 +469,9 @@ class StarterPolicy:
         self.affordable_pies_ordered = False
         self.pie_order_limit = 6
         self.last_pie_order_quantity: int | None = None
+        self.city_restock_capacity_audited = False
+        self.city_restock_capacity_relief_attempted = False
+        self.city_restock_capacity_relief_pending = False
         self.restock_borrowing = False
         self.restock_borrow_step = 0
         self.restock_borrow_complete = False
@@ -710,6 +713,10 @@ class StarterPolicy:
             self.needs_drink = True
         if "you eat" in folded or "you are full" in folded:
             self.needs_food = False
+        if self.city_restock_capacity_relief_pending and (
+            "you eat" in recent or "you are full" in recent
+        ):
+            self.city_restock_capacity_relief_pending = False
         if "you drink" in folded or "do not feel thirsty" in folded:
             self.needs_drink = False
         if any(
@@ -1237,6 +1244,11 @@ class StarterPolicy:
             self.prompt_ready = False
             return None
         if self.consider_response_pending:
+            self.prompt_ready = False
+            return None
+        if self.city_restock_capacity_relief_pending:
+            # Room messages can arrive before DD4 processes the queued eat
+            # command. Do not mistake their prompt for the food result.
             self.prompt_ready = False
             return None
         return self._tutorial_decision(state)
@@ -2913,7 +2925,10 @@ class StarterPolicy:
             return BotDecision("enter portal", "leave arena Safety for Midgaard")
         if room_vnum == "3725" or "entrance to the mud school" in room_name:
             return BotDecision("down", "travel from Mud School to the Temple")
-        if room_vnum == "3001" or "temple of midgaard" in room_name:
+        if (
+            self.city_restock_step < 6
+            and (room_vnum == "3001" or "temple of midgaard" in room_name)
+        ):
             return BotDecision("south", "travel from the Temple to Temple Square")
         at_bakery = room_vnum == "3009" or room_name == "the bakery"
         if (
@@ -2938,19 +2953,24 @@ class StarterPolicy:
         if self.city_restock_step >= 6:
             home_routes = {
                 "3009": "south",
-                "3013": "west",
-                "3012": "south",
-                "3017": "south",
-                "3018": "east",
+                "3013": "east",
+                "3014": "north",
+                "3005": "north",
+                "3001": "north",
             }
-            if room_vnum == "3019" or "mage's laboratory" in room_name:
+            if room_vnum == "3054":
                 return None
             direction = home_routes.get(room_vnum or "")
             if direction is not None:
                 return BotDecision(
                     direction,
-                    "return safely to the Mage Guild after city restocking",
+                    "return safely to the Midgaard healer after city restocking",
                 )
+            self.failure = (
+                "city restock return did not reach healer room 3054 from "
+                f"{state.room_name!r} ({room_vnum})"
+            )
+            return None
         if self.city_restock_step < 3:
             fountain_routes = {
                 "3054": "south",
@@ -2999,8 +3019,7 @@ class StarterPolicy:
                     self._pie_carry_capacity(state),
                 )
                 if quantity < 1:
-                    self.failure = "no carry capacity remained for one essential pie"
-                    return None
+                    return self._city_restock_capacity_decision(state)
                 self.affordable_pies_ordered = True
                 return BotDecision(
                     f"buy {quantity} pie",
@@ -3016,8 +3035,7 @@ class StarterPolicy:
                     self._pie_carry_capacity(state),
                 )
                 if quantity < 1:
-                    self.failure = "no carry capacity remained for one essential pie"
-                    return None
+                    return self._city_restock_capacity_decision(state)
                 self.city_restock_step += 1
                 return BotDecision(
                     f"buy {quantity} pie",
@@ -3043,6 +3061,30 @@ class StarterPolicy:
         if carry_weight is None or maximum_weight is None:
             return self.pie_order_limit
         return max(0, (maximum_weight - carry_weight) // _PIE_WEIGHT)
+
+    def _city_restock_capacity_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Resolve a full inventory without discarding unknown equipment."""
+        if not self.city_restock_capacity_audited:
+            self.city_restock_capacity_audited = True
+            return BotDecision(
+                "inventory",
+                "audit carried items before a capacity-limited food purchase",
+            )
+        if (
+            not self.city_restock_capacity_relief_attempted
+            and _has_inventory_item(state.inventory, "pie")
+        ):
+            self.city_restock_capacity_relief_attempted = True
+            self.city_restock_capacity_relief_pending = True
+            return BotDecision(
+                "eat pie",
+                "consume confirmed carried food to free capacity for a fresh reserve",
+            )
+        self.failure = "no carry capacity remained for one essential pie"
+        return None
 
     def _guildmaster_research_decision(
         self,
