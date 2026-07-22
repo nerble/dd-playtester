@@ -923,9 +923,11 @@ class StarterPolicy:
         if (
             attacking_mobile is not None
             and self.fastwalk_route is not None
-            and self.active_target is not None
-            and not _targets_match(
-                attacking_mobile.group("attacker"), self.active_target
+            and (
+                self.fastwalk_attack_target is None
+                or not _targets_match(
+                    attacking_mobile.group("attacker"), self.fastwalk_attack_target
+                )
             )
         ):
             self.unapproved_field_attacker = attacking_mobile.group("attacker")

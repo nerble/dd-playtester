@@ -2994,7 +2994,7 @@ def test_field_hunt_waits_for_delayed_gmcp_enemy_assessment() -> None:
     assert policy.fastwalk_emergency_recall_pending is False
 
 
-def test_incoming_damage_text_blocks_field_navigation_before_gmcp_enemy() -> None:
+def test_incoming_damage_text_with_unknown_attacker_flees_field_combat() -> None:
     policy = StarterPolicy(
         _spec(),
         "swordfish",
@@ -3027,9 +3027,10 @@ def test_incoming_damage_text_blocks_field_navigation_before_gmcp_enemy() -> Non
     decision = policy.next_decision(state)
 
     assert policy.combat_active is True
-    assert policy.awaiting_enemy_assessment is True
-    assert decision is None
-    assert policy.fastwalk_returning is False
+    assert policy.awaiting_enemy_assessment is False
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.fastwalk_emergency_recall_pending is True
 
 
 def test_fastwalk_defends_against_the_configured_endpoint_target() -> None:
@@ -3092,6 +3093,36 @@ def test_fastwalk_flees_when_a_second_attacker_joins_field_combat() -> None:
     assert "unapproved attacker" in decision.reason
     assert policy.fastwalk_abort_reason == (
         "field combat aborted after unapproved attacker 'The Thain' joined"
+    )
+
+
+def test_fastwalk_flees_when_attacked_before_target_is_established() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.observe_text("A dark horseman's slash hits you.")
+
+    decision = policy.next_decision(
+        CharacterState(
+            level=7,
+            hp=123,
+            max_hp=123,
+            position=7,
+            room_name="The South Bridge",
+            room_vnum="3505",
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.fastwalk_abort_reason == (
+        "field combat aborted after unapproved attacker 'A dark horseman' joined"
     )
 
 
