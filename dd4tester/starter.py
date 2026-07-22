@@ -556,6 +556,9 @@ class StarterPolicy:
         self.last_response = cleaned
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
+        is_consider_response = self.consider_response_pending and _consider_response_matches(
+            recent
+        )
         if self.gear_response_expectation is not None:
             if _gear_response_matches(self.gear_response_expectation, recent):
                 self.gear_response_expectation = None
@@ -564,9 +567,8 @@ class StarterPolicy:
                 # retain the existing retry behavior rather than waiting for a
                 # response that may never arrive.
                 self.gear_response_expectation = None
-        if self.consider_response_pending:
-            if _consider_response_matches(recent):
-                self.consider_response_pending = False
+        if is_consider_response:
+            self.consider_response_pending = False
         if "skills known:" in recent:
             listing = parse_practice_listing(cleaned)
             self.known_skills.update(listing.known)
@@ -825,7 +827,12 @@ class StarterPolicy:
                 self.needs_drink = True
                 self.skin_ordered = False
         targets = _training_targets(cleaned)
-        if self.current_room and targets and not self.combat_active:
+        if (
+            self.current_room
+            and targets
+            and not self.combat_active
+            and not is_consider_response
+        ):
             known = self.room_targets.setdefault(self.current_room, [])
             known.extend(target for target in targets if target not in known)
             self.room_target_counts[self.current_room] = _training_target_counts(

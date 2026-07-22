@@ -6576,6 +6576,19 @@ def test_fastwalk_consider_waits_for_its_delayed_response() -> None:
     assert attack.command == "kill kobold"
 
 
+def test_consider_response_does_not_replace_exact_field_target_identity() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.current_room = "6602"
+    policy.room_targets["6602"] = ["old wrinkled nanny"]
+    policy.room_target_counts["6602"] = {"old wrinkled nanny": 1}
+    policy.consider_response_pending = True
+
+    policy.observe_text("The nanny looks like an easy kill.\n")
+
+    assert policy.consider_response_pending is False
+    assert policy.room_target_counts["6602"] == {"old wrinkled nanny": 1}
+
+
 def test_fastwalk_research_skips_a_mixed_crowd_before_considering() -> None:
     route = route_named("moria")
     policy = StarterPolicy(
