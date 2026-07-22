@@ -345,6 +345,30 @@ def rank_hunt_candidates(
         normalized_target = _normalize_name(mobile.short_description)
         boot_kills = kill_counts.get(normalized_target, 0)
 
+        matching_target_capacity = sum(
+            room_reset.maximum_count
+            for room_reset in resets_by_room.get(room.vnum, ())
+            if room_reset.mobile_vnum == mobile.vnum
+        )
+        if matching_target_capacity > 1:
+            hazards.append(
+                "target reset permits up to "
+                f"{matching_target_capacity} matching mobiles in the room"
+            )
+        for room_reset in resets_by_room.get(room.vnum, ()):
+            if room_reset.mobile_vnum == mobile.vnum:
+                continue
+            companion = world.mobiles.get(room_reset.mobile_vnum)
+            if companion is None:
+                continue
+            hazards.append(
+                "room companion: "
+                f"{companion.short_description} L{companion.level} "
+                f"(up to {room_reset.maximum_count})"
+            )
+            if companion.aggressive or companion.level > character_level:
+                dangerous = True
+
         for path_room in path_rooms[:-1]:
             for path_reset in resets_by_room.get(path_room, ()):
                 hazard = world.mobiles.get(path_reset.mobile_vnum)

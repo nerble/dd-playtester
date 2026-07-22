@@ -140,6 +140,43 @@ def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -
     assert "reachable wanderer: a large grey wolf L8" in candidates[0].hazards
 
 
+def test_candidate_ranking_rejects_high_level_room_companion(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "doe", "a doe", 5, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "hierophant",
+                "the Hierophant",
+                15,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Sacred grove", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 2, ()), MobReset(200, 7001, 1, ())],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=7,
+        include_xp_only=True,
+    )[0]
+
+    assert candidate.status == "reject"
+    assert "target reset permits up to 2 matching mobiles in the room" in candidate.hazards
+    assert "room companion: the Hierophant L15 (up to 1)" in candidate.hazards
+
+
 def test_candidate_ranking_excludes_wanderer_behind_reset_closed_door(
     monkeypatch,
 ) -> None:
