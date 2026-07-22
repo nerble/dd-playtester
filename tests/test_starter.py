@@ -202,6 +202,7 @@ def test_daycare_nanny_hunt_uses_source_route_and_explicit_bystanders() -> None:
     assert [stop.route for stop in stops] == [(), ("south",)]
     assert all(stop.target == "old wrinkled nanny" for stop in stops)
     assert "young dwarf" in stops[0].allowed_bystanders
+    assert "abused and old doll" in stops[0].allowed_bystanders
     assert "abused and old doll" in stops[1].allowed_bystanders
     assert all(stop.exact_target for stop in stops)
 

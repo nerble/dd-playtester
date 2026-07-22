@@ -6219,6 +6219,7 @@ def daycare_nanny_hunt_stops() -> tuple[FieldHuntStop, ...]:
                 "young dwarf",
                 "cute and fuzzy teddy bear",
                 "raggedy anne doll",
+                "abused and old doll",
             ),
             exact_target=True,
         ),
