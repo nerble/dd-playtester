@@ -2430,6 +2430,30 @@ def test_liquidation_routes_movement_recovery_to_temple_healer() -> None:
     assert policy.waiting_for_heal is False
 
 
+def test_recovery_decision_names_the_midgaard_healer_when_sleeping() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", objective_level=8)
+    state = CharacterState(
+        hp=110,
+        max_hp=110,
+        mana=206,
+        max_mana=293,
+        move=40,
+        max_move=210,
+        position=7,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+    )
+
+    decision = policy._recovery_decision(state)
+
+    assert decision is not None
+    assert decision.command == "sleep"
+    assert decision.reason == (
+        "sleep beside the Midgaard healer to recover movement or mana"
+    )
+
+
 def test_liquidation_does_not_interrupt_an_active_safe_shop_route() -> None:
     policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
     policy.sale_phase = "home"

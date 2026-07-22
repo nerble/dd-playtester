@@ -4461,7 +4461,15 @@ class StarterPolicy:
             if not is_safe_room:
                 return None
             self.waiting_for_heal = True
-            return BotDecision("sleep", "recover movement or mana in a safe room")
+            if state.room_vnum == "3054":
+                return BotDecision(
+                    "sleep",
+                    "sleep beside the Midgaard healer to recover movement or mana",
+                )
+            return BotDecision(
+                "sleep",
+                "recover movement or mana in a tutorial safe room",
+            )
 
         if (
             self.fastwalk_route is not None
