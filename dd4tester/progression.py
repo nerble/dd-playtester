@@ -280,29 +280,10 @@ _SHIRE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "DD4 source: exactly one bull resets alone in room 1138, and the source-derived route reaches no above-level aggressive reset before that endpoint.",
         "Live run 709 killed the aggressive bull for 207 XP, looted and sacrificed its corpse, then recalled and checkpointed at healer room 3054 with full health and no adverse affect.",
         "Live run 730: the Thain wandered into the bull fight and joined combat; Kestrel fled at 20/123 health and recovered, so this route is research-only until multi-attacker isolation can be proven.",
+        "Live run 787: Dorrik withdrew on the approach when an unapproved attacker joined field combat, losing 43 XP despite full health and flight. The route remains research-only for every archetype.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
-)
-
-_SHIRE_WARRIOR_LEVEL_SEVEN_POLICY = replace(
-    _SHIRE_LEVEL_SEVEN_POLICY,
-    policy_id="shire-bull-warrior-7-8",
-    status="verified",
-    execution="shire-bull-hunt",
-    summary=(
-        "A one-kill, live-considered Shire bull fallback for the resilient "
-        "warrior archetype after the Foundry is depleted."
-    ),
-    evidence=(
-        *_SHIRE_LEVEL_SEVEN_POLICY.evidence,
-        "The executable policy is deliberately restricted to warriors: the "
-        "source-estimated peak round is below Dorrik's verified 157 HP, while "
-        "the thief evidence demonstrated that the wandering-Thain risk is not "
-        "a generic low-health route.",
-        "The one-kill limit, exact target identity, full-health gate, and "
-        "generic multi-attacker withdrawal remain mandatory.",
-    ),
 )
 
 _GNOME_LEVEL_SEVEN_POLICY = ProgressionPolicy(
@@ -752,18 +733,9 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 context.boot_kill_counts,
                 "nanny",
             )
-            if (
-                context.character_class == "warrior"
-                and context.last_policy_id == _MIDENNIR_LEVEL_SEVEN_POLICY.policy_id
-            ):
-                return replace(
-                    _SHIRE_WARRIOR_LEVEL_SEVEN_POLICY,
-                    practice_skill=context.practice_skill,
-                )
             if context.last_policy_id in {
                 _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
                 _SHIRE_LEVEL_SEVEN_POLICY.policy_id,
-                _SHIRE_WARRIOR_LEVEL_SEVEN_POLICY.policy_id,
             }:
                 return replace(
                     _MORIA_LEVEL_SEVEN_ORC_POLICY,
