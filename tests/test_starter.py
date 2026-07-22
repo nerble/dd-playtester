@@ -5298,6 +5298,35 @@ def test_combat_fastwalk_enables_autoloot_before_origin_actions() -> None:
     assert prepare.command == "drop cap"
 
 
+def test_fastwalk_attempts_known_concealment_before_city_transit() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_attack_target="war dog",
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_autoloot_configured = True
+    policy.known_skills.update(("sneak", "hide"))
+    origin = CharacterState(
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        position=7,
+    )
+
+    policy.prompt_ready = True
+    sneak = policy.next_decision(origin)
+    assert sneak is not None
+    assert sneak.command == "sneak"
+    policy.after_command(sneak)
+
+    policy.prompt_ready = True
+    hide = policy.next_decision(origin)
+    assert hide is not None
+    assert hide.command == "hide"
+
+
 def test_fastwalk_origin_does_not_waste_food_or_water_without_need() -> None:
     policy = StarterPolicy(
         _spec(),

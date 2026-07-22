@@ -338,6 +338,7 @@ class StarterPolicy:
         self.fastwalk_origin_actions = fastwalk_origin_actions
         self.fastwalk_origin_action_index = 0
         self.fastwalk_autoloot_configured = False
+        self.fastwalk_concealment_attempted: set[str] = set()
         self.vault_stow_commands = tuple(
             command
             for item in vault_stow_items
@@ -3437,6 +3438,17 @@ class StarterPolicy:
                     "config +autoloot",
                     "secure corpse loot inside the kill before another mobile can interrupt",
                 )
+            if room_vnum == "3001" and self.fastwalk_outbound_index == 0:
+                for skill in ("sneak", "hide"):
+                    if (
+                        skill in self.known_skills
+                        and skill not in self.fastwalk_concealment_attempted
+                    ):
+                        self.fastwalk_concealment_attempted.add(skill)
+                        return BotDecision(
+                            skill,
+                            "reduce visibility to city greet-program ambushes before departure",
+                        )
             while self.fastwalk_origin_action_index < len(
                 self.fastwalk_origin_actions
             ):
