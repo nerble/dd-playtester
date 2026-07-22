@@ -932,17 +932,27 @@ class StarterPolicy:
             or attacking_mobile is not None
         ):
             self.combat_active = True
+        pending_endpoint_target: str | None = None
+        if (
+            self.fastwalk_attack_target is None
+            and self.fastwalk_route is not None
+            and self.fastwalk_outbound_index >= len(self.fastwalk_route.commands)
+            and self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+        ):
+            pending_stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+            if not pending_stop.route:
+                pending_endpoint_target = pending_stop.target
         if (
             attacking_mobile is not None
             and self.fastwalk_route is not None
-            and (
-                self.fastwalk_attack_target is None
-                or not _targets_match(
-                    attacking_mobile.group("attacker"), self.fastwalk_attack_target
-                )
-            )
         ):
-            self.unapproved_field_attacker = attacking_mobile.group("attacker")
+            approved_target = self.fastwalk_attack_target or pending_endpoint_target
+            if approved_target is None or not _targets_match(
+                attacking_mobile.group("attacker"), approved_target
+            ):
+                self.unapproved_field_attacker = attacking_mobile.group("attacker")
+            else:
+                self.fastwalk_attack_target = approved_target
         if "aren't fighting anyone" in recent:
             self.combat_active = False
             self.active_target = None

@@ -6395,6 +6395,42 @@ def test_fastwalk_research_recalls_when_an_outbound_step_is_blocked() -> None:
     assert recall.command == "recall"
 
 
+def test_fastwalk_accepts_an_expected_aggressive_endpoint_target() -> None:
+    route = gnome_hermit_hunt_route()
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=gnome_hermit_hunt_stops(),
+        fastwalk_kill_limit=1,
+    )
+    policy.fastwalk_outbound_index = len(route.commands)
+
+    policy.observe_text("A hermit misses you.\n")
+
+    assert policy.combat_active is True
+    assert policy.fastwalk_attack_target == "hermit"
+    assert policy.unapproved_field_attacker is None
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    assert (
+        policy.next_decision(
+            CharacterState(
+                level=7,
+                hp=150,
+                max_hp=150,
+                mana=100,
+                max_mana=100,
+                position=6,
+                room_vnum="1589",
+            )
+        )
+        is None
+    )
+    assert policy.fastwalk_attack_started is True
+
+
 def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     route = route_named("moria")
     policy = StarterPolicy(
