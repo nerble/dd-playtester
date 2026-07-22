@@ -301,6 +301,7 @@ _GNOME_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "DD4 source: exactly one hermit resets in room 1589, and the source-derived route reaches no above-level aggressive reset before that endpoint.",
         "The target must pass exact identity and GMCP enemy-level gates; full starting health and the generic field withdrawal threshold bound the aggressive encounter.",
         "Live run 720 killed the hermit for 143 XP, looted and sacrificed its corpse, then recalled and checkpointed at healer room 3054 with 150/157 health and no adverse affect.",
+        "Live run 788: level-7 drow thief Kestrel killed the hermit for 91 XP, used an observed body-part food drop before consuming carried provisions, and returned at full health to healer room 3054.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
