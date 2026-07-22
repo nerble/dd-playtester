@@ -35,6 +35,8 @@ from dd4tester.starter import (
     daycare_nanny_hunt_stops,
     foundry_level_six_hunt_stops,
     foundry_level_seven_hunt_stops,
+    gnome_hermit_hunt_route,
+    gnome_hermit_hunt_stops,
     midennir_horseman_consider_stops,
     midennir_horseman_probe_route,
     moria_level_seven_orc_hunt_stops,
@@ -228,6 +230,38 @@ def test_shire_bull_hunt_uses_isolated_source_reset_route() -> None:
     )
     assert len(stops) == 1
     assert stops[0].target == "bull"
+    assert stops[0].route == ()
+    assert stops[0].minimum_health_ratio == 1.0
+    assert stops[0].exact_target is True
+
+
+def test_gnome_hermit_hunt_uses_isolated_source_reset_route() -> None:
+    route = gnome_hermit_hunt_route()
+    stops = gnome_hermit_hunt_stops()
+
+    assert route.commands == (
+        "south",
+        "south",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+        "south",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+        "north",
+        "east",
+        "north",
+        "north",
+        "north",
+    )
+    assert len(stops) == 1
+    assert stops[0].target == "hermit"
     assert stops[0].route == ()
     assert stops[0].minimum_health_ratio == 1.0
     assert stops[0].exact_target is True

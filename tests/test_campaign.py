@@ -691,6 +691,47 @@ def test_depleted_level_seven_daycare_rotates_to_shire_bull(
     assert captured["practice_types_spent"] == frozenset({"physical"})
 
 
+def test_depleted_level_seven_moria_rotates_to_gnome_hermit(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 7})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        7,
+        "warrior",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        last_policy_id="moria-orc-circuit-7-8",
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            practice_types_spent=frozenset({"physical"}),
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "gnome-hermit"
+    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
+        "hermit"
+    ]
+    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["fastwalk_require_invisibility"] is False
+    assert captured["practice_types_spent"] == frozenset({"physical"})
+
+
 def test_campaign_completes_when_a_segment_reaches_target(tmp_path) -> None:
     config_path, database = _write_campaign_files(tmp_path, target_level=2)
 

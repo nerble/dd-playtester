@@ -6138,6 +6138,23 @@ def shire_bull_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def gnome_hermit_hunt_route() -> Fastwalk:
+    """Return the source-derived recall route to the Gnome hermit crab."""
+    return Fastwalk("gnome-hermit", 1, 7, "2s5es6ene3n")
+
+
+def gnome_hermit_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt the isolated hermit crab only after a live enemy assessment."""
+    return (
+        FieldHuntStop(
+            (),
+            "hermit",
+            minimum_health_ratio=1.0,
+            exact_target=True,
+        ),
+    )
+
+
 def foundry_level_six_hunt_stops() -> tuple[FieldHuntStop, ...]:
     """Return the bounded source-backed Foundry circuit for level six."""
     return (

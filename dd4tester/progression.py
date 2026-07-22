@@ -285,6 +285,26 @@ _SHIRE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_GNOME_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="gnome-hermit-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="gnome-hermit-hunt",
+    summary=(
+        "A source-backed single-target Gnome circuit that rotates away from "
+        "recently depleted Moria, Shire, and Daycare resets."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: mobile 1524 is an aggressive source-level-5 hermit crab with no special procedure or equipped weapon.",
+        "DD4 source: exactly one hermit resets in room 1589, and the source-derived route reaches no above-level aggressive reset before that endpoint.",
+        "The target must pass exact identity and GMCP enemy-level gates; full starting health and the generic field withdrawal threshold bound the aggressive encounter.",
+        "Live run 720 killed the hermit for 143 XP, looted and sacrificed its corpse, then recalled and checkpointed at healer room 3054 with 150/157 health and no adverse affect.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
 _MIDENNIR_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     policy_id="midennir-goblin-7-8",
     minimum_level=7,
@@ -719,6 +739,16 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             if context.last_policy_id == _SHIRE_LEVEL_SEVEN_POLICY.policy_id:
                 return replace(
                     _MORIA_LEVEL_SEVEN_ORC_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if context.last_policy_id == _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id:
+                return replace(
+                    _GNOME_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if context.last_policy_id == _GNOME_LEVEL_SEVEN_POLICY.policy_id:
+                return replace(
+                    _DAYCARE_LEVEL_SEVEN_POLICY,
                     practice_skill=context.practice_skill,
                 )
             if nanny_kills < 2:
