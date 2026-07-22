@@ -6374,6 +6374,27 @@ def test_fastwalk_research_stops_at_a_blocked_exploration_exit() -> None:
     assert policy.fastwalk_target_absent is True
 
 
+def test_fastwalk_research_recalls_when_an_outbound_step_is_blocked() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(_spec(), "swordfish", fastwalk_route=route)
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 3
+    policy.pending_fastwalk_outbound_move = True
+
+    policy.observe_text("Alas, you cannot go that way.\n")
+
+    assert policy.fastwalk_abort_reason == (
+        "official fastwalk 'moria' was blocked before its endpoint"
+    )
+    assert policy.fastwalk_returning is True
+    policy.prompt_ready = True
+    recall = policy.next_decision(CharacterState(room_vnum="4011", position=7))
+
+    assert recall is not None
+    assert recall.command == "recall"
+
+
 def test_fastwalk_research_can_attack_one_explicit_exploration_target() -> None:
     route = route_named("moria")
     policy = StarterPolicy(

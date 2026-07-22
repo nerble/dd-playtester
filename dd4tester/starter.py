@@ -1006,6 +1006,18 @@ class StarterPolicy:
             self.pending_travel_origin = None
         if "alas, you cannot go that way" in folded:
             if (
+                self.fastwalk_route is not None
+                and self.pending_fastwalk_outbound_move
+                and not self.fastwalk_arrival_observed
+            ):
+                self.fastwalk_abort_reason = (
+                    f"official fastwalk {self.fastwalk_route.name!r} was blocked "
+                    "before its endpoint"
+                )
+                self.fastwalk_returning = True
+                self.fastwalk_emergency_recall_pending = True
+                self.pending_fastwalk_outbound_move = False
+            if (
                 self.fastwalk_explore_look_pending
                 and self.fastwalk_explore_distance > 0
             ):
@@ -5793,6 +5805,10 @@ class StarterBotRunner:
                 self.fastwalk_route is not None
                 and not policy.fastwalk_arrival_observed
                 and not policy.fastwalk_objective_killed
+                and not (
+                    self.allow_safe_fastwalk_abort
+                    and policy.fastwalk_abort_reason is not None
+                )
             ):
                 raise RuntimeError(
                     f"fastwalk {self.fastwalk_route.name!r} returned without "
