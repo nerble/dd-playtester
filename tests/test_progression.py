@@ -245,7 +245,7 @@ def test_level_seven_thief_repeats_evidenced_hermit_before_general_rotation() ->
     assert policy.execution == "gnome-hermit-hunt"
 
 
-def test_level_seven_thief_returns_to_general_rotation_after_two_hermit_kills() -> None:
+def test_level_seven_thief_returns_to_general_rotation_after_nine_hermit_kills() -> None:
     policy = policy_for(
         7,
         "thief",
@@ -253,9 +253,26 @@ def test_level_seven_thief_returns_to_general_rotation_after_two_hermit_kills() 
             "Olog": 4,
             "Oshu": 4,
             "Uburz": 4,
-            "hermit": 2,
+            "hermit": 9,
         },
         last_policy_id="gnome-hermit-7-8",
+    )
+
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
+
+
+def test_level_seven_thief_does_not_return_to_depleted_hermit_after_moria() -> None:
+    policy = policy_for(
+        7,
+        "thief",
+        boot_kill_counts={
+            "Olog": 4,
+            "Oshu": 4,
+            "Uburz": 4,
+            "hermit": 9,
+        },
+        last_policy_id="moria-orc-circuit-7-8",
     )
 
     assert policy.policy_id == "daycare-nanny-circuit-7-8"
