@@ -637,6 +637,27 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             return _AMBUSH_VILE_LEVEL_TEN_POLICY
         return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
     if normalized_level == 7:
+        foundry_kills = sum(
+            _boot_kill_count(context.boot_kill_counts, target)
+            for target in (
+                "Olog",
+                "Oshu",
+                "Golgog",
+                "Shargook",
+                "Lobuk",
+                "Uburz",
+                "Ushog",
+            )
+        )
+        midennir_kills = _boot_kill_count(
+            context.boot_kill_counts,
+            "mountain goblin",
+        )
+        if foundry_kills >= 12 and midennir_kills < foundry_kills:
+            return replace(
+                _MIDENNIR_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
         return replace(
             _FOUNDRY_LEVEL_SEVEN_POLICY,
             practice_skill=context.practice_skill,

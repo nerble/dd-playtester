@@ -104,6 +104,39 @@ def test_level_seven_non_mage_uses_foundry_policy() -> None:
     assert policy.execution == "foundry-hunt"
 
 
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])
+def test_level_seven_rotates_from_repeated_foundry_kills(
+    character_class: str,
+) -> None:
+    policy = policy_for(
+        7,
+        character_class,
+        boot_kill_counts={
+            "Olog": 4,
+            "the Oshu": 3,
+            "Golgog": 2,
+            "Uburz": 3,
+            "mountain goblin": 1,
+        },
+    )
+
+    assert policy.policy_id == "midennir-goblin-7-8"
+    assert policy.execution == "midennir-hunt"
+    assert policy.segment_kill_limit == 1
+    assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
+
+
+def test_level_seven_keeps_fresh_foundry_targets() -> None:
+    policy = policy_for(
+        7,
+        "thief",
+        boot_kill_counts={"Olog": 2, "Oshu": 2, "Uburz": 2},
+    )
+
+    assert policy.policy_id == "foundry-circuit-7-8"
+    assert policy.execution == "foundry-hunt"
+
+
 def test_stalled_level_seven_non_mage_uses_foundry_fallback() -> None:
     policy = policy_for(7, "thief", stalled_segments=1)
 
