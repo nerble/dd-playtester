@@ -269,8 +269,8 @@ _SHIRE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     policy_id="shire-bull-7-8",
     minimum_level=7,
     maximum_level=8,
-    status="verified",
-    execution="shire-bull-hunt",
+    status="research",
+    execution=None,
     summary=(
         "A source-backed single-target Shire circuit used to rotate away "
         "from depleted Daycare and Moria resets."
@@ -278,8 +278,8 @@ _SHIRE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     evidence=(
         "DD4 source revision 0482387: mobile 1108 is an aggressive source-level-6 bull with no special procedure or equipped weapon.",
         "DD4 source: exactly one bull resets alone in room 1138, and the source-derived route reaches no above-level aggressive reset before that endpoint.",
-        "The target must pass exact identity and GMCP enemy-level gates; full starting health and the generic field withdrawal threshold bound the aggressive encounter.",
         "Live run 709 killed the aggressive bull for 207 XP, looted and sacrificed its corpse, then recalled and checkpointed at healer room 3054 with full health and no adverse affect.",
+        "Live run 730: the Thain wandered into the bull fight and joined combat; Kestrel fled at 20/123 health and recovered, so this route is research-only until multi-attacker isolation can be proven.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -731,12 +731,10 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 context.boot_kill_counts,
                 "nanny",
             )
-            if context.last_policy_id == _DAYCARE_LEVEL_SEVEN_POLICY.policy_id:
-                return replace(
-                    _SHIRE_LEVEL_SEVEN_POLICY,
-                    practice_skill=context.practice_skill,
-                )
-            if context.last_policy_id == _SHIRE_LEVEL_SEVEN_POLICY.policy_id:
+            if context.last_policy_id in {
+                _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
+                _SHIRE_LEVEL_SEVEN_POLICY.policy_id,
+            }:
                 return replace(
                     _MORIA_LEVEL_SEVEN_ORC_POLICY,
                     practice_skill=context.practice_skill,

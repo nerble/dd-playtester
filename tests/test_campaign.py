@@ -676,7 +676,7 @@ def test_depleted_level_seven_foundry_tries_daycare_before_moria(
     assert captured["fastwalk_kill_limit"] == 2
 
 
-def test_depleted_level_seven_daycare_rotates_to_shire_bull(
+def test_depleted_level_seven_daycare_rotates_to_moria(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -708,11 +708,13 @@ def test_depleted_level_seven_daycare_rotates_to_shire_bull(
         )
     )
 
-    assert captured["fastwalk_route"].name == "shire-bull"
+    assert captured["fastwalk_route"].name == "moria"
     assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
-        "bull"
+        "large orc",
+        "orc",
+        "small green garter snake",
     ]
-    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["fastwalk_kill_limit"] == 3
     assert captured["fastwalk_require_invisibility"] is False
     assert captured["practice_types_spent"] == frozenset({"physical"})
 

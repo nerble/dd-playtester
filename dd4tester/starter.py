@@ -107,7 +107,7 @@ _MOB_LEAVES = re.compile(
     re.IGNORECASE,
 )
 _MOB_ATTACKS_YOU = re.compile(
-    r"\b[A-Za-z][A-Za-z '-]{0,60}'s .{0,80}\b(?:misses|hits|"
+    r"\b(?P<attacker>[A-Za-z][A-Za-z '-]{0,60})'s .{0,80}\b(?:misses|hits|"
     r"scratches|grazes|injures|wounds|mauls|decimates|mangles|maims|"
     r"mutilates|disembowels|eviscerates|massacres|demolishes|devastates|"
     r"annihilates|obliterates|ravages|cripples|brutalises|vapourises) you\b",
@@ -426,6 +426,7 @@ class StarterPolicy:
         self.active_target: str | None = None
         self.active_target_level: int | None = None
         self.active_enemy_count: int | None = None
+        self.unapproved_field_attacker: str | None = None
         self.awaiting_enemy_assessment = False
         self.pending_loot_rooms: set[str] = set()
         self.cleared_training_rooms: set[str] = set()
@@ -911,13 +912,23 @@ class StarterPolicy:
             self.fastwalk_pursuit_direction = fleeing_mobile.group(
                 "direction"
             ).casefold()
+        attacking_mobile = _MOB_ATTACKS_YOU.search(cleaned)
         if (
             "you attack " in recent
             or " attacks you" in recent
             or "fighting you" in recent
-            or _MOB_ATTACKS_YOU.search(recent) is not None
+            or attacking_mobile is not None
         ):
             self.combat_active = True
+        if (
+            attacking_mobile is not None
+            and self.fastwalk_route is not None
+            and self.active_target is not None
+            and not _targets_match(
+                attacking_mobile.group("attacker"), self.active_target
+            )
+        ):
+            self.unapproved_field_attacker = attacking_mobile.group("attacker")
         if "aren't fighting anyone" in recent:
             self.combat_active = False
             self.active_target = None
@@ -927,6 +938,7 @@ class StarterPolicy:
             self.combat_active = False
             self.active_target = None
             self.active_enemy_count = 0
+            self.unapproved_field_attacker = None
             self.between_round_action_issued = False
             self.flee_pending = False
             self.flee_succeeded = True
@@ -1609,6 +1621,19 @@ class StarterPolicy:
             if self.flee_pending:
                 self.prompt_ready = False
                 return None
+            if (
+                self.fastwalk_route is not None
+                and self.unapproved_field_attacker is not None
+            ):
+                self.fastwalk_abort_reason = (
+                    "field combat aborted after unapproved attacker "
+                    f"{self.unapproved_field_attacker!r} joined"
+                )
+                self.fastwalk_emergency_recall_pending = True
+                return BotDecision(
+                    "flee",
+                    "withdraw immediately because an unapproved attacker joined field combat",
+                )
             if self._is_noncombat_utility_run:
                 if self._utility_attacker_is_trivial(state):
                     combat = self._between_round_combat_decision(state)

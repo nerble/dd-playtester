@@ -3062,6 +3062,39 @@ def test_fastwalk_defends_against_the_configured_endpoint_target() -> None:
     assert policy.fastwalk_abort_reason is None
 
 
+def test_fastwalk_flees_when_a_second_attacker_joins_field_combat() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_attack_target="bull",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.active_target = "bull"
+    policy.observe_text("The Thain's slash hits you.")
+
+    decision = policy.next_decision(
+        CharacterState(
+            level=7,
+            hp=123,
+            max_hp=123,
+            position=7,
+            room_name="A grassy field",
+            room_vnum="1138",
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "unapproved attacker" in decision.reason
+    assert policy.fastwalk_abort_reason == (
+        "field combat aborted after unapproved attacker 'The Thain' joined"
+    )
+
+
 def test_fastwalk_flees_and_recalls_when_field_health_reaches_seventy_percent() -> None:
     policy = StarterPolicy(
         _spec(),

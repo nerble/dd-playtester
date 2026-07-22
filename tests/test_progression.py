@@ -165,7 +165,7 @@ def test_level_seven_rotates_to_moria_after_two_nannies() -> None:
     assert policy.execution == "moria-orc-hunt"
 
 
-def test_level_seven_rotates_from_daycare_to_shire() -> None:
+def test_level_seven_rotates_from_daycare_to_moria() -> None:
     policy = policy_for(
         7,
         "warrior",
@@ -174,9 +174,8 @@ def test_level_seven_rotates_from_daycare_to_shire() -> None:
         last_policy_id="daycare-nanny-circuit-7-8",
     )
 
-    assert policy.policy_id == "shire-bull-7-8"
-    assert policy.execution == "shire-bull-hunt"
-    assert policy.segment_kill_limit == 1
+    assert policy.policy_id == "moria-orc-circuit-7-8"
+    assert policy.execution == "moria-orc-hunt"
 
 
 def test_level_seven_rotates_from_shire_to_moria() -> None:
