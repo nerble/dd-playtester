@@ -2137,6 +2137,18 @@ def test_liquidation_groups_items_by_shop_and_stays_for_the_next_sale() -> None:
     assert next_sale is not None
     assert next_sale.command == "value boots"
     assert policy.sale_index == 1
+    assert policy.sale_phase == "sell"
+
+    sale = policy._liquidate_loot_decision(
+        CharacterState(
+            room_name="Leather Shop",
+            room_vnum=policy.sale_plan[1][1].room_vnum,
+            position=7,
+        )
+    )
+
+    assert sale is not None
+    assert sale.command == "sell boots"
 
 
 def test_city_restock_policy_reaches_fountain_from_mage_laboratory() -> None:

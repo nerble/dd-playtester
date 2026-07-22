@@ -4113,7 +4113,7 @@ class StarterPolicy:
                 and self.sale_plan[next_index][1].name == shop.name
             ):
                 self.sale_index = next_index
-                self.sale_phase = "value"
+                self.sale_phase = "sell"
                 next_keyword, _ = self.sale_plan[self.sale_index]
                 return BotDecision(
                     f"value {next_keyword}",
