@@ -1,8 +1,10 @@
 import asyncio
+import json
 from pathlib import Path
 
 from dd4tester.campaign import (
     CampaignRunner,
+    _campaign_liquidation_signature,
     _campaign_practice_types_spent,
     _has_campaign_sellable_loot,
     _newer_progress_state,
@@ -70,6 +72,126 @@ def test_campaign_source_catalog_recognizes_unfamiliar_sellable_loot() -> None:
         state,
         gear_catalog=GearCatalog({piping.vnum: piping}),
     ) is True
+
+
+def test_liquidation_baseline_suppresses_retained_gear_until_loot_changes() -> None:
+    state = {
+        "inventory": [[
+            {"short_desc": "a metal shield"},
+            {"short_desc": "a big pot pie"},
+        ]],
+    }
+    state["campaign_liquidation_baseline"] = list(
+        _campaign_liquidation_signature(state)
+    )
+
+    assert _has_campaign_sellable_loot(state) is False
+
+    state["inventory"][0].append({"short_desc": "hard leather boots"})
+
+    assert _has_campaign_sellable_loot(state) is True
+
+
+def test_liquidation_baseline_ignores_consumable_quantity_changes() -> None:
+    state = {
+        "inventory": [[
+            {"short_desc": "a metal shield"},
+            {"short_desc": "a big pot pie", "quan": "1"},
+        ]],
+        "campaign_liquidation_baseline": ["metal shield"],
+    }
+
+    state["inventory"][0][1]["quan"] = "6"
+
+    assert _has_campaign_sellable_loot(state) is False
+
+
+def test_legacy_completed_liquidation_checkpoint_gains_a_baseline(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="liquidate-loot",
+            reason="segment_complete",
+            state={
+                "level": 7,
+                "xp": 21_058,
+                "inventory": [[
+                    {"short_desc": "a metal shield"},
+                    {"short_desc": "a big pot pie"},
+                ]],
+            },
+        )
+
+        runner = CampaignRunner(spec, config_path)
+        resumed_id, state = runner._open_campaign(storage)
+
+    assert resumed_id == campaign_id
+    assert state["campaign_liquidation_baseline"] == ["metal shield"]
+    assert runner._policy_for_state(state).policy_id != "liquidate-loot"
+
+
+def test_successful_liquidation_checkpoints_retained_gear_baseline(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="foundry-circuit-7-8",
+            reason="segment_complete",
+            state={
+                "level": 7,
+                "xp": 21_058,
+                "inventory": [[
+                    {"short_desc": "hard leather boots"},
+                    {"short_desc": "a big pot pie"},
+                ]],
+            },
+        )
+
+    async def liquidate_segment(spec, profile_path: Path) -> RunResult:
+        return _record_segment_run(
+            spec.database,
+            profile_path,
+            {
+                "level": 7,
+                "xp": 21_058,
+                "inventory": [[
+                    {"short_desc": "a metal shield"},
+                    {"short_desc": "a big pot pie"},
+                ]],
+            },
+        )
+
+    result = asyncio.run(
+        CampaignRunner(
+            spec,
+            config_path,
+            segment_runner=liquidate_segment,
+        ).run()
+    )
+
+    with RunStorage(database) as storage:
+        checkpoint = storage.get_latest_campaign_checkpoint(result.campaign_id)
+    state = json.loads(checkpoint["state_json"])
+    assert state["campaign_liquidation_baseline"] == ["metal shield"]
 
 
 def test_campaign_checkpoints_starter_segment_and_resumes_safely(tmp_path) -> None:

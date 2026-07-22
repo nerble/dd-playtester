@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .character import CharacterSpec, load_character_spec
-from .equipment import GearCatalog, load_gear_catalog
+from .equipment import GearCatalog, load_gear_catalog, normalize_item_name
 from .fastwalks import route_named
 from .progression import ProgressionPolicy, policy_for
 from .runner import RunResult
@@ -17,6 +17,7 @@ from .scenario import load_yaml_mapping
 from .starter import (
     FieldHuntStop,
     StarterBotRunner,
+    _inventory_descriptions,
     _sellable_inventory_keyword,
     ambush_level_eight_hunt_stops,
     ambush_raider_hunt_stops,
@@ -36,6 +37,7 @@ _MAINTENANCE_EXECUTIONS = {
     "rearm-weapon",
     "buy-flight",
 }
+_LIQUIDATION_BASELINE_KEY = "campaign_liquidation_baseline"
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
@@ -278,6 +280,18 @@ class CampaignRunner:
         checkpoint_state = _checkpoint_state(checkpoint)
         live_state = storage.get_latest_character_state(self.spec.character.name)
         state = _newer_progress_state(checkpoint_state, live_state)
+        if (
+            checkpoint is not None
+            and checkpoint["phase"] == "liquidate-loot"
+            and checkpoint["reason"] == "segment_complete"
+            and _LIQUIDATION_BASELINE_KEY not in state
+        ):
+            state[_LIQUIDATION_BASELINE_KEY] = list(
+                _campaign_liquidation_signature(
+                    state,
+                    gear_catalog=self._gear_catalog,
+                )
+            )
         if campaign["status"] == "success":
             return campaign_id, state
         storage.resume_campaign(campaign_id)
@@ -394,6 +408,18 @@ class CampaignRunner:
                 or policy.execution == "rearm-weapon"
             ),
         }
+        previous_liquidation_baseline = state.get(_LIQUIDATION_BASELINE_KEY)
+        if policy.execution in {"sell-loot", "rearm-weapon"}:
+            checkpoint_state[_LIQUIDATION_BASELINE_KEY] = list(
+                _campaign_liquidation_signature(
+                    end_state,
+                    gear_catalog=self._gear_catalog,
+                )
+            )
+        elif previous_liquidation_baseline is not None:
+            checkpoint_state[_LIQUIDATION_BASELINE_KEY] = (
+                previous_liquidation_baseline
+            )
         checkpoint_id = self._checkpoint(
             storage,
             campaign_id,
@@ -823,20 +849,54 @@ def _has_campaign_sellable_loot(
     )
     if keyword is None:
         return False
-    if keyword != "collar":
-        return True
-    if _state_item_count(state.get("inventory"), "war dog collar") <= 2:
+    if keyword == "collar":
+        if _state_item_count(state.get("inventory"), "war dog collar") <= 2:
+            return False
+        stats = state.get("stats")
+        if not isinstance(stats, dict):
+            return False
+        carry_weight = stats.get("carry_wt")
+        maximum_weight = stats.get("maxcarry_wt")
+        if not isinstance(carry_weight, (int, float)):
+            return False
+        if not isinstance(maximum_weight, (int, float)) or maximum_weight <= 0:
+            return False
+        if carry_weight / maximum_weight < 0.85:
+            return False
+    return not _matches_liquidation_baseline(state, gear_catalog=gear_catalog)
+
+
+def _campaign_liquidation_signature(
+    state: dict[str, Any],
+    *,
+    gear_catalog: GearCatalog | None = None,
+) -> tuple[str, ...]:
+    candidates = (
+        normalize_item_name(description)
+        for description in _inventory_descriptions(state.get("inventory"))
+        if _sellable_inventory_keyword(
+            [[{"short_desc": description}]],
+            gear_catalog,
+        )
+        is not None
+    )
+    return tuple(sorted(candidates))
+
+
+def _matches_liquidation_baseline(
+    state: dict[str, Any],
+    *,
+    gear_catalog: GearCatalog | None = None,
+) -> bool:
+    baseline = state.get(_LIQUIDATION_BASELINE_KEY)
+    if not isinstance(baseline, (list, tuple)) or not all(
+        isinstance(item, str) for item in baseline
+    ):
         return False
-    stats = state.get("stats")
-    if not isinstance(stats, dict):
-        return False
-    carry_weight = stats.get("carry_wt")
-    maximum_weight = stats.get("maxcarry_wt")
-    if not isinstance(carry_weight, (int, float)):
-        return False
-    if not isinstance(maximum_weight, (int, float)) or maximum_weight <= 0:
-        return False
-    return carry_weight / maximum_weight >= 0.85
+    return _campaign_liquidation_signature(
+        state,
+        gear_catalog=gear_catalog,
+    ) == tuple(sorted(normalize_item_name(item) for item in baseline))
 
 
 def _budget_failure(spec: CampaignSpec, totals: Any) -> str | None:
