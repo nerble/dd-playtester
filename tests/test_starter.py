@@ -3004,7 +3004,7 @@ def test_fastwalk_research_requires_recall_and_reverses_when_needed() -> None:
     assert reverse.command == "south"
 
 
-def test_fastwalk_unexpected_combat_flees_then_recalls_and_records_failure() -> None:
+def test_fastwalk_unexpected_combat_audits_after_flee_before_recalling() -> None:
     policy = StarterPolicy(
         _spec(),
         "swordfish",
@@ -3025,6 +3025,15 @@ def test_fastwalk_unexpected_combat_flees_then_recalls_and_records_failure() -> 
     policy.observe_text("You flee from combat!")
     policy.prompt_ready = True
 
+    audit = policy.next_decision(
+        CharacterState(room_name="Forest path", room_vnum="6011", position=7)
+    )
+
+    assert audit is not None
+    assert audit.command == "look"
+    policy.after_command(audit)
+    policy.prompt_ready = True
+
     recall = policy.next_decision(
         CharacterState(room_name="Forest path", room_vnum="6011", position=7)
     )
@@ -3032,6 +3041,45 @@ def test_fastwalk_unexpected_combat_flees_then_recalls_and_records_failure() -> 
     assert recall is not None
     assert recall.command == "recall"
     assert "unexpected combat" in recall.reason
+
+
+def test_fastwalk_post_flee_audit_flees_a_new_pursuer_before_recall() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.fastwalk_emergency_recall_pending = True
+    policy.flee_succeeded = True
+    pit = CharacterState(room_name="The Pit", room_vnum="122", position=7)
+
+    audit = policy.next_decision(pit)
+
+    assert audit is not None
+    assert audit.command == "look"
+    policy.after_command(audit)
+    policy.prompt_ready = True
+    pit_beast = [[{"name": "the Pit Beast", "level": "4"}]]
+    policy.observe_events(
+        [GameEvent("enemies_changed", "gmcp", {"value": pit_beast})],
+        CharacterState(enemies=pit_beast, position=6),
+    )
+
+    flee = policy.next_decision(
+        CharacterState(
+            enemies=pit_beast,
+            room_name="The Pit",
+            room_vnum="122",
+            position=6,
+        )
+    )
+
+    assert flee is not None
+    assert flee.command == "flee"
+    assert "unexpected combat" in flee.reason
 
 
 def test_field_hunt_waits_for_delayed_gmcp_enemy_assessment() -> None:
@@ -3246,6 +3294,13 @@ def test_fastwalk_flees_and_recalls_when_field_health_reaches_seventy_percent() 
     assert policy.next_decision(state) is None
 
     policy.observe_text("You flee from combat!\n")
+    policy.prompt_ready = True
+
+    audit = policy.next_decision(state)
+
+    assert audit is not None
+    assert audit.command == "look"
+    policy.after_command(audit)
     policy.prompt_ready = True
 
     recall = policy.next_decision(state)
@@ -10201,6 +10256,8 @@ def test_city_rearm_buys_verifies_and_returns_with_source_dagger() -> None:
         position=7,
     )
 
+    quote = policy.next_decision(shop)
+    policy.prompt_ready = True
     buy = policy.next_decision(shop)
     policy.prompt_ready = True
     wield = policy.next_decision(shop)
@@ -10210,6 +10267,8 @@ def test_city_rearm_buys_verifies_and_returns_with_source_dagger() -> None:
     policy.prompt_ready = True
     return_move = policy.next_decision(shop)
 
+    assert quote is not None
+    assert quote.command == "list dagger"
     assert buy is not None
     assert buy.command == "buy dagger"
     assert wield is not None
@@ -10318,10 +10377,13 @@ def test_city_rearm_stops_after_shop_rejects_purchase_weight() -> None:
         position=7,
     )
 
+    quote = policy._city_rearm_decision(shop)
     buy = policy._city_rearm_decision(shop)
     policy.observe_text("You can't carry that much weight.")
     after_rejection = policy._city_rearm_decision(shop)
 
+    assert quote is not None
+    assert quote.command == "list dagger"
     assert buy is not None
     assert buy.command == "buy dagger"
     assert after_rejection is None

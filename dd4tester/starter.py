@@ -541,6 +541,7 @@ class StarterPolicy:
         self.fastwalk_last_kill_target: str | None = None
         self.fastwalk_abort_reason: str | None = None
         self.fastwalk_emergency_recall_pending = False
+        self.fastwalk_post_flee_audit_requested = False
         self.utility_abort_reason: str | None = None
         self.utility_emergency_recall_pending = False
         self.pending_fastwalk_outbound_move = False
@@ -1702,7 +1703,14 @@ class StarterPolicy:
                     "recall immediately after fleeing unexpected utility-run combat",
                 )
             if self.fastwalk_emergency_recall_pending:
+                if not self.fastwalk_post_flee_audit_requested:
+                    self.fastwalk_post_flee_audit_requested = True
+                    return BotDecision(
+                        "look",
+                        "confirm no pursuer entered the post-flee room before recall",
+                    )
                 self.fastwalk_emergency_recall_pending = False
+                self.fastwalk_post_flee_audit_requested = False
                 self.fastwalk_returning = True
                 return BotDecision(
                     "recall",
@@ -2830,20 +2838,26 @@ class StarterPolicy:
             if self.city_rearm_step == 0:
                 self.city_rearm_step = 1
                 return BotDecision(
+                    "list dagger",
+                    "record the reboot-priced dagger quote before attempting rearm",
+                )
+            if self.city_rearm_step == 1:
+                self.city_rearm_step = 2
+                return BotDecision(
                     "buy dagger",
                     "buy the one-pound source dagger as a lightweight primary weapon",
                 )
-            if self.city_rearm_step == 1:
+            if self.city_rearm_step == 2:
                 if self.insufficient_funds:
                     self.failure = "insufficient funds for the source-backed dagger"
                     return None
                 if self.purchase_carry_rejected:
                     self.failure = "insufficient carry capacity for the source-backed dagger"
                     return None
-                self.city_rearm_step = 2
-                return BotDecision("wield dagger", "equip the purchased primary weapon")
-            if self.city_rearm_step == 2:
                 self.city_rearm_step = 3
+                return BotDecision("wield dagger", "equip the purchased primary weapon")
+            if self.city_rearm_step == 3:
+                self.city_rearm_step = 4
                 return BotDecision("equipment", "verify the dagger in the wield slot")
             equipment_text = _ANSI_ESCAPE.sub("", self.last_response).casefold()
             if not (
