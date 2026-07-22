@@ -22,11 +22,15 @@ from .starter import (
     ambush_level_eight_hunt_stops,
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
+    daycare_nanny_hunt_route,
+    daycare_nanny_hunt_stops,
     foundry_level_six_hunt_stops,
     foundry_level_seven_hunt_stops,
     midennir_mountain_goblin_hunt_stops,
     moria_level_seven_orc_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
+    shire_bull_hunt_route,
+    shire_bull_hunt_stops,
 )
 from .storage import RunStorage
 
@@ -262,6 +266,11 @@ class CampaignRunner:
             flight_purchase_failed=bool(state.get("magic_shop_purchase_failed")),
             boot_kill_counts=self._boot_kill_counts,
             stalled_segments=int(state.get("campaign_stalled_segments", 0)),
+            last_policy_id=(
+                str(state["campaign_last_policy"])
+                if state.get("campaign_last_policy")
+                else None
+            ),
         )
 
     def _open_campaign(self, storage: RunStorage) -> tuple[int, dict[str, Any]]:
@@ -284,6 +293,8 @@ class CampaignRunner:
         checkpoint_state = _checkpoint_state(checkpoint)
         live_state = storage.get_latest_character_state(self.spec.character.name)
         state = _newer_progress_state(checkpoint_state, live_state)
+        if checkpoint is not None and "campaign_last_policy" not in state:
+            state["campaign_last_policy"] = str(checkpoint["phase"])
         if (
             checkpoint is not None
             and checkpoint["run_id"] is not None
@@ -416,6 +427,11 @@ class CampaignRunner:
         checkpoint_state = {
             **end_state,
             "campaign_stalled_segments": stalled,
+            "campaign_last_policy": (
+                state.get("campaign_last_policy")
+                if policy.execution in _MAINTENANCE_EXECUTIONS
+                else policy.policy_id
+            ),
             "campaign_has_weapon": (
                 bool(
                     end_state.get(
@@ -590,6 +606,36 @@ async def _run_policy_segment(
             fastwalk_route=route_named("moria"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=moria_level_seven_orc_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+        ).run()
+    if policy.execution == "daycare-nanny-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 8,
+            fastwalk_route=daycare_nanny_hunt_route(),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=daycare_nanny_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+        ).run()
+    if policy.execution == "shire-bull-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 8,
+            fastwalk_route=shire_bull_hunt_route(),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=shire_bull_hunt_stops(),
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=False,

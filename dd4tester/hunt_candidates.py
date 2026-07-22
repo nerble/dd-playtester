@@ -26,14 +26,35 @@ RECALL_VNUM = 3001
 WEAR_WIELD = 16
 WEAR_DUAL = 17
 LOW_LEVEL_AREA_FILES = (
+    "air.are",
     "ambush.are",
+    "arachnos.are",
+    "canyon.are",
+    "crystal.are",
+    "cult.are",
+    "daycare.are",
+    "forest.are",
     "foundry.are",
+    "fleshmonger.are",
+    "gnome.are",
+    "grave.are",
     "gremlinlair.are",
     "circus.are",
+    "grove.are",
+    "haon.are",
+    "hood.are",
+    "lemmings.are",
     "midennir.are",
     "dwarven_home.are",
     "moria.are",
+    "plains_north.are",
+    "rats.are",
+    "sea_deception.are",
+    "sewer.are",
+    "shire.are",
     "thalos.are",
+    "valley_elves.are",
+    "wyvern.are",
 )
 
 _DIRECTIONS = {

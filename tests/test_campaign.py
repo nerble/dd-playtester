@@ -566,7 +566,12 @@ def test_depleted_level_seven_foundry_rotates_to_moria_orc_circuit(
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={
+            "Olog": 4,
+            "Oshu": 4,
+            "Uburz": 4,
+            "nanny": 2,
+        },
     )
 
     asyncio.run(
@@ -589,6 +594,99 @@ def test_depleted_level_seven_foundry_rotates_to_moria_orc_circuit(
         "small green garter snake",
     )
     assert captured["fastwalk_kill_limit"] == 3
+    assert captured["fastwalk_require_invisibility"] is False
+    assert captured["practice_types_spent"] == frozenset({"physical"})
+
+
+def test_depleted_level_seven_foundry_tries_daycare_before_moria(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 7})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        7,
+        "warrior",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            practice_types_spent=frozenset({"physical"}),
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "dwarven-daycare"
+    assert captured["fastwalk_route"].commands == (
+        "south",
+        "south",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+        "down",
+        "south",
+        "south",
+    )
+    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
+        "old wrinkled nanny",
+        "old wrinkled nanny",
+    ]
+    assert captured["fastwalk_kill_limit"] == 2
+
+
+def test_depleted_level_seven_daycare_rotates_to_shire_bull(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 7})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        7,
+        "warrior",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        last_policy_id="daycare-nanny-circuit-7-8",
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            practice_types_spent=frozenset({"physical"}),
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "shire-bull"
+    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
+        "bull"
+    ]
+    assert captured["fastwalk_kill_limit"] == 1
     assert captured["fastwalk_require_invisibility"] is False
     assert captured["practice_types_spent"] == frozenset({"physical"})
 

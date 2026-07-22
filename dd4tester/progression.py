@@ -59,6 +59,7 @@ class ProgressionContext:
     flight_purchase_failed: bool = False
     boot_kill_counts: Mapping[str, int] | None = None
     stalled_segments: int = 0
+    last_policy_id: str | None = None
 
     @classmethod
     def from_values(
@@ -239,6 +240,48 @@ _MORIA_LEVEL_SEVEN_ORC_POLICY = ProgressionPolicy(
     ),
     practice_skill=None,
     segment_kill_limit=3,
+)
+
+_DAYCARE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="daycare-nanny-circuit-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="daycare-nanny-hunt",
+    summary=(
+        "A source-backed, live-considered two-nanny circuit in Dwarven Day "
+        "Care, with explicit bystander and crowd gates."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: the recall route to rooms 6602 and 6604 has no reachable above-level aggressive reset.",
+        "DD4 source: the nannies are non-aggressive source-level-5 cleric specials whose reboot-fuzzed levels can reach 7.",
+        "DD4 source: the room-6602 nanny carries a linen robe; the other reset companions are explicitly excluded as targets.",
+        "DD4 source: nanny mobile 6606 uses spec_cast_cleric, whose level-zero spell case can cast blindness; healer.c confirms the Midgaard healer can cast cure blindness.",
+        "Every nanny must pass the existing exact-description, room-crowd, full state, and live-consider gates before combat.",
+        "Live runs 706 and 707 traversed both reset rooms and returned safely to healer room 3054; both nannies were absent in that reboot window, so the campaign rotates areas instead of repeating indefinitely.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+)
+
+_SHIRE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="shire-bull-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="shire-bull-hunt",
+    summary=(
+        "A source-backed single-target Shire circuit used to rotate away "
+        "from depleted Daycare and Moria resets."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: mobile 1108 is an aggressive source-level-6 bull with no special procedure or equipped weapon.",
+        "DD4 source: exactly one bull resets alone in room 1138, and the source-derived route reaches no above-level aggressive reset before that endpoint.",
+        "The target must pass exact identity and GMCP enemy-level gates; full starting health and the generic field withdrawal threshold bound the aggressive encounter.",
+        "Live run 709 killed the aggressive bull for 207 XP, looted and sacrificed its corpse, then recalled and checkpointed at healer room 3054 with full health and no adverse affect.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
 )
 
 _MIDENNIR_LEVEL_SEVEN_POLICY = ProgressionPolicy(
@@ -524,6 +567,7 @@ def policy_for(
     flight_purchase_failed: bool = False,
     boot_kill_counts: Mapping[str, int] | None = None,
     stalled_segments: int = 0,
+    last_policy_id: str | None = None,
 ) -> ProgressionPolicy:
     return select_policy(
         ProgressionContext.from_values(
@@ -540,6 +584,7 @@ def policy_for(
             flight_purchase_failed=flight_purchase_failed,
             boot_kill_counts=boot_kill_counts,
             stalled_segments=stalled_segments,
+            last_policy_id=last_policy_id,
         )
     )
 
@@ -661,6 +706,25 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 and not context.flight_purchase_failed
             ):
                 return _BUY_FLIGHT_POLICY
+            nanny_kills = _boot_kill_count(
+                context.boot_kill_counts,
+                "nanny",
+            )
+            if context.last_policy_id == _DAYCARE_LEVEL_SEVEN_POLICY.policy_id:
+                return replace(
+                    _SHIRE_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if context.last_policy_id == _SHIRE_LEVEL_SEVEN_POLICY.policy_id:
+                return replace(
+                    _MORIA_LEVEL_SEVEN_ORC_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if nanny_kills < 2:
+                return replace(
+                    _DAYCARE_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
             return replace(
                 _MORIA_LEVEL_SEVEN_ORC_POLICY,
                 practice_skill=context.practice_skill,

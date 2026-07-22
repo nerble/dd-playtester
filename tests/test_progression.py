@@ -120,9 +120,9 @@ def test_level_seven_rotates_from_repeated_foundry_kills(
         },
     )
 
-    assert policy.policy_id == "moria-orc-circuit-7-8"
-    assert policy.execution == "moria-orc-hunt"
-    assert policy.segment_kill_limit == 3
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
+    assert policy.segment_kill_limit == 2
     assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
 
 
@@ -143,6 +143,48 @@ def test_level_seven_keeps_depleted_foundry_rotation_after_a_stalled_segment() -
         "thief",
         boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
         stalled_segments=1,
+    )
+
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
+
+
+def test_level_seven_rotates_to_moria_after_two_nannies() -> None:
+    policy = policy_for(
+        7,
+        "warrior",
+        boot_kill_counts={
+            "Olog": 4,
+            "Oshu": 4,
+            "Uburz": 4,
+            "the nanny": 2,
+        },
+    )
+
+    assert policy.policy_id == "moria-orc-circuit-7-8"
+    assert policy.execution == "moria-orc-hunt"
+
+
+def test_level_seven_rotates_from_daycare_to_shire() -> None:
+    policy = policy_for(
+        7,
+        "warrior",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        stalled_segments=2,
+        last_policy_id="daycare-nanny-circuit-7-8",
+    )
+
+    assert policy.policy_id == "shire-bull-7-8"
+    assert policy.execution == "shire-bull-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seven_rotates_from_shire_to_moria() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        last_policy_id="shire-bull-7-8",
     )
 
     assert policy.policy_id == "moria-orc-circuit-7-8"

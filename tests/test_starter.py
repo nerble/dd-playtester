@@ -31,6 +31,8 @@ from dd4tester.starter import (
     ambush_raider_consider_stops,
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
+    daycare_nanny_hunt_route,
+    daycare_nanny_hunt_stops,
     foundry_level_six_hunt_stops,
     foundry_level_seven_hunt_stops,
     midennir_horseman_consider_stops,
@@ -38,6 +40,8 @@ from dd4tester.starter import (
     moria_level_seven_orc_hunt_stops,
     moria_sanctuary_potion_consider_stops,
     moria_sanctuary_potion_hunt_stops,
+    shire_bull_hunt_route,
+    shire_bull_hunt_stops,
 )
 from dd4tester.state import CharacterState
 
@@ -173,6 +177,60 @@ def test_moria_level_seven_hunt_puts_poison_target_last() -> None:
     assert stops[2].route == ()
     assert stops[2].minimum_health_ratio == 1.0
     assert all(stop.exact_target for stop in stops)
+
+
+def test_daycare_nanny_hunt_uses_source_route_and_explicit_bystanders() -> None:
+    route = daycare_nanny_hunt_route()
+    stops = daycare_nanny_hunt_stops()
+
+    assert route.commands == (
+        "south",
+        "south",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+        "east",
+        "down",
+        "south",
+        "south",
+    )
+    assert [stop.route for stop in stops] == [(), ("south",)]
+    assert all(stop.target == "old wrinkled nanny" for stop in stops)
+    assert "young dwarf" in stops[0].allowed_bystanders
+    assert "abused and old doll" in stops[1].allowed_bystanders
+    assert all(stop.exact_target for stop in stops)
+
+
+def test_shire_bull_hunt_uses_isolated_source_reset_route() -> None:
+    route = shire_bull_hunt_route()
+    stops = shire_bull_hunt_stops()
+
+    assert route.commands == (
+        "south",
+        "south",
+        "west",
+        "west",
+        "west",
+        "west",
+        "west",
+        "north",
+        "north",
+        "north",
+        "north",
+        "west",
+        "west",
+        "north",
+        "north",
+        "north",
+        "west",
+    )
+    assert len(stops) == 1
+    assert stops[0].target == "bull"
+    assert stops[0].route == ()
+    assert stops[0].minimum_health_ratio == 1.0
+    assert stops[0].exact_target is True
 
 
 def test_moria_level_seven_stop_matches_captured_large_orc_description() -> None:
@@ -3820,6 +3878,84 @@ def test_critical_fastwalk_recovery_reaches_healer_north_of_recall() -> None:
     assert healer is not None
     assert healer.command == "north"
     assert "critical" in healer.reason
+
+
+def test_blind_field_character_flees_before_recalling_to_healer() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+    )
+    policy.in_world = True
+    policy.title_configured = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    blinded = CharacterState(
+        area="Dwarven Day Care",
+        room_name="Nap Time",
+        room_vnum="6602",
+        position=8,
+        in_combat=True,
+        affects=[[{"name": "blindness", "duration": "4"}]],
+    )
+
+    flee = policy.next_decision(blinded)
+
+    assert flee is not None
+    assert flee.command == "flee"
+    assert "blindness" in flee.reason
+
+    policy.after_command(flee)
+    policy.prompt_ready = True
+    assert policy.next_decision(blinded) is None
+
+    policy.combat_active = False
+    policy.flee_pending = False
+    policy.prompt_ready = True
+    blinded.in_combat = False
+    recall = policy.next_decision(blinded)
+
+    assert recall is not None
+    assert recall.command == "recall"
+    assert "blindness" in recall.reason
+
+
+def test_blind_character_waits_at_healer_until_affect_is_cured() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.title_configured = True
+    policy.prompt_ready = True
+    healer = CharacterState(
+        area="Midgaard",
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+        hp=126,
+        max_hp=126,
+        mana=343,
+        max_mana=343,
+        move=230,
+        max_move=230,
+        position=7,
+        affects=[[{"name": "blindness", "duration": "4"}]],
+    )
+
+    sleep = policy.next_decision(healer)
+
+    assert sleep is not None
+    assert sleep.command == "sleep"
+    assert "cure blindness" in sleep.reason
+    assert policy._recovery_ready_for_objective(healer) is False
+
+    policy.after_command(sleep)
+    policy.prompt_ready = True
+    healer.position = 4
+    healer.affects = [[]]
+    stand = policy.next_decision(healer)
+
+    assert stand is not None
+    assert stand.command == "stand"
+    assert policy.blindness_recovery_active is False
 
 
 def test_fastwalk_completion_does_not_take_a_token_nap_in_mage_lab() -> None:

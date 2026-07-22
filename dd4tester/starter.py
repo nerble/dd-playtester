@@ -412,6 +412,7 @@ class StarterPolicy:
         self.flee_succeeded = False
         self.needs_stand = False
         self.waiting_for_heal = False
+        self.blindness_recovery_active = False
         self.health_check_due: float | None = None
         self.resume_recovery_after_resupply = False
         self.waiting_for_move = False
@@ -1386,6 +1387,10 @@ class StarterPolicy:
                 self.utility_abort_reason = (
                     "character died; completed Purgatory recovery is required"
                 )
+
+        blindness_recovery = self._blindness_recovery_decision(state)
+        if blindness_recovery is not None:
+            return blindness_recovery
 
         if self.spec.title and not self.title_configured:
             self.title_configured = True
@@ -4694,9 +4699,59 @@ class StarterPolicy:
             return BotDecision(direction, "retreat to the tutorial Sanctuary")
         return None
 
+    def _blindness_recovery_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Withdraw to the Midgaard healer until blindness is cured."""
+        blinded = _has_named_affect(state.affects, "blindness")
+        if not blinded:
+            self.blindness_recovery_active = False
+            return None
+
+        self.blindness_recovery_active = True
+        self.return_home = True
+        self.utility_abort_reason = (
+            "blindness triggered healer recovery before further field activity"
+        )
+        if self.combat_active or state.in_combat:
+            if self.flee_pending:
+                self.prompt_ready = False
+                return None
+            return BotDecision(
+                "flee",
+                "leave combat after blindness before recalling to the healer",
+            )
+
+        room_vnum = state.room_vnum or ""
+        if room_vnum == "3054":
+            self.waiting_for_heal = True
+            if _is_sleeping(state):
+                return None
+            return BotDecision(
+                "sleep",
+                "wait beside the Midgaard healer for cure blindness",
+            )
+        if _is_sleeping(state):
+            return BotDecision(
+                "stand",
+                "wake before withdrawing to the healer after blindness",
+            )
+        healer_direction = _MIDGAARD_HEALER_ROUTES.get(room_vnum)
+        if healer_direction is not None:
+            return BotDecision(
+                healer_direction,
+                "reach the Midgaard healer after blindness",
+            )
+        return BotDecision(
+            "recall",
+            "recall from the field after blindness",
+        )
+
     def _recovery_ready_for_objective(self, state: CharacterState) -> bool:
         return (
             _recovery_ready(state)
+            and not _has_named_affect(state.affects, "blindness")
             and (
                 not self.fastwalk_hunt_stops
                 or _move_ratio(state) >= 0.9
@@ -6008,6 +6063,54 @@ def moria_level_seven_orc_hunt_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             (),
             "small green garter snake",
+            minimum_health_ratio=1.0,
+            exact_target=True,
+        ),
+    )
+
+
+def daycare_nanny_hunt_route() -> Fastwalk:
+    """Return the source-derived recall route to Day Care room 6602."""
+    return Fastwalk("dwarven-daycare", 1, 7, "2s6ed2s")
+
+
+def daycare_nanny_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the two reset-backed nannies without targeting the children."""
+    return (
+        FieldHuntStop(
+            (),
+            "old wrinkled nanny",
+            allowed_bystanders=(
+                "young dwarf",
+                "cute and fuzzy teddy bear",
+                "raggedy anne doll",
+            ),
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("south",),
+            "old wrinkled nanny",
+            allowed_bystanders=(
+                "young dwarf",
+                "raggedy anne doll",
+                "abused and old doll",
+            ),
+            exact_target=True,
+        ),
+    )
+
+
+def shire_bull_hunt_route() -> Fastwalk:
+    """Return the source-derived recall route to Shire room 1138."""
+    return Fastwalk("shire-bull", 1, 7, "2s5w4n2w3nw")
+
+
+def shire_bull_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt the isolated bull reset after live enemy assessment."""
+    return (
+        FieldHuntStop(
+            (),
+            "bull",
             minimum_health_ratio=1.0,
             exact_target=True,
         ),
