@@ -190,6 +190,18 @@ def test_level_seven_rotates_from_shire_to_moria() -> None:
     assert policy.execution == "moria-orc-hunt"
 
 
+def test_level_seven_rotates_retired_shire_checkpoint_to_moria() -> None:
+    policy = policy_for(
+        7,
+        "warrior",
+        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        last_policy_id="shire-bull-warrior-7-8",
+    )
+
+    assert policy.policy_id == "moria-orc-circuit-7-8"
+    assert policy.execution == "moria-orc-hunt"
+
+
 def test_level_seven_keeps_shire_fallback_research_gated_after_midennir() -> None:
     for character_class in ("thief", "warrior"):
         policy = policy_for(

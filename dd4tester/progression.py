@@ -260,6 +260,7 @@ _DAYCARE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "Every nanny must pass the existing exact-description, room-crowd, full state, and live-consider gates before combat.",
         "Live runs 706 and 707 traversed both reset rooms and returned safely to healer room 3054; both nannies were absent in that reboot window, so the campaign rotates areas instead of repeating indefinitely.",
         "Live run 712 considered a reboot-fuzzed level-4 nanny in room 6604, killed her for 149 XP, collected her robe, potion, and food drop, and recovered at healer room 3054; blindness was not selected in that fight.",
+        "Live run 790: level-7 dwarf warrior Dorrik considered and killed a nanny for 192 XP. Its cleric blindness triggered recall and healer recovery; the completed save-and-quit was recorded as a successful campaign segment.",
     ),
     practice_skill=None,
     segment_kill_limit=2,
@@ -737,6 +738,9 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             if context.last_policy_id in {
                 _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
                 _SHIRE_LEVEL_SEVEN_POLICY.policy_id,
+                # This policy was briefly executable before live evidence re-gated
+                # it. Preserve the safe post-Shire rotation for old checkpoints.
+                "shire-bull-warrior-7-8",
             }:
                 return replace(
                     _MORIA_LEVEL_SEVEN_ORC_POLICY,
