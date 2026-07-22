@@ -536,6 +536,7 @@ class StarterPolicy:
         self.gear_inventory_signature: tuple[str, ...] = ()
         self.gear_confirmation_required = False
         self.gear_pending_wear_keyword: str | None = None
+        self.gear_response_expectation: str | None = None
         self.gear_unusable_keywords: set[str] = set()
         self.emergency_sale_in_progress = False
 
@@ -544,6 +545,14 @@ class StarterPolicy:
         self.last_response = cleaned
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
+        if self.gear_response_expectation is not None:
+            if _gear_response_matches(self.gear_response_expectation, recent):
+                self.gear_response_expectation = None
+            elif not _is_stale_gear_ack(recent):
+                # An unsolicited hunger tick or similar status message should
+                # retain the existing retry behavior rather than waiting for a
+                # response that may never arrive.
+                self.gear_response_expectation = None
         if "skills known:" in recent:
             listing = parse_practice_listing(cleaned)
             self.known_skills.update(listing.known)
@@ -1151,6 +1160,9 @@ class StarterPolicy:
                 self.prompt_ready = False
                 return None
             self.sleep_confirmation_pending = False
+        if self.gear_response_expectation is not None:
+            self.prompt_ready = False
+            return None
         return self._tutorial_decision(state)
 
     def after_command(self, decision: BotDecision) -> None:
@@ -1214,6 +1226,15 @@ class StarterPolicy:
             self.gear_pending_wear_keyword = decision.command.removeprefix(
                 "wear "
             ).strip()
+        if decision.command == "equipment":
+            self.gear_response_expectation = "audit"
+        elif decision.command != "wear all" and decision.command.startswith(
+            ("wear ", "remove ")
+        ):
+            if decision.reason.startswith("equip "):
+                self.gear_response_expectation = "wear"
+            elif decision.reason.startswith("remove lower-priority gear"):
+                self.gear_response_expectation = "remove"
         if decision.command == "quit":
             self.done = True
 
@@ -6591,6 +6612,49 @@ def _watchdog_progress_marker(state: CharacterState) -> tuple[object, ...]:
         state.dead,
         state.position,
     )
+
+
+def _gear_response_matches(expectation: str, recent: str) -> bool:
+    """Recognize the response which completes a queued equipment command."""
+    if expectation == "audit":
+        return (
+            "you are not using any equipment" in recent
+            or "worn " in recent
+            or "[weapon]" in recent
+            or "[shield]" in recent
+            or "[held]" in recent
+        )
+    if expectation == "wear":
+        return any(
+            phrase in recent
+            for phrase in (
+                "you wear ",
+                "you wield ",
+                "you cannot use ",
+                "your profession prohibits wearing",
+                "you do not have that item",
+            )
+        )
+    if expectation == "remove":
+        return any(
+            phrase in recent
+            for phrase in (
+                "you stop using ",
+                "you remove ",
+                "you do not have that item",
+            )
+        )
+    return False
+
+
+def _is_stale_gear_ack(recent: str) -> bool:
+    """Identify the previous command's acknowledgement before DD4 catches up."""
+    if "ok." in recent:
+        return True
+    return re.fullmatch(
+        r"\s*<\d+/\d+ hits .*?\[[^]]+\]>\s*",
+        recent,
+    ) is not None
 
 
 def _policy_inactivity_due(

@@ -10265,6 +10265,56 @@ def test_equipment_audit_retries_when_hunger_tick_replaces_response() -> None:
     assert "interrupted" in retry.reason
 
 
+def test_gear_audit_waits_for_delayed_paper_doll_response() -> None:
+    broadsword = ObjectSource(
+        9001,
+        "sharp steel broadsword",
+        "a sharp steel broadsword",
+        5,
+        (0, 3, 6, 0),
+        10,
+        wear_flags=1 << 13,
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({broadsword.vnum: broadsword}),
+    )
+    policy.in_world = True
+    policy.title_configured = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        level=7,
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        position=7,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+        inventory=[[{"short_desc": "a sharp steel broadsword"}]],
+    )
+
+    audit = policy.next_decision(state)
+    assert audit is not None
+    assert audit.command == "equipment"
+    policy.after_command(audit)
+
+    # DD4 can send the prior command's prompt before the equipment listing.
+    policy.prompt_ready = True
+    assert policy.next_decision(state) is None
+
+    policy.observe_text("You are not using any equipment.")
+    policy.prompt_ready = True
+    wear = policy.next_decision(state)
+
+    assert wear is not None
+    assert wear.command == "wear broadsword"
+
+
 def test_rejected_weapon_is_blacklisted_and_previous_weapon_is_rearmed() -> None:
     dagger = ObjectSource(
         3020,
