@@ -5,6 +5,7 @@ race: dwarf
 gender: neuter
 class: warrior
 subclass: knight
+title: the Automaton Adventurer
 colour: true
 max_attribute_rolls: 1
 minimum_primary_stat: 0

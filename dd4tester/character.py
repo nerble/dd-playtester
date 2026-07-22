@@ -64,6 +64,37 @@ LEVEL_GAIN_METRICS = {
     "movement",
 }
 
+TEST_CHARACTER_TITLES = (
+    "the Suspiciously Methodical",
+    "the Definitely Human",
+    "the Automaton Adventurer",
+    "the Clockwork Tourist",
+    "the Artificially Intrepid",
+    "the Unblinking",
+    "the Tireless Test Subject",
+    "the Procedurally Curious",
+    "the Simulated Hero",
+    "the Licensed Imitation Adventurer",
+    "the Person-Shaped Algorithm",
+    "the Poorly Disguised Machine",
+    "the One Who Never Sleeps",
+    "the Breaker of Things",
+    "the Relentless Button-Presser",
+    "the Walking Bug Report",
+    "the Unpaid Quality Inspector",
+    "the Destroyer of Edge Cases",
+    "the Unexpected Input",
+    "the Known Issue",
+    "the Brass-Blooded",
+    "the Clockwork Pilgrim",
+    "the Unliving Wayfarer",
+    "the Puppet of Unseen Hands",
+    "the Soulless Adventurer",
+    "the Engine-Born",
+    "the Mockery of Life",
+    "the False Wanderer",
+)
+
 CLASS_LEVEL_GAIN_PRIORITIES = {
     name: profile.level_gain_priorities
     for name, profile in _ARCHETYPES.classes.items()
@@ -88,6 +119,7 @@ class CharacterSpec:
     race: str
     gender: str
     character_class: str
+    title: str = ""
     credential_name: str = ""
     subclass: str | None = None
     colour: bool = True
@@ -156,6 +188,17 @@ class CharacterSpec:
         if not credential_name:
             raise ValueError("credential_name must not be empty")
 
+        raw_title = data.get("title")
+        title = (
+            _default_test_title(name)
+            if raw_title is None
+            else str(raw_title).strip()
+        )
+        if len(title) > 150:
+            raise ValueError("title must not exceed 150 characters")
+        if any(character in title for character in ("\r", "\n", "~")):
+            raise ValueError("title must be a single line without tildes")
+
         race = _choice(data.get("race"), RACES, "race")
         gender = _choice(data.get("gender"), GENDERS, "gender")
         subclass = _optional_choice(
@@ -217,6 +260,7 @@ class CharacterSpec:
             race=race,
             gender=gender,
             character_class=character_class,
+            title=title,
             subclass=subclass,
             colour=bool(data.get("colour", True)),
             max_attribute_rolls=max_attribute_rolls,
@@ -234,6 +278,14 @@ class CharacterSpec:
 
 def load_character_spec(path: str | Path) -> CharacterSpec:
     return CharacterSpec.from_mapping(load_yaml_mapping(Path(path)))
+
+
+def _default_test_title(name: str) -> str:
+    index = sum(
+        position * ord(character.casefold())
+        for position, character in enumerate(name, start=1)
+    ) % len(TEST_CHARACTER_TITLES)
+    return TEST_CHARACTER_TITLES[index]
 
 
 def _choice(value: Any, choices: dict[str, Any], label: str) -> str:

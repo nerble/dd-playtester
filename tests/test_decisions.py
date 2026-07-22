@@ -26,6 +26,13 @@ from dd4tester.decisions import classify_decision
         ("consider guard", "assess target", "field", "research", False),
         ("look", "identify the combat opponent", "course", "research", False),
         ("save", "save progress", "home", "checkpoint", False),
+        (
+            "title the Walking Bug Report",
+            "apply configured test-character identity",
+            "home",
+            "identity",
+            False,
+        ),
     ],
 )
 def test_decision_classification(

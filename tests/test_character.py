@@ -36,10 +36,25 @@ def test_profile_derives_stable_credential_name() -> None:
     )
 
     assert spec.credential_name == "character:rulemage"
+    assert spec.title
     assert spec.effective_level_gain_priorities[:2] == (
         "intellectual_practices",
         "mana",
     )
+
+
+def test_profile_accepts_explicit_test_character_title() -> None:
+    spec = CharacterSpec.from_mapping(
+        {
+            "name": "Rulemage",
+            "race": "human",
+            "gender": "female",
+            "class": "mage",
+            "title": "the Walking Bug Report",
+        }
+    )
+
+    assert spec.title == "the Walking Bug Report"
 
 
 def test_profile_accepts_explicit_level_gain_priorities() -> None:

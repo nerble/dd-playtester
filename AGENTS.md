@@ -12,6 +12,8 @@ both directories are intentionally ignored by Git.
 Never modify the Dragons Domain IV core repository from this project.
 Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
+Treat VNUMs as separate namespaces: room, mobile, object, and object-set VNUMs
+are unique within their category, but the same number may appear across them.
 Before training or automating a skill, read both its current in-game help and
 its source implementation. Record whether it is active or passive, its legal
 position and target, pulse/mana cost, effect formula, prerequisites, and any

@@ -46,11 +46,40 @@ def _spec(**overrides: object) -> CharacterSpec:
         "gender": "female",
         "class": "mage",
         "subclass": "warlock",
+        "title": "",
         "minimum_primary_stat": 16,
         "max_attribute_rolls": 2,
     }
     values.update(overrides)
     return CharacterSpec.from_mapping(values)
+
+
+def test_configured_test_title_is_applied_once_per_run() -> None:
+    policy = StarterPolicy(
+        _spec(title="the Suspiciously Methodical"),
+        "swordfish",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        area="Midgaard",
+        hp=79,
+        max_hp=79,
+        move=180,
+        max_move=180,
+        position=7,
+        room_name="Mage's Laboratory",
+        room_vnum="3019",
+        room_flags=["safe"],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "title the Suspiciously Methodical"
+    policy.after_command(decision)
+    policy.prompt_ready = True
+    assert policy.next_decision(state).command != decision.command
 
 
 def _respond(

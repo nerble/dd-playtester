@@ -349,6 +349,7 @@ class StarterPolicy:
         self.awaiting_reconnect = False
         self.in_world = False
         self.login_authenticated = False
+        self.title_configured = False
         self.sleep_confirmation_pending = False
         self.sleep_gear_locked = False
         self.prompt_ready = False
@@ -1350,6 +1351,13 @@ class StarterPolicy:
                 self.utility_abort_reason = (
                     "character died; completed Purgatory recovery is required"
                 )
+
+        if self.spec.title and not self.title_configured:
+            self.title_configured = True
+            return BotDecision(
+                f"title {self.spec.title}",
+                "apply the configured test-character identity",
+            )
 
         if (
             _is_sleeping(state)
@@ -4494,15 +4502,7 @@ class StarterPolicy:
                         direction,
                         "use the temple healer for field-run recovery",
                     )
-            if (
-                is_midgaard
-                and not is_healer_room
-                and (
-                    self.objective_level > 2
-                    or self.fastwalk_route is not None
-                    or self._is_noncombat_utility_run
-                )
-            ):
+            if is_midgaard and not is_healer_room:
                 if _is_sleeping(state):
                     return BotDecision(
                         "stand",
@@ -4550,15 +4550,7 @@ class StarterPolicy:
                 healer_approach,
                 "reach the temple healer before critical recovery",
             )
-        if (
-            is_midgaard
-            and not is_healer_room
-            and (
-                self.objective_level > 2
-                or self.fastwalk_route is not None
-                or self._is_noncombat_utility_run
-            )
-        ):
+        if is_midgaard and not is_healer_room:
             if _is_sleeping(state):
                 return BotDecision(
                     "stand",

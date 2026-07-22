@@ -5,6 +5,7 @@ race: human
 gender: female
 class: mage
 subclass: warlock
+title: the Procedurally Curious
 colour: true
 max_attribute_rolls: 1
 minimum_primary_stat: 0

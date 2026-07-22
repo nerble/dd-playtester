@@ -5,6 +5,7 @@ race: drow
 gender: male
 class: thief
 subclass: ninja
+title: the Suspiciously Methodical
 colour: true
 max_attribute_rolls: 1
 minimum_primary_stat: 0
