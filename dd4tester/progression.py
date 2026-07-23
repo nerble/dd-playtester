@@ -209,8 +209,8 @@ _FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "Live run 629: the level-7 arena population had no viable opponents and returned safely with zero XP.",
         "Live run 630: a reboot-fuzzed level-8 mountain goblin auto-attacked the level-7 thief before consideration, so the caster field route is not a generic melee fallback.",
         "The same live-considered Foundry targets are lower risk at level 7, and an empty circuit returns safely instead of forcing combat.",
-        "DD4 source: Oshu, Golgog, Shargook, Lobuk, Uburz, and Ushog occupy a connected circuit that does not enter the poison-bearing pit beast room 122.",
-        "Live run 648: Dorrik traversed every expanded stop, killed Olog, Oshu, and Uburz for 295 XP, skipped absent targets, and recalled before Ushog because he was below its full-health gate.",
+        "DD4 source: from Foundry room 107, Golgog, Shargook, Lobuk, Uburz, and Ushog form a connected sweep that avoids Oshu's aggressive pit room 110 and the poison-bearing pit beast room 122.",
+        "Live runs 828 and 830: entering Oshu's pit room triggered an unapproved attack and an XP-losing flee, so Oshu is excluded from the autonomous route.",
         "Live runs 653, 654, and 657 proved the expanded circuit for mage, warrior, and thief respectively, with safe full-health returns.",
         "Live runs 652 and 658 showed the level-7 Miden'nir route can impose flee penalties or consume an empty segment, so it is no longer the default caster route.",
     ),
@@ -722,7 +722,6 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             _boot_kill_count(context.boot_kill_counts, target)
             for target in (
                 "Olog",
-                "Oshu",
                 "Golgog",
                 "Shargook",
                 "Lobuk",

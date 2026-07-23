@@ -113,7 +113,7 @@ def test_level_seven_rotates_from_repeated_foundry_kills(
         character_class,
         boot_kill_counts={
             "Olog": 4,
-            "the Oshu": 3,
+            "Shargook": 3,
             "Golgog": 2,
             "Uburz": 3,
             "mountain goblin": 1,
@@ -130,7 +130,7 @@ def test_level_seven_keeps_fresh_foundry_targets() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 2, "Oshu": 2, "Uburz": 2},
+        boot_kill_counts={"Olog": 2, "Golgog": 2, "Uburz": 2},
     )
 
     assert policy.policy_id == "foundry-circuit-7-8"
@@ -141,7 +141,7 @@ def test_level_seven_keeps_depleted_foundry_rotation_after_a_stalled_segment() -
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         stalled_segments=1,
     )
 
@@ -155,7 +155,7 @@ def test_level_seven_rotates_to_moria_after_two_nannies() -> None:
         "warrior",
         boot_kill_counts={
             "Olog": 4,
-            "Oshu": 4,
+            "Golgog": 4,
             "Uburz": 4,
             "the nanny": 2,
         },
@@ -169,7 +169,7 @@ def test_level_seven_rotates_from_daycare_to_moria() -> None:
     policy = policy_for(
         7,
         "warrior",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         stalled_segments=2,
         last_policy_id="daycare-nanny-circuit-7-8",
     )
@@ -182,7 +182,7 @@ def test_level_seven_rotates_from_shire_to_moria() -> None:
     policy = policy_for(
         7,
         "mage",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="shire-bull-7-8",
     )
 
@@ -194,7 +194,7 @@ def test_level_seven_rotates_retired_shire_checkpoint_to_moria() -> None:
     policy = policy_for(
         7,
         "warrior",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="shire-bull-warrior-7-8",
     )
 
@@ -207,7 +207,7 @@ def test_level_seven_keeps_shire_fallback_research_gated_after_midennir() -> Non
         policy = policy_for(
             7,
             character_class,
-            boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+            boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
             last_policy_id="midennir-goblin-7-8",
         )
 
@@ -219,7 +219,7 @@ def test_level_seven_rotates_from_moria_to_gnome_hermit() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="moria-orc-circuit-7-8",
     )
 
@@ -234,7 +234,7 @@ def test_level_seven_thief_repeats_evidenced_hermit_before_general_rotation() ->
         "thief",
         boot_kill_counts={
             "Olog": 4,
-            "Oshu": 4,
+            "Golgog": 4,
             "Uburz": 4,
             "hermit": 1,
         },
@@ -251,7 +251,7 @@ def test_level_seven_thief_returns_to_general_rotation_after_nine_hermit_kills()
         "thief",
         boot_kill_counts={
             "Olog": 4,
-            "Oshu": 4,
+            "Golgog": 4,
             "Uburz": 4,
             "hermit": 9,
         },
@@ -268,7 +268,7 @@ def test_level_seven_thief_does_not_return_to_depleted_hermit_after_moria() -> N
         "thief",
         boot_kill_counts={
             "Olog": 4,
-            "Oshu": 4,
+            "Golgog": 4,
             "Uburz": 4,
             "hermit": 9,
         },
@@ -283,7 +283,7 @@ def test_level_seven_rechecks_foundry_after_a_zero_xp_field_route() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         policy_xp_deltas={"gnome-hermit-7-8": 0},
         last_policy_id="gnome-hermit-7-8",
     )
@@ -296,7 +296,7 @@ def test_level_seven_repeats_foundry_after_a_meaningful_segment() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         policy_xp_deltas={"foundry-circuit-7-8": 170},
         last_policy_id="foundry-circuit-7-8",
     )
@@ -309,7 +309,7 @@ def test_level_seven_rotates_from_gnome_hermit_to_daycare() -> None:
     policy = policy_for(
         7,
         "mage",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="gnome-hermit-7-8",
     )
 
@@ -321,7 +321,7 @@ def test_level_seven_buys_flight_before_depleted_moria_rotation() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         has_flight=False,
         can_attempt_flight_purchase=True,
     )

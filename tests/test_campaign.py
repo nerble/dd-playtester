@@ -612,7 +612,6 @@ def test_level_seven_foundry_campaign_uses_bounded_six_target_sweep(
     )
 
     assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
-        "oshu",
         "golgog",
         "shargook",
         "lobuk",
@@ -648,7 +647,6 @@ def test_level_seven_mage_campaign_uses_the_same_bounded_foundry_sweep(
     )
 
     assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
-        "oshu",
         "golgog",
         "shargook",
         "lobuk",
@@ -686,7 +684,7 @@ def test_level_seven_foundry_fallback_runs_toward_level_eight(
     assert captured["objective_level"] == 8
     assert [
         stop.target for stop in captured["fastwalk_hunt_stops"]
-    ] == ["oshu", "golgog", "shargook", "lobuk", "uburz", "ushog"]
+    ] == ["golgog", "shargook", "lobuk", "uburz", "ushog"]
     assert captured["fastwalk_kill_limit"] == 5
 
 
@@ -711,7 +709,7 @@ def test_depleted_level_seven_foundry_rotates_to_moria_orc_circuit(
         "thief",
         boot_kill_counts={
             "Olog": 4,
-            "Oshu": 4,
+            "Golgog": 4,
             "Uburz": 4,
             "nanny": 2,
         },
@@ -760,7 +758,7 @@ def test_depleted_level_seven_foundry_tries_daycare_before_moria(
     policy = policy_for(
         7,
         "warrior",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
     )
 
     asyncio.run(
@@ -812,7 +810,7 @@ def test_depleted_level_seven_daycare_rotates_to_moria(
     policy = policy_for(
         7,
         "warrior",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="daycare-nanny-circuit-7-8",
     )
 
@@ -855,7 +853,7 @@ def test_depleted_level_seven_moria_rotates_to_gnome_hermit(
     policy = policy_for(
         7,
         "warrior",
-        boot_kill_counts={"Olog": 4, "Oshu": 4, "Uburz": 4},
+        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="moria-orc-circuit-7-8",
     )
 

@@ -148,11 +148,10 @@ def test_foundry_level_six_circuit_links_two_source_backed_targets() -> None:
     assert stops[1].minimum_health_ratio == 1.0
 
 
-def test_foundry_level_seven_sweep_links_named_targets_around_poison_pit() -> None:
+def test_foundry_level_seven_sweep_excludes_oshu_aggressive_pit() -> None:
     stops = foundry_level_seven_hunt_stops()
 
     assert [stop.target for stop in stops] == [
-        "oshu",
         "golgog",
         "shargook",
         "lobuk",
@@ -160,7 +159,8 @@ def test_foundry_level_seven_sweep_links_named_targets_around_poison_pit() -> No
         "ushog",
     ]
     assert all(stop.exact_target for stop in stops)
-    assert all("down" not in stop.route for stop in stops[:3])
+    assert stops[0].route == ("east",)
+    assert all("open east" not in stop.route for stop in stops)
     assert stops[-1].minimum_health_ratio == 1.0
 
 

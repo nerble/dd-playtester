@@ -6446,11 +6446,10 @@ def foundry_level_six_hunt_stops() -> tuple[FieldHuntStop, ...]:
 
 
 def foundry_level_seven_hunt_stops() -> tuple[FieldHuntStop, ...]:
-    """Sweep the source-backed Foundry rooms while avoiding the poison pit."""
+    """Sweep the safe Foundry rooms without entering Oshu's aggressive pit."""
     return (
-        FieldHuntStop(("open east", "east"), "oshu", exact_target=True),
         FieldHuntStop(
-            ("west", "south", "south", "east"),
+            ("east",),
             "golgog",
             exact_target=True,
         ),
