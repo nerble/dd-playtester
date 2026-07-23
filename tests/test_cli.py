@@ -513,6 +513,7 @@ def test_fastwalk_research_command_can_consider_without_attacking(
         attack_target: str | None = None,
         consider_target: str | None = None,
         maximum_target_count: int = 1,
+        allowed_bystanders: tuple[str, ...] = (),
     ) -> RunResult:
         assert path == profile
         assert route == "gnome mine"
@@ -521,6 +522,7 @@ def test_fastwalk_research_command_can_consider_without_attacking(
         assert attack_target is None
         assert consider_target == "hobgoblin miner"
         assert maximum_target_count == 1
+        assert allowed_bystanders == ("mine foreman",)
         return RunResult(17, "success", transcript, database, {"level": 7})
 
     monkeypatch.setattr(
@@ -536,6 +538,8 @@ def test_fastwalk_research_command_can_consider_without_attacking(
             "gnome mine",
             "--consider",
             "hobgoblin miner",
+            "--allow-bystander",
+            "mine foreman",
         ]
     )
 

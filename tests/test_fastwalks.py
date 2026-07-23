@@ -82,3 +82,12 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     assert midget.recall_after_loot is True
     assert midget.loot_container == "purse"
 
+    guards = route_named("Gnome Guard Hut")
+    assert guards.minimum_level == 7
+    assert guards.maximum_level == 10
+    assert guards.commands[-5:] == ("south", "south", "south", "west", "west")
+
+    troll = route_named("Gnome Small Troll")
+    assert troll.commands[-3:] == ("south", "east", "north")
+    assert troll.recall_after_loot is True
+

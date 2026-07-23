@@ -48,6 +48,11 @@ _ITEM = re.compile(
     r"(?:(?:an?|the)\s+)?(?P<item>.+?)(?:[.!]|$)",
     re.IGNORECASE,
 )
+_NON_ITEM_ACQUISITION = re.compile(
+    r"^(?:(?:sudden|bad|strange|eerie|deep|easy peaceful)\s+)?"
+    r"(?:fear|feeling|sense|impression|urge)\b|^back on your feet\b",
+    re.IGNORECASE,
+)
 _LEVEL = re.compile(
     r"\b(?:You (?:have )?)?"
     r"(?:gain(?:ed)?|advance(?:d)?|reach(?:ed)?|attain(?:ed)?) "
@@ -261,12 +266,17 @@ class ObservationParser:
             )
 
         item = _ITEM.search(text)
-        if item and "experience point" not in item.group("item").casefold():
+        item_text = item.group("item").strip() if item is not None else ""
+        if (
+            item is not None
+            and "experience point" not in item_text.casefold()
+            and _NON_ITEM_ACQUISITION.match(item_text) is None
+        ):
             events.append(
                 GameEvent(
                     "item_acquired",
                     "text",
-                    {"item": item.group("item").strip(), "text": text},
+                    {"item": item_text, "text": text},
                 )
             )
 

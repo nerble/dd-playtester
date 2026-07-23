@@ -72,6 +72,16 @@ def test_experience_reward_is_not_recorded_as_an_item() -> None:
     assert events[0].data["item"] == "snowy white stone"
 
 
+def test_room_atmosphere_is_not_recorded_as_an_item() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "As you enter the mine shaft, you get a sudden fear of the walls closing.\n"
+    )
+
+    assert [event for event in events if event.type == "item_acquired"] == []
+
+
 def test_gmcp_observations_track_changes_without_duplicate_events() -> None:
     parser = ObservationParser()
 

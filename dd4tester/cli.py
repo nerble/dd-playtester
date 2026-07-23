@@ -36,6 +36,7 @@ from .starter import (
     run_return_home_profile,
     run_resupply_profile,
     run_sell_loot_profile,
+    run_shire_research_profile,
     run_starter_profile,
 )
 from .storage import RunStorage
@@ -202,6 +203,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="maximum identical target mobiles permitted for --attack, default: 1",
     )
+    fastwalk_parser.add_argument(
+        "--allow-bystander",
+        dest="allowed_bystanders",
+        action="append",
+        default=[],
+        help="permit one source-verified noncombat mobile; may be repeated",
+    )
     midennir_parser = subcommands.add_parser(
         "midennir-research",
         help="collect the source-backed large sack from the Ambush trail",
@@ -250,6 +258,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--vile-hunt",
         action="store_true",
         help="live-consider and attack at most one unarmed vile goblin",
+    )
+    shire_parser = subcommands.add_parser(
+        "shire-research",
+        help="live-consider Shire Watermill workers without initiating combat",
+    )
+    shire_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
+    )
+    shire_parser.add_argument(
+        "--hunt",
+        action="store_true",
+        help="live-consider and attack at most one Watermill worker",
     )
     moria_parser = subcommands.add_parser(
         "moria-research",
@@ -703,15 +725,22 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "fastwalk-research":
         try:
+            research_options = {
+                "explore_direction": args.explore_direction,
+                "explore_depth": args.depth,
+                "attack_target": args.attack_target,
+                "consider_target": args.consider_target,
+                "maximum_target_count": args.maximum_target_count,
+            }
+            if args.allowed_bystanders:
+                research_options["allowed_bystanders"] = tuple(
+                    args.allowed_bystanders
+                )
             result = asyncio.run(
                 run_fastwalk_research_profile(
                     args.profile,
                     args.route,
-                    explore_direction=args.explore_direction,
-                    explore_depth=args.depth,
-                    attack_target=args.attack_target,
-                    consider_target=args.consider_target,
-                    maximum_target_count=args.maximum_target_count,
+                    **research_options,
                 )
             )
         except Exception as exc:
@@ -752,6 +781,19 @@ def main(argv: list[str] | None = None) -> int:
             )
         except Exception as exc:
             print(f"Ambush research failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "shire-research":
+        try:
+            result = asyncio.run(
+                run_shire_research_profile(args.profile, hunt=args.hunt)
+            )
+        except Exception as exc:
+            print(f"Shire research failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")

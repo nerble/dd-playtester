@@ -33,6 +33,13 @@ from dd4tester.decisions import classify_decision
             "identity",
             False,
         ),
+        (
+            "description A quiet traveller keeps a close record of promises.",
+            "apply the configured character backstory and personality",
+            "home",
+            "identity",
+            False,
+        ),
     ],
 )
 def test_decision_classification(

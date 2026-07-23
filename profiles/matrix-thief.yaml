@@ -6,6 +6,7 @@ gender: male
 class: thief
 subclass: ninja
 title: the Suspiciously Methodical
+description: Kestrel was once a courier between the hidden vaults of the drow, until a sealed message vanished beneath his care. He is observant, dry-witted, and patient, preferring a quiet escape and a kept promise to any loud triumph.
 colour: true
 max_attribute_rolls: 1
 minimum_primary_stat: 0

@@ -24,7 +24,8 @@ ITEM_MONEY = 20
 
 RECALL_VNUM = 3001
 WEAR_WIELD = 16
-WEAR_DUAL = 17
+WEAR_HOLD = 17
+WEAR_DUAL = 18
 LOW_LEVEL_AREA_FILES = (
     "air.are",
     "ambush.are",
@@ -303,24 +304,25 @@ def rank_hunt_candidates(
             continue
 
         loot_objects = _loot_objects(world, reset.object_vnums)
-        equipped_weapons = tuple(
-            item
+        equipped_weapon_slots = tuple(
+            (wear_location, item)
             for wear_location, object_vnum in reset.equipment
             if wear_location in {WEAR_WIELD, WEAR_DUAL}
             and (item := world.objects.get(object_vnum)) is not None
             and item.item_type == ITEM_WEAPON
         )
+        equipped_weapons = tuple(item for _, item in equipped_weapon_slots)
         level_range = _mobile_level_range(mobile.level)
         hp_range = _mobile_base_hp_range(level_range)
         peak_round_damage = _mobile_peak_round_damage(
             level_range[1],
             wielding=any(
                 wear_location == WEAR_WIELD
-                for wear_location, _ in reset.equipment
+                for wear_location, _ in equipped_weapon_slots
             ),
             dual_wielding=any(
                 wear_location == WEAR_DUAL
-                for wear_location, _ in reset.equipment
+                for wear_location, _ in equipped_weapon_slots
             ),
         )
         sellable = [

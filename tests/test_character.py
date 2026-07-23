@@ -37,6 +37,8 @@ def test_profile_derives_stable_credential_name() -> None:
 
     assert spec.credential_name == "character:rulemage"
     assert spec.title
+    assert "Rulemage" in spec.description
+    assert "human" in spec.description
     assert spec.effective_level_gain_priorities[:2] == (
         "intellectual_practices",
         "mana",
@@ -55,6 +57,34 @@ def test_profile_accepts_explicit_test_character_title() -> None:
     )
 
     assert spec.title == "the Walking Bug Report"
+
+
+def test_profile_accepts_explicit_character_description() -> None:
+    spec = CharacterSpec.from_mapping(
+        {
+            "name": "Rulemage",
+            "race": "human",
+            "gender": "female",
+            "class": "mage",
+            "description": "Rulemage keeps a brass astrolabe and a patient distrust of shortcuts.",
+        }
+    )
+
+    assert spec.description.startswith("Rulemage keeps")
+
+
+@pytest.mark.parametrize("description", ["", "two\nlines", "a tilde ~ here"])
+def test_profile_rejects_invalid_character_description(description: str) -> None:
+    with pytest.raises(ValueError, match="description"):
+        CharacterSpec.from_mapping(
+            {
+                "name": "Rulemage",
+                "race": "human",
+                "gender": "female",
+                "class": "mage",
+                "description": description,
+            }
+        )
 
 
 def test_profile_accepts_explicit_level_gain_priorities() -> None:

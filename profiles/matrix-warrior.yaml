@@ -6,6 +6,7 @@ gender: neuter
 class: warrior
 subclass: knight
 title: the Automaton Adventurer
+description: Dorrik left a dwarven forge-hold after refusing to melt down a battered shield with too many names scratched into it. They are steady, plain-spoken, and protective of companions, trusting patient preparation over boasts.
 colour: true
 max_attribute_rolls: 1
 minimum_primary_stat: 0

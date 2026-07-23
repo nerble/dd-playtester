@@ -52,6 +52,7 @@ class ProgressionContext:
     capabilities: frozenset[str]
     has_large_sack: bool = False
     has_sellable_loot: bool = False
+    needs_capacity_relief: bool = False
     has_food: bool = True
     has_weapon: bool = True
     has_sanctuary_potion: bool = False
@@ -175,44 +176,45 @@ _FOUNDRY_LEVEL_SIX_POLICY = ProgressionPolicy(
     policy_id="foundry-circuit-6-7",
     minimum_level=6,
     maximum_level=7,
-    status="verified",
+    status="retired",
     execution="foundry-hunt",
     summary=(
-        "A bounded Foundry circuit through two source-backed targets, with "
-        "live consider, crowd, and health gates before every attack."
+        "Retired: source and live evidence show that the Foundry's apparent "
+        "level-six targets are aggressive and can force an XP-losing flee."
     ),
     evidence=(
-        "DD4 source: the existing Foundry fastwalk ends in room 109; rooms 108, 107, 117, 118, 119, and 120 lead to Uburz, then rooms 109, 111, and 112 lead to Ushog.",
-        "DD4 source: Uburz loads near level 4 and Ushog near level 5; live consider remains authoritative because mobile levels are fuzzed and both can wander.",
-        "Live run 220: a level-6 character killed an incidental Olog and Ushog for 208 XP total and finished at full health.",
+        "DD4 source: the existing Foundry fastwalk ends in room 109; rooms 108, 107, 117, 118, 119, and 120 lead to Uburz without entering the captain's quarters.",
+        "DD4 source: Uburz loads near level 4; live consider remains authoritative because mobile levels are fuzzed and can wander.",
         "Live run 572: level-6 Dorrik killed Uburz for 106 XP without losing health and recovered three sellable equipment drops.",
-        "Live run 575: the combined circuit safely skipped absent Uburz, killed a roaming Olog and Ushog for 208 XP, recovered five drops, and returned at full health.",
         "Live runs 576-577: depleted circuits for thief and mage returned safely at full health, establishing the need for an arena fallback after an empty pass.",
         "The route avoids the poison-bearing pit beast in room 122 and permits a safe no-kill recall when a target is absent or unsuitable.",
+        "Live run 841: an aggressive Foundry target forced an XP-losing flee before it could be considered, so this route is not autonomous-safe.",
     ),
     practice_skill=None,
-    segment_kill_limit=2,
+    segment_kill_limit=1,
 )
 
 _FOUNDRY_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     policy_id="foundry-circuit-7-8",
     minimum_level=7,
     maximum_level=8,
-    status="verified",
+    status="retired",
     execution="foundry-hunt",
     summary=(
-        "Use a bounded source-backed Foundry sweep as the primary level-7 "
-        "progression route for every class."
+        "Retired: the apparent level-seven Foundry sweep contains aggressive "
+        "targets that can force an XP-losing flee before consideration."
     ),
     evidence=(
         *_FOUNDRY_LEVEL_SIX_POLICY.evidence,
         "Live run 629: the level-7 arena population had no viable opponents and returned safely with zero XP.",
         "Live run 630: a reboot-fuzzed level-8 mountain goblin auto-attacked the level-7 thief before consideration, so the caster field route is not a generic melee fallback.",
-        "The same live-considered Foundry targets are lower risk at level 7, and an empty circuit returns safely instead of forcing combat.",
-        "DD4 source: from Foundry room 107, Golgog, Shargook, Lobuk, Uburz, and Ushog form a connected sweep that avoids Oshu's aggressive pit room 110 and the poison-bearing pit beast room 122.",
+        "Earlier empty passes suggested a lower-risk level-seven sweep, but target presence must be tested separately from route traversal.",
+        "DD4 source: from Foundry room 107, Golgog, Shargook, Lobuk, and Uburz form a connected sweep that avoids Oshu's aggressive pit room 110, Ushog's aggressive quarters 112, and the poison-bearing pit beast room 122.",
         "Live runs 828 and 830: entering Oshu's pit room triggered an unapproved attack and an XP-losing flee, so Oshu is excluded from the autonomous route.",
-        "Live runs 653, 654, and 657 proved the expanded circuit for mage, warrior, and thief respectively, with safe full-health returns.",
+        "Live run 835: entering Ushog's quarters triggered an auto-attack and an XP-losing flee before consider, so Ushog is excluded from the autonomous route.",
+        "Live runs 653, 654, and 657 proved empty or target-absent passes for mage, warrior, and thief respectively; they did not establish combat-safe target engagement.",
         "Live runs 652 and 658 showed the level-7 Miden'nir route can impose flee penalties or consume an empty segment, so it is no longer the default caster route.",
+        "Live run 841: Lobuk's aggressive flag forced an XP-losing flee before consider; source confirms the other sweep targets also carry ACT_AGGRESSIVE.",
     ),
     practice_skill=None,
     segment_kill_limit=5,
@@ -239,6 +241,7 @@ _MORIA_LEVEL_SEVEN_ORC_POLICY = ProgressionPolicy(
         "The snake is sequenced last and requires full health so recall and healer cure-poison recovery follow immediately.",
         "Live run 701 considered a reboot-fuzzed level-6 orc a perfect match; an exact duplicate GMCP enemy row caused a conservative flee and motivated protocol-level deduplication before revalidation.",
         "Live run 702 completed the flight-enabled last-stop snake kill for 392 XP, then recovered from 99/123 to full health at healer room 3054 with no remaining poison affect or weapon loss.",
+        "Live runs 920-924 proved the large orc wanders between reset room 4022 and its north exit 4023, so both rooms are isolated and checked before the rest of the circuit.",
     ),
     practice_skill=None,
     segment_kill_limit=3,
@@ -269,6 +272,342 @@ _DAYCARE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     segment_kill_limit=2,
 )
 
+_CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="circus-illusionist-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="circus-freak-show-hunt",
+    summary=(
+        "A bounded three-performer Circus sweep that considers each "
+        "non-aggressive target and recovers locally when the room is vetted."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: mobile 4407 is a single, non-aggressive, unarmed level-five reset in Circus room 4410.",
+        "DD4 source: Bobby's mother is a non-aggressive level-three wanderer; live combat shows she can assist, so her presence blocks engagement like every other bystander.",
+        "Live run 859 considered the Illusionist an easy kill and returned to healer room 3054 without combat.",
+        "Live run 861 killed exactly one Illusionist for 190 XP, looted its key, recalled, and recovered fully at healer room 3054.",
+        "Live run 862 considered the level-five Bearded Lady a perfect match; source confirms she is non-aggressive, has no special, and carries no weapon.",
+        "Live run 913: a fuzzed animal keeper joined combat against level-seven Dorrik, so Circus performers are engaged only when no bystander is present.",
+        "DD4 source revision 0482387: Ivan is a non-aggressive level-seven sentinel with no special; every attempted engagement remains live-consider gated.",
+        "DD4 source room graph: Ivan resets in Strongman's room 4413, reached from the Illusionist by west, west, south.",
+        "DD4 source: level-zero Beastly Fido has only the corpse-scavenging spec_fido special; his wimpy flag suppresses ordinary aggression against an awake character and fight.c's level-gap gate prevents him assisting against level-seven or level-eight characters.",
+        "GMCP room-description targets are removed before crowd checks so the tent's illusory Dragon prose is not treated as a mobile.",
+        "Live runs 959 and 961: a wandering level-one Midgaard drunk intercepted visible Aeloria for 10 XP on the approach; after capability-driven invisibility was enabled, she crossed uninterrupted and killed the Bearded Lady for 192 XP.",
+        "Live run 1043 reached Ivan's corrected room and confirmed the wandering Beastly Fido bystander before returning safely to healer room 3054.",
+        "Live run 1044 preserved the crowd gate when an animal keeper and Bobby's mother wandered into Ivan's tent; neither is an approved bystander.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+)
+
+_CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY = ProgressionPolicy(
+    policy_id="circus-freak-show-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="verified",
+    execution="circus-freak-show-hunt",
+    summary=(
+        "Repeat the three-performer Circus sweep for martial characters after "
+        "Mud School opponents stop providing worthwhile experience."
+    ),
+    evidence=(
+        *_CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY.evidence,
+        "Live run 879: level-seven thief Kestrel completed the three-stop sweep, reached level eight, and returned safely to healer room 3054.",
+        "Live runs 881-882: every Mud School opponent considered below the useful level band for level-eight Kestrel, establishing the need for field progression.",
+        "Each performer remains independently live-consider gated, so reboot-level fuzz cannot force an unsuitable engagement.",
+        "Live run 913 overrides static level assumptions: wandering Circus mobiles are treated as unsafe bystanders because load-level fuzz can place them inside fight.c's assist band.",
+        "Beastly Fido is the only approved Ivan-room bystander; every other wandering mobile still blocks engagement.",
+        "Live run 946: level-eight Kestrel remembered the Loremaster's Stealth Techniques cap, trained Defense Knowledge instead, then killed the Bearded Lady for 231 XP and recovered at full health.",
+        "Live runs 1050 and 1054 exposed distinct short-name aliases: GMCP and combat use Ivan while room prose uses Ivan the Strongman, and flee text reports Ivan leaves. Proper-name prefix matching now covers both combat and pursuit without weakening the unrelated-attacker gate.",
+        "Live run 1055 safely retried the corrected sweep, killed the Illusionist, and returned to healer room 3054 after Ivan had wandered away.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+)
+
+_DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY = ProgressionPolicy(
+    policy_id="daycare-armed-guard-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="verified",
+    execution="daycare-armed-guard-hunt",
+    summary=(
+        "Navigate the live Day Care mini-maze and hunt its isolated armed "
+        "guard after an exact-target and live-consider gate."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one source-level-8 armed guard in room 6624.",
+        "The guard has no weapon, special procedure, aggressive flag, or reset companion.",
+        "The source-derived route from recall contains no reachable above-level aggressive reset.",
+        "Live run 991 followed GMCP destination VNUMs through the shuffled maze, found exactly one guard, received the perfect-match consider result at full health, and returned safely to healer room 3054 without combat.",
+        "Live run 992 killed the isolated guard for 728 XP at level 8, then recalled and recovered to full health and movement at healer room 3054.",
+        "Live run 996 killed the guard for 492 XP with level-eight thief Kestrel; health remained at or above 110/135 before full healer recovery.",
+        "Live run 1100 killed a reboot-fuzzed 144-HP guard for 453 XP inside the 150-second combat cap; Kestrel finished at 132/135 HP and returned safely to healer room 3054.",
+        "Live runs 1111 and 1117 killed two reboot-fuzzed guards for 409 and 333 XP with level-eight warrior Dorrik; neither fight reduced her below 160/177 HP.",
+        "Live run 1122 killed a perfect-match guard for 328 XP, raising Dorrik to level nine with 20 HP, 4 mana, 10 movement, 2 physical practices, and 1 intellectual practice before safe healer recovery.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_CULT_FANATIC_LEVEL_EIGHT_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="cult-fanatic-research-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="retired",
+    execution="cult-fanatic-research",
+    summary=(
+        "Retired research route for the wandering Dragon Cult fanatic; do not "
+        "spend autonomous progression segments searching for it."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one non-aggressive, unarmed source-level-6 fanatic monk in room 9850.",
+        "The fanatic lacks the sentinel flag and can wander away from its reset room.",
+        "The reset companion is a non-aggressive source-level-4 receptionist; both mobiles have no special procedure.",
+        "The official level-5-25 Dragon Cult fastwalk reaches room 9850 directly from Midgaard recall.",
+        "Live runs 1009 and 1014 reached room 9850 safely but found no fanatic; run 1014 instead found a wandering Beastly Fido in the reception.",
+        "The mobile's unreliable availability makes this route inferior to the verified level-eight rotation.",
+    ),
+    practice_skill=None,
+)
+
+_FLESHMONGER_GUARD_LEVEL_EIGHT_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-guard-research-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="retired",
+    execution="fleshmonger-guard-research",
+    summary=(
+        "Retired level-eight research route: reconsider the armored foyer guard "
+        "at level nine before enabling combat."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one source-level-10 patrolling guard alone in foyer room 9400.",
+        "The guard is non-aggressive, sentinel, stay-area, and has no special procedure.",
+        "Its greet program only speaks, and its reset equips four armour pieces plus a notched scimitar.",
+        "The official level-5-12 Fleshmonger fastwalk reaches room 9400 without an aggressive reset on the route.",
+        "Live run 1029 found Dorrik slightly healthier but returned the do_consider diff 2-5 'Do you feel lucky, punk?' branch.",
+        "The armed, armored above-level target is not approved for level-eight combat without sanctuary evidence.",
+    ),
+    practice_skill=None,
+)
+
+_MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY = ProgressionPolicy(
+    policy_id="moria-large-orc-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="verified",
+    execution="moria-large-orc-hunt",
+    summary=(
+        "Alternate the Circus with a two-room probe for one live-considered "
+        "large orc on Moria level one, rejecting any room with a bystander."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: one source-level-seven large orc resets in Moria room 4022 and carries a yellow and green ring.",
+        "The source-derived route remains on Moria level one and excludes the poison snake, deeper warriors, and every target after room 4022.",
+        "Live run 736: level-seven Dorrik killed the large orc for 539 XP without losing health, looted its ring, recalled, and recovered at healer room 3054.",
+        "Live run 736 also found a wandering kobold in the room; the promoted policy requires the target to be alone before consider or combat.",
+        "Live runs 920 and 922 observed the orc wandering north into room 4023, so the bounded route checks both that room and reset room 4022.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_GNOME_GUARD_LEVEL_EIGHT_POLICY = ProgressionPolicy(
+    policy_id="gnome-guard-circuit-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="verified",
+    execution="gnome-guard-hunt",
+    summary=(
+        "Rotate through three source-level-eight Gnome guard resets, engaging "
+        "only an isolated guard that passes live consideration."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: non-aggressive gnome guards reset in rooms 1519, 1527, and 1534 without special procedures.",
+        "DD4 source: the room-1519 guard is unarmed and carries a bloody cloak; the later guards can carry gnome swords and therefore retain the stricter existing health and live-consider gates.",
+        "The source-derived route from recall reaches room 1519 without a dangerous reset, then traverses ordinary non-aggressive village roads to the two later stops.",
+        "Every room rejects duplicate guards or any bystander before consideration; wandering can still join after combat starts, so the live combat monitor must retain its unexpected-enemy and withdrawal gates.",
+        "Live run 949: level-eight Dorrik killed the isolated hut guard for 543 XP, looted its cloak, potion, and key, skipped duplicate guards and a guard-plus-rat room, then recovered at the Midgaard healer.",
+        "Live run 951: level-eight Kestrel traversed the same route safely after the hut guard was absent, rejecting three guards plus two rats at the gateway and one guard plus two giant rats in the Mess Hall.",
+        "Live run 957: level-eight Kestrel killed an isolated guard for 582 XP; a wandering giant rat joined late and poisoned her, but she finished it for another 262 XP, recalled at 52/135 HP, and recovered fully beside the Midgaard healer.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+)
+
+_GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="gnome-guard-caster-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="gnome-guard-hunt",
+    summary=(
+        "Use one live-considered Gnome guard as a caster fallback after the "
+        "established level-seven circuits stop producing experience."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: non-aggressive source-level-eight gnome guards reset without special procedures in rooms 1519, 1527, and 1534.",
+        "The room-1519 guard is unarmed; all three stops reject bystanders and duplicate guards before consideration.",
+        "The generic field gate rejects consideration branches outside the useful band, and live GMCP aborts combat if a fuzzed guard loads above character level plus one.",
+        "Live runs 949 and 957 proved the route and isolated-guard combat at level eight; this level-seven caster policy is limited to one kill and retains full-health, mana, crowd, consider, and withdrawal gates.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_GNOME_SMALL_TROLL_CASTER_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="gnome-small-troll-caster-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="gnome-small-troll-hunt",
+    summary=(
+        "Approach the isolated aggressive Gnome small troll under invisibility, "
+        "then engage only after a perfect-match live consideration."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: one unarmed, special-free, source-level-eight small troll resets alone in dead-end room 1524.",
+        "The source-derived route reaches room 1524 without a dangerous reset; invisibility prevents the aggressive troll from forcing combat before consideration.",
+        "Live run 1033 reached the troll at full resources under invisibility, recorded a perfect-match result, and returned untouched to healer room 3054.",
+        "Live run 1035 killed the same target for 524 XP; Aeloria remained above 89/110 HP and recovered fully at healer room 3054.",
+        "The policy requires the invisibility capability, full health, an exact isolated target, live consideration, and one kill at most.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="daycare-armed-guard-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="daycare-armed-guard-hunt",
+    summary=(
+        "Navigate the live Day Care mini-maze and hunt its isolated armed "
+        "guard after full-resource, exact-target, and live-consider gates."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one unarmed, non-aggressive, special-free source-level-8 guard alone in room 6624.",
+        "Live runs 991 and 993 proved GMCP destination-VNUM navigation through two differently shuffled maze layouts.",
+        "Live run 992 killed the guard safely with a level-eight martial character.",
+        "Live run 994 found Aeloria slightly healthier than the perfect-match guard at full health and mana, then returned without combat.",
+        "Live run 995 killed the guard for 410 XP with level-seven mage Aeloria; her health never fell below 104/110 before full healer recovery.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_AMBUSH_MARTIAL_LEVEL_EIGHT_POLICY = ProgressionPolicy(
+    policy_id="ambush-martial-exterior-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="verified",
+    execution="ambush-martial-hunt",
+    summary=(
+        "Sweep three live-considered Ambush exterior targets while retaining "
+        "immediate withdrawal if the wandering dark horseman joins."
+    ),
+    evidence=(
+        "DD4 source revision 0482387: the three targets are non-aggressive level-six or level-seven exterior resets with no player-trapping route segment.",
+        "DD4 source: each target carries distinct armour, weapon, shield, or damroll-collar loot that Midgaard shops can buy.",
+        "The existing source-derived exterior route reaches all three targets and returns through recall without entering the higher-level cave complex.",
+        "Live run 326 killed a reboot-fuzzed level-seven war dog for 249 XP and returned safely to healer room 3054.",
+        "Live run 327 established the wounded goblin as the highest-burst target in this set, so it is attempted first at full health and remains live-consider gated.",
+        "The armed level-eight raider is deliberately excluded until sanctuary or stronger martial evidence is available.",
+        "Live run 886: Kestrel killed a wandering goblin for 292 XP, but a dark horseman joined; the safety policy fled and recalled at 63/135 HP, losing 68 XP.",
+        "Live run 1064: level-eight warrior Dorrik passed perfect-match checks and killed the wounded goblin and war dog for 538 combined XP, never fell below 152/177 HP, and returned safely after seeing but not engaging the wandering dark horseman.",
+        "Live run 1068: level-eight thief Kestrel killed the wounded goblin for 266 XP at full health, recovered and rearmed after two disarms, then recalled when another drop would exceed his remaining carry capacity.",
+        "Live run 1076: a mountain goblin attacked level-eight Dorrik on the approach while a dark horseman was present; the lone-attacker GMCP gate accepted it, Dorrik killed it for 185 XP without damage, and the horseman did not join.",
+        "Live run 1079: level-eight thief Kestrel completed the wounded goblin, war dog, and goblin looter sweep for 882 XP, never fell below 119/135 HP, and recovered every disarm.",
+        "Live run 1101: a level-eight mountain goblin blocked Kestrel's route movement; the lone-attacker gate adopted and killed it for 296 XP at full health, then continued the remaining circuit before recalling.",
+        "Live run 1112: level-eight Dorrik accepted two consecutive useful-band wandering goblins for 507 combined XP and remained at or above 160/177 HP before healer recovery.",
+        "Live run 1118: Dorrik killed a useful-band goblin lieutenant for 335 XP, ate its severed body part, sacrificed the corpse, and returned safely to healer room 3054.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+)
+
+_CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY = replace(
+    _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY,
+    policy_id="circus-freak-show-9-10",
+    minimum_level=9,
+    maximum_level=10,
+    summary=(
+        "Revalidate the three-performer Circus sweep at level nine, engaging "
+        "only targets that remain inside the useful live-consider band."
+    ),
+    evidence=(
+        *_CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY.evidence,
+        "The level-nine continuation preserves exact-target, crowd, and live-consider gates; targets that have fallen into a do_consider <= -5 branch are skipped.",
+        "Live run 1107: level-nine Kestrel rejected a crowded first stop, skipped the Illusionist after the 'no match for you' consider result, found Ivan absent, and recovered fully at healer room 3054.",
+    ),
+)
+
+_MORIA_LARGE_ORC_LEVEL_NINE_POLICY = replace(
+    _MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY,
+    policy_id="moria-large-orc-9-10",
+    minimum_level=9,
+    maximum_level=10,
+    summary=(
+        "Revalidate the isolated large-orc probe at level nine while rejecting "
+        "depleted, crowded, or below-band encounters."
+    ),
+    evidence=(
+        *_MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY.evidence,
+        "The source-level-seven target remains potentially useful at level nine, subject to reboot fuzz and the mandatory live-consider gate.",
+    ),
+)
+
+_GNOME_GUARD_LEVEL_NINE_POLICY = replace(
+    _GNOME_GUARD_LEVEL_EIGHT_POLICY,
+    policy_id="gnome-guard-circuit-9-10",
+    minimum_level=9,
+    maximum_level=10,
+    summary=(
+        "Revalidate the three-stop Gnome guard circuit at level nine, retaining "
+        "the exact-target, crowd, poison, and live-consider safety gates."
+    ),
+    evidence=(
+        *_GNOME_GUARD_LEVEL_EIGHT_POLICY.evidence,
+        "Source-level-eight guards remain potentially productive at level nine; each reboot-fuzzed load must still pass live consideration.",
+    ),
+)
+
+_DAYCARE_ARMED_GUARD_LEVEL_NINE_POLICY = replace(
+    _DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY,
+    policy_id="daycare-armed-guard-9-10",
+    minimum_level=9,
+    maximum_level=10,
+    summary=(
+        "Revalidate the isolated Day Care armed guard at level nine after "
+        "source-derived maze navigation and live consideration."
+    ),
+    evidence=(
+        *_DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY.evidence,
+        "Run 1105 raised Kestrel to level nine after the reboot-fuzzed guard yielded 307 XP; the same isolated reset remains live-consider gated.",
+        "Live run 1127: level-nine Dorrik killed the perfect-match guard for 192 XP, remained above 183/197 HP, and recovered safely at healer room 3054.",
+    ),
+)
+
+_AMBUSH_MARTIAL_LEVEL_NINE_POLICY = replace(
+    _AMBUSH_MARTIAL_LEVEL_EIGHT_POLICY,
+    policy_id="ambush-martial-exterior-9-10",
+    minimum_level=9,
+    maximum_level=10,
+    summary=(
+        "Revalidate the Ambush exterior sweep at level nine while retaining "
+        "immediate withdrawal for unsafe joins or disabling conditions."
+    ),
+    evidence=(
+        *_AMBUSH_MARTIAL_LEVEL_EIGHT_POLICY.evidence,
+        "The source-level-six and level-seven exterior targets remain potentially useful at level nine, subject to reboot fuzz and live consideration.",
+        "Live run 1123 exposed attack text arriving one event before named enemy GMCP; source-approved attackers now receive one structured-assessment cycle before withdrawal, while a second unassessed cycle still flees.",
+        "Live run 1129: level-nine Dorrik completed the wounded goblin, war dog, and goblin looter sweep for 747 XP under the aggressive thresholds, finishing at 129/197 HP before safe healer recovery.",
+    ),
+)
+
 _SHIRE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     policy_id="shire-bull-7-8",
     minimum_level=7,
@@ -297,19 +636,23 @@ _GNOME_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     status="verified",
     execution="gnome-hermit-hunt",
     summary=(
-        "A source-backed single-target Gnome circuit that rotates away from "
-        "recently depleted Moria, Shire, and Daycare resets."
+        "A source-backed three-target Gnome mine circuit that rotates away "
+        "from recently depleted Moria, Shire, and Daycare resets."
     ),
     evidence=(
         "DD4 source revision 0482387: mobile 1524 is an aggressive source-level-5 hermit crab with no special procedure or equipped weapon.",
         "DD4 source: exactly one hermit resets in room 1589, and the source-derived route reaches no above-level aggressive reset before that endpoint.",
+        "DD4 source revision 0482387: separate non-aggressive source-level-5 hobgoblin miners reset in rooms 1563 and 1565, reached from the hermit by south-south-south then east-east without doors or special procedures.",
         "The target must pass exact identity and GMCP enemy-level gates; full starting health and the generic field withdrawal threshold bound the aggressive encounter.",
         "Live run 720 killed the hermit for 143 XP, looted and sacrificed its corpse, then recalled and checkpointed at healer room 3054 with 150/157 health and no adverse affect.",
         "Live run 788: level-7 drow thief Kestrel killed the hermit for 91 XP, used an observed body-part food drop before consuming carried provisions, and returned at full health to healer room 3054.",
         "Live runs 814 and 817: level-7 drow thief Kestrel killed the hermit for 131 then 83 XP and returned safely; after the ninth same-reboot hermit kill, run 819 found no confirmed target or XP. Day Care and Moria probes remain fallback routes rather than a reason to repeat a depleted hermit circuit.",
+        "Live run 936: level-7 mage Aeloria killed the hermit for 107 XP without losing health; the two-miner extension retains independent crowd and consider gates.",
+        "Live run 942: Aeloria killed the hermit for 90 XP and traversed both miner stops safely; two miners occupied each room, so the crowd gate skipped both and recalled at full health.",
+        "Live runs 958 and 960: visible Aeloria was intercepted by the wandering Midgaard drunk before one attempt, while the next reached and killed the hermit for 90 XP; mage field runners now establish known invisibility before crossing the city.",
     ),
     practice_skill=None,
-    segment_kill_limit=1,
+    segment_kill_limit=3,
 )
 
 _MIDENNIR_LEVEL_SEVEN_POLICY = ProgressionPolicy(
@@ -383,6 +726,25 @@ _AMBUSH_LEVEL_EIGHT_POLICY = ProgressionPolicy(
         "Live run 326 killed a reboot-fuzzed level-7 war dog for 249 XP and returned safely to the Midgaard healer.",
         "Live run 327 lost 44 XP after three magic-missile attempts failed to finish the higher-HP wounded goblin.",
         "The route excludes the level-8 raider, level-10 guard, and the cave complex.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=1,
+)
+
+_AMBUSH_CASTER_LEVEL_SEVEN_POLICY = ProgressionPolicy(
+    policy_id="ambush-war-dog-caster-7-8",
+    minimum_level=7,
+    maximum_level=8,
+    status="verified",
+    execution="ambush-war-dog-hunt",
+    summary=(
+        "Use invisibility and live consideration for one isolated Ambush war "
+        "dog after the established level-seven caster circuits are depleted."
+    ),
+    evidence=(
+        *_AMBUSH_LEVEL_EIGHT_POLICY.evidence,
+        "Live run 1049: level-seven mage Aeloria reached the isolated war dog under invisibility, killed it with chill touch for 267 total XP, reached level eight at 102/120 HP, and recovered fully at healer room 3054.",
+        "The exact crowd gate and generic field withdrawal policy remain mandatory because a wandering dark horseman can enter the exterior route.",
     ),
     practice_skill="chill touch",
     segment_kill_limit=1,
@@ -522,6 +884,20 @@ _LIQUIDATE_LOOT_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_VAULT_SPARE_GEAR_POLICY = ProgressionPolicy(
+    policy_id="vault-spare-gear",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="vault-spare-gear",
+    summary="Lodge carried plain armour in the safe Midgaard vault to free hunt capacity.",
+    evidence=(
+        "The existing source-backed vault workflow uses only safe Midgaard rooms between healer room 3054 and vault room 3007.",
+        "Only carried armour without protected stat, combat, recovery, light, or capacity effects is eligible.",
+    ),
+    practice_skill=None,
+)
+
 _RESTOCK_POLICY = ProgressionPolicy(
     policy_id="restock-provisions",
     minimum_level=2,
@@ -563,6 +939,8 @@ _BUY_FLIGHT_POLICY = ProgressionPolicy(
     evidence=(
         "Live run 96 bought the reboot-priced light blue potion for 123 copper and confirmed flight.",
         "Live run 437 bought the same potion for 94 copper after becoming visible and verifying the purchase.",
+        "Live run 1113 bought the potion for 534 copper on reboot Mon Jul 20 06:53:03 2026 and confirmed the fly affect before Dorrik's martial field rotation.",
+        "Live run 1128 rechecked the shop, bought the currently listed 94-copper potion, and confirmed the fly affect before the level-nine Ambush sweep.",
         "The workflow checks current stock and affordability instead of assuming a fixed reboot price.",
         "DD4 fight.c suppresses NPC trip attempts against flying, fly-affected, or levitating targets.",
     ),
@@ -588,6 +966,7 @@ def policy_for(
     subclass: str | None = None,
     has_large_sack: bool = False,
     has_sellable_loot: bool = False,
+    needs_capacity_relief: bool = False,
     has_food: bool = True,
     has_weapon: bool = True,
     has_sanctuary_potion: bool = False,
@@ -606,6 +985,7 @@ def policy_for(
             subclass=subclass,
             has_large_sack=has_large_sack,
             has_sellable_loot=has_sellable_loot,
+            needs_capacity_relief=needs_capacity_relief,
             has_food=has_food,
             has_weapon=has_weapon,
             has_sanctuary_potion=has_sanctuary_potion,
@@ -626,6 +1006,8 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _STARTER_POLICY
     if context.has_sellable_loot:
         return _LIQUIDATE_LOOT_POLICY
+    if context.needs_capacity_relief:
+        return _VAULT_SPARE_GEAR_POLICY
     if not context.has_food:
         return _RESTOCK_POLICY
     if not context.has_weapon:
@@ -636,20 +1018,130 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             practice_skill=context.practice_skill,
         )
     if normalized_level == 6:
-        foundry_kills = sum(
-            _boot_kill_count(context.boot_kill_counts, target)
-            for target in ("Olog", "Uburz", "Ushog")
-        )
-        if context.stalled_segments % 2 == 1 or foundry_kills >= 8:
-            return replace(
-                _MUD_SCHOOL_RESEARCH_POLICY,
-                practice_skill=context.practice_skill,
-            )
         return replace(
-            _FOUNDRY_LEVEL_SIX_POLICY,
+            _MUD_SCHOOL_RESEARCH_POLICY,
             practice_skill=context.practice_skill,
         )
     field_caster = context.progression_track == "verified-field-caster"
+    field_martial = context.progression_track == "verified-field-martial"
+    if field_martial and normalized_level == 8:
+        if (
+            not context.has_flight
+            and context.can_attempt_flight_purchase
+            and not context.flight_purchase_failed
+        ):
+            return _BUY_FLIGHT_POLICY
+        if (
+            context.last_policy_id
+            == _GNOME_GUARD_LEVEL_EIGHT_POLICY.policy_id
+        ):
+            return replace(
+                _DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY.policy_id
+        ):
+            return replace(
+                _AMBUSH_MARTIAL_LEVEL_EIGHT_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _AMBUSH_MARTIAL_LEVEL_EIGHT_POLICY.policy_id
+        ):
+            return replace(
+                _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _FLESHMONGER_GUARD_LEVEL_EIGHT_RESEARCH_POLICY.policy_id
+        ):
+            return replace(
+                _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _CULT_FANATIC_LEVEL_EIGHT_RESEARCH_POLICY.policy_id
+        ):
+            return replace(
+                _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY.policy_id
+        ):
+            return replace(
+                _MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY.policy_id
+        ):
+            return replace(
+                _GNOME_GUARD_LEVEL_EIGHT_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY,
+            practice_skill=context.practice_skill,
+        )
+    if field_martial and normalized_level == 9:
+        if (
+            not context.has_flight
+            and context.can_attempt_flight_purchase
+            and not context.flight_purchase_failed
+        ):
+            return _BUY_FLIGHT_POLICY
+        if context.last_policy_id in {
+            _GNOME_GUARD_LEVEL_EIGHT_POLICY.policy_id,
+            _GNOME_GUARD_LEVEL_NINE_POLICY.policy_id,
+        }:
+            return replace(
+                _DAYCARE_ARMED_GUARD_LEVEL_NINE_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if context.last_policy_id in {
+            _DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY.policy_id,
+            _DAYCARE_ARMED_GUARD_LEVEL_NINE_POLICY.policy_id,
+        }:
+            return replace(
+                _AMBUSH_MARTIAL_LEVEL_NINE_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if context.last_policy_id in {
+            _AMBUSH_MARTIAL_LEVEL_EIGHT_POLICY.policy_id,
+            _AMBUSH_MARTIAL_LEVEL_NINE_POLICY.policy_id,
+        }:
+            return replace(
+                _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if context.last_policy_id in {
+            _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY.policy_id,
+            _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY.policy_id,
+        }:
+            return replace(
+                _MORIA_LARGE_ORC_LEVEL_NINE_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if context.last_policy_id in {
+            _MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY.policy_id,
+            _MORIA_LARGE_ORC_LEVEL_NINE_POLICY.policy_id,
+        }:
+            return replace(
+                _GNOME_GUARD_LEVEL_NINE_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY,
+            practice_skill=context.practice_skill,
+        )
     if field_caster and 8 <= normalized_level < 10:
         if not context.has_large_sack:
             return _MIDENNIR_SACK_POLICY
@@ -718,115 +1210,238 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             return _AMBUSH_VILE_LEVEL_TEN_POLICY
         return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
     if normalized_level == 7:
-        foundry_kills = sum(
-            _boot_kill_count(context.boot_kill_counts, target)
-            for target in (
-                "Olog",
-                "Golgog",
-                "Shargook",
-                "Lobuk",
-                "Uburz",
-                "Ushog",
+        if (
+            not context.has_flight
+            and context.can_attempt_flight_purchase
+            and not context.flight_purchase_failed
+        ):
+            return _BUY_FLIGHT_POLICY
+        nanny_kills = _boot_kill_count(context.boot_kill_counts, "nanny")
+        hermit_kills = _boot_kill_count(context.boot_kill_counts, "hermit")
+        nanny_recent_xp = (
+            context.policy_xp_deltas.get(
+                _DAYCARE_LEVEL_SEVEN_POLICY.policy_id
+            )
+            if context.policy_xp_deltas is not None
+            else None
+        )
+        circus_recent_xp = (
+            context.policy_xp_deltas.get(
+                _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY.policy_id
+            )
+            if context.policy_xp_deltas is not None
+            else None
+        )
+        moria_recent_xp = (
+            context.policy_xp_deltas.get(
+                _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id
+            )
+            if context.policy_xp_deltas is not None
+            else None
+        )
+        gnome_recent_xp = (
+            context.policy_xp_deltas.get(
+                _GNOME_LEVEL_SEVEN_POLICY.policy_id
+            )
+            if context.policy_xp_deltas is not None
+            else None
+        )
+        nanny_is_productive = nanny_recent_xp is None or nanny_recent_xp > 0
+        established_circuits_depleted = all(
+            recent_xp is not None and recent_xp <= 0
+            for recent_xp in (
+                circus_recent_xp,
+                moria_recent_xp,
+                gnome_recent_xp,
             )
         )
-        if foundry_kills >= 12:
+        if (
+            field_caster
+            and established_circuits_depleted
+            and context.last_policy_id
+            in {
+                _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY.policy_id,
+                _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id,
+                _GNOME_LEVEL_SEVEN_POLICY.policy_id,
+            }
+        ):
+            return replace(
+                _GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            field_caster
+            and not established_circuits_depleted
+            and context.last_policy_id
+            == _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY.policy_id
+        ):
+            return replace(
+                _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            field_caster
+            and not established_circuits_depleted
+            and context.last_policy_id
+            == _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY.policy_id
+        ):
+            return replace(
+                _GNOME_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY.policy_id
+        ):
             if (
-                not context.has_flight
-                and context.can_attempt_flight_purchase
-                and not context.flight_purchase_failed
-            ):
-                return _BUY_FLIGHT_POLICY
-            if (
-                context.last_policy_id == _FOUNDRY_LEVEL_SEVEN_POLICY.policy_id
-                and (context.policy_xp_deltas or {}).get(
-                    _FOUNDRY_LEVEL_SEVEN_POLICY.policy_id,
-                    0,
-                )
-                >= _MEANINGFUL_FIELD_SEGMENT_XP
+                established_circuits_depleted
+                and "invisibility" in context.capabilities
             ):
                 return replace(
-                    _FOUNDRY_LEVEL_SEVEN_POLICY,
+                    _GNOME_SMALL_TROLL_CASTER_LEVEL_SEVEN_POLICY,
                     practice_skill=context.practice_skill,
                 )
-            nanny_kills = _boot_kill_count(
-                context.boot_kill_counts,
-                "nanny",
+            return replace(
+                _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
             )
-            hermit_kills = _boot_kill_count(
-                context.boot_kill_counts,
-                "hermit",
-            )
+        if (
+            context.last_policy_id
+            == _GNOME_SMALL_TROLL_CASTER_LEVEL_SEVEN_POLICY.policy_id
+        ):
             if (
-                context.last_policy_id
-                in {
-                    _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
-                    _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id,
-                    _GNOME_LEVEL_SEVEN_POLICY.policy_id,
-                }
-                and (context.policy_xp_deltas or {}).get(
-                    context.last_policy_id,
-                    1,
-                ) <= 0
+                established_circuits_depleted
+                and "invisibility" in context.capabilities
             ):
                 return replace(
-                    _FOUNDRY_LEVEL_SEVEN_POLICY,
+                    _AMBUSH_CASTER_LEVEL_SEVEN_POLICY,
                     practice_skill=context.practice_skill,
                 )
-            if (
-                context.character_class == "thief"
-                and hermit_kills < 9
-                and context.last_policy_id
-                in {
-                    _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
-                    _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id,
-                    _GNOME_LEVEL_SEVEN_POLICY.policy_id,
-                }
-            ):
+            return replace(
+                _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _AMBUSH_CASTER_LEVEL_SEVEN_POLICY.policy_id
+        ):
+            return replace(
+                _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY.policy_id
+        ):
+            return replace(
+                _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY.policy_id
+            and circus_recent_xp is not None
+            and circus_recent_xp <= 0
+            and gnome_recent_xp is not None
+            and gnome_recent_xp <= 0
+            and moria_recent_xp is not None
+            and moria_recent_xp <= 0
+        ):
+            return replace(
+                _MORIA_LEVEL_SEVEN_ORC_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            circus_recent_xp is not None
+            and circus_recent_xp <= 0
+            and context.last_policy_id
+            in {
+                _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY.policy_id,
+                _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id,
+            }
+        ):
+            return replace(
+                _GNOME_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            not nanny_is_productive
+            and context.last_policy_id
+            in {
+                _GNOME_LEVEL_SEVEN_POLICY.policy_id,
+                _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id,
+            }
+        ):
+            return replace(
+                _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY.policy_id
+        ):
+            if moria_recent_xp is not None and moria_recent_xp <= 0:
                 return replace(
                     _GNOME_LEVEL_SEVEN_POLICY,
-                    practice_skill=context.practice_skill,
-                )
-            if (
-                context.character_class == "thief"
-                and hermit_kills >= 9
-                and context.last_policy_id == _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id
-            ):
-                return replace(
-                    _DAYCARE_LEVEL_SEVEN_POLICY,
-                    practice_skill=context.practice_skill,
-                )
-            if context.last_policy_id in {
-                _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
-                _SHIRE_LEVEL_SEVEN_POLICY.policy_id,
-                # This policy was briefly executable before live evidence re-gated
-                # it. Preserve the safe post-Shire rotation for old checkpoints.
-                "shire-bull-warrior-7-8",
-            }:
-                return replace(
-                    _MORIA_LEVEL_SEVEN_ORC_POLICY,
-                    practice_skill=context.practice_skill,
-                )
-            if context.last_policy_id == _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id:
-                return replace(
-                    _GNOME_LEVEL_SEVEN_POLICY,
-                    practice_skill=context.practice_skill,
-                )
-            if context.last_policy_id == _GNOME_LEVEL_SEVEN_POLICY.policy_id:
-                return replace(
-                    _DAYCARE_LEVEL_SEVEN_POLICY,
-                    practice_skill=context.practice_skill,
-                )
-            if nanny_kills < 2:
-                return replace(
-                    _DAYCARE_LEVEL_SEVEN_POLICY,
                     practice_skill=context.practice_skill,
                 )
             return replace(
                 _MORIA_LEVEL_SEVEN_ORC_POLICY,
                 practice_skill=context.practice_skill,
             )
+        if (
+            context.character_class == "thief"
+            and hermit_kills < 9
+            and context.last_policy_id
+            in {
+                _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
+                _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id,
+            }
+        ):
+            return replace(
+                _GNOME_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.character_class == "thief"
+            and hermit_kills >= 9
+            and context.last_policy_id == _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id
+        ):
+            return replace(
+                _DAYCARE_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if context.last_policy_id in {
+            _DAYCARE_LEVEL_SEVEN_POLICY.policy_id,
+            _SHIRE_LEVEL_SEVEN_POLICY.policy_id,
+            # This policy was briefly executable before live evidence re-gated
+            # it. Preserve the safe post-Shire rotation for old checkpoints.
+            "shire-bull-warrior-7-8",
+        }:
+            return replace(
+                _MORIA_LEVEL_SEVEN_ORC_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if context.last_policy_id == _MORIA_LEVEL_SEVEN_ORC_POLICY.policy_id:
+            return replace(
+                _GNOME_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id == _GNOME_LEVEL_SEVEN_POLICY.policy_id
+            and nanny_is_productive
+        ):
+            return replace(
+                _DAYCARE_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if nanny_kills < 2 and nanny_is_productive:
+            return replace(
+                _DAYCARE_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
         return replace(
-            _FOUNDRY_LEVEL_SEVEN_POLICY,
+            _MORIA_LEVEL_SEVEN_ORC_POLICY,
             practice_skill=context.practice_skill,
         )
     if normalized_level < 10:

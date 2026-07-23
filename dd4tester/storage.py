@@ -332,6 +332,66 @@ class RunStorage:
         )
         return list(cursor.fetchall())
 
+    def character_command_recorded(
+        self,
+        character_name: str,
+        command: str,
+    ) -> bool:
+        """Return whether this character previously issued an exact command."""
+        cursor = self.connection.execute(
+            """
+            SELECT r.scenario_name, e.payload_json
+            FROM events AS e
+            JOIN runs AS r ON r.id = e.run_id
+            WHERE e.kind = 'command'
+            ORDER BY e.id DESC
+            """
+        )
+        expected_name = character_name.casefold()
+        for row in cursor:
+            scenario_character = str(row["scenario_name"]).rpartition(":")[2]
+            if scenario_character.casefold() != expected_name:
+                continue
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if payload.get("command") == command:
+                return True
+        return False
+
+    def latest_character_command(
+        self,
+        character_name: str,
+        *,
+        prefix: str | None = None,
+    ) -> str | None:
+        """Return the newest recorded command for a character."""
+        cursor = self.connection.execute(
+            """
+            SELECT r.scenario_name, e.payload_json
+            FROM events AS e
+            JOIN runs AS r ON r.id = e.run_id
+            WHERE e.kind = 'command'
+            ORDER BY e.id DESC
+            """
+        )
+        expected_name = character_name.casefold()
+        for row in cursor:
+            scenario_character = str(row["scenario_name"]).rpartition(":")[2]
+            if scenario_character.casefold() != expected_name:
+                continue
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            command = payload.get("command")
+            if not isinstance(command, str):
+                continue
+            if prefix is None or command.startswith(prefix):
+                return command
+        return None
+
     def count_events(self, run_id: int, *, kind: str | None = None) -> int:
         if kind is None:
             cursor = self.connection.execute(

@@ -1560,3 +1560,274 @@ and failure handling before registering each new level-band policy.
   the piping, jerkin, and cap, donated those redundant pieces, and returned to
   the Mage's Laboratory at full health. Carry weight fell from 113/115 to
   85/115 with no combat or XP loss.
+- Run 969 live-validated campaign-level capacity relief. Source-backed
+  classification selected only Aeloria's plain carried buckler and velvet
+  cape for the Midgaard vault, reducing carry weight from 110/115 to 100/115
+  while preserving provisions and protected gear. The run exposed standalone
+  vault maintenance falling through to the starter completion path; the
+  dedicated mode now always saves and quits at healer room 3054.
+- Runs 971-976 advanced Aeloria by 268 XP through two Circus kills while
+  safely rotating through empty Circus, gnome, and guard circuits. Automatic
+  junk cleanup sacrificed transient keys before they could consume the newly
+  recovered carrying capacity.
+- Runs 977-982 advanced Kestrel by 233 XP through one Circus kill. Runs
+  983-990 found every registered level-eight Circus, Moria, and gnome segment
+  empty for Dorrik, establishing spawn availability as the immediate
+  throughput limit rather than class-specific combat safety.
+- Run 990 showed that Dwarven Day Care's mini-maze shuffles direction labels
+  relative to the static area-file exits. Field stops can now follow GMCP exit
+  destinations by source VNUM, preserving deterministic goals while adapting
+  to the live maze.
+- Run 991 followed the shuffled route `east, north, west, south`, found exactly
+  one source-level-8 armed guard in room 6624, and recorded a perfect-match
+  consider result without combat. Run 992 then killed that unarmed,
+  special-free guard for 728 XP and returned Dorrik to healer room 3054 at
+  full health and movement. The one-kill Day Care guard fallback is now part
+  of the level-eight martial rotation.
+- Run 993 independently followed Kestrel's different live maze sequence
+  `east, west, south, south` and returned safely when the guard had not yet
+  reset. DD4 `area_update` increments area age on randomized 30-90 second
+  pulses and resets unoccupied areas once their age reaches eight, so the
+  controller must rotate elsewhere rather than assume a fixed five-minute
+  respawn.
+- Run 994 found a reset guard with level-seven mage Aeloria and recorded a
+  perfect-match consider result while she was slightly healthier at 110/110
+  HP. Run 995 then killed the same source-vetted guard for 410 XP with four
+  chill touches; Aeloria never fell below 104 HP and recovered to full health,
+  mana, and movement at healer room 3054. The fallback is therefore verified
+  for both field-caster and field-martial level bands.
+- Run 996 completed the cross-class proof after the next unoccupied area
+  reset. Level-eight thief Kestrel killed the guard for 492 XP, never fell
+  below 110/135 HP, and recovered to full health, mana, and movement at the
+  healer. Mage, thief, and warrior now share the same data-driven route,
+  consideration, combat, and recovery policy without character-name branches.
+- Runs 997-1004 rotated Aeloria and Kestrel through fully searched but depleted
+  field circuits without unsafe target substitution. Run 1005 then found the
+  reset Day Care guard, gained Kestrel 475 structured XP, and returned him to
+  healer room 3054 at full resources.
+- Run 1006 exposed a two-room resupply cycle after a duplicate queued
+  `eat pie` left stale food-unavailable state even though Kestrel successfully
+  bought two replacement pies. The process was terminated, the orphaned run
+  was marked failed, and run 1007 returned Kestrel safely to the healer. A
+  shop-local consumption rule now trusts a newly visible pie or water skin,
+  and a bounded route-cycle watchdog forces a direct healer return if
+  alternating navigation repeats.
+- Run 1008 moved spare Kestrel equipment to the vault. Runs 1009 and 1014
+  reached Dragon Cult reception room 9850 safely, but the non-sentinel fanatic
+  had wandered away both times; run 1014 instead found a wandering Beastly
+  Fido beside the receptionist. The Cult research route is therefore retired
+  from autonomous progression rather than wasting repeated segments on an
+  unreliable target.
+- Runs 1010-1013 resumed productive level-eight rotation. Kestrel gained 78 XP
+  from a live-considered Circus Illusionist and 314 XP from the reset Day Care
+  guard, never fell below 118/135 HP, and finished at healer room 3054 with
+  full health, mana, and movement. He now has 28,339 XP and needs 3,361 for
+  level nine.
+- Runs 1015-1018 safely searched Aeloria's depleted Gnome, guard, and Day Care
+  fallbacks but produced no XP. They exposed an unreachable selector branch:
+  after all established circuits recorded zero XP, Day Care returned to Gnome
+  instead of rechecking Circus after the elapsed reset window. The depleted
+  caster fallback now rotates from Day Care to Circus while retaining the
+  ordinary Day Care-to-Gnome transition when established circuits remain
+  productive.
+- Runs 1019-1022 live-validated recovery from the campaign's ten-segment stall
+  guard. Checkpoints now carry an explicit autonomy-policy revision, which
+  resets stale consecutive-stall history once when the policy graph changes
+  but preserves the guard for unchanged code. Aeloria refreshed flight in run
+  1021 and run 1022 selected Circus directly after the depleted Day Care
+  fallback, proving the previously unreachable transition; the searched
+  Circus targets were absent, so no unsafe substitute was attacked.
+- Runs 1023-1026 rotated Dorrik through depleted Circus, Moria, and Gnome
+  circuits before the reset Day Care guard appeared. He killed it for 395 XP,
+  remained above 163/177 HP, and recovered to full resources at healer room
+  3054. Dorrik now has 27,370 XP and needs 4,330 for level nine.
+- Run 1027 safely rejected reversing the official Fleshmonger route because it
+  contains `open east`; the research dispatcher now explicitly recalls from
+  the foyer. Run 1028 verified that route and exposed the missing mobile verb
+  `greets`, which is now parsed with regression coverage. Run 1029 then
+  considered the lone patrolling guard and received the source `diff 2-5`
+  “Do you feel lucky, punk?” result while Dorrik was only slightly healthier.
+  The armed, armored target is retired from level-eight automation and retained
+  as level-nine research evidence.
+- Runs 1030-1031 rotated Aeloria from an empty Gnome guard check to a reset
+  Day Care guard. The source-level-eight guard fuzzed below Aeloria's useful
+  level-seven XP band, so the live-consider gate rejected combat and returned
+  her safely to healer room 3054.
+- Run 1032 found the reset Circus Bearded Lady as a perfect match. Aeloria
+  killed her for 185 XP while remaining above 100/110 HP, sacrificed the
+  corpse for one silver, and finished with 23,098 XP and 1,752 to level eight.
+  Delayed loot responses caused duplicate invisibility casts before the next
+  stop; the policy now waits for a pending cast result and retries only after
+  a confirmed recitation failure.
+- Run 1033 used invisibility to reach the aggressive, isolated Gnome small
+  troll without forced combat. Aeloria recorded a perfect-match consider
+  result at full resources, recalled untouched, and established the target as
+  a viable caster-only fallback.
+- Run 1034 exposed a route-cycle watchdog that incorrectly counted five
+  legitimate combat spells as stalled navigation. Aeloria fled safely,
+  retained a net 12 XP from damage, recovered fully at healer room 3054, and
+  quit. Route-cycle detection is now restricted to movement commands.
+- Run 1035 killed the small troll for 524 XP while Aeloria remained above
+  89/110 HP. She collected the severed leg, recalled, recovered fully at the
+  healer, and finished with 23,634 XP and 1,216 to level eight. The verified
+  `gnome-small-troll-caster-7-8` campaign policy requires invisibility, full
+  health, an isolated exact target, live consideration, and one kill.
+- Runs 1036-1040 rotated Aeloria through the Circus, Day Care, and Gnome
+  fallbacks. Two productive Circus trips killed the Bearded Lady and
+  Illusionist for 530 combined XP; the other routes safely rejected a
+  below-band guard or recorded absent targets.
+- Runs 1041-1044 validated registered-policy dispatch and corrected the Circus
+  circuit. The Ivan route now reaches room 4413 by west, west, south; his full
+  visible name is parsed, and only source-vetted level-zero Beastly Fido is an
+  allowed bystander. An animal keeper or Bobby's mother still blocks combat.
+  Three Circus kills advanced Aeloria another 580 XP.
+- Runs 1045-1048 searched depleted Day Care, Gnome, Moria, and Dragon Cult
+  resets without unsafe substitution. The Cult fanatic remained absent,
+  reinforcing that route's retirement from normal autonomous progression.
+- Run 1049 used invisibility and the exact crowd and consider gates to isolate
+  the Ambush war dog. Aeloria killed it with chill touch for 267 total XP,
+  reached level eight at 102/120 HP, equipped its damroll collar for combat,
+  recalled, switched to recovery gear, and finished fully restored at healer
+  room 3054. The verified `ambush-war-dog-caster-7-8` fallback is now part of
+  policy revision 7 after the established level-seven caster circuits and
+  small-troll fallback are depleted.
+- Runs 1050-1053 resumed Kestrel's checkpointed level-eight rotation. A short
+  `Ivan` combat name was initially mistaken for an extra attacker; the safe
+  flee cost a net 60 XP, and a proper-name prefix regression now preserves
+  the full `Ivan the Strongman` room identity. Moria and Gnome were depleted,
+  then the reset Day Care guard yielded 438 XP. Kestrel finished with 28,839
+  XP and 2,861 to level nine.
+- Runs 1054-1055 exposed and fixed the related flee alias. Ivan fled east, but
+  case-folding prevented the short name from matching the full room target,
+  so the watchdog safely recalled Dorrik after repeated attack attempts. The
+  parser now preserves case for proper-name matching; the retry killed the
+  Illusionist for 87 XP and returned safely after Ivan had wandered away.
+- Runs 1056-1059 continued the independent martial rotations. Moria and Gnome
+  remained depleted, while Dorrik solved a different live Day Care maze and
+  killed its guard for 342 XP. Dorrik now has 27,961 XP and needs 3,739 for
+  level nine. Kestrel's later Circus recheck retained both crowd gates and
+  returned safely when Ivan was absent.
+- Run 1060 found a reset Bearded Lady and advanced Dorrik another 124 XP;
+  the Illusionist was crowded and Ivan was absent, so the remaining stops were
+  skipped without forcing combat.
+- Runs 1061-1064 expanded the level-eight martial rotation beyond the
+  reset-limited Moria, Gnome, Day Care, and Circus circuits. Moria was empty,
+  the Gnome hut and mess hall were empty, and four gateway guards were rejected
+  as crowded. Dorrik then killed the isolated Day Care guard for 338 XP before
+  entering the newly verified three-target Ambush exterior circuit.
+- Run 1064 passed perfect-match checks and killed the wounded goblin and war
+  dog for 538 combined XP. Dorrik never fell below 152/177 HP, saw but did not
+  engage the wandering dark horseman, collected varied saleable armour and a
+  damroll collar, and recovered fully at healer room 3054. The final visible
+  looter uses the text `A goblin is here, looting the dead`; that transcript
+  now has a parser alias and regression coverage so the exact `goblin looter`
+  gate can assess it on the next pass. Dorrik has 28,961 XP and needs 2,739
+  for level nine.
+- Runs 1065-1068 applied the expanded rotation independently to thief Kestrel.
+  Moria was empty and Gnome's only present target was the rejected four-guard
+  gateway group. Kestrel solved another shuffled Day Care maze and killed its
+  guard for 316 XP, then reached Ambush and killed the perfect-match wounded
+  goblin for 266 XP without losing health. He recovered and rearmed after two
+  disarms, then recalled because his low Drow carry-weight margin could not
+  safely accept another target's drops. Kestrel has 29,421 XP and needs 2,279
+  for level nine.
+- Run 1068 also exposed a boundedness gap: passive thief combat could continue
+  for 106 seconds while neither side posed immediate danger. Field fights now
+  have a 150-second hard cap; elapsed fights flee, audit the post-flee room,
+  recall, and recover at healer room 3054 instead of remaining indefinitely in
+  a low-damage matchup.
+- Runs 1069-1072 exercised recovery from the Ambush loot pass. Dorrik sold
+  four different hard-leather armour pieces for 127 copper-equivalent coins,
+  preserving the varied-item money-loop strategy, then killed a reset Bearded
+  Lady for 167 XP. Kestrel's Circus and Moria checks found no isolated target.
+- Runs 1073-1076 completed another Dorrik rotation. Moria remained empty and
+  Gnome retained four crowded gateway guards, while Day Care reset and yielded
+  a 253 XP guard kill at a cost of only four hit points. On the Ambush approach,
+  a mountain goblin attacked beside the inn while a dark horseman was present.
+  The lone-attacker GMCP gate accepted it; Dorrik killed it for 185 XP without
+  taking damage, ate its severed leg to clear hunger, sacrificed the corpse,
+  and returned safely when the horseman did not join. Dorrik has 29,566 XP and
+  needs 2,134 for level nine.
+- Run 1079 completed the full three-target Ambush sweep for thief Kestrel:
+  wounded goblin, war dog, and goblin looter yielded 882 XP while he remained
+  above 119/135 HP and recovered every disarm. The looter's activity-text alias
+  worked live, proving the policy is independent of GMCP display wording.
+- Runs 1081-1084 rotated through depleted Circus, Moria, and Gnome circuits.
+  Day Care combat then proved the hard field-duration withdrawal and safe
+  healer recovery path. The source catalog also exposed four prototypes named
+  `a wooden spear`; run 1085 safely lodged Kestrel's ambiguous heavy spear in
+  the Midgaard vault, reducing carried weight from 90/90 to 78/90.
+- Runs 1086-1091 showed why offensive throughput belongs in policy evidence.
+  Kestrel could not outpace the wounded goblin's regeneration, while a blessed
+  Day Care attempt reduced its guard to 1/105 HP before the old 120-second cap
+  and still netted 100 damage XP after fleeing. The cap is now 150 seconds.
+  A repeated combat line from one adopted wandering attacker could also race
+  GMCP adoption and look like a second attacker; same-target identity is now
+  retained while genuinely different joiners still force immediate withdrawal.
+- Runs 1092-1095 advanced Kestrel by 534 XP through an Illusionist and a
+  reboot-fuzzed Day Care guard. The 150-second cap completed the latter kill
+  after the old ceiling had repeatedly withdrawn with the guard nearly dead.
+- Run 1096 exposed two related event-order races. A lone safe-band attacker
+  could block a movement command before the route failure check reached the
+  existing adoption gate, and post-flee recall could beat delayed enemy GMCP
+  by a fraction of a second. Confirmed combat now takes precedence over the
+  unchanged-room check, and the post-flee `look` holds a 0.75-second GMCP grace
+  window before recall.
+- Runs 1100-1101 live-validated both the longer cap and movement interception
+  behavior. Kestrel killed a reboot-fuzzed 144-HP Day Care guard for 453 XP at
+  132/135 HP, then adopted a level-eight mountain goblin that blocked Ambush
+  travel, killed it for 296 XP without damage, and continued the remaining
+  circuit before recalling. He finished safely at healer room 3054 with 263 XP
+  remaining to level nine.
+- Runs 1102-1105 finished Kestrel's level-eight campaign. The Circus yielded
+  214 XP from the Bearded Lady and Illusionist, Moria and Gnome were empty,
+  and the isolated Day Care guard yielded the final 307 XP. Kestrel reached
+  level nine with 9 additional HP, 8 mana, 10 movement, two physical
+  practices, and two intellectual practices, then recovered safely at healer
+  room 3054.
+- Level-nine martial selection now has objective-level-ten Circus, Moria,
+  Gnome, Day Care, and Ambush policy identities instead of falling through to
+  the prohibited Mud School fallback. Run 1107 live-validated the handoff:
+  Kestrel rejected a crowded Circus stop, skipped the Illusionist after the
+  `no match for you` consider result, found Ivan absent, and returned to healer
+  room 3054 at 144/144 HP, 159/159 mana, and 230/230 movement.
+- Runs 1108-1112 advanced Dorrik through the same character-independent
+  martial rotation. Circus yielded 85 XP, Moria and Gnome were depleted, Day
+  Care yielded 409 XP, and two consecutive useful-band Ambush goblins yielded
+  507 XP. Dorrik accepted the second wandering attacker instead of ending the
+  trip after one kill, stayed at or above 160/177 HP, and recovered safely.
+- Run 1113 bought and verified a light blue flight potion for the reboot-local
+  price of 534 copper. Runs 1114-1118 then produced 159 XP at Circus, 333 XP
+  at Day Care, and 335 XP from an Ambush goblin lieutenant while skipping
+  depleted or unsuitable stops. Flight or levitation now lowers a field
+  circuit's healer departure reserve from 90% to 40%; the non-flying reserve
+  remains unchanged.
+- Runs 1119-1122 completed Dorrik's level-eight campaign. Empty Circus, Moria,
+  and Gnome stops rotated without unsafe substitution; the next perfect-match
+  Day Care guard yielded 328 XP. Dorrik reached level nine with 20 additional
+  HP, 4 mana, 10 movement, two physical practices, and one intellectual
+  practice, then finished fully restored at healer room 3054.
+- Runs 1123-1127 began Dorrik's objective-level-ten rotation. The trainer plan
+  spent one physical practice on Enhanced Damage and one intellectual practice
+  on Defense Knowledge toward Dodge's exact 40% prerequisite. Day Care then
+  yielded 192 XP at level nine while depleted Circus, Moria, and Gnome stops
+  rotated without substitution.
+- Run 1123 also exposed a text/GMCP ordering race at the Ambush bridge: the
+  visible goblin lieutenant attacked before named enemy GMCP arrived, causing
+  an unnecessarily cautious flee. A newly named field attacker now receives
+  one decision cycle for structured level assessment; useful-band GMCP adopts
+  it, while a second cycle without assessment still withdraws.
+- Autonomous field thresholds are now tuned approximately 30% more
+  aggressively. Bounded combat lasts 195 seconds, ordinary withdrawal occurs
+  at 40% health, a lower-level half-dead opponent can be finished down to 30%,
+  circuits continue at 55% health with 20% mana and 15% movement, and
+  source-vetted high-risk openings require 85% rather than perfect health.
+  Unknown high-level enemies, unsafe crowds, disabling affects, death traps,
+  and unsupplied hunger or thirst remain hard stops.
+- Runs 1128-1129 live-validated that revision. Dorrik bought and confirmed
+  flight at the current 94-copper price, then completed all three Ambush
+  targets in one trip for 747 XP. She continued productively to 129/197 HP,
+  stayed above the 40% withdrawal boundary, sacrificed uncarryable remains,
+  and recovered safely at healer room 3054. Dorrik now has 32,639 XP and needs
+  7,061 to level ten; at 391/400 carried weight, varied-armour liquidation is
+  the next required work unit before another hunt.

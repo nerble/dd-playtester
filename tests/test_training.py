@@ -149,6 +149,21 @@ def test_thief_begins_source_prerequisite_chain_for_backstab() -> None:
     assert choices[0].target_percent == 60
 
 
+def test_thief_skips_persistently_capped_gateway_for_next_priority() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "stealth techniques: 46%",
+            "defense knowledge: 0%",
+            physical=0,
+            intellectual=2,
+        ),
+        excluded_skills=frozenset({"stealth techniques"}),
+    )
+
+    assert [choice.skill for choice in choices] == ["defense knowledge"]
+
+
 def test_generic_thief_trains_hide_then_sneak_before_backstab() -> None:
     hide = plan_training(
         "thief",
@@ -171,6 +186,50 @@ def test_generic_thief_trains_hide_then_sneak_before_backstab() -> None:
 
     assert [choice.skill for choice in hide] == ["hide"]
     assert [choice.skill for choice in sneak] == ["sneak"]
+
+
+def test_thief_keeps_practising_backstab_when_its_teacher_offers_it() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 41%    second attack: 37%    stealth techniques: 60%    sneak: 99%    backstab: 31%",
+            "",
+            physical=1,
+            intellectual=0,
+        ),
+    )
+
+    assert [choice.skill for choice in choices] == ["backstab"]
+    assert choices[0].target_percent == 100
+
+
+def test_warrior_prioritizes_enhanced_damage_after_its_gateway() -> None:
+    choices = plan_training(
+        "warrior",
+        _listing(
+            "armed combat knowledge: 40%    second attack: 37%    enhanced damage: 30%",
+            "",
+            physical=1,
+            intellectual=0,
+        ),
+    )
+
+    assert [choice.skill for choice in choices] == ["enhanced damage"]
+    assert choices[0].target_percent == 100
+
+
+def test_enhanced_hit_is_only_selected_when_the_trainer_lists_it() -> None:
+    choices = plan_training(
+        "warrior",
+        _listing(
+            "armed combat knowledge: 100%    second attack: 100%",
+            "",
+            physical=1,
+            intellectual=0,
+        ),
+    )
+
+    assert choices == ()
 
 
 def test_every_supported_base_class_has_combat_training_priorities() -> None:

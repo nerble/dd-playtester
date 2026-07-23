@@ -95,6 +95,33 @@ TEST_CHARACTER_TITLES = (
     "the False Wanderer",
 )
 
+_RACE_ORIGINS = {
+    "drow": "the echoing vaults beneath the old roads",
+    "dwarf": "a forge-hold carved into the mountain",
+    "human": "a small market town on the northern trade road",
+    "elf": "a greenwood court of patient archers",
+    "wild elf": "the deep forest beyond the settled trails",
+    "orc": "a hard-scrabble border camp",
+    "halfling": "a river village of ferrymen and gardeners",
+    "half dragon": "a weathered coastal watchtower",
+    "duergar": "a silent under-mountain enclave",
+    "tiefling": "a caravan family that travelled by moonlight",
+    "fae": "a thorn-ringed village at the forest's edge",
+}
+
+_CLASS_CALLINGS = {
+    "mage": "scholar of dangerous old magic",
+    "thief": "careful collector of secrets and exits",
+    "warrior": "disciplined student of the shield and blade",
+}
+
+_PERSONALITY_TRAITS = (
+    "observant, wry, and stubbornly loyal to a fair bargain",
+    "calm under pressure, curious about strangers, and slow to make an enemy",
+    "practical, soft-spoken, and unexpectedly fond of bad tavern songs",
+    "patient with problems, direct with friends, and wary of easy promises",
+)
+
 CLASS_LEVEL_GAIN_PRIORITIES = {
     name: profile.level_gain_priorities
     for name, profile in _ARCHETYPES.classes.items()
@@ -120,6 +147,7 @@ class CharacterSpec:
     gender: str
     character_class: str
     title: str = ""
+    description: str = ""
     credential_name: str = ""
     subclass: str | None = None
     colour: bool = True
@@ -224,6 +252,25 @@ class CharacterSpec:
                     f"subclass {subclass!r} requires base class {required_class!r}"
                 )
 
+        raw_description = data.get("description")
+        description = (
+            _default_character_description(
+                name,
+                race=race,
+                gender=gender,
+                character_class=character_class,
+                subclass=subclass,
+            )
+            if raw_description is None
+            else str(raw_description).strip()
+        )
+        if not description:
+            raise ValueError("description must not be empty")
+        if len(description) > 750:
+            raise ValueError("description must not exceed 750 characters")
+        if any(character in description for character in ("\r", "\n", "~")):
+            raise ValueError("description must be a single line without tildes")
+
         max_attribute_rolls = int(data.get("max_attribute_rolls", 1))
         if max_attribute_rolls < 1 or max_attribute_rolls > 20:
             raise ValueError("max_attribute_rolls must be between 1 and 20")
@@ -261,6 +308,7 @@ class CharacterSpec:
             gender=gender,
             character_class=character_class,
             title=title,
+            description=description,
             subclass=subclass,
             colour=bool(data.get("colour", True)),
             max_attribute_rolls=max_attribute_rolls,
@@ -286,6 +334,30 @@ def _default_test_title(name: str) -> str:
         for position, character in enumerate(name, start=1)
     ) % len(TEST_CHARACTER_TITLES)
     return TEST_CHARACTER_TITLES[index]
+
+
+def _default_character_description(
+    name: str,
+    *,
+    race: str,
+    gender: str,
+    character_class: str,
+    subclass: str | None,
+) -> str:
+    """Create a stable in-world background for a newly configured character."""
+    pronoun = {"male": "He", "female": "She", "neuter": "They"}[gender]
+    origin = _RACE_ORIGINS.get(race, "a distant and unsettled frontier")
+    calling = _CLASS_CALLINGS.get(character_class, "traveller in search of a calling")
+    specialty = f" {subclass}" if subclass else ""
+    trait_index = sum(ord(character) for character in name.casefold()) % len(
+        _PERSONALITY_TRAITS
+    )
+    traits = _PERSONALITY_TRAITS[trait_index]
+    return (
+        f"{name} is a {race}{specialty} {calling} who left {origin} after an "
+        f"unfinished obligation became too dangerous to ignore. {pronoun} is "
+        f"{traits}, and keeps a close record of promises, routes, and debts."
+    )
 
 
 def _choice(value: Any, choices: dict[str, Any], label: str) -> str:

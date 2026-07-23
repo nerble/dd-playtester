@@ -80,12 +80,17 @@ class GearCatalog:
         return cls(load_object_sources(area_directory))
 
     def match(self, description: str) -> ObjectSource | None:
-        candidates = self._by_name.get(normalize_item_name(description), ())
+        candidates = self.candidates(description)
         if not candidates:
             return None
         # Exact duplicate descriptions exist. Prefer the lowest-level prototype;
         # it is the conservative match for a low-level character.
         return min(candidates, key=lambda item: (item.level, item.vnum))
+
+    def candidates(self, description: str) -> tuple[ObjectSource, ...]:
+        """Return distinct source prototypes sharing an observed description."""
+        candidates = self._by_name.get(normalize_item_name(description), ())
+        return tuple({item.vnum: item for item in candidates}.values())
 
     def match_many(self, descriptions: Iterable[str]) -> list[ObjectSource]:
         return [

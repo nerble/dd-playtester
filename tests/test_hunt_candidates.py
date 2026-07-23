@@ -281,3 +281,47 @@ def test_candidate_ranking_rejects_source_peak_round_above_character_hp(
 
     assert candidate.status == "reject"
     assert "source peak round 60 >= character max HP 50" in candidate.hazards
+
+
+def test_held_nonweapon_does_not_count_as_a_dual_wielded_weapon(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "fanatic monk",
+                "a fanatic monk",
+                6,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Reception", "target.are"),
+        },
+        objects={
+            300: ObjectSource(300, "brochure", "a brochure", 8, (), 1),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, (300,), equipment=((17, 300),)),
+        ],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=7,
+        character_max_hp=123,
+    )[0]
+
+    assert candidate.status == "promising"
+    assert candidate.equipped_weapons == ()
+    assert candidate.estimated_peak_round_damage == 70
+    assert not any("source peak round" in hazard for hazard in candidate.hazards)

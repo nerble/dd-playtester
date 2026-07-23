@@ -123,6 +123,7 @@ def plan_training(
     text: str,
     *,
     excluded_practice_types: set[str] | frozenset[str] = frozenset(),
+    excluded_skills: set[str] | frozenset[str] = frozenset(),
 ) -> tuple[TrainingChoice, ...]:
     listing = parse_practice_listing(text)
     budgets = {
@@ -133,10 +134,12 @@ def plan_training(
     choices: list[TrainingChoice] = []
     priorities = training_priorities().get(_normalize(character_class), ())
     spent_types = set(excluded_practice_types)
+    blocked_skills = {_normalize(skill) for skill in excluded_skills}
 
     for selected in priorities:
         if (
             not selected.automated
+            or selected.skill in blocked_skills
             or selected.practice_type in spent_types
             or budgets[selected.practice_type] <= 0
             or selected.skill not in skills

@@ -6,6 +6,7 @@ gender: female
 class: mage
 subclass: warlock
 title: the Procedurally Curious
+description: Aeloria apprenticed among Midgaard's bookbinders before a forbidden marginal note answered one of her questions. She is courteous, fiercely curious, and careful with power, treating every spell as both a discovery and a responsibility.
 colour: true
 max_attribute_rolls: 1
 minimum_primary_stat: 0

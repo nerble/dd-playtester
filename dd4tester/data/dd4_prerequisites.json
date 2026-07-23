@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/fromage-fraser/dd4",
-  "revision": "9bdd5104ddd7b6b39af82e2fa14eeb909414f174",
+  "revision": "048238786b5dfbfba637fa015fa5c121946fb50b",
   "prerequisites": [
     {
       "class_name": "artist",

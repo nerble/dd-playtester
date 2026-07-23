@@ -33,18 +33,18 @@ def test_level_two_to_six_policy_is_verified_and_executable(
 
 
 @pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])
-def test_level_six_policy_uses_verified_bounded_foundry_circuit(
+def test_level_six_policy_uses_verified_arena_after_foundry_retirement(
     character_class: str,
 ) -> None:
     policy = policy_for(6, character_class)
 
-    assert policy.policy_id == "foundry-circuit-6-7"
+    assert policy.policy_id == "mud-school-6-10"
     assert policy.status == "verified"
-    assert policy.execution == "foundry-hunt"
-    assert policy.segment_kill_limit == 2
+    assert policy.execution == "arena"
+    assert policy.segment_kill_limit == 10
     assert policy.executable is True
     assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
-    assert any("Live run 572" in item for item in policy.evidence)
+    assert any("Live run 82" in item for item in policy.evidence)
 
 
 @pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])
@@ -65,8 +65,7 @@ def test_level_six_policy_rotates_after_reboot_local_foundry_kills_degrade_xp() 
         "mage",
         boot_kill_counts={
             "Olog": 3,
-            "the Uburz": 3,
-            "Ushog": 2,
+            "the Uburz": 5,
             "the drunk": 4,
         },
     )
@@ -75,44 +74,44 @@ def test_level_six_policy_rotates_after_reboot_local_foundry_kills_degrade_xp() 
     assert policy.execution == "arena"
 
 
-def test_level_six_policy_keeps_fresh_foundry_targets_below_rotation_limit() -> None:
+def test_level_six_policy_ignores_foundry_kill_history_after_retirement() -> None:
     policy = policy_for(
         6,
         "warrior",
-        boot_kill_counts={"Olog": 2, "Uburz": 2, "Ushog": 3},
+        boot_kill_counts={"Olog": 2, "Uburz": 3},
     )
 
-    assert policy.policy_id == "foundry-circuit-6-7"
-    assert policy.execution == "foundry-hunt"
+    assert policy.policy_id == "mud-school-6-10"
+    assert policy.execution == "arena"
 
 
-def test_level_seven_mage_uses_cross_class_foundry_policy() -> None:
+def test_level_seven_mage_starts_with_daycare_after_foundry_retirement() -> None:
     policy = policy_for(7, "mage")
 
-    assert policy.policy_id == "foundry-circuit-7-8"
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
     assert policy.status == "verified"
-    assert policy.execution == "foundry-hunt"
-    assert policy.segment_kill_limit == 5
+    assert policy.execution == "daycare-nanny-hunt"
+    assert policy.segment_kill_limit == 2
     assert policy.practice_skill == "magic missile"
     assert policy.executable is True
 
 
-def test_level_seven_non_mage_uses_foundry_policy() -> None:
+def test_level_seven_non_mage_starts_with_daycare_policy() -> None:
     policy = policy_for(7, "warrior")
 
-    assert policy.policy_id == "foundry-circuit-7-8"
-    assert policy.execution == "foundry-hunt"
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
 
 
 @pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])
-def test_level_seven_rotates_from_repeated_foundry_kills(
+def test_level_seven_ignores_retired_foundry_kill_history(
     character_class: str,
 ) -> None:
     policy = policy_for(
         7,
         character_class,
         boot_kill_counts={
-            "Olog": 4,
+            "Lobuk": 4,
             "Shargook": 3,
             "Golgog": 2,
             "Uburz": 3,
@@ -126,22 +125,22 @@ def test_level_seven_rotates_from_repeated_foundry_kills(
     assert policy.practice_skill == CLASS_PRACTICE_SKILLS[character_class]
 
 
-def test_level_seven_keeps_fresh_foundry_targets() -> None:
+def test_level_seven_does_not_select_fresh_retired_foundry_targets() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 2, "Golgog": 2, "Uburz": 2},
+        boot_kill_counts={"Lobuk": 2, "Golgog": 2, "Uburz": 2},
     )
 
-    assert policy.policy_id == "foundry-circuit-7-8"
-    assert policy.execution == "foundry-hunt"
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
 
 
-def test_level_seven_keeps_depleted_foundry_rotation_after_a_stalled_segment() -> None:
+def test_level_seven_uses_daycare_after_a_stalled_segment() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         stalled_segments=1,
     )
 
@@ -154,7 +153,7 @@ def test_level_seven_rotates_to_moria_after_two_nannies() -> None:
         7,
         "warrior",
         boot_kill_counts={
-            "Olog": 4,
+            "Lobuk": 4,
             "Golgog": 4,
             "Uburz": 4,
             "the nanny": 2,
@@ -169,7 +168,7 @@ def test_level_seven_rotates_from_daycare_to_moria() -> None:
     policy = policy_for(
         7,
         "warrior",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         stalled_segments=2,
         last_policy_id="daycare-nanny-circuit-7-8",
     )
@@ -178,11 +177,171 @@ def test_level_seven_rotates_from_daycare_to_moria() -> None:
     assert policy.execution == "moria-orc-hunt"
 
 
+def test_level_seven_uses_circus_sweep_after_nanny_policy_loses_xp() -> None:
+    policy = policy_for(
+        7,
+        "thief",
+        last_policy_id="moria-orc-circuit-7-8",
+        policy_xp_deltas={"daycare-nanny-circuit-7-8": -46},
+    )
+
+    assert policy.policy_id == "circus-illusionist-7-8"
+    assert policy.execution == "circus-freak-show-hunt"
+    assert policy.segment_kill_limit == 3
+
+
+@pytest.mark.parametrize(
+    "last_policy_id",
+    ("circus-illusionist-7-8", "moria-orc-circuit-7-8"),
+)
+def test_level_seven_rotates_from_empty_circus_to_gnome_hermit(
+    last_policy_id: str,
+) -> None:
+    policy = policy_for(
+        7,
+        "warrior",
+        last_policy_id=last_policy_id,
+        policy_xp_deltas={
+            "daycare-nanny-circuit-7-8": -46,
+            "circus-illusionist-7-8": 0,
+        },
+    )
+
+    assert policy.policy_id == "gnome-hermit-7-8"
+    assert policy.execution == "gnome-hermit-hunt"
+    assert policy.practice_skill == "kick"
+
+
+def test_level_seven_skips_recently_empty_moria_after_productive_circus() -> None:
+    policy = policy_for(
+        7,
+        "warrior",
+        last_policy_id="circus-illusionist-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 132,
+            "moria-orc-circuit-7-8": 0,
+        },
+    )
+
+    assert policy.policy_id == "gnome-hermit-7-8"
+    assert policy.execution == "gnome-hermit-hunt"
+
+
+def test_level_seven_caster_uses_gnome_guard_when_established_circuits_are_empty() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="circus-illusionist-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 0,
+            "moria-orc-circuit-7-8": 0,
+        },
+    )
+
+    assert policy.policy_id == "gnome-guard-caster-7-8"
+    assert policy.execution == "gnome-guard-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seven_caster_uses_daycare_after_productive_circus() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="circus-illusionist-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 209,
+            "gnome-hermit-7-8": 0,
+            "moria-orc-circuit-7-8": 0,
+        },
+    )
+
+    assert policy.policy_id == "daycare-armed-guard-7-8"
+    assert policy.execution == "daycare-armed-guard-hunt"
+
+
+def test_level_seven_caster_rotates_from_daycare_to_gnome() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="daycare-armed-guard-7-8",
+    )
+
+    assert policy.policy_id == "gnome-hermit-7-8"
+    assert policy.execution == "gnome-hermit-hunt"
+
+
+def test_level_seven_caster_rechecks_circus_after_depleted_fallback_cycle() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="daycare-armed-guard-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 0,
+            "moria-orc-circuit-7-8": 0,
+        },
+    )
+
+    assert policy.policy_id == "circus-illusionist-7-8"
+    assert policy.execution == "circus-freak-show-hunt"
+
+
+def test_level_seven_caster_uses_troll_after_depleted_gnome_guard() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="gnome-guard-caster-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 0,
+            "moria-orc-circuit-7-8": 0,
+        },
+    )
+
+    assert policy.policy_id == "gnome-small-troll-caster-7-8"
+    assert policy.execution == "gnome-small-troll-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seven_caster_rotates_from_troll_to_ambush_war_dog() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="gnome-small-troll-caster-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 0,
+            "moria-orc-circuit-7-8": 0,
+        },
+    )
+
+    assert policy.policy_id == "ambush-war-dog-caster-7-8"
+    assert policy.execution == "ambush-war-dog-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seven_caster_rotates_from_ambush_to_daycare_hunt() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="ambush-war-dog-caster-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 0,
+            "moria-orc-circuit-7-8": 0,
+        },
+    )
+
+    assert policy.policy_id == "daycare-armed-guard-7-8"
+    assert policy.execution == "daycare-armed-guard-hunt"
+
+
 def test_level_seven_rotates_from_shire_to_moria() -> None:
     policy = policy_for(
         7,
         "mage",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="shire-bull-7-8",
     )
 
@@ -194,7 +353,7 @@ def test_level_seven_rotates_retired_shire_checkpoint_to_moria() -> None:
     policy = policy_for(
         7,
         "warrior",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="shire-bull-warrior-7-8",
     )
 
@@ -207,7 +366,7 @@ def test_level_seven_keeps_shire_fallback_research_gated_after_midennir() -> Non
         policy = policy_for(
             7,
             character_class,
-            boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+            boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
             last_policy_id="midennir-goblin-7-8",
         )
 
@@ -219,13 +378,13 @@ def test_level_seven_rotates_from_moria_to_gnome_hermit() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="moria-orc-circuit-7-8",
     )
 
     assert policy.policy_id == "gnome-hermit-7-8"
     assert policy.execution == "gnome-hermit-hunt"
-    assert policy.segment_kill_limit == 1
+    assert policy.segment_kill_limit == 3
 
 
 def test_level_seven_thief_repeats_evidenced_hermit_before_general_rotation() -> None:
@@ -233,7 +392,7 @@ def test_level_seven_thief_repeats_evidenced_hermit_before_general_rotation() ->
         7,
         "thief",
         boot_kill_counts={
-            "Olog": 4,
+            "Lobuk": 4,
             "Golgog": 4,
             "Uburz": 4,
             "hermit": 1,
@@ -250,7 +409,7 @@ def test_level_seven_thief_returns_to_general_rotation_after_nine_hermit_kills()
         7,
         "thief",
         boot_kill_counts={
-            "Olog": 4,
+            "Lobuk": 4,
             "Golgog": 4,
             "Uburz": 4,
             "hermit": 9,
@@ -267,7 +426,7 @@ def test_level_seven_thief_does_not_return_to_depleted_hermit_after_moria() -> N
         7,
         "thief",
         boot_kill_counts={
-            "Olog": 4,
+            "Lobuk": 4,
             "Golgog": 4,
             "Uburz": 4,
             "hermit": 9,
@@ -279,37 +438,37 @@ def test_level_seven_thief_does_not_return_to_depleted_hermit_after_moria() -> N
     assert policy.execution == "daycare-nanny-hunt"
 
 
-def test_level_seven_rechecks_foundry_after_a_zero_xp_field_route() -> None:
+def test_level_seven_rotates_to_daycare_after_a_zero_xp_field_route() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         policy_xp_deltas={"gnome-hermit-7-8": 0},
         last_policy_id="gnome-hermit-7-8",
     )
 
-    assert policy.policy_id == "foundry-circuit-7-8"
-    assert policy.execution == "foundry-hunt"
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
 
 
-def test_level_seven_repeats_foundry_after_a_meaningful_segment() -> None:
+def test_level_seven_does_not_resume_a_retired_foundry_checkpoint() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         policy_xp_deltas={"foundry-circuit-7-8": 170},
         last_policy_id="foundry-circuit-7-8",
     )
 
-    assert policy.policy_id == "foundry-circuit-7-8"
-    assert policy.execution == "foundry-hunt"
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
 
 
 def test_level_seven_rotates_from_gnome_hermit_to_daycare() -> None:
     policy = policy_for(
         7,
         "mage",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         last_policy_id="gnome-hermit-7-8",
     )
 
@@ -321,7 +480,7 @@ def test_level_seven_buys_flight_before_depleted_moria_rotation() -> None:
     policy = policy_for(
         7,
         "thief",
-        boot_kill_counts={"Olog": 4, "Golgog": 4, "Uburz": 4},
+        boot_kill_counts={"Lobuk": 4, "Golgog": 4, "Uburz": 4},
         has_flight=False,
         can_attempt_flight_purchase=True,
     )
@@ -330,20 +489,20 @@ def test_level_seven_buys_flight_before_depleted_moria_rotation() -> None:
     assert policy.execution == "buy-flight"
 
 
-def test_stalled_level_seven_non_mage_uses_foundry_fallback() -> None:
+def test_stalled_level_seven_non_mage_uses_daycare_fallback() -> None:
     policy = policy_for(7, "thief", stalled_segments=1)
 
-    assert policy.policy_id == "foundry-circuit-7-8"
-    assert policy.execution == "foundry-hunt"
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
     assert policy.maximum_level == 8
     assert policy.practice_skill == "backstab"
 
 
-def test_stalled_level_seven_mage_uses_foundry_fallback() -> None:
+def test_stalled_level_seven_mage_uses_daycare_fallback() -> None:
     policy = policy_for(7, "mage", stalled_segments=1)
 
-    assert policy.policy_id == "foundry-circuit-7-8"
-    assert policy.execution == "foundry-hunt"
+    assert policy.policy_id == "daycare-nanny-circuit-7-8"
+    assert policy.execution == "daycare-nanny-hunt"
     assert policy.practice_skill == "magic missile"
 
 
@@ -383,6 +542,199 @@ def test_level_eight_mage_collects_sack_before_resuming_hunts() -> None:
     assert hunt.policy_id == "ambush-war-dog-8-9"
     assert hunt.execution == "ambush-war-dog-hunt"
     assert hunt.segment_kill_limit == 1
+
+
+@pytest.mark.parametrize(
+    ("character_class", "practice_skill"),
+    (("thief", "backstab"), ("warrior", "kick")),
+)
+def test_level_eight_martial_classes_leave_exhausted_mud_school(
+    character_class: str,
+    practice_skill: str,
+) -> None:
+    policy = policy_for(8, character_class)
+
+    assert policy.policy_id == "circus-freak-show-8-9"
+    assert policy.execution == "circus-freak-show-hunt"
+    assert policy.practice_skill == practice_skill
+    assert policy.segment_kill_limit == 3
+    assert policy.maximum_level == 9
+
+
+def test_level_eight_martial_rotates_from_circus_to_isolated_moria_orc() -> None:
+    policy = policy_for(
+        8,
+        "thief",
+        last_policy_id="circus-freak-show-8-9",
+    )
+
+    assert policy.policy_id == "moria-large-orc-8-9"
+    assert policy.execution == "moria-large-orc-hunt"
+    assert policy.practice_skill == "backstab"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_eight_martial_rotates_from_moria_to_gnome_guards() -> None:
+    policy = policy_for(
+        8,
+        "warrior",
+        last_policy_id="moria-large-orc-8-9",
+    )
+
+    assert policy.policy_id == "gnome-guard-circuit-8-9"
+    assert policy.execution == "gnome-guard-hunt"
+    assert policy.practice_skill == "kick"
+    assert policy.segment_kill_limit == 3
+
+
+def test_level_eight_martial_hunts_daycare_after_gnome_guards() -> None:
+    policy = policy_for(
+        8,
+        "thief",
+        last_policy_id="gnome-guard-circuit-8-9",
+    )
+
+    assert policy.policy_id == "daycare-armed-guard-8-9"
+    assert policy.execution == "daycare-armed-guard-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_eight_martial_hunts_ambush_exterior_after_daycare() -> None:
+    policy = policy_for(
+        8,
+        "thief",
+        last_policy_id="daycare-armed-guard-8-9",
+    )
+
+    assert policy.policy_id == "ambush-martial-exterior-8-9"
+    assert policy.execution == "ambush-martial-hunt"
+    assert policy.segment_kill_limit == 3
+
+
+def test_level_eight_martial_returns_to_circus_after_ambush_exterior() -> None:
+    policy = policy_for(
+        8,
+        "thief",
+        last_policy_id="ambush-martial-exterior-8-9",
+    )
+
+    assert policy.policy_id == "circus-freak-show-8-9"
+    assert policy.execution == "circus-freak-show-hunt"
+
+
+def test_level_eight_martial_returns_to_circus_after_fleshmonger_research() -> None:
+    policy = policy_for(
+        8,
+        "thief",
+        last_policy_id="fleshmonger-guard-research-8-9",
+    )
+
+    assert policy.policy_id == "circus-freak-show-8-9"
+    assert policy.execution == "circus-freak-show-hunt"
+
+
+def test_level_eight_martial_returns_to_circus_after_cult_research() -> None:
+    policy = policy_for(
+        8,
+        "thief",
+        last_policy_id="cult-fanatic-research-8-9",
+    )
+
+    assert policy.policy_id == "circus-freak-show-8-9"
+    assert policy.execution == "circus-freak-show-hunt"
+
+
+def test_level_nine_martial_continues_with_objective_level_ten_policy() -> None:
+    policy = policy_for(
+        9,
+        "thief",
+        last_policy_id="daycare-armed-guard-8-9",
+    )
+
+    assert policy.policy_id == "ambush-martial-exterior-9-10"
+    assert policy.execution == "ambush-martial-hunt"
+    assert policy.minimum_level == 9
+    assert policy.maximum_level == 10
+
+
+def test_level_eight_martial_buys_flight_before_field_rotation() -> None:
+    policy = policy_for(
+        8,
+        "warrior",
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+def test_level_nine_martial_buys_flight_before_field_rotation() -> None:
+    policy = policy_for(
+        9,
+        "thief",
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+def test_failed_martial_flight_purchase_returns_to_field_rotation() -> None:
+    policy = policy_for(
+        8,
+        "warrior",
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        flight_purchase_failed=True,
+        last_policy_id="ambush-martial-exterior-8-9",
+    )
+
+    assert policy.policy_id == "circus-freak-show-8-9"
+    assert policy.execution == "circus-freak-show-hunt"
+
+
+def test_level_nine_martial_rotates_across_verified_field_circuits() -> None:
+    expected = (
+        ("ambush-martial-exterior-9-10", "circus-freak-show-9-10"),
+        ("circus-freak-show-9-10", "moria-large-orc-9-10"),
+        ("moria-large-orc-9-10", "gnome-guard-circuit-9-10"),
+        ("gnome-guard-circuit-9-10", "daycare-armed-guard-9-10"),
+        ("daycare-armed-guard-9-10", "ambush-martial-exterior-9-10"),
+    )
+
+    for previous_policy, expected_policy in expected:
+        policy = policy_for(
+            9,
+            "warrior",
+            last_policy_id=previous_policy,
+        )
+        assert policy.policy_id == expected_policy
+        assert policy.maximum_level == 10
+
+
+def test_level_seven_caster_hunts_daycare_after_gnome_guard_fallback() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="gnome-guard-caster-7-8",
+    )
+
+    assert policy.policy_id == "daycare-armed-guard-7-8"
+    assert policy.execution == "daycare-armed-guard-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seven_caster_returns_to_gnome_after_daycare_hunt() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="daycare-armed-guard-7-8",
+    )
+
+    assert policy.policy_id == "gnome-hermit-7-8"
+    assert policy.execution == "gnome-hermit-hunt"
 
 
 def test_level_eight_mage_rotates_from_repeated_dogs_to_midennir() -> None:

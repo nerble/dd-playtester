@@ -102,6 +102,38 @@ def test_storage_marks_interrupted_runs_as_failed(tmp_path) -> None:
     assert run["error"] == "test interruption"
 
 
+def test_storage_remembers_exact_commands_for_each_character(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    run_id = storage.create_run(
+        scenario_name="starter:Ararisa",
+        scenario_path=Path("profile.yaml"),
+    )
+    storage.record_event(
+        run_id,
+        kind="command",
+        payload={"command": "description Ararisa studies every hinge."},
+    )
+
+    assert storage.character_command_recorded(
+        "ararisa",
+        "description Ararisa studies every hinge.",
+    )
+    assert not storage.character_command_recorded(
+        "Ararisa",
+        "description Ararisa studies every lock.",
+    )
+    assert not storage.character_command_recorded(
+        "Kestrel",
+        "description Ararisa studies every hinge.",
+    )
+    assert (
+        storage.latest_character_command("Ararisa", prefix="description ")
+        == "description Ararisa studies every hinge."
+    )
+    assert storage.latest_character_command("Kestrel", prefix="description ") is None
+    storage.close()
+
+
 def test_storage_marks_interrupted_campaign_work_as_failed(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     campaign_id = storage.create_campaign(

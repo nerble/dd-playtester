@@ -39,7 +39,7 @@
         "intellectual_practices",
         "mana"
       ],
-      "progression_track": "tutorial-arena",
+      "progression_track": "verified-field-martial",
       "capabilities": ["stealth", "weapon-combat"]
     },
     "warrior": {
@@ -53,7 +53,7 @@
         "intellectual_practices",
         "mana"
       ],
-      "progression_track": "tutorial-arena",
+      "progression_track": "verified-field-martial",
       "capabilities": ["armour", "weapon-combat"]
     },
     "psionic": {

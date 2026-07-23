@@ -65,7 +65,7 @@ def classify_decision(command: str, reason: str, stage: str) -> DecisionMetadata
         return DecisionMetadata("research")
     if verb in {"save", "quit"}:
         return DecisionMetadata("checkpoint")
-    if verb == "title":
+    if verb in {"title", "description"}:
         return DecisionMetadata("identity")
     if verb in {"practice", "train", "gain"}:
         return DecisionMetadata("training")

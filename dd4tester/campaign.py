@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .character import CharacterSpec, load_character_spec
-from .equipment import GearCatalog, load_gear_catalog, normalize_item_name
+from .equipment import (
+    GearCatalog,
+    item_keyword,
+    load_gear_catalog,
+    normalize_item_name,
+    protects_from_sale,
+)
 from .fastwalks import route_named
 from .progression import ProgressionPolicy, policy_for
 from .runner import RunResult
@@ -20,15 +26,24 @@ from .starter import (
     _inventory_descriptions,
     _sellable_inventory_keyword,
     ambush_level_eight_hunt_stops,
+    ambush_martial_level_eight_hunt_stops,
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
+    circus_freak_show_hunt_stops,
+    cult_fanatic_research_stops,
+    daycare_armed_guard_hunt_stops,
+    daycare_armed_guard_hunt_route,
     daycare_nanny_hunt_route,
     daycare_nanny_hunt_stops,
     foundry_level_six_hunt_stops,
     foundry_level_seven_hunt_stops,
+    fleshmonger_guard_research_stops,
     gnome_hermit_hunt_route,
     gnome_hermit_hunt_stops,
+    gnome_guard_hunt_stops,
+    gnome_small_troll_hunt_stops,
     midennir_mountain_goblin_hunt_stops,
+    moria_level_eight_large_orc_hunt_stops,
     moria_level_seven_orc_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
     shire_bull_hunt_route,
@@ -41,10 +56,12 @@ SegmentRunner = Callable[[CharacterSpec, Path], Awaitable[RunResult]]
 _MAINTENANCE_EXECUTIONS = {
     "restock",
     "sell-loot",
+    "vault-spare-gear",
     "rearm-weapon",
     "buy-flight",
 }
 _LIQUIDATION_BASELINE_KEY = "campaign_liquidation_baseline"
+_CAMPAIGN_POLICY_REVISION = 8
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
@@ -125,6 +142,17 @@ class CampaignResult:
         )
 
 
+def _refresh_policy_revision(state: dict[str, Any]) -> dict[str, Any]:
+    """Reset stale stall history once when the autonomous policy graph changes."""
+    if state.get("campaign_policy_revision") == _CAMPAIGN_POLICY_REVISION:
+        return state
+    return {
+        **state,
+        "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
+        "campaign_stalled_segments": 0,
+    }
+
+
 class CampaignRunner:
     """Run verified policy segments with durable checkpoints and aggregate limits."""
 
@@ -166,6 +194,7 @@ class CampaignRunner:
                     )
                 )
             campaign_id, state = self._open_campaign(storage)
+            state = _refresh_policy_revision(state)
             self._policy_xp_deltas = _campaign_policy_xp_deltas(
                 storage.list_campaign_segments(campaign_id)
             )
@@ -246,6 +275,12 @@ class CampaignRunner:
             ),
             has_sellable_loot=(
                 _has_campaign_sellable_loot(
+                    state,
+                    gear_catalog=self._gear_catalog,
+                )
+            ),
+            needs_capacity_relief=bool(
+                _campaign_vault_stow_items(
                     state,
                     gear_catalog=self._gear_catalog,
                 )
@@ -363,6 +398,19 @@ class CampaignRunner:
                     # The current practice listing is authoritative.  A character may
                     # earn another practice before the next bounded campaign segment.
                     practice_types_spent=frozenset(),
+                    rejected_practice_skills=_campaign_rejected_practice_skills(
+                        storage,
+                        campaign_id,
+                        level=_level(state),
+                    ),
+                    vault_stow_items=(
+                        _campaign_vault_stow_items(
+                            state,
+                            gear_catalog=self._gear_catalog,
+                        )
+                        if policy.execution == "vault-spare-gear"
+                        else ()
+                    ),
                 )
         except Exception as exc:
             message = f"{policy.policy_id} segment failed: {exc}"
@@ -433,6 +481,7 @@ class CampaignRunner:
         checkpoint_state = {
             **end_state,
             "campaign_stalled_segments": stalled,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
             "campaign_last_policy": (
                 state.get("campaign_last_policy")
                 if policy.execution in _MAINTENANCE_EXECUTIONS
@@ -494,7 +543,6 @@ class CampaignRunner:
             message = next_policy.blocks_message(self.spec.character.character_class)
         storage.finish_campaign(campaign_id, status="blocked", error=message)
         return CampaignResult(campaign_id, "blocked", checkpoint_id, message, end_state)
-
     def _checkpoint(
         self,
         storage: RunStorage,
@@ -556,15 +604,44 @@ def _campaign_practice_types_spent(
             if event["kind"] != "game_event":
                 continue
             payload = json.loads(event["payload_json"])
-            if payload.get("type") not in {
-                "training_completed",
-                "training_deferred",
-            }:
+            if payload.get("type") != "training_completed":
                 continue
             practice_type = str(payload.get("data", {}).get("practice_type", ""))
             if practice_type in {"physical", "intellectual"}:
                 spent.add(practice_type)
     return frozenset(spent)
+
+
+def _campaign_rejected_practice_skills(
+    storage: RunStorage,
+    campaign_id: int,
+    *,
+    level: int,
+) -> frozenset[str]:
+    rejected: set[str] = set()
+    permanent_trainer_reasons = {
+        "trainer level requirement",
+        "trainer proficiency cap",
+    }
+    for segment in storage.list_campaign_segments(campaign_id):
+        if segment["status"] != "success" or segment["run_id"] is None:
+            continue
+        start_state = json.loads(segment["start_state_json"] or "{}")
+        if _level(start_state) != level:
+            continue
+        for event in storage.list_events(int(segment["run_id"])):
+            if event["kind"] != "game_event":
+                continue
+            payload = json.loads(event["payload_json"])
+            if payload.get("type") != "training_rejected":
+                continue
+            data = payload.get("data", {})
+            if data.get("reason") not in permanent_trainer_reasons:
+                continue
+            skill = str(data.get("skill", "")).strip().casefold()
+            if skill:
+                rejected.add(skill)
+    return frozenset(rejected)
 
 
 async def _run_policy_segment(
@@ -573,6 +650,8 @@ async def _run_policy_segment(
     policy: ProgressionPolicy,
     *,
     practice_types_spent: frozenset[str] = frozenset(),
+    rejected_practice_skills: frozenset[str] = frozenset(),
+    vault_stow_items: tuple[str, ...] = (),
 ) -> RunResult:
     if policy.execution == "starter":
         return await StarterBotRunner(spec, profile_path).run()
@@ -583,6 +662,7 @@ async def _run_policy_segment(
             objective_level=policy.maximum_level or 10,
             arena_kill_limit=policy.segment_kill_limit,
             practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "foundry-hunt":
         hunt_stops = (
@@ -603,6 +683,7 @@ async def _run_policy_segment(
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "moria-orc-hunt":
         return await StarterBotRunner(
@@ -618,6 +699,23 @@ async def _run_policy_segment(
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "moria-large-orc-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 9,
+            fastwalk_route=route_named("moria"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=moria_level_eight_large_orc_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "daycare-nanny-hunt":
         return await StarterBotRunner(
@@ -633,6 +731,54 @@ async def _run_policy_segment(
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "daycare-armed-guard-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 9,
+            fastwalk_route=daycare_armed_guard_hunt_route(),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=daycare_armed_guard_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "cult-fanatic-research":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 9,
+            fastwalk_route=route_named("dragon cult"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=cult_fanatic_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "circus-freak-show-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 8,
+            fastwalk_route=route_named("circus bearded lady"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=circus_freak_show_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "shire-bull-hunt":
         return await StarterBotRunner(
@@ -648,6 +794,7 @@ async def _run_policy_segment(
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "gnome-hermit-hunt":
         return await StarterBotRunner(
@@ -663,12 +810,53 @@ async def _run_policy_segment(
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "gnome-guard-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 9,
+            fastwalk_route=route_named("gnome guard hut"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=gnome_guard_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "gnome-small-troll-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 8,
+            fastwalk_route=route_named("gnome small troll"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=gnome_small_troll_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=True,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "sell-loot":
         return await StarterBotRunner(
             spec,
             profile_path,
             liquidate_loot=True,
+        ).run()
+    if policy.execution == "vault-spare-gear":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            vault_stow_items=vault_stow_items,
+            vault_required_free_weight=10,
+            vault_only=True,
         ).run()
     if policy.execution == "restock":
         return await StarterBotRunner(
@@ -711,13 +899,41 @@ async def _run_policy_segment(
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=hunt_stops,
             fastwalk_kill_limit=policy.segment_kill_limit,
-            fastwalk_train_before_departure=(
-                policy.execution
-                in {"ambush-hunt", "ambush-raider-hunt", "ambush-vile-hunt"}
-            ),
+            fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=True,
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
+        ).run()
+    if policy.execution == "fleshmonger-guard-research":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 9,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_hunt_stops=fleshmonger_guard_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+        ).run()
+    if policy.execution == "ambush-martial-hunt":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 9,
+            fastwalk_route=route_named("ambush"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=ambush_martial_level_eight_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "midennir-hunt":
         use_level_eight_loadout = (policy.minimum_level or 0) >= 8
@@ -734,6 +950,7 @@ async def _run_policy_segment(
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "midennir-sack":
         return await StarterBotRunner(
@@ -966,11 +1183,7 @@ def _state_has_active_affect(value: Any, affect_name: str) -> bool:
     if isinstance(value, dict):
         name = value.get("name")
         if isinstance(name, str) and target == name.casefold():
-            duration = value.get("duration")
-            try:
-                return duration is None or int(duration) > 0
-            except (TypeError, ValueError):
-                return True
+            return True
         return any(
             _state_has_active_affect(item, affect_name)
             for item in value.values()
@@ -1024,7 +1237,58 @@ def _has_campaign_sellable_loot(
             return False
         if carry_weight / maximum_weight < 0.85:
             return False
+    stats = state.get("stats")
+    if isinstance(stats, dict):
+        carry_weight = stats.get("carry_wt")
+        maximum_weight = stats.get("maxcarry_wt")
+        if (
+            isinstance(carry_weight, (int, float))
+            and isinstance(maximum_weight, (int, float))
+            and maximum_weight > 0
+            and maximum_weight - carry_weight <= 10
+        ):
+            return True
     return not _matches_liquidation_baseline(state, gear_catalog=gear_catalog)
+
+
+def _campaign_vault_stow_items(
+    state: dict[str, Any],
+    *,
+    gear_catalog: GearCatalog | None,
+    required_free_weight: int = 10,
+) -> tuple[str, ...]:
+    if gear_catalog is None:
+        return ()
+    stats = state.get("stats")
+    if not isinstance(stats, dict):
+        return ()
+    carry_weight = stats.get("carry_wt")
+    maximum_weight = stats.get("maxcarry_wt")
+    if not isinstance(carry_weight, (int, float)):
+        return ()
+    if not isinstance(maximum_weight, (int, float)):
+        return ()
+    if maximum_weight - carry_weight >= required_free_weight:
+        return ()
+
+    keywords: list[str] = []
+    for description in _inventory_descriptions(state.get("inventory")):
+        item = gear_catalog.match(description)
+        if item is None:
+            continue
+        candidates = gear_catalog.candidates(description)
+        ambiguous_weapon = (
+            item.item_type == 5
+            and len(candidates) > 1
+            and all(candidate.item_type == 5 for candidate in candidates)
+        )
+        plain_armour = item.item_type == 9 and not protects_from_sale(item)
+        if not (ambiguous_weapon or plain_armour):
+            continue
+        keyword = item_keyword(item)
+        if keyword and keyword not in keywords:
+            keywords.append(keyword)
+    return tuple(keywords)
 
 
 def _campaign_liquidation_signature(
@@ -1077,6 +1341,10 @@ def _stalled_count(
 ) -> int:
     previous = _checkpoint_state(checkpoint)
     previous_stalled = int(previous.get("campaign_stalled_segments", 0))
+    if previous.get("campaign_policy_revision") != before.get(
+        "campaign_policy_revision"
+    ):
+        previous_stalled = 0
     if _level(after) > _level(before):
         return 0
     before_xp = before.get("xp")
