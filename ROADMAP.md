@@ -1824,6 +1824,11 @@ and failure handling before registering each new level-band policy.
   source-vetted high-risk openings require 85% rather than perfect health.
   Unknown high-level enemies, unsafe crowds, disabling affects, death traps,
   and unsupplied hunger or thirst remain hard stops.
+- The 2026-07-26 live progression pass increased aggression by another 25%.
+  Bounded combat now lasts 240 seconds, ordinary withdrawal occurs at 30%
+  health, a lower-level half-dead opponent can be finished down to 20%,
+  circuits continue at 45% health with 15% mana and 10% movement, and
+  field-ready or high-risk openings require 75% health and 30% mana.
 - Runs 1128-1129 live-validated that revision. Dorrik bought and confirmed
   flight at the current 94-copper price, then completed all three Ambush
   targets in one trip for 747 XP. She continued productively to 129/197 HP,
@@ -1831,3 +1836,58 @@ and failure handling before registering each new level-band policy.
   and recovered safely at healer room 3054. Dorrik now has 32,639 XP and needs
   7,061 to level ten; at 391/400 carried weight, varied-armour liquidation is
   the next required work unit before another hunt.
+- Runs 1188-1189 replaced narrow "empty area" probes with full four-stop
+  Circus and Moria circuits. Circus found four performers or their crowded
+  rooms and pursued a fleeing Ivan once; Moria gained 412 XP and returned
+  Dorrik safely with 965 XP remaining. Source-proven or GMCP-confirmed
+  below-band bystanders now do not block an appropriate target, and below-band
+  combat joiners no longer force a flee. Unknown and useful-band joiners retain
+  the normal crowd gate, and trivial mobs are never deliberately selected for
+  XP.
+- Run 1200 supplied the first concrete false-crowd regression: source-level-zero
+  Beastly Fido was the Illusionist's only bystander, but the older name-only
+  crowd gate skipped the performer. Fido is now registered as a trivial
+  bystander for that stop, so the useful target receives live `consider`
+  without weakening the gate for a vagabond or unknown mobile.
+- The ticketed Big Top extension treats its ticket as a reusable key rather
+  than consumable travel cost. Circus runs claim it from the Midgaard vault,
+  buy it only when the claim leaves inventory without one, and lodge it again
+  after healer recovery but before logout, preventing DD4's logout key cleanup
+  from destroying it.
+- Run 1206 bought the reboot-priced ticket, unlocked the Big Top, ignored only
+  the source-level-one audience around the Ringmaster, and killed the
+  useful-band target for 510 XP. Dorrik reached level ten with constitution
+  trained and gained 20 HP, 14 mana, and 10 movement. A post-return routing
+  loop prevented automatic lodging, so run 1207 immediately used the proven
+  standalone vault path to preserve the ticket, fully recover, save, and quit
+  at healer room 3054. The post-return vault now owns its route once started.
+- `HELP TEACHER CLUE` marks level ten as the transition from Mud School to
+  Midgaard class masters. Source revision `0482387` locates all nine base-class
+  trainers: mage 3019, cleric 3002, thief 3029, warrior 3023, psionic 3150,
+  brawler 3218, shifter 3221, ranger 3048, and smithy 3050. Campaign policy
+  revision 15 registers each outbound route, trainer keyword, and reverse
+  healer route so level-ten training is no longer a thief-only exception.
+- Live run 1212 captured the full `TEACHER CLUES` response, followed the new
+  warrior route to room 3023, confirmed Dorrik's guildmaster, and recorded two
+  physical and one intellectual practices remaining. Dorrik then walked back
+  to healer room 3054 and saved and quit at full health and mana.
+- Runs 1213-1216 resumed Kestrel's level-nine campaign under revision 15.
+  Two Ambush trips produced 403 XP and 462 XP, and the Day Care armed guard
+  produced 219 XP, leaving 6,127 XP to level ten. The fourth segment sold the
+  recovered bloody spear for 26 reboot-local copper, reduced carried weight
+  from 84/90 to 72/90, and saved and quit safely in healer room 3054.
+- Runs 1217-1225 exposed and repaired a false rearm success. The old parser
+  treated the empty `eq all` line `[weapon] -` as an occupied weapon merely
+  because the slot label was present, so two bounded fights ran barehanded.
+  Policy revision 16 parses the occupied value, overrides stale persisted
+  weapon state, and requires a verified item in the slot. Run 1225 also
+  live-validated the generic insufficient-funds recovery: Kestrel borrowed 300
+  copper from Dragonhoard Bank, bought the reboot-priced 156-copper dagger,
+  wielded it, verified `[weapon] a dagger`, and saved and quit safely at healer
+  room 3054 with 4,871 XP remaining to level ten.
+- Run 1226 then killed a level-eight war dog for 295 XP with the verified
+  dagger and collected its 20-pound collar. The collar displaced a protected
+  silver circlet into inventory, leaving only two pounds free; run 1227 showed
+  that food restocking could not buy even one pie. Policy revision 17 now
+  treats protected carried stat gear as vaultable capacity relief, preserving
+  it for later stance use while making room before essential restocking.

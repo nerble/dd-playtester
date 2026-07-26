@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import heapq
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -78,6 +78,7 @@ class MobileSource:
     act_flags: int
     alignment: int
     area_file: str
+    room_description: str = ""
 
     @property
     def aggressive(self) -> bool:
@@ -105,6 +106,14 @@ class ObjectSource:
     affects: tuple[tuple[int, int], ...] = ()
     extra_flags: int = 0
     room_description: str = ""
+    weight: int = 0
+    load_level_min: int = 0
+    load_level_max: int = 0
+
+    @property
+    def effective_level(self) -> int:
+        """Return the lowest source-backed level at which this object can load."""
+        return self.load_level_min or self.level
 
 
 @dataclass(frozen=True)
@@ -219,15 +228,19 @@ def load_world_source(area_directory: Path) -> WorldSource:
 
 
 def load_object_sources(area_directory: Path) -> dict[int, ObjectSource]:
-    """Load object prototypes without paying to parse the complete room graph."""
+    """Load prototypes annotated with reset-derived object level ranges."""
     if not area_directory.is_dir():
         raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
 
     objects: dict[int, ObjectSource] = {}
     for path in sorted(area_directory.glob("*.are")):
-        lines = path.read_text(encoding="latin-1").splitlines()
-        sections = _section_ranges(lines)
-        objects.update(_parse_objects(lines, sections.get("#OBJECTS")))
+        parsed = parse_area_file(
+            path,
+            include_resets=True,
+            include_entities=True,
+            include_objects=True,
+        )
+        objects.update(parsed.objects)
     return objects
 
 
@@ -257,11 +270,23 @@ def parse_area_file(
     container_contents: dict[int, list[int]] = {}
     mobile_specials: dict[int, tuple[str, ...]] = {}
     if include_resets:
-        mob_resets, container_contents = _parse_resets(
+        mob_resets, container_contents, object_load_levels = _parse_resets(
             lines,
             sections.get("#RESETS"),
             rooms,
+            mobiles,
+            objects,
+            school_area=_area_has_special(
+                lines,
+                sections.get("#AREA_SPECIAL"),
+                "school",
+            ),
+            shopkeepers=_parse_shopkeepers(
+                lines,
+                sections.get("#SHOPS"),
+            ),
         )
+        objects = _annotate_object_load_levels(objects, object_load_levels)
         mobile_specials = _parse_mobile_specials(
             lines,
             sections.get("#SPECIALS"),
@@ -520,7 +545,7 @@ def _parse_mobiles(
         index += 1
         keywords, index = _read_tilde(lines, index, end)
         short_description, index = _read_tilde(lines, index, end)
-        _, index = _read_tilde(lines, index, end)
+        room_description, index = _read_tilde(lines, index, end)
         _, index = _read_tilde(lines, index, end)
         if index + 1 >= end:
             break
@@ -545,6 +570,7 @@ def _parse_mobiles(
             act_flags=_parse_bits(flag_parts[0]),
             alignment=int(flag_parts[2]),
             area_file=area_file,
+            room_description=_clean_text(room_description),
         )
         index = _next_vnum_marker(lines, index, end)
     return mobiles
@@ -590,6 +616,7 @@ def _parse_objects(
             wear_flags = _parse_bits(type_parts[2]) if len(type_parts) > 2 else 0
             source_cost = int(cost_parts[1]) if len(cost_parts) > 1 else 0
             level = int(cost_parts[2]) if len(cost_parts) > 2 else 0
+            weight = int(cost_parts[0]) if cost_parts else 0
         except ValueError:
             # Object programs and extended descriptions can contain ``#<vnum>``
             # references. Ignore them unless the expected numeric header follows.
@@ -620,6 +647,7 @@ def _parse_objects(
             affects=tuple(affects),
             extra_flags=extra_flags,
             room_description=_clean_text(room_description),
+            weight=weight,
         )
         index = record_end
     return objects
@@ -689,13 +717,25 @@ def _parse_resets(
     lines: list[str],
     bounds: tuple[int, int] | None,
     rooms: dict[int, RoomSource],
-) -> tuple[list[MobReset], dict[int, list[int]]]:
+    mobiles: Mapping[int, MobileSource],
+    objects: Mapping[int, ObjectSource],
+    *,
+    school_area: bool,
+    shopkeepers: set[int],
+) -> tuple[
+    list[MobReset],
+    dict[int, list[int]],
+    dict[int, list[tuple[int, int]]],
+]:
     if bounds is None:
-        return [], {}
+        return [], {}, {}
     index, end = bounds
     pending: list[dict[str, object]] = []
     current: dict[str, object] | None = None
+    current_mobile_vnum: int | None = None
+    current_level_range: tuple[int, int] | None = None
     container_contents: dict[int, list[int]] = {}
+    object_load_levels: dict[int, list[tuple[int, int]]] = {}
 
     while index < end:
         parts = lines[index].split()
@@ -712,15 +752,54 @@ def _parse_resets(
                 "equipment": [],
             }
             pending.append(current)
+            current_mobile_vnum = int(parts[2])
+            mobile = mobiles.get(current_mobile_vnum)
+            current_level_range = (
+                _mobile_reset_level_range(mobile.level)
+                if mobile is not None
+                else None
+            )
         elif command in {"E", "G"} and current is not None and len(parts) >= 3:
             if _all_ints(parts[1:3]):
-                current["object_vnums"].append(int(parts[2]))  # type: ignore[union-attr]
+                object_vnum = int(parts[2])
+                current["object_vnums"].append(object_vnum)  # type: ignore[union-attr]
                 if command == "E" and len(parts) >= 5 and _all_ints(parts[4:5]):
                     current["equipment"].append(  # type: ignore[union-attr]
-                        (int(parts[4]), int(parts[2]))
+                        (int(parts[4]), object_vnum)
                     )
+                if (
+                    current_mobile_vnum not in shopkeepers
+                    and current_level_range is not None
+                ):
+                    loaded_range = _mob_loot_level_range(
+                        current_level_range,
+                        school_area=school_area,
+                    )
+                    object_load_levels.setdefault(object_vnum, []).append(
+                        loaded_range
+                    )
+        elif command == "O" and len(parts) >= 5 and _all_ints(parts[1:5]):
+            if current_level_range is not None:
+                object_load_levels.setdefault(int(parts[2]), []).append(
+                    _fuzzy_level_range(current_level_range)
+                )
+        elif command == "I" and len(parts) >= 5 and _all_ints(parts[1:5]):
+            object_load_levels.setdefault(int(parts[1]), []).append(
+                _fuzzy_level_range((int(parts[2]), int(parts[2])))
+            )
         elif command == "P" and len(parts) >= 5 and _all_ints(parts[1:5]):
-            container_contents.setdefault(int(parts[4]), []).append(int(parts[2]))
+            object_vnum = int(parts[2])
+            container_vnum = int(parts[4])
+            container_contents.setdefault(container_vnum, []).append(object_vnum)
+            parent_ranges = object_load_levels.get(container_vnum, ())
+            if not parent_ranges:
+                parent = objects.get(container_vnum)
+                if parent is not None and parent.level > 0:
+                    parent_ranges = ((parent.level, parent.level),)
+            for parent_range in parent_ranges:
+                object_load_levels.setdefault(object_vnum, []).append(
+                    _fuzzy_level_range(parent_range)
+                )
         elif command == "D" and len(parts) >= 5 and _all_ints(parts[1:5]):
             room_vnum = int(parts[2])
             direction = _DIRECTIONS.get(int(parts[3]))
@@ -750,7 +829,73 @@ def _parse_resets(
         )
         for item in pending
     ]
-    return resets, container_contents
+    return resets, container_contents, object_load_levels
+
+
+def _mobile_reset_level_range(source_level: int) -> tuple[int, int]:
+    mobile_min = max(1, source_level - 1)
+    mobile_max = max(1, source_level + 1)
+    return max(0, mobile_min - 2), max(0, mobile_max - 2)
+
+
+def _fuzzy_level_range(level_range: tuple[int, int]) -> tuple[int, int]:
+    return max(1, level_range[0] - 1), max(1, level_range[1] + 1)
+
+
+def _mob_loot_level_range(
+    reset_level_range: tuple[int, int],
+    *,
+    school_area: bool,
+) -> tuple[int, int]:
+    if school_area and reset_level_range[1] <= 5:
+        return 1, 1
+    return _fuzzy_level_range(reset_level_range)
+
+
+def _annotate_object_load_levels(
+    objects: Mapping[int, ObjectSource],
+    ranges: Mapping[int, Iterable[tuple[int, int]]],
+) -> dict[int, ObjectSource]:
+    annotated = dict(objects)
+    for vnum, observed_ranges in ranges.items():
+        item = annotated.get(vnum)
+        materialized = tuple(observed_ranges)
+        if item is None or not materialized:
+            continue
+        annotated[vnum] = replace(
+            item,
+            load_level_min=min(level_range[0] for level_range in materialized),
+            load_level_max=max(level_range[1] for level_range in materialized),
+        )
+    return annotated
+
+
+def _area_has_special(
+    lines: list[str],
+    bounds: tuple[int, int] | None,
+    special: str,
+) -> bool:
+    if bounds is None:
+        return False
+    start, end = bounds
+    return any(lines[index].strip() == special for index in range(start, end))
+
+
+def _parse_shopkeepers(
+    lines: list[str],
+    bounds: tuple[int, int] | None,
+) -> set[int]:
+    if bounds is None:
+        return set()
+    start, end = bounds
+    shopkeepers: set[int] = set()
+    for index in range(start, end):
+        parts = lines[index].split()
+        if not parts or parts[0] == "0":
+            continue
+        if parts[0].lstrip("-").isdigit():
+            shopkeepers.add(int(parts[0]))
+    return shopkeepers
 
 
 def _parse_mobile_specials(

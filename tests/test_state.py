@@ -107,3 +107,23 @@ def test_state_changes_only_when_event_changes_domain_state() -> None:
     assert state.dead is True
     assert state.in_combat is False
     assert state.combat_target is None
+
+
+def test_leaving_purgatory_clears_persisted_death_state() -> None:
+    state = CharacterState(area="Purgatory", room_vnum="427", dead=True)
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "gmcp",
+            {
+                "name": "By the Temple Altar",
+                "vnum": "3054",
+                "area": "Midgaard",
+                "flags": "safe healing",
+            },
+        )
+    )
+
+    assert state.dead is False
+    assert state.room_vnum == "3054"

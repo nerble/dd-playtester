@@ -135,9 +135,18 @@ class CharacterState:
             return
 
         if event.type in {"room_entered", "room_updated"}:
+            previous_area = self.area
             self.room_name = _text(data.get("name"), self.room_name)
             self.room_vnum = _text(data.get("vnum"), self.room_vnum)
             self.area = _text(data.get("area"), self.area)
+            if (
+                self.dead
+                and previous_area is not None
+                and previous_area.casefold() == "purgatory"
+                and self.area is not None
+                and self.area.casefold() != "purgatory"
+            ):
+                self.dead = False
             self.sector = _text(
                 data.get("sector_text", data.get("sector")),
                 self.sector,

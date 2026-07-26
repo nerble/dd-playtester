@@ -32,6 +32,7 @@ from .starter import (
     run_magic_shop_research_profile,
     run_midennir_research_profile,
     run_moria_research_profile,
+    run_outfit_profile,
     run_restock_profile,
     run_return_home_profile,
     run_resupply_profile,
@@ -101,6 +102,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="path to an existing character YAML profile",
     )
+    outfit_parser = subcommands.add_parser(
+        "outfit",
+        help="fill empty legal equipment slots at the safe Midgaard leather shop",
+    )
+    outfit_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
+    )
     sell_loot_parser = subcommands.add_parser(
         "sell-loot",
         help="sell carried weapons and armour through verified safe Midgaard shops",
@@ -139,12 +149,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     guildmaster_parser = subcommands.add_parser(
         "guildmaster-research",
-        help="visit the Midgaard Guildmaster and record available training",
+        help="read the teacher clue and inspect a Midgaard class trainer",
     )
     guildmaster_parser.add_argument(
         "profile",
         type=Path,
-        help="path to an existing mage character YAML profile",
+        help="path to an existing character YAML profile",
     )
     magic_shop_parser = subcommands.add_parser(
         "magic-shop-research",
@@ -674,6 +684,17 @@ def main(argv: list[str] | None = None) -> int:
             result = asyncio.run(run_sell_loot_profile(args.profile))
         except Exception as exc:
             print(f"Sell-loot run failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "outfit":
+        try:
+            result = asyncio.run(run_outfit_profile(args.profile))
+        except Exception as exc:
+            print(f"Outfit run failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")

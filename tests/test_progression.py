@@ -16,6 +16,48 @@ def test_starter_policy_is_executable_before_level_two() -> None:
     assert policy.execution == "starter"
 
 
+def test_empty_basic_slots_select_midgaard_outfit_maintenance() -> None:
+    policy = policy_for(8, "mage", needs_basic_gear=True)
+
+    assert policy.policy_id == "outfit-basic-gear"
+    assert policy.execution == "outfit-basic-gear"
+    assert policy.executable is True
+
+
+def test_body_slot_recovery_selects_registered_required_loot_policy() -> None:
+    policy = policy_for(8, "mage", needs_body_gear_recovery=True)
+
+    assert policy.policy_id == "recover-basic-body-gear"
+    assert policy.execution == "recover-basic-body"
+    assert policy.segment_kill_limit == 1
+    assert "forbidden for XP progression" in policy.evidence[-1]
+
+
+def test_wrist_or_float_gap_selects_mud_school_accessory_recovery() -> None:
+    policy = policy_for(8, "mage", needs_school_wrist_float=True)
+
+    assert policy.policy_id == "recover-school-wrist-float"
+    assert policy.execution == "recover-school-wrist-float"
+    assert policy.segment_kill_limit == 2
+
+
+def test_waist_gap_selects_gremlin_basic_recovery() -> None:
+    policy = policy_for(8, "mage", needs_gremlin_waist=True)
+
+    assert policy.policy_id == "recover-gremlin-waist"
+    assert policy.execution == "recover-gremlin-waist"
+    assert policy.segment_kill_limit == 1
+
+
+def test_finger_gap_selects_daycare_old_doll_ring_recovery() -> None:
+    policy = policy_for(8, "mage", needs_daycare_ring=True)
+
+    assert policy.policy_id == "recover-daycare-ring"
+    assert policy.execution == "recover-daycare-ring"
+    assert policy.segment_kill_limit == 3
+    assert "+1 strength and +6 hit points" in policy.evidence[0]
+
+
 @pytest.mark.parametrize("character_class", sorted(CLASS_PRACTICE_SKILLS))
 def test_level_two_to_six_policy_is_verified_and_executable(
     character_class: str,
@@ -544,6 +586,19 @@ def test_level_eight_mage_collects_sack_before_resuming_hunts() -> None:
     assert hunt.segment_kill_limit == 1
 
 
+def test_level_eight_mage_requires_sanctuary_for_looter_extension() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        has_sanctuary_potion=True,
+    )
+
+    assert policy.policy_id == "ambush-war-dog-looter-8-9"
+    assert policy.execution == "ambush-war-dog-hunt"
+    assert policy.segment_kill_limit == 2
+
+
 @pytest.mark.parametrize(
     ("character_class", "practice_skill"),
     (("thief", "backstab"), ("warrior", "kick")),
@@ -714,6 +769,40 @@ def test_level_nine_martial_rotates_across_verified_field_circuits() -> None:
         assert policy.maximum_level == 10
 
 
+def test_level_nine_martial_skips_recent_nonproductive_circuits() -> None:
+    policy = policy_for(
+        9,
+        "warrior",
+        last_policy_id="daycare-armed-guard-9-10",
+        policy_xp_deltas={
+            "ambush-martial-exterior-9-10": -44,
+            "circus-freak-show-9-10": 192,
+            "moria-large-orc-9-10": 0,
+            "gnome-guard-circuit-9-10": 0,
+            "daycare-armed-guard-9-10": 241,
+        },
+    )
+
+    assert policy.policy_id == "circus-freak-show-9-10"
+
+
+def test_level_nine_martial_skips_trivial_xp_segments() -> None:
+    policy = policy_for(
+        9,
+        "warrior",
+        last_policy_id="circus-freak-show-9-10",
+        policy_xp_deltas={
+            "ambush-martial-exterior-9-10": -44,
+            "circus-freak-show-9-10": 20,
+            "moria-large-orc-9-10": 0,
+            "gnome-guard-circuit-9-10": 0,
+            "daycare-armed-guard-9-10": 241,
+        },
+    )
+
+    assert policy.policy_id == "daycare-armed-guard-9-10"
+
+
 def test_level_seven_caster_hunts_daycare_after_gnome_guard_fallback() -> None:
     policy = policy_for(
         7,
@@ -773,6 +862,66 @@ def test_level_eight_mage_falls_back_after_empty_rotated_hunt() -> None:
     assert policy.policy_id == "ambush-war-dog-8-9"
 
 
+def test_level_eight_mage_rotates_immediately_after_empty_war_dog_hunt() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        last_policy_id="ambush-war-dog-8-9",
+        stalled_segments=1,
+    )
+
+    assert policy.policy_id == "midennir-goblin-8-10"
+
+
+def test_level_eight_mage_rotates_beyond_depleted_dog_and_goblin_hunts() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        last_policy_id="midennir-goblin-8-10",
+        policy_xp_deltas={
+            "ambush-war-dog-8-9": 0,
+            "midennir-goblin-8-10": 0,
+        },
+    )
+
+    assert policy.policy_id == "moria-large-orc-8-9"
+    assert policy.execution == "moria-large-orc-hunt"
+
+
+def test_level_eight_mage_repeats_productive_extended_hunt() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        last_policy_id="moria-large-orc-8-9",
+        policy_xp_deltas={
+            "ambush-war-dog-8-9": 0,
+            "midennir-goblin-8-10": 0,
+            "moria-large-orc-8-9": 200,
+        },
+    )
+
+    assert policy.policy_id == "moria-large-orc-8-9"
+
+
+def test_level_eight_mage_rotates_after_empty_extended_hunt() -> None:
+    policy = policy_for(
+        8,
+        "mage",
+        has_large_sack=True,
+        last_policy_id="moria-large-orc-8-9",
+        policy_xp_deltas={
+            "ambush-war-dog-8-9": 0,
+            "midennir-goblin-8-10": 0,
+            "moria-large-orc-8-9": 0,
+        },
+    )
+
+    assert policy.policy_id == "circus-freak-show-8-9"
+
+
 def test_level_nine_mage_uses_proven_war_dog_without_protection() -> None:
     policy = policy_for(9, "mage", has_large_sack=True)
 
@@ -780,6 +929,35 @@ def test_level_nine_mage_uses_proven_war_dog_without_protection() -> None:
     assert policy.execution == "ambush-hunt"
     assert policy.practice_skill == "chill touch"
     assert policy.segment_kill_limit == 1
+
+
+def test_level_nine_mage_rotates_after_empty_ambush_hunt() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        last_policy_id="ambush-exterior-9-10",
+        policy_xp_deltas={"ambush-exterior-9-10": 0},
+    )
+
+    assert policy.policy_id == "circus-freak-show-9-10"
+    assert policy.execution == "circus-freak-show-hunt"
+
+
+def test_level_nine_mage_rotates_beyond_known_empty_hunts() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        last_policy_id="circus-freak-show-9-10",
+        policy_xp_deltas={
+            "ambush-exterior-9-10": 0,
+            "circus-freak-show-9-10": 0,
+        },
+    )
+
+    assert policy.policy_id == "moria-large-orc-9-10"
+    assert policy.execution == "moria-large-orc-hunt"
 
 
 def test_level_nine_mage_buys_flight_before_more_field_work() -> None:

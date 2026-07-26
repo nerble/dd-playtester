@@ -55,6 +55,11 @@ class ProgressionContext:
     needs_capacity_relief: bool = False
     has_food: bool = True
     has_weapon: bool = True
+    needs_basic_gear: bool = False
+    needs_body_gear_recovery: bool = False
+    needs_school_wrist_float: bool = False
+    needs_gremlin_waist: bool = False
+    needs_daycare_ring: bool = False
     has_sanctuary_potion: bool = False
     has_flight: bool = True
     can_attempt_flight_purchase: bool = False
@@ -535,14 +540,19 @@ _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY = replace(
     minimum_level=9,
     maximum_level=10,
     summary=(
-        "Revalidate the three-performer Circus sweep at level nine, engaging "
-        "only targets that remain inside the useful live-consider band."
+        "Sweep the Circus performers and ticketed Big Top at level nine, "
+        "engaging only targets inside the useful live-consider band."
     ),
     evidence=(
         *_CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY.evidence,
         "The level-nine continuation preserves exact-target, crowd, and live-consider gates; targets that have fallen into a do_consider <= -5 branch are skipped.",
         "Live run 1107: level-nine Kestrel rejected a crowded first stop, skipped the Illusionist after the 'no match for you' consider result, found Ivan absent, and recovered fully at healer room 3054.",
+        "Source revision 0482387 adds the adjacent non-aggressive Midget as a fourth live-considered stop; its fuzzed load is engaged only when it remains above the do_consider <= -5 branches.",
+        "Source revision 0482387 places the ticket on the room-4402 clerk and uses it to unlock the Big Top entrance; its live purchase price remains reboot-local. The source-level-ten Ringmaster resets in room 4419 with only source-level-one audience members.",
+        "Live run 1204 proved source-level-zero Beastly Fido no longer blocks consideration of the Illusionist; useful-band and unknown bystanders retain the crowd gate.",
+        "Live run 1206 bought and retained the ticket, opened the Big Top, discounted only the level-one audience, killed the Ringmaster for 510 XP, and advanced Dorrik to level ten.",
     ),
+    segment_kill_limit=5,
 )
 
 _MORIA_LARGE_ORC_LEVEL_NINE_POLICY = replace(
@@ -551,13 +561,15 @@ _MORIA_LARGE_ORC_LEVEL_NINE_POLICY = replace(
     minimum_level=9,
     maximum_level=10,
     summary=(
-        "Revalidate the isolated large-orc probe at level nine while rejecting "
-        "depleted, crowded, or below-band encounters."
+        "Sweep the source-backed level-one Moria orc circuit at level nine, "
+        "leaving the poison snake until last."
     ),
     evidence=(
         *_MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY.evidence,
         "The source-level-seven target remains potentially useful at level nine, subject to reboot fuzz and the mandatory live-consider gate.",
+        "The broader established circuit adds a second large-orc location, an orc-plus-snake room, and the snake last; every stop retains exact-target, crowd, health, and live-consider gates.",
     ),
+    segment_kill_limit=3,
 )
 
 _GNOME_GUARD_LEVEL_NINE_POLICY = replace(
@@ -723,12 +735,35 @@ _AMBUSH_LEVEL_EIGHT_POLICY = ProgressionPolicy(
     ),
     evidence=(
         "DD4 source places the level-6 war dog in room 4505 and gives its collar +1 damroll.",
+        "DD4 source places the level-7 goblin looter two rooms farther south on the same exterior circuit.",
         "Live run 326 killed a reboot-fuzzed level-7 war dog for 249 XP and returned safely to the Midgaard healer.",
         "Live run 327 lost 44 XP after three magic-missile attempts failed to finish the higher-HP wounded goblin.",
+        "Live run 1079 proved the war-dog-to-looter route while the exact-target, crowd, consider, and withdrawal gates remained active.",
+        "Live run 1297: level-eight Aeloria killed the war dog for 308 XP and remained at 78/120 HP, above the field continuation threshold.",
+        "Live run 1305 showed the unprotected looter can outlast a failed flee and kill a 120-HP mage; the ordinary policy therefore stops after the dog.",
         "The route excludes the level-8 raider, level-10 guard, and the cave complex.",
     ),
     practice_skill="chill touch",
     segment_kill_limit=1,
+)
+
+_AMBUSH_PROTECTED_LEVEL_EIGHT_POLICY = ProgressionPolicy(
+    policy_id="ambush-war-dog-looter-8-9",
+    minimum_level=8,
+    maximum_level=9,
+    status="verified",
+    execution="ambush-war-dog-hunt",
+    summary=(
+        "Sweep the war dog and goblin looter only while a source-identified "
+        "sanctuary potion is available in the combat pouch."
+    ),
+    evidence=(
+        *_AMBUSH_LEVEL_EIGHT_POLICY.evidence,
+        "DD4 source gives the looter a spear, while sanctuary halves incoming damage.",
+        "Live run 1301 completed the two-target circuit for 446 XP; the protected policy retains independent consider, crowd, and health gates.",
+    ),
+    practice_skill="chill touch",
+    segment_kill_limit=2,
 )
 
 _AMBUSH_CASTER_LEVEL_SEVEN_POLICY = ProgressionPolicy(
@@ -926,6 +961,87 @@ _REARM_WEAPON_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_OUTFIT_BASIC_GEAR_POLICY = ProgressionPolicy(
+    policy_id="outfit-basic-gear",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="outfit-basic-gear",
+    summary="Fill empty legal armour slots with inexpensive Midgaard basics.",
+    evidence=(
+        "DD4 source resets leather body, head, arm, hand, leg, foot, and pouch basics on the leather worker in room 3035.",
+        "The route between healer room 3054 and Leather Shop room 3035 uses only safe Midgaard rooms.",
+        "The workflow audits eq all and buys only basics for profession-visible empty slots.",
+    ),
+    practice_skill=None,
+)
+
+_RECOVER_BASIC_BODY_POLICY = ProgressionPolicy(
+    policy_id="recover-basic-body-gear",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="recover-basic-body",
+    summary="Recover a lightweight body basic from a registered low-risk carrier.",
+    evidence=(
+        "DD4 source equips level-3 sentinel Oshu in Foundry room 110 with object 104, a seven-pound leather jerkin.",
+        "Oshu is one east from the official Foundry fastwalk endpoint in room 109.",
+        "This is a one-kill required-loot action; below-band targets remain forbidden for XP progression.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_RECOVER_SCHOOL_WRIST_FLOAT_POLICY = ProgressionPolicy(
+    policy_id="recover-school-wrist-float",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="recover-school-wrist-float",
+    summary="Fill empty wrist and floating slots from low-risk Mud School carriers.",
+    evidence=(
+        "DD4 school.are equips the level-2 lizardman in room 3720 with object 3713, a copper bracer.",
+        "DD4 school.are equips the level-1 gladiator in room 3722 with another copper bracer and object 3721, a wisdom-boosting snowy white floating stone.",
+        "The route begins at Midgaard recall, passes only tutorial rooms, and recalls after the two bounded required-loot kills.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+)
+
+_RECOVER_GREMLIN_WAIST_POLICY = ProgressionPolicy(
+    policy_id="recover-gremlin-waist",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="recover-gremlin-waist",
+    summary="Fill an empty waist slot from a low-risk baby gremlin.",
+    evidence=(
+        "DD4 gremlinlair.are gives the level-2 baby gremlin in room 134 object 135, a waist-slot diaper.",
+        "The source-backed route reaches room 134 directly from Midgaard recall and permits immediate recall after looting.",
+        "This is a one-kill required-loot action; below-band targets remain forbidden for XP progression.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_RECOVER_DAYCARE_RING_POLICY = ProgressionPolicy(
+    policy_id="recover-daycare-ring",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="recover-daycare-ring",
+    summary="Fill both finger slots and restore nearby stat-bearing bodywear.",
+    evidence=(
+        "DD4 daycare.are equips the level-1 old doll in room 6605 with object 6601, a pink ice ring granting +1 strength and +6 hit points.",
+        "The room reset creates two old dolls carrying pink ice rings, so one bounded visit can fill both finger slots.",
+        "The same route returns through room 6602, where the old wrinkled nanny carries a linen robe granting wisdom and mana.",
+        "The old doll is reached two rooms beyond the verified Dwarven Daycare route; other source resets in the room are low-level non-aggressive dolls and youths.",
+        "These are three bounded required-loot kills; below-band targets remain forbidden for XP progression.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+)
+
 _BUY_FLIGHT_POLICY = ProgressionPolicy(
     policy_id="buy-flight-potion",
     minimum_level=5,
@@ -969,6 +1085,11 @@ def policy_for(
     needs_capacity_relief: bool = False,
     has_food: bool = True,
     has_weapon: bool = True,
+    needs_basic_gear: bool = False,
+    needs_body_gear_recovery: bool = False,
+    needs_school_wrist_float: bool = False,
+    needs_gremlin_waist: bool = False,
+    needs_daycare_ring: bool = False,
     has_sanctuary_potion: bool = False,
     has_flight: bool = True,
     can_attempt_flight_purchase: bool = False,
@@ -988,6 +1109,11 @@ def policy_for(
             needs_capacity_relief=needs_capacity_relief,
             has_food=has_food,
             has_weapon=has_weapon,
+            needs_basic_gear=needs_basic_gear,
+            needs_body_gear_recovery=needs_body_gear_recovery,
+            needs_school_wrist_float=needs_school_wrist_float,
+            needs_gremlin_waist=needs_gremlin_waist,
+            needs_daycare_ring=needs_daycare_ring,
             has_sanctuary_potion=has_sanctuary_potion,
             has_flight=has_flight,
             can_attempt_flight_purchase=can_attempt_flight_purchase,
@@ -1012,6 +1138,16 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _RESTOCK_POLICY
     if not context.has_weapon:
         return _REARM_WEAPON_POLICY
+    if context.needs_basic_gear:
+        return _OUTFIT_BASIC_GEAR_POLICY
+    if context.needs_body_gear_recovery:
+        return _RECOVER_BASIC_BODY_POLICY
+    if context.needs_school_wrist_float:
+        return _RECOVER_SCHOOL_WRIST_FLOAT_POLICY
+    if context.needs_gremlin_waist:
+        return _RECOVER_GREMLIN_WAIST_POLICY
+    if context.needs_daycare_ring:
+        return _RECOVER_DAYCARE_RING_POLICY
     if normalized_level < 6:
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,
@@ -1098,46 +1234,33 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             and not context.flight_purchase_failed
         ):
             return _BUY_FLIGHT_POLICY
-        if context.last_policy_id in {
-            _GNOME_GUARD_LEVEL_EIGHT_POLICY.policy_id,
-            _GNOME_GUARD_LEVEL_NINE_POLICY.policy_id,
-        }:
-            return replace(
-                _DAYCARE_ARMED_GUARD_LEVEL_NINE_POLICY,
-                practice_skill=context.practice_skill,
+        rotation = (
+            _AMBUSH_MARTIAL_LEVEL_NINE_POLICY,
+            _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY,
+            _MORIA_LARGE_ORC_LEVEL_NINE_POLICY,
+            _GNOME_GUARD_LEVEL_NINE_POLICY,
+            _DAYCARE_ARMED_GUARD_LEVEL_NINE_POLICY,
+        )
+        previous_indexes = {
+            _AMBUSH_MARTIAL_LEVEL_EIGHT_POLICY.policy_id: 0,
+            _AMBUSH_MARTIAL_LEVEL_NINE_POLICY.policy_id: 0,
+            _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY.policy_id: 1,
+            _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY.policy_id: 1,
+            _MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY.policy_id: 2,
+            _MORIA_LARGE_ORC_LEVEL_NINE_POLICY.policy_id: 2,
+            _GNOME_GUARD_LEVEL_EIGHT_POLICY.policy_id: 3,
+            _GNOME_GUARD_LEVEL_NINE_POLICY.policy_id: 3,
+            _DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY.policy_id: 4,
+            _DAYCARE_ARMED_GUARD_LEVEL_NINE_POLICY.policy_id: 4,
+        }
+        previous_index = previous_indexes.get(context.last_policy_id)
+        if previous_index is not None:
+            policy = _next_productive_policy(
+                rotation,
+                previous_index=previous_index,
+                xp_deltas=context.policy_xp_deltas,
             )
-        if context.last_policy_id in {
-            _DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY.policy_id,
-            _DAYCARE_ARMED_GUARD_LEVEL_NINE_POLICY.policy_id,
-        }:
-            return replace(
-                _AMBUSH_MARTIAL_LEVEL_NINE_POLICY,
-                practice_skill=context.practice_skill,
-            )
-        if context.last_policy_id in {
-            _AMBUSH_MARTIAL_LEVEL_EIGHT_POLICY.policy_id,
-            _AMBUSH_MARTIAL_LEVEL_NINE_POLICY.policy_id,
-        }:
-            return replace(
-                _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY,
-                practice_skill=context.practice_skill,
-            )
-        if context.last_policy_id in {
-            _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY.policy_id,
-            _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY.policy_id,
-        }:
-            return replace(
-                _MORIA_LARGE_ORC_LEVEL_NINE_POLICY,
-                practice_skill=context.practice_skill,
-            )
-        if context.last_policy_id in {
-            _MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY.policy_id,
-            _MORIA_LARGE_ORC_LEVEL_NINE_POLICY.policy_id,
-        }:
-            return replace(
-                _GNOME_GUARD_LEVEL_NINE_POLICY,
-                practice_skill=context.practice_skill,
-            )
+            return replace(policy, practice_skill=context.practice_skill)
         return replace(
             _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY,
             practice_skill=context.practice_skill,
@@ -1146,10 +1269,58 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         if not context.has_large_sack:
             return _MIDENNIR_SACK_POLICY
         if normalized_level == 8:
+            if context.has_sanctuary_potion:
+                return _AMBUSH_PROTECTED_LEVEL_EIGHT_POLICY
+            rotation = (
+                _AMBUSH_LEVEL_EIGHT_POLICY,
+                _MIDENNIR_LEVEL_EIGHT_POLICY,
+                _MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY,
+                _CIRCUS_FREAK_SHOW_LEVEL_EIGHT_POLICY,
+                _GNOME_GUARD_LEVEL_EIGHT_POLICY,
+                _DAYCARE_ARMED_GUARD_LEVEL_EIGHT_POLICY,
+            )
+            previous_indexes = {
+                policy.policy_id: index
+                for index, policy in enumerate(rotation)
+            }
+            previous_index = previous_indexes.get(context.last_policy_id)
+            recent_xp = (context.policy_xp_deltas or {}).get(
+                context.last_policy_id or ""
+            )
+            if (
+                previous_index is not None
+                and recent_xp is not None
+                and recent_xp < _MEANINGFUL_FIELD_SEGMENT_XP
+            ):
+                policy = _next_productive_policy(
+                    rotation,
+                    previous_index=previous_index,
+                    xp_deltas=context.policy_xp_deltas,
+                )
+                return replace(policy, practice_skill=context.practice_skill)
+            if (
+                previous_index is not None
+                and previous_index >= 2
+                and recent_xp is not None
+            ):
+                return replace(
+                    rotation[previous_index],
+                    practice_skill=context.practice_skill,
+                )
             war_dog_kills = _boot_kill_count(
                 context.boot_kill_counts, "war dog"
             )
             goblin_kills = _boot_kill_count(context.boot_kill_counts, "goblin")
+            if (
+                context.stalled_segments > 0
+                and context.last_policy_id == _AMBUSH_LEVEL_EIGHT_POLICY.policy_id
+            ):
+                return _MIDENNIR_LEVEL_EIGHT_POLICY
+            if (
+                context.stalled_segments > 0
+                and context.last_policy_id == _MIDENNIR_LEVEL_EIGHT_POLICY.policy_id
+            ):
+                return _AMBUSH_LEVEL_EIGHT_POLICY
             if (
                 context.stalled_segments % 2 == 0
                 and war_dog_kills >= 5
@@ -1190,6 +1361,32 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             ):
                 return _BUY_FLIGHT_POLICY
             return _MORIA_SANCTUARY_LEVEL_NINE_POLICY
+        fallback_rotation = (
+            _AMBUSH_LEVEL_NINE_POLICY,
+            _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY,
+            _MORIA_LARGE_ORC_LEVEL_NINE_POLICY,
+            _GNOME_GUARD_LEVEL_NINE_POLICY,
+            _DAYCARE_ARMED_GUARD_LEVEL_NINE_POLICY,
+        )
+        previous_indexes = {
+            policy.policy_id: index
+            for index, policy in enumerate(fallback_rotation)
+        }
+        previous_index = previous_indexes.get(context.last_policy_id)
+        recent_xp = (context.policy_xp_deltas or {}).get(
+            context.last_policy_id or ""
+        )
+        if (
+            previous_index is not None
+            and recent_xp is not None
+            and recent_xp < _MEANINGFUL_FIELD_SEGMENT_XP
+        ):
+            policy = _next_productive_policy(
+                fallback_rotation,
+                previous_index=previous_index,
+                xp_deltas=context.policy_xp_deltas,
+            )
+            return replace(policy, practice_skill=context.practice_skill)
         return _AMBUSH_LEVEL_NINE_POLICY
     if field_caster and normalized_level == 10:
         if (
@@ -1466,6 +1663,22 @@ def _boot_kill_count(
         for name, count in (counts or {}).items()
         if _normalize_mob_name(name) == expected
     )
+
+
+def _next_productive_policy(
+    rotation: tuple[ProgressionPolicy, ...],
+    *,
+    previous_index: int,
+    xp_deltas: Mapping[str, int] | None,
+) -> ProgressionPolicy:
+    ordered = rotation[previous_index + 1 :] + rotation[: previous_index + 1]
+    if not xp_deltas:
+        return ordered[0]
+    for policy in ordered:
+        recent_xp = xp_deltas.get(policy.policy_id)
+        if recent_xp is None or recent_xp >= _MEANINGFUL_FIELD_SEGMENT_XP:
+            return policy
+    return max(ordered, key=lambda policy: xp_deltas.get(policy.policy_id, 0))
 
 
 def _normalize_mob_name(value: str) -> str:

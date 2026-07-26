@@ -66,9 +66,9 @@ class GearCatalog:
         self.objects = dict(objects)
         by_name: dict[str, list[ObjectSource]] = {}
         for item in self.objects.values():
-            by_name.setdefault(normalize_item_name(item.short_description), []).append(
-                item
-            )
+            short_name = normalize_item_name(item.short_description)
+            if short_name:
+                by_name.setdefault(short_name, []).append(item)
             room_name = normalize_room_item_name(item.room_description)
             if room_name:
                 by_name.setdefault(room_name, []).append(item)
@@ -83,9 +83,9 @@ class GearCatalog:
         candidates = self.candidates(description)
         if not candidates:
             return None
-        # Exact duplicate descriptions exist. Prefer the lowest-level prototype;
-        # it is the conservative match for a low-level character.
-        return min(candidates, key=lambda item: (item.level, item.vnum))
+        # Exact duplicate descriptions exist. Prefer the lowest reset-derived
+        # load level for a low-level character.
+        return min(candidates, key=lambda item: (item.effective_level, item.vnum))
 
     def candidates(self, description: str) -> tuple[ObjectSource, ...]:
         """Return distinct source prototypes sharing an observed description."""
@@ -116,7 +116,9 @@ class GearCatalog:
                 subclass=subclass,
             ):
                 continue
-            result.append(min(candidates, key=lambda item: (item.level, item.vnum)))
+            result.append(
+                min(candidates, key=lambda item: (item.effective_level, item.vnum))
+            )
         return result
 
     def is_unambiguously_usable(
@@ -276,6 +278,37 @@ def is_capacity_infrastructure(item: ObjectSource) -> bool:
     )
 
 
+def is_strength_penalty_ring(item: ObjectSource) -> bool:
+    """Reject finger items that reduce strength in every equipment stance."""
+    return item_category(item) == "finger" and any(
+        location == 1 and modifier < 0 for location, modifier in item.affects
+    )
+
+
+def _stance_rank(
+    item: ObjectSource | None,
+    stance: str,
+    *,
+    level_gain_priorities: tuple[str, ...],
+) -> tuple[int, ...]:
+    """Rank usable gear above emptiness without overlooking harmful stat gear."""
+    score_length = 6 + (
+        len(level_gain_priorities) if stance == STANCE_PRE_LEVEL else 0
+    )
+    if item is None:
+        return (0,) + (0,) * score_length
+    if is_strength_penalty_ring(item) or any(
+        location in APPLY_STATS and modifier < 0
+        for location, modifier in item.affects
+    ):
+        return (-1,) + (0,) * score_length
+    return (1,) + stance_score(
+        item,
+        stance,
+        level_gain_priorities=level_gain_priorities,
+    )
+
+
 def plan_stance(
     carried: Iterable[ObjectSource],
     worn: Iterable[ObjectSource],
@@ -299,13 +332,18 @@ def plan_stance(
             item
             for item in carried_items
             if item_category(item) == category
-            and (character_level is None or item.level <= character_level)
+            and (
+                character_level is None
+                or item.effective_level <= character_level
+            )
         ]
         capacity = _CATEGORY_CAPACITY.get(category, 1)
         ranked = sorted(
-            [(item, True) for item in current] + [(item, False) for item in available],
+            [(item, True) for item in current]
+            + [(item, False) for item in available]
+            + [(None, False)] * capacity,
             key=lambda entry: (
-                stance_score(
+                _stance_rank(
                     entry[0],
                     stance,
                     level_gain_priorities=level_gain_priorities,
@@ -317,7 +355,7 @@ def plan_stance(
         choices.extend(
             GearChoice(item, category, worn)
             for item, worn in ranked
-            if not worn
+            if item is not None and not worn
         )
     return choices
 
@@ -347,9 +385,10 @@ def plan_stance_swaps(
             item
             for item, _ in sorted(
                 [(item, True) for item in current]
-                + [(item, False) for item in available],
+                + [(item, False) for item in available]
+                + [(None, False)] * capacity,
                 key=lambda entry: (
-                    stance_score(
+                    _stance_rank(
                         entry[0],
                         stance,
                         level_gain_priorities=level_gain_priorities,
@@ -358,6 +397,7 @@ def plan_stance_swaps(
                 ),
                 reverse=True,
             )[:capacity]
+            if item is not None
         ]
         desired_counts: dict[int, int] = {}
         for item in desired:

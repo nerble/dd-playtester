@@ -11,6 +11,8 @@ from typing import Any, Awaitable, Callable
 from .character import CharacterSpec, load_character_spec
 from .equipment import (
     GearCatalog,
+    is_capacity_infrastructure,
+    item_category,
     item_keyword,
     load_gear_catalog,
     normalize_item_name,
@@ -23,8 +25,12 @@ from .scenario import load_yaml_mapping
 from .starter import (
     FieldHuntStop,
     StarterBotRunner,
+    _equipment_audit_descriptions,
+    _equipment_audit_present,
+    _equipment_empty_categories,
     _inventory_descriptions,
     _sellable_inventory_keyword,
+    ambush_caster_level_eight_hunt_stops,
     ambush_level_eight_hunt_stops,
     ambush_martial_level_eight_hunt_stops,
     ambush_raider_hunt_stops,
@@ -35,6 +41,9 @@ from .starter import (
     daycare_armed_guard_hunt_route,
     daycare_nanny_hunt_route,
     daycare_nanny_hunt_stops,
+    daycare_ring_hunt_route,
+    daycare_ring_hunt_stops,
+    foundry_body_gear_hunt_stops,
     foundry_level_six_hunt_stops,
     foundry_level_seven_hunt_stops,
     fleshmonger_guard_research_stops,
@@ -42,12 +51,16 @@ from .starter import (
     gnome_hermit_hunt_stops,
     gnome_guard_hunt_stops,
     gnome_small_troll_hunt_stops,
+    gremlin_waist_hunt_route,
+    gremlin_waist_hunt_stops,
     midennir_mountain_goblin_hunt_stops,
     moria_level_eight_large_orc_hunt_stops,
     moria_level_seven_orc_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
     shire_bull_hunt_route,
     shire_bull_hunt_stops,
+    school_accessory_hunt_route,
+    school_wrist_float_hunt_stops,
 )
 from .storage import RunStorage
 
@@ -58,11 +71,26 @@ _MAINTENANCE_EXECUTIONS = {
     "sell-loot",
     "vault-spare-gear",
     "rearm-weapon",
+    "outfit-basic-gear",
+    "recover-basic-body",
+    "recover-school-wrist-float",
+    "recover-gremlin-waist",
+    "recover-daycare-ring",
     "buy-flight",
 }
 _LIQUIDATION_BASELINE_KEY = "campaign_liquidation_baseline"
-_CAMPAIGN_POLICY_REVISION = 8
+_CAMPAIGN_POLICY_REVISION = 27
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_RECOVER_BASIC_BODY_REQUIRED_FREE_WEIGHT = 7
+_RECOVER_SCHOOL_WRIST_FLOAT_REQUIRED_FREE_WEIGHT = 30
+_RECOVER_GREMLIN_WAIST_REQUIRED_FREE_WEIGHT = 5
+_RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT = 21
+_BASIC_SHOP_CATEGORIES = frozenset(
+    {"body", "head", "arms", "hands", "legs", "feet", "pouch"}
+)
+_MUD_SCHOOL_ACCESSORY_ROOMS = frozenset(
+    {"3711", "3712", "3715", "3716", "3720", "3721", "3722", "3723", "3724", "3725"}
+)
 
 
 @dataclass(frozen=True)
@@ -146,11 +174,14 @@ def _refresh_policy_revision(state: dict[str, Any]) -> dict[str, Any]:
     """Reset stale stall history once when the autonomous policy graph changes."""
     if state.get("campaign_policy_revision") == _CAMPAIGN_POLICY_REVISION:
         return state
-    return {
+    refreshed = {
         **state,
         "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
         "campaign_stalled_segments": 0,
     }
+    if int(state.get("campaign_policy_revision", 0)) < 20:
+        refreshed.pop("campaign_body_gear_attempted_level", None)
+    return refreshed
 
 
 class CampaignRunner:
@@ -202,6 +233,15 @@ class CampaignRunner:
             checkpoint_id = int(checkpoint["id"]) if checkpoint is not None else None
 
             if _level(state) >= self.spec.target_level:
+                if _level(_checkpoint_state(checkpoint)) < self.spec.target_level:
+                    checkpoint_id = storage.record_campaign_checkpoint(
+                        campaign_id,
+                        segment_id=None,
+                        run_id=None,
+                        phase="target-complete",
+                        reason="target_reconciled",
+                        state=state,
+                    )
                 storage.finish_campaign(campaign_id, status="success")
                 return CampaignResult(
                     campaign_id,
@@ -265,6 +305,44 @@ class CampaignRunner:
             )
 
     def _policy_for_state(self, state: dict[str, Any]) -> ProgressionPolicy:
+        empty_categories = set(
+            state.get("campaign_empty_equipment_categories") or ()
+        )
+        school_exit_required = (
+            str(state.get("room_vnum", "")) in _MUD_SCHOOL_ACCESSORY_ROOMS
+        )
+        recovered_own_corpse = _has_own_corpse_recovery(
+            state,
+            self.spec.character.name,
+        )
+        outfit_attempted_this_level = (
+            int(state.get("campaign_outfit_attempted_level", -1))
+            == _level(state)
+        )
+        school_wrist_float_attempted_this_level = (
+            int(state.get("campaign_school_wrist_float_attempted_level", -1))
+            == _level(state)
+        )
+        gremlin_waist_attempted_this_level = (
+            int(state.get("campaign_gremlin_waist_attempted_level", -1))
+            == _level(state)
+        )
+        daycare_ring_attempted_this_level = (
+            int(state.get("campaign_daycare_ring_attempted_level", -1))
+            == _level(state)
+        )
+        vault_stow_items = _campaign_vault_stow_items(
+            state,
+            gear_catalog=self._gear_catalog,
+        )
+        can_retry_rejected_vault = (
+            not state.get("vault_storage_rejected")
+            or _has_oversized_capacity_stow_item(
+                state,
+                gear_catalog=self._gear_catalog,
+                stow_items=vault_stow_items,
+            )
+        )
         return policy_for(
             _level(state),
             self.spec.character.character_class,
@@ -274,22 +352,85 @@ class CampaignRunner:
                 or _state_has_item(state.get("inventory"), "large sack")
             ),
             has_sellable_loot=(
+                not school_exit_required
+                and
+                not recovered_own_corpse
+                and
                 _has_campaign_sellable_loot(
                     state,
                     gear_catalog=self._gear_catalog,
                 )
             ),
             needs_capacity_relief=bool(
-                _campaign_vault_stow_items(
+                not school_exit_required
+                and
+                not recovered_own_corpse
+                and
+                can_retry_rejected_vault
+                and
+                vault_stow_items
+            ),
+            has_food=(
+                school_exit_required
+                or _has_campaign_food(
                     state,
                     gear_catalog=self._gear_catalog,
                 )
             ),
-            has_food=(
-                "inventory" not in state
-                or _state_has_item(state.get("inventory"), "pie")
+            has_weapon=bool(
+                school_exit_required
+                or state.get("campaign_has_weapon", True)
             ),
-            has_weapon=bool(state.get("campaign_has_weapon", True)),
+            needs_basic_gear=bool(
+                not school_exit_required
+                and
+                empty_categories & _BASIC_SHOP_CATEGORIES
+            )
+            and not outfit_attempted_this_level,
+            needs_body_gear_recovery=(
+                not school_exit_required
+                and
+                "body" in empty_categories
+                and outfit_attempted_this_level
+                and _has_campaign_free_weight(
+                    state,
+                    _RECOVER_BASIC_BODY_REQUIRED_FREE_WEIGHT,
+                )
+                and int(
+                    state.get("campaign_body_gear_attempted_level", -1)
+                )
+                != _level(state)
+            ),
+            needs_school_wrist_float=bool(
+                school_exit_required
+                or (
+                    empty_categories & {"wrist", "float"}
+                    and _has_campaign_free_weight(
+                        state,
+                        _RECOVER_SCHOOL_WRIST_FLOAT_REQUIRED_FREE_WEIGHT,
+                    )
+                )
+            )
+            and (
+                school_exit_required
+                or not school_wrist_float_attempted_this_level
+            ),
+            needs_gremlin_waist=(
+                "waist" in empty_categories
+                and not gremlin_waist_attempted_this_level
+                and _has_campaign_free_weight(
+                    state,
+                    _RECOVER_GREMLIN_WAIST_REQUIRED_FREE_WEIGHT,
+                )
+            ),
+            needs_daycare_ring=(
+                "finger" in empty_categories
+                and not daycare_ring_attempted_this_level
+                and _has_campaign_free_weight(
+                    state,
+                    _RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT,
+                )
+            ),
             has_sanctuary_potion=(
                 int(
                     dict(state.get("combat_pouch_potions") or {}).get(
@@ -335,6 +476,12 @@ class CampaignRunner:
         checkpoint_state = _checkpoint_state(checkpoint)
         live_state = storage.get_latest_character_state(self.spec.character.name)
         state = _newer_progress_state(checkpoint_state, live_state)
+        flight_purchase_failed = _campaign_flight_purchase_failed(
+            storage,
+            campaign_id,
+        )
+        if flight_purchase_failed is not None:
+            state["magic_shop_purchase_failed"] = flight_purchase_failed
         if checkpoint is not None and "campaign_last_policy" not in state:
             state["campaign_last_policy"] = str(checkpoint["phase"])
         if (
@@ -346,6 +493,21 @@ class CampaignRunner:
             )
         ):
             state["campaign_has_weapon"] = False
+        if checkpoint is not None and checkpoint["run_id"] is not None:
+            empty_categories = _run_equipment_empty_categories(
+                storage,
+                int(checkpoint["run_id"]),
+            )
+            if empty_categories is not None:
+                state["campaign_empty_equipment_categories"] = sorted(
+                    empty_categories
+                )
+            worn_equipment = _run_worn_equipment_descriptions(
+                storage,
+                int(checkpoint["run_id"]),
+            )
+            if worn_equipment is not None:
+                state["campaign_worn_equipment"] = worn_equipment
         if (
             checkpoint is not None
             and checkpoint["phase"] == "liquidate-loot"
@@ -358,7 +520,10 @@ class CampaignRunner:
                     gear_catalog=self._gear_catalog,
                 )
             )
-        if campaign["status"] == "success":
+        if (
+            campaign["status"] == "success"
+            and _level(state) >= self.spec.target_level
+        ):
             return campaign_id, state
         storage.resume_campaign(campaign_id)
         return campaign_id, state
@@ -436,7 +601,34 @@ class CampaignRunner:
 
         command_count = storage.count_events(result.run_id, kind="command")
         duration_seconds = _run_duration(storage.get_run(result.run_id))
-        end_state = result.final_state
+        end_state = _campaign_segment_end_state(
+            state,
+            result.final_state,
+            execution=policy.execution,
+        )
+        empty_categories = _run_equipment_empty_categories(storage, result.run_id)
+        if empty_categories is not None:
+            end_state["campaign_empty_equipment_categories"] = sorted(
+                empty_categories
+            )
+        if policy.execution == "outfit-basic-gear":
+            end_state["campaign_outfit_attempted_level"] = _level(end_state)
+        if policy.execution == "recover-basic-body":
+            end_state["campaign_body_gear_attempted_level"] = _level(end_state)
+        if (
+            policy.execution == "recover-school-wrist-float"
+            and not (
+                set(end_state.get("campaign_empty_equipment_categories") or ())
+                & {"wrist", "float"}
+            )
+        ):
+            end_state["campaign_school_wrist_float_attempted_level"] = _level(
+                end_state
+            )
+        if policy.execution == "recover-gremlin-waist":
+            end_state["campaign_gremlin_waist_attempted_level"] = _level(end_state)
+        if policy.execution == "recover-daycare-ring":
+            end_state["campaign_daycare_ring_attempted_level"] = _level(end_state)
         self._policy_xp_deltas[policy.policy_id] = _xp_delta(state, end_state)
         if result.status != "success":
             message = f"starter segment returned status {result.status}"
@@ -644,6 +836,21 @@ def _campaign_rejected_practice_skills(
     return frozenset(rejected)
 
 
+def _campaign_flight_purchase_failed(
+    storage: RunStorage,
+    campaign_id: int,
+) -> bool | None:
+    """Return the newest result from the policy that owns flight purchasing."""
+    for segment in reversed(storage.list_campaign_segments(campaign_id)):
+        if segment["phase"] != "buy-flight-potion":
+            continue
+        if segment["status"] != "success" or not segment["end_state_json"]:
+            continue
+        state = json.loads(segment["end_state_json"])
+        return bool(state.get("magic_shop_purchase_failed"))
+    return None
+
+
 async def _run_policy_segment(
     spec: CharacterSpec,
     profile_path: Path,
@@ -702,13 +909,18 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "moria-large-orc-hunt":
+        hunt_stops = (
+            moria_level_seven_orc_hunt_stops()
+            if policy.minimum_level >= 9
+            else moria_level_eight_large_orc_hunt_stops()
+        )
         return await StarterBotRunner(
             spec,
             profile_path,
             objective_level=policy.maximum_level or 9,
             fastwalk_route=route_named("moria"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
-            fastwalk_hunt_stops=moria_level_eight_large_orc_hunt_stops(),
+            fastwalk_hunt_stops=hunt_stops,
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=False,
@@ -773,6 +985,7 @@ async def _run_policy_segment(
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=circus_freak_show_hunt_stops(),
             fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_world_cache_items=("ticket",),
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=False,
             require_fastwalk_kill=False,
@@ -870,6 +1083,69 @@ async def _run_policy_segment(
             profile_path,
             city_rearm=True,
         ).run()
+    if policy.execution == "outfit-basic-gear":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            city_outfit=True,
+        ).run()
+    if policy.execution == "recover-basic-body":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=route_named("foundry"),
+            fastwalk_required_free_weight=_RECOVER_BASIC_BODY_REQUIRED_FREE_WEIGHT,
+            fastwalk_hunt_stops=foundry_body_gear_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=False,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+        ).run()
+    if policy.execution == "recover-school-wrist-float":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=school_accessory_hunt_route(),
+            fastwalk_required_free_weight=(
+                _RECOVER_SCHOOL_WRIST_FLOAT_REQUIRED_FREE_WEIGHT
+            ),
+            fastwalk_hunt_stops=school_wrist_float_hunt_stops(),
+            fastwalk_train_before_departure=False,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+        ).run()
+    if policy.execution == "recover-gremlin-waist":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=gremlin_waist_hunt_route(),
+            fastwalk_required_free_weight=_RECOVER_GREMLIN_WAIST_REQUIRED_FREE_WEIGHT,
+            fastwalk_hunt_stops=gremlin_waist_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=False,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+        ).run()
+    if policy.execution == "recover-daycare-ring":
+        return await StarterBotRunner(
+            spec,
+            profile_path,
+            objective_level=policy.maximum_level or 10,
+            fastwalk_route=daycare_ring_hunt_route(),
+            fastwalk_required_free_weight=_RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT,
+            fastwalk_hunt_stops=daycare_ring_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=False,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+        ).run()
     if policy.execution == "buy-flight":
         return await StarterBotRunner(
             spec,
@@ -884,7 +1160,11 @@ async def _run_policy_segment(
         "ambush-vile-hunt",
     }:
         if policy.execution == "ambush-war-dog-hunt":
-            hunt_stops = ambush_level_eight_hunt_stops()
+            hunt_stops = (
+                ambush_caster_level_eight_hunt_stops()
+                if policy.policy_id == "ambush-war-dog-looter-8-9"
+                else ambush_level_eight_hunt_stops()
+            )
         elif policy.execution == "ambush-raider-hunt":
             hunt_stops = ambush_raider_hunt_stops()
         elif policy.execution == "ambush-vile-hunt":
@@ -1047,6 +1327,38 @@ def _level(state: dict[str, Any]) -> int:
     return int(level) if isinstance(level, (int, float)) else 0
 
 
+def _has_campaign_food(
+    state: dict[str, Any],
+    *,
+    gear_catalog: GearCatalog | None,
+) -> bool:
+    if "inventory" not in state:
+        return True
+    for description in _inventory_descriptions(state.get("inventory")):
+        normalized = normalize_item_name(description)
+        if "pie" in normalized or "steak" in normalized:
+            return True
+        item = gear_catalog.match(description) if gear_catalog is not None else None
+        if item is not None and item.item_type == 19:
+            return True
+    return False
+
+
+def _has_own_corpse_recovery(
+    state: dict[str, Any],
+    character_name: str,
+) -> bool:
+    needle = f"corpse of {character_name}".casefold()
+    acquisitions = state.get("acquired_items")
+    if not isinstance(acquisitions, list):
+        return False
+    return any(
+        needle in str(acquisition.get("item", "")).casefold()
+        for acquisition in acquisitions
+        if isinstance(acquisition, dict)
+    )
+
+
 def _campaign_policy_xp_deltas(segments: list[Any]) -> dict[str, int]:
     """Return the most recent same-campaign XP result for each policy."""
     results: dict[str, int] = {}
@@ -1067,12 +1379,54 @@ def _xp_delta(before: dict[str, Any], after: dict[str, Any]) -> int:
     return _numeric_progress(after, "xp") - _numeric_progress(before, "xp")
 
 
+def _campaign_segment_end_state(
+    previous: dict[str, Any],
+    current: dict[str, Any],
+    *,
+    execution: str,
+) -> dict[str, Any]:
+    """Keep maintenance facts sticky until their owning policy re-evaluates them."""
+    merged = dict(current)
+    if (
+        execution != "buy-flight-potion"
+        and previous.get("magic_shop_purchase_failed")
+    ):
+        merged["magic_shop_purchase_failed"] = True
+    if previous.get("vault_storage_rejected"):
+        merged["vault_storage_rejected"] = True
+    for owner, key in (
+        ("outfit-basic-gear", "campaign_outfit_attempted_level"),
+        ("recover-basic-body", "campaign_body_gear_attempted_level"),
+        (
+            "recover-school-wrist-float",
+            "campaign_school_wrist_float_attempted_level",
+        ),
+        ("recover-gremlin-waist", "campaign_gremlin_waist_attempted_level"),
+        ("recover-daycare-ring", "campaign_daycare_ring_attempted_level"),
+    ):
+        if execution != owner and key in previous:
+            merged[key] = previous[key]
+    return merged
+
+
 def _newer_progress_state(
     checkpoint: dict[str, Any],
     live: dict[str, Any] | None,
 ) -> dict[str, Any]:
     if not live:
         return checkpoint
+    if (
+        isinstance(live.get("level"), (int, float))
+        and isinstance(live.get("xp"), (int, float))
+    ):
+        merged = {**checkpoint, **live}
+        if (
+            merged.get("dead")
+            and str(merged.get("area", "")).casefold() != "purgatory"
+            and _numeric_progress(merged, "hp") > 0
+        ):
+            merged["dead"] = False
+        return merged
     checkpoint_progress = (_level(checkpoint), _numeric_progress(checkpoint, "xp"))
     live_progress = (_level(live), _numeric_progress(live, "xp"))
     return {**checkpoint, **live} if live_progress >= checkpoint_progress else checkpoint
@@ -1115,6 +1469,54 @@ def _run_has_unrecovered_weapon_loss(
         if "you wield " in response:
             weapon_present = True
     return weapon_present is False
+
+
+def _run_equipment_empty_categories(
+    storage: RunStorage,
+    run_id: int,
+) -> set[str] | None:
+    """Return the empty legal categories from the run's newest ``eq all``."""
+    result: set[str] | None = None
+    awaiting_audit = False
+    for event in storage.list_events(run_id):
+        payload = json.loads(event["payload_json"])
+        if event["kind"] == "command":
+            awaiting_audit = (
+                str(payload.get("command", "")).strip().casefold() == "eq all"
+            )
+            continue
+        if event["kind"] != "response" or not awaiting_audit:
+            continue
+        response = str(payload.get("text", ""))
+        if not _equipment_audit_present(response):
+            continue
+        result = _equipment_empty_categories(response)
+        awaiting_audit = False
+    return result
+
+
+def _run_worn_equipment_descriptions(
+    storage: RunStorage,
+    run_id: int,
+) -> list[str] | None:
+    """Return source-matchable worn descriptions from the newest ``eq all``."""
+    result: list[str] | None = None
+    awaiting_audit = False
+    for event in storage.list_events(run_id):
+        payload = json.loads(event["payload_json"])
+        if event["kind"] == "command":
+            awaiting_audit = (
+                str(payload.get("command", "")).strip().casefold() == "eq all"
+            )
+            continue
+        if event["kind"] != "response" or not awaiting_audit:
+            continue
+        response = str(payload.get("text", ""))
+        if not _equipment_audit_present(response):
+            continue
+        result = _equipment_audit_descriptions(response)
+        awaiting_audit = False
+    return result
 
 
 def _is_equipment_audit_response(response: str) -> bool:
@@ -1247,7 +1649,23 @@ def _has_campaign_sellable_loot(
             and maximum_weight > 0
             and maximum_weight - carry_weight <= 10
         ):
-            return True
+            empty_categories = set(
+                state.get("campaign_empty_equipment_categories") or ()
+            )
+            for description in _inventory_descriptions(state.get("inventory")):
+                if _sellable_inventory_keyword(
+                    [[{"short_desc": description}]],
+                    gear_catalog,
+                ) is None:
+                    continue
+                item = gear_catalog.match(description) if gear_catalog else None
+                if (
+                    item is not None
+                    and item_category(item) in empty_categories
+                ):
+                    continue
+                return True
+            return False
     return not _matches_liquidation_baseline(state, gear_catalog=gear_catalog)
 
 
@@ -1272,9 +1690,19 @@ def _campaign_vault_stow_items(
         return ()
 
     keywords: list[str] = []
+    selected_weight = 0
+    capacity_candidates: list[tuple[int, str]] = []
+    worn_counts = Counter(
+        normalize_item_name(description)
+        for description in state.get("campaign_worn_equipment") or ()
+    )
     for description in _inventory_descriptions(state.get("inventory")):
         item = gear_catalog.match(description)
         if item is None:
+            continue
+        normalized_description = normalize_item_name(description)
+        if worn_counts[normalized_description] > 0:
+            worn_counts[normalized_description] -= 1
             continue
         candidates = gear_catalog.candidates(description)
         ambiguous_weapon = (
@@ -1283,12 +1711,80 @@ def _campaign_vault_stow_items(
             and all(candidate.item_type == 5 for candidate in candidates)
         )
         plain_armour = item.item_type == 9 and not protects_from_sale(item)
-        if not (ambiguous_weapon or plain_armour):
-            continue
+        protected_spare = (
+            protects_from_sale(item)
+            and not is_capacity_infrastructure(item)
+            and item_category(item) not in {"light", "wield"}
+        )
         keyword = item_keyword(item)
-        if keyword and keyword not in keywords:
+        normalized_name = normalize_item_name(item.short_description)
+        if is_capacity_infrastructure(item):
+            if "large sack" in normalized_name:
+                keyword = "sack"
+            elif "backpack" in normalized_name:
+                keyword = "backpack"
+            elif "girdle of many pouches" in normalized_name:
+                keyword = "girdle"
+        if not keyword:
+            continue
+        if is_capacity_infrastructure(item):
+            capacity_candidates.append((item.weight, keyword))
+            continue
+        if ambiguous_weapon or plain_armour or protected_spare:
+            selected_weight += item.weight
+        else:
+            continue
+        if keyword not in keywords:
             keywords.append(keyword)
+
+    free_weight = maximum_weight - carry_weight
+    for weight, keyword in sorted(capacity_candidates, reverse=True):
+        if free_weight + selected_weight >= required_free_weight:
+            break
+        if keyword not in keywords:
+            keywords.append(keyword)
+            selected_weight += weight
     return tuple(keywords)
+
+
+def _has_oversized_capacity_stow_item(
+    state: dict[str, Any],
+    *,
+    gear_catalog: GearCatalog | None,
+    stow_items: tuple[str, ...],
+) -> bool:
+    if gear_catalog is None or not stow_items:
+        return False
+    stats = state.get("stats")
+    maximum_weight = stats.get("maxcarry_wt") if isinstance(stats, dict) else None
+    if not isinstance(maximum_weight, (int, float)) or maximum_weight <= 0:
+        return False
+    stow_keywords = {keyword.casefold() for keyword in stow_items}
+    for description in _inventory_descriptions(state.get("inventory")):
+        item = gear_catalog.match(description)
+        if item is None or not is_capacity_infrastructure(item):
+            continue
+        if not stow_keywords.intersection(item.keywords.casefold().split()):
+            continue
+        if item.weight >= max(20, maximum_weight * 0.2):
+            return True
+    return False
+
+
+def _has_campaign_free_weight(
+    state: dict[str, Any],
+    required_free_weight: int,
+) -> bool:
+    stats = state.get("stats")
+    if not isinstance(stats, dict):
+        return True
+    carry_weight = stats.get("carry_wt")
+    maximum_weight = stats.get("maxcarry_wt")
+    if not isinstance(carry_weight, (int, float)):
+        return True
+    if not isinstance(maximum_weight, (int, float)):
+        return True
+    return maximum_weight - carry_weight >= required_free_weight
 
 
 def _campaign_liquidation_signature(

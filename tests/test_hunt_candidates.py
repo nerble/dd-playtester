@@ -8,6 +8,7 @@ from dd4tester.hunt_candidates import (
     ObjectSource,
     RoomSource,
     WorldSource,
+    load_object_sources,
     parse_area_file,
     rank_hunt_candidates,
 )
@@ -22,10 +23,134 @@ def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
     assert area.mobiles[100].level == 3
     assert area.mobiles[100].aggressive is True
     assert area.objects[200].source_cost == 100
+    assert area.objects[200].weight == 1
     assert area.rooms[3001].exits["north"].destination == 3002
     assert area.mob_resets[1].object_vnums == (200, 201)
     assert area.mob_resets[1].equipment == ((16, 200),)
     assert area.container_contents[201] == [202]
+    assert (area.objects[200].load_level_min, area.objects[200].load_level_max) == (
+        1,
+        3,
+    )
+    assert (area.objects[202].load_level_min, area.objects[202].load_level_max) == (
+        1,
+        4,
+    )
+
+
+def test_object_levels_follow_school_and_daycare_mobile_resets(
+    tmp_path: Path,
+) -> None:
+    school = tmp_path / "school.are"
+    school.write_text(
+        """#AREA Tester~ Mud School~
+1 5 0 100
+#AREA_SPECIAL
+school
+$
+#MOBILES
+#3712
+gladiator~
+a gladiator~
+A gladiator is here.~
+~
+0 0 0 S
+1 0 0 1d1+0 1d1+0
+0 0
+8 8 1
+#0
+#OBJECTS
+#3713
+copper bracer~
+a copper bracer~
+A copper bracer is here.~
+~
+9 0 3
+0~ 0~ 0~ 0~
+5 100 5
+#3721
+snowy white stone~
+a snowy white stone~
+A snowy white stone is here.~
+~
+8 0 1
+0~ 0~ 0~ 0~
+1 100 2000
+#0
+#ROOMS
+#0
+#RESETS
+M 0 3712 1 3722
+G 0 3713 0
+G 0 3721 0
+S
+""",
+        encoding="latin-1",
+    )
+    daycare = tmp_path / "daycare.are"
+    daycare.write_text(
+        """#AREA Tester~ Dwarven Daycare~
+1 10 0 100
+#MOBILES
+#6605
+doll old~
+an old doll~
+An old doll is here.~
+~
+0 0 0 S
+1 0 0 1d1+0 1d1+0
+0 0
+8 8 0
+#6606
+nanny~
+the nanny~
+An old wrinkled nanny is here.~
+~
+0 0 0 S
+5 0 0 1d1+0 1d1+0
+0 0
+8 8 2
+#0
+#OBJECTS
+#6601
+ring pink ice~
+a pink ice ring~
+A pink ice ring is here.~
+~
+9 0 3
+0~ 0~ 0~ 0~
+8 7000 2500
+#6621
+robe linen~
+a linen robe~
+A linen robe is here.~
+~
+9 0 1025
+0~ 0~ 0~ 0~
+5 4000 2000
+#0
+#ROOMS
+#0
+#RESETS
+M 0 6605 2 6605
+E 1 6601 20 1
+M 0 6606 2 6602
+E 1 6621 20 12
+S
+""",
+        encoding="latin-1",
+    )
+
+    objects = load_object_sources(tmp_path)
+
+    assert objects[3713].level == 5
+    assert objects[3721].level == 2000
+    assert (objects[3713].load_level_min, objects[3713].load_level_max) == (1, 1)
+    assert (objects[3721].load_level_min, objects[3721].load_level_max) == (1, 1)
+    assert objects[6601].level == 2500
+    assert (objects[6601].load_level_min, objects[6601].load_level_max) == (1, 1)
+    assert objects[6621].level == 2000
+    assert (objects[6621].load_level_min, objects[6621].load_level_max) == (1, 5)
 
 
 def test_area_parser_ignores_mobile_program_vnum_references(tmp_path) -> None:

@@ -14,6 +14,13 @@ Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
 Treat VNUMs as separate namespaces: room, mobile, object, and object-set VNUMs
 are unique within their category, but the same number may appear across them.
+Do not treat an object prototype's trailing numeric level as the live level of
+ordinary field loot. Follow `db.c` reset order: `G`, `E`, and ordinary `O`
+loads derive from the active preceding mobile reset with mobile and object
+fuzz; `P` inherits the loaded container level, `I` uses its explicit level, and
+low-level Mud School mobile loot is forced to level one. Keep the prototype
+value and reset-derived load range separately, and confirm consequential wear
+or sale decisions with live `identify` evidence when available.
 For randomized mazes, use live GMCP exit destination room VNUMs to follow a
 source-backed room path; never assume the area-file direction labels remain
 stable after reset.
@@ -37,6 +44,9 @@ prices, kill repetition, applicable object instance limits, and observed spawn
 counts to the `DD was started at ...` reboot identity; never carry them across
 reboots. Instance limiting applies only to the few objects whose source
 definitions use it, not to mobiles.
+Before a live area launch, parse each registered mobile's exact area-file room
+description through the target recognizer; use live output to confirm presence
+and dynamic reset state, not to discover static mobile display lines.
 Never attack for XP when `consider` returns a `do_consider` result from the
 `diff <= -5` or `diff <= -10` branches; those targets are too low to be useful.
 Treat `hide` as a stationary ambush or avoidance skill because ordinary
@@ -50,14 +60,39 @@ food or water when needed, insufficient movement, encumbrance, or exhausted
 local targets. Prefer source-vetted local sleep and multi-target circuits over
 recalling after one safe kill. Before an imminent level, issue `train` for the
 class profile's current primary stat and wear all legal stat-improving gear.
-Tune autonomous field play approximately 30% more aggressively than the prior
-baseline: tolerate recoverable damage, use longer bounded fights, accept
-source-approved attackers after structured assessment, and leave healer
-recovery before perfect resources. Keep death traps, unknown high-level
-enemies, unsafe crowds, disabling affects, and unsupplied hunger or thirst as
-hard withdrawal boundaries.
+Tune autonomous field play 10% more aggressively than the current baseline:
+tolerate recoverable damage, use 264-second bounded fights, continue circuits
+at 40.5% health with 13.5% mana and 9% movement, leave the healer at 67.5%
+health and 27% mana, ordinarily withdraw at 27% health, and finish a
+lower-level half-dead opponent down to 18%. Keep death traps, unknown
+high-level enemies, unsafe crowds, disabling affects, and unsupplied hunger or
+thirst as hard withdrawal boundaries.
+Do not count source-proven or live-level-confirmed below-band mobiles as an
+unsafe crowd. They must not block selection of a useful-band target or trigger
+a flee when they join its combat. Never select them deliberately for XP, but
+finish unavoidable trivial combat so it cannot stall the productive hunt.
 Before HERO renaming is available, use source-backed keywords and keep active
 gear directly accessible; put spare ambiguous items in containers or the vault.
+Never guess object or mobile command keywords when the entity exists in the
+public source. Parse and use its source keyword list; display-text noun
+inference is only a temporary fallback for genuinely uncatalogued live
+entities and must not be promoted into policy without source confirmation.
+Treat profession-visible empty `eq all` slots as equipment debt. Prefer usable
+mob drops, then inexpensive class-legal Midgaard basics; after major gear loss,
+revisit Mud School first and repeat its course to recover free starter drops.
+Never wear a finger item that applies a strength penalty. For low-level
+characters with two legal finger slots, prefer two pink ice rings from the two
+ring-bearing old dolls reset in Dwarven Daycare room 6605; each gives +1
+strength and +6 hit points. An empty oversized container may be lodged
+temporarily to make room for required drops only after `look in` proves it is
+empty.
+A registered one-off gear recovery may attack a source-proven low-level carrier
+after a below-band `consider`, but must record that the kill is solely for a
+required missing item and never treat it as an XP policy.
+For mages, treat `summon familiar` as a source-backed risk-control candidate:
+cast it outdoors, group the follower, and order it to open combat only after a
+live bounded probe. Account for the spell's 100-mana cost and the familiar's
+level-weighted group XP dilution; do not use it for trivial required-loot kills.
 Leave a depleted hunt area before waiting because occupied areas reset more
 slowly.
 Use the recorded per-policy XP delta to rotate away from zero-XP field
@@ -81,14 +116,39 @@ resets in rooms 1563 and 1565; each stop retains independent crowd, live
 At critical field-departure encumbrance, sacrifice only registered expendable
 loot such as spent Circus keys; preserve food, water, potions, containers,
 weapons, and gear unless a separate source-backed replacement policy applies.
-At level 10, route thieves who outgrow the Mud School Loremaster to the
-Midgaard thief guildmaster in room 3029; its source-defined teacher base
-rejects lower-level characters. Raise Stealth Techniques to its 60%
-prerequisite, then prioritize backstab while a piercing weapon is equipped.
+When protected spare stat gear prevents an essential food or weapon purchase,
+store it in the Midgaard vault before restocking; do not sell it merely to
+free capacity. Re-equip the best legal copy from carried gear afterward.
+Treat the first vault weight or item-count rejection as terminal for that
+storage pass; never remove another item after it. Prefer selling expendable
+loot at a compatible shop, then donate or sacrifice registered expendable
+objects when they cannot be carried, sold, or lodged. Preserve food, water,
+potions, containers, weapons, and best-in-slot gear.
+DD4's `fwrite_obj` omits `ITEM_KEY` objects from both character and vault save
+files, so lodging a key preserves it only until the next save/logout. When a
+key is costly or difficult to replace, cache it loose in a source-vetted
+`ROOM_NO_MOB` room whose reset residents are neither scavengers nor
+`spec_janitor`, and scope that cache to the current reboot identity. Midgaard
+bank room 3007 is the registered Circus-ticket cache; try to retrieve the
+ticket there before buying and drop it there before logout. A missing cache
+must fall back to reacquisition because another player or a reboot may remove
+it.
+At level 10, stop using the Mud School Loremaster and route each base class to
+its source-backed Midgaard trainer, as directed by `HELP TEACHER CLUE`. The
+registered trainer rooms are mage 3019, cleric 3002, thief 3029, warrior 3023,
+psionic 3150, brawler 3218, shifter 3221, ranger 3048, and smithy 3050. Their
+source-defined teacher bases reject lower-level characters. For thieves, raise
+Stealth Techniques to its 60% prerequisite, then prioritize backstab while a
+piercing weapon is equipped.
 Persist trainer-cap and trainer-level practice rejections for the current
 character level so later segments choose another eligible priority. Clear that
 exclusion after levelling; do not persist prerequisite rejections because
 another skill learned at the same level may unlock them.
+Treat an `eq all` line containing `[weapon] -` as an empty slot, never as proof
+of a wielded weapon. A dedicated rearm run must buy, wield, and verify an
+occupied weapon line before succeeding. If the source-backed dagger is
+unaffordable, use the existing Dragonhoard Bank credit route, then retry and
+return to healer room 3054.
 
 ## Development Commands
 
@@ -154,6 +214,16 @@ Pacific/Auckland time. Set a 60-second command timeout for that commit. If it
 fails or times out, do not retry for 24 hours. Prefix every progress update to
 the user with the current Pacific/Auckland local time so stalled work is
 visible.
+Beginning 2026-07-26, append every user steering message and every Codex
+commentary or final response verbatim to `DEVELOPMENT_CONVERSATION.txt` in the
+repository root. Stamp every entry using exactly
+`[YYYY-MM-DD h:mm:ss AM/PM NZST] USER`,
+`[YYYY-MM-DD h:mm:ss AM/PM NZST] CODEX COMMENTARY`, or
+`[YYYY-MM-DD h:mm:ss AM/PM NZST] CODEX FINAL`. Do not substitute a speaker-first
+header, UTC offset, ISO timestamp, or other format.
+Treat the file as append-only development history; do not rewrite or remove
+earlier entries. Write an entry before or as the corresponding response is
+sent so a stalled task cannot leave the visible discussion unrecorded.
 
 ## Commits And Pull Requests
 

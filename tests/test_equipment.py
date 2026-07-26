@@ -64,6 +64,24 @@ def test_catalog_matches_source_room_description_to_object() -> None:
     assert catalog.match("piece of leather armor") == armor
 
 
+def test_catalog_ignores_empty_source_names_in_equipment_audits() -> None:
+    malformed = ObjectSource(
+        19097,
+        "fangs",
+        "",
+        8,
+        (),
+        0,
+    )
+    catalog = GearCatalog({malformed.vnum: malformed})
+    equipment = """<worn around neck>  -
+<worn on finger>    -
+[weapon]            -
+"""
+
+    assert catalog.match_equipment_text(equipment) == []
+
+
 def test_pre_level_priorities_can_target_mage_practices_or_hitpoints() -> None:
     wisdom = _item(4, "wisdom helm", (3, 1))
     constitution = _item(5, "constitution helm", (5, 1))
@@ -110,6 +128,70 @@ def test_stance_swap_removes_conflict_before_wearing_better_item() -> None:
 
     assert removals == [damage]
     assert additions == [recovery]
+
+
+def test_all_stances_remove_strength_penalty_rings_even_if_slot_is_empty() -> None:
+    penalty_ring = _item(
+        4000,
+        "yellow and green ring",
+        (1, -2),
+        (5, 1),
+        wear_bit=1,
+    )
+
+    for stance in (STANCE_COMBAT, STANCE_RECOVERY, STANCE_PRE_LEVEL):
+        removals, additions = plan_stance_swaps([], [penalty_ring], stance)
+
+        assert removals == [penalty_ring]
+        assert additions == []
+
+
+def test_recovery_stance_keeps_basic_light_with_level_gain_priorities() -> None:
+    light = ObjectSource(
+        3716,
+        "banner illumination",
+        "banner of illumination",
+        1,
+        (0, 0, -1, 0),
+        10,
+    )
+
+    removals, additions = plan_stance_swaps(
+        [],
+        [light],
+        STANCE_RECOVERY,
+        level_gain_priorities=("intellectual_practices", "mana", "hitpoints"),
+    )
+
+    assert removals == []
+    assert additions == []
+
+
+def test_combat_stance_fills_empty_slot_with_basic_gear() -> None:
+    pouch = _item(3370, "small leather pouch", wear_bit=16)
+
+    removals, additions = plan_stance_swaps(
+        [pouch],
+        [],
+        STANCE_COMBAT,
+        level_gain_priorities=("intellectual_practices", "mana", "hitpoints"),
+    )
+
+    assert removals == []
+    assert additions == [pouch]
+
+
+def test_stance_leaves_core_stat_penalty_gear_unequipped() -> None:
+    penalty_cap = _item(4001, "burdensome cap", (4, -1))
+
+    removals, additions = plan_stance_swaps(
+        [penalty_cap],
+        [],
+        STANCE_RECOVERY,
+    )
+
+    assert removals == []
+    assert additions == []
 
 
 def test_capacity_items_are_protected_infrastructure() -> None:
