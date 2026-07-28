@@ -8,11 +8,13 @@ from dd4tester.equipment import (
     character_can_use_item,
     item_category,
     item_keyword,
+    is_bow,
     is_capacity_infrastructure,
     is_piercing_weapon,
     plan_stance_swaps,
     protects_from_sale,
     stance_score,
+    weapon_damage_score,
 )
 from dd4tester.hunt_candidates import ObjectSource, parse_area_file
 
@@ -35,6 +37,50 @@ def _item(
     )
 
 
+def test_bow_detection_uses_dd4_item_bow_extra_flag() -> None:
+    bow = ObjectSource(
+        1,
+        "bow",
+        "a short bow",
+        5,
+        (0, 2, 4, 4),
+        100,
+        wear_flags=1 | (1 << 17),
+        extra_flags=1 << 30,
+    )
+    ordinary_weapon = ObjectSource(
+        2,
+        "sword",
+        "a sword",
+        5,
+        (0, 2, 4, 1),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+
+    assert is_bow(bow)
+    assert not is_bow(ordinary_weapon)
+
+
+def test_body_part_weapons_are_never_usable_gear_candidates() -> None:
+    body_part = ObjectSource(
+        3,
+        "claw",
+        "a severed claw",
+        5,
+        (0, 6, 12, 11),
+        0,
+        wear_flags=1 | (1 << 13),
+        extra_flags=1 << 26,
+    )
+
+    assert not character_can_use_item(
+        body_part,
+        character_class="thief",
+        subclass="ninja",
+    )
+
+
 def test_stances_prioritize_damroll_stats_and_recovery_resources() -> None:
     damage = _item(1, "damage helm", (19, 4), (18, 1))
     stats = _item(2, "training helm", (1, 2), (3, 2), (5, 1))
@@ -47,6 +93,22 @@ def test_stances_prioritize_damroll_stats_and_recovery_resources() -> None:
     assert stance_score(recovery, STANCE_RECOVERY) > stance_score(
         stats, STANCE_RECOVERY
     )
+
+
+def test_weapon_damage_score_uses_source_dice_average() -> None:
+    dagger = ObjectSource(3020, "dagger", "a dagger", 5, (0, 2, 4, 11), 10)
+    claws = ObjectSource(
+        18000,
+        "claws bears",
+        "a pair of bears claws",
+        5,
+        (0, 6, 12, 11),
+        0,
+    )
+
+    assert weapon_damage_score(dagger) == 10
+    assert weapon_damage_score(claws) == 78
+    assert weapon_damage_score(claws) > weapon_damage_score(dagger)
 
 
 def test_catalog_matches_source_room_description_to_object() -> None:

@@ -58,6 +58,15 @@ def test_finger_gap_selects_daycare_old_doll_ring_recovery() -> None:
     assert "+1 strength and +6 hit points" in policy.evidence[0]
 
 
+def test_neck_gap_selects_war_dog_collar_damage_recovery() -> None:
+    policy = policy_for(8, "thief", needs_war_dog_collar=True)
+
+    assert policy.policy_id == "recover-war-dog-collar"
+    assert policy.execution == "recover-war-dog-collar"
+    assert policy.segment_kill_limit == 1
+    assert "+1 damroll" in policy.summary
+
+
 @pytest.mark.parametrize("character_class", sorted(CLASS_PRACTICE_SKILLS))
 def test_level_two_to_six_policy_is_verified_and_executable(
     character_class: str,
@@ -1039,6 +1048,20 @@ def test_level_nine_mage_spends_a_confirmed_sanctuary_potion_on_vile_goblin() ->
     assert policy.segment_kill_limit == 1
 
 
+def test_level_nine_mage_preserves_potion_and_rotates_after_empty_vile_hunt() -> None:
+    policy = policy_for(
+        9,
+        "mage",
+        has_large_sack=True,
+        has_sanctuary_potion=True,
+        last_policy_id="ambush-vile-goblin-9-10",
+        policy_xp_deltas={"ambush-vile-goblin-9-10": 0},
+    )
+
+    assert policy.policy_id == "circus-freak-show-9-10"
+    assert policy.execution == "circus-freak-show-hunt"
+
+
 def test_missing_sanctuary_carrier_falls_back_to_exterior_hunt() -> None:
     policy = policy_for(
         9,
@@ -1122,6 +1145,765 @@ def test_level_ten_mage_preserves_flight_maintenance() -> None:
     )
 
     assert policy.policy_id == "buy-flight-potion"
+
+
+def test_thief_piercing_upgrade_buys_flight_before_long_source_route() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+
+
+def test_thief_piercing_upgrade_selects_bounded_forest_research() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        has_flight=True,
+    )
+
+    assert policy.policy_id == "forest-bear-claws-upgrade-10-14"
+    assert policy.status == "research"
+    assert policy.execution == "upgrade-piercing-weapon"
+    assert policy.segment_kill_limit == 1
+    assert policy.practice_skill == "backstab"
+
+
+def test_thief_does_not_take_forest_route_without_enough_nonflight_capacity() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        has_flight=False,
+        can_attempt_flight_purchase=False,
+        movement_available=250,
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-11-12"
+
+
+def test_thief_does_not_wait_for_an_impossible_nonflight_route_reserve() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        has_flight=False,
+        can_attempt_flight_purchase=False,
+        movement_available=225,
+        movement_capacity=250,
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-11-12"
+
+
+def test_thief_piercing_upgrade_is_not_repeated_during_same_reboot() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        piercing_weapon_upgrade_attempted=True,
+        has_flight=True,
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-11-12"
+
+
+def test_piercing_upgrade_does_not_override_other_class_policy() -> None:
+    policy = policy_for(
+        10,
+        "warrior",
+        needs_piercing_weapon_upgrade=True,
+        has_flight=True,
+    )
+
+    assert policy.policy_id == "fleshmonger-guard-probe-10-12"
+
+
+@pytest.mark.parametrize("character_class", ["thief", "warrior"])
+def test_level_ten_martial_collects_one_safe_fleshmonger_probe(
+    character_class: str,
+) -> None:
+    policy = policy_for(10, character_class)
+
+    assert policy.policy_id == "fleshmonger-guard-probe-10-12"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-guard-research"
+    assert policy.executable
+    assert "without initiating combat" in policy.summary
+
+
+def test_level_ten_warrior_advances_from_probe_to_one_guard_research() -> None:
+    policy = policy_for(
+        10,
+        "warrior",
+        policy_xp_deltas={"fleshmonger-guard-probe-10-12": 0},
+    )
+
+    assert policy.policy_id == "fleshmonger-guard-kill-research-10-11"
+    assert policy.execution == "fleshmonger-guard-hunt"
+    assert policy.segment_kill_limit == 1
+    assert policy.executable
+
+
+def test_level_ten_thief_advances_from_probe_to_two_stop_research() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={"fleshmonger-guard-probe-10-12": 0},
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-guard-research-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-guard-circuit-research"
+    assert policy.segment_kill_limit == 1
+    assert policy.executable
+    assert "backstab" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_promotes_productive_guard_research() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 500,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-guard-10-11"
+    assert policy.status == "verified"
+    assert policy.execution == "fleshmonger-guard-circuit"
+    assert policy.segment_kill_limit == 1
+    assert "Live run 1419" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_stops_repeating_empty_verified_guard_loop() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-mufti-probe-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-mufti-research"
+    assert policy.executable
+
+
+def test_level_ten_thief_does_not_repeat_completed_mufti_probe() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-cook-probe-v2-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-cook-research"
+    assert policy.executable
+
+
+def test_level_ten_thief_does_not_repeat_completed_cook_probe() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-cook-10-11"
+    assert policy.status == "verified"
+    assert policy.execution == "fleshmonger-cook-hunt"
+    assert policy.segment_kill_limit == 1
+    assert policy.executable
+
+
+def test_level_ten_thief_repeats_productive_verified_cook_hunt() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 696,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-cook-10-11"
+    assert policy.status == "verified"
+    assert "Live run 1425" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_stops_after_empty_verified_cook_hunt() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+        },
+    )
+
+    assert policy.policy_id == "ambush-archer-probe-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "ambush-archer-research"
+    assert policy.executable
+
+
+def test_level_ten_thief_does_not_repeat_completed_archer_probe() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+        },
+    )
+
+    assert policy.policy_id == "ambush-archer-kill-research-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "ambush-archer-hunt"
+    assert policy.segment_kill_limit == 1
+    assert policy.executable
+
+
+def test_level_ten_thief_moves_from_rejected_archer_to_gnome_probe() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+        },
+    )
+
+    assert policy.policy_id == "gnome-guard-hut-probe-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "gnome-guard-research"
+    assert policy.executable
+
+
+def test_level_ten_thief_combines_evidenced_targets_after_empty_gnome_probe() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-research-v8-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-thief-rotation-research"
+    assert policy.segment_kill_limit == 2
+    assert policy.executable
+
+
+def test_level_ten_thief_stops_after_unproductive_combined_research() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 0,
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+
+
+def test_level_ten_thief_promotes_productive_combined_rotation() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 472,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-10-11"
+    assert policy.status == "verified"
+    assert policy.execution == "fleshmonger-thief-rotation-research"
+    assert policy.segment_kill_limit == 2
+    assert "Live runs 1433, 1436, and 1438" in " ".join(policy.evidence)
+    assert "Live run 1446" in " ".join(policy.evidence)
+    assert "Live run 1448" in " ".join(policy.evidence)
+    assert "Live run 1452" in " ".join(policy.evidence)
+    assert "Live run 1457" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_revalidates_cook_identity_after_guard_rotation() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 472,
+            "fleshmonger-thief-rotation-10-11": 277,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-cook-identity-probe-v3-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-cook-research"
+    assert policy.segment_kill_limit is None
+
+
+def test_level_ten_thief_uses_revalidated_unambiguous_cook() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 472,
+            "fleshmonger-thief-rotation-10-11": 277,
+            "fleshmonger-cook-identity-probe-v3-10-11": 0,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-cook-identity-10-11"
+    assert policy.status == "verified"
+    assert policy.execution == "fleshmonger-cook-hunt"
+    assert policy.segment_kill_limit == 1
+    assert "Live run 1443" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_probes_isolated_study_servant_after_verified_rotation() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 472,
+            "fleshmonger-thief-rotation-10-11": 240,
+            "fleshmonger-cook-identity-probe-v3-10-11": 0,
+            "fleshmonger-cook-identity-10-11": 504,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-servant-probe-v1-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-servant-research"
+    assert policy.segment_kill_limit is None
+    assert "source-level-8" in " ".join(policy.evidence)
+    assert "room 9418" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_attacks_study_servant_only_after_live_probe() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 472,
+            "fleshmonger-thief-rotation-10-11": 240,
+            "fleshmonger-cook-identity-probe-v3-10-11": 0,
+            "fleshmonger-cook-identity-10-11": 504,
+            "fleshmonger-servant-probe-v1-10-11": 0,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-servant-kill-research-v1-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-servant-hunt"
+    assert policy.segment_kill_limit == 1
+    assert "Live run 1461" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_extends_rotation_after_productive_servant_kill() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 472,
+            "fleshmonger-thief-rotation-10-11": 240,
+            "fleshmonger-cook-identity-probe-v3-10-11": 0,
+            "fleshmonger-cook-identity-10-11": 504,
+            "fleshmonger-servant-probe-v1-10-11": 0,
+            "fleshmonger-servant-kill-research-v1-10-11": 372,
+        },
+    )
+
+    assert (
+        policy.policy_id
+        == "fleshmonger-thief-extended-rotation-research-v1-10-11"
+    )
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-thief-extended-rotation-research"
+    assert policy.segment_kill_limit == 2
+    assert "Live run 1462" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_promotes_productive_extended_rotation() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 472,
+            "fleshmonger-thief-rotation-10-11": 240,
+            "fleshmonger-cook-identity-probe-v3-10-11": 0,
+            "fleshmonger-cook-identity-10-11": 504,
+            "fleshmonger-servant-probe-v1-10-11": 0,
+            "fleshmonger-servant-kill-research-v1-10-11": 372,
+            "fleshmonger-thief-extended-rotation-research-v1-10-11": 394,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-extended-rotation-10-11"
+    assert policy.status == "verified"
+    assert policy.execution == "fleshmonger-thief-extended-rotation-research"
+    assert policy.segment_kill_limit == 2
+    assert "Live run 1464" in " ".join(policy.evidence)
+    assert "same-segment cook-plus-servant" in " ".join(policy.evidence)
+    assert "Live run 1468" in " ".join(policy.evidence)
+    assert "room 9406" in " ".join(policy.evidence)
+
+
+def test_level_ten_thief_fetches_sanctuary_after_empty_extended_rotation() -> None:
+    deltas = {
+        "fleshmonger-guard-probe-10-12": 0,
+        "fleshmonger-thief-guard-research-10-11": 423,
+        "fleshmonger-thief-guard-10-11": 0,
+        "fleshmonger-mufti-probe-10-11": 0,
+        "fleshmonger-cook-probe-v2-10-11": 0,
+        "fleshmonger-cook-10-11": 0,
+        "ambush-archer-probe-10-11": 0,
+        "ambush-archer-kill-research-10-11": 3,
+        "gnome-guard-hut-probe-10-11": 0,
+        "fleshmonger-thief-rotation-research-v8-10-11": 472,
+        "fleshmonger-thief-rotation-10-11": 240,
+        "fleshmonger-cook-identity-probe-v3-10-11": 0,
+        "fleshmonger-cook-identity-10-11": 504,
+        "fleshmonger-servant-probe-v1-10-11": 0,
+        "fleshmonger-servant-kill-research-v1-10-11": 372,
+        "fleshmonger-thief-extended-rotation-research-v1-10-11": 394,
+        "fleshmonger-thief-extended-rotation-10-11": 0,
+    }
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas=deltas,
+    )
+
+    assert policy.policy_id == "moria-sanctuary-10-11"
+    assert policy.status == "verified"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.practice_skill == "backstab"
+    assert policy.segment_kill_limit == 1
+
+    after_moria = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            **deltas,
+            "moria-sanctuary-10-11": 278,
+        },
+        last_policy_id="moria-sanctuary-10-11",
+    )
+
+    assert after_moria.policy_id == "fleshmonger-thief-rotation-10-11"
+    assert after_moria.execution == "fleshmonger-thief-rotation-research"
+
+
+def test_level_eleven_thief_starts_verified_level_twelve_rotation() -> None:
+    policy = policy_for(11, "thief")
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-11-12"
+    assert policy.status == "verified"
+    assert policy.execution == "fleshmonger-thief-extended-rotation-research"
+    assert policy.minimum_level == 11
+    assert policy.maximum_level == 12
+    assert policy.segment_kill_limit == 2
+    assert "Live run 1504" in " ".join(policy.evidence)
+    assert "Live run 1507" in " ".join(policy.evidence)
+    assert "Live run 1462" in " ".join(policy.evidence)
+
+
+def test_level_eleven_thief_rotates_from_fleshmonger_to_moria() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-10-11",
+        policy_xp_deltas={"fleshmonger-thief-rotation-10-11": 274},
+    )
+
+    assert policy.policy_id == "moria-sanctuary-11-12"
+    assert policy.status == "verified"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.maximum_level == 12
+    assert policy.segment_kill_limit == 1
+    assert "Live run 1503" in " ".join(policy.evidence)
+    assert "Live run 1506" in " ".join(policy.evidence)
+
+
+def test_level_eleven_thief_rotates_after_an_unconfirmed_positive_xp_hunt() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-11-12",
+        policy_xp_deltas={"fleshmonger-thief-rotation-11-12": 0},
+    )
+
+    assert policy.policy_id == "moria-sanctuary-11-12"
+
+
+def test_level_eleven_thief_rotates_back_to_fleshmonger() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        last_policy_id="moria-sanctuary-11-12",
+        policy_xp_deltas={
+            "moria-sanctuary-11-12": 313,
+            "fleshmonger-thief-rotation-11-12": 274,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-11-12"
+    assert policy.maximum_level == 12
+
+
+def test_level_twelve_thief_runs_bounded_fleshmonger_research_first() -> None:
+    policy = policy_for(12, "thief")
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-research-12-13"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-thief-extended-rotation-research"
+    assert policy.segment_kill_limit == 2
+    assert "must record a level-12 result" in " ".join(policy.evidence)
+
+
+def test_level_twelve_thief_promotes_productive_research_to_verified_rotation() -> None:
+    policy = policy_for(
+        12,
+        "thief",
+        policy_xp_deltas={"fleshmonger-thief-rotation-research-12-13": 400},
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-12-13"
+    assert policy.status == "verified"
+    assert policy.executable
+    assert policy.segment_kill_limit == 2
+    assert "Live run 1578" in " ".join(policy.evidence)
+
+
+def test_level_twelve_thief_waits_for_review_after_unproductive_research() -> None:
+    policy = policy_for(
+        12,
+        "thief",
+        policy_xp_deltas={"fleshmonger-thief-rotation-research-12-13": 0},
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+
+
+def test_level_ten_thief_retires_empty_verified_combined_rotation() -> None:
+    policy = policy_for(
+        10,
+        "thief",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-thief-guard-research-10-11": 423,
+            "fleshmonger-thief-guard-10-11": 0,
+            "fleshmonger-mufti-probe-10-11": 0,
+            "fleshmonger-cook-probe-v2-10-11": 0,
+            "fleshmonger-cook-10-11": 0,
+            "ambush-archer-probe-10-11": 0,
+            "ambush-archer-kill-research-10-11": 3,
+            "gnome-guard-hut-probe-10-11": 0,
+            "fleshmonger-thief-rotation-research-v8-10-11": 472,
+            "fleshmonger-thief-rotation-10-11": 0,
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+
+
+def test_level_ten_warrior_extends_completed_guard_research_to_two_kills() -> None:
+    policy = policy_for(
+        10,
+        "warrior",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-guard-kill-research-10-11": 430,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-two-guard-research-v2-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-guard-circuit-research"
+    assert policy.segment_kill_limit == 2
+
+
+@pytest.mark.parametrize("level", [10, 11])
+def test_level_ten_and_eleven_warrior_promotes_completed_two_guard_research(
+    level: int,
+) -> None:
+    policy = policy_for(
+        level,
+        "warrior",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-guard-kill-research-10-11": 703,
+            "fleshmonger-two-guard-research-v2-10-11": 1200,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-guard-circuit-10-11"
+    assert policy.status == "verified"
+    assert policy.execution == "fleshmonger-guard-circuit"
+    assert policy.segment_kill_limit == 2
+    assert "Live run 1414" in " ".join(policy.evidence)
+
+
+def test_level_ten_warrior_stops_repeating_empty_verified_guard_loop() -> None:
+    policy = policy_for(
+        10,
+        "warrior",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-guard-kill-research-10-11": 703,
+            "fleshmonger-two-guard-research-v2-10-11": 1200,
+            "fleshmonger-guard-circuit-10-11": 0,
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+
+
+def test_level_eleven_mage_collects_same_bounded_source_probe() -> None:
+    policy = policy_for(11, "mage")
+
+    assert policy.policy_id == "fleshmonger-guard-probe-10-12"
+    assert policy.minimum_level == 11
+    assert policy.status == "research"
+    assert policy.executable
+
+
+def test_level_eleven_mage_does_not_repeat_completed_source_probe() -> None:
+    policy = policy_for(
+        11,
+        "mage",
+        policy_xp_deltas={"fleshmonger-guard-probe-10-12": 0},
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
 
 
 def test_unregistered_class_at_level_ten_is_explicitly_unavailable() -> None:

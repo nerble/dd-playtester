@@ -105,6 +105,28 @@ and equips rewards, buys food and water, practices a real class ability, reaches
 level 2, saves, and quits. Every choice is stored as a `decision` event with its
 stage and reason. Passwords remain redacted.
 
+## HERO autonomy entry point
+
+Prepare and run a durable level-100 campaign directly from a character request:
+
+```powershell
+python -m dd4tester hero-options
+python -m dd4tester hero --race human --sex female --class mage
+python -m dd4tester hero --name Valora --race elf --class thief --subclass ninja
+```
+
+The command reads races, classes, and base/subclass relationships from the
+current DD4 `const.c`, falling back to a packaged snapshot of a recorded source
+revision. When `--name` is omitted, it generates a stable name. The request,
+generated profile, and campaign configuration are stored under `runs/heroes/`
+and reused on the next identical invocation. Use `--prepare-only` to validate
+and inspect configuration without connecting. Sex is retained as a cosmetic
+identity choice but is not a progression coverage dimension.
+
+This command uses the existing verified policy graph. It will checkpoint and
+stop safely at the first level band that still lacks an executable policy;
+extending verified coverage from level 10 through HERO remains ongoing work.
+
 ## Campaign execution
 
 `campaigns/hero.example.yaml` turns a character profile into a durable
@@ -152,11 +174,17 @@ python -m dd4tester show-policies --level 2 --class mage
 ```
 
 The registry distinguishes `verified`, `research`, and `unavailable` policies.
-Creation and the complete tutorial are verified, and bounded Mud School arena
-segments are registered through level 10. Training defaults now come from the
-packaged archetype registry. Mage field policies retain their deeper live
-evidence; thief and warrior still require separate live matrix proof before the
-cross-class claim is complete.
+Creation and the complete tutorial are verified. Later bands use bounded,
+source-backed field policies; for example, run 1411 verifies the level-10
+warrior Fleshmonger guard loop. A research route can attack only when its
+policy explicitly permits bounded combat, and it is promoted only after live
+XP, damage, loot, and safe-return evidence is recorded.
+
+Combat fastwalks enable DD4's `TARGETMODE`. The runner binds the resulting
+`[#number]` to a source-recognized mobile line and uses that exact live instance
+for `consider`, the opener, and targeted combat spells. Selectors are ephemeral:
+policies and persisted evidence continue to identify targets by reusable source
+identity, and IDs are never reused across connections or reboot boundaries.
 
 Export a compact evidence record from a bounded research run for review:
 
@@ -178,9 +206,26 @@ python -m dd4tester show-prereqs --class mage --skill fireball
 python -m dd4tester show-prereqs --class warlock --skill dragon-shield
 ```
 
-The command reports every prerequisite and required percentage from the source
-snapshot. It is informational until live skill percentages are added to the
-character state model.
+Inspect the ordered leveling analysis for any base class or level-30 subclass:
+
+```powershell
+python -m dd4tester skill-analysis --class psionic
+python -m dd4tester skill-analysis --class warrior
+python -m dd4tester skill-analysis --class ninja
+python -m dd4tester skill-analysis --class "bounty hunter"
+```
+
+The analysis reports the class strategy, practice policy, highest-value
+leveling skills, known automation gaps, target percentages, and source
+prerequisites. The live planner intersects the ordered priorities with the
+current trainer's `practice` listing, available physical and intellectual
+practices, known percentages, prior rejections, and per-level spending limits.
+It spends at most one practice of each type per level because unused physical
+and intellectual practices feed the next level's hit-point and mana gains.
+All automated choices for the nine base classes and all 18 subclass analyses
+carry DD4 source references. Before level 30 the planner uses only base-class
+priorities. Once the live state confirms a subclass, its priorities take
+precedence while inherited base-class priorities remain available.
 
 When a level-2 profile and its password environment variable are available, run
 one bounded arena probe before enabling any automated level-2-to-10 policy:

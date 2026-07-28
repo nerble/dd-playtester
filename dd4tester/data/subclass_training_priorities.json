@@ -1,0 +1,300 @@
+{
+  "source": {
+    "repository": "https://github.com/fromage-fraser/dd4",
+    "revision": "f703daa2a5a9728e85a638cd0043208ffbddaa1c",
+    "scope": "level-30 subclass leveling priorities"
+  },
+  "prerequisite_class_aliases": {
+    "necromancer": "necro",
+    "bounty hunter": "bounty",
+    "infernalist": "infernal",
+    "martial artist": "artist"
+  },
+  "base_classes": {
+    "necromancer": "mage",
+    "warlock": "mage",
+    "templar": "cleric",
+    "druid": "cleric",
+    "ninja": "thief",
+    "bounty hunter": "thief",
+    "thug": "warrior",
+    "knight": "warrior",
+    "infernalist": "psionic",
+    "witch": "psionic",
+    "werewolf": "shifter",
+    "vampire": "shifter",
+    "monk": "brawler",
+    "martial artist": "brawler",
+    "barbarian": "ranger",
+    "bard": "ranger",
+    "engineer": "smithy",
+    "runesmith": "smithy"
+  },
+  "class_analysis": {
+    "necromancer": {
+      "strategy": "Turn the mage spell engine toward death damage first, then add a corpse servant only after follower control is reliable.",
+      "practice_policy": "Raise death magiks to 50% for harm, improve harm, then continue death magiks to 60% for animate dead.",
+      "highest_value_skills": ["death magiks", "harm", "animate dead"],
+      "automation_gaps": ["Animate dead needs corpse selection, follower ordering, grouping, and replacement policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-necro.c", "server/src/magic.c: spell_harm and spell_animate_dead"]
+    },
+    "warlock": {
+      "strategy": "Add passive weapon attacks to the inherited mage spell rotation, then build reflective protection.",
+      "practice_policy": "Raise armed combat knowledge to 40% for second attack; continue major protective magiks only when buff upkeep is available.",
+      "highest_value_skills": ["armed combat knowledge", "second attack", "major protective magiks", "dragon shield"],
+      "automation_gaps": ["Dragon shield and fireshield need generic pre-hunt casting, expiry, and recast handling."],
+      "source_refs": ["server/src/pre_reqs/pre_req-warlock.c", "server/src/fight.c: multi_hit and shield damage", "server/src/magic.c: spell_dragon_shield"]
+    },
+    "templar": {
+      "strategy": "Extend cleric melee throughput with third attack, then add passive recovery and combat buffs.",
+      "practice_policy": "Drive armed combat knowledge and second attack to the third-attack gates; then raise inner force for fast healing.",
+      "highest_value_skills": ["armed combat knowledge", "second attack", "third attack", "inner force", "fast healing"],
+      "automation_gaps": ["Warcry and frenzy need source-verified combat timing and affect lifecycle policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-templar.c", "server/src/fight.c: multi_hit", "server/src/update.c: hit_gain"]
+    },
+    "druid": {
+      "strategy": "Build the nature chain from bark skin into wither and the stronger ray attacks while retaining inherited cleric healing.",
+      "practice_policy": "Raise nature skills in staged prerequisite steps and buy each immediately useful spell as it appears.",
+      "highest_value_skills": ["nature skills", "bark skin", "wither", "moonray", "sunray"],
+      "automation_gaps": ["Nature buffs and area attacks need target-count, friendly-fire, expiry, and recast policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: druid nature spells"]
+    },
+    "ninja": {
+      "strategy": "Preserve the thief opener while building the passive third- and fourth-attack chain and enhanced hit.",
+      "practice_policy": "Meet the inherited armed, second-attack, and third-attack thresholds before spending on advanced combat knowledge and fourth attack.",
+      "highest_value_skills": ["armed combat knowledge", "second attack", "third attack", "advanced combat knowledge", "fourth attack", "enhanced hit"],
+      "automation_gaps": ["Poison weapon needs toxin inventory and expiry handling; decapitate needs target-anatomy and risk policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-ninja.c", "server/src/fight.c: multi_hit, one_hit, and do_decapitate"]
+    },
+    "bounty hunter": {
+      "strategy": "Convert the established thief stealth chain into assassinate while adding reliable target assessment and weapon maintenance.",
+      "practice_policy": "Raise stealth techniques and backstab to 85%, then improve assassinate; defer sharpen until maintenance economics are modeled.",
+      "highest_value_skills": ["stealth techniques", "backstab", "assassinate", "hunting arts", "advanced consider"],
+      "automation_gaps": ["Sharpen needs weapon-value and degradation policy; second circle needs a lag-aware combat controller."],
+      "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/fight.c: assassinate proc in one_hit"]
+    },
+    "thug": {
+      "strategy": "Push the warrior passive attack chain to fourth attack, then add enhanced hit to every successful blow.",
+      "practice_policy": "Meet the 85% armed, second-, and third-attack gates for fourth attack; then raise advanced combat knowledge and enhanced hit.",
+      "highest_value_skills": ["armed combat knowledge", "second attack", "third attack", "fourth attack", "advanced combat knowledge", "enhanced hit"],
+      "automation_gaps": ["Smash, gouge, and extort need target equipment, anatomy, combat-lag, and economy policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-thug.c", "server/src/fight.c: multi_hit and one_hit", "server/src/act_move.c: do_smash"]
+    },
+    "knight": {
+      "strategy": "Add direct divine damage and self-healing to the warrior attack engine before investing in mounted combat.",
+      "practice_policy": "Improve flamestrike first, then raise healing magiks through cure serious; preserve riding practices until mount control is available.",
+      "highest_value_skills": ["flamestrike", "healing magiks", "cure light", "cure serious", "armed combat knowledge", "third attack"],
+      "automation_gaps": ["Joust and destrier require mount acquisition, retention, lance equipment, and recovery policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_flamestrike and cure spells", "server/src/fight.c: do_joust"]
+    },
+    "infernalist": {
+      "strategy": "Follow the shortest dark-magik damage chain while retaining the psionic base's mana reserve.",
+      "practice_policy": "Raise dark magiks for dark ritual and steal strength, then continue through abyssal hand and chaos blast.",
+      "highest_value_skills": ["dark magiks", "dark ritual", "steal strength", "abyssal hand", "chaos blast"],
+      "automation_gaps": ["Summoned demons and soul mechanics need follower, alignment, resource, and replacement policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_dark_ritual and spell_steal_strength"]
+    },
+    "witch": {
+      "strategy": "Use a familiar to absorb pressure once follower control exists; otherwise favor inherited psionic damage and passive second attack.",
+      "practice_policy": "Raise second attack when offered; reserve summoning and death practices until their follower controllers are enabled.",
+      "highest_value_skills": ["second attack", "summoning magiks", "summon familiar", "death magiks", "animate dead"],
+      "automation_gaps": ["Familiar and animated-dead play need grouping, ordering, tank selection, corpse use, and replacement policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/magic.c: spell_summon_familiar and spell_animate_dead"]
+    },
+    "werewolf": {
+      "strategy": "Use normal-form passive attacks and fast healing until a wolf-form controller can exploit wolfbite and ravage safely.",
+      "practice_policy": "Prioritize armed combat knowledge, second attack, and fast healing; defer wolf form and form attacks until equipment transitions are safe.",
+      "highest_value_skills": ["armed combat knowledge", "second attack", "fast healing", "wolf form", "wolfbite", "ravage"],
+      "automation_gaps": ["Wolf forms need equipment transition, rage, lunar-state, natural-weapon, and return-to-normal policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_wolfbite and do_ravage", "server/src/fight.c: werewolf rage"]
+    },
+    "vampire": {
+      "strategy": "Build passive attacks first, then use the short armed-combat gateway to disarm while blood-fed lunge attacks remain deferred.",
+      "practice_policy": "Raise armed combat knowledge to 20% and second attack, then continue armed combat knowledge to 75% and learn disarm. Preserve vampyre practices until suck and lunge are operational.",
+      "highest_value_skills": ["armed combat knowledge", "second attack", "disarm", "vampyre skills", "suck", "lunge", "fast healing"],
+      "automation_gaps": ["Blood feeding, lunge, shadow and bat forms, sunlight, and race-specific recovery need a vampire controller."],
+      "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/skill.c: do_suck", "server/src/fight.c: do_lunge"]
+    },
+    "monk": {
+      "strategy": "Add a short psionic damage chain to the inherited brawler attack engine without diluting physical passive damage.",
+      "practice_policy": "Improve mind thrust, then raise matter control disciplines for agitation; keep physical practices on inherited brawler priorities.",
+      "highest_value_skills": ["mind thrust", "matter control disciplines", "agitation", "mental barrier"],
+      "automation_gaps": ["Monk defensive disciplines need generic pre-hunt casting, expiry, and mana-reserve handling."],
+      "source_refs": ["server/src/pre_reqs/pre_req-monk.c", "server/src/magic.c: spell_mind_thrust, spell_agitation, and defensive disciplines"]
+    },
+    "martial artist": {
+      "strategy": "Build a deterministic martial strike chain, then unlock combinations after individual attacks are dependable.",
+      "practice_policy": "Raise martial arts for atemi first; stage later strikes and combination moves only as the combat controller learns their timing.",
+      "highest_value_skills": ["martial arts", "atemi", "kansetsu", "combination moves", "combo", "fast healing"],
+      "automation_gaps": ["Strike selection and combos need position, anatomy, trauma, sequencing, and command-lag policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: do_atemi and do_combo"]
+    },
+    "barbarian": {
+      "strategy": "Stack enhanced damage and fourth attack on the ranger melee engine, with berserk and fast healing extending field output.",
+      "practice_policy": "Raise armed combat knowledge for enhanced damage and the fourth-attack chain; add fast healing before optional control skills.",
+      "highest_value_skills": ["armed combat knowledge", "enhanced damage", "fourth attack", "fast healing", "knowledge", "berserk"],
+      "automation_gaps": ["Berserk needs rage, withdrawal, expiry, and post-combat recovery handling."],
+      "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/fight.c: one_hit, multi_hit, and do_berserk"]
+    },
+    "bard": {
+      "strategy": "Use musicianship to replace consumable flight and add a sustained combat chant to the ranger attack engine.",
+      "practice_policy": "Raise musicianship to 75%, then learn chant of battle and song of flight before deeper chant chains.",
+      "highest_value_skills": ["musicianship", "chant of battle", "song of flight", "song of sustenance", "song of rejuvenation"],
+      "automation_gaps": ["Songs and chants need instrument, exclusivity, expiry, recast, and travel-versus-combat mode handling."],
+      "source_refs": ["server/src/pre_reqs/pre_req-bard.c", "server/src/skill.c: bard song and chant handling", "server/src/const.c: bard affect table"]
+    },
+    "engineer": {
+      "strategy": "Treat the turret as the subclass's damage platform, but do not spend into it until construction, modules, deployment, and retrieval are autonomous.",
+      "practice_policy": "Retain subclass physical practices until the turret controller can build a turret, fit modules, deploy it, trigger it, and recover reusable parts.",
+      "highest_value_skills": ["turret tech", "turret", "trigger", "arrow module"],
+      "automation_gaps": ["The complete turret and module resource lifecycle is not automated yet."],
+      "source_refs": ["server/src/pre_reqs/pre_req-engineer.c", "server/src/act_obj.c: do_deploy", "server/src/skill.c: turret trigger handling"]
+    },
+    "runesmith": {
+      "strategy": "Use runic attacks as the subclass damage path after inscription and rune-resource handling are proven.",
+      "practice_policy": "Retain subclass practices until the rune controller can inscribe, carry, invoke, value, and replace runic items.",
+      "highest_value_skills": ["runic arts", "pyro rune", "rune casting", "inscribe"],
+      "automation_gaps": ["Runes require inscription materials, item selection, invocation, depletion, and replacement policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-runesmith.c", "server/src/magic.c: runic spell implementations", "server/src/skill.c: inscription handling"]
+    }
+  },
+  "classes": {
+    "necromancer": [
+      {"skill": "death magiks", "source_skill": "group death", "type": "intellectual", "target": 50, "utility": "damage-gateway", "reason": "reaches the exact prerequisite for harm", "source_refs": ["server/src/pre_reqs/pre_req-necro.c"]},
+      {"skill": "harm", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds a direct high-damage death spell to the inherited mage rotation", "source_refs": ["server/src/pre_reqs/pre_req-necro.c", "server/src/magic.c: spell_harm"]},
+      {"skill": "death magiks", "source_skill": "group death", "type": "intellectual", "target": 60, "utility": "sustain-gateway", "reason": "reaches the animate-dead prerequisite after harm is established", "source_refs": ["server/src/pre_reqs/pre_req-necro.c"]},
+      {"skill": "animate dead", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "can turn a corpse into a combat follower", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-necro.c", "server/src/magic.c: spell_animate_dead"]}
+    ],
+    "warlock": [
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 40, "utility": "damage-gateway", "reason": "reaches the subclass's second-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-warlock.c"]},
+      {"skill": "second attack", "type": "physical", "target": 45, "utility": "damage", "reason": "adds an automatic weapon attack each combat round", "source_refs": ["server/src/pre_reqs/pre_req-warlock.c", "server/src/fight.c: multi_hit"]},
+      {"skill": "major protective magiks", "source_skill": "group majorp", "type": "intellectual", "target": 50, "utility": "mitigation-gateway", "reason": "unlocks dragon shield", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-warlock.c"]},
+      {"skill": "dragon shield", "type": "intellectual", "target": 45, "utility": "mitigation", "reason": "adds reactive protection during repeated combat", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-warlock.c", "server/src/magic.c: spell_dragon_shield"]}
+    ],
+    "templar": [
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 85, "utility": "damage-gateway", "reason": "reaches the third-attack group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-templar.c"]},
+      {"skill": "second attack", "type": "physical", "target": 75, "utility": "damage-gateway", "reason": "reaches the second prerequisite for third attack", "source_refs": ["server/src/pre_reqs/pre_req-templar.c"]},
+      {"skill": "third attack", "type": "physical", "target": 50, "utility": "damage", "reason": "adds another automatic attack each combat round", "source_refs": ["server/src/pre_reqs/pre_req-templar.c", "server/src/fight.c: multi_hit"]},
+      {"skill": "inner force", "source_skill": "group inner", "type": "intellectual", "target": 70, "utility": "sustain-gateway", "reason": "reaches the fast-healing prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-templar.c"]},
+      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery ticks", "source_refs": ["server/src/pre_reqs/pre_req-templar.c", "server/src/update.c: hit_gain"]}
+    ],
+    "druid": [
+      {"skill": "nature skills", "source_skill": "group nature", "type": "intellectual", "target": 40, "utility": "mitigation-gateway", "reason": "unlocks bark skin", "source_refs": ["server/src/pre_reqs/pre_req-druid.c"]},
+      {"skill": "bark skin", "type": "intellectual", "target": 55, "utility": "mitigation", "reason": "adds a nature defense and satisfies the wither chain", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: spell_bark_skin"]},
+      {"skill": "nature skills", "source_skill": "group nature", "type": "intellectual", "target": 55, "utility": "damage-gateway", "reason": "reaches the wither prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-druid.c"]},
+      {"skill": "wither", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds a nature-linked offensive spell", "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: spell_wither"]},
+      {"skill": "nature skills", "source_skill": "group nature", "type": "intellectual", "target": 80, "utility": "damage-gateway", "reason": "reaches the moonray prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-druid.c"]},
+      {"skill": "moonray", "type": "intellectual", "target": 45, "utility": "damage", "reason": "opens the stronger ray branch", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: spell_moonray"]},
+      {"skill": "sunray", "type": "intellectual", "target": 45, "utility": "damage", "reason": "continues the high-level nature damage chain", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: spell_sunray"]}
+    ],
+    "ninja": [
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 90, "utility": "damage-gateway", "reason": "supports dual wield and the inherited attack chain", "source_refs": ["server/src/pre_reqs/pre_req-ninja.c"]},
+      {"skill": "second attack", "type": "physical", "target": 90, "utility": "damage-gateway", "reason": "reaches the fourth-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-ninja.c"]},
+      {"skill": "third attack", "type": "physical", "target": 90, "utility": "damage-gateway", "reason": "reaches the fourth-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-ninja.c"]},
+      {"skill": "advanced combat knowledge", "source_skill": "group advcombat", "type": "intellectual", "target": 65, "utility": "damage-gateway", "reason": "completes the initial fourth-attack gateway", "source_refs": ["server/src/pre_reqs/pre_req-ninja.c"]},
+      {"skill": "fourth attack", "type": "physical", "target": 45, "utility": "damage", "reason": "adds another automatic attack each combat round", "source_refs": ["server/src/pre_reqs/pre_req-ninja.c", "server/src/fight.c: multi_hit"]},
+      {"skill": "advanced combat knowledge", "source_skill": "group advcombat", "type": "intellectual", "target": 95, "utility": "damage-gateway", "reason": "reaches the enhanced-hit prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-ninja.c"]},
+      {"skill": "enhanced hit", "type": "physical", "target": 100, "utility": "damage", "reason": "adds one quarter proficiency as a percentage bonus to every hit", "source_refs": ["server/src/pre_reqs/pre_req-ninja.c", "server/src/fight.c: one_hit"]}
+    ],
+    "bounty hunter": [
+      {"skill": "stealth techniques", "source_skill": "group stealth", "type": "intellectual", "target": 85, "utility": "damage-gateway", "reason": "reaches the assassinate group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c"]},
+      {"skill": "backstab", "type": "physical", "target": 85, "utility": "damage-gateway", "reason": "reaches the assassinate attack prerequisite while improving the opener", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/fight.c: do_backstab"]},
+      {"skill": "assassinate", "type": "physical", "target": 60, "utility": "damage", "reason": "adds a source-defined instant-kill proc to eligible attacks", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/fight.c: assassinate branch in one_hit"]},
+      {"skill": "hunting arts", "source_skill": "group hunting", "type": "intellectual", "target": 85, "utility": "safety", "reason": "unlocks hunt for locating moving targets", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c"]},
+      {"skill": "advanced consider", "type": "intellectual", "target": 45, "utility": "safety", "reason": "improves live target assessment", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/act_info.c: do_consider"]}
+    ],
+    "thug": [
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 85, "utility": "damage-gateway", "reason": "reaches the fourth-attack group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-thug.c"]},
+      {"skill": "second attack", "type": "physical", "target": 85, "utility": "damage-gateway", "reason": "reaches the fourth-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-thug.c"]},
+      {"skill": "third attack", "type": "physical", "target": 85, "utility": "damage-gateway", "reason": "reaches the fourth-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-thug.c"]},
+      {"skill": "fourth attack", "type": "physical", "target": 50, "utility": "damage", "reason": "adds another automatic attack each combat round", "source_refs": ["server/src/pre_reqs/pre_req-thug.c", "server/src/fight.c: multi_hit"]},
+      {"skill": "advanced combat knowledge", "source_skill": "group advcombat", "type": "intellectual", "target": 90, "utility": "damage-gateway", "reason": "reaches the enhanced-hit prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-thug.c"]},
+      {"skill": "enhanced hit", "type": "physical", "target": 100, "utility": "damage", "reason": "adds one quarter proficiency as a percentage bonus to every hit", "source_refs": ["server/src/pre_reqs/pre_req-thug.c", "server/src/fight.c: one_hit"]}
+    ],
+    "knight": [
+      {"skill": "flamestrike", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds immediate direct spell damage to the warrior attack engine", "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_flamestrike"]},
+      {"skill": "healing magiks", "source_skill": "group healing", "type": "intellectual", "target": 50, "utility": "sustain-gateway", "reason": "unlocks cure light and cure serious", "source_refs": ["server/src/pre_reqs/pre_req-knight.c"]},
+      {"skill": "cure light", "type": "intellectual", "target": 50, "utility": "sustain-gateway", "reason": "adds self-healing and reaches the cure-serious prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_cure_light"]},
+      {"skill": "cure serious", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "extends hunt segments with stronger self-healing", "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_cure_serious"]},
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 90, "utility": "damage-gateway", "reason": "supports the inherited third-attack and dual-wield chain", "source_refs": ["server/src/pre_reqs/pre_req-knight.c"]},
+      {"skill": "third attack", "type": "physical", "target": 60, "utility": "damage", "reason": "adds another automatic attack each combat round", "source_refs": ["server/src/fight.c: multi_hit"]}
+    ],
+    "infernalist": [
+      {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "unlocks dark ritual", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
+      {"skill": "dark ritual", "type": "intellectual", "target": 45, "utility": "damage", "reason": "starts the subclass's dark combat chain", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_dark_ritual"]},
+      {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 50, "utility": "damage-gateway", "reason": "unlocks steal strength", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
+      {"skill": "steal strength", "type": "intellectual", "target": 60, "utility": "damage", "reason": "damages and weakens the target while opening abyssal hand", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_steal_strength"]},
+      {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 65, "utility": "damage-gateway", "reason": "completes the abyssal-hand group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
+      {"skill": "abyssal hand", "type": "intellectual", "target": 45, "utility": "damage", "reason": "continues the direct dark-damage chain", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_abyssal_hand"]},
+      {"skill": "chaos blast", "type": "intellectual", "target": 45, "utility": "damage", "reason": "provides a later high-value dark attack", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_chaos_blast"]}
+    ],
+    "witch": [
+      {"skill": "second attack", "type": "physical", "target": 45, "utility": "damage", "reason": "adds an automatic attack after witch base reaches its source gate", "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/fight.c: multi_hit"]},
+      {"skill": "summoning magiks", "source_skill": "group summoning", "type": "intellectual", "target": 50, "utility": "sustain-gateway", "reason": "unlocks summon familiar", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c"]},
+      {"skill": "summon familiar", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "creates a follower that can contribute damage and absorb attacks", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/magic.c: spell_summon_familiar"]},
+      {"skill": "death magiks", "source_skill": "group death", "type": "intellectual", "target": 90, "utility": "damage-gateway", "reason": "unlocks animate dead and later death effects", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c"]},
+      {"skill": "animate dead", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "turns a corpse into another combat follower", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/magic.c: spell_animate_dead"]}
+    ],
+    "werewolf": [
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 50, "utility": "damage-gateway", "reason": "reaches the second-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c"]},
+      {"skill": "second attack", "type": "physical", "target": 45, "utility": "damage", "reason": "adds an automatic attack in compatible forms", "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/fight.c: multi_hit"]},
+      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery ticks", "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/update.c: hit_gain"]},
+      {"skill": "wolf form", "source_skill": "form wolf", "type": "intellectual", "target": 50, "utility": "damage-gateway", "reason": "unlocks wolfbite", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: wolf form"]},
+      {"skill": "wolfbite", "type": "physical", "target": 50, "utility": "damage", "reason": "adds a wolf-form attack and opens ravage", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_wolfbite"]},
+      {"skill": "ravage", "type": "physical", "target": 45, "utility": "damage", "reason": "adds a stronger wolf-form attack", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_ravage"]}
+    ],
+    "vampire": [
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 20, "utility": "damage-gateway", "reason": "reaches the second-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-vampire.c"]},
+      {"skill": "second attack", "type": "physical", "target": 45, "utility": "damage", "reason": "adds an automatic attack each combat round", "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/fight.c: multi_hit"]},
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 75, "utility": "control-gateway", "reason": "reaches the vampire subclass's exact prerequisite for disarm", "source_refs": ["server/src/pre_reqs/pre_req-vampire.c: disarm requires group armed 75"]},
+      {"skill": "disarm", "type": "physical", "target": 60, "utility": "control", "reason": "actively removes an opponent's wielded weapon, reducing weapon damage and weapon-dependent control", "source_refs": ["server/area/helpfile.are: HELP DISARM", "server/src/pre_reqs/pre_req-vampire.c: disarm prerequisites", "server/src/fight.c: do_disarm and disarm"]},
+      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery after its subclass gate", "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/update.c: hit_gain"]},
+      {"skill": "vampyre skills", "source_skill": "group vampyre", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "unlocks suck and transfix", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-vampire.c"]},
+      {"skill": "suck", "type": "physical", "target": 70, "utility": "sustain-gateway", "reason": "feeds the vampire and reaches the lunge prerequisite", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/skill.c: do_suck"]},
+      {"skill": "lunge", "type": "physical", "target": 60, "utility": "damage", "reason": "adds a vampire combat attack", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/fight.c: do_lunge"]}
+    ],
+    "monk": [
+      {"skill": "mind thrust", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds a direct psionic attack to inherited brawler damage", "source_refs": ["server/src/pre_reqs/pre_req-monk.c", "server/src/magic.c: spell_mind_thrust"]},
+      {"skill": "matter control disciplines", "source_skill": "group matter", "type": "intellectual", "target": 45, "utility": "damage-gateway", "reason": "reaches the agitation prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-monk.c"]},
+      {"skill": "agitation", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds another direct psionic combat option", "source_refs": ["server/src/pre_reqs/pre_req-monk.c", "server/src/magic.c: spell_agitation"]},
+      {"skill": "mental defense disciplines", "source_skill": "group mentald", "type": "intellectual", "target": 50, "utility": "mitigation-gateway", "reason": "unlocks mental barrier", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-monk.c"]},
+      {"skill": "mental barrier", "type": "intellectual", "target": 45, "utility": "mitigation", "reason": "reduces incoming combat pressure", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-monk.c", "server/src/magic.c: spell_mental_barrier"]}
+    ],
+    "martial artist": [
+      {"skill": "martial arts", "source_skill": "group arts", "type": "intellectual", "target": 40, "utility": "damage-gateway", "reason": "unlocks atemi", "source_refs": ["server/src/pre_reqs/pre_req-artist.c"]},
+      {"skill": "atemi", "type": "physical", "target": 60, "utility": "damage", "reason": "is the first subclass martial strike and opens kansetsu", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: do_atemi"]},
+      {"skill": "martial arts", "source_skill": "group arts", "type": "intellectual", "target": 60, "utility": "damage-gateway", "reason": "completes the kansetsu group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-artist.c"]},
+      {"skill": "kansetsu", "type": "physical", "target": 45, "utility": "damage", "reason": "continues the martial strike chain", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: martial strike handling"]},
+      {"skill": "combination moves", "source_skill": "group combos", "type": "intellectual", "target": 65, "utility": "damage-gateway", "reason": "unlocks the first combination move", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-artist.c"]},
+      {"skill": "combo", "type": "physical", "target": 45, "utility": "damage", "reason": "chains learned martial attacks into a combat sequence", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: do_combo"]},
+      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery", "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/update.c: hit_gain"]}
+    ],
+    "barbarian": [
+      {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 80, "utility": "damage-gateway", "reason": "reaches the enhanced-damage prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c"]},
+      {"skill": "enhanced damage", "type": "physical", "target": 100, "utility": "damage", "reason": "adds half proficiency as a percentage bonus to every weapon hit", "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/fight.c: one_hit"]},
+      {"skill": "fourth attack", "type": "physical", "target": 50, "utility": "damage", "reason": "adds another automatic attack after inherited attack gates are met", "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/fight.c: multi_hit"]},
+      {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery ticks", "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/update.c: hit_gain"]},
+      {"skill": "knowledge", "source_skill": "group knowledge", "type": "intellectual", "target": 75, "utility": "damage-gateway", "reason": "unlocks berserk", "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c"]},
+      {"skill": "berserk", "type": "physical", "target": 45, "utility": "damage", "reason": "provides a combat damage mode when its risks are controlled", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/fight.c: do_berserk"]}
+    ],
+    "bard": [
+      {"skill": "musicianship", "source_skill": "group music", "type": "intellectual", "target": 75, "utility": "damage-gateway", "reason": "unlocks chant of battle and song of flight", "source_refs": ["server/src/pre_reqs/pre_req-bard.c"]},
+      {"skill": "chant of battle", "type": "intellectual", "target": 45, "utility": "damage", "reason": "provides a sustained combat-oriented chant", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-bard.c", "server/src/skill.c: bard chant handling"]},
+      {"skill": "song of flight", "type": "intellectual", "target": 45, "utility": "mobility", "reason": "replaces purchased flight while the song remains active", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-bard.c", "server/src/const.c: bard affect table"]},
+      {"skill": "song of sustenance", "type": "intellectual", "target": 85, "utility": "sustain-gateway", "reason": "reduces provision pressure and opens rejuvenation", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-bard.c"]},
+      {"skill": "song of rejuvenation", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "improves recovery during longer campaigns", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-bard.c", "server/src/skill.c: bard song handling"]}
+    ],
+    "engineer": [
+      {"skill": "turret tech", "source_skill": "group turret tech", "type": "physical", "target": 30, "utility": "damage-gateway", "reason": "unlocks turret construction and trigger mechanics", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-engineer.c"]},
+      {"skill": "turret", "type": "physical", "target": 60, "utility": "damage-gateway", "reason": "creates the subclass combat platform and raises module capacity", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-engineer.c", "server/src/act_obj.c: turret handling"]},
+      {"skill": "trigger", "type": "physical", "target": 45, "utility": "damage", "reason": "activates fitted turret modules in combat", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-engineer.c", "server/src/skill.c: turret trigger handling"]},
+      {"skill": "arrow module", "source_skill": "arrow", "type": "physical", "target": 45, "utility": "damage", "reason": "provides an early offensive turret module", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-engineer.c", "server/src/skill.c: turret module handling"]}
+    ],
+    "runesmith": [
+      {"skill": "runic arts", "source_skill": "group runic arts", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "unlocks pyro rune", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-runesmith.c"]},
+      {"skill": "pyro rune", "type": "intellectual", "target": 45, "utility": "damage", "reason": "is the earliest source-defined offensive rune", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-runesmith.c", "server/src/magic.c: spell_runic_flames"]},
+      {"skill": "rune casting", "source_skill": "group rune casting", "type": "intellectual", "target": 70, "utility": "damage-gateway", "reason": "opens the advanced runic strike chain", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-runesmith.c"]},
+      {"skill": "inscribe", "type": "physical", "target": 45, "utility": "damage-gateway", "reason": "creates the runic items required by the subclass combat path", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-runesmith.c", "server/src/skill.c: inscription handling"]}
+    ]
+  }
+}

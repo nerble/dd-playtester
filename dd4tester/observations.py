@@ -63,6 +63,9 @@ _DEATH = re.compile(
     r"\bYou (?:are dead|have died|were killed|have been killed)\b",
     re.IGNORECASE,
 )
+_TARGETMODE_DESCRIPTION = re.compile(
+    r"^\s*\[#(?P<target_id>\d+)\]\s*(?P<description>.*)$"
+)
 
 
 @dataclass(frozen=True)
@@ -105,10 +108,20 @@ class ObservationParser:
         self._pending_text = ""
         return self._parse_line(line)
 
+    def reset_connection(self) -> None:
+        """Discard connection-scoped parsing state before a reconnect."""
+        self._pending_text = ""
+        self._previous_line = None
+        self._room_name = None
+        self._room_vnum = None
+        self._gmcp_snapshots.clear()
+
     def feed_gmcp(self, message: str) -> list[GameEvent]:
         package, separator, body = message.partition(" ")
         payload = self._decode_gmcp_body(body) if separator else None
         normalized = package.casefold()
+        if normalized in {"char.items", "char.items.add", "char.equipment"}:
+            payload = self._normalize_targetmode_descriptions(payload)
         events: list[GameEvent] = []
 
         if normalized == "core.prompt":
@@ -394,6 +407,31 @@ class ObservationParser:
         if isinstance(payload, dict):
             return {**payload, "package": package}
         return {"package": package, "value": payload}
+
+    @classmethod
+    def _normalize_targetmode_descriptions(cls, value: Any) -> Any:
+        if isinstance(value, list):
+            return [cls._normalize_targetmode_descriptions(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+
+        normalized = {
+            key: cls._normalize_targetmode_descriptions(item)
+            for key, item in value.items()
+        }
+        description = normalized.get("short_desc")
+        if not isinstance(description, str):
+            return normalized
+
+        match = _TARGETMODE_DESCRIPTION.match(description)
+        if match is None:
+            return normalized
+
+        target_id = match.group("target_id")
+        normalized["short_desc"] = match.group("description")
+        normalized["target_id"] = target_id
+        normalized["target_selector"] = f"#{target_id}"
+        return normalized
 
     @staticmethod
     def _number(payload: dict[str, Any], *keys: str) -> int | float | None:

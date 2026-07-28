@@ -24,6 +24,7 @@ def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
     assert area.mobiles[100].aggressive is True
     assert area.objects[200].source_cost == 100
     assert area.objects[200].weight == 1
+    assert area.rooms[3001].sector_type == 0
     assert area.rooms[3001].exits["north"].destination == 3002
     assert area.mob_resets[1].object_vnums == (200, 201)
     assert area.mob_resets[1].equipment == ((16, 200),)
@@ -185,6 +186,39 @@ mpecho a mobile program reference
     assert set(area.mobiles) == {100}
 
 
+def test_area_parser_accepts_spaced_legacy_exit_markers(tmp_path) -> None:
+    area_file = tmp_path / "legacy-exits.are"
+    area_file.write_text(
+        """#ROOMS
+#9400
+The Foyer~
+A legacy room.~
+0 8 0
+D 0
+A guarded door.~
+door north~
+1 -1 9401
+S
+#9401
+A Guard Room~
+The destination.~
+0 8 0
+D 2
+The return door.~
+door south~
+1 -1 9400
+S
+#0
+""",
+        encoding="latin-1",
+    )
+
+    area = parse_area_file(area_file)
+
+    assert area.rooms[9400].exits["north"].destination == 9401
+    assert area.rooms[9401].exits["south"].destination == 9400
+
+
 def test_candidate_ranking_rejects_route_through_higher_level_aggressor(
     monkeypatch,
 ) -> None:
@@ -300,6 +334,54 @@ def test_candidate_ranking_rejects_high_level_room_companion(monkeypatch) -> Non
     assert candidate.status == "reject"
     assert "target reset permits up to 2 matching mobiles in the room" in candidate.hazards
     assert "room companion: the Hierophant L15 (up to 1)" in candidate.hazards
+
+
+def test_candidate_ranking_rejects_same_vnum_assist_capacity(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("fleshmonger.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            9405: MobileSource(
+                9405,
+                "guard duty",
+                "the on-duty guard",
+                10,
+                (1 << 1) | (1 << 5) | (1 << 6),
+                -500,
+                "fleshmonger.are",
+            ),
+        },
+        objects={
+            9400: ObjectSource(
+                9400,
+                "key cell",
+                "a cell key",
+                18,
+                (9404,),
+                1,
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            9406: RoomSource(9406, "A Guard Room", "fleshmonger.are"),
+        },
+        mob_resets=[MobReset(9405, 9406, 2, (9400,))],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 9406, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+    )[0]
+
+    assert candidate.status == "reject"
+    assert (
+        "target reset permits up to 2 matching mobiles in the room"
+        in candidate.hazards
+    )
 
 
 def test_candidate_ranking_excludes_wanderer_behind_reset_closed_door(

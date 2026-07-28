@@ -18,6 +18,7 @@ APPLY_HITROLL = 18
 APPLY_DAMROLL = 19
 ITEM_LIGHT = 1
 ITEM_WEAPON = 5
+ITEM_BODY_PART = 1 << 26
 ITEM_LANCE = 1 << 27
 ITEM_BOW = 1 << 30
 PIERCING_DAMAGE_TYPES = frozenset({2, 11})
@@ -195,6 +196,21 @@ def is_piercing_weapon(item: ObjectSource) -> bool:
     )
 
 
+def is_bow(item: ObjectSource) -> bool:
+    """Mirror DD4's ITEM_BOW requirement used by do_shoot."""
+    return bool(item.extra_flags & ITEM_BOW)
+
+
+def weapon_damage_score(item: ObjectSource) -> int:
+    """Return twice the source weapon's average dice damage."""
+    if item.item_type != ITEM_WEAPON or len(item.values) < 3:
+        return 0
+    dice_count, die_size = item.values[1:3]
+    if dice_count <= 0 or die_size <= 0:
+        return 0
+    return dice_count * (die_size + 1)
+
+
 def stance_score(
     item: ObjectSource,
     stance: str,
@@ -260,6 +276,8 @@ def character_can_use_item(
     subclass: str | None,
 ) -> bool:
     """Apply source-backed class restrictions that affect equipment planning."""
+    if item.extra_flags & ITEM_BODY_PART:
+        return False
     normalized_class = character_class.casefold()
     normalized_subclass = (subclass or "").casefold()
     if item.extra_flags & ITEM_LANCE and normalized_subclass != "knight":

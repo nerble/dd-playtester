@@ -148,6 +148,80 @@ def test_gmcp_equipment_snapshot_is_preserved() -> None:
     assert events[0].data["equipment"]["head"]["id"] == 3706
 
 
+def test_gmcp_targetmode_inventory_descriptions_preserve_exact_instance_id() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_gmcp(
+        'Char.Items [[{"quan":"1",'
+        '"short_desc":"[#18446744073709551615] a notched scimitar"}]]'
+    )
+
+    assert [event.type for event in events] == ["inventory_changed"]
+    item = events[0].data["value"][0][0]
+    assert item == {
+        "quan": "1",
+        "short_desc": "a notched scimitar",
+        "target_id": "18446744073709551615",
+        "target_selector": "#18446744073709551615",
+    }
+
+
+def test_gmcp_targetmode_equipment_and_item_add_are_normalized() -> None:
+    parser = ObservationParser()
+
+    equipment = parser.feed_gmcp(
+        'Char.Equipment {"equipment":{"wield":{'
+        '"short_desc":"[#4871] a notched scimitar"}}}'
+    )
+    acquired = parser.feed_gmcp(
+        'Char.Items.Add {"location":"inv","item":{'
+        '"short_desc":"[#4872] a purple potion"}}'
+    )
+
+    wielded = equipment[0].data["equipment"]["wield"]
+    assert wielded["short_desc"] == "a notched scimitar"
+    assert wielded["target_id"] == "4871"
+    assert wielded["target_selector"] == "#4871"
+    item = acquired[0].data["item"]
+    assert item["short_desc"] == "a purple potion"
+    assert item["target_id"] == "4872"
+    assert item["target_selector"] == "#4872"
+
+
+def test_gmcp_unprefixed_item_descriptions_are_unchanged() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_gmcp(
+        'Char.Items [[{"quan":"2","short_desc":"a big pot pie"}]]'
+    )
+
+    assert events[0].data["value"][0][0] == {
+        "quan": "2",
+        "short_desc": "a big pot pie",
+    }
+
+
+def test_connection_reset_reemits_snapshots_and_discards_partial_text() -> None:
+    parser = ObservationParser()
+    inventory = (
+        'Char.Items [[{"quan":"1",'
+        '"short_desc":"[#4871] a notched scimitar"}]]'
+    )
+
+    assert parser.feed_text("stale partial") == []
+    assert [event.type for event in parser.feed_gmcp(inventory)] == [
+        "inventory_changed"
+    ]
+    assert parser.feed_gmcp(inventory) == []
+
+    parser.reset_connection()
+
+    assert parser.feed_text("fresh line\n") == []
+    events = parser.feed_gmcp(inventory)
+    assert [event.type for event in events] == ["inventory_changed"]
+    assert events[0].data["value"][0][0]["target_selector"] == "#4871"
+
+
 def test_real_dd4_text_fixture_produces_room_and_prompt_state() -> None:
     parser = ObservationParser()
     fixture = (Path(__file__).parent / "fixtures" / "dd4_room_prompt.txt").read_text(

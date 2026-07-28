@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -189,7 +190,9 @@ def _parse_scalar(value: str) -> str | int | float | bool | None:
         return True
     if value in ("false", "False"):
         return False
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        return json.loads(value)
+    if len(value) >= 2 and value[0] == value[-1] == "'":
         return value[1:-1]
     try:
         return int(value)

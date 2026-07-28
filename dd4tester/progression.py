@@ -8,6 +8,7 @@ from .archetypes import archetype_registry
 
 _ARCHETYPES = archetype_registry()
 _MEANINGFUL_FIELD_SEGMENT_XP = 50
+_FOREST_BEAR_CLAWS_MINIMUM_NONFLIGHT_MOVE = 300
 CLASS_PRACTICE_SKILLS = {
     name: profile.practice_skill
     for name, profile in _ARCHETYPES.classes.items()
@@ -28,7 +29,7 @@ class ProgressionPolicy:
 
     @property
     def executable(self) -> bool:
-        return self.execution is not None and self.status == "verified"
+        return self.execution is not None and self.status in {"verified", "research"}
 
     def blocks_message(self, character_class: str) -> str:
         if self.status == "research":
@@ -60,6 +61,11 @@ class ProgressionContext:
     needs_school_wrist_float: bool = False
     needs_gremlin_waist: bool = False
     needs_daycare_ring: bool = False
+    needs_war_dog_collar: bool = False
+    needs_piercing_weapon_upgrade: bool = False
+    piercing_weapon_upgrade_attempted: bool = False
+    movement_available: int = 0
+    movement_capacity: int = 0
     has_sanctuary_potion: bool = False
     has_flight: bool = True
     can_attempt_flight_purchase: bool = False
@@ -396,6 +402,492 @@ _FLESHMONGER_GUARD_LEVEL_EIGHT_RESEARCH_POLICY = ProgressionPolicy(
         "The armed, armored above-level target is not approved for level-eight combat without sanctuary evidence.",
     ),
     practice_skill=None,
+)
+
+_FLESHMONGER_GUARD_LEVEL_TEN_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-guard-probe-10-12",
+    minimum_level=10,
+    maximum_level=12,
+    status="research",
+    execution="fleshmonger-guard-research",
+    summary=(
+        "Collect one bounded live consideration of the isolated Fleshmonger "
+        "foyer guard without initiating combat."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one source-level-10 patrolling guard alone in foyer room 9400.",
+        "The guard is non-aggressive, sentinel, stay-area, and has no special procedure.",
+        "Its greet program only speaks; its reset equips four armour pieces and a notched scimitar.",
+        "The official level-5-12 Fleshmonger fastwalk reaches room 9400 without an aggressive reset on the route.",
+        "Live run 1028 verified the no-combat round trip from healer room 3054 to the foyer and back.",
+        "Live run 1029 rejected combat at level eight after the guard returned the do_consider diff 2-5 branch.",
+        "This research policy only records the current level, reboot, crowd, and consider result; it cannot attack.",
+    ),
+    practice_skill=None,
+)
+
+_FLESHMONGER_GUARD_LEVEL_TEN_KILL_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-guard-kill-research-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-guard-hunt",
+    summary=(
+        "Attempt one live-considered Fleshmonger foyer guard with the level-ten "
+        "warrior profile, then return to the Midgaard healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one source-level-10 patrolling guard alone in foyer room 9400.",
+        "The guard is non-aggressive, sentinel, stay-area, and has no special procedure.",
+        "Its greet program only speaks; its reset equips four armour pieces and a notched scimitar.",
+        "Live run 1408 reached the foyer safely after training enhanced damage and defense knowledge.",
+        "Live run 1408 returned the exact-level do_consider 'The perfect match!' branch and reported Dorrik healthier than the guard.",
+        "This research policy permits exactly one kill and retains live crowd, consider, health, withdrawal, and safe-return gates.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_FLESHMONGER_THIEF_GUARD_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-thief-guard-research-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-guard-circuit-research",
+    summary=(
+        "Assess both isolated Fleshmonger guards with the level-ten thief "
+        "profile, attack only an in-band spawn, and return to the healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places isolated non-aggressive source-level-10 guards in rooms 9400 and 9401.",
+        "Both guards are sentinel, stay-area, lack special procedures, and carry the same five-piece equipment set.",
+        "Live run 1415 verified Kestrel's thief route, class-guild training, full-health departure, and safe return.",
+        "Run 1415 rejected the foyer guard's above-band do_consider result without initiating combat.",
+        "The second stop independently repeats the crowd, consider, health, and withdrawal gates before permitting one fight.",
+        "The class-aware combat opener uses backstab only when it is known and a piercing weapon is visibly equipped.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_FLESHMONGER_THIEF_GUARD_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-thief-guard-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="verified",
+    execution="fleshmonger-guard-circuit",
+    summary=(
+        "Assess both isolated Fleshmonger guards, kill the first in-band spawn "
+        "with the thief combat profile, and return to the healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places isolated non-aggressive source-level-10 guards in rooms 9400 and 9401.",
+        "Live run 1419 skipped the above-band foyer guard and independently found the north guard to be a perfect match.",
+        "Kestrel killed the north guard for 423 XP, ending the field fight at 112/154 hit points.",
+        "Run 1419 recovered from the guard's disarm by rearming the carried piercing dagger, looted all five reset items, and returned safely to healer room 3054.",
+        "The policy retains a one-kill ceiling, per-stop crowd and consider gates, a 60% second-stop health floor, and healer recovery.",
+        "The opener will switch to source-verified backstab after Stealth Techniques 60% unlocks it and a piercing weapon is equipped.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_FLESHMONGER_MUFTI_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-mufti-probe-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-mufti-research",
+    summary=(
+        "Count and consider the Fleshmonger barracks guards without attacking, "
+        "then return to the healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places up to four source-level-10 mufti guards in room 9402.",
+        "The mufti guards are non-aggressive, sentinel, stay-area, and have no special procedure.",
+        "Room 9402 is directly south of the verified foyer behind a closed but unlocked door.",
+        "The probe cannot attack; it records the live count and consider band so a later policy can require one isolated viable guard.",
+    ),
+    practice_skill=None,
+)
+
+_FLESHMONGER_COOK_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-cook-probe-v2-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-cook-research",
+    summary=(
+        "Consider the Fleshmonger kitchen cook without attacking while "
+        "recording its low-level helper as a bystander."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one source-level-8 cook and one source-level-6 cook's boy in room 9403.",
+        "Neither mobile is aggressive or has a special procedure; both are sentinel and stay-area.",
+        "The kitchen is directly east of the verified foyer behind a closed but unlocked door.",
+        "The cook carries whites and a wooden spoon, while the boy carries a vest and leggings for later sale.",
+        "Live run 1423 showed that the shared `cook` keyword selects the boy first.",
+        "The corrected probe uses source-backed ordinal keyword `2.cook`; it cannot attack and records the adult cook's live consider band.",
+    ),
+    practice_skill=None,
+)
+
+_FLESHMONGER_COOK_IDENTITY_RESEARCH_POLICY = replace(
+    _FLESHMONGER_COOK_RESEARCH_POLICY,
+    policy_id="fleshmonger-cook-identity-probe-v3-10-11",
+    summary=(
+        "Try both live kitchen ordinals without combat, rejecting any consider "
+        "response that resolves to the cook's boy."
+    ),
+    evidence=(
+        *_FLESHMONGER_COOK_RESEARCH_POLICY.evidence,
+        "Live run 1436 proved that `2.cook` can resolve to the cook's boy after a reset, so ordinal position is not a stable identity.",
+        "The v3 probe tries `cook` and `2.cook` as separate candidates and rejects either candidate when the consider response explicitly names the boy.",
+    ),
+)
+
+_FLESHMONGER_COOK_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-cook-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="verified",
+    execution="fleshmonger-cook-hunt",
+    summary=(
+        "Attack the ordinal-selected adult Fleshmonger cook after a live "
+        "consider check, then return to the healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one non-aggressive source-level-8 cook without a special procedure in room 9403.",
+        "The source-level-6 cook's boy is the only reset bystander and is treated as trivial rather than a reason to abandon a viable target.",
+        "Live run 1424 used `consider 2.cook`, received the exact-level perfect-match branch, and found Kestrel slightly healthier.",
+        "Live run 1425 killed the adult cook for 696 XP; the boy did not join, and Kestrel recalled at 75/154 hit points.",
+        "Run 1425 recovered to full health and movement, saved, and quit in healer room 3054.",
+        "The cook carries whites and a wooden spoon; the one-kill policy retains full-health departure, crowd, consider, withdrawal, and healer-return gates.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_FLESHMONGER_COOK_IDENTITY_POLICY = replace(
+    _FLESHMONGER_COOK_POLICY,
+    policy_id="fleshmonger-cook-identity-10-11",
+    summary=(
+        "Kill the adult cook only after the live ordinal candidate resolves "
+        "without naming the cook's boy."
+    ),
+    evidence=(
+        *_FLESHMONGER_COOK_POLICY.evidence,
+        "Live run 1443 reached the kitchen without combat, where `consider cook` returned the perfect-match branch and `consider 2.cook` returned `They're not here`.",
+        "The live room therefore contained one unambiguous cook match; the two-candidate policy still rejects any future response that explicitly names the boy.",
+        "Live run 1444 used `consider cook` and `kill cook`, killed the adult for 504 XP without taking damage, looted its whites and spoon, and returned safely.",
+    ),
+)
+
+_AMBUSH_ARCHER_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="ambush-archer-probe-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="ambush-archer-research",
+    summary=(
+        "Follow the source-backed exterior trail to the isolated goblin archer, "
+        "consider it without attacking, and return to the healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one non-aggressive source-level-9 goblin archer in room 4515.",
+        "The archer has no special procedure and is reached by an unlocked brush door from the established Ambush exterior route.",
+        "Its reset equips a bow, quiver, helmet, leggings, and boots; the bow raises the source risk estimate.",
+        "The probe cannot attack and retains route, crowd, consider, unexpected-combat, withdrawal, and healer-return gates.",
+    ),
+    practice_skill=None,
+)
+
+_AMBUSH_ARCHER_KILL_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="ambush-archer-kill-research-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="ambush-archer-hunt",
+    summary=(
+        "Attack one isolated goblin archer after a live perfect-match result, "
+        "then return to the healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one non-aggressive source-level-9 goblin archer without a special procedure in room 4515.",
+        "The archer equips a bow and armour, so the policy permits exactly one fight from at least 85% health.",
+        "Live run 1428 reached the archer alone, received the perfect-match consider branch, and returned safely.",
+        "Live run 1429 attacked from 154/154 hit points, was disarmed, earned only 3 XP without a kill, and recalled at 38/154.",
+        "Run 1429 recovered safely at the healer, but the poor damage efficiency retires this target for level-10 thief progression.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_GNOME_GUARD_LEVEL_TEN_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="gnome-guard-hut-probe-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="gnome-guard-research",
+    summary=(
+        "Revalidate the unarmed Gnome hut guard at level ten without attacking, "
+        "then return to the healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places one non-aggressive source-level-8 gnome guard without a special procedure in room 1519.",
+        "The room-1519 reset gives this guard a potion and bloody cloak but no weapon; later circuit guards are excluded from this probe.",
+        "Live runs 949 and 957 established the route and productive combat at level eight, but level ten needs a fresh consider result because reset fuzz can load the guard from level 6 through 10.",
+        "The probe cannot attack and retains exact-target, sole-mobile, live-consider, unexpected-combat, withdrawal, and healer-return gates.",
+    ),
+    practice_skill=None,
+)
+
+_FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-thief-rotation-research-v8-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-thief-rotation-research",
+    summary=(
+        "Sweep the two isolated Fleshmonger guards and adult cook, taking at "
+        "most two independently gated fights before returning to the healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places isolated source-level-10 guards in rooms 9400 and 9401, and the source-level-8 adult cook with one trivial helper in room 9403.",
+        "Live run 1419 killed the north guard for 423 XP and returned with 112/154 hit points after recovering from a disarm.",
+        "Live run 1425 killed the adult cook for 696 XP; its source-level-6 helper did not join, and Kestrel recalled at 75/154 hit points.",
+        "Live runs 1421 and 1427 found individual targets absent, showing why one route should inspect all three rather than pay recall travel for a single reset.",
+        "Live run 1432 was interrupted in Midgaard by source-level-2 mobile 3064 before reaching the area; v2 uses the source-backed trivial-interruption policy instead of paying repeated flee penalties.",
+        "Live run 1433 skipped the above-band foyer guard and killed the perfect-match north guard for 476 XP, repeatedly rearming its dagger after disarms.",
+        "Run 1433 recalled safely after the first loot because the generic one-way route threshold required 80% health.",
+        "The v3 launch failed before connection because the locked-door route is not safely reversible; v4 keeps recall-only return while allowing post-loot continuation when the next stop's explicit health floor is met.",
+        "Live run 1436 killed the north guard for 420 XP and continued at 132/154 HP, proving the dynamic continuation threshold.",
+        "Run 1436 also proved that room-list ordering can make `2.cook` resolve to the boy; v5 rejects any consider response naming the boy and tries both ordinal forms until one resolves to the adult.",
+        "Live run 1438 skipped a crowded foyer, killed the perfect-match north guard for 472 XP, recalled at 58/154 hit points, and recovered fully at the healer.",
+        "Live run 1454 admitted a reset-level-11, 169-HP north guard through the generic perfect-match consider branch, then withdrew at 41/154 HP for only 69 net XP after flee cost; v6 limits both guard stops to live targets no higher than the character.",
+        "Live run 1455 proved DD4 exposes the exact target level only after combat starts; v7 enforces the same ceiling on the first Char.Enemies combat snapshot and withdraws immediately when that reveals an over-ceiling target.",
+        "Live run 1456 confirmed first-snapshot withdrawal prevented injury but still cost 74 net XP; v8 uses the source-defined do_consider health comparison to skip healthier guards before combat while retaining the live-level fallback.",
+        "Each stop retains exact-target, crowd, live-consider, health, disarm, withdrawal, and healer-return handling; the research circuit stops after two kills.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+)
+
+_FLESHMONGER_THIEF_ROTATION_POLICY = replace(
+    _FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY,
+    policy_id="fleshmonger-thief-rotation-10-11",
+    status="verified",
+    summary=(
+        "Repeat the evidenced Fleshmonger guard-and-kitchen rotation while "
+        "its latest segment remains productive."
+    ),
+    evidence=(
+        *_FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY.evidence,
+        "Live runs 1433, 1436, and 1438 produced 476, 420, and 472 XP respectively from independently gated north-guard fights.",
+        "The latest run's low post-kill health correctly prevented a second fight, demonstrating that the more aggressive continuation policy remains bounded.",
+        "Live run 1446 completed the first verified two-target sweep: the north guard yielded 294 XP, Kestrel continued at 121/154 HP, and the adult cook yielded 439 XP for 733 XP total before safe healer recovery.",
+        "Live run 1448 repeated the full sweep after the area reset, yielding 414 XP from the guard and 397 XP from the cook for 811 XP total; Kestrel ate a severed body part, respected the weight limit, and returned safely at 114/154 HP.",
+        "Live run 1452 encountered a high-roll 178-HP guard, won for 526 XP at 56/154 HP, skipped the cook, recalled, and recovered safely; mob identity alone must not bypass live health and continuation gates.",
+        "Live run 1457 validated v8 against the unchanged high-roll reset: it skipped the healthier guard before combat, killed the adult cook for 265 XP without taking damage, looted both items, and returned safely.",
+    ),
+)
+
+_FLESHMONGER_SERVANT_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-servant-probe-v1-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-servant-research",
+    summary=(
+        "Pass through the non-aggressive Library and consider the isolated "
+        "Study servant without opening the Laboratory trapdoor."
+    ),
+    evidence=(
+        "DD4 source revision f703daa places one source-level-8 hobgoblin servant in Study room 9418.",
+        "Mobile 9411 is non-aggressive, stay-area, wimpy, and has no special procedure; its reset equips pants and a shirt.",
+        "The source route is up from foyer room 9400 through Library room 9417, then up to the Study.",
+        "Two non-aggressive servants reset in the intervening Library, so the endpoint still requires exactly one target and no bystander.",
+        "The closed upward trapdoor in room 9418 isolates the probe from the source-level-12 senior guard and source-level-15 Fleshmonger in room 9419.",
+        "The probe cannot attack and records live target count, consider band, room state, and safe healer return before any kill policy is registered.",
+    ),
+    practice_skill=None,
+)
+
+_FLESHMONGER_SERVANT_KILL_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-servant-kill-research-v1-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-servant-hunt",
+    summary=(
+        "Attack one isolated Study servant after live consideration, then "
+        "recall to the Midgaard healer."
+    ),
+    evidence=(
+        *_FLESHMONGER_SERVANT_RESEARCH_POLICY.evidence,
+        "Live run 1461 traversed Library room 9417 without incident despite its two passive servants.",
+        "Run 1461 found exactly one hobgoblin servant in Study room 9418 while the Laboratory trapdoor remained visibly closed.",
+        "The live consider result said the servant looked like an easy kill and that Kestrel was slightly healthier.",
+        "Run 1461 recalled without combat, recovered to full health and movement at healer room 3054, saved, and quit safely.",
+        "The kill probe requires at least 85% health, one exact target, no bystander, a non-healthier consider result, and no target above the character's live level.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_FLESHMONGER_THIEF_EXTENDED_ROTATION_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-thief-extended-rotation-research-v1-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-thief-extended-rotation-research",
+    summary=(
+        "Sweep the independently evidenced guards, adult cook, and Study "
+        "servant, stopping after two gated kills."
+    ),
+    evidence=(
+        *_FLESHMONGER_THIEF_ROTATION_POLICY.evidence,
+        *_FLESHMONGER_SERVANT_KILL_RESEARCH_POLICY.evidence,
+        "Live run 1462 killed the level-8 Study servant for 372 XP, looted both source-predicted garments, and recalled at 131/154 hit points.",
+        "The extension moves west from the kitchen to foyer room 9400, then up through the passive Library to Study room 9418.",
+        "A two-kill cap preserves the established bounded rotation: the servant replaces an absent or rejected earlier target rather than adding a third fight.",
+        "The servant stop requires at least 60% health after earlier fights and retains exact-target, sole-mobile, non-healthier-consider, and live-level gates.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+)
+
+_FLESHMONGER_THIEF_EXTENDED_ROTATION_POLICY = replace(
+    _FLESHMONGER_THIEF_EXTENDED_ROTATION_RESEARCH_POLICY,
+    policy_id="fleshmonger-thief-extended-rotation-10-11",
+    status="verified",
+    summary=(
+        "Repeat the guarded Fleshmonger sweep through the Study while the "
+        "composed route remains productive."
+    ),
+    evidence=(
+        *_FLESHMONGER_THIEF_EXTENDED_ROTATION_RESEARCH_POLICY.evidence,
+        "Live run 1464 rejected the healthier north guard, killed the level-10 cook for 394 XP, and continued from 117/154 hit points.",
+        "Run 1464 traversed kitchen, foyer, passive Library, and Study in one segment; the previously killed servant was absent, so the empty stop caused a safe recall rather than forced combat.",
+        "Run 1464 recovered at healer room 3054 and checkpointed with 1,782 XP remaining to level 11.",
+        "A populated same-segment cook-plus-servant pair remains useful additional evidence, but run 1462 independently verifies the exact servant fight and run 1464 verifies the composed continuation path.",
+        "Live run 1468 found two same-vnum level-10 guards in basement room 9406, fled their automatic assistance at 35/154 HP, and safely recovered; that room is excluded because its source reset maximum_count is 2 even though it uses one reset command.",
+    ),
+)
+
+_FLESHMONGER_THIEF_LEVEL_ELEVEN_POLICY = replace(
+    _FLESHMONGER_THIEF_EXTENDED_ROTATION_POLICY,
+    policy_id="fleshmonger-thief-rotation-11-12",
+    minimum_level=11,
+    maximum_level=12,
+    summary=(
+        "Progress from level 11 by sweeping the independently gated "
+        "Fleshmonger guards, adult cook, and Study servant."
+    ),
+    evidence=(
+        *_FLESHMONGER_THIEF_EXTENDED_ROTATION_POLICY.evidence,
+        "Live run 1504: level-11 Kestrel skipped a crowded foyer, rejected a "
+        "perfect-match guard because the guard was healthier, and selected "
+        "the adult cook only after an easy-kill live consider result.",
+        "Run 1504 killed the reboot-fuzzed level-8 cook for 274 XP, never fell "
+        "below 137/165 hit points, looted both source-predicted items, and "
+        "saved and quit in healer room 3054.",
+        "Live run 1507 repeated the level-11 cook fight for 251 XP, recovered "
+        "and rewielded its dagger after five disarms, looted and sacrificed "
+        "the corpse, and returned safely to healer room 3054 at 114/165 HP.",
+        "The level-11 route retains the verified Study servant as a fallback "
+        "for absent or rejected earlier targets and remains capped at two kills.",
+    ),
+)
+
+_FLESHMONGER_THIEF_LEVEL_TWELVE_RESEARCH_POLICY = replace(
+    _FLESHMONGER_THIEF_LEVEL_ELEVEN_POLICY,
+    policy_id="fleshmonger-thief-rotation-research-12-13",
+    minimum_level=12,
+    maximum_level=13,
+    status="research",
+    summary=(
+        "Revalidate the live-gated Fleshmonger thief rotation at level 12 "
+        "before promoting a level-12 field policy."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330 places the isolated source-level-10 "
+        "guards in rooms 9400 and 9401, the adult cook in room 9403, and "
+        "the Study servant in room 9418.",
+        "The established route retains exact-target, crowd, consider, live "
+        "level, combat-health, disarm, withdrawal, and healer-return gates.",
+        "Level-11 runs 1563, 1565, 1568, 1572, and 1574 produced 508, 273, "
+        "428, 432, and 214 XP from independently selected guards, cooks, "
+        "and servants while recovering safely at healer room 3054.",
+        "This research policy is deliberately bounded to two kills and must "
+        "record a level-12 result before a verified level-12 policy exists.",
+    ),
+)
+
+_FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY = replace(
+    _FLESHMONGER_THIEF_LEVEL_TWELVE_RESEARCH_POLICY,
+    policy_id="fleshmonger-thief-rotation-12-13",
+    status="verified",
+    summary=(
+        "Use the live-gated Fleshmonger thief rotation at level 12 after "
+        "liquidating loot and preparing a source-backed combat kit."
+    ),
+    evidence=(
+        *_FLESHMONGER_THIEF_LEVEL_TWELVE_RESEARCH_POLICY.evidence,
+        "Live run 1578: level-12 Kestrel rejected no safety gate, killed the "
+        "isolated patrolling guard for 354 XP, and recalled safely at 145/182 "
+        "hit points.",
+        "The guard's five-item drop filled Kestrel's 140-weight capacity, so "
+        "the runner recalled instead of risking a second drop; the campaign "
+        "must liquidate compatible loot before the next circuit.",
+        "Run 1578 confirmed a dagger, two +1 damroll war dog collars, two "
+        "bracers, and one pink ice ring before departure; the registered Forest "
+        "bear-claw upgrade remains higher priority while its live gates hold.",
+    ),
+)
+
+_FLESHMONGER_TWO_GUARD_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-two-guard-research-v2-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="research",
+    execution="fleshmonger-guard-circuit-research",
+    summary=(
+        "Extend the verified foyer kill to the second isolated guard immediately "
+        "north, then recall after at most two kills."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places a second source-level-10 on-duty guard alone in room 9401.",
+        "The room-9401 guard is non-aggressive, sentinel, stay-area, and has no special procedure.",
+        "It carries the same jerkin, pothelm, bindings, and scimitar reset as the verified foyer guard.",
+        "The only extra route is opening the north foyer door and moving north; the door is closed but not locked.",
+        "Live run 1411 verifies the first guard, exact-level consider branch, loot set, recall, and healer return.",
+        "The second fight requires at least 60% health; the deeper aggressive room-9406 guard is excluded.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+)
+
+_FLESHMONGER_GUARD_CIRCUIT_POLICY = ProgressionPolicy(
+    policy_id="fleshmonger-guard-circuit-10-11",
+    minimum_level=10,
+    maximum_level=11,
+    status="verified",
+    execution="fleshmonger-guard-circuit",
+    summary=(
+        "Assess the isolated foyer and north guards independently, kill each "
+        "viable spawn, loot it, and recover at the Midgaard healer."
+    ),
+    evidence=(
+        "DD4 source revision 0482387 places isolated non-aggressive source-level-10 guards in rooms 9400 and 9401.",
+        "Both guards are sentinel, stay-area, lack special procedures, and carry the same five-piece equipment set.",
+        "Live run 1414 departed at full health and rejected the foyer guard's above-band consider result.",
+        "Run 1414 independently considered the north guard, resolved it at live level 9, and killed it for 505 XP.",
+        "Dorrik finished combat at 164/217 hit points, looted all five pieces, recalled, and recovered to 217/217 hit points and 240/240 movement in healer room 3054.",
+        "The policy excludes the aggressive basement guard and retains per-stop crowd, consider, health, withdrawal, two-kill, and safe-return gates.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
 )
 
 _MORIA_LARGE_ORC_LEVEL_EIGHT_POLICY = ProgressionPolicy(
@@ -906,6 +1398,29 @@ _MORIA_SANCTUARY_LEVEL_TEN_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_MORIA_SANCTUARY_LEVEL_ELEVEN_POLICY = replace(
+    _MORIA_SANCTUARY_LEVEL_TEN_POLICY,
+    policy_id="moria-sanctuary-11-12",
+    minimum_level=11,
+    maximum_level=12,
+    summary=(
+        "Progress from level 11 by hunting one isolated large hobgoblin while "
+        "replenishing the protected-combat potion reserve."
+    ),
+    evidence=(
+        *_MORIA_SANCTUARY_LEVEL_TEN_POLICY.evidence,
+        "Live run 1503: level-11 Kestrel handled a harmless source-known "
+        "level-5 wandering warrior, then admitted only the live-considered "
+        "level-9 large hobgoblin.",
+        "Run 1503 killed the hobgoblin for 313 XP, acquired and pouched its "
+        "purple sanctuary potion, finished at 156/165 hit points, and "
+        "recovered fully in healer room 3054 before saving and quitting.",
+        "Live run 1506 accepted one source-known equal-level wandering warrior "
+        "at full health, withdrew immediately when a second mobile joined, "
+        "and recovered fully in healer room 3054 without death or disconnect.",
+    ),
+)
+
 _LIQUIDATE_LOOT_POLICY = ProgressionPolicy(
     policy_id="liquidate-loot",
     minimum_level=2,
@@ -1042,6 +1557,47 @@ _RECOVER_DAYCARE_RING_POLICY = ProgressionPolicy(
     segment_kill_limit=3,
 )
 
+_RECOVER_WAR_DOG_COLLAR_POLICY = ProgressionPolicy(
+    policy_id="recover-war-dog-collar",
+    minimum_level=6,
+    maximum_level=None,
+    status="verified",
+    execution="recover-war-dog-collar",
+    summary="Fill one empty neck slot with a low-risk +1 damroll collar.",
+    evidence=(
+        "DD4 ambush.are resets mobile 4504, the source-level-6 war dog, in room 4505 with object 4538, a war dog collar.",
+        "Object 4538 is neck-slot gear with apply 19 (+1 damroll); DD4 merc.h defines apply 19 as damroll.",
+        "The registered Ambush fastwalk reaches the isolated carrier through the verified exterior route and recalls after one required-loot kill.",
+        "This is a bounded required-loot action; below-band targets remain forbidden for XP progression.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_FOREST_BEAR_CLAWS_UPGRADE_POLICY = ProgressionPolicy(
+    policy_id="forest-bear-claws-upgrade-10-14",
+    minimum_level=10,
+    maximum_level=14,
+    status="research",
+    execution="upgrade-piercing-weapon",
+    summary=(
+        "Acquire the Forest kodiak's piercing bear claws when the character's "
+        "current backstab-capable weapon is materially weaker."
+    ),
+    evidence=(
+        "DD4 forest.are resets mobile 18001, a level-10 Giant Kodiak bear, in room 18026.",
+        "The same reset equips object 18000, a 6d12 piercing weapon with +3 hit roll.",
+        "The source-derived route from Midgaard recall reaches room 18026 through Ambush and the Forest without a required combat stop.",
+        "DD4 act_move.c and the route room sectors total 236 movement without flight; the policy requires 246 available movement to retain a one-step emergency margin.",
+        "The bear is aggressive, wandering, and reset-fuzzy, so live consider, crowd rejection, a live-level ceiling, sufficient movement or flight, and safe-abort handling remain mandatory.",
+        "Live run 1521 traversed the full route under flight with 168/250 movement remaining, but found the bear absent from reset room 18026.",
+        "DD4 source revision f703daa confirms the bear is stay-area but not sentinel; the bounded search extends through reversible adjacent rooms 18025, 18023, 18024, and 18022.",
+        "The one-way eastern slope from room 18027 is excluded because it leads toward aggressive mosquito and wasp resets.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
 _BUY_FLIGHT_POLICY = ProgressionPolicy(
     policy_id="buy-flight-potion",
     minimum_level=5,
@@ -1090,6 +1646,11 @@ def policy_for(
     needs_school_wrist_float: bool = False,
     needs_gremlin_waist: bool = False,
     needs_daycare_ring: bool = False,
+    needs_war_dog_collar: bool = False,
+    needs_piercing_weapon_upgrade: bool = False,
+    piercing_weapon_upgrade_attempted: bool = False,
+    movement_available: int = 0,
+    movement_capacity: int = 0,
     has_sanctuary_potion: bool = False,
     has_flight: bool = True,
     can_attempt_flight_purchase: bool = False,
@@ -1114,6 +1675,11 @@ def policy_for(
             needs_school_wrist_float=needs_school_wrist_float,
             needs_gremlin_waist=needs_gremlin_waist,
             needs_daycare_ring=needs_daycare_ring,
+            needs_war_dog_collar=needs_war_dog_collar,
+            needs_piercing_weapon_upgrade=needs_piercing_weapon_upgrade,
+            piercing_weapon_upgrade_attempted=piercing_weapon_upgrade_attempted,
+            movement_available=movement_available,
+            movement_capacity=movement_capacity,
             has_sanctuary_potion=has_sanctuary_potion,
             has_flight=has_flight,
             can_attempt_flight_purchase=can_attempt_flight_purchase,
@@ -1148,6 +1714,8 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _RECOVER_GREMLIN_WAIST_POLICY
     if context.needs_daycare_ring:
         return _RECOVER_DAYCARE_RING_POLICY
+    if context.needs_war_dog_collar:
+        return _RECOVER_WAR_DOG_COLLAR_POLICY
     if normalized_level < 6:
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,
@@ -1160,6 +1728,30 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         )
     field_caster = context.progression_track == "verified-field-caster"
     field_martial = context.progression_track == "verified-field-martial"
+    if (
+        context.character_class == "thief"
+        and 10 <= normalized_level <= 14
+        and context.needs_piercing_weapon_upgrade
+        and not context.piercing_weapon_upgrade_attempted
+    ):
+        if (
+            not context.has_flight
+            and max(
+                context.movement_available,
+                context.movement_capacity,
+            )
+            < _FOREST_BEAR_CLAWS_MINIMUM_NONFLIGHT_MOVE
+        ):
+            if (
+                context.can_attempt_flight_purchase
+                and not context.flight_purchase_failed
+            ):
+                return _BUY_FLIGHT_POLICY
+        else:
+            return replace(
+                _FOREST_BEAR_CLAWS_UPGRADE_POLICY,
+                practice_skill=context.practice_skill,
+            )
     if field_martial and normalized_level == 8:
         if (
             not context.has_flight
@@ -1335,6 +1927,19 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         ):
             return _BUY_FLIGHT_POLICY
         if context.has_sanctuary_potion:
+            protected_recent_xp = (context.policy_xp_deltas or {}).get(
+                _AMBUSH_VILE_LEVEL_NINE_POLICY.policy_id
+            )
+            if (
+                context.last_policy_id
+                == _AMBUSH_VILE_LEVEL_NINE_POLICY.policy_id
+                and protected_recent_xp is not None
+                and protected_recent_xp < _MEANINGFUL_FIELD_SEGMENT_XP
+            ):
+                return replace(
+                    _CIRCUS_FREAK_SHOW_LEVEL_NINE_POLICY,
+                    practice_skill=context.practice_skill,
+                )
             return _AMBUSH_VILE_LEVEL_NINE_POLICY
         large_hobgoblin_kills = _boot_kill_count(
             context.boot_kill_counts, "large hobgoblin"
@@ -1406,6 +2011,291 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 return _AMBUSH_RAIDER_LEVEL_TEN_POLICY
             return _AMBUSH_VILE_LEVEL_TEN_POLICY
         return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
+    if (
+        field_martial
+        and context.character_class == "thief"
+        and normalized_level == 11
+    ):
+        rotation = (
+            _FLESHMONGER_THIEF_LEVEL_ELEVEN_POLICY,
+            _MORIA_SANCTUARY_LEVEL_ELEVEN_POLICY,
+        )
+        previous_indexes = {
+            _FLESHMONGER_THIEF_LEVEL_ELEVEN_POLICY.policy_id: 0,
+            _FLESHMONGER_THIEF_ROTATION_POLICY.policy_id: 0,
+            _MORIA_SANCTUARY_LEVEL_ELEVEN_POLICY.policy_id: 1,
+            _MORIA_SANCTUARY_LEVEL_TEN_POLICY.policy_id: 1,
+        }
+        previous_index = previous_indexes.get(context.last_policy_id)
+        if previous_index is not None:
+            policy = _next_productive_policy(
+                rotation,
+                previous_index=previous_index,
+                xp_deltas=context.policy_xp_deltas,
+            )
+            return replace(policy, practice_skill=context.practice_skill)
+        return replace(
+            _FLESHMONGER_THIEF_LEVEL_ELEVEN_POLICY,
+            practice_skill=context.practice_skill,
+        )
+    if (
+        field_martial
+        and context.character_class == "thief"
+        and normalized_level == 12
+    ):
+        completed = context.policy_xp_deltas or {}
+        research_xp = completed.get(
+            _FLESHMONGER_THIEF_LEVEL_TWELVE_RESEARCH_POLICY.policy_id
+        )
+        if research_xp is None:
+            return replace(
+                _FLESHMONGER_THIEF_LEVEL_TWELVE_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if research_xp > 0:
+            return replace(
+                _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=12,
+            practice_skill=context.practice_skill,
+        )
+    if field_martial and 10 <= normalized_level <= 11:
+        completed = context.policy_xp_deltas or {}
+        if _FLESHMONGER_GUARD_LEVEL_TEN_RESEARCH_POLICY.policy_id not in completed:
+            return replace(
+                _FLESHMONGER_GUARD_LEVEL_TEN_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.character_class == "warrior"
+            and _FLESHMONGER_GUARD_LEVEL_TEN_KILL_RESEARCH_POLICY.policy_id
+            not in completed
+        ):
+            return replace(
+                _FLESHMONGER_GUARD_LEVEL_TEN_KILL_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.character_class == "thief"
+            and _FLESHMONGER_THIEF_GUARD_RESEARCH_POLICY.policy_id
+            not in completed
+        ):
+            return replace(
+                _FLESHMONGER_THIEF_GUARD_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if context.character_class == "thief":
+            research_xp = completed.get(
+                _FLESHMONGER_THIEF_GUARD_RESEARCH_POLICY.policy_id
+            )
+            recent_xp = completed.get(_FLESHMONGER_THIEF_GUARD_POLICY.policy_id)
+            if (
+                research_xp is not None
+                and research_xp > 0
+                and (recent_xp is None or recent_xp > 0)
+            ):
+                return replace(
+                    _FLESHMONGER_THIEF_GUARD_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if (
+                recent_xp is not None
+                and recent_xp <= 0
+                and _FLESHMONGER_MUFTI_RESEARCH_POLICY.policy_id
+                not in completed
+            ):
+                return replace(
+                    _FLESHMONGER_MUFTI_RESEARCH_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if (
+                _FLESHMONGER_MUFTI_RESEARCH_POLICY.policy_id in completed
+                and _FLESHMONGER_COOK_RESEARCH_POLICY.policy_id not in completed
+            ):
+                return replace(
+                    _FLESHMONGER_COOK_RESEARCH_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if (
+                _FLESHMONGER_COOK_RESEARCH_POLICY.policy_id in completed
+            ):
+                recent_xp = completed.get(_FLESHMONGER_COOK_POLICY.policy_id)
+                if recent_xp is None or recent_xp > 0:
+                    return replace(
+                        _FLESHMONGER_COOK_POLICY,
+                        practice_skill=context.practice_skill,
+                    )
+                if _AMBUSH_ARCHER_RESEARCH_POLICY.policy_id not in completed:
+                    return replace(
+                        _AMBUSH_ARCHER_RESEARCH_POLICY,
+                        practice_skill=context.practice_skill,
+                    )
+                if (
+                    _AMBUSH_ARCHER_KILL_RESEARCH_POLICY.policy_id
+                    not in completed
+                ):
+                    return replace(
+                        _AMBUSH_ARCHER_KILL_RESEARCH_POLICY,
+                        practice_skill=context.practice_skill,
+                    )
+                if (
+                    _GNOME_GUARD_LEVEL_TEN_RESEARCH_POLICY.policy_id
+                    not in completed
+                ):
+                    return replace(
+                        _GNOME_GUARD_LEVEL_TEN_RESEARCH_POLICY,
+                        practice_skill=context.practice_skill,
+                    )
+                if (
+                    _FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY.policy_id
+                    not in completed
+                ):
+                    return replace(
+                        _FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY,
+                        practice_skill=context.practice_skill,
+                    )
+                rotation_research_xp = completed.get(
+                    _FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY.policy_id
+                )
+                rotation_recent_xp = completed.get(
+                    _FLESHMONGER_THIEF_ROTATION_POLICY.policy_id
+                )
+                if (
+                    rotation_recent_xp is not None
+                    and rotation_recent_xp > 0
+                    and _FLESHMONGER_COOK_IDENTITY_RESEARCH_POLICY.policy_id
+                    not in completed
+                ):
+                    return replace(
+                        _FLESHMONGER_COOK_IDENTITY_RESEARCH_POLICY,
+                        practice_skill=context.practice_skill,
+                    )
+                if (
+                    _FLESHMONGER_COOK_IDENTITY_RESEARCH_POLICY.policy_id
+                    in completed
+                    and _FLESHMONGER_COOK_IDENTITY_POLICY.policy_id
+                    not in completed
+                ):
+                    return replace(
+                        _FLESHMONGER_COOK_IDENTITY_POLICY,
+                        practice_skill=context.practice_skill,
+                    )
+                if (
+                    rotation_research_xp is not None
+                    and rotation_research_xp > 0
+                    and (
+                        rotation_recent_xp is None
+                        or rotation_recent_xp > 0
+                    )
+                ):
+                    if (
+                        _FLESHMONGER_COOK_IDENTITY_POLICY.policy_id
+                        in completed
+                    ):
+                        if (
+                            _FLESHMONGER_SERVANT_RESEARCH_POLICY.policy_id
+                            not in completed
+                        ):
+                            return replace(
+                                _FLESHMONGER_SERVANT_RESEARCH_POLICY,
+                                practice_skill=context.practice_skill,
+                            )
+                        if (
+                            _FLESHMONGER_SERVANT_KILL_RESEARCH_POLICY.policy_id
+                            not in completed
+                        ):
+                            return replace(
+                                _FLESHMONGER_SERVANT_KILL_RESEARCH_POLICY,
+                                practice_skill=context.practice_skill,
+                            )
+                        if (
+                            (
+                                servant_kill_xp := completed.get(
+                                    _FLESHMONGER_SERVANT_KILL_RESEARCH_POLICY.policy_id
+                                )
+                            )
+                            is not None
+                            and servant_kill_xp > 0
+                            and _FLESHMONGER_THIEF_EXTENDED_ROTATION_RESEARCH_POLICY.policy_id
+                            not in completed
+                        ):
+                            return replace(
+                                _FLESHMONGER_THIEF_EXTENDED_ROTATION_RESEARCH_POLICY,
+                                practice_skill=context.practice_skill,
+                            )
+                        extended_research_xp = completed.get(
+                            _FLESHMONGER_THIEF_EXTENDED_ROTATION_RESEARCH_POLICY.policy_id
+                        )
+                        extended_recent_xp = completed.get(
+                            _FLESHMONGER_THIEF_EXTENDED_ROTATION_POLICY.policy_id
+                        )
+                        if (
+                            extended_research_xp is not None
+                            and extended_research_xp > 0
+                            and (
+                                extended_recent_xp is None
+                                or extended_recent_xp > 0
+                            )
+                        ):
+                            return replace(
+                                _FLESHMONGER_THIEF_EXTENDED_ROTATION_POLICY,
+                                practice_skill=context.practice_skill,
+                            )
+                        if (
+                            extended_recent_xp is not None
+                            and extended_recent_xp <= 0
+                            and not context.has_sanctuary_potion
+                            and context.last_policy_id
+                            != _MORIA_SANCTUARY_LEVEL_TEN_POLICY.policy_id
+                        ):
+                            return replace(
+                                _MORIA_SANCTUARY_LEVEL_TEN_POLICY,
+                                practice_skill=context.practice_skill,
+                            )
+                    return replace(
+                        _FLESHMONGER_THIEF_ROTATION_POLICY,
+                        practice_skill=context.practice_skill,
+                    )
+        if context.character_class == "warrior":
+            if (
+                _FLESHMONGER_TWO_GUARD_RESEARCH_POLICY.policy_id
+                not in completed
+            ):
+                return replace(
+                    _FLESHMONGER_TWO_GUARD_RESEARCH_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            recent_xp = completed.get(
+                _FLESHMONGER_GUARD_CIRCUIT_POLICY.policy_id
+            )
+            if recent_xp is None or recent_xp > 0:
+                return replace(
+                    _FLESHMONGER_GUARD_CIRCUIT_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=10,
+            practice_skill=context.practice_skill,
+        )
+    if field_caster and normalized_level == 11:
+        if (
+            _FLESHMONGER_GUARD_LEVEL_TEN_RESEARCH_POLICY.policy_id
+            in (context.policy_xp_deltas or {})
+        ):
+            return replace(
+                _UNAVAILABLE_POLICY,
+                minimum_level=11,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _FLESHMONGER_GUARD_LEVEL_TEN_RESEARCH_POLICY,
+            minimum_level=11,
+            practice_skill=context.practice_skill,
+        )
     if normalized_level == 7:
         if (
             not context.has_flight

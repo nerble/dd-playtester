@@ -141,6 +141,7 @@ class RoomSource:
     exits: dict[str, ExitSource] = field(default_factory=dict)
     random_exits: bool = False
     room_flags: int = 0
+    sector_type: int = 0
 
     @property
     def no_mob(self) -> bool:
@@ -318,6 +319,15 @@ def rank_hunt_candidates(
     resets_by_room = _resets_by_room(world)
     candidate_area_files = set(LOW_LEVEL_AREA_FILES)
     wandering_aggressors = _wandering_aggressors(world)
+    recall_paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
+    wanderer_reachability = {
+        (mobile.vnum, reset.room_vnum): _wanderer_reachable_rooms(
+            world,
+            mobile,
+            reset.room_vnum,
+        )
+        for mobile, reset in wandering_aggressors
+    }
     ranked: list[HuntCandidate] = []
 
     for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
@@ -363,7 +373,7 @@ def rank_hunt_candidates(
         if not include_xp_only and not sellable and contained_coins <= 0:
             continue
 
-        path = _shortest_path(world.rooms, RECALL_VNUM, reset.room_vnum)
+        path = recall_paths.get(reset.room_vnum)
         if path is None:
             continue
         route, path_rooms, closed_doors = path
@@ -382,6 +392,10 @@ def rank_hunt_candidates(
                 "target reset permits up to "
                 f"{matching_target_capacity} matching mobiles in the room"
             )
+            # Same-vnum mobiles can automatically assist each other in
+            # violence_update, including before an aggressive room can be
+            # inspected. Solo hunt policies must reject this source capacity.
+            dangerous = True
         for room_reset in resets_by_room.get(room.vnum, ()):
             if room_reset.mobile_vnum == mobile.vnum:
                 continue
@@ -412,11 +426,10 @@ def rank_hunt_candidates(
             if (
                 hazard.vnum == mobile.vnum
                 or hazard_reset.room_vnum in path_room_set
-                or not _wanderer_can_reach_any(
-                    world,
-                    hazard,
-                    hazard_reset.room_vnum,
-                    path_room_set,
+                or path_room_set.isdisjoint(
+                    wanderer_reachability[
+                        (hazard.vnum, hazard_reset.room_vnum)
+                    ]
                 )
             ):
                 continue
@@ -678,19 +691,22 @@ def _parse_rooms(
         room_header = lines[index].split()
         index += 1
         room_flags = _parse_bits(room_header[1]) if len(room_header) >= 2 else 0
+        sector_type = int(room_header[2]) if len(room_header) >= 3 else 0
         room = RoomSource(
             vnum,
             _clean_text(name),
             area_file,
             room_flags=room_flags,
+            sector_type=sector_type,
         )
         while index < end:
             token = lines[index].strip()
             index += 1
             if token == "S":
                 break
-            if token.startswith("D") and token[1:].isdigit():
-                direction_number = int(token[1:])
+            direction_match = re.fullmatch(r"D\s*([0-5])", token)
+            if direction_match is not None:
+                direction_number = int(direction_match.group(1))
                 _, index = _read_tilde(lines, index, end)
                 _, index = _read_tilde(lines, index, end)
                 if index >= end:
@@ -927,18 +943,25 @@ def _shortest_path(
     origin: int,
     destination: int,
 ) -> tuple[tuple[str, ...], tuple[int, ...], int] | None:
-    if origin not in rooms or destination not in rooms:
-        return None
+    return _shortest_paths_from(rooms, origin).get(destination)
+
+
+def _shortest_paths_from(
+    rooms: Mapping[int, RoomSource],
+    origin: int,
+) -> dict[int, tuple[tuple[str, ...], tuple[int, ...], int]]:
+    if origin not in rooms:
+        return {}
+    paths: dict[int, tuple[tuple[str, ...], tuple[int, ...], int]] = {}
     queue: list[tuple[int, int, tuple[str, ...], tuple[int, ...], int]] = [
         (0, origin, (), (origin,), 0)
     ]
     best_cost = {origin: 0}
     while queue:
         cost, room_vnum, commands, visited_rooms, closed_doors = heapq.heappop(queue)
-        if room_vnum == destination:
-            return commands, visited_rooms, closed_doors
-        if cost != best_cost.get(room_vnum):
+        if cost != best_cost.get(room_vnum) or room_vnum in paths:
             continue
+        paths[room_vnum] = (commands, visited_rooms, closed_doors)
         room = rooms[room_vnum]
         for direction, exit_source in sorted(room.exits.items()):
             if exit_source.destination not in rooms or exit_source.locked:
@@ -963,7 +986,7 @@ def _shortest_path(
                     closed_doors + door_cost,
                 ),
             )
-    return None
+    return paths
 
 
 def _loot_objects(
@@ -1080,15 +1103,23 @@ def _wanderer_can_reach_any(
     origin: int,
     destinations: set[int],
 ) -> bool:
+    return not destinations.isdisjoint(
+        _wanderer_reachable_rooms(world, mobile, origin)
+    )
+
+
+def _wanderer_reachable_rooms(
+    world: WorldSource,
+    mobile: MobileSource,
+    origin: int,
+) -> frozenset[int]:
     origin_room = world.rooms.get(origin)
     if origin_room is None:
-        return False
+        return frozenset()
     pending = [origin]
     visited = {origin}
     while pending:
         room_vnum = pending.pop()
-        if room_vnum in destinations:
-            return True
         room = world.rooms.get(room_vnum)
         if room is None:
             continue
@@ -1108,7 +1139,7 @@ def _wanderer_can_reach_any(
                 continue
             visited.add(destination.vnum)
             pending.append(destination.vnum)
-    return False
+    return frozenset(visited)
 
 
 def _read_tilde(

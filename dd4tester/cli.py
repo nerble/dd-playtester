@@ -17,6 +17,8 @@ from .credentials import (
 )
 from .evidence import collect_run_evidence, render_evidence_json
 from .fastwalks import FASTWALKS, routes_for_level
+from .dd4_catalog import load_character_catalog
+from .hero import HeroRequest, prepare_hero_request, run_hero_request
 from .hunt_candidates import load_world_source, rank_hunt_candidates
 from .matrix import provision_matrix_passwords, run_matrix_file
 from .money import run_money_loop_profile
@@ -41,6 +43,12 @@ from .starter import (
     run_starter_profile,
 )
 from .storage import RunStorage
+from .training import (
+    prerequisite_classes_for,
+    subclass_training_priorities,
+    training_analysis_for,
+    training_priorities,
+)
 
 
 DEFAULT_DATABASE = Path("runs/dd4tester.sqlite3")
@@ -405,6 +413,71 @@ def build_parser() -> argparse.ArgumentParser:
         help="run up to this many ready checkpoint segments, default: 1",
     )
 
+    hero_parser = subcommands.add_parser(
+        "hero",
+        help="create or resume an autonomous character campaign to level 100",
+    )
+    hero_parser.add_argument("--race", required=True, help="DD4 race name")
+    hero_parser.add_argument(
+        "--sex",
+        default="neuter",
+        help="cosmetic DD4 sex: male, female, or neuter; default: neuter",
+    )
+    hero_parser.add_argument(
+        "--class",
+        dest="character_class",
+        required=True,
+        help="DD4 base class name",
+    )
+    hero_parser.add_argument(
+        "--subclass",
+        help="optional level-30 subclass goal",
+    )
+    hero_parser.add_argument(
+        "--name",
+        help="3-12 letter character name; a stable name is generated when omitted",
+    )
+    hero_parser.add_argument(
+        "--personality",
+        help="short in-world personality used in the initial description",
+    )
+    hero_parser.add_argument(
+        "--source",
+        type=Path,
+        help="DD4 const.c or source directory; defaults to the local source checkout",
+    )
+    hero_parser.add_argument(
+        "--workspace",
+        type=Path,
+        default=Path("runs/heroes"),
+        help="durable generated hero request directory, default: runs/heroes",
+    )
+    hero_parser.add_argument(
+        "--new",
+        action="store_true",
+        help="start a new stored campaign for the prepared character",
+    )
+    hero_parser.add_argument(
+        "--segments",
+        type=int,
+        default=10000,
+        help="maximum checkpoint segments in this process, default: 10000",
+    )
+    hero_parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help="validate and write durable configuration without connecting",
+    )
+
+    subcommands.add_parser(
+        "hero-options",
+        help="list source-derived DD4 races, classes, and subclasses",
+    ).add_argument(
+        "--source",
+        type=Path,
+        help="DD4 const.c or source directory; defaults to the local source checkout",
+    )
+
     matrix_parser = subcommands.add_parser(
         "matrix",
         help="run or resume a representative character campaign matrix",
@@ -579,6 +652,21 @@ def build_parser() -> argparse.ArgumentParser:
     show_prerequisites_parser.add_argument("--class", dest="character_class", required=True)
     show_prerequisites_parser.add_argument("--skill")
     show_prerequisites_parser.add_argument(
+        "--snapshot",
+        type=Path,
+        help="use a prerequisite snapshot JSON file instead of the bundled snapshot",
+    )
+
+    skill_analysis_parser = subcommands.add_parser(
+        "skill-analysis",
+        help="show source-backed leveling value and practice priorities for a class",
+    )
+    skill_analysis_parser.add_argument(
+        "--class",
+        dest="character_class",
+        required=True,
+    )
+    skill_analysis_parser.add_argument(
         "--snapshot",
         type=Path,
         help="use a prerequisite snapshot JSON file instead of the bundled snapshot",
@@ -899,6 +987,68 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Level: {result.state.get('level', '-')}")
         return 0 if result.status == "success" or result.ready_for_next_segment else 1
 
+    if args.command == "hero":
+        request = HeroRequest(
+            name=args.name,
+            race=args.race,
+            sex=args.sex,
+            character_class=args.character_class,
+            subclass=args.subclass,
+            personality=args.personality,
+        )
+        try:
+            if args.prepare_only:
+                preparation = prepare_hero_request(
+                    request,
+                    source=args.source,
+                    workspace=args.workspace,
+                )
+                result = None
+            else:
+                preparation, result = asyncio.run(
+                    run_hero_request(
+                        request,
+                        source=args.source,
+                        workspace=args.workspace,
+                        force_new=args.new,
+                        segments=args.segments,
+                    )
+                )
+        except Exception as exc:
+            print(f"HERO campaign failed: {exc}", file=sys.stderr)
+            return 1
+        print(
+            f"Character: {preparation.character.name} "
+            f"({preparation.character.race} "
+            f"{preparation.character.character_class})"
+        )
+        print(f"Manifest: {preparation.manifest_path}")
+        print(f"Profile: {preparation.profile_path}")
+        print(f"Campaign: {preparation.campaign_path}")
+        print("Prepared: resumed" if preparation.resumed else "Prepared: new")
+        if result is None:
+            return 0
+        print(f"Campaign {result.campaign_id} {result.status}")
+        if result.message:
+            print(f"Status: {result.message}")
+        print(f"Level: {result.state.get('level', '-')}")
+        return 0 if result.status == "success" or result.ready_for_next_segment else 1
+
+    if args.command == "hero-options":
+        try:
+            catalog = load_character_catalog(args.source)
+        except Exception as exc:
+            print(f"Could not load DD4 character options: {exc}", file=sys.stderr)
+            return 1
+        print(f"Source: {catalog.source}")
+        print("Sex (cosmetic): " + ", ".join(catalog.sexes))
+        print("Races: " + ", ".join(option.name for option in catalog.races))
+        print("Classes: " + ", ".join(option.name for option in catalog.classes))
+        print("Subclasses:")
+        for option in catalog.subclasses:
+            print(f"  {option.base_class}: {option.name}")
+        return 0
+
     if args.command == "matrix":
         try:
             result = asyncio.run(
@@ -970,6 +1120,12 @@ def main(argv: list[str] | None = None) -> int:
         return show_prereqs(
             args.character_class,
             skill=args.skill,
+            snapshot=args.snapshot,
+        )
+
+    if args.command == "skill-analysis":
+        return show_skill_analysis(
+            args.character_class,
             snapshot=args.snapshot,
         )
 
@@ -1387,6 +1543,74 @@ def show_prereqs(
     print("Requirements:")
     for requirement in requirements:
         print(f"- {requirement.prerequisite}: {requirement.minimum_percent}%")
+    return 0
+
+
+def show_skill_analysis(
+    character_class: str,
+    *,
+    snapshot: Path | None,
+) -> int:
+    normalized_class = " ".join(
+        character_class.casefold().replace("_", " ").split()
+    )
+    priorities = (
+        training_priorities().get(normalized_class)
+        or subclass_training_priorities().get(normalized_class)
+    )
+    if not priorities:
+        print(
+            f"No training analysis found for {character_class!r}.",
+            file=sys.stderr,
+        )
+        return 1
+    analysis = training_analysis_for(normalized_class)
+    if analysis is None:
+        print(
+            f"No training analysis found for {character_class!r}.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        source, entries = load_snapshot(snapshot)
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        print(f"Could not load prerequisite snapshot: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Source: {source['repository']} @ {source['revision']}")
+    print(f"Class: {normalized_class}")
+    print(f"Strategy: {analysis.strategy}")
+    print(f"Practice policy: {analysis.practice_policy}")
+    print(
+        "Highest leveling value: "
+        + ", ".join(analysis.highest_value_skills)
+    )
+    if analysis.automation_gaps:
+        print("Automation gaps:")
+        for gap in analysis.automation_gaps:
+            print(f"- {gap}")
+    print("Ordered leveling priorities:")
+    for rank, priority in enumerate(priorities, start=1):
+        requirements = ()
+        for source_class in prerequisite_classes_for(normalized_class):
+            requirements = requirements_for_skill(
+                entries,
+                class_name=source_class,
+                skill=priority.source_skill,
+            )
+            if requirements:
+                break
+        requirement_text = ", ".join(
+            f"{item.prerequisite} {item.minimum_percent}%"
+            for item in requirements
+        )
+        print(
+            f"{rank}. {priority.skill} [{priority.practice_type}, "
+            f"target {priority.target_percent}%, {priority.utility}, "
+            f"{'automated' if priority.automated else 'analysis-only'}]"
+        )
+        print(f"   Value: {priority.reason}")
+        print(f"   Prerequisites: {requirement_text or 'none parsed'}")
     return 0
 
 

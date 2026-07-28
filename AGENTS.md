@@ -7,7 +7,14 @@ scenario runner, persistence layer, state model, and CLI. YAML scenarios live
 in `scenarios/`; keep reusable scenarios small and non-destructive. Tests are
 under `tests/`, with sanitized protocol samples in `tests/fixtures/`. Generated
 SQLite databases and JSONL transcripts belong in `runs/` and `transcripts/`;
-both directories are intentionally ignored by Git.
+both directories are intentionally ignored by Git. Generated declarative HERO
+requests, profiles, and campaign files belong under `runs/heroes/`.
+
+The master product boundary is one character-independent autonomy engine that
+can create any source-legal race/class/subclass request and progress it to level
+100 without manual gameplay. Sex is cosmetic in DD4: accept and preserve it for
+identity, but do not multiply progression coverage across sex choices. Never
+add character-name-specific behavior to satisfy a live run.
 
 Never modify the Dragons Domain IV core repository from this project.
 Treat its public source and area files as valid read-only evidence for routes,
@@ -28,6 +35,20 @@ Before training or automating a skill, read both its current in-game help and
 its source implementation. Record whether it is active or passive, its legal
 position and target, pulse/mana cost, effect formula, prerequisites, and any
 equipment or status constraints; never infer behavior from the skill name.
+For classes whose source graph exposes `disarm`, build its exact prerequisites
+after the profile's earlier damage gates. Value `grip` as passive resistance
+where available. Once learned and wielding a weapon, attempt `disarm` early
+against each exact opponent, alternate failed retries with recurring damage
+actions, and stop after success or live confirmation that the target is
+unarmed.
+Maintain a source-backed leveling-value analysis for every base class and
+level-30 subclass, not only active test characters. Apply subclass priorities
+only after live state confirms the character has subclassed. Practice order
+must account for prerequisite
+gateways, current trainer listings and caps, separate physical/intellectual
+budgets, direct damage, mitigation, sustain, mobility, and whether the combat
+runner can actually use the result. Mark unsupported rotations analysis-only
+rather than spending practices on unusable skills.
 Apply character titles and descriptions only during initial identity setup;
 use persisted command evidence to avoid recreating them on later logins.
 For characters below level 20, treat an affect's name as observable but do not
@@ -77,6 +98,12 @@ Never guess object or mobile command keywords when the entity exists in the
 public source. Parse and use its source keyword list; display-text noun
 inference is only a temporary fallback for genuinely uncatalogued live
 entities and must not be promoted into policy without source confirmation.
+Enable DD4 `TARGETMODE` before a combat fastwalk. Bind each live `[#number]`
+selector only to a mobile whose target-mode line matches its source room
+description, and use that exact selector for `consider`, the combat opener, and
+targeted combat actions. Never promote an object selector into the mobile map,
+persist a live selector across connections or reboots, or replace the reusable
+source identity in policy/evidence with an ephemeral selector.
 Treat profession-visible empty `eq all` slots as equipment debt. Prefer usable
 mob drops, then inexpensive class-legal Midgaard basics; after major gear loss,
 revisit Mud School first and repeat its course to recover free starter drops.
@@ -221,6 +248,10 @@ repository root. Stamp every entry using exactly
 `[YYYY-MM-DD h:mm:ss AM/PM NZST] CODEX COMMENTARY`, or
 `[YYYY-MM-DD h:mm:ss AM/PM NZST] CODEX FINAL`. Do not substitute a speaker-first
 header, UTC offset, ISO timestamp, or other format.
+The `AM` or `PM` token is literal uppercase. In PowerShell, generate it with
+`$stamp = (Get-Date -Format 'yyyy-MM-dd h:mm:ss tt').ToUpperInvariant()`;
+do not use the locale's lowercase `am` or `pm` output. The Discord streamer
+parses these append-only headers, so timestamp casing is a delivery contract.
 Treat the file as append-only development history; do not rewrite or remove
 earlier entries. Write an entry before or as the corresponding response is
 sent so a stalled task cannot leave the visible discussion unrecorded.

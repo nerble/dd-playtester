@@ -28,6 +28,67 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     assert "success" in captured.out
 
 
+def test_hero_prepare_only_builds_source_validated_campaign(tmp_path, capsys) -> None:
+    source = tmp_path / "const.c"
+    source.write_text(
+        """
+        const struct class_type class_table[MAX_CLASS] = {
+            {"Mag", "Mage", APPLY_INT, 1, 3018, 95, 18, 6, 6, 9, TRUE,
+             "Necromancer", "Warlock", "Nec", "Wlk", {-1, 3, 1, 1, -1}}
+        };
+        const struct sub_class_type sub_class_table[MAX_SUB_CLASS] = {
+            {"Non", "None", APPLY_STR, FALSE},
+            {"Nec", "Necromancer", APPLY_WIS, TRUE},
+            {"Wlk", "Warlock", APPLY_STR, TRUE}
+        };
+        const struct race_struct race_table[MAX_RACE] = {
+            {"None", "None", 0, 0, 0, 0, 0, 0, 0, 0, "NULL", "NULL", 0},
+            {"Human", "Human", 0, 1, 0, 0, 0, 0, 0, 0,
+             "Identify", "Detect Evil", CHAR_SIZE_MEDIUM}
+        };
+        """,
+        encoding="utf-8",
+    )
+    source.with_name("comm.c").write_text(
+        """
+        case CON_GET_NEW_SEX:
+            switch (argument[0]) {
+            case 'm': ch->sex = SEX_MALE; break;
+            case 'f': ch->sex = SEX_FEMALE; break;
+            case 'n': ch->sex = SEX_NEUTRAL; break;
+            }
+            break;
+        case CON_DISPLAY_CLASS:
+        """,
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "hero",
+            "--name",
+            "Valora",
+            "--race",
+            "human",
+            "--sex",
+            "female",
+            "--class",
+            "mage",
+            "--source",
+            str(source),
+            "--workspace",
+            str(tmp_path / "heroes"),
+            "--prepare-only",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Character: Valora (human mage)" in captured.out
+    assert "Prepared: new" in captured.out
+    assert (tmp_path / "heroes" / "valora" / "campaign.yaml").is_file()
+
+
 def test_recover_runs_marks_orphaned_records(tmp_path, capsys) -> None:
     database, _transcript = _create_recorded_run(tmp_path)
     with RunStorage(database) as storage:
@@ -1120,6 +1181,33 @@ def test_show_prereqs_displays_bundled_skill_requirements(capsys) -> None:
     assert exit_code == 0
     assert "Skill: fireball" in captured.out
     assert "group evocation: 75%" in captured.out
+
+
+def test_skill_analysis_displays_ranked_source_backed_class_value(capsys) -> None:
+    exit_code = main(["skill-analysis", "--class", "psionic"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Class: psionic" in captured.out
+    assert "Strategy:" in captured.out
+    assert "Practice policy:" in captured.out
+    assert "Highest leveling value:" in captured.out
+    assert "Automation gaps:" in captured.out
+    assert "Ordered leveling priorities:" in captured.out
+    assert "telepathy disciplines" in captured.out
+    assert "damage-gateway, automated" in captured.out
+    assert "mind thrust 10%" in captured.out
+    assert "psychic crush" in captured.out
+
+
+def test_skill_analysis_supports_subclass_alias_and_priorities(capsys) -> None:
+    exit_code = main(["skill-analysis", "--class", "bounty hunter"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Class: bounty hunter" in captured.out
+    assert "assassinate" in captured.out
+    assert "group stealth 85%" in captured.out
 
 
 def _create_recorded_run(tmp_path) -> tuple[Path, Path]:

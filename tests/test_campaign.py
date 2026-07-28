@@ -1,9 +1,14 @@
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from dd4tester.campaign import (
     CampaignRunner,
+    _advance_daycare_ring_cooldown,
+    _advance_piercing_weapon_upgrade_cooldown,
+    _advance_war_dog_collar_cooldown,
+    _campaign_counterbalance_preparation_required,
     _campaign_segment_end_state,
     _campaign_flight_purchase_failed,
     _campaign_policy_xp_deltas,
@@ -12,6 +17,8 @@ from dd4tester.campaign import (
     _campaign_rejected_practice_skills,
     _campaign_vault_stow_items,
     _has_campaign_sellable_loot,
+    _needs_piercing_weapon_upgrade,
+    _maintenance_failure_state,
     _newer_progress_state,
     _refresh_policy_revision,
     _run_has_unrecovered_weapon_loss,
@@ -100,6 +107,45 @@ def test_required_loot_segment_preserves_same_level_outfit_attempt() -> None:
     assert merged["campaign_outfit_attempted_level"] == 8
 
 
+def test_failed_daycare_ring_errand_is_not_retried_at_same_level() -> None:
+    failed = _maintenance_failure_state(
+        {"level": 10, "campaign_empty_equipment_categories": ["finger"]},
+        execution="recover-daycare-ring",
+        boot_id="Mon Jul 27 09:12:49 2026",
+    )
+
+    assert failed["campaign_daycare_ring_attempted_level"] == 10
+    assert (
+        failed["campaign_daycare_ring_attempted_boot_id"]
+        == "Mon Jul 27 09:12:49 2026"
+    )
+    assert failed["campaign_daycare_ring_cooldown"] == 3
+
+
+def test_failed_war_dog_collar_errand_is_not_retried_at_same_level() -> None:
+    failed = _maintenance_failure_state(
+        {"level": 10, "campaign_empty_equipment_categories": ["neck"]},
+        execution="recover-war-dog-collar",
+        boot_id="Mon Jul 27 09:12:49 2026",
+    )
+
+    assert failed["campaign_war_dog_collar_attempted_level"] == 10
+    assert (
+        failed["campaign_war_dog_collar_attempted_boot_id"]
+        == "Mon Jul 27 09:12:49 2026"
+    )
+    assert failed["campaign_war_dog_collar_cooldown"] == 3
+
+
+def test_failed_combat_segment_does_not_gain_a_maintenance_marker() -> None:
+    state = {"level": 10}
+
+    assert _maintenance_failure_state(
+        state,
+        execution="fleshmonger-guard-hunt",
+    ) is state
+
+
 def test_campaign_reconstructs_latest_flight_purchase_result(tmp_path) -> None:
     with RunStorage(tmp_path / "runs.sqlite3") as storage:
         campaign_id = storage.create_campaign(
@@ -138,17 +184,237 @@ def test_campaign_reconstructs_latest_flight_purchase_result(tmp_path) -> None:
         assert _campaign_flight_purchase_failed(storage, campaign_id) is True
 
 
+def test_campaign_retries_flight_purchase_after_money_increases(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="flight",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=10,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="buy-flight-potion",
+            start_state={"level": 9},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=None,
+            end_state={
+                "level": 9,
+                "currencies": {"silver": 10, "copper": 18},
+                "magic_shop_purchase_failed": True,
+                "world_boot_id": "boot-a",
+            },
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        assert (
+            _campaign_flight_purchase_failed(
+                storage,
+                campaign_id,
+                current_state={
+                    "currencies": {"silver": 10, "copper": 18},
+                    "world_boot_id": "boot-a",
+                },
+            )
+            is True
+        )
+        assert (
+            _campaign_flight_purchase_failed(
+                storage,
+                campaign_id,
+                current_state={
+                    "currencies": {"silver": 16, "copper": 19},
+                    "world_boot_id": "boot-a",
+                },
+            )
+            is False
+        )
+
+
+def test_campaign_retries_flight_purchase_after_reboot(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="flight",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=10,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="buy-flight-potion",
+            start_state={"level": 9},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=None,
+            end_state={
+                "level": 9,
+                "currencies": {"silver": 10, "copper": 18},
+                "magic_shop_purchase_failed": True,
+                "world_boot_id": "boot-a",
+            },
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        assert (
+            _campaign_flight_purchase_failed(
+                storage,
+                campaign_id,
+                current_state={
+                    "currencies": {"silver": 10, "copper": 18},
+                    "world_boot_id": "boot-b",
+                },
+            )
+            is False
+        )
+
+
+def test_piercing_upgrade_signal_compares_known_source_weapon_damage() -> None:
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+    )
+    claws = ObjectSource(
+        18000,
+        "claws bears",
+        "a pair of bears claws",
+        5,
+        (0, 6, 12, 11),
+        0,
+    )
+    ambiguous_high_level_dagger = ObjectSource(
+        999,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 20, 20, 11),
+        1000,
+        level=50,
+    )
+    catalog = GearCatalog(
+        {
+            dagger.vnum: dagger,
+            claws.vnum: claws,
+            ambiguous_high_level_dagger.vnum: ambiguous_high_level_dagger,
+        }
+    )
+
+    assert _needs_piercing_weapon_upgrade(
+        {"campaign_worn_equipment": ["a dagger"]},
+        gear_catalog=catalog,
+        character_class="thief",
+        subclass="ninja",
+    )
+    assert not _needs_piercing_weapon_upgrade(
+        {
+            "campaign_worn_equipment": ["a dagger"],
+            "inventory": [[{"quan": "1", "short_desc": "a pair of bears claws"}]],
+        },
+        gear_catalog=catalog,
+        character_class="thief",
+        subclass="ninja",
+    )
+
+
+def test_campaign_suppresses_piercing_upgrade_after_same_boot_attempt(
+    tmp_path,
+) -> None:
+    config_path, _ = _write_campaign_files(tmp_path)
+    mage_spec = load_campaign_spec(config_path)
+    thief_character = replace(
+        mage_spec.character,
+        character_class="thief",
+        subclass="ninja",
+    )
+    runner = CampaignRunner(
+        replace(mage_spec, character=thief_character),
+        config_path,
+    )
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+    )
+    claws = ObjectSource(
+        18000,
+        "claws bears",
+        "a pair of bears claws",
+        5,
+        (0, 6, 12, 11),
+        0,
+    )
+    runner._gear_catalog = GearCatalog(
+        {dagger.vnum: dagger, claws.vnum: claws}
+    )
+    runner._boot_id = 77
+    state = {
+        "level": 11,
+        "campaign_has_weapon": True,
+        "campaign_worn_equipment": ["a dagger"],
+        "campaign_empty_equipment_categories": [],
+        "inventory": [[{"quan": "1", "short_desc": "a big pot pie"}]],
+        "affects": [[{"name": "fly"}]],
+    }
+
+    assert runner._policy_for_state(state).execution == "upgrade-piercing-weapon"
+    state["campaign_piercing_weapon_upgrade_attempted_boot_id"] = 77
+    state["campaign_piercing_weapon_upgrade_cooldown"] = 3
+    assert runner._policy_for_state(state).policy_id == (
+        "fleshmonger-thief-rotation-11-12"
+    )
+    state["campaign_piercing_weapon_upgrade_cooldown"] = 0
+    assert runner._policy_for_state(state).execution == "upgrade-piercing-weapon"
+
+
+def test_piercing_upgrade_retries_after_three_productive_field_segments() -> None:
+    state = {
+        "campaign_piercing_weapon_upgrade_attempted_boot_id": 77,
+        "campaign_piercing_weapon_upgrade_cooldown": 3,
+    }
+
+    for _ in range(3):
+        state = _advance_piercing_weapon_upgrade_cooldown(
+            state,
+            execution="fleshmonger-thief-rotation-research",
+            xp_delta=50,
+        )
+
+    assert state["campaign_piercing_weapon_upgrade_cooldown"] == 0
+    unchanged = _advance_piercing_weapon_upgrade_cooldown(
+        state,
+        execution="sell-loot",
+        xp_delta=500,
+    )
+    assert unchanged is state
+
+
 def test_policy_revision_resets_stale_campaign_stall_count_once() -> None:
     migrated = _refresh_policy_revision(
         {
             "level": 7,
             "campaign_policy_revision": 1,
             "campaign_stalled_segments": 10,
+            "campaign_piercing_weapon_upgrade_attempted_boot_id": "boot-1",
         }
     )
 
     assert migrated["campaign_stalled_segments"] == 0
-    assert migrated["campaign_policy_revision"] == 27
+    assert migrated["campaign_policy_revision"] == 37
+    assert "campaign_piercing_weapon_upgrade_attempted_boot_id" not in migrated
+    assert "campaign_piercing_weapon_upgrade_cooldown" not in migrated
 
 
 def test_policy_revision_retries_body_recovery_after_named_mobile_parser_fix() -> None:
@@ -240,6 +506,81 @@ def test_campaign_policy_xp_deltas_reconstruct_latest_segment_result(tmp_path) -
         results = _campaign_policy_xp_deltas(storage.list_campaign_segments(campaign_id))
 
     assert results == {"gnome-hermit-7-8": 0, "foundry-circuit-7-8": 1}
+
+
+def test_campaign_policy_xp_deltas_discounts_positive_xp_without_a_kill(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="outcomes",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=10,
+        )
+        run_id = storage.create_run(
+            scenario_name="field-hunt",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="state",
+            payload={"state": "completed", "completed_kills": []},
+        )
+        storage.finish_run(run_id, status="success")
+        segment = storage.start_campaign_segment(
+            campaign_id,
+            phase="fleshmonger-thief-rotation-11-12",
+            start_state={"level": 11, "xp": 56_663},
+        )
+        storage.finish_campaign_segment(
+            segment,
+            status="success",
+            run_id=run_id,
+            end_state={"level": 11, "xp": 56_742},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        results = _campaign_policy_xp_deltas(
+            storage.list_campaign_segments(campaign_id), storage=storage
+        )
+
+    assert results == {"fleshmonger-thief-rotation-11-12": 0}
+
+
+def test_campaign_policy_xp_deltas_excludes_incidental_route_combat(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="outcomes",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=10,
+        )
+        segment = storage.start_campaign_segment(
+            campaign_id,
+            phase="forest-bear-claws-upgrade-10-14",
+            start_state={"level": 12, "xp": 58_961},
+        )
+        storage.finish_campaign_segment(
+            segment,
+            status="success",
+            run_id=None,
+            end_state={
+                "level": 12,
+                "xp": 59_021,
+                "campaign_completed_kills": [
+                    {"mob_name": "the goblin lieutenant", "xp_gained": 60}
+                ],
+                "campaign_objective_kills": [],
+            },
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        results = _campaign_policy_xp_deltas(storage.list_campaign_segments(campaign_id))
+
+    assert results == {"forest-bear-claws-upgrade-10-14": 0}
 
 
 def test_recorded_weapon_loss_requires_a_later_wield_to_clear(tmp_path) -> None:
@@ -357,6 +698,7 @@ def test_campaign_vaults_plain_and_protected_spare_armour_when_capacity_is_low()
         (2, 0, 0, 0),
         20,
         wear_flags=1 | (1 << 9),
+        weight=3,
     )
     circlet = ObjectSource(
         4101,
@@ -367,6 +709,7 @@ def test_campaign_vaults_plain_and_protected_spare_armour_when_capacity_is_low()
         30,
         wear_flags=1 | (1 << 4),
         affects=((3, 1),),
+        weight=3,
     )
     pie = ObjectSource(
         4102,
@@ -423,6 +766,29 @@ def test_campaign_does_not_vault_equipped_item_reported_in_inventory() -> None:
     assert _campaign_vault_stow_items(
         state,
         gear_catalog=GearCatalog({diploma.vnum: diploma}),
+    ) == ()
+
+
+def test_campaign_skips_a_vault_detour_that_cannot_restore_capacity() -> None:
+    tophat = ObjectSource(
+        4421,
+        "tophat hat",
+        "a tophat",
+        9,
+        (0, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 4),
+        affects=((12, 10), (17, 4)),
+        weight=1,
+    )
+    state = {
+        "inventory": [[{"short_desc": "a tophat"}]],
+        "stats": {"carry_wt": 113, "maxcarry_wt": 115},
+    }
+
+    assert _campaign_vault_stow_items(
+        state,
+        gear_catalog=GearCatalog({tophat.vnum: tophat}),
     ) == ()
 
 
@@ -498,6 +864,7 @@ def test_campaign_vaults_ambiguous_weapon_when_protected_match_blocks_sale() -> 
         5,
         wear_flags=1 << 13,
         affects=((19, 50), (18, 50)),
+        weight=10,
     )
     ordinary = ObjectSource(
         4521,
@@ -507,6 +874,7 @@ def test_campaign_vaults_ambiguous_weapon_when_protected_match_blocks_sale() -> 
         (0, 0, 0, 2),
         0,
         wear_flags=1 << 13,
+        weight=10,
     )
     state = {
         "inventory": [[
@@ -569,6 +937,37 @@ def test_liquidation_baseline_suppresses_retained_gear_until_loot_changes() -> N
     state["inventory"][0].append({"short_desc": "hard leather boots"})
 
     assert _has_campaign_sellable_loot(state) is True
+
+
+def test_liquidation_signature_counts_only_redundant_protected_copies() -> None:
+    tophat = ObjectSource(
+        4421,
+        "tophat hat",
+        "a tophat",
+        9,
+        (0, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 4),
+        affects=((12, 10), (17, 4)),
+    )
+    catalog = GearCatalog({tophat.vnum: tophat})
+    state = {
+        "inventory": [[
+            {"short_desc": "a tophat", "quan": "4"},
+            {"short_desc": "a big pot pie", "quan": "6"},
+        ]],
+        "campaign_liquidation_baseline": [],
+    }
+
+    assert _campaign_liquidation_signature(
+        state,
+        gear_catalog=catalog,
+    ) == ("tophat", "tophat", "tophat")
+    assert _has_campaign_sellable_loot(state, gear_catalog=catalog) is True
+
+    state["inventory"][0][0]["quan"] = "1"
+    assert _campaign_liquidation_signature(state, gear_catalog=catalog) == ()
+    assert _has_campaign_sellable_loot(state, gear_catalog=catalog) is False
 
 
 def test_weight_pressure_does_not_reaudit_gear_for_an_empty_legal_slot() -> None:
@@ -774,6 +1173,34 @@ def test_campaign_recovers_practice_types_spent_at_current_level(tmp_path) -> No
             command_count=1,
             duration_seconds=1.0,
         )
+        failed_run_id = storage.create_run(
+            scenario_name="starter:Campaignmage",
+            scenario_path=config_path,
+        )
+        storage.record_event(
+            failed_run_id,
+            kind="game_event",
+            payload={
+                "type": "training_completed",
+                "source": "text",
+                "data": {"practice_type": "physical"},
+            },
+        )
+        storage.finish_run(failed_run_id, status="failed", error="bounded abort")
+        failed_segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="mud-school-2-6",
+            start_state={"level": 5, "xp": 10_500},
+        )
+        storage.finish_campaign_segment(
+            failed_segment_id,
+            status="failed",
+            run_id=failed_run_id,
+            end_state={"level": 5, "xp": 10_500},
+            command_count=1,
+            duration_seconds=1.0,
+            error="bounded abort",
+        )
 
         at_level_five = _campaign_practice_types_spent(
             storage, campaign_id, level=5
@@ -782,8 +1209,92 @@ def test_campaign_recovers_practice_types_spent_at_current_level(tmp_path) -> No
             storage, campaign_id, level=6
         )
 
-    assert at_level_five == frozenset({"intellectual"})
+    assert at_level_five == frozenset({"physical", "intellectual"})
     assert at_level_six == frozenset()
+
+
+def test_campaign_recovers_unfinished_counterbalance_preparation(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        training_run_id = storage.create_run(
+            scenario_name="fastwalk-foundry:Campaignsmith",
+            scenario_path=config_path,
+        )
+        storage.record_event(
+            training_run_id,
+            kind="game_event",
+            payload={
+                "type": "training_completed",
+                "source": "text",
+                "data": {
+                    "skill": "counterbalance",
+                    "practice_type": "physical",
+                },
+            },
+        )
+        storage.finish_run(training_run_id, status="failed", error="disconnect")
+        training_segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="field-hunt",
+            start_state={"level": 10, "xp": 45_000},
+        )
+        storage.finish_campaign_segment(
+            training_segment_id,
+            status="failed",
+            run_id=training_run_id,
+            end_state={"level": 10, "xp": 45_000},
+            command_count=1,
+            duration_seconds=1.0,
+            error="disconnect",
+        )
+
+        assert _campaign_counterbalance_preparation_required(
+            storage,
+            campaign_id,
+        )
+
+        preparation_run_id = storage.create_run(
+            scenario_name="fastwalk-foundry:Campaignsmith",
+            scenario_path=config_path,
+        )
+        storage.record_event(
+            preparation_run_id,
+            kind="game_event",
+            payload={
+                "type": "equipment_preparation_completed",
+                "source": "text",
+                "data": {
+                    "skill": "counterbalance",
+                    "outcome": "completed",
+                },
+            },
+        )
+        storage.finish_run(preparation_run_id, status="success")
+        preparation_segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="field-hunt",
+            start_state={"level": 10, "xp": 45_000},
+        )
+        storage.finish_campaign_segment(
+            preparation_segment_id,
+            status="success",
+            run_id=preparation_run_id,
+            end_state={"level": 10, "xp": 45_100},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        assert not _campaign_counterbalance_preparation_required(
+            storage,
+            campaign_id,
+        )
 
 
 def test_campaign_recovers_permanent_trainer_rejections_at_current_level(
@@ -890,7 +1401,7 @@ def test_campaign_rechecks_deferred_practice_type_at_current_level(tmp_path) -> 
     assert handled == frozenset()
 
 
-def test_campaign_uses_live_practice_balance_over_segment_history(
+def test_campaign_preserves_per_level_practice_budget_across_segments(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -949,7 +1460,7 @@ def test_campaign_uses_live_practice_balance_over_segment_history(
             )
         )
 
-    assert captured["practice_types_spent"] == frozenset()
+    assert captured["practice_types_spent"] == frozenset({"intellectual"})
 
 
 def test_arena_segment_receives_campaign_practice_history(
@@ -975,10 +1486,12 @@ def test_arena_segment_receives_campaign_practice_history(
             spec.character_profile,
             policy_for(5, "mage"),
             practice_types_spent=frozenset({"intellectual"}),
+            counterbalance_preparation_required=True,
         )
     )
 
     assert captured["practice_types_spent"] == frozenset({"intellectual"})
+    assert captured["counterbalance_preparation_required"] is True
 
 
 def test_level_six_campaign_uses_the_verified_arena_after_foundry_retirement(
@@ -1461,7 +1974,6 @@ def test_retired_cult_fanatic_research_dispatch_never_initiates_combat(
         evidence=(),
         practice_skill=None,
     )
-
     asyncio.run(
         _run_policy_segment(
             spec.character,
@@ -1526,6 +2038,585 @@ def test_fleshmonger_guard_research_dispatch_never_initiates_combat(
     assert [stop.target for stop in stops] == ["patrolling guard"]
     assert stops[0].consider_only is True
     assert captured["require_fastwalk_kill"] is False
+
+
+def test_fleshmonger_guard_kill_research_dispatch_is_bounded(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-guard-kill-research-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="fleshmonger-guard-hunt",
+        summary="One bounded live combat probe.",
+        evidence=(),
+        practice_skill="enhanced damage",
+        segment_kill_limit=1,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "fleshmonger"
+    assert captured["fastwalk_route"].recall_after_loot is True
+    assert captured["fastwalk_kill_limit"] == 1
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["patrolling guard"]
+    assert stops[0].consider_only is False
+    assert stops[0].minimum_health_ratio == 0.85
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_fleshmonger_mufti_research_dispatch_never_initiates_combat(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-mufti-probe-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="fleshmonger-mufti-research",
+        summary="No-combat barracks probe.",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "fleshmonger"
+    assert captured["fastwalk_route"].recall_after_loot is True
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["mufti guard"]
+    assert stops[0].route == ("open south", "south")
+    assert stops[0].consider_only is True
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_fleshmonger_servant_research_dispatch_never_opens_laboratory(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-servant-probe-v1-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="fleshmonger-servant-research",
+        summary="No-combat Study probe.",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "fleshmonger"
+    assert captured["fastwalk_route"].recall_after_loot is True
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.route for stop in stops] == [("up", "up")]
+    assert [stop.target for stop in stops] == ["hobgoblin servant"]
+    assert stops[0].consider_only is True
+    assert "open up" not in stops[0].route
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_fleshmonger_servant_kill_research_dispatch_is_one_fight(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-servant-kill-research-v1-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="fleshmonger-servant-hunt",
+        summary="One bounded Study fight.",
+        evidence=(),
+        practice_skill="backstab",
+        segment_kill_limit=1,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "fleshmonger"
+    assert captured["fastwalk_route"].recall_after_loot is True
+    assert captured["fastwalk_kill_limit"] == 1
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["hobgoblin servant"]
+    assert stops[0].consider_only is False
+    assert stops[0].minimum_health_ratio == 0.85
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_fleshmonger_extended_rotation_dispatch_retains_two_kill_cap(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-thief-extended-rotation-research-v1-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="fleshmonger-thief-extended-rotation-research",
+        summary="Bounded four-target rotation.",
+        evidence=(),
+        practice_skill="backstab",
+        segment_kill_limit=2,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "fleshmonger"
+    assert captured["fastwalk_route"].recall_after_loot is True
+    assert captured["fastwalk_kill_limit"] == 2
+    assert captured["fastwalk_xp_first_capacity_threshold"] == 20
+    stops = captured["fastwalk_hunt_stops"]
+    assert stops[-1].target == "hobgoblin servant"
+    assert stops[-1].route == ("west", "up", "up")
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_fleshmonger_cook_research_dispatch_allows_only_helper(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-cook-probe-v2-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="fleshmonger-cook-research",
+        summary="No-combat kitchen probe.",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["cook", "cook"]
+    assert stops[0].route == ("open east", "east")
+    assert [stop.command_keyword for stop in stops] == ["cook", "2.cook"]
+    assert all(stop.allowed_bystanders == ("cook's boy",) for stop in stops)
+    assert all(stop.consider_only is True for stop in stops)
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_fleshmonger_cook_kill_research_dispatch_is_one_kill(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-cook-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="verified",
+        execution="fleshmonger-cook-hunt",
+        summary="One bounded kitchen fight.",
+        evidence=(),
+        practice_skill="backstab",
+        segment_kill_limit=1,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_kill_limit"] == 1
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["cook", "cook"]
+    assert [stop.command_keyword for stop in stops] == ["cook", "2.cook"]
+    assert all(stop.trivial_bystanders == ("cook's boy",) for stop in stops)
+    assert all(stop.consider_only is False for stop in stops)
+
+
+def test_ambush_archer_research_dispatch_never_initiates_combat(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="ambush-archer-probe-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="ambush-archer-research",
+        summary="No-combat archer probe.",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "ambush"
+    assert captured["fastwalk_route"].recall_after_loot is True
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["goblin archer"]
+    assert stops[0].consider_only is True
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_ambush_archer_kill_research_dispatch_is_one_kill(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="ambush-archer-kill-research-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="ambush-archer-hunt",
+        summary="One bounded archer fight.",
+        evidence=(),
+        practice_skill="backstab",
+        segment_kill_limit=1,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_kill_limit"] == 1
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == ["goblin archer"]
+    assert stops[0].consider_only is False
+    assert stops[0].minimum_health_ratio == 0.85
+
+
+def test_gnome_guard_level_ten_research_dispatch_is_noncombat(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="gnome-guard-hut-probe-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="gnome-guard-research",
+        summary="Inspect the hut guard without attacking.",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["objective_level"] == 11
+    assert captured["fastwalk_route"].name == "gnome guard hut"
+    stops = captured["fastwalk_hunt_stops"]
+    assert len(stops) == 1
+    assert stops[0].consider_only is True
+    assert captured["require_fastwalk_kill"] is False
+    assert captured["allow_safe_fastwalk_abort"] is True
+
+
+def test_fleshmonger_thief_rotation_research_dispatch_is_two_kills(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-thief-rotation-research-v5-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="fleshmonger-thief-rotation-research",
+        summary="Sweep three evidenced targets.",
+        evidence=(),
+        practice_skill="backstab",
+        segment_kill_limit=2,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_kill_limit"] == 2
+    assert captured["fastwalk_route"].recall_after_loot is True
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == [
+        "patrolling guard",
+        "on-duty guard",
+        "cook",
+        "cook",
+    ]
+    assert [stop.command_keyword for stop in stops[2:]] == ["cook", "2.cook"]
+    assert captured["require_fastwalk_kill"] is False
+    assert captured["allow_safe_fastwalk_abort"] is True
+
+
+def test_level_eleven_thief_rotation_targets_level_twelve(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 11})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(11, "thief")
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["objective_level"] == 12
+    assert captured["fastwalk_kill_limit"] == 2
+    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
+        "patrolling guard",
+        "on-duty guard",
+        "cook",
+        "cook",
+        "hobgoblin servant",
+    ]
+
+
+def test_fleshmonger_two_guard_research_dispatch_excludes_basement(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 10})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="fleshmonger-two-guard-research-v2-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="research",
+        execution="fleshmonger-guard-circuit-research",
+        summary="Two bounded live combat probes.",
+        evidence=(),
+        practice_skill="enhanced damage",
+        segment_kill_limit=2,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_kill_limit"] == 2
+    stops = captured["fastwalk_hunt_stops"]
+    assert [stop.target for stop in stops] == [
+        "patrolling guard",
+        "on-duty guard",
+    ]
+    assert stops[1].route == ("open north", "north")
+    assert stops[1].minimum_health_ratio == 0.60
+    assert all("down" not in stop.route for stop in stops)
 
 
 def test_depleted_level_seven_foundry_tries_daycare_before_moria(
@@ -2046,6 +3137,126 @@ def test_campaign_prioritizes_school_accessories_before_waist_and_ring(
     assert policy.execution == "recover-daycare-ring"
 
 
+def test_campaign_retries_missing_daycare_rings_after_reboot(tmp_path) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._boot_id = "new boot"
+    state = {
+        "level": 8,
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": ["finger"],
+        "campaign_outfit_attempted_level": 8,
+        "campaign_daycare_ring_attempted_level": 8,
+        "campaign_daycare_ring_attempted_boot_id": "old boot",
+        "campaign_daycare_ring_cooldown": 3,
+    }
+
+    assert runner._policy_for_state(state).execution == "recover-daycare-ring"
+
+    state["campaign_daycare_ring_attempted_boot_id"] = "new boot"
+
+    assert runner._policy_for_state(state).execution != "recover-daycare-ring"
+    state["campaign_daycare_ring_cooldown"] = 0
+
+    assert runner._policy_for_state(state).execution == "recover-daycare-ring"
+
+
+def test_daycare_ring_retry_cooldown_counts_productive_field_segments() -> None:
+    state = {"campaign_daycare_ring_cooldown": 3}
+
+    for _ in range(3):
+        state = _advance_daycare_ring_cooldown(
+            state,
+            execution="fleshmonger-thief-rotation",
+            xp_delta=50,
+        )
+
+    assert state["campaign_daycare_ring_cooldown"] == 0
+    unchanged = _advance_daycare_ring_cooldown(
+        {"campaign_daycare_ring_cooldown": 3},
+        execution="sell-loot",
+        xp_delta=500,
+    )
+    assert unchanged["campaign_daycare_ring_cooldown"] == 3
+
+
+def test_war_dog_collar_retry_cooldown_counts_productive_field_segments() -> None:
+    state = {"campaign_war_dog_collar_cooldown": 3}
+
+    for _ in range(3):
+        state = _advance_war_dog_collar_cooldown(
+            state,
+            execution="fleshmonger-thief-rotation",
+            xp_delta=50,
+        )
+
+    assert state["campaign_war_dog_collar_cooldown"] == 0
+    unchanged = _advance_war_dog_collar_cooldown(
+        {"campaign_war_dog_collar_cooldown": 3},
+        execution="sell-loot",
+        xp_delta=500,
+    )
+    assert unchanged["campaign_war_dog_collar_cooldown"] == 3
+
+
+def test_policy_revision_migrates_missing_daycare_ring_to_cooldown() -> None:
+    migrated = _refresh_policy_revision(
+        {
+            "level": 11,
+            "campaign_policy_revision": 32,
+            "campaign_daycare_ring_attempted_level": 11,
+            "campaign_daycare_ring_attempted_boot_id": "current boot",
+            "campaign_empty_equipment_categories": ["finger"],
+        }
+    )
+
+    assert migrated["campaign_policy_revision"] == 37
+    assert migrated["campaign_daycare_ring_cooldown"] == 3
+
+
+def test_campaign_retries_missing_war_dog_collar_after_reboot(tmp_path) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._boot_id = "new boot"
+    state = {
+        "level": 8,
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": ["neck"],
+        "campaign_outfit_attempted_level": 8,
+        "campaign_war_dog_collar_attempted_level": 8,
+        "campaign_war_dog_collar_attempted_boot_id": "old boot",
+        "campaign_war_dog_collar_cooldown": 3,
+    }
+
+    assert runner._policy_for_state(state).execution == "recover-war-dog-collar"
+    state["campaign_war_dog_collar_attempted_boot_id"] = "new boot"
+
+    assert runner._policy_for_state(state).execution != "recover-war-dog-collar"
+    state["campaign_war_dog_collar_cooldown"] = 0
+
+    assert runner._policy_for_state(state).execution == "recover-war-dog-collar"
+
+
+def test_policy_revision_retries_collar_after_a_preflight_defect() -> None:
+    migrated = _refresh_policy_revision(
+        {
+            "level": 11,
+            "campaign_policy_revision": 36,
+            "campaign_war_dog_collar_attempted_level": 11,
+            "campaign_war_dog_collar_attempted_boot_id": "current boot",
+            "campaign_war_dog_collar_cooldown": 3,
+            "campaign_empty_equipment_categories": ["neck"],
+        }
+    )
+
+    assert migrated["campaign_policy_revision"] == 37
+    assert "campaign_war_dog_collar_attempted_level" not in migrated
+    assert "campaign_war_dog_collar_attempted_boot_id" not in migrated
+    assert "campaign_war_dog_collar_cooldown" not in migrated
+
+
 def test_campaign_skips_gear_recovery_without_required_free_weight(tmp_path) -> None:
     config_path, _database = _write_campaign_files(tmp_path)
     runner = CampaignRunner(load_campaign_spec(config_path), config_path)
@@ -2146,7 +3357,15 @@ def test_campaign_outfit_policy_uses_verified_leather_shop_route(
     monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
     policy = policy_for(8, "mage", needs_basic_gear=True)
 
-    asyncio.run(_run_policy_segment(spec.character, spec.character_profile, policy))
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            practice_types_spent=frozenset({"physical"}),
+            rejected_practice_skills=frozenset({"second attack"}),
+        )
+    )
 
     assert captured == {"city_outfit": True}
 
@@ -2169,9 +3388,18 @@ def test_campaign_body_recovery_uses_registered_foundry_stop(
     monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
     policy = policy_for(8, "mage", needs_body_gear_recovery=True)
 
-    asyncio.run(_run_policy_segment(spec.character, spec.character_profile, policy))
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            practice_types_spent=frozenset({"physical"}),
+            rejected_practice_skills=frozenset({"second attack"}),
+        )
+    )
 
     assert captured["fastwalk_route"].name == "foundry"
+    assert captured["objective_level"] == 100
     assert captured["fastwalk_required_free_weight"] == 7
     assert captured["fastwalk_kill_limit"] == 1
     assert captured["require_fastwalk_kill"] is False
@@ -2201,6 +3429,7 @@ def test_campaign_school_accessory_recovery_uses_bounded_tutorial_stops(
     asyncio.run(_run_policy_segment(spec.character, spec.character_profile, policy))
 
     assert captured["fastwalk_route"].name == "mud-school-accessories"
+    assert captured["objective_level"] == 100
     assert captured["fastwalk_required_free_weight"] == 30
     assert "fastwalk_kill_limit" not in captured
     portal, lizardman, cleanup, gladiator, exit_stop = captured[
@@ -2242,6 +3471,7 @@ def test_campaign_daycare_ring_recovery_targets_source_old_doll(
     asyncio.run(_run_policy_segment(spec.character, spec.character_profile, policy))
 
     assert captured["fastwalk_route"].name == "dwarven-daycare-ring"
+    assert captured["objective_level"] == 100
     assert captured["fastwalk_required_free_weight"] == 21
     assert captured["fastwalk_kill_limit"] == 3
     first, second, nanny = captured["fastwalk_hunt_stops"]
@@ -2253,6 +3483,89 @@ def test_campaign_daycare_ring_recovery_targets_source_old_doll(
     assert second.maximum_target_count == 1
     assert nanny.target == "old wrinkled nanny"
     assert nanny.required_items == ("linen robe",)
+
+
+def test_campaign_war_dog_collar_recovery_targets_source_carrier(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 8})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(8, "thief", needs_war_dog_collar=True)
+
+    asyncio.run(_run_policy_segment(spec.character, spec.character_profile, policy))
+
+    assert captured["fastwalk_route"].name == "ambush"
+    assert captured["objective_level"] == 100
+    assert captured["fastwalk_required_free_weight"] == 20
+    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["fastwalk_require_invisibility"] is False
+    assert captured["fastwalk_origin_actions"][:2] == ("wear collar", "eq all")
+    (stop,) = captured["fastwalk_hunt_stops"]
+    assert stop.target == "war dog"
+    assert stop.required_items == ("war dog collar",)
+    assert stop.exact_target is True
+
+
+def test_campaign_piercing_upgrade_dispatches_bounded_forest_hunt(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 11})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = policy_for(
+        11,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        has_flight=True,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            practice_types_spent=frozenset({"physical"}),
+            rejected_practice_skills=frozenset({"second attack"}),
+        )
+    )
+
+    assert captured["fastwalk_route"].name == "forest bear claws"
+    assert captured["objective_level"] == 14
+    assert captured["fastwalk_required_free_weight"] == 5
+    assert captured["fastwalk_required_move"] == 246
+    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["require_fastwalk_kill"] is False
+    assert captured["allow_safe_fastwalk_abort"] is True
+    assert captured["practice_types_spent"] == frozenset({"physical"})
+    assert captured["rejected_practice_skills"] == frozenset({"second attack"})
+    stops = captured["fastwalk_hunt_stops"]
+    assert len(stops) == 5
+    assert all(stop.target == "giant kodiak bear" for stop in stops)
+    assert all(
+        stop.required_items == ("pair of bears claws",) for stop in stops
+    )
 
 
 def test_campaign_waist_recovery_targets_source_baby_gremlin(
@@ -2276,6 +3589,7 @@ def test_campaign_waist_recovery_targets_source_baby_gremlin(
     asyncio.run(_run_policy_segment(spec.character, spec.character_profile, policy))
 
     assert captured["fastwalk_route"].name == "gremlin-lair-waist"
+    assert captured["objective_level"] == 100
     assert captured["fastwalk_required_free_weight"] == 5
     assert captured["fastwalk_kill_limit"] == 1
     (stop,) = captured["fastwalk_hunt_stops"]
@@ -2666,6 +3980,58 @@ def test_level_nine_campaign_rotates_to_moria_sanctuary_hunt_after_depletion(
     assert captured["allow_safe_fastwalk_abort"] is True
 
 
+def test_level_ten_thief_moria_fallback_does_not_require_mage_invisibility(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    thief = replace(
+        spec.character,
+        character_class="thief",
+        subclass="ninja",
+    )
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                config_path,
+                {"level": 10, "xp": 47_625},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = ProgressionPolicy(
+        policy_id="moria-sanctuary-10-11",
+        minimum_level=10,
+        maximum_level=11,
+        status="verified",
+        execution="moria-sanctuary-hunt",
+        summary="Acquire sanctuary after an empty thief rotation.",
+        evidence=(),
+        practice_skill="backstab",
+        segment_kill_limit=1,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            thief,
+            spec.character_profile,
+            policy,
+        )
+    )
+
+    assert captured["fastwalk_require_invisibility"] is False
+    assert captured["fastwalk_kill_limit"] == 1
+    assert {stop.target for stop in captured["fastwalk_hunt_stops"]} == {
+        "large hobgoblin"
+    }
+
+
 def test_level_nine_campaign_uses_potion_backed_vile_goblin_hunt(
     tmp_path,
     monkeypatch,
@@ -3002,6 +4368,68 @@ def test_campaign_allows_maintenance_to_clear_stall_limit(tmp_path) -> None:
         assert '"campaign_stalled_segments": 0' in checkpoint["state_json"]
 
 
+def test_campaign_research_does_not_consume_stall_budget(tmp_path) -> None:
+    config_path, database = _write_campaign_files(
+        tmp_path,
+        max_stalled_segments=1,
+    )
+    spec = load_campaign_spec(config_path)
+    policy = ProgressionPolicy(
+        policy_id="source-probe",
+        minimum_level=1,
+        maximum_level=2,
+        status="research",
+        execution="probe",
+        summary="Collect bounded evidence.",
+        evidence=(),
+        practice_skill=None,
+    )
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="source-probe",
+            reason="research-ready",
+            state={
+                "level": 1,
+                "xp": 0,
+                "campaign_stalled_segments": 1,
+            },
+        )
+
+    async def research_segment(character, profile_path: Path) -> RunResult:
+        return _record_segment_run(
+            character.database,
+            profile_path,
+            {"level": 1, "xp": 0},
+        )
+
+    class ResearchRunner(CampaignRunner):
+        def _policy_for_state(self, state) -> ProgressionPolicy:
+            return policy
+
+    result = asyncio.run(
+        ResearchRunner(
+            spec,
+            config_path,
+            segment_runner=research_segment,
+        ).run()
+    )
+
+    assert result.message != "Campaign stalled for 1 completed segment(s)."
+    with RunStorage(database) as storage:
+        checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+        assert checkpoint is not None
+        assert '"campaign_stalled_segments": 0' in checkpoint["state_json"]
+
+
 def test_campaign_records_a_returned_failed_segment(tmp_path) -> None:
     config_path, database = _write_campaign_files(tmp_path)
 
@@ -3028,6 +4456,105 @@ def test_campaign_records_a_returned_failed_segment(tmp_path) -> None:
         segment = storage.list_campaign_segments(result.campaign_id)[0]
         assert segment["status"] == "failed"
         assert segment["error"] == "starter segment returned status failed"
+
+
+def test_campaign_checkpoints_failed_maintenance_attempt_at_current_level(
+    tmp_path,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    policy = ProgressionPolicy(
+        policy_id="recover-daycare-ring",
+        minimum_level=7,
+        maximum_level=None,
+        status="verified",
+        execution="recover-daycare-ring",
+        summary="Recover missing ring gear.",
+        evidence=(),
+        practice_skill=None,
+    )
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase=policy.policy_id,
+            reason="ready",
+            state={
+                "level": 10,
+                "campaign_empty_equipment_categories": ["finger"],
+            },
+        )
+
+    async def failed_segment(character, profile_path: Path) -> RunResult:
+        raise RuntimeError("route watchdog")
+
+    class MaintenanceRunner(CampaignRunner):
+        def _policy_for_state(self, state) -> ProgressionPolicy:
+            return policy
+
+    result = asyncio.run(
+        MaintenanceRunner(
+            spec,
+            config_path,
+            segment_runner=failed_segment,
+        ).run()
+    )
+
+    assert result.status == "failed"
+    assert result.state["campaign_daycare_ring_attempted_level"] == 10
+    with RunStorage(database) as storage:
+        checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+        segment = storage.list_campaign_segments(campaign_id)[0]
+    assert checkpoint is not None
+    assert json.loads(checkpoint["state_json"])[
+        "campaign_daycare_ring_attempted_level"
+    ] == 10
+    assert json.loads(segment["end_state_json"])[
+        "campaign_daycare_ring_attempted_level"
+    ] == 10
+
+
+def test_campaign_resume_migrates_legacy_failed_maintenance_checkpoint(
+    tmp_path,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    runner = CampaignRunner(spec, config_path)
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="recover-daycare-ring",
+            reason="segment_failed",
+            state={
+                "level": 10,
+                "campaign_empty_equipment_categories": ["finger"],
+            },
+        )
+        storage.finish_campaign(
+            campaign_id,
+            status="failed",
+            error="legacy route watchdog",
+        )
+
+        resumed_campaign_id, state = runner._open_campaign(storage)
+
+    assert resumed_campaign_id == campaign_id
+    assert state["campaign_daycare_ring_attempted_level"] == 10
 
 
 def _write_campaign_files(

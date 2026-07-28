@@ -11,12 +11,15 @@ from typing import Any, Awaitable, Callable
 from .character import CharacterSpec, load_character_spec
 from .equipment import (
     GearCatalog,
+    character_can_use_item,
     is_capacity_infrastructure,
+    is_piercing_weapon,
     item_category,
     item_keyword,
     load_gear_catalog,
     normalize_item_name,
     protects_from_sale,
+    weapon_damage_score,
 )
 from .fastwalks import route_named
 from .progression import ProgressionPolicy, policy_for
@@ -30,11 +33,14 @@ from .starter import (
     _equipment_empty_categories,
     _inventory_descriptions,
     _sellable_inventory_keyword,
+    ambush_archer_hunt_stops,
+    ambush_archer_research_stops,
     ambush_caster_level_eight_hunt_stops,
     ambush_level_eight_hunt_stops,
     ambush_martial_level_eight_hunt_stops,
     ambush_raider_hunt_stops,
     ambush_vile_goblin_hunt_stops,
+    ambush_war_dog_collar_hunt_stops,
     circus_freak_show_hunt_stops,
     cult_fanatic_research_stops,
     daycare_armed_guard_hunt_stops,
@@ -46,10 +52,22 @@ from .starter import (
     foundry_body_gear_hunt_stops,
     foundry_level_six_hunt_stops,
     foundry_level_seven_hunt_stops,
+    forest_bear_claws_hunt_route,
+    forest_bear_claws_hunt_stops,
+    fleshmonger_cook_hunt_stops,
+    fleshmonger_cook_research_stops,
+    fleshmonger_guard_circuit_research_stops,
+    fleshmonger_guard_hunt_stops,
     fleshmonger_guard_research_stops,
+    fleshmonger_mufti_research_stops,
+    fleshmonger_servant_hunt_stops,
+    fleshmonger_servant_research_stops,
+    fleshmonger_thief_extended_rotation_stops,
+    fleshmonger_thief_rotation_research_stops,
     gnome_hermit_hunt_route,
     gnome_hermit_hunt_stops,
     gnome_guard_hunt_stops,
+    gnome_guard_research_stops,
     gnome_small_troll_hunt_stops,
     gremlin_waist_hunt_route,
     gremlin_waist_hunt_stops,
@@ -76,15 +94,43 @@ _MAINTENANCE_EXECUTIONS = {
     "recover-school-wrist-float",
     "recover-gremlin-waist",
     "recover-daycare-ring",
+    "recover-war-dog-collar",
+    "upgrade-piercing-weapon",
     "buy-flight",
 }
 _LIQUIDATION_BASELINE_KEY = "campaign_liquidation_baseline"
-_CAMPAIGN_POLICY_REVISION = 27
+_CAMPAIGN_POLICY_REVISION = 37
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _RECOVER_BASIC_BODY_REQUIRED_FREE_WEIGHT = 7
 _RECOVER_SCHOOL_WRIST_FLOAT_REQUIRED_FREE_WEIGHT = 30
 _RECOVER_GREMLIN_WAIST_REQUIRED_FREE_WEIGHT = 5
 _RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT = 21
+_DAYCARE_RING_ATTEMPT_BOOT_KEY = "campaign_daycare_ring_attempted_boot_id"
+_DAYCARE_RING_COOLDOWN_KEY = "campaign_daycare_ring_cooldown"
+_DAYCARE_RING_COOLDOWN_SEGMENTS = 3
+_RECOVER_WAR_DOG_COLLAR_REQUIRED_FREE_WEIGHT = 20
+_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY = "campaign_war_dog_collar_attempted_boot_id"
+_WAR_DOG_COLLAR_COOLDOWN_KEY = "campaign_war_dog_collar_cooldown"
+_WAR_DOG_COLLAR_COOLDOWN_SEGMENTS = 3
+_PIERCING_WEAPON_UPGRADE_REQUIRED_FREE_WEIGHT = 5
+_PIERCING_WEAPON_UPGRADE_REQUIRED_MOVE = 246
+_PIERCING_WEAPON_UPGRADE_VNUM = 18000
+_PIERCING_WEAPON_UPGRADE_BOOT_KEY = (
+    "campaign_piercing_weapon_upgrade_attempted_boot_id"
+)
+_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY = (
+    "campaign_piercing_weapon_upgrade_cooldown"
+)
+_PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS = 3
+_MAINTENANCE_ATTEMPT_LEVEL_KEYS = {
+    "outfit-basic-gear": "campaign_outfit_attempted_level",
+    "recover-basic-body": "campaign_body_gear_attempted_level",
+    "recover-basic-body-gear": "campaign_body_gear_attempted_level",
+    "recover-school-wrist-float": "campaign_school_wrist_float_attempted_level",
+    "recover-gremlin-waist": "campaign_gremlin_waist_attempted_level",
+    "recover-daycare-ring": "campaign_daycare_ring_attempted_level",
+    "recover-war-dog-collar": "campaign_war_dog_collar_attempted_level",
+}
 _BASIC_SHOP_CATEGORIES = frozenset(
     {"body", "head", "arms", "hands", "legs", "feet", "pouch"}
 )
@@ -179,8 +225,24 @@ def _refresh_policy_revision(state: dict[str, Any]) -> dict[str, Any]:
         "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
         "campaign_stalled_segments": 0,
     }
+    refreshed.pop(_PIERCING_WEAPON_UPGRADE_BOOT_KEY, None)
+    refreshed.pop(_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY, None)
     if int(state.get("campaign_policy_revision", 0)) < 20:
         refreshed.pop("campaign_body_gear_attempted_level", None)
+    if (
+        int(state.get("campaign_policy_revision", 0)) < 33
+        and "campaign_daycare_ring_attempted_level" in state
+        and "finger" in set(
+            state.get("campaign_empty_equipment_categories") or ()
+        )
+    ):
+        refreshed[_DAYCARE_RING_COOLDOWN_KEY] = (
+            _DAYCARE_RING_COOLDOWN_SEGMENTS
+        )
+    if int(state.get("campaign_policy_revision", 0)) < 37:
+        refreshed.pop("campaign_war_dog_collar_attempted_level", None)
+        refreshed.pop(_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY, None)
+        refreshed.pop(_WAR_DOG_COLLAR_COOLDOWN_KEY, None)
     return refreshed
 
 
@@ -203,6 +265,7 @@ class CampaignRunner:
         self._boot_kill_counts: Counter[str] = Counter()
         self._policy_xp_deltas: dict[str, int] = {}
         self._gear_catalog: GearCatalog | None = None
+        self._boot_id: int | None = None
 
     async def run(self) -> CampaignResult:
         with RunStorage(self.spec.database) as storage:
@@ -216,6 +279,7 @@ class CampaignRunner:
                 "large sack",
             )
             boot_id = storage.latest_boot_id()
+            self._boot_id = boot_id
             if boot_id is not None:
                 self._boot_kill_counts.update(
                     str(row["mob_name"])
@@ -227,7 +291,7 @@ class CampaignRunner:
             campaign_id, state = self._open_campaign(storage)
             state = _refresh_policy_revision(state)
             self._policy_xp_deltas = _campaign_policy_xp_deltas(
-                storage.list_campaign_segments(campaign_id)
+                storage.list_campaign_segments(campaign_id), storage=storage
             )
             checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
             checkpoint_id = int(checkpoint["id"]) if checkpoint is not None else None
@@ -256,6 +320,7 @@ class CampaignRunner:
             if (
                 stalled >= self.spec.max_stalled_segments
                 and policy.execution not in _MAINTENANCE_EXECUTIONS
+                and policy.status != "research"
             ):
                 message = f"Campaign stalled for {stalled} completed segment(s)."
                 checkpoint_id = self._checkpoint(
@@ -330,6 +395,20 @@ class CampaignRunner:
         daycare_ring_attempted_this_level = (
             int(state.get("campaign_daycare_ring_attempted_level", -1))
             == _level(state)
+            and (
+                self._boot_id is None
+                or state.get(_DAYCARE_RING_ATTEMPT_BOOT_KEY) == self._boot_id
+            )
+            and int(state.get(_DAYCARE_RING_COOLDOWN_KEY) or 0) > 0
+        )
+        war_dog_collar_attempted_this_level = (
+            int(state.get("campaign_war_dog_collar_attempted_level", -1))
+            == _level(state)
+            and (
+                self._boot_id is None
+                or state.get(_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY) == self._boot_id
+            )
+            and int(state.get(_WAR_DOG_COLLAR_COOLDOWN_KEY) or 0) > 0
         )
         vault_stow_items = _campaign_vault_stow_items(
             state,
@@ -431,6 +510,34 @@ class CampaignRunner:
                     _RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT,
                 )
             ),
+            needs_war_dog_collar=(
+                "neck" in empty_categories
+                and not war_dog_collar_attempted_this_level
+                and _has_campaign_free_weight(
+                    state,
+                    _RECOVER_WAR_DOG_COLLAR_REQUIRED_FREE_WEIGHT,
+                )
+            ),
+            needs_piercing_weapon_upgrade=_needs_piercing_weapon_upgrade(
+                state,
+                gear_catalog=self._gear_catalog,
+                character_class=self.spec.character.character_class,
+                subclass=self.spec.character.subclass,
+            ),
+            piercing_weapon_upgrade_attempted=bool(
+                self._boot_id is not None
+                and state.get(_PIERCING_WEAPON_UPGRADE_BOOT_KEY)
+                == self._boot_id
+                and int(
+                    state.get(
+                        _PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY,
+                        _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS,
+                    )
+                )
+                > 0
+            ),
+            movement_available=int(state.get("move") or 0),
+            movement_capacity=int(state.get("max_move") or 0),
             has_sanctuary_potion=(
                 int(
                     dict(state.get("combat_pouch_potions") or {}).get(
@@ -476,9 +583,19 @@ class CampaignRunner:
         checkpoint_state = _checkpoint_state(checkpoint)
         live_state = storage.get_latest_character_state(self.spec.character.name)
         state = _newer_progress_state(checkpoint_state, live_state)
+        if (
+            checkpoint is not None
+            and checkpoint["reason"] == "segment_failed"
+        ):
+            state = _maintenance_failure_state(
+                state,
+                execution=str(checkpoint["phase"]),
+                boot_id=self._boot_id,
+            )
         flight_purchase_failed = _campaign_flight_purchase_failed(
             storage,
             campaign_id,
+            current_state=state,
         )
         if flight_purchase_failed is not None:
             state["magic_shop_purchase_failed"] = flight_purchase_failed
@@ -560,13 +677,21 @@ class CampaignRunner:
                     adjusted_character,
                     self.spec.character_profile,
                     policy,
-                    # The current practice listing is authoritative.  A character may
-                    # earn another practice before the next bounded campaign segment.
-                    practice_types_spent=frozenset(),
+                    practice_types_spent=_campaign_practice_types_spent(
+                        storage,
+                        campaign_id,
+                        level=_level(state),
+                    ),
                     rejected_practice_skills=_campaign_rejected_practice_skills(
                         storage,
                         campaign_id,
                         level=_level(state),
+                    ),
+                    counterbalance_preparation_required=(
+                        _campaign_counterbalance_preparation_required(
+                            storage,
+                            campaign_id,
+                        )
                     ),
                     vault_stow_items=(
                         _campaign_vault_stow_items(
@@ -579,11 +704,24 @@ class CampaignRunner:
                 )
         except Exception as exc:
             message = f"{policy.policy_id} segment failed: {exc}"
+            failed_state = _maintenance_failure_state(
+                state,
+                execution=policy.execution,
+                boot_id=self._boot_id,
+            )
+            if (
+                policy.execution == "upgrade-piercing-weapon"
+                and self._boot_id is not None
+            ):
+                failed_state[_PIERCING_WEAPON_UPGRADE_BOOT_KEY] = self._boot_id
+                failed_state[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = (
+                    _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS
+                )
             storage.finish_campaign_segment(
                 segment_id,
                 status="failed",
                 run_id=None,
-                end_state=state,
+                end_state=failed_state,
                 command_count=None,
                 duration_seconds=None,
                 error=message,
@@ -594,10 +732,16 @@ class CampaignRunner:
                 segment_id,
                 phase=policy.policy_id,
                 reason="segment_failed",
-                state=state,
+                state=failed_state,
             )
             storage.finish_campaign(campaign_id, status="failed", error=message)
-            return CampaignResult(campaign_id, "failed", checkpoint_id, message, state)
+            return CampaignResult(
+                campaign_id,
+                "failed",
+                checkpoint_id,
+                message,
+                failed_state,
+            )
 
         command_count = storage.count_events(result.run_id, kind="command")
         duration_seconds = _run_duration(storage.get_run(result.run_id))
@@ -628,8 +772,76 @@ class CampaignRunner:
         if policy.execution == "recover-gremlin-waist":
             end_state["campaign_gremlin_waist_attempted_level"] = _level(end_state)
         if policy.execution == "recover-daycare-ring":
-            end_state["campaign_daycare_ring_attempted_level"] = _level(end_state)
-        self._policy_xp_deltas[policy.policy_id] = _xp_delta(state, end_state)
+            if "finger" in set(
+                end_state.get("campaign_empty_equipment_categories") or ()
+            ):
+                end_state["campaign_daycare_ring_attempted_level"] = _level(
+                    end_state
+                )
+                end_state[_DAYCARE_RING_COOLDOWN_KEY] = (
+                    _DAYCARE_RING_COOLDOWN_SEGMENTS
+                )
+                if self._boot_id is not None:
+                    end_state[_DAYCARE_RING_ATTEMPT_BOOT_KEY] = self._boot_id
+            else:
+                end_state.pop("campaign_daycare_ring_attempted_level", None)
+                end_state.pop(_DAYCARE_RING_ATTEMPT_BOOT_KEY, None)
+                end_state.pop(_DAYCARE_RING_COOLDOWN_KEY, None)
+        if policy.execution == "recover-war-dog-collar":
+            if "neck" in set(
+                end_state.get("campaign_empty_equipment_categories") or ()
+            ):
+                end_state["campaign_war_dog_collar_attempted_level"] = _level(
+                    end_state
+                )
+                end_state[_WAR_DOG_COLLAR_COOLDOWN_KEY] = (
+                    _WAR_DOG_COLLAR_COOLDOWN_SEGMENTS
+                )
+                if self._boot_id is not None:
+                    end_state[_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY] = self._boot_id
+            else:
+                end_state.pop("campaign_war_dog_collar_attempted_level", None)
+                end_state.pop(_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY, None)
+                end_state.pop(_WAR_DOG_COLLAR_COOLDOWN_KEY, None)
+        xp_delta = _xp_delta(state, end_state)
+        if (
+            policy.execution == "upgrade-piercing-weapon"
+            and self._boot_id is not None
+        ):
+            if _needs_piercing_weapon_upgrade(
+                end_state,
+                gear_catalog=self._gear_catalog,
+                character_class=self.spec.character.character_class,
+                subclass=self.spec.character.subclass,
+            ):
+                end_state[_PIERCING_WEAPON_UPGRADE_BOOT_KEY] = self._boot_id
+                end_state[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = (
+                    _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS
+                )
+            else:
+                end_state.pop(_PIERCING_WEAPON_UPGRADE_BOOT_KEY, None)
+                end_state.pop(_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY, None)
+        elif (
+            policy.execution != "upgrade-piercing-weapon"
+        ):
+            end_state = _advance_piercing_weapon_upgrade_cooldown(
+                end_state,
+                execution=policy.execution,
+                xp_delta=xp_delta,
+            )
+        if policy.execution != "recover-daycare-ring":
+            end_state = _advance_daycare_ring_cooldown(
+                end_state,
+                execution=policy.execution,
+                xp_delta=xp_delta,
+            )
+        if policy.execution != "recover-war-dog-collar":
+            end_state = _advance_war_dog_collar_cooldown(
+                end_state,
+                execution=policy.execution,
+                xp_delta=xp_delta,
+            )
+        self._policy_xp_deltas[policy.policy_id] = xp_delta
         if result.status != "success":
             message = f"starter segment returned status {result.status}"
             storage.finish_campaign_segment(
@@ -663,7 +875,10 @@ class CampaignRunner:
         )
         stalled = (
             0
-            if policy.execution in _MAINTENANCE_EXECUTIONS
+            if (
+                policy.execution in _MAINTENANCE_EXECUTIONS
+                or policy.status == "research"
+            )
             else _stalled_count(
                 state,
                 end_state,
@@ -787,7 +1002,7 @@ def _campaign_practice_types_spent(
 ) -> frozenset[str]:
     spent: set[str] = set()
     for segment in storage.list_campaign_segments(campaign_id):
-        if segment["status"] != "success" or segment["run_id"] is None:
+        if segment["run_id"] is None:
             continue
         start_state = json.loads(segment["start_state_json"] or "{}")
         if _level(start_state) != level:
@@ -816,7 +1031,7 @@ def _campaign_rejected_practice_skills(
         "trainer proficiency cap",
     }
     for segment in storage.list_campaign_segments(campaign_id):
-        if segment["status"] != "success" or segment["run_id"] is None:
+        if segment["run_id"] is None:
             continue
         start_state = json.loads(segment["start_state_json"] or "{}")
         if _level(start_state) != level:
@@ -836,18 +1051,49 @@ def _campaign_rejected_practice_skills(
     return frozenset(rejected)
 
 
+def _campaign_counterbalance_preparation_required(
+    storage: RunStorage,
+    campaign_id: int,
+) -> bool:
+    required = False
+    for segment in storage.list_campaign_segments(campaign_id):
+        if segment["run_id"] is None:
+            continue
+        for event in storage.list_events(int(segment["run_id"])):
+            if event["kind"] != "game_event":
+                continue
+            payload = json.loads(event["payload_json"])
+            data = payload.get("data", {})
+            if str(data.get("skill", "")).casefold() != "counterbalance":
+                continue
+            if payload.get("type") == "training_completed":
+                required = True
+            elif payload.get("type") == "equipment_preparation_completed":
+                required = False
+    return required
+
+
 def _campaign_flight_purchase_failed(
     storage: RunStorage,
     campaign_id: int,
+    *,
+    current_state: dict[str, Any] | None = None,
 ) -> bool | None:
-    """Return the newest result from the policy that owns flight purchasing."""
+    """Return whether the latest failed flight purchase still applies."""
     for segment in reversed(storage.list_campaign_segments(campaign_id)):
         if segment["phase"] != "buy-flight-potion":
             continue
         if segment["status"] != "success" or not segment["end_state_json"]:
             continue
         state = json.loads(segment["end_state_json"])
-        return bool(state.get("magic_shop_purchase_failed"))
+        failed = bool(state.get("magic_shop_purchase_failed"))
+        if not failed or current_state is None:
+            return failed
+        failed_boot = state.get("world_boot_id")
+        current_boot = current_state.get("world_boot_id")
+        if failed_boot and current_boot and failed_boot != current_boot:
+            return False
+        return _state_copper_value(current_state) <= _state_copper_value(state)
     return None
 
 
@@ -858,14 +1104,18 @@ async def _run_policy_segment(
     *,
     practice_types_spent: frozenset[str] = frozenset(),
     rejected_practice_skills: frozenset[str] = frozenset(),
+    counterbalance_preparation_required: bool = False,
     vault_stow_items: tuple[str, ...] = (),
 ) -> RunResult:
+    def starter_runner(**kwargs: Any) -> StarterBotRunner:
+        if counterbalance_preparation_required:
+            kwargs["counterbalance_preparation_required"] = True
+        return StarterBotRunner(spec, profile_path, **kwargs)
+
     if policy.execution == "starter":
-        return await StarterBotRunner(spec, profile_path).run()
+        return await starter_runner().run()
     if policy.execution == "arena":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 10,
             arena_kill_limit=policy.segment_kill_limit,
             practice_types_spent=practice_types_spent,
@@ -877,9 +1127,7 @@ async def _run_policy_segment(
             if policy.minimum_level >= 7
             else foundry_level_six_hunt_stops()
         )
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 7,
             fastwalk_route=route_named("foundry"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -893,9 +1141,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "moria-orc-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 8,
             fastwalk_route=route_named("moria"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -914,9 +1160,7 @@ async def _run_policy_segment(
             if policy.minimum_level >= 9
             else moria_level_eight_large_orc_hunt_stops()
         )
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 9,
             fastwalk_route=route_named("moria"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -930,9 +1174,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "daycare-nanny-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 8,
             fastwalk_route=daycare_nanny_hunt_route(),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -946,9 +1188,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "daycare-armed-guard-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 9,
             fastwalk_route=daycare_armed_guard_hunt_route(),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -962,9 +1202,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "cult-fanatic-research":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 9,
             fastwalk_route=route_named("dragon cult"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -977,9 +1215,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "circus-freak-show-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 8,
             fastwalk_route=route_named("circus bearded lady"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -994,9 +1230,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "shire-bull-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 8,
             fastwalk_route=shire_bull_hunt_route(),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -1010,9 +1244,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "gnome-hermit-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 8,
             fastwalk_route=gnome_hermit_hunt_route(),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -1026,9 +1258,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "gnome-guard-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 9,
             fastwalk_route=route_named("gnome guard hut"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -1041,10 +1271,21 @@ async def _run_policy_segment(
             practice_types_spent=practice_types_spent,
             rejected_practice_skills=rejected_practice_skills,
         ).run()
+    if policy.execution == "gnome-guard-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=route_named("gnome guard hut"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=gnome_guard_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
     if policy.execution == "gnome-small-troll-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 8,
             fastwalk_route=route_named("gnome small troll"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -1058,42 +1299,30 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "sell-loot":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             liquidate_loot=True,
         ).run()
     if policy.execution == "vault-spare-gear":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             vault_stow_items=vault_stow_items,
             vault_required_free_weight=10,
             vault_only=True,
         ).run()
     if policy.execution == "restock":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             city_restock=True,
         ).run()
     if policy.execution == "rearm-weapon":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             city_rearm=True,
         ).run()
     if policy.execution == "outfit-basic-gear":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             city_outfit=True,
         ).run()
     if policy.execution == "recover-basic-body":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
-            objective_level=policy.maximum_level or 10,
+        return await starter_runner(
+            objective_level=policy.maximum_level or 100,
             fastwalk_route=route_named("foundry"),
             fastwalk_required_free_weight=_RECOVER_BASIC_BODY_REQUIRED_FREE_WEIGHT,
             fastwalk_hunt_stops=foundry_body_gear_hunt_stops(),
@@ -1104,10 +1333,8 @@ async def _run_policy_segment(
             allow_safe_fastwalk_abort=True,
         ).run()
     if policy.execution == "recover-school-wrist-float":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
-            objective_level=policy.maximum_level or 10,
+        return await starter_runner(
+            objective_level=policy.maximum_level or 100,
             fastwalk_route=school_accessory_hunt_route(),
             fastwalk_required_free_weight=(
                 _RECOVER_SCHOOL_WRIST_FLOAT_REQUIRED_FREE_WEIGHT
@@ -1119,10 +1346,8 @@ async def _run_policy_segment(
             allow_safe_fastwalk_abort=True,
         ).run()
     if policy.execution == "recover-gremlin-waist":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
-            objective_level=policy.maximum_level or 10,
+        return await starter_runner(
+            objective_level=policy.maximum_level or 100,
             fastwalk_route=gremlin_waist_hunt_route(),
             fastwalk_required_free_weight=_RECOVER_GREMLIN_WAIST_REQUIRED_FREE_WEIGHT,
             fastwalk_hunt_stops=gremlin_waist_hunt_stops(),
@@ -1133,10 +1358,8 @@ async def _run_policy_segment(
             allow_safe_fastwalk_abort=True,
         ).run()
     if policy.execution == "recover-daycare-ring":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
-            objective_level=policy.maximum_level or 10,
+        return await starter_runner(
+            objective_level=policy.maximum_level or 100,
             fastwalk_route=daycare_ring_hunt_route(),
             fastwalk_required_free_weight=_RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT,
             fastwalk_hunt_stops=daycare_ring_hunt_stops(),
@@ -1146,10 +1369,48 @@ async def _run_policy_segment(
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
         ).run()
+    if policy.execution == "recover-war-dog-collar":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 100,
+            fastwalk_route=route_named("ambush"),
+            fastwalk_origin_actions=(
+                "wear collar",
+                "eq all",
+                "get all.pie",
+                "eat pie",
+                "drink skin",
+            ),
+            fastwalk_required_free_weight=(
+                _RECOVER_WAR_DOG_COLLAR_REQUIRED_FREE_WEIGHT
+            ),
+            fastwalk_hunt_stops=ambush_war_dog_collar_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "upgrade-piercing-weapon":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 14,
+            fastwalk_route=forest_bear_claws_hunt_route(),
+            fastwalk_required_free_weight=(
+                _PIERCING_WEAPON_UPGRADE_REQUIRED_FREE_WEIGHT
+            ),
+            fastwalk_required_move=_PIERCING_WEAPON_UPGRADE_REQUIRED_MOVE,
+            fastwalk_hunt_stops=forest_bear_claws_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
     if policy.execution == "buy-flight":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             magic_shop_research=True,
             magic_shop_buy_fly=True,
         ).run()
@@ -1171,9 +1432,7 @@ async def _run_policy_segment(
             hunt_stops = ambush_vile_goblin_hunt_stops()
         else:
             hunt_stops = ambush_level_eight_hunt_stops()
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -1183,11 +1442,11 @@ async def _run_policy_segment(
             fastwalk_require_invisibility=True,
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "fleshmonger-guard-research":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 9,
             fastwalk_route=replace(
                 route_named("fleshmonger"),
@@ -1198,11 +1457,193 @@ async def _run_policy_segment(
             fastwalk_require_invisibility=False,
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "fleshmonger-guard-hunt":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_hunt_stops=fleshmonger_guard_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "fleshmonger-mufti-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_hunt_stops=fleshmonger_mufti_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "fleshmonger-cook-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_hunt_stops=fleshmonger_cook_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "fleshmonger-cook-hunt":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_hunt_stops=fleshmonger_cook_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "fleshmonger-thief-rotation-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=fleshmonger_thief_rotation_research_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "fleshmonger-servant-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=fleshmonger_servant_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "fleshmonger-servant-hunt":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=fleshmonger_servant_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "fleshmonger-thief-extended-rotation-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=fleshmonger_thief_extended_rotation_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_xp_first_capacity_threshold=20,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "ambush-archer-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("ambush"),
+                recall_after_loot=True,
+            ),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=ambush_archer_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "ambush-archer-hunt":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("ambush"),
+                recall_after_loot=True,
+            ),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=ambush_archer_hunt_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution in {
+        "fleshmonger-guard-circuit-research",
+        "fleshmonger-guard-circuit",
+    }:
+        return await starter_runner(
+            objective_level=policy.maximum_level or 11,
+            fastwalk_route=replace(
+                route_named("fleshmonger"),
+                recall_after_loot=True,
+            ),
+            fastwalk_hunt_stops=fleshmonger_guard_circuit_research_stops(),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "ambush-martial-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 9,
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -1217,9 +1658,7 @@ async def _run_policy_segment(
         ).run()
     if policy.execution == "midennir-hunt":
         use_level_eight_loadout = (policy.minimum_level or 0) >= 8
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
@@ -1233,9 +1672,7 @@ async def _run_policy_segment(
             rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "midennir-sack":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("ambush"),
             fastwalk_origin_actions=("drop all.piping", "drop cap"),
@@ -1274,11 +1711,11 @@ async def _run_policy_segment(
             ),
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "moria-circuit":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("moria"),
             fastwalk_hunt_stops=(
@@ -1301,17 +1738,19 @@ async def _run_policy_segment(
             ),
         ).run()
     if policy.execution == "moria-sanctuary-hunt":
-        return await StarterBotRunner(
-            spec,
-            profile_path,
+        return await starter_runner(
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("moria"),
             fastwalk_hunt_stops=moria_sanctuary_potion_hunt_stops(),
             fastwalk_train_before_departure=True,
-            fastwalk_require_invisibility=True,
+            fastwalk_require_invisibility=(
+                spec.character_class == "mage"
+            ),
             fastwalk_kill_limit=policy.segment_kill_limit,
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     raise ValueError(f"unsupported executable policy {policy.policy_id}")
 
@@ -1344,6 +1783,51 @@ def _has_campaign_food(
     return False
 
 
+def _needs_piercing_weapon_upgrade(
+    state: dict[str, Any],
+    *,
+    gear_catalog: GearCatalog | None,
+    character_class: str,
+    subclass: str | None,
+) -> bool:
+    """Compare known carried piercing weapons with the registered source upgrade."""
+    if gear_catalog is None:
+        return False
+    target = gear_catalog.objects.get(_PIERCING_WEAPON_UPGRADE_VNUM)
+    if (
+        target is None
+        or not is_piercing_weapon(target)
+        or not character_can_use_item(
+            target,
+            character_class=character_class,
+            subclass=subclass,
+        )
+    ):
+        return False
+    descriptions = [
+        *(
+            str(description)
+            for description in state.get("campaign_worn_equipment") or ()
+        ),
+        *_inventory_descriptions(state.get("inventory")),
+    ]
+    current_score = max(
+        (
+            weapon_damage_score(item)
+            for description in descriptions
+            if (item := gear_catalog.match(description)) is not None
+            if is_piercing_weapon(item)
+            and character_can_use_item(
+                item,
+                character_class=character_class,
+                subclass=subclass,
+            )
+        ),
+        default=0,
+    )
+    return current_score < weapon_damage_score(target)
+
+
 def _has_own_corpse_recovery(
     state: dict[str, Any],
     character_name: str,
@@ -1359,16 +1843,110 @@ def _has_own_corpse_recovery(
     )
 
 
-def _campaign_policy_xp_deltas(segments: list[Any]) -> dict[str, int]:
-    """Return the most recent same-campaign XP result for each policy."""
+def _campaign_policy_xp_deltas(
+    segments: list[Any],
+    *,
+    storage: RunStorage | None = None,
+) -> dict[str, int]:
+    """Return each policy's latest XP result, discounting unconfirmed hunts."""
     results: dict[str, int] = {}
     for segment in segments:
         if segment["status"] != "success":
             continue
         start = json.loads(segment["start_state_json"] or "{}")
         end = json.loads(segment["end_state_json"] or "{}")
-        results[str(segment["phase"])] = _xp_delta(start, end)
+        objective_kills = end.get("campaign_objective_kills")
+        if objective_kills is None:
+            # Older checkpoints have only the unfiltered combat record.
+            objective_kills = end.get("campaign_completed_kills")
+        if objective_kills is None and storage is not None and segment["run_id"]:
+            objective_kills = _run_objective_kills(storage, int(segment["run_id"]))
+        results[str(segment["phase"])] = _effective_policy_xp_delta(
+            start,
+            end,
+            completed_kills=objective_kills,
+        )
     return results
+
+
+def _effective_policy_xp_delta(
+    start: dict[str, Any],
+    end: dict[str, Any],
+    *,
+    completed_kills: Any,
+) -> int:
+    """Ignore incidental XP from a field segment with no confirmed kill."""
+    xp_delta = _xp_delta(start, end)
+    if xp_delta > 0 and isinstance(completed_kills, list) and not completed_kills:
+        return 0
+    return xp_delta
+
+
+def _run_objective_kills(storage: RunStorage, run_id: int) -> list[Any] | None:
+    """Read deliberate objective kills, falling back to legacy combat output."""
+    for event in reversed(storage.list_events(run_id)):
+        if event["kind"] != "state":
+            continue
+        payload = json.loads(event["payload_json"])
+        if payload.get("state") != "completed":
+            continue
+        objective_kills = payload.get("objective_kills")
+        if isinstance(objective_kills, list):
+            return objective_kills
+        completed_kills = payload.get("completed_kills")
+        return completed_kills if isinstance(completed_kills, list) else None
+    return None
+
+
+def _advance_piercing_weapon_upgrade_cooldown(
+    state: dict[str, Any],
+    *,
+    execution: str,
+    xp_delta: int,
+) -> dict[str, Any]:
+    """Permit another upgrade attempt after three productive field segments."""
+    if execution in _MAINTENANCE_EXECUTIONS or xp_delta <= 0:
+        return state
+    remaining = int(state.get(_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY) or 0)
+    if remaining <= 0:
+        return state
+    updated = dict(state)
+    updated[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = remaining - 1
+    return updated
+
+
+def _advance_daycare_ring_cooldown(
+    state: dict[str, Any],
+    *,
+    execution: str,
+    xp_delta: int,
+) -> dict[str, Any]:
+    """Retry reset-dependent ring carriers after useful work outside the area."""
+    if execution in _MAINTENANCE_EXECUTIONS or xp_delta <= 0:
+        return state
+    remaining = int(state.get(_DAYCARE_RING_COOLDOWN_KEY) or 0)
+    if remaining <= 0:
+        return state
+    updated = dict(state)
+    updated[_DAYCARE_RING_COOLDOWN_KEY] = remaining - 1
+    return updated
+
+
+def _advance_war_dog_collar_cooldown(
+    state: dict[str, Any],
+    *,
+    execution: str,
+    xp_delta: int,
+) -> dict[str, Any]:
+    """Retry reset-dependent collar carriers after useful work outside Ambush."""
+    if execution in _MAINTENANCE_EXECUTIONS or xp_delta <= 0:
+        return state
+    remaining = int(state.get(_WAR_DOG_COLLAR_COOLDOWN_KEY) or 0)
+    if remaining <= 0:
+        return state
+    updated = dict(state)
+    updated[_WAR_DOG_COLLAR_COOLDOWN_KEY] = remaining - 1
+    return updated
 
 
 def _xp_delta(before: dict[str, Any], after: dict[str, Any]) -> int:
@@ -1403,10 +1981,44 @@ def _campaign_segment_end_state(
         ),
         ("recover-gremlin-waist", "campaign_gremlin_waist_attempted_level"),
         ("recover-daycare-ring", "campaign_daycare_ring_attempted_level"),
+        ("recover-daycare-ring", _DAYCARE_RING_ATTEMPT_BOOT_KEY),
+        ("recover-daycare-ring", _DAYCARE_RING_COOLDOWN_KEY),
+        ("recover-war-dog-collar", "campaign_war_dog_collar_attempted_level"),
+        ("recover-war-dog-collar", _WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY),
+        ("recover-war-dog-collar", _WAR_DOG_COLLAR_COOLDOWN_KEY),
+        ("upgrade-piercing-weapon", _PIERCING_WEAPON_UPGRADE_BOOT_KEY),
+        ("upgrade-piercing-weapon", _PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY),
     ):
         if execution != owner and key in previous:
             merged[key] = previous[key]
     return merged
+
+
+def _maintenance_failure_state(
+    state: dict[str, Any],
+    *,
+    execution: str,
+    boot_id: str | int | None = None,
+) -> dict[str, Any]:
+    """Prevent a failed optional equipment errand from looping at one level."""
+    attempted_level_key = _MAINTENANCE_ATTEMPT_LEVEL_KEYS.get(execution)
+    if attempted_level_key is None:
+        return state
+    failed_state = dict(state)
+    failed_state[attempted_level_key] = _level(state)
+    if execution == "recover-daycare-ring" and boot_id is not None:
+        failed_state[_DAYCARE_RING_ATTEMPT_BOOT_KEY] = boot_id
+    if execution == "recover-daycare-ring":
+        failed_state[_DAYCARE_RING_COOLDOWN_KEY] = (
+            _DAYCARE_RING_COOLDOWN_SEGMENTS
+        )
+    if execution == "recover-war-dog-collar" and boot_id is not None:
+        failed_state[_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY] = boot_id
+    if execution == "recover-war-dog-collar":
+        failed_state[_WAR_DOG_COLLAR_COOLDOWN_KEY] = (
+            _WAR_DOG_COLLAR_COOLDOWN_SEGMENTS
+        )
+    return failed_state
 
 
 def _newer_progress_state(
@@ -1744,6 +2356,8 @@ def _campaign_vault_stow_items(
         if keyword not in keywords:
             keywords.append(keyword)
             selected_weight += weight
+    if free_weight + selected_weight < required_free_weight:
+        return ()
     return tuple(keywords)
 
 
@@ -1792,15 +2406,37 @@ def _campaign_liquidation_signature(
     *,
     gear_catalog: GearCatalog | None = None,
 ) -> tuple[str, ...]:
-    candidates = (
-        normalize_item_name(description)
-        for description in _inventory_descriptions(state.get("inventory"))
-        if _sellable_inventory_keyword(
-            [[{"short_desc": description}]],
-            gear_catalog,
-        )
-        is not None
-    )
+    descriptions = _inventory_descriptions(state.get("inventory"))
+    protected_seen: Counter[str] = Counter()
+    candidates: list[str] = []
+    for description in descriptions:
+        normalized = normalize_item_name(description)
+        item = gear_catalog.match(description) if gear_catalog is not None else None
+        if (
+            item is not None
+            and protects_from_sale(item)
+            and not any(
+                location == 1 and modifier < 0
+                for location, modifier in item.affects
+            )
+        ):
+            protected_seen[normalized] += 1
+            retained_capacity = {
+                "finger": 2,
+                "neck": 2,
+                "wrist": 2,
+            }.get(item_category(item) or "", 1)
+            if protected_seen[normalized] <= retained_capacity:
+                continue
+        elif (
+            _sellable_inventory_keyword(
+                [[{"short_desc": description}]],
+                gear_catalog,
+            )
+            is None
+        ):
+            continue
+        candidates.append(normalized)
     return tuple(sorted(candidates))
 
 
