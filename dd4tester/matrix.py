@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import secrets
 import string
 from dataclasses import dataclass
@@ -13,7 +15,10 @@ from .credentials import (
     load_character_password,
     save_character_password,
 )
+from .dd4_catalog import CharacterCatalog, load_character_catalog
+from .hero import HeroRequest, HeroPreparation, prepare_hero_request
 from .scenario import load_yaml_mapping
+from .storage import RunStorage
 
 
 CampaignFileRunner = Callable[..., Awaitable[CampaignResult]]
@@ -98,9 +103,193 @@ class MatrixCredentialResult:
     status: str
 
 
+@dataclass(frozen=True)
+class MatrixCoverage:
+    source: str
+    source_revision: str | None
+    legal_pair_count: int
+    covered_pairs: tuple[tuple[str, str], ...]
+    missing_pairs: tuple[tuple[str, str], ...]
+    covered_classes: tuple[str, ...]
+    missing_classes: tuple[str, ...]
+    observed_sexes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MatrixLiveEntry:
+    """Persisted execution evidence for one declarative validation entry."""
+
+    entry_id: str
+    character_name: str
+    race: str
+    character_class: str
+    sex: str
+    campaign_id: int | None
+    campaign_status: str | None
+    level: int
+
+
+@dataclass(frozen=True)
+class MatrixLiveCoverage:
+    """Separate durable validation evidence from YAML representation coverage."""
+
+    target_level: int
+    entries: tuple[MatrixLiveEntry, ...]
+    validated_pairs: tuple[tuple[str, str], ...]
+    pending_pairs: tuple[tuple[str, str], ...]
+    validated_sexes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ValidationMatrixPreparation:
+    matrix_path: Path
+    preparations: tuple[HeroPreparation, ...]
+    catalog: CharacterCatalog
+
+
 def load_matrix_spec(path: str | Path) -> MatrixSpec:
     matrix_path = Path(path).resolve()
     return MatrixSpec.from_mapping(load_yaml_mapping(matrix_path), path=matrix_path)
+
+
+def matrix_coverage(
+    path: str | Path,
+    *,
+    catalog: CharacterCatalog | None = None,
+) -> MatrixCoverage:
+    """Compare a level-validation matrix with DD4's creation selections.
+
+    DD4's CON_GET_NEW_CLASS loop exposes every class after race selection
+    without a race branch, so the source-legal base coverage is the full
+    race/class Cartesian product. Sex stays a separate cosmetic observation.
+    """
+    spec = load_matrix_spec(path)
+    options = catalog or load_character_catalog()
+    legal_pairs = {
+        (race.name, character_class.name)
+        for race in options.races
+        for character_class in options.classes
+    }
+    represented = {
+        (entry.campaign.character.race, entry.campaign.character.character_class)
+        for entry in spec.entries
+    }
+    covered_pairs = tuple(sorted(legal_pairs & represented))
+    classes = {entry.campaign.character.character_class for entry in spec.entries}
+    observed_sexes = tuple(
+        sorted({entry.campaign.character.gender for entry in spec.entries})
+    )
+    all_classes = {option.name for option in options.classes}
+    return MatrixCoverage(
+        source=options.source,
+        source_revision=options.source_revision,
+        legal_pair_count=len(legal_pairs),
+        covered_pairs=covered_pairs,
+        missing_pairs=tuple(sorted(legal_pairs - represented)),
+        covered_classes=tuple(sorted(classes & all_classes)),
+        missing_classes=tuple(sorted(all_classes - classes)),
+        observed_sexes=observed_sexes,
+    )
+
+
+def live_matrix_coverage(path: str | Path) -> MatrixLiveCoverage:
+    """Read durable campaign state without treating declared entries as runs."""
+
+    spec = load_matrix_spec(path)
+    entries = tuple(_live_matrix_entry(entry) for entry in spec.entries)
+    validated_pairs = tuple(
+        sorted(
+            {
+                (entry.race, entry.character_class)
+                for entry in entries
+                if entry.level >= spec.target_level
+            }
+        )
+    )
+    pending_pairs = tuple(
+        sorted(
+            {
+                (entry.race, entry.character_class)
+                for entry in entries
+                if entry.level < spec.target_level
+            }
+        )
+    )
+    validated_sexes = tuple(
+        sorted({entry.sex for entry in entries if entry.level >= spec.target_level})
+    )
+    return MatrixLiveCoverage(
+        target_level=spec.target_level,
+        entries=entries,
+        validated_pairs=validated_pairs,
+        pending_pairs=pending_pairs,
+        validated_sexes=validated_sexes,
+    )
+
+
+def prepare_validation_matrix(
+    *,
+    catalog: CharacterCatalog | None = None,
+    source: str | Path | None = None,
+    workspace: Path,
+    matrix_path: Path | None = None,
+) -> ValidationMatrixPreparation:
+    """Prepare one resumable level-10 validation campaign per legal race/class.
+
+    Sex alternates between female and male because it is cosmetic in DD4 while
+    still satisfying the cross-sex validation requirement without multiplying
+    every race/class run. The generated campaigns retain their normal level-100
+    destination; the matrix scheduler caps this validation pass at level 10.
+    """
+    options = catalog or load_character_catalog(source)
+    validation_sexes = tuple(
+        sex for sex in ("female", "male") if sex in options.sexes
+    )
+    if len(validation_sexes) < 2:
+        raise ValueError("DD4 source must expose both female and male creation sexes")
+
+    preparations: list[HeroPreparation] = []
+    for index, (race, character_class) in enumerate(
+        (race, character_class)
+        for race in options.races
+        for character_class in options.classes
+    ):
+        preparations.append(
+            prepare_hero_request(
+                HeroRequest(
+                    race=race.name,
+                    sex=validation_sexes[index % len(validation_sexes)],
+                    character_class=character_class.name,
+                ),
+                catalog=options,
+                workspace=workspace,
+            )
+        )
+
+    destination = (matrix_path or workspace / "validation-level-10.yaml").resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    entries = [
+        {
+            "id": f"{preparation.character.race}-{preparation.character.character_class}",
+            "campaign": os.path.relpath(
+                preparation.campaign_path,
+                destination.parent,
+            ).replace(os.sep, "/"),
+        }
+        for preparation in preparations
+    ]
+    destination.write_text(
+        _render_matrix_yaml(
+            {
+                "name": "DD4 Source-Legal Race/Class Level 10 Validation",
+                "target_level": 10,
+                "inter_character_delay": 75,
+                "entries": entries,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return ValidationMatrixPreparation(destination, tuple(preparations), options)
 
 
 def provision_matrix_passwords(
@@ -215,6 +404,60 @@ def _validate_representative_entries(entries: list[MatrixEntry]) -> None:
         raise ValueError("representative matrix requires at least three classes")
 
 
+def _live_matrix_entry(entry: MatrixEntry) -> MatrixLiveEntry:
+    character = entry.campaign.character
+    database = entry.campaign.database
+    if not database.is_file():
+        return MatrixLiveEntry(
+            entry.entry_id,
+            character.name,
+            character.race,
+            character.character_class,
+            character.gender,
+            None,
+            None,
+            0,
+        )
+
+    with RunStorage(database) as storage:
+        campaign = storage.get_latest_campaign_for_config(entry.campaign_path)
+        if campaign is None:
+            return MatrixLiveEntry(
+                entry.entry_id,
+                character.name,
+                character.race,
+                character.character_class,
+                character.gender,
+                None,
+                None,
+                0,
+            )
+        state = storage.get_latest_character_state(character.name)
+        if state is None:
+            checkpoint = storage.get_latest_campaign_checkpoint(int(campaign["id"]))
+            state = _checkpoint_state(checkpoint["state_json"] if checkpoint else None)
+        return MatrixLiveEntry(
+            entry.entry_id,
+            character.name,
+            character.race,
+            character.character_class,
+            character.gender,
+            int(campaign["id"]),
+            str(campaign["status"]),
+            _level(state),
+        )
+
+
+def _checkpoint_state(value: object) -> dict[str, object]:
+    if not isinstance(value, str):
+        return {}
+    try:
+        state = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
 def _level(state: dict[str, object]) -> int:
     value = state.get("level")
     return int(value) if isinstance(value, (int, float)) else 0
@@ -223,3 +466,21 @@ def _level(state: dict[str, object]) -> int:
 def _generated_password() -> str:
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(16))
+
+
+def _render_matrix_yaml(data: dict[str, object]) -> str:
+    lines = [
+        f'name: "{data["name"]}"',
+        f'target_level: {data["target_level"]}',
+        f'inter_character_delay: {data["inter_character_delay"]}',
+        "entries:",
+    ]
+    for entry in data["entries"]:
+        assert isinstance(entry, dict)
+        lines.extend(
+            (
+                f'  - id: "{entry["id"]}"',
+                f'    campaign: "{entry["campaign"]}"',
+            )
+        )
+    return "\n".join(lines) + "\n"

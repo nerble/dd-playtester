@@ -49,6 +49,16 @@ gateways, current trainer listings and caps, separate physical/intellectual
 budgets, direct damage, mitigation, sustain, mobility, and whether the combat
 runner can actually use the result. Mark unsupported rotations analysis-only
 rather than spending practices on unusable skills.
+Keep representative characters from different base classes in active rotation.
+Use their live evidence to improve shared class-aware policy, and never let
+progress on one character become a name-specific substitute for generic
+race/class support.
+Use explicit equipment stances. Combat gear ranks positive damroll first, then
+hitroll, swiftness, and critical chance. Recovery gear favors hit points for
+martial classes and mana for spellcasters; derive hybrid priorities from the
+class profile. Spellcasting combat plans must combine source-verified damage
+spells with available damage-reduction spells rather than spending all mana on
+damage.
 Apply character titles and descriptions only during initial identity setup;
 use persisted command evidence to avoid recreating them on later logins.
 For characters below level 20, treat an affect's name as observable but do not
@@ -113,6 +123,10 @@ ring-bearing old dolls reset in Dwarven Daycare room 6605; each gives +1
 strength and +6 hit points. An empty oversized container may be lodged
 temporarily to make room for required drops only after `look in` proves it is
 empty.
+An absent or crowded ring carrier is a temporary area-state miss, not a
+reboot-scoped failure. Rotate through three productive field segments before
+retrying the Daycare ring recovery during the same reboot; a reboot permits an
+immediate retry.
 A registered one-off gear recovery may attack a source-proven low-level carrier
 after a below-band `consider`, but must record that the kill is solely for a
 required missing item and never treat it as an XP policy.

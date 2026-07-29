@@ -48,6 +48,11 @@ _ITEM = re.compile(
     r"(?:(?:an?|the)\s+)?(?P<item>.+?)(?:[.!]|$)",
     re.IGNORECASE,
 )
+_PURCHASE = re.compile(
+    r"\bYou buy (?:(?P<quantity>\d+)\s+)?(?:(?:an?|the)\s+)?"
+    r"(?P<item>.+?)(?:[.!]|$)",
+    re.IGNORECASE,
+)
 _NON_ITEM_ACQUISITION = re.compile(
     r"^(?:(?:sudden|bad|strange|eerie|deep|easy peaceful)\s+)?"
     r"(?:fear|feeling|sense|impression|urge)\b|^back on your feet\b",
@@ -220,7 +225,7 @@ class ObservationParser:
         if exits and self._previous_line:
             directions = exits.group("exits").split()
             room_event = self._text_room_event(
-                self._previous_line,
+                _room_title(self._previous_line),
                 text=text,
                 exits=directions,
             )
@@ -278,18 +283,22 @@ class ObservationParser:
                 )
             )
 
-        item = _ITEM.search(text)
+        item = _ITEM.search(text) or _PURCHASE.search(text)
         item_text = item.group("item").strip() if item is not None else ""
         if (
             item is not None
             and "experience point" not in item_text.casefold()
             and _NON_ITEM_ACQUISITION.match(item_text) is None
         ):
+            item_data: dict[str, Any] = {"item": item_text, "text": text}
+            quantity = item.groupdict().get("quantity")
+            if quantity is not None:
+                item_data["quantity"] = int(quantity)
             events.append(
                 GameEvent(
                     "item_acquired",
                     "text",
-                    {"item": item_text, "text": text},
+                    item_data,
                 )
             )
 
@@ -349,7 +358,6 @@ class ObservationParser:
         if self._room_name != name.casefold():
             return False
         return not vnum or not self._room_vnum or self._room_vnum == vnum
-
     def _health_event(
         self,
         current: int | float,
@@ -453,3 +461,8 @@ class ObservationParser:
         if value is None:
             return None
         return int(value)
+
+
+def _room_title(text: str) -> str:
+    """Drop a prompt that DD4 can concatenate with the next room header."""
+    return _DD4_PROMPT.sub("", text).strip()

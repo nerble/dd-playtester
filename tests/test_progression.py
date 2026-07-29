@@ -295,6 +295,25 @@ def test_level_seven_caster_uses_gnome_guard_when_established_circuits_are_empty
     assert policy.segment_kill_limit == 1
 
 
+def test_level_seven_caster_skips_completed_empty_guard_expansion() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="circus-illusionist-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 63,
+            "moria-orc-circuit-7-8": 0,
+            "gnome-guard-caster-7-8": 0,
+            "gnome-small-troll-caster-7-8": 482,
+            "ambush-war-dog-caster-7-8": 234,
+        },
+    )
+
+    assert policy.policy_id == "gnome-small-troll-caster-7-8"
+    assert policy.execution == "gnome-small-troll-hunt"
+
+
 def test_level_seven_caster_uses_daycare_after_productive_circus() -> None:
     policy = policy_for(
         7,
@@ -322,7 +341,40 @@ def test_level_seven_caster_rotates_from_daycare_to_gnome() -> None:
     assert policy.execution == "gnome-hermit-hunt"
 
 
-def test_level_seven_caster_rechecks_circus_after_depleted_fallback_cycle() -> None:
+def test_level_seven_caster_skips_known_weak_hunts() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="daycare-armed-guard-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 131,
+            "daycare-armed-guard-7-8": 622,
+            "gnome-hermit-7-8": 63,
+            "moria-orc-circuit-7-8": 309,
+        },
+    )
+
+    assert policy.policy_id == "moria-orc-circuit-7-8"
+    assert policy.execution == "moria-orc-hunt"
+
+
+def test_level_seven_caster_expands_when_established_hunts_are_weak() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="circus-illusionist-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 131,
+            "gnome-hermit-7-8": 63,
+            "moria-orc-circuit-7-8": 199,
+        },
+    )
+
+    assert policy.policy_id == "gnome-guard-caster-7-8"
+    assert policy.execution == "gnome-guard-hunt"
+
+
+def test_level_seven_caster_expands_directly_after_depleted_fallback_cycle() -> None:
     policy = policy_for(
         7,
         "mage",
@@ -334,8 +386,65 @@ def test_level_seven_caster_rechecks_circus_after_depleted_fallback_cycle() -> N
         },
     )
 
-    assert policy.policy_id == "circus-illusionist-7-8"
-    assert policy.execution == "circus-freak-show-hunt"
+    assert policy.policy_id == "gnome-guard-caster-7-8"
+    assert policy.execution == "gnome-guard-hunt"
+
+
+def test_level_seven_caster_reuses_productive_expanded_hunt_directly() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="daycare-armed-guard-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 63,
+            "moria-orc-circuit-7-8": 0,
+            "gnome-guard-caster-7-8": 0,
+            "gnome-small-troll-caster-7-8": 482,
+            "ambush-war-dog-caster-7-8": 234,
+        },
+    )
+
+    assert policy.policy_id == "gnome-small-troll-caster-7-8"
+    assert policy.execution == "gnome-small-troll-hunt"
+
+
+def test_level_seven_caster_cycles_expanded_hunts_when_all_are_weak() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="daycare-armed-guard-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 0,
+            "moria-orc-circuit-7-8": 0,
+            "gnome-guard-caster-7-8": 0,
+            "gnome-small-troll-caster-7-8": 0,
+            "ambush-war-dog-caster-7-8": 174,
+        },
+    )
+
+    assert policy.policy_id == "gnome-small-troll-caster-7-8"
+    assert policy.execution == "gnome-small-troll-hunt"
+
+
+def test_level_seven_caster_leaves_depleted_established_cycle_for_troll() -> None:
+    policy = policy_for(
+        7,
+        "mage",
+        last_policy_id="circus-illusionist-7-8",
+        policy_xp_deltas={
+            "circus-illusionist-7-8": 0,
+            "gnome-hermit-7-8": 0,
+            "moria-orc-circuit-7-8": 0,
+            "gnome-guard-caster-7-8": 0,
+            "gnome-small-troll-caster-7-8": 0,
+            "ambush-war-dog-caster-7-8": 174,
+        },
+    )
+
+    assert policy.policy_id == "gnome-small-troll-caster-7-8"
+    assert policy.execution == "gnome-small-troll-hunt"
 
 
 def test_level_seven_caster_uses_troll_after_depleted_gnome_guard() -> None:
@@ -1799,6 +1908,47 @@ def test_level_twelve_thief_promotes_productive_research_to_verified_rotation() 
     assert "Live run 1578" in " ".join(policy.evidence)
 
 
+def test_level_twelve_thief_probes_nonaggressive_aruncus_after_empty_rotation() -> None:
+    policy = policy_for(
+        12,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        policy_xp_deltas={
+            "fleshmonger-thief-rotation-research-12-13": 400,
+            "fleshmonger-thief-rotation-12-13": 0,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-probe-12-13"
+    assert policy.status == "research"
+    assert policy.execution == "plains-aruncus-research"
+    assert policy.segment_kill_limit is None
+
+
+def test_level_twelve_thief_migrates_retired_moria_probe_to_aruncus() -> None:
+    policy = policy_for(
+        12,
+        "thief",
+        last_policy_id="moria-sanctuary-probe-12-13",
+        policy_xp_deltas={"fleshmonger-thief-rotation-research-12-13": 400},
+    )
+
+    assert policy.policy_id == "plains-aruncus-probe-12-13"
+
+
+def test_level_twelve_thief_returns_to_verified_rotation_after_aruncus_absence() -> None:
+    policy = policy_for(
+        12,
+        "thief",
+        last_policy_id="plains-aruncus-probe-12-13",
+        policy_xp_deltas={"fleshmonger-thief-rotation-research-12-13": 400},
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-12-13"
+    assert policy.execution == "fleshmonger-thief-extended-rotation-research"
+    assert policy.status == "verified"
+
+
 def test_level_twelve_thief_waits_for_review_after_unproductive_research() -> None:
     policy = policy_for(
         12,
@@ -1808,6 +1958,432 @@ def test_level_twelve_thief_waits_for_review_after_unproductive_research() -> No
 
     assert policy.status == "unavailable"
     assert not policy.executable
+
+
+@pytest.mark.parametrize(
+    "character_class",
+    ["cleric", "psionic", "shifter", "brawler", "ranger", "smithy"],
+)
+def test_level_ten_tutorial_tracks_share_the_safe_fleshmonger_scout(
+    character_class: str,
+) -> None:
+    policy = policy_for(10, character_class)
+
+    assert policy.policy_id == "fleshmonger-guard-probe-10-12"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-guard-research"
+
+
+def test_level_ten_tutorial_track_does_not_repeat_completed_scout() -> None:
+    policy = policy_for(
+        10,
+        "cleric",
+        policy_xp_deltas={"fleshmonger-guard-probe-10-12": 0},
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+
+
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior", "psionicist"])
+@pytest.mark.parametrize("level", [13, 14, 15])
+def test_levels_thirteen_to_fifteen_use_bounded_aruncus_research(
+    character_class: str,
+    level: int,
+) -> None:
+    policy = policy_for(level, character_class)
+
+    assert policy.policy_id == "plains-aruncus-probe-13-15"
+    assert policy.status == "research"
+    assert policy.execution == "plains-aruncus-research"
+    assert policy.executable
+    assert "cannot promote a combat policy" in " ".join(policy.evidence)
+
+
+def test_level_thirteen_thief_adds_bounded_pursuit_after_aruncus_survey() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="plains-aruncus-probe-13-15",
+        policy_xp_deltas={"plains-aruncus-probe-13-15": 0},
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-pursuit-research-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+    assert policy.status == "research"
+    assert "room 344" in " ".join(policy.evidence)
+
+
+def test_level_thirteen_thief_defers_empty_fleshmonger_to_reset_controller() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-12-13"
+    assert policy.status == "verified"
+    assert policy.executable
+    assert "outside-area reset controller" in policy.summary
+
+
+def test_level_thirteen_thief_rotates_from_empty_fleshmonger_to_aruncus() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-pursuit-research-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+
+
+def test_level_thirteen_thief_repeats_productive_fleshmonger_rotation() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        policy_xp_deltas={"fleshmonger-thief-rotation-12-13": 462},
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-12-13"
+    assert policy.execution == "fleshmonger-thief-extended-rotation-research"
+
+
+def test_level_thirteen_thief_retries_with_safe_pursuit_after_retired_probe() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="plains-aruncus-thief-kill-research-v3-13-15",
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-kill-research-v3-13-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-pursuit-research-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+
+
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior", "psionic"])
+def test_levels_sixteen_to_twenty_start_with_no_combat_watchman_probe(
+    character_class: str,
+) -> None:
+    policy = policy_for(16, character_class)
+
+    assert policy.policy_id == "mirror-realm-watchman-probe-16-20"
+    assert policy.status == "research"
+    assert policy.execution == "mirror-realm-watchman-research"
+    assert policy.executable
+
+
+def test_level_sixteen_reprobes_until_live_watchman_evidence_is_recorded() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        policy_xp_deltas={"mirror-realm-watchman-probe-16-20": 0},
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-probe-16-20"
+    assert policy.executable
+
+
+def test_viable_watchman_probe_promotes_to_a_bounded_hunt() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        last_policy_id="mirror-realm-watchman-probe-16-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-hunt-16-20"
+    assert policy.execution == "mirror-realm-watchman-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_watchman_hunt_never_uses_stale_reboot_evidence() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        last_policy_id="mirror-realm-watchman-probe-16-20",
+        world_boot_id="boot-2",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-probe-16-20"
+
+
+def test_zero_xp_watchman_hunt_waits_for_a_new_reboot() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        last_policy_id="mirror-realm-watchman-hunt-16-20",
+        policy_xp_deltas={"mirror-realm-watchman-hunt-16-20": 0},
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-hunt-16-20": {
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert "wait for a new reboot" in policy.summary
+
+
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior", "psionic"])
+def test_levels_twenty_one_to_twenty_five_start_with_no_combat_gardener_probe(
+    character_class: str,
+) -> None:
+    policy = policy_for(21, character_class)
+
+    assert policy.policy_id == "mirror-realm-watchman-probe-21-25"
+    assert policy.status == "research"
+    assert policy.execution == "mirror-realm-watchman-research"
+    assert policy.executable
+
+
+def test_level_twenty_one_promotes_a_viable_watchman_probe_to_a_hunt() -> None:
+    policy = policy_for(
+        21,
+        "warrior",
+        last_policy_id="mirror-realm-watchman-probe-21-25",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-21-25": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-hunt-21-25"
+    assert policy.execution == "mirror-realm-watchman-hunt"
+
+
+def test_level_twenty_one_falls_back_to_gardener_research_after_watchman_rejects() -> None:
+    policy = policy_for(
+        21,
+        "warrior",
+        last_policy_id="mirror-realm-watchman-probe-21-25",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-21-25": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-gardener-probe-21-25"
+
+
+def test_level_twenty_one_waits_after_watchman_and_gardener_probes() -> None:
+    policy = policy_for(
+        21,
+        "mage",
+        last_policy_id="mirror-realm-gardener-probe-21-25",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-21-25": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-gardener-probe-21-25": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+    assert "do not authorize combat" in policy.summary
+
+
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior", "psionic"])
+def test_levels_twenty_six_to_thirty_start_with_no_combat_battle_master_probe(
+    character_class: str,
+) -> None:
+    policy = policy_for(26, character_class)
+
+    assert policy.policy_id == "mirror-realm-guardian-probe-26-30"
+    assert policy.status == "research"
+    assert policy.execution == "mirror-realm-guardian-research"
+    assert policy.executable
+
+
+def test_level_twenty_six_promotes_a_viable_guardian_probe_to_a_hunt() -> None:
+    policy = policy_for(
+        26,
+        "warrior",
+        last_policy_id="mirror-realm-guardian-probe-26-30",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-guardian-probe-26-30": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-guardian-hunt-26-30"
+    assert policy.execution == "mirror-realm-guardian-hunt"
+
+
+def test_level_twenty_six_waits_after_guardian_and_battle_master_probes() -> None:
+    policy = policy_for(
+        26,
+        "mage",
+        last_policy_id="shire-battle-master-probe-26-30",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-guardian-probe-26-30": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shire-battle-master-probe-26-30": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+    assert "do not authorize combat" in policy.summary
+
+
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior", "psionic"])
+def test_levels_thirty_one_to_thirty_five_start_with_no_combat_cancer_probe(
+    character_class: str,
+) -> None:
+    policy = policy_for(31, character_class)
+
+    assert policy.policy_id == "minotaur-gatekeeper-probe-31-35"
+    assert policy.status == "research"
+    assert policy.execution == "minotaur-gatekeeper-research"
+    assert policy.executable
+
+
+def test_level_thirty_one_promotes_a_viable_gatekeeper_probe_to_a_hunt() -> None:
+    policy = policy_for(
+        31,
+        "warrior",
+        last_policy_id="minotaur-gatekeeper-probe-31-35",
+        world_boot_id="boot-1",
+        research_results={
+            "minotaur-gatekeeper-probe-31-35": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "minotaur-gatekeeper-hunt-31-35"
+    assert policy.execution == "minotaur-gatekeeper-hunt"
+
+
+def test_level_thirty_one_waits_after_gatekeeper_and_cancer_probes() -> None:
+    policy = policy_for(
+        31,
+        "mage",
+        last_policy_id="galaxy-cancer-probe-31-35",
+        world_boot_id="boot-1",
+        research_results={
+            "minotaur-gatekeeper-probe-31-35": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "galaxy-cancer-probe-31-35": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+    assert "do not authorize combat" in policy.summary
+
+
+@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior", "psionic"])
+def test_levels_thirty_six_to_forty_start_with_no_combat_jerry_probe(
+    character_class: str,
+) -> None:
+    policy = policy_for(36, character_class)
+
+    assert policy.policy_id == "mirror-realm-jerry-garcia-probe-36-40"
+    assert policy.status == "research"
+    assert policy.execution == "mirror-realm-jerry-garcia-research"
+    assert policy.executable
+
+
+def test_level_thirty_six_waits_for_review_after_jerry_probe() -> None:
+    policy = policy_for(
+        36,
+        "mage",
+        policy_xp_deltas={"mirror-realm-jerry-garcia-probe-36-40": 0},
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+    assert "do not authorize combat" in policy.summary
+
+
+def test_level_forty_one_starts_with_no_combat_pit_official_probe() -> None:
+    policy = policy_for(41, "mage")
+
+    assert policy.policy_id == "pit-official-probe-41-45"
+    assert policy.status == "research"
+    assert policy.execution == "pit-official-research"
+    assert policy.executable
+
+
+def test_level_forty_one_waits_for_review_after_pit_official_probe() -> None:
+    policy = policy_for(
+        41,
+        "mage",
+        policy_xp_deltas={"pit-official-probe-41-45": 0},
+    )
+
+    assert policy.status == "unavailable"
+    assert not policy.executable
+    assert "do not authorize combat" in policy.summary
 
 
 def test_level_ten_thief_retires_empty_verified_combined_rotation() -> None:
@@ -1870,7 +2446,7 @@ def test_level_ten_and_eleven_warrior_promotes_completed_two_guard_research(
     assert "Live run 1414" in " ".join(policy.evidence)
 
 
-def test_level_ten_warrior_stops_repeating_empty_verified_guard_loop() -> None:
+def test_level_ten_warrior_delegates_empty_guard_loop_to_reset_controller() -> None:
     policy = policy_for(
         10,
         "warrior",
@@ -1882,8 +2458,9 @@ def test_level_ten_warrior_stops_repeating_empty_verified_guard_loop() -> None:
         },
     )
 
-    assert policy.status == "unavailable"
-    assert not policy.executable
+    assert policy.policy_id == "fleshmonger-guard-circuit-10-11"
+    assert policy.status == "verified"
+    assert policy.executable
 
 
 def test_level_eleven_mage_collects_same_bounded_source_probe() -> None:
@@ -1906,11 +2483,11 @@ def test_level_eleven_mage_does_not_repeat_completed_source_probe() -> None:
     assert not policy.executable
 
 
-def test_unregistered_class_at_level_ten_is_explicitly_unavailable() -> None:
+def test_psionicist_alias_uses_the_level_ten_shared_scout() -> None:
     policy = policy_for(10, "psionicist")
 
-    assert policy.policy_id == "unregistered-10-100"
-    assert policy.status == "unavailable"
+    assert policy.policy_id == "fleshmonger-guard-probe-10-12"
+    assert policy.status == "research"
     assert policy.practice_skill == "mind thrust"
 
 

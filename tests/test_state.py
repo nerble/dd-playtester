@@ -103,6 +103,21 @@ def test_state_changes_only_when_event_changes_domain_state() -> None:
     )
     assert state.equipment["equipment"]["head"]["id"] == 3706
 
+
+def test_text_room_transition_clears_a_stale_gmcp_vnum() -> None:
+    state = CharacterState(room_name="Safety", room_vnum="3737")
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "text",
+            {"name": "The Entrance to the Mud School", "exits": ["east", "south"]},
+        )
+    )
+
+    assert state.room_name == "The Entrance to the Mud School"
+    assert state.room_vnum is None
+
     assert state.apply(GameEvent("character_died", "text", {"text": "You have died."}))
     assert state.dead is True
     assert state.in_combat is False

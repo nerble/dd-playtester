@@ -1,8 +1,16 @@
 import json
+from collections import Counter
 from pathlib import Path
 
 from dd4tester.cli import main
-from dd4tester.report import _commentary, build_run_report, render_markdown
+from dd4tester.report import (
+    _commentary,
+    _balance_signals,
+    _item_acquisition_count,
+    _progress_summary,
+    build_run_report,
+    render_markdown,
+)
 from dd4tester.storage import RunStorage
 
 
@@ -48,6 +56,7 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
         "class": "mage",
         "subclass": "warlock",
     }
+
     assert report["decision_analysis"]["category_counts"] == {
         "combat": 2,
         "safety": 1,
@@ -77,6 +86,38 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     assert "Loot sales: 1 item(s) for 10 coins" in markdown
     assert "Training: accepted magic missile; rejected kick" in markdown
     assert "**critical - health pressure:** Health reached 10% of maximum." in markdown
+
+
+def test_report_counts_purchase_quantity_as_multiple_items() -> None:
+    event = {
+        "payload": {
+            "type": "item_acquired",
+            "data": {"item": "big pot pies", "quantity": 3},
+        }
+    }
+
+    assert _item_acquisition_count(event) == 3
+
+
+def test_report_infers_combat_from_confirmed_kills_when_start_text_is_missing() -> None:
+    progress = _progress_summary(
+        {},
+        {},
+        [],
+        Counter(),
+        [],
+        [],
+        [{"mob_name": "patrolling guard", "xp_gained": 257}],
+        [],
+    )
+
+    assert progress["combat_starts"] == 1
+    combat_signal = next(
+        signal
+        for signal in _balance_signals(progress, Counter())
+        if signal["name"] == "combat"
+    )
+    assert "detected 1 combat start(s)" in combat_signal["detail"]
 
 
 def test_report_cli_writes_json_and_markdown(tmp_path, capsys) -> None:

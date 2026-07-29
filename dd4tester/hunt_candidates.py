@@ -201,15 +201,29 @@ class HuntCandidate:
     estimated_level_range: tuple[int, int] = (0, 0)
     estimated_base_hp_range: tuple[int, int] = (0, 0)
     estimated_peak_round_damage: int = 0
+    autonomy_rejections: tuple[str, ...] = ()
+
+    @property
+    def autonomous_safe(self) -> bool:
+        """Whether source evidence permits a live probe-to-hunt policy."""
+        return not self.autonomy_rejections
 
 
-def load_world_source(area_directory: Path) -> WorldSource:
-    """Parse global route hazards and target-area loot evidence from DD4 source."""
+def load_world_source(
+    area_directory: Path,
+    *,
+    include_all_areas: bool = False,
+) -> WorldSource:
+    """Parse global hazards and selected candidate-area loot evidence."""
     if not area_directory.is_dir():
         raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
 
     world = WorldSource()
-    target_files = set(LOW_LEVEL_AREA_FILES)
+    target_files = (
+        {path.name for path in area_directory.glob("*.are")}
+        if include_all_areas
+        else set(LOW_LEVEL_AREA_FILES)
+    )
     for path in sorted(area_directory.glob("*.are")):
         is_target = path.name in target_files
         parsed = parse_area_file(
@@ -310,6 +324,7 @@ def rank_hunt_candidates(
     boot_kill_counts: Mapping[str, int] | None = None,
     include_xp_only: bool = False,
     character_max_hp: int | None = None,
+    include_all_areas: bool = False,
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -317,7 +332,7 @@ def rank_hunt_candidates(
         _normalize_name(name): count for name, count in (boot_kill_counts or {}).items()
     }
     resets_by_room = _resets_by_room(world)
-    candidate_area_files = set(LOW_LEVEL_AREA_FILES)
+    candidate_area_files = None if include_all_areas else set(LOW_LEVEL_AREA_FILES)
     wandering_aggressors = _wandering_aggressors(world)
     recall_paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
     wanderer_reachability = {
@@ -333,9 +348,22 @@ def rank_hunt_candidates(
     for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
         mobile = world.mobiles.get(reset.mobile_vnum)
         room = world.rooms.get(reset.room_vnum)
-        if mobile is None or room is None or mobile.area_file not in candidate_area_files:
+        if (
+            mobile is None
+            or room is None
+            or (
+                candidate_area_files is not None
+                and mobile.area_file not in candidate_area_files
+            )
+        ):
             continue
         if mobile.level > character_level or mobile.act_flags & ACT_NO_EXPERIENCE:
+            continue
+        level_range = _mobile_level_range(mobile.level)
+        # DD4's do_consider treats a target five or more levels below the
+        # character as a forbidden low-XP branch. Keep a target only when its
+        # normal reset fuzz can still produce a useful live consideration.
+        if level_range[1] <= character_level - 5:
             continue
 
         loot_objects = _loot_objects(world, reset.object_vnums)
@@ -347,7 +375,6 @@ def rank_hunt_candidates(
             and item.item_type == ITEM_WEAPON
         )
         equipped_weapons = tuple(item for _, item in equipped_weapon_slots)
-        level_range = _mobile_level_range(mobile.level)
         hp_range = _mobile_base_hp_range(level_range)
         peak_round_damage = _mobile_peak_round_damage(
             level_range[1],
@@ -378,6 +405,7 @@ def rank_hunt_candidates(
             continue
         route, path_rooms, closed_doors = path
         hazards: list[str] = []
+        autonomy_rejections: list[str] = []
         dangerous = False
         normalized_target = _normalize_name(mobile.short_description)
         boot_kills = kill_counts.get(normalized_target, 0)
@@ -396,6 +424,7 @@ def rank_hunt_candidates(
             # violence_update, including before an aggressive room can be
             # inspected. Solo hunt policies must reject this source capacity.
             dangerous = True
+            autonomy_rejections.append("target reset capacity exceeds one")
         for room_reset in resets_by_room.get(room.vnum, ()):
             if room_reset.mobile_vnum == mobile.vnum:
                 continue
@@ -409,6 +438,7 @@ def rank_hunt_candidates(
             )
             if companion.aggressive or companion.level > character_level:
                 dangerous = True
+            autonomy_rejections.append("target room has a reset companion")
 
         for path_room in path_rooms[:-1]:
             for path_reset in resets_by_room.get(path_room, ()):
@@ -418,8 +448,16 @@ def rank_hunt_candidates(
                 hazards.append(
                     f"route: {hazard.short_description} L{hazard.level} in {path_room}"
                 )
-                if hazard.level > character_level:
+                hazard_level_max = _mobile_level_range(hazard.level)[1]
+                if hazard_level_max > character_level:
                     dangerous = True
+                    autonomy_rejections.append(
+                        "route crosses a higher-level aggressive reset"
+                    )
+                elif hazard_level_max > character_level - 5:
+                    autonomy_rejections.append(
+                        "route crosses an aggressive reset inside the useful XP band"
+                    )
 
         path_room_set = set(path_rooms)
         for hazard, hazard_reset in wandering_aggressors:
@@ -436,15 +474,26 @@ def rank_hunt_candidates(
             hazards.append(
                 f"reachable wanderer: {hazard.short_description} L{hazard.level}"
             )
-            if hazard.level > character_level:
+            hazard_level_max = _mobile_level_range(hazard.level)[1]
+            if hazard_level_max > character_level:
                 dangerous = True
+                autonomy_rejections.append(
+                    "a higher-level aggressive wanderer can reach the route"
+                )
+            elif hazard_level_max > character_level - 5:
+                autonomy_rejections.append(
+                    "an aggressive wanderer inside the useful XP band can reach the route"
+                )
 
         if closed_doors:
             hazards.append(f"{closed_doors} closed door(s) on route")
         if mobile.alignment > 0:
             hazards.append(f"positive alignment target ({mobile.alignment})")
+            autonomy_rejections.append("target has positive alignment")
         if mobile.aggressive:
             hazards.append("target is aggressive")
+            dangerous = True
+            autonomy_rejections.append("target is aggressive")
         if equipped_weapons:
             weapon_names = ", ".join(
                 item.short_description for item in equipped_weapons
@@ -462,8 +511,10 @@ def rank_hunt_candidates(
                 f"character max HP {character_max_hp}"
             )
             dangerous = True
+            autonomy_rejections.append("source peak round can exceed character HP")
         for special in world.mobile_specials.get(mobile.vnum, ()):
             hazards.append(f"target special: {special}")
+            autonomy_rejections.append(f"target has special procedure {special}")
         source_value = sum(item.source_cost for item in sellable)
         score = (
             100
@@ -509,6 +560,7 @@ def rank_hunt_candidates(
                 estimated_level_range=level_range,
                 estimated_base_hp_range=hp_range,
                 estimated_peak_round_damage=peak_round_damage,
+                autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
             )
         )
 

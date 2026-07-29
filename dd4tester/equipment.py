@@ -16,6 +16,8 @@ APPLY_MANA = 12
 APPLY_HIT = 13
 APPLY_HITROLL = 18
 APPLY_DAMROLL = 19
+APPLY_CRIT = 50
+APPLY_SWIFTNESS = 51
 ITEM_LIGHT = 1
 ITEM_WEAPON = 5
 ITEM_BODY_PART = 1 << 26
@@ -221,9 +223,11 @@ def stance_score(
     stats = sum(max(0, bonuses.get(location, 0)) for location in APPLY_STATS)
     damroll = max(0, bonuses.get(APPLY_DAMROLL, 0))
     hitroll = max(0, bonuses.get(APPLY_HITROLL, 0))
-    recovery = max(0, bonuses.get(APPLY_HIT, 0)) + max(
-        0, bonuses.get(APPLY_MANA, 0)
-    )
+    swiftness = max(0, bonuses.get(APPLY_SWIFTNESS, 0))
+    critical = max(0, bonuses.get(APPLY_CRIT, 0))
+    hitpoints = max(0, bonuses.get(APPLY_HIT, 0))
+    mana = max(0, bonuses.get(APPLY_MANA, 0))
+    recovery = hitpoints + mana
     armor = item.values[0] if item.item_type == 9 and item.values else 0
     weapon = (
         sum(item.values[1:3])
@@ -247,13 +251,60 @@ def stance_score(
             }
             return tuple(
                 level_metrics[priority] for priority in level_gain_priorities
-            ) + (stats, damroll, hitroll, recovery, armor, weapon)
-        return stats, damroll, hitroll, recovery, armor, weapon
+            ) + (
+                stats,
+                damroll,
+                hitroll,
+                swiftness,
+                critical,
+                recovery,
+                armor,
+                weapon,
+            )
+        return (
+            stats,
+            damroll,
+            hitroll,
+            swiftness,
+            critical,
+            recovery,
+            armor,
+            weapon,
+        )
     if stance == STANCE_RECOVERY:
-        return recovery, stats, damroll, hitroll, armor, weapon
+        resource_priorities = tuple(
+            priority
+            for priority in level_gain_priorities
+            if priority in {"hitpoints", "mana"}
+        )
+        resource_scores = {"hitpoints": hitpoints, "mana": mana}
+        prioritized_recovery = (
+            tuple(resource_scores[priority] for priority in resource_priorities)
+            if resource_priorities
+            else (recovery,)
+        )
+        return prioritized_recovery + (
+            recovery,
+            stats,
+            damroll,
+            hitroll,
+            swiftness,
+            critical,
+            armor,
+            weapon,
+        )
     if stance != STANCE_COMBAT:
         raise ValueError(f"Unknown equipment stance: {stance}")
-    return damroll, hitroll, stats, recovery, armor, weapon
+    return (
+        damroll,
+        hitroll,
+        swiftness,
+        critical,
+        stats,
+        recovery,
+        armor,
+        weapon,
+    )
 
 
 def protects_from_sale(item: ObjectSource) -> bool:
@@ -262,6 +313,8 @@ def protects_from_sale(item: ObjectSource) -> bool:
         APPLY_HIT,
         APPLY_HITROLL,
         APPLY_DAMROLL,
+        APPLY_CRIT,
+        APPLY_SWIFTNESS,
     }
     return item.item_type == ITEM_LIGHT or is_capacity_infrastructure(item) or any(
         location in protected and modifier > 0
@@ -310,9 +363,16 @@ def _stance_rank(
     level_gain_priorities: tuple[str, ...],
 ) -> tuple[int, ...]:
     """Rank usable gear above emptiness without overlooking harmful stat gear."""
-    score_length = 6 + (
-        len(level_gain_priorities) if stance == STANCE_PRE_LEVEL else 0
-    )
+    if stance == STANCE_PRE_LEVEL:
+        score_length = 8 + len(level_gain_priorities)
+    elif stance == STANCE_RECOVERY:
+        resource_priority_count = sum(
+            priority in {"hitpoints", "mana"}
+            for priority in level_gain_priorities
+        )
+        score_length = 8 + max(1, resource_priority_count)
+    else:
+        score_length = 8
     if item is None:
         return (0,) + (0,) * score_length
     if is_strength_penalty_ring(item) or any(

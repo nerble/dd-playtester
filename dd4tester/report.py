@@ -235,11 +235,16 @@ def _progress_summary(
             "lowest_fraction": min(health_samples) if health_samples else None,
         },
         "room": {"initial": initial.get("room_name"), "final": final.get("room_name")},
-        "combat_starts": game_event_counts["combat_started"],
+        "combat_starts": max(
+            game_event_counts["combat_started"],
+            len(confirmed_kills),
+        ),
         "combat_decisions": sum(_is_combat_decision(decision) for decision in decisions),
         "confirmed_kills": confirmed_kills,
         "level_gains_observed": game_event_counts["level_gained"],
-        "items_acquired": sum(_is_item_acquisition(event) for event in game_events),
+        "items_acquired": sum(
+            _item_acquisition_count(event) for event in game_events
+        ),
         "quests_received": game_event_counts["quest_received"],
         "training": _training_summary(game_events),
         "loot_sales": _sales_summary(sales),
@@ -348,7 +353,7 @@ def _balance_signals(
             }
         )
 
-    combats = game_event_counts["combat_started"]
+    combats = progress["combat_starts"]
     combat_decisions = progress["combat_decisions"]
     deaths = game_event_counts["character_died"]
     if combats or combat_decisions:
@@ -497,6 +502,16 @@ def _is_item_acquisition(event: dict[str, Any]) -> bool:
         return True
     item = data.get("item", data.get("name"))
     return not _is_experience_item(item)
+
+
+def _item_acquisition_count(event: dict[str, Any]) -> int:
+    if not _is_item_acquisition(event):
+        return 0
+    data = event["payload"].get("data")
+    if not isinstance(data, dict):
+        return 1
+    quantity = data.get("quantity")
+    return quantity if isinstance(quantity, int) and quantity > 0 else 1
 
 
 def _is_experience_item(value: Any) -> bool:

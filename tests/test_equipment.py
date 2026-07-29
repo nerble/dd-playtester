@@ -81,6 +81,19 @@ def test_body_part_weapons_are_never_usable_gear_candidates() -> None:
     )
 
 
+def test_source_bear_claws_are_not_a_body_part() -> None:
+    catalog = GearCatalog.from_area_directory(Path("runs/dd4-source/server/area"))
+    claws = catalog.match("pair of bears claws")
+
+    assert claws is not None
+    assert claws.extra_flags & (1 << 26) == 0
+    assert character_can_use_item(
+        claws,
+        character_class="thief",
+        subclass="ninja",
+    )
+
+
 def test_stances_prioritize_damroll_stats_and_recovery_resources() -> None:
     damage = _item(1, "damage helm", (19, 4), (18, 1))
     stats = _item(2, "training helm", (1, 2), (3, 2), (5, 1))
@@ -93,6 +106,52 @@ def test_stances_prioritize_damroll_stats_and_recovery_resources() -> None:
     assert stance_score(recovery, STANCE_RECOVERY) > stance_score(
         stats, STANCE_RECOVERY
     )
+
+
+def test_combat_stance_orders_damage_hit_swiftness_then_critical() -> None:
+    damage = _item(20, "damage helm", (19, 1))
+    hit = _item(21, "hit helm", (18, 1))
+    swift = _item(22, "swift helm", (51, 1))
+    critical = _item(23, "critical helm", (50, 1))
+
+    ranked = sorted(
+        (critical, swift, hit, damage),
+        key=lambda item: stance_score(item, STANCE_COMBAT),
+        reverse=True,
+    )
+
+    assert ranked == [damage, hit, swift, critical]
+
+
+def test_recovery_stance_uses_class_resource_priority() -> None:
+    hitpoints = _item(24, "hitpoint helm", (13, 10))
+    mana = _item(25, "mana helm", (12, 10))
+    caster_priorities = ("intellectual_practices", "mana", "hitpoints")
+    martial_priorities = ("physical_practices", "hitpoints", "mana")
+
+    assert stance_score(
+        mana,
+        STANCE_RECOVERY,
+        level_gain_priorities=caster_priorities,
+    ) > stance_score(
+        hitpoints,
+        STANCE_RECOVERY,
+        level_gain_priorities=caster_priorities,
+    )
+    assert stance_score(
+        hitpoints,
+        STANCE_RECOVERY,
+        level_gain_priorities=martial_priorities,
+    ) > stance_score(
+        mana,
+        STANCE_RECOVERY,
+        level_gain_priorities=martial_priorities,
+    )
+
+
+def test_swiftness_and_critical_gear_are_protected_from_sale() -> None:
+    assert protects_from_sale(_item(26, "swift helm", (51, 1)))
+    assert protects_from_sale(_item(27, "critical helm", (50, 1)))
 
 
 def test_weapon_damage_score_uses_source_dice_average() -> None:

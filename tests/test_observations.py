@@ -72,6 +72,29 @@ def test_experience_reward_is_not_recorded_as_an_item() -> None:
     assert events[0].data["item"] == "snowy white stone"
 
 
+def test_purchase_is_recorded_as_an_item_acquisition() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text("The weaponsmith nods solemnly at you.\nYou buy a dagger.\n")
+
+    acquisitions = [event for event in events if event.type == "item_acquired"]
+    assert len(acquisitions) == 1
+    assert acquisitions[0].data["item"] == "dagger"
+
+
+def test_purchase_preserves_item_quantity() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text("You buy 3 big pot pies.\n")
+
+    assert events[0].type == "item_acquired"
+    assert events[0].data == {
+        "item": "big pot pies",
+        "quantity": 3,
+        "text": "You buy 3 big pot pies.",
+    }
+
+
 def test_room_atmosphere_is_not_recorded_as_an_item() -> None:
     parser = ObservationParser()
 
@@ -283,3 +306,17 @@ def test_gmcp_room_enriches_a_text_room_without_reentering() -> None:
 
     assert [event.type for event in events] == ["room_updated"]
     assert events[0].data["vnum"] == "3001"
+
+
+def test_text_room_header_strips_a_concatenated_dd4_prompt() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "<47/73 hits 100/107 mana 120/160 move [Mud School]> "
+        "Advanced Combat Training\n"
+        "[Exits: east]\n"
+    )
+
+    assert len(events) == 1
+    assert events[0].type == "room_entered"
+    assert events[0].data["name"] == "Advanced Combat Training"

@@ -20,7 +20,14 @@ from .fastwalks import FASTWALKS, routes_for_level
 from .dd4_catalog import load_character_catalog
 from .hero import HeroRequest, prepare_hero_request, run_hero_request
 from .hunt_candidates import load_world_source, rank_hunt_candidates
-from .matrix import provision_matrix_passwords, run_matrix_file
+from .matrix import (
+    live_matrix_coverage,
+    matrix_coverage,
+    prepare_validation_matrix,
+    provision_matrix_passwords,
+    run_matrix_file,
+)
+from .mudlet import MudletBridge
 from .money import run_money_loop_profile
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
@@ -360,6 +367,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="include targets without known saleable loot or coin drops",
     )
+    hunt_candidates_parser.add_argument(
+        "--all-areas",
+        action="store_true",
+        help="analyse every area file instead of the conservative starter-area set",
+    )
+    hunt_candidates_parser.add_argument(
+        "--autonomous-safe-only",
+        action="store_true",
+        help="show only candidates eligible for a source-backed probe-to-hunt policy",
+    )
     arena_research_parser.add_argument(
         "--target-level",
         type=int,
@@ -412,6 +429,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="run up to this many ready checkpoint segments, default: 1",
     )
+    campaign_parser.add_argument(
+        "--reset-retries",
+        type=int,
+        default=0,
+        help="bounded retries after an empty-area checkpoint, default: 0",
+    )
+    campaign_parser.add_argument(
+        "--reset-wait",
+        type=float,
+        default=300.0,
+        help="seconds to wait outside a depleted area before each retry, default: 300",
+    )
+    campaign_parser.add_argument(
+        "--max-segment-runtime",
+        type=float,
+        help="cap each live segment in seconds so the process exits cleanly before an outer launcher timeout",
+    )
 
     hero_parser = subcommands.add_parser(
         "hero",
@@ -442,6 +476,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="short in-world personality used in the initial description",
     )
     hero_parser.add_argument(
+        "--transport",
+        choices=("telnet", "mudlet"),
+        default="telnet",
+        help="execution transport, default: telnet",
+    )
+    hero_parser.add_argument(
+        "--mudlet-directory",
+        type=Path,
+        help="shared bridge directory required with --transport mudlet",
+    )
+    hero_parser.add_argument(
         "--source",
         type=Path,
         help="DD4 const.c or source directory; defaults to the local source checkout",
@@ -462,6 +507,22 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=10000,
         help="maximum checkpoint segments in this process, default: 10000",
+    )
+    hero_parser.add_argument(
+        "--reset-retries",
+        type=int,
+        help="bounded retries after empty-area checkpoints; defaults to --segments",
+    )
+    hero_parser.add_argument(
+        "--reset-wait",
+        type=float,
+        default=300.0,
+        help="seconds to wait outside a depleted area before each retry, default: 300",
+    )
+    hero_parser.add_argument(
+        "--max-segment-runtime",
+        type=float,
+        help="cap each live segment in seconds so the process exits cleanly before an outer launcher timeout",
     )
     hero_parser.add_argument(
         "--prepare-only",
@@ -505,6 +566,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="campaign segments per character in each round, default: 1",
     )
 
+    matrix_coverage_parser = subcommands.add_parser(
+        "matrix-coverage",
+        help="compare a validation matrix with all source-legal race/class pairs",
+    )
+    matrix_coverage_parser.add_argument("config", type=Path)
+    matrix_coverage_parser.add_argument(
+        "--source",
+        type=Path,
+        help="DD4 const.c or source directory; defaults to the local source checkout",
+    )
+
+    validation_matrix_parser = subcommands.add_parser(
+        "prepare-validation-matrix",
+        help="generate resumable level-10 campaigns for every source-legal race/class pair",
+    )
+    validation_matrix_parser.add_argument(
+        "--workspace",
+        type=Path,
+        default=Path("runs/heroes/validation"),
+    )
+    validation_matrix_parser.add_argument("--output", type=Path)
+    validation_matrix_parser.add_argument("--source", type=Path)
+
     configure_matrix_parser = subcommands.add_parser(
         "configure-matrix-passwords",
         help="generate and securely store missing passwords for a character matrix",
@@ -513,6 +597,17 @@ def build_parser() -> argparse.ArgumentParser:
         "config",
         type=Path,
         help="path to the matrix YAML configuration",
+    )
+
+    mudlet_bridge_parser = subcommands.add_parser(
+        "mudlet-bridge",
+        help="generate the shared-file Mudlet command and GMCP bridge",
+    )
+    mudlet_bridge_parser.add_argument(
+        "--directory",
+        type=Path,
+        default=Path("runs/mudlet-bridge"),
+        help="shared directory visible to Mudlet, default: runs/mudlet-bridge",
     )
 
     show_runs_parser = subcommands.add_parser("show-runs", help="list stored scenario runs")
@@ -644,6 +739,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="character_class",
         required=True,
     )
+
+    coverage_parser = subcommands.add_parser(
+        "show-policy-coverage",
+        help="summarize registered policy coverage across a class level range",
+    )
+    coverage_parser.add_argument("--class", dest="character_class", required=True)
+    coverage_parser.add_argument("--from-level", type=int, default=0)
+    coverage_parser.add_argument("--to-level", type=int, default=100)
 
     show_prerequisites_parser = subcommands.add_parser(
         "show-prereqs",
@@ -945,6 +1048,8 @@ def main(argv: list[str] | None = None) -> int:
             database=args.database,
             limit=args.limit,
             include_xp_only=args.include_xp_only,
+            include_all_areas=args.all_areas,
+            autonomous_safe_only=args.autonomous_safe_only,
         )
 
     if args.command == "configure-login":
@@ -974,6 +1079,9 @@ def main(argv: list[str] | None = None) -> int:
                     args.config,
                     force_new=args.new,
                     segments=args.segments,
+                    reset_retries=args.reset_retries,
+                    reset_wait=args.reset_wait,
+                    max_segment_runtime=args.max_segment_runtime,
                 )
             )
         except Exception as exc:
@@ -985,7 +1093,7 @@ def main(argv: list[str] | None = None) -> int:
         if result.checkpoint_id is not None:
             print(f"Checkpoint: {result.checkpoint_id}")
         print(f"Level: {result.state.get('level', '-')}")
-        return 0 if result.status == "success" or result.ready_for_next_segment else 1
+        return 0 if result.status in {"success", "ready"} else 1
 
     if args.command == "hero":
         request = HeroRequest(
@@ -995,6 +1103,8 @@ def main(argv: list[str] | None = None) -> int:
             character_class=args.character_class,
             subclass=args.subclass,
             personality=args.personality,
+            transport=args.transport,
+            mudlet_directory=args.mudlet_directory,
         )
         try:
             if args.prepare_only:
@@ -1012,6 +1122,9 @@ def main(argv: list[str] | None = None) -> int:
                         workspace=args.workspace,
                         force_new=args.new,
                         segments=args.segments,
+                        reset_retries=args.reset_retries,
+                        reset_wait=args.reset_wait,
+                        max_segment_runtime=args.max_segment_runtime,
                     )
                 )
         except Exception as exc:
@@ -1032,7 +1145,7 @@ def main(argv: list[str] | None = None) -> int:
         if result.message:
             print(f"Status: {result.message}")
         print(f"Level: {result.state.get('level', '-')}")
-        return 0 if result.status == "success" or result.ready_for_next_segment else 1
+        return 0 if result.status in {"success", "ready"} else 1
 
     if args.command == "hero-options":
         try:
@@ -1047,6 +1160,55 @@ def main(argv: list[str] | None = None) -> int:
         print("Subclasses:")
         for option in catalog.subclasses:
             print(f"  {option.base_class}: {option.name}")
+        return 0
+
+    if args.command == "matrix-coverage":
+        try:
+            coverage = matrix_coverage(
+                args.config,
+                catalog=load_character_catalog(args.source),
+            )
+            live_coverage = live_matrix_coverage(args.config)
+        except Exception as exc:
+            print(f"Could not inspect matrix coverage: {exc}", file=sys.stderr)
+            return 1
+        print(f"Source: {coverage.source}")
+        print(f"Legal race/class pairs: {coverage.legal_pair_count}")
+        print(f"Declared pairs: {len(coverage.covered_pairs)}")
+        print(f"Undeclared pairs: {len(coverage.missing_pairs)}")
+        print("Declared classes: " + ", ".join(coverage.covered_classes))
+        print("Undeclared classes: " + ", ".join(coverage.missing_classes))
+        print("Declared sexes: " + ", ".join(coverage.observed_sexes))
+        print(
+            f"Live-validated pairs at level {live_coverage.target_level}: "
+            f"{len(live_coverage.validated_pairs)}"
+        )
+        print(f"Live-pending declared pairs: {len(live_coverage.pending_pairs)}")
+        print("Live-validated sexes: " + ", ".join(live_coverage.validated_sexes))
+        print("entry\tlevel\tstatus\tcampaign")
+        for entry in live_coverage.entries:
+            print(
+                f"{entry.entry_id}\t{entry.level}\t"
+                f"{entry.campaign_status or 'not-started'}\t"
+                f"{entry.campaign_id if entry.campaign_id is not None else '-'}"
+            )
+        return 0
+
+    if args.command == "prepare-validation-matrix":
+        try:
+            prepared = prepare_validation_matrix(
+                source=args.source,
+                workspace=args.workspace,
+                matrix_path=args.output,
+            )
+        except Exception as exc:
+            print(f"Could not prepare validation matrix: {exc}", file=sys.stderr)
+            return 1
+        print(f"Matrix: {prepared.matrix_path}")
+        print(f"Prepared race/class campaigns: {len(prepared.preparations)}")
+        print("Observed sexes: " + ", ".join(
+            sorted({item.character.gender for item in prepared.preparations})
+        ))
         return 0
 
     if args.command == "matrix":
@@ -1086,6 +1248,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 0
 
+    if args.command == "mudlet-bridge":
+        try:
+            paths = MudletBridge(args.directory).initialize()
+        except Exception as exc:
+            print(f"Mudlet bridge setup failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Mudlet script: {paths.script_path}")
+        print(f"Command inbox: {paths.command_path}")
+        print(f"Event outbox: {paths.event_path}")
+        return 0
+
     if args.command == "show-runs":
         return show_runs(args.database, limit=args.limit)
 
@@ -1115,6 +1288,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "show-policies":
         return show_policies(args.level, args.character_class)
+
+    if args.command == "show-policy-coverage":
+        return show_policy_coverage(
+            args.character_class,
+            from_level=args.from_level,
+            to_level=args.to_level,
+        )
 
     if args.command == "show-prereqs":
         return show_prereqs(
@@ -1231,6 +1411,8 @@ def show_hunt_candidates(
     database: Path,
     limit: int,
     include_xp_only: bool = False,
+    include_all_areas: bool = False,
+    autonomous_safe_only: bool = False,
 ) -> int:
     if level < 1:
         print("--level must be at least 1", file=sys.stderr)
@@ -1239,7 +1421,7 @@ def show_hunt_candidates(
         print("--limit must be at least 1", file=sys.stderr)
         return 2
     try:
-        world = load_world_source(source)
+        world = load_world_source(source, include_all_areas=include_all_areas)
     except (OSError, ValueError) as exc:
         print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
         return 1
@@ -1252,8 +1434,13 @@ def show_hunt_candidates(
             boot_id = storage.latest_boot_id()
             latest_state = storage.get_latest_character_state(character)
             if latest_state is not None:
+                stored_level = latest_state.get("level")
                 raw_max_hp = latest_state.get("max_hp")
-                if isinstance(raw_max_hp, (int, float)) and raw_max_hp > 0:
+                if (
+                    stored_level == level
+                    and isinstance(raw_max_hp, (int, float))
+                    and raw_max_hp > 0
+                ):
                     character_max_hp = int(raw_max_hp)
             if boot_id is not None:
                 kill_counts.update(
@@ -1269,7 +1456,10 @@ def show_hunt_candidates(
         boot_kill_counts=kill_counts,
         include_xp_only=include_xp_only,
         character_max_hp=character_max_hp,
+        include_all_areas=include_all_areas,
     )
+    if autonomous_safe_only:
+        candidates = [candidate for candidate in candidates if candidate.autonomous_safe]
 
     print(f"Source: {source.resolve()}")
     print(f"Character: {character}, level {level}")
@@ -1278,7 +1468,7 @@ def show_hunt_candidates(
     print(
         "status\tscore\tarea\ttarget\tsource_level\tfuzzed_levels\t"
         "base_hp\tpeak_round\troom\troute\troom_spawns\tspawn_limit\t"
-        "boot_kills\tloot\thazards"
+        "boot_kills\tloot\thazards\tautonomy_rejections"
     )
     for candidate in candidates[:limit]:
         loot = "; ".join(candidate.loot)
@@ -1308,6 +1498,7 @@ def show_hunt_candidates(
                     str(candidate.boot_kills),
                     loot or "-",
                     "; ".join(candidate.hazards) or "-",
+                    "; ".join(candidate.autonomy_rejections) or "-",
                 ]
             )
         )
@@ -1500,6 +1691,53 @@ def show_policies(level: int, character_class: str) -> int:
     else:
         print("- None recorded.")
     return 0
+
+
+def show_policy_coverage(
+    character_class: str,
+    *,
+    from_level: int = 0,
+    to_level: int = 100,
+) -> int:
+    """Print contiguous policy selections to make coverage gaps explicit."""
+    if from_level < 0 or to_level > 100 or from_level > to_level:
+        print("level range must be between 0 and 100", file=sys.stderr)
+        return 2
+    try:
+        selections = [
+            (level, policy_for(level, character_class))
+            for level in range(from_level, to_level + 1)
+        ]
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    print(f"Class: {character_class}")
+    print("levels\tpolicy\tstatus\texecution")
+    start, current = selections[0]
+    for level, policy in selections[1:]:
+        if (
+            policy.policy_id,
+            policy.status,
+            policy.execution,
+        ) == (
+            current.policy_id,
+            current.status,
+            current.execution,
+        ):
+            continue
+        _print_policy_coverage_row(start, level - 1, current)
+        start, current = level, policy
+    _print_policy_coverage_row(start, to_level, current)
+    return 0
+
+
+def _print_policy_coverage_row(start: int, end: int, policy: Any) -> None:
+    levels = str(start) if start == end else f"{start}-{end}"
+    print(
+        f"{levels}\t{policy.policy_id}\t{policy.status}\t"
+        f"{policy.execution or '-'}"
+    )
 
 
 def show_prereqs(

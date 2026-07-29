@@ -157,6 +157,8 @@ class CharacterSpec:
     host: str = "dragons-domain.org"
     port: int = 8888
     timeout: float = 10.0
+    transport: str = "telnet"
+    mudlet_directory: Path | None = None
     max_runtime: float = 900.0
     max_commands: int = 250
     database: Path = Path("runs/dd4tester.sqlite3")
@@ -300,6 +302,16 @@ class CharacterSpec:
         if max_commands < 1:
             raise ValueError("max_commands must be positive")
 
+        transport = str(data.get("transport", "telnet")).strip().casefold()
+        if transport not in {"telnet", "mudlet"}:
+            raise ValueError("transport must be 'telnet' or 'mudlet'")
+        mudlet_directory: Path | None = None
+        if transport == "mudlet":
+            raw_directory = data.get("mudlet_directory")
+            if raw_directory is None or not str(raw_directory).strip():
+                raise ValueError("mudlet_directory is required for Mudlet transport")
+            mudlet_directory = Path(str(raw_directory))
+
         return cls(
             name=name,
             password_env=password_env,
@@ -317,6 +329,8 @@ class CharacterSpec:
             host=str(data.get("host", "dragons-domain.org")),
             port=int(data.get("port", 8888)),
             timeout=float(data.get("timeout", 10)),
+            transport=transport,
+            mudlet_directory=mudlet_directory,
             max_runtime=max_runtime,
             max_commands=max_commands,
             database=Path(str(data.get("database", "runs/dd4tester.sqlite3"))),

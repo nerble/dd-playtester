@@ -137,7 +137,12 @@ class CharacterState:
         if event.type in {"room_entered", "room_updated"}:
             previous_area = self.area
             self.room_name = _text(data.get("name"), self.room_name)
-            self.room_vnum = _text(data.get("vnum"), self.room_vnum)
+            if event.source == "text" and "vnum" not in data:
+                # Text confirms a transition before GMCP can identify its VNUM.
+                # Retaining the previous VNUM would combine two different rooms.
+                self.room_vnum = None
+            else:
+                self.room_vnum = _text(data.get("vnum"), self.room_vnum)
             self.area = _text(data.get("area"), self.area)
             if (
                 self.dead

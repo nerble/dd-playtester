@@ -299,6 +299,44 @@ def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -
     assert "reachable wanderer: a large grey wolf L8" in candidates[0].hazards
 
 
+def test_candidate_ranking_can_expand_beyond_conservative_area_set(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("starter.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "rat", "a starter rat", 5, 0, 0, "starter.are"),
+            200: MobileSource(200, "ogre", "a later ogre", 5, 0, 0, "later.are"),
+        },
+        objects={
+            300: ObjectSource(300, "coin", "a coin", 8, (), 1),
+            400: ObjectSource(400, "gem", "a gem", 8, (), 1),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Starter den", "starter.are"),
+            7002: RoomSource(7002, "Later den", "later.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, (300,)), MobReset(200, 7002, 1, (400,))],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["east"] = ExitSource("east", 7002, 0, -1)
+
+    conservative = rank_hunt_candidates(world, character_level=5)
+    expanded = rank_hunt_candidates(
+        world,
+        character_level=5,
+        include_all_areas=True,
+    )
+
+    assert [candidate.target for candidate in conservative] == ["a starter rat"]
+    assert {candidate.target for candidate in expanded} == {
+        "a starter rat",
+        "a later ogre",
+    }
+
+
 def test_candidate_ranking_rejects_high_level_room_companion(monkeypatch) -> None:
     monkeypatch.setattr(
         "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
@@ -384,6 +422,44 @@ def test_candidate_ranking_rejects_same_vnum_assist_capacity(monkeypatch) -> Non
     )
 
 
+def test_candidate_ranking_rejects_an_aggressive_target(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "raider",
+                "a hostile raider",
+                5,
+                1 << 5,
+                -500,
+                "target.are",
+            ),
+        },
+        objects={
+            200: ObjectSource(200, "dagger", "a rusty dagger", 5, (), 10),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Raiders' camp", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, (200,))],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=5,
+        include_xp_only=True,
+    )[0]
+
+    assert candidate.status == "reject"
+    assert "target is aggressive" in candidate.hazards
+
+
 def test_candidate_ranking_excludes_wanderer_behind_reset_closed_door(
     monkeypatch,
 ) -> None:
@@ -430,6 +506,7 @@ def test_candidate_ranking_excludes_wanderer_behind_reset_closed_door(
     )[0]
 
     assert candidate.status == "promising"
+    assert candidate.autonomous_safe
     assert not any("wanderer" in hazard for hazard in candidate.hazards)
 
 
@@ -448,10 +525,10 @@ def test_candidate_ranking_can_include_targets_without_known_loot(monkeypatch) -
         mobile_specials=area.mobile_specials,
     )
 
-    loot_candidates = rank_hunt_candidates(world, character_level=10)
+    loot_candidates = rank_hunt_candidates(world, character_level=9)
     xp_candidates = rank_hunt_candidates(
         world,
-        character_level=10,
+        character_level=9,
         include_xp_only=True,
     )
 
@@ -460,6 +537,32 @@ def test_candidate_ranking_can_include_targets_without_known_loot(monkeypatch) -
         "a cellar rat",
         "the dangerous guard",
     }
+
+
+def test_candidate_ranking_omits_resets_that_cannot_award_useful_xp(monkeypatch) -> None:
+    area = parse_area_file(FIXTURE)
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("hunt_area.are",),
+    )
+    world = WorldSource(
+        mobiles=area.mobiles,
+        objects=area.objects,
+        rooms=area.rooms,
+        mob_resets=area.mob_resets,
+        container_contents=area.container_contents,
+        mobile_specials=area.mobile_specials,
+    )
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+    )
+
+    assert [candidate.target for candidate in candidates] == [
+        "the dangerous guard"
+    ]
 
 
 def test_candidate_ranking_rejects_source_peak_round_above_character_hp(
@@ -482,12 +585,53 @@ def test_candidate_ranking_rejects_source_peak_round_above_character_hp(
 
     candidate = rank_hunt_candidates(
         world,
-        character_level=10,
+        character_level=9,
         character_max_hp=50,
     )[0]
 
     assert candidate.status == "reject"
     assert "source peak round 60 >= character max HP 50" in candidate.hazards
+
+
+def test_autonomous_filter_uses_route_aggressor_fuzzed_maximum(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 29, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "guard",
+                "the route guard",
+                25,
+                1 << 5,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Guard post", "target.are"),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[MobReset(200, 7001, 1, ()), MobReset(100, 7002, 1, ())],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=31,
+        include_xp_only=True,
+    )[0]
+
+    assert not candidate.autonomous_safe
+    assert (
+        "route crosses an aggressive reset inside the useful XP band"
+        in candidate.autonomy_rejections
+    )
 
 
 def test_held_nonweapon_does_not_count_as_a_dual_wielded_weapon(
@@ -531,4 +675,5 @@ def test_held_nonweapon_does_not_count_as_a_dual_wielded_weapon(
     assert candidate.status == "promising"
     assert candidate.equipped_weapons == ()
     assert candidate.estimated_peak_round_damage == 70
+    assert candidate.autonomous_safe
     assert not any("source peak round" in hazard for hazard in candidate.hazards)

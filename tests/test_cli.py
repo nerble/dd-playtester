@@ -78,6 +78,10 @@ def test_hero_prepare_only_builds_source_validated_campaign(tmp_path, capsys) ->
             str(source),
             "--workspace",
             str(tmp_path / "heroes"),
+            "--transport",
+            "mudlet",
+            "--mudlet-directory",
+            str(tmp_path / "shared-mudlet"),
             "--prepare-only",
         ]
     )
@@ -87,6 +91,56 @@ def test_hero_prepare_only_builds_source_validated_campaign(tmp_path, capsys) ->
     assert "Character: Valora (human mage)" in captured.out
     assert "Prepared: new" in captured.out
     assert (tmp_path / "heroes" / "valora" / "campaign.yaml").is_file()
+    profile = (tmp_path / "heroes" / "valora" / "character.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert 'transport: "mudlet"' in profile
+
+
+def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monkeypatch) -> None:
+    captured_request: dict[str, object] = {}
+
+    async def fake_hero(request, **kwargs):
+        captured_request["request"] = request
+        captured_request["options"] = kwargs
+        prepared = type(
+            "Prepared",
+            (),
+            {
+                "character": type(
+                    "Character",
+                    (), {"name": "Valora", "race": "human", "character_class": "mage"},
+                )(),
+                "manifest_path": tmp_path / "hero.json",
+                "profile_path": tmp_path / "character.yaml",
+                "campaign_path": tmp_path / "campaign.yaml",
+                "resumed": True,
+            },
+        )()
+        result = CampaignResult(
+            4,
+            "ready",
+            9,
+            "mud-school-2-6 arena circuit was empty at level 3. "
+            "Campaign checkpointed while awaiting the Mud School area reset.",
+            {"level": 3},
+        )
+        return prepared, result
+
+    monkeypatch.setattr(dd4tester.cli, "run_hero_request", fake_hero)
+
+    exit_code = main(["hero", "--race", "human", "--sex", "female", "--class", "mage"])
+
+    assert exit_code == 0
+    request = captured_request["request"]
+    assert isinstance(request, dd4tester.cli.HeroRequest)
+    assert (request.race, request.sex, request.character_class) == (
+        "human",
+        "female",
+        "mage",
+    )
+    assert captured_request["options"]["reset_retries"] is None
+    assert "awaiting the Mud School area reset" in capsys.readouterr().out
 
 
 def test_recover_runs_marks_orphaned_records(tmp_path, capsys) -> None:
@@ -233,6 +287,19 @@ def test_show_transcript_reads_direct_path(tmp_path, capsys) -> None:
     assert json.loads(captured.out.splitlines()[0])["kind"] == "command"
 
 
+def test_mudlet_bridge_command_generates_shared_files(tmp_path, capsys) -> None:
+    directory = tmp_path / "mudlet-shared"
+
+    exit_code = main(["mudlet-bridge", "--directory", str(directory)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert (directory / "dd4tester_bridge.lua").is_file()
+    assert (directory / "commands.txt").is_file()
+    assert (directory / "events.jsonl").is_file()
+    assert "Mudlet script:" in captured.out
+
+
 def test_show_state_prints_latest_snapshot_and_history(tmp_path, capsys) -> None:
     database, _transcript = _create_recorded_run(tmp_path)
 
@@ -276,10 +343,11 @@ def test_starter_command_runs_character_profile(tmp_path, capsys, monkeypatch) -
 def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypatch) -> None:
     config = tmp_path / "campaign.yaml"
 
-    async def fake_campaign(path: Path, *, force_new: bool, segments: int) -> CampaignResult:
+    async def fake_campaign(path: Path, **_kwargs) -> CampaignResult:
         assert path == config
-        assert force_new is True
-        assert segments == 1
+        assert _kwargs["force_new"] is True
+        assert _kwargs["segments"] == 1
+        assert _kwargs["max_segment_runtime"] is None
         return CampaignResult(4, "blocked", 9, "awaiting verified policy", {"level": 2})
 
     monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
@@ -293,13 +361,33 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
     assert "Level: 2" in captured.out
 
 
+def test_campaign_command_passes_per_segment_runtime_cap(tmp_path, capsys, monkeypatch) -> None:
+    config = tmp_path / "campaign.yaml"
+    captured_options: dict[str, object] = {}
+
+    async def fake_campaign(path: Path, **kwargs) -> CampaignResult:
+        assert path == config
+        captured_options.update(kwargs)
+        return CampaignResult(4, "ready", 9, "checkpointed", {"level": 2})
+
+    monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
+
+    exit_code = main(
+        ["campaign", str(config), "--max-segment-runtime", "180"]
+    )
+
+    assert exit_code == 0
+    assert captured_options["max_segment_runtime"] == 180
+    assert "Campaign 4 ready" in capsys.readouterr().out
+
+
 def test_campaign_command_returns_success_for_ready_checkpoint(tmp_path, capsys, monkeypatch) -> None:
     config = tmp_path / "campaign.yaml"
 
-    async def fake_campaign(path: Path, *, force_new: bool, segments: int) -> CampaignResult:
+    async def fake_campaign(path: Path, **_kwargs) -> CampaignResult:
         return CampaignResult(
             4,
-            "blocked",
+            "ready",
             9,
             "mud-school-6-10 segment completed at level 6. "
             "Campaign checkpointed for the next verified segment.",
@@ -311,7 +399,32 @@ def test_campaign_command_returns_success_for_ready_checkpoint(tmp_path, capsys,
     exit_code = main(["campaign", str(config)])
 
     assert exit_code == 0
-    assert "Campaign 4 blocked" in capsys.readouterr().out
+    assert "Campaign 4 ready" in capsys.readouterr().out
+
+
+def test_campaign_command_returns_success_when_an_empty_area_is_reset_gated(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    config = tmp_path / "campaign.yaml"
+
+    async def fake_campaign(path: Path, **_kwargs) -> CampaignResult:
+        return CampaignResult(
+            4,
+            "ready",
+            9,
+            "mud-school-2-6 arena circuit was empty at level 3. "
+            "Campaign checkpointed while awaiting the Mud School area reset.",
+            {"level": 3},
+        )
+
+    monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
+
+    exit_code = main(["campaign", str(config)])
+
+    assert exit_code == 0
+    assert "awaiting the Mud School area reset" in capsys.readouterr().out
 
 
 def test_arena_research_command_runs_with_requested_target(tmp_path, capsys, monkeypatch) -> None:
@@ -993,6 +1106,7 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
             "--database",
             str(tmp_path / "missing.sqlite3"),
             "--include-xp-only",
+            "--all-areas",
         ]
     )
 
@@ -1002,10 +1116,65 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert "Character max HP: unknown" in captured.out
     assert "fuzzed_levels\tbase_hp\tpeak_round\troom" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
-    assert "caution\t" in captured.out
-    assert "a cellar rat" in captured.out
+    assert "autonomy_rejections" in captured.out
+    assert "reject\t" in captured.out
     assert "the dangerous guard" in captured.out
-    assert "route: the dangerous guard L8 in 3002" in captured.out
+    assert "reachable wanderer: a cellar rat L3" in captured.out
+    assert "a cellar rat\t3\t1-5" not in captured.out
+
+
+def test_show_hunt_candidates_ignores_hp_from_a_different_level(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    fixture = Path(__file__).parent / "fixtures" / "hunt_area.are"
+    (source / "foundry.are").write_text(
+        fixture.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    database = tmp_path / "runs.sqlite3"
+    storage = RunStorage(database)
+    run_id = storage.create_run(
+        scenario_name="starter",
+        scenario_path=Path("scenarios/starter.yaml"),
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="prompt_seen",
+        state={"name": "Ararisa", "level": 6, "max_hp": 136},
+    )
+    storage.finish_run(run_id, status="success")
+    storage.close()
+    captured_max_hp: list[int | None] = []
+    original_rank = dd4tester.cli.rank_hunt_candidates
+
+    def capture_rank(*args, **kwargs):
+        captured_max_hp.append(kwargs["character_max_hp"])
+        return original_rank(*args, **kwargs)
+
+    monkeypatch.setattr(dd4tester.cli, "rank_hunt_candidates", capture_rank)
+
+    exit_code = main(
+        [
+            "show-hunt-candidates",
+            "--level",
+            "20",
+            "--source",
+            str(source),
+            "--database",
+            str(database),
+            "--include-xp-only",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured_max_hp == [None]
+    assert "Character max HP: unknown" in captured.out
 
 
 def test_configure_login_command_uses_named_credential(capsys, monkeypatch) -> None:
@@ -1172,6 +1341,42 @@ def test_show_policies_displays_evidence_and_practice_candidate(capsys) -> None:
     assert "Status: verified" in captured.out
     assert "Practice candidate: magic missile" in captured.out
     assert "Live run 56" in captured.out
+
+
+def test_show_policy_coverage_makes_unavailable_hero_bands_explicit(capsys) -> None:
+    exit_code = main(
+        [
+            "show-policy-coverage",
+            "--class",
+            "thief",
+            "--from-level",
+            "12",
+            "--to-level",
+            "16",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "levels\tpolicy\tstatus\texecution" in captured.out
+    assert "12\tfleshmonger-thief-rotation-research-12-13\tresearch" in captured.out
+    assert (
+        "16\tmirror-realm-watchman-probe-16-20\tresearch\t"
+        "mirror-realm-watchman-research"
+    ) in captured.out
+
+
+def test_matrix_coverage_reports_legal_pair_gap(capsys) -> None:
+    exit_code = main(["matrix-coverage", "matrices/level-10.yaml"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Legal race/class pairs: 225" in captured.out
+    assert "Declared pairs: 3" in captured.out
+    assert "Undeclared pairs: 222" in captured.out
+    assert "Live-validated pairs at level 10:" in captured.out
+    assert "Live-pending declared pairs:" in captured.out
+    assert "entry\tlevel\tstatus\tcampaign" in captured.out
 
 
 def test_show_prereqs_displays_bundled_skill_requirements(capsys) -> None:

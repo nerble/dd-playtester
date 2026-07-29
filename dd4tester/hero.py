@@ -18,6 +18,7 @@ from .character import (
     load_character_spec,
 )
 from .dd4_catalog import CharacterCatalog, load_character_catalog
+from .mudlet import MudletBridge
 
 
 DEFAULT_HERO_WORKSPACE = Path("runs/heroes")
@@ -58,6 +59,8 @@ class HeroRequest:
     subclass: str | None = None
     name: str | None = None
     personality: str | None = None
+    transport: str = "telnet"
+    mudlet_directory: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +102,11 @@ def prepare_hero_request(
             )
 
     personality = _optional_identity_text(request.personality, "personality", 180)
+    transport = request.transport.strip().casefold()
+    if transport not in {"telnet", "mudlet"}:
+        raise ValueError("transport must be 'telnet' or 'mudlet'")
+    if transport == "mudlet" and request.mudlet_directory is None:
+        raise ValueError("mudlet_directory is required for Mudlet transport")
     name = request.name.strip().title() if request.name else _generated_name(
         race, sex, character_class, subclass
     )
@@ -109,6 +117,8 @@ def prepare_hero_request(
         character_class=character_class,
         subclass=subclass,
         personality=personality,
+        transport=transport,
+        mudlet_directory=request.mudlet_directory,
     )
 
     directory_name = (
@@ -136,6 +146,7 @@ def prepare_hero_request(
         if not profile_path.is_file() or not campaign_path.is_file():
             raise ValueError(f"hero workspace is incomplete: {directory}")
         character = load_character_spec(profile_path)
+        _initialize_mudlet_bridge(canonical_request)
         return HeroPreparation(
             canonical_request,
             character,
@@ -190,6 +201,7 @@ def prepare_hero_request(
         + "\n",
         encoding="utf-8",
     )
+    _initialize_mudlet_bridge(canonical_request)
     return HeroPreparation(
         canonical_request,
         character,
@@ -238,6 +250,9 @@ async def run_hero_request(
     workspace: Path = DEFAULT_HERO_WORKSPACE,
     force_new: bool = False,
     segments: int = 10000,
+    reset_retries: int | None = None,
+    reset_wait: float = 300.0,
+    max_segment_runtime: float | None = None,
 ) -> tuple[HeroPreparation, CampaignResult]:
     preparation = prepare_hero_request(
         request,
@@ -248,6 +263,9 @@ async def run_hero_request(
         preparation.campaign_path,
         force_new=force_new,
         segments=segments,
+        reset_retries=segments if reset_retries is None else reset_retries,
+        reset_wait=reset_wait,
+        max_segment_runtime=max_segment_runtime,
     )
     return preparation, result
 
@@ -271,11 +289,22 @@ def _profile_mapping(request: HeroRequest) -> dict[str, Any]:
     }
     if request.subclass:
         mapping["subclass"] = request.subclass
+    if request.transport == "mudlet":
+        assert request.mudlet_directory is not None
+        mapping["transport"] = "mudlet"
+        mapping["mudlet_directory"] = str(request.mudlet_directory)
     return mapping
 
 
+def _initialize_mudlet_bridge(request: HeroRequest) -> None:
+    if request.transport != "mudlet":
+        return
+    assert request.mudlet_directory is not None
+    MudletBridge(request.mudlet_directory).initialize()
+
+
 def _request_mapping(request: HeroRequest) -> dict[str, Any]:
-    return {
+    mapping = {
         "name": request.name,
         "race": request.race,
         "sex": request.sex,
@@ -283,6 +312,10 @@ def _request_mapping(request: HeroRequest) -> dict[str, Any]:
         "subclass": request.subclass,
         "personality": request.personality,
     }
+    if request.transport != "telnet":
+        mapping["transport"] = request.transport
+        mapping["mudlet_directory"] = str(request.mudlet_directory)
+    return mapping
 
 
 def _generated_name(

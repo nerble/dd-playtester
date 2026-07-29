@@ -1,13 +1,14 @@
+import asyncio
 import json
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from dd4tester.campaign import load_campaign_spec
+from dd4tester.campaign import CampaignResult, load_campaign_spec
 from dd4tester.character import load_character_spec
 from dd4tester.dd4_catalog import ClassOption, SubclassOption, parse_character_catalog
-from dd4tester.hero import HeroRequest, prepare_hero_request
+from dd4tester.hero import HeroRequest, prepare_hero_request, run_hero_request
 
 
 SOURCE = r'''
@@ -35,6 +36,52 @@ const struct race_struct race_table[MAX_RACE] =
      "Infravision", "Refresh", CHAR_SIZE_MEDIUM}
 };
 '''
+
+
+def test_hero_uses_segment_budget_for_default_reset_retries(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {"campaign_path": tmp_path / "campaign.yaml"},
+    )()
+
+    async def fake_campaign(path, **options):
+        captured["path"] = path
+        captured.update(options)
+        return CampaignResult(
+            1,
+            "ready",
+            2,
+            "Campaign checkpointed while awaiting the field area reset.",
+            {"level": 8},
+        )
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    _prepared, result = asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            segments=17,
+        )
+    )
+
+    assert result.status == "ready"
+    assert captured["segments"] == 17
+    assert captured["reset_retries"] == 17
 
 
 def test_prepare_hero_request_writes_resumable_secret_free_configuration(
@@ -105,6 +152,51 @@ def test_prepare_hero_request_generates_stable_name_when_omitted(
     assert 3 <= len(first.character.name) <= 12
     assert first.character.name.isalpha()
     assert second.resumed
+
+
+def test_prepare_hero_request_persists_mudlet_transport(tmp_path: Path) -> None:
+    catalog = parse_character_catalog(SOURCE)
+    bridge_directory = tmp_path / "shared-mudlet"
+    request = HeroRequest(
+        name="Valora",
+        race="human",
+        sex="female",
+        character_class="mage",
+        transport="mudlet",
+        mudlet_directory=bridge_directory,
+    )
+
+    prepared = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+    )
+
+    profile = load_character_spec(prepared.profile_path)
+    manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
+    assert profile.transport == "mudlet"
+    assert profile.mudlet_directory == bridge_directory
+    assert manifest["request"]["transport"] == "mudlet"
+    assert (bridge_directory / "dd4tester_bridge.lua").is_file()
+    assert (bridge_directory / "commands.txt").is_file()
+    assert (bridge_directory / "events.jsonl").is_file()
+
+
+def test_prepare_hero_request_requires_mudlet_directory(tmp_path: Path) -> None:
+    catalog = parse_character_catalog(SOURCE)
+
+    with pytest.raises(ValueError, match="mudlet_directory"):
+        prepare_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+                transport="mudlet",
+            ),
+            catalog=catalog,
+            workspace=tmp_path / "heroes",
+        )
 
 
 def test_cosmetic_sex_is_preserved_without_becoming_a_coverage_dimension(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from .telnet import TelnetNegotiation, TelnetNegotiator
 
@@ -15,7 +16,28 @@ class ReadResult:
 
     @property
     def empty(self) -> bool:
-        return not self.raw and not self.gmcp_messages and not self.negotiations
+        return not self.text and not self.raw and not self.gmcp_messages and not self.negotiations
+
+
+class CommandConnection(Protocol):
+    """Transport contract shared by direct Telnet and visible-client adapters."""
+
+    closed: bool
+
+    async def connect(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+    async def send_command(self, command: str) -> None: ...
+
+    async def read_available(self, timeout: float = 0.25) -> ReadResult: ...
+
+    async def read_until_quiet(
+        self,
+        *,
+        quiet_timeout: float = 0.25,
+        max_wait: float = 2.0,
+    ) -> list[ReadResult]: ...
 
 
 class TelnetConnection:

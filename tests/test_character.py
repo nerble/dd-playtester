@@ -101,6 +101,36 @@ def test_profile_accepts_explicit_level_gain_priorities() -> None:
     assert spec.effective_level_gain_priorities == ("hitpoints", "mana")
 
 
+def test_profile_selects_mudlet_transport_from_a_shared_directory(tmp_path) -> None:
+    bridge_directory = tmp_path / "mudlet"
+    spec = CharacterSpec.from_mapping(
+        {
+            "name": "Rulemage",
+            "race": "human",
+            "gender": "female",
+            "class": "mage",
+            "transport": "mudlet",
+            "mudlet_directory": str(bridge_directory),
+        }
+    )
+
+    assert spec.transport == "mudlet"
+    assert spec.mudlet_directory == bridge_directory
+
+
+def test_profile_requires_directory_for_mudlet_transport() -> None:
+    with pytest.raises(ValueError, match="mudlet_directory"):
+        CharacterSpec.from_mapping(
+            {
+                "name": "Rulemage",
+                "race": "human",
+                "gender": "female",
+                "class": "mage",
+                "transport": "mudlet",
+            }
+        )
+
+
 def test_profile_rejects_subclass_and_base_class_mismatch() -> None:
     with pytest.raises(ValueError, match="requires base class 'mage'"):
         CharacterSpec.from_mapping(

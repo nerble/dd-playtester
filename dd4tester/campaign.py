@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections import Counter
@@ -54,6 +55,7 @@ from .starter import (
     foundry_level_seven_hunt_stops,
     forest_bear_claws_hunt_route,
     forest_bear_claws_hunt_stops,
+    galaxy_cancer_research_stops,
     fleshmonger_cook_hunt_stops,
     fleshmonger_cook_research_stops,
     fleshmonger_guard_circuit_research_stops,
@@ -72,13 +74,25 @@ from .starter import (
     gremlin_waist_hunt_route,
     gremlin_waist_hunt_stops,
     midennir_mountain_goblin_hunt_stops,
+    minotaur_gatekeeper_hunt_stops,
+    minotaur_gatekeeper_research_stops,
+    mirror_realm_gardener_research_stops,
+    mirror_realm_guardian_hunt_stops,
+    mirror_realm_guardian_research_stops,
+    mirror_realm_jerry_garcia_research_stops,
+    mirror_realm_watchman_hunt_stops,
+    mirror_realm_watchman_research_stops,
+    pit_official_research_stops,
     moria_level_eight_large_orc_hunt_stops,
     moria_level_seven_orc_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
+    plains_aruncus_hunt_stops,
+    plains_aruncus_research_stops,
     shire_bull_hunt_route,
     shire_bull_hunt_stops,
     school_accessory_hunt_route,
     school_wrist_float_hunt_stops,
+    shire_battle_master_research_stops,
 )
 from .storage import RunStorage
 
@@ -99,7 +113,9 @@ _MAINTENANCE_EXECUTIONS = {
     "buy-flight",
 }
 _LIQUIDATION_BASELINE_KEY = "campaign_liquidation_baseline"
-_CAMPAIGN_POLICY_REVISION = 37
+_SACK_VAULT_ITEMS_KEY = "campaign_sack_vault_items"
+_SACK_VAULT_RECLAIM_LEVEL_KEY = "campaign_sack_vault_reclaim_attempted_level"
+_CAMPAIGN_POLICY_REVISION = 67
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _RECOVER_BASIC_BODY_REQUIRED_FREE_WEIGHT = 7
 _RECOVER_SCHOOL_WRIST_FLOAT_REQUIRED_FREE_WEIGHT = 30
@@ -118,10 +134,6 @@ _PIERCING_WEAPON_UPGRADE_VNUM = 18000
 _PIERCING_WEAPON_UPGRADE_BOOT_KEY = (
     "campaign_piercing_weapon_upgrade_attempted_boot_id"
 )
-_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY = (
-    "campaign_piercing_weapon_upgrade_cooldown"
-)
-_PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS = 3
 _MAINTENANCE_ATTEMPT_LEVEL_KEYS = {
     "outfit-basic-gear": "campaign_outfit_attempted_level",
     "recover-basic-body": "campaign_body_gear_attempted_level",
@@ -210,9 +222,18 @@ class CampaignResult:
     @property
     def ready_for_next_segment(self) -> bool:
         return bool(
-            self.status == "blocked"
+            self.status == "ready"
             and self.message
             and "checkpointed for the next verified segment." in self.message
+        )
+
+    @property
+    def awaiting_area_reset(self) -> bool:
+        return bool(
+            self.status == "ready"
+            and self.message
+            and "awaiting" in self.message.casefold()
+            and "area reset" in self.message.casefold()
         )
 
 
@@ -225,20 +246,20 @@ def _refresh_policy_revision(state: dict[str, Any]) -> dict[str, Any]:
         "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
         "campaign_stalled_segments": 0,
     }
-    refreshed.pop(_PIERCING_WEAPON_UPGRADE_BOOT_KEY, None)
-    refreshed.pop(_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY, None)
+    # A missing wandering upgrade target stays absent until a reboot can reset
+    # it. Preserve the per-boot attempt marker across policy revisions.
+    refreshed.pop("campaign_piercing_weapon_upgrade_cooldown", None)
     if int(state.get("campaign_policy_revision", 0)) < 20:
         refreshed.pop("campaign_body_gear_attempted_level", None)
-    if (
-        int(state.get("campaign_policy_revision", 0)) < 33
-        and "campaign_daycare_ring_attempted_level" in state
-        and "finger" in set(
-            state.get("campaign_empty_equipment_categories") or ()
+    # Ring carriers can repopulate during the same reboot. Preserve an existing
+    # bounded retry delay, and migrate reboot-only attempt markers to one.
+    if "campaign_daycare_ring_attempted_level" in refreshed:
+        refreshed[_DAYCARE_RING_COOLDOWN_KEY] = max(
+            int(refreshed.get(_DAYCARE_RING_COOLDOWN_KEY) or 0),
+            _DAYCARE_RING_COOLDOWN_SEGMENTS,
         )
-    ):
-        refreshed[_DAYCARE_RING_COOLDOWN_KEY] = (
-            _DAYCARE_RING_COOLDOWN_SEGMENTS
-        )
+    else:
+        refreshed.pop(_DAYCARE_RING_COOLDOWN_KEY, None)
     if int(state.get("campaign_policy_revision", 0)) < 37:
         refreshed.pop("campaign_war_dog_collar_attempted_level", None)
         refreshed.pop(_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY, None)
@@ -256,11 +277,19 @@ class CampaignRunner:
         *,
         segment_runner: SegmentRunner | None = None,
         force_new: bool = False,
+        max_segment_runtime: float | None = None,
+        defer_stall_for_reset: bool = False,
+        retry_stalled: bool = False,
     ) -> None:
+        if max_segment_runtime is not None and max_segment_runtime <= 0:
+            raise ValueError("max_segment_runtime must be positive")
         self.spec = spec
         self.config_path = config_path.resolve()
         self.segment_runner = segment_runner
         self.force_new = force_new
+        self.max_segment_runtime = max_segment_runtime
+        self.defer_stall_for_reset = defer_stall_for_reset
+        self.retry_stalled = retry_stalled
         self._historical_large_sack = False
         self._boot_kill_counts: Counter[str] = Counter()
         self._policy_xp_deltas: dict[str, int] = {}
@@ -315,14 +344,31 @@ class CampaignRunner:
                     state,
                 )
 
-            policy = self._policy_for_state(state)
             stalled = int(state.get("campaign_stalled_segments", 0))
+            if (
+                self.retry_stalled
+                and stalled >= self.spec.max_stalled_segments
+            ):
+                stalled = self.spec.max_stalled_segments - 1
+                state = {
+                    **state,
+                    "campaign_stalled_segments": stalled,
+                }
+            policy = self._policy_for_state(state)
             if (
                 stalled >= self.spec.max_stalled_segments
                 and policy.execution not in _MAINTENANCE_EXECUTIONS
                 and policy.status != "research"
             ):
-                message = f"Campaign stalled for {stalled} completed segment(s)."
+                if self.defer_stall_for_reset:
+                    message = (
+                        f"Campaign stalled for {stalled} completed segment(s). "
+                        "Campaign checkpointed while awaiting the field area reset."
+                    )
+                    status = "ready"
+                else:
+                    message = f"Campaign stalled for {stalled} completed segment(s)."
+                    status = "blocked"
                 checkpoint_id = self._checkpoint(
                     storage,
                     campaign_id,
@@ -331,8 +377,8 @@ class CampaignRunner:
                     reason="stalled",
                     state=state,
                 )
-                storage.finish_campaign(campaign_id, status="blocked", error=message)
-                return CampaignResult(campaign_id, "blocked", checkpoint_id, message, state)
+                storage.finish_campaign(campaign_id, status=status, error=message)
+                return CampaignResult(campaign_id, status, checkpoint_id, message, state)
 
             totals = storage.campaign_totals(campaign_id)
             budget_failure = _budget_failure(self.spec, totals)
@@ -382,6 +428,10 @@ class CampaignRunner:
         )
         outfit_attempted_this_level = (
             int(state.get("campaign_outfit_attempted_level", -1))
+            == _level(state)
+        )
+        sack_vault_reclaim_attempted_this_level = (
+            int(state.get(_SACK_VAULT_RECLAIM_LEVEL_KEY, -1))
             == _level(state)
         )
         school_wrist_float_attempted_this_level = (
@@ -463,9 +513,17 @@ class CampaignRunner:
             needs_basic_gear=bool(
                 not school_exit_required
                 and
-                empty_categories & _BASIC_SHOP_CATEGORIES
-            )
-            and not outfit_attempted_this_level,
+                (
+                    (
+                        empty_categories & _BASIC_SHOP_CATEGORIES
+                        and not outfit_attempted_this_level
+                    )
+                    or (
+                        state.get(_SACK_VAULT_ITEMS_KEY)
+                        and not sack_vault_reclaim_attempted_this_level
+                    )
+                )
+            ),
             needs_body_gear_recovery=(
                 not school_exit_required
                 and
@@ -528,13 +586,6 @@ class CampaignRunner:
                 self._boot_id is not None
                 and state.get(_PIERCING_WEAPON_UPGRADE_BOOT_KEY)
                 == self._boot_id
-                and int(
-                    state.get(
-                        _PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY,
-                        _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS,
-                    )
-                )
-                > 0
             ),
             movement_available=int(state.get("move") or 0),
             movement_capacity=int(state.get("max_move") or 0),
@@ -555,6 +606,8 @@ class CampaignRunner:
             flight_purchase_failed=bool(state.get("magic_shop_purchase_failed")),
             boot_kill_counts=self._boot_kill_counts,
             policy_xp_deltas=self._policy_xp_deltas,
+            research_results=_campaign_research_results(state),
+            world_boot_id=state.get("world_boot_id"),
             stalled_segments=int(state.get("campaign_stalled_segments", 0)),
             last_policy_id=(
                 str(state["campaign_last_policy"])
@@ -627,6 +680,68 @@ class CampaignRunner:
                 state["campaign_worn_equipment"] = worn_equipment
         if (
             checkpoint is not None
+            and (
+                "campaign_empty_equipment_categories" not in state
+                or "campaign_worn_equipment" not in state
+            )
+        ):
+            for segment in reversed(storage.list_campaign_segments(campaign_id)):
+                if segment["run_id"] is None:
+                    continue
+                run_id = int(segment["run_id"])
+                if "campaign_empty_equipment_categories" not in state:
+                    empty_categories = _run_equipment_empty_categories(
+                        storage,
+                        run_id,
+                    )
+                    if empty_categories is not None:
+                        state["campaign_empty_equipment_categories"] = sorted(
+                            empty_categories
+                        )
+                if "campaign_worn_equipment" not in state:
+                    worn_equipment = _run_worn_equipment_descriptions(
+                        storage,
+                        run_id,
+                    )
+                    if worn_equipment is not None:
+                        state["campaign_worn_equipment"] = worn_equipment
+                if (
+                    "campaign_empty_equipment_categories" in state
+                    and "campaign_worn_equipment" in state
+                ):
+                    break
+        if (
+            checkpoint is not None
+            and _state_has_item(state.get("inventory"), "large sack")
+            and not state.get(_SACK_VAULT_ITEMS_KEY)
+        ):
+            for segment in reversed(storage.list_campaign_segments(campaign_id)):
+                if (
+                    segment["phase"] == "midennir-sack-8-10"
+                    and segment["run_id"] is not None
+                ):
+                    lodged_items = _run_successful_vault_lodges(
+                        storage,
+                        int(segment["run_id"]),
+                    )
+                    if lodged_items:
+                        state[_SACK_VAULT_ITEMS_KEY] = list(lodged_items)
+                    break
+        if (
+            checkpoint is not None
+            and checkpoint["phase"] == "midennir-sack-8-10"
+            and _state_has_item(state.get("inventory"), "large sack")
+            and "finger"
+            in set(state.get("campaign_empty_equipment_categories") or ())
+        ):
+            # Older checkpoints could record a ring attempt after mandatory
+            # invisibility preparation aborted. Acquiring the sack proves that
+            # preparation is repaired, so permit one fresh equipment pass.
+            state.pop("campaign_daycare_ring_attempted_level", None)
+            state.pop(_DAYCARE_RING_ATTEMPT_BOOT_KEY, None)
+            state.pop(_DAYCARE_RING_COOLDOWN_KEY, None)
+        if (
+            checkpoint is not None
             and checkpoint["phase"] == "liquidate-loot"
             and checkpoint["reason"] == "segment_complete"
             and _LIQUIDATION_BASELINE_KEY not in state
@@ -667,6 +782,9 @@ class CampaignRunner:
             max_runtime=min(
                 self.spec.character.max_runtime,
                 self.spec.max_total_runtime - float(totals["duration_seconds"]),
+                self.max_segment_runtime
+                if self.max_segment_runtime is not None
+                else float("inf"),
             ),
         )
         try:
@@ -701,8 +819,92 @@ class CampaignRunner:
                         if policy.execution == "vault-spare-gear"
                         else ()
                     ),
+                    vault_claim_items=(
+                        _prioritize_sack_vault_claims(
+                            state.get(_SACK_VAULT_ITEMS_KEY)
+                        )
+                        if policy.execution == "outfit-basic-gear"
+                        else ()
+                    ),
                 )
         except Exception as exc:
+            if self._is_controlled_runtime_boundary(exc):
+                latest_character_state = (
+                    storage.get_latest_character_state(self.spec.character.name)
+                    or state
+                )
+                latest_state = _campaign_segment_end_state(
+                    state,
+                    latest_character_state,
+                    execution=policy.execution,
+                )
+                latest_run = next(
+                    (
+                        run
+                        for run in storage.list_runs(limit=5)
+                        if (
+                            str(run["scenario_name"])
+                            == f"starter:{self.spec.character.name}"
+                            or str(run["scenario_name"]).endswith(
+                                f":{self.spec.character.name}"
+                            )
+                        )
+                    ),
+                    None,
+                )
+                run_id = int(latest_run["id"]) if latest_run is not None else None
+                if run_id is not None:
+                    empty_categories = _run_equipment_empty_categories(
+                        storage,
+                        run_id,
+                    )
+                    if empty_categories is not None:
+                        latest_state[
+                            "campaign_empty_equipment_categories"
+                        ] = sorted(empty_categories)
+                    worn_equipment = _run_worn_equipment_descriptions(
+                        storage,
+                        run_id,
+                    )
+                    if worn_equipment is not None:
+                        latest_state["campaign_worn_equipment"] = worn_equipment
+                storage.finish_campaign_segment(
+                    segment_id,
+                    status="ready",
+                    run_id=run_id,
+                    end_state=latest_state,
+                    command_count=(
+                        storage.count_events(run_id, kind="command")
+                        if run_id is not None
+                        else None
+                    ),
+                    duration_seconds=(
+                        _run_duration(latest_run) if latest_run is not None else None
+                    ),
+                    error=str(exc),
+                )
+                checkpoint_id = self._checkpoint(
+                    storage,
+                    campaign_id,
+                    segment_id,
+                    phase=policy.policy_id,
+                    reason="segment_runtime_cap",
+                    state=latest_state,
+                    run_id=run_id,
+                )
+                message = (
+                    f"{policy.policy_id} segment reached the configured "
+                    f"{self.max_segment_runtime:g}-second runtime cap and "
+                    "checkpointed for resumption."
+                )
+                storage.finish_campaign(campaign_id, status="ready", error=message)
+                return CampaignResult(
+                    campaign_id,
+                    "ready",
+                    checkpoint_id,
+                    message,
+                    latest_state,
+                )
             message = f"{policy.policy_id} segment failed: {exc}"
             failed_state = _maintenance_failure_state(
                 state,
@@ -714,9 +916,6 @@ class CampaignRunner:
                 and self._boot_id is not None
             ):
                 failed_state[_PIERCING_WEAPON_UPGRADE_BOOT_KEY] = self._boot_id
-                failed_state[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = (
-                    _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS
-                )
             storage.finish_campaign_segment(
                 segment_id,
                 status="failed",
@@ -755,8 +954,42 @@ class CampaignRunner:
             end_state["campaign_empty_equipment_categories"] = sorted(
                 empty_categories
             )
+        elif "campaign_empty_equipment_categories" in state:
+            end_state["campaign_empty_equipment_categories"] = state[
+                "campaign_empty_equipment_categories"
+            ]
+        worn_equipment = _run_worn_equipment_descriptions(storage, result.run_id)
+        if worn_equipment is not None:
+            end_state["campaign_worn_equipment"] = worn_equipment
+        elif "campaign_worn_equipment" in state:
+            end_state["campaign_worn_equipment"] = state[
+                "campaign_worn_equipment"
+            ]
+        fastwalk_abort_reason = end_state.get("campaign_fastwalk_abort_reason")
+        preparation_aborted = bool(
+            isinstance(fastwalk_abort_reason, str)
+            and "invisibility at the safe origin" in fastwalk_abort_reason
+        )
+        # A first live segment can discover the current reboot after the
+        # campaign opened. Prefer that evidence when scoping retry cooldowns.
+        segment_boot_id = end_state.get("world_boot_id") or self._boot_id
         if policy.execution == "outfit-basic-gear":
             end_state["campaign_outfit_attempted_level"] = _level(end_state)
+            if state.get(_SACK_VAULT_ITEMS_KEY):
+                end_state[_SACK_VAULT_RECLAIM_LEVEL_KEY] = _level(end_state)
+            claimed_items = {
+                str(item).casefold()
+                for item in result.final_state.get("vault_claimed_items") or ()
+            }
+            pending_items = [
+                str(item)
+                for item in state.get(_SACK_VAULT_ITEMS_KEY) or ()
+                if str(item).casefold() not in claimed_items
+            ]
+            if pending_items:
+                end_state[_SACK_VAULT_ITEMS_KEY] = pending_items
+            else:
+                end_state.pop(_SACK_VAULT_ITEMS_KEY, None)
         if policy.execution == "recover-basic-body":
             end_state["campaign_body_gear_attempted_level"] = _level(end_state)
         if (
@@ -774,15 +1007,15 @@ class CampaignRunner:
         if policy.execution == "recover-daycare-ring":
             if "finger" in set(
                 end_state.get("campaign_empty_equipment_categories") or ()
-            ):
+            ) and not preparation_aborted:
                 end_state["campaign_daycare_ring_attempted_level"] = _level(
                     end_state
                 )
                 end_state[_DAYCARE_RING_COOLDOWN_KEY] = (
                     _DAYCARE_RING_COOLDOWN_SEGMENTS
                 )
-                if self._boot_id is not None:
-                    end_state[_DAYCARE_RING_ATTEMPT_BOOT_KEY] = self._boot_id
+                if segment_boot_id is not None:
+                    end_state[_DAYCARE_RING_ATTEMPT_BOOT_KEY] = segment_boot_id
             else:
                 end_state.pop("campaign_daycare_ring_attempted_level", None)
                 end_state.pop(_DAYCARE_RING_ATTEMPT_BOOT_KEY, None)
@@ -797,16 +1030,42 @@ class CampaignRunner:
                 end_state[_WAR_DOG_COLLAR_COOLDOWN_KEY] = (
                     _WAR_DOG_COLLAR_COOLDOWN_SEGMENTS
                 )
-                if self._boot_id is not None:
-                    end_state[_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY] = self._boot_id
+                if segment_boot_id is not None:
+                    end_state[_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY] = segment_boot_id
             else:
                 end_state.pop("campaign_war_dog_collar_attempted_level", None)
                 end_state.pop(_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY, None)
                 end_state.pop(_WAR_DOG_COLLAR_COOLDOWN_KEY, None)
+        if (
+            policy.execution == "midennir-sack"
+            and _state_has_item(end_state.get("inventory"), "large sack")
+        ):
+            lodged_items = result.final_state.get("vault_lodged_items") or ()
+            if lodged_items:
+                end_state[_SACK_VAULT_ITEMS_KEY] = list(
+                    dict.fromkeys(str(item) for item in lodged_items)
+                )
+            if "finger" in set(
+                end_state.get("campaign_empty_equipment_categories") or ()
+            ):
+                end_state.pop("campaign_daycare_ring_attempted_level", None)
+                end_state.pop(_DAYCARE_RING_ATTEMPT_BOOT_KEY, None)
+                end_state.pop(_DAYCARE_RING_COOLDOWN_KEY, None)
         xp_delta = _xp_delta(state, end_state)
+        end_state = _merge_campaign_research_result(
+            state,
+            end_state,
+            policy=policy,
+        )
+        objective_kills = _run_objective_kills(storage, result.run_id)
+        arena_depleted = (
+            policy.execution == "arena"
+            and xp_delta <= 0
+            and not objective_kills
+        )
         if (
             policy.execution == "upgrade-piercing-weapon"
-            and self._boot_id is not None
+            and segment_boot_id is not None
         ):
             if _needs_piercing_weapon_upgrade(
                 end_state,
@@ -814,21 +1073,9 @@ class CampaignRunner:
                 character_class=self.spec.character.character_class,
                 subclass=self.spec.character.subclass,
             ):
-                end_state[_PIERCING_WEAPON_UPGRADE_BOOT_KEY] = self._boot_id
-                end_state[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = (
-                    _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS
-                )
+                end_state[_PIERCING_WEAPON_UPGRADE_BOOT_KEY] = segment_boot_id
             else:
                 end_state.pop(_PIERCING_WEAPON_UPGRADE_BOOT_KEY, None)
-                end_state.pop(_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY, None)
-        elif (
-            policy.execution != "upgrade-piercing-weapon"
-        ):
-            end_state = _advance_piercing_weapon_upgrade_cooldown(
-                end_state,
-                execution=policy.execution,
-                xp_delta=xp_delta,
-            )
         if policy.execution != "recover-daycare-ring":
             end_state = _advance_daycare_ring_cooldown(
                 end_state,
@@ -878,6 +1125,7 @@ class CampaignRunner:
             if (
                 policy.execution in _MAINTENANCE_EXECUTIONS
                 or policy.status == "research"
+                or arena_depleted
             )
             else _stalled_count(
                 state,
@@ -920,7 +1168,11 @@ class CampaignRunner:
             campaign_id,
             segment_id,
             phase=policy.policy_id,
-            reason="segment_complete",
+            reason=(
+                "segment_preparation_aborted"
+                if preparation_aborted
+                else "segment_complete"
+            ),
             state=checkpoint_state,
             run_id=result.run_id,
         )
@@ -935,10 +1187,48 @@ class CampaignRunner:
                 end_state,
             )
 
+        if preparation_aborted:
+            message = (
+                f"{policy.policy_id} returned safely before field departure: "
+                f"{fastwalk_abort_reason}. Campaign checkpointed to repair "
+                "mandatory preparation."
+            )
+            storage.finish_campaign(campaign_id, status="ready", error=message)
+            return CampaignResult(
+                campaign_id,
+                "ready",
+                checkpoint_id,
+                message,
+                end_state,
+            )
+
+        if arena_depleted:
+            message = (
+                f"{policy.policy_id} arena circuit was empty at level "
+                f"{_level(end_state)}. Campaign checkpointed while awaiting "
+                "the Mud School area reset."
+            )
+            storage.finish_campaign(campaign_id, status="ready", error=message)
+            return CampaignResult(
+                campaign_id,
+                "ready",
+                checkpoint_id,
+                message,
+                end_state,
+            )
+
         if stalled >= self.spec.max_stalled_segments:
-            message = f"Campaign stalled for {stalled} completed segment(s)."
-            storage.finish_campaign(campaign_id, status="blocked", error=message)
-            return CampaignResult(campaign_id, "blocked", checkpoint_id, message, end_state)
+            if self.defer_stall_for_reset:
+                message = (
+                    f"Campaign stalled for {stalled} completed segment(s). "
+                    "Campaign checkpointed while awaiting the field area reset."
+                )
+                status = "ready"
+            else:
+                message = f"Campaign stalled for {stalled} completed segment(s)."
+                status = "blocked"
+            storage.finish_campaign(campaign_id, status=status, error=message)
+            return CampaignResult(campaign_id, status, checkpoint_id, message, end_state)
 
         next_policy = self._policy_for_state(end_state)
         if next_policy.executable:
@@ -948,8 +1238,17 @@ class CampaignRunner:
             )
         else:
             message = next_policy.blocks_message(self.spec.character.character_class)
-        storage.finish_campaign(campaign_id, status="blocked", error=message)
-        return CampaignResult(campaign_id, "blocked", checkpoint_id, message, end_state)
+        storage.finish_campaign(campaign_id, status="ready", error=message)
+        return CampaignResult(campaign_id, "ready", checkpoint_id, message, end_state)
+
+    def _is_controlled_runtime_boundary(self, exc: Exception) -> bool:
+        return (
+            self.max_segment_runtime is not None
+            and isinstance(exc, TimeoutError)
+            and str(exc)
+            == f"Starter bot exceeded {self.max_segment_runtime:g} second runtime"
+        )
+
     def _checkpoint(
         self,
         storage: RunStorage,
@@ -976,16 +1275,60 @@ async def run_campaign_file(
     *,
     force_new: bool = False,
     segments: int = 1,
+    reset_retries: int = 0,
+    reset_wait: float = 300.0,
+    max_segment_runtime: float | None = None,
 ) -> CampaignResult:
     if segments < 1:
         raise ValueError("segments must be positive")
+    if reset_retries < 0:
+        raise ValueError("reset_retries cannot be negative")
+    if reset_retries and reset_wait <= 0:
+        raise ValueError("reset_wait must be positive when reset_retries is set")
+    if max_segment_runtime is not None and max_segment_runtime <= 0:
+        raise ValueError("max_segment_runtime must be positive")
     config_path = Path(path)
     spec = load_campaign_spec(config_path)
-    result = await CampaignRunner(spec, config_path, force_new=force_new).run()
-    for _ in range(1, segments):
-        if not result.ready_for_next_segment:
+    runner_options: dict[str, float | bool] = {
+        "force_new": force_new,
+        "defer_stall_for_reset": bool(reset_retries),
+    }
+    if max_segment_runtime is not None:
+        runner_options["max_segment_runtime"] = max_segment_runtime
+    result = await CampaignRunner(spec, config_path, **runner_options).run()
+    normal_segments = 1
+    retries_remaining = reset_retries
+    while True:
+        if result.awaiting_area_reset:
+            if retries_remaining <= 0:
+                break
+            await asyncio.sleep(reset_wait)
+            retries_remaining -= 1
+            retry_options: dict[str, float | bool] = {
+                "defer_stall_for_reset": True,
+                "retry_stalled": True,
+            }
+            if max_segment_runtime is not None:
+                retry_options["max_segment_runtime"] = max_segment_runtime
+            result = await CampaignRunner(
+                spec,
+                config_path,
+                **retry_options,
+            ).run()
+            continue
+        if not result.ready_for_next_segment or normal_segments >= segments:
             break
-        result = await CampaignRunner(spec, config_path).run()
+        continuation_options: dict[str, float | bool] = {
+            "defer_stall_for_reset": bool(reset_retries),
+        }
+        if max_segment_runtime is not None:
+            continuation_options["max_segment_runtime"] = max_segment_runtime
+        result = await CampaignRunner(
+            spec,
+            config_path,
+            **continuation_options,
+        ).run()
+        normal_segments += 1
     return result
 
 
@@ -1106,6 +1449,7 @@ async def _run_policy_segment(
     rejected_practice_skills: frozenset[str] = frozenset(),
     counterbalance_preparation_required: bool = False,
     vault_stow_items: tuple[str, ...] = (),
+    vault_claim_items: tuple[str, ...] = (),
 ) -> RunResult:
     def starter_runner(**kwargs: Any) -> StarterBotRunner:
         if counterbalance_preparation_required:
@@ -1118,6 +1462,7 @@ async def _run_policy_segment(
         return await starter_runner(
             objective_level=policy.maximum_level or 10,
             arena_kill_limit=policy.segment_kill_limit,
+            arena_respawn_wait=False,
             practice_types_spent=practice_types_spent,
             rejected_practice_skills=rejected_practice_skills,
         ).run()
@@ -1207,6 +1552,139 @@ async def _run_policy_segment(
             fastwalk_route=route_named("dragon cult"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
             fastwalk_hunt_stops=cult_fanatic_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution in {"plains-aruncus-research", "plains-aruncus-hunt"}:
+        return await starter_runner(
+            objective_level=policy.maximum_level or 15,
+            fastwalk_route=route_named("plains aruncus"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=(
+                plains_aruncus_hunt_stops()
+                if policy.execution == "plains-aruncus-hunt"
+                else plains_aruncus_research_stops()
+            ),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=spec.character_class == "mage",
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution in {
+        "mirror-realm-watchman-research",
+        "mirror-realm-watchman-hunt",
+        "mirror-realm-gardener-research",
+        "mirror-realm-guardian-research",
+        "mirror-realm-guardian-hunt",
+    }:
+        watchman_hunt = policy.execution == "mirror-realm-watchman-hunt"
+        gardener_probe = policy.execution == "mirror-realm-gardener-research"
+        guardian_hunt = policy.execution == "mirror-realm-guardian-hunt"
+        guardian_probe = policy.execution == "mirror-realm-guardian-research"
+        return await starter_runner(
+            objective_level=policy.maximum_level or (
+                30 if guardian_probe or guardian_hunt else 25 if gardener_probe else 20
+            ),
+            fastwalk_route=route_named(
+                "mirror realm guardian"
+                if guardian_probe or guardian_hunt
+                else "mirror realm gardener"
+                if gardener_probe
+                else "mirror realm watchman"
+            ),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=(
+                mirror_realm_gardener_research_stops()
+                if gardener_probe
+                else mirror_realm_guardian_hunt_stops()
+                if guardian_hunt
+                else mirror_realm_guardian_research_stops()
+                if guardian_probe
+                else mirror_realm_watchman_hunt_stops()
+                if watchman_hunt
+                else mirror_realm_watchman_research_stops()
+            ),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "shire-battle-master-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 30,
+            fastwalk_route=route_named("shire battle master"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=shire_battle_master_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution in {
+        "minotaur-gatekeeper-research",
+        "minotaur-gatekeeper-hunt",
+    }:
+        gatekeeper_hunt = policy.execution == "minotaur-gatekeeper-hunt"
+        return await starter_runner(
+            objective_level=policy.maximum_level or 35,
+            fastwalk_route=route_named("minotaur gatekeeper"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=(
+                minotaur_gatekeeper_hunt_stops()
+                if gatekeeper_hunt
+                else minotaur_gatekeeper_research_stops()
+            ),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "galaxy-cancer-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 35,
+            fastwalk_route=route_named("galaxy cancer"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=galaxy_cancer_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "mirror-realm-jerry-garcia-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 40,
+            fastwalk_route=route_named("mirror realm jerry garcia"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=mirror_realm_jerry_garcia_research_stops(),
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution == "pit-official-research":
+        return await starter_runner(
+            objective_level=policy.maximum_level or 45,
+            fastwalk_route=route_named("pit official"),
+            fastwalk_hunt_stops=pit_official_research_stops(),
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=False,
             require_fastwalk_kill=False,
@@ -1319,6 +1797,8 @@ async def _run_policy_segment(
     if policy.execution == "outfit-basic-gear":
         return await starter_runner(
             city_outfit=True,
+            vault_claim_items=vault_claim_items,
+            vault_wear_claimed_items=bool(vault_claim_items),
         ).run()
     if policy.execution == "recover-basic-body":
         return await starter_runner(
@@ -1364,10 +1844,12 @@ async def _run_policy_segment(
             fastwalk_required_free_weight=_RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT,
             fastwalk_hunt_stops=daycare_ring_hunt_stops(),
             fastwalk_kill_limit=policy.segment_kill_limit,
-            fastwalk_train_before_departure=False,
+            fastwalk_train_before_departure=spec.character_class == "mage",
             fastwalk_require_invisibility=False,
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
         ).run()
     if policy.execution == "recover-war-dog-collar":
         return await starter_runner(
@@ -1898,20 +2380,21 @@ def _run_objective_kills(storage: RunStorage, run_id: int) -> list[Any] | None:
     return None
 
 
-def _advance_piercing_weapon_upgrade_cooldown(
+def _advance_retry_cooldown(
     state: dict[str, Any],
     *,
+    key: str,
     execution: str,
     xp_delta: int,
 ) -> dict[str, Any]:
-    """Permit another upgrade attempt after three productive field segments."""
+    """Advance an optional-loot retry only after productive field work."""
     if execution in _MAINTENANCE_EXECUTIONS or xp_delta <= 0:
         return state
-    remaining = int(state.get(_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY) or 0)
+    remaining = int(state.get(key) or 0)
     if remaining <= 0:
         return state
     updated = dict(state)
-    updated[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = remaining - 1
+    updated[key] = remaining - 1
     return updated
 
 
@@ -1921,15 +2404,13 @@ def _advance_daycare_ring_cooldown(
     execution: str,
     xp_delta: int,
 ) -> dict[str, Any]:
-    """Retry reset-dependent ring carriers after useful work outside the area."""
-    if execution in _MAINTENANCE_EXECUTIONS or xp_delta <= 0:
-        return state
-    remaining = int(state.get(_DAYCARE_RING_COOLDOWN_KEY) or 0)
-    if remaining <= 0:
-        return state
-    updated = dict(state)
-    updated[_DAYCARE_RING_COOLDOWN_KEY] = remaining - 1
-    return updated
+    """Retry missing Daycare rings after other productive work."""
+    return _advance_retry_cooldown(
+        state,
+        key=_DAYCARE_RING_COOLDOWN_KEY,
+        execution=execution,
+        xp_delta=xp_delta,
+    )
 
 
 def _advance_war_dog_collar_cooldown(
@@ -1938,15 +2419,13 @@ def _advance_war_dog_collar_cooldown(
     execution: str,
     xp_delta: int,
 ) -> dict[str, Any]:
-    """Retry reset-dependent collar carriers after useful work outside Ambush."""
-    if execution in _MAINTENANCE_EXECUTIONS or xp_delta <= 0:
-        return state
-    remaining = int(state.get(_WAR_DOG_COLLAR_COOLDOWN_KEY) or 0)
-    if remaining <= 0:
-        return state
-    updated = dict(state)
-    updated[_WAR_DOG_COLLAR_COOLDOWN_KEY] = remaining - 1
-    return updated
+    """Retry missing war dog collars after other productive work."""
+    return _advance_retry_cooldown(
+        state,
+        key=_WAR_DOG_COLLAR_COOLDOWN_KEY,
+        execution=execution,
+        xp_delta=xp_delta,
+    )
 
 
 def _xp_delta(before: dict[str, Any], after: dict[str, Any]) -> int:
@@ -1972,6 +2451,12 @@ def _campaign_segment_end_state(
         merged["magic_shop_purchase_failed"] = True
     if previous.get("vault_storage_rejected"):
         merged["vault_storage_rejected"] = True
+    if _SACK_VAULT_ITEMS_KEY in previous:
+        merged[_SACK_VAULT_ITEMS_KEY] = previous[_SACK_VAULT_ITEMS_KEY]
+    if _SACK_VAULT_RECLAIM_LEVEL_KEY in previous:
+        merged[_SACK_VAULT_RECLAIM_LEVEL_KEY] = previous[
+            _SACK_VAULT_RECLAIM_LEVEL_KEY
+        ]
     for owner, key in (
         ("outfit-basic-gear", "campaign_outfit_attempted_level"),
         ("recover-basic-body", "campaign_body_gear_attempted_level"),
@@ -1987,10 +2472,67 @@ def _campaign_segment_end_state(
         ("recover-war-dog-collar", _WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY),
         ("recover-war-dog-collar", _WAR_DOG_COLLAR_COOLDOWN_KEY),
         ("upgrade-piercing-weapon", _PIERCING_WEAPON_UPGRADE_BOOT_KEY),
-        ("upgrade-piercing-weapon", _PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY),
     ):
         if execution != owner and key in previous:
             merged[key] = previous[key]
+    return merged
+
+
+def _prioritize_sack_vault_claims(items: Any) -> tuple[str, ...]:
+    """Reclaim combat-value gear before heavier fallback armour."""
+    if not isinstance(items, (list, tuple)):
+        return ()
+    priority = {
+        keyword: index
+        for index, keyword in enumerate(
+            ("collar", "bracer", "belt", "sleeves", "vest", "guards", "cape")
+        )
+    }
+    unique = tuple(dict.fromkeys(str(item).casefold() for item in items))
+    return tuple(
+        sorted(unique, key=lambda item: (priority.get(item, len(priority)), item))
+    )
+
+
+def _campaign_research_results(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    raw_results = state.get("campaign_research_results")
+    if not isinstance(raw_results, dict):
+        return {}
+    return {
+        str(policy_id): dict(result)
+        for policy_id, result in raw_results.items()
+        if isinstance(result, dict)
+    }
+
+
+def _merge_campaign_research_result(
+    previous: dict[str, Any],
+    current: dict[str, Any],
+    *,
+    policy: ProgressionPolicy,
+) -> dict[str, Any]:
+    """Persist one reboot-scoped live consideration for research promotion."""
+    merged = dict(current)
+    results = _campaign_research_results(previous)
+    if policy.status == "research":
+        outcomes = current.get("campaign_fastwalk_consider_outcomes")
+        viable = None
+        if isinstance(outcomes, dict):
+            viable = next(
+                (
+                    value
+                    for value in outcomes.values()
+                    if isinstance(value, bool)
+                ),
+                None,
+            )
+        results[policy.policy_id] = {
+            "observed": viable is not None,
+            "viable": viable is True,
+            "boot_id": current.get("world_boot_id"),
+        }
+    if results:
+        merged["campaign_research_results"] = results
     return merged
 
 
@@ -2006,12 +2548,10 @@ def _maintenance_failure_state(
         return state
     failed_state = dict(state)
     failed_state[attempted_level_key] = _level(state)
-    if execution == "recover-daycare-ring" and boot_id is not None:
-        failed_state[_DAYCARE_RING_ATTEMPT_BOOT_KEY] = boot_id
     if execution == "recover-daycare-ring":
-        failed_state[_DAYCARE_RING_COOLDOWN_KEY] = (
-            _DAYCARE_RING_COOLDOWN_SEGMENTS
-        )
+        failed_state[_DAYCARE_RING_COOLDOWN_KEY] = _DAYCARE_RING_COOLDOWN_SEGMENTS
+        if boot_id is not None:
+            failed_state[_DAYCARE_RING_ATTEMPT_BOOT_KEY] = boot_id
     if execution == "recover-war-dog-collar" and boot_id is not None:
         failed_state[_WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY] = boot_id
     if execution == "recover-war-dog-collar":
@@ -2081,6 +2621,35 @@ def _run_has_unrecovered_weapon_loss(
         if "you wield " in response:
             weapon_present = True
     return weapon_present is False
+
+
+def _run_successful_vault_lodges(
+    storage: RunStorage,
+    run_id: int,
+) -> tuple[str, ...]:
+    """Return command keywords for vault lodges acknowledged by DD4."""
+    lodged: list[str] = []
+    pending_keyword: str | None = None
+    for event in storage.list_events(run_id):
+        payload = json.loads(event["payload_json"])
+        if event["kind"] == "command":
+            command = str(payload.get("command", "")).strip().casefold()
+            pending_keyword = (
+                command.removeprefix("lodge ")
+                if command.startswith("lodge ")
+                else None
+            )
+            continue
+        if event["kind"] != "response" or pending_keyword is None:
+            continue
+        response = _ANSI_ESCAPE.sub(
+            "",
+            str(payload.get("text", "")),
+        ).casefold()
+        if "you lodge " in response and " in your vault." in response:
+            lodged.append(pending_keyword)
+        pending_keyword = None
+    return tuple(dict.fromkeys(lodged))
 
 
 def _run_equipment_empty_categories(
@@ -2238,7 +2807,16 @@ def _has_campaign_sellable_loot(
     if keyword is None:
         return False
     if keyword == "collar":
-        if _state_item_count(state.get("inventory"), "war dog collar") <= 2:
+        carried_collars = _state_item_count(
+            state.get("inventory"),
+            "war dog collar",
+        )
+        worn_collars = sum(
+            "war dog collar" in normalize_item_name(description)
+            for description in state.get("campaign_worn_equipment") or ()
+        )
+        retained_carried_collars = max(0, 2 - worn_collars)
+        if carried_collars <= retained_carried_collars:
             return False
         stats = state.get("stats")
         if not isinstance(stats, dict):

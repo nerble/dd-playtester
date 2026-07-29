@@ -8,7 +8,11 @@ from .archetypes import archetype_registry
 
 _ARCHETYPES = archetype_registry()
 _MEANINGFUL_FIELD_SEGMENT_XP = 50
+_MEANINGFUL_LEVEL_SEVEN_SEGMENT_XP = 200
 _FOREST_BEAR_CLAWS_MINIMUM_NONFLIGHT_MOVE = 300
+_RETIRED_MORIA_SANCTUARY_LEVEL_TWELVE_RESEARCH_POLICY_ID = (
+    "moria-sanctuary-probe-12-13"
+)
 CLASS_PRACTICE_SKILLS = {
     name: profile.practice_skill
     for name, profile in _ARCHETYPES.classes.items()
@@ -72,6 +76,8 @@ class ProgressionContext:
     flight_purchase_failed: bool = False
     boot_kill_counts: Mapping[str, int] | None = None
     policy_xp_deltas: Mapping[str, int] | None = None
+    research_results: Mapping[str, Mapping[str, object]] | None = None
+    world_boot_id: str | int | None = None
     stalled_segments: int = 0
     last_policy_id: str | None = None
 
@@ -117,6 +123,7 @@ _STARTER_POLICY = ProgressionPolicy(
     evidence=(
         "Live starter run reached level 2, saved, and quit (run 60).",
         "Policy is generic over the supported race, gender, and base-class choices.",
+        "Live run 1751 created the prepared human male cleric from scratch, practised Healing Magiks, used Cause Light in tutorial combat, reached level 2, and exited safely.",
     ),
     practice_skill=None,
 )
@@ -884,6 +891,7 @@ _FLESHMONGER_GUARD_CIRCUIT_POLICY = ProgressionPolicy(
         "Live run 1414 departed at full health and rejected the foyer guard's above-band consider result.",
         "Run 1414 independently considered the north guard, resolved it at live level 9, and killed it for 505 XP.",
         "Dorrik finished combat at 164/217 hit points, looted all five pieces, recalled, and recovered to 217/217 hit points and 240/240 movement in healer room 3054.",
+        "Live run 1873 resolved the foyer guard at level 11 and received the perfect-match consider branch while level-10 Dorrik was slightly healthier.",
         "The policy excludes the aggressive basement guard and retains per-stop crowd, consider, health, withdrawal, two-kill, and safe-return gates.",
     ),
     practice_skill=None,
@@ -1552,6 +1560,8 @@ _RECOVER_DAYCARE_RING_POLICY = ProgressionPolicy(
         "The same route returns through room 6602, where the old wrinkled nanny carries a linen robe granting wisdom and mana.",
         "The old doll is reached two rooms beyond the verified Dwarven Daycare route; other source resets in the room are low-level non-aggressive dolls and youths.",
         "These are three bounded required-loot kills; below-band targets remain forbidden for XP progression.",
+        "Live run 1730: a room-6602 nanny cast blindness during a ring-recovery pass; the runner fled, recalled, and waited at the Midgaard healer without dying. Treat blindness as a terminal recovery condition for the remaining pass.",
+        "Live run 1739: one old doll and the live-considered nanny yielded four recovery items, 444 XP, and a safe level-6 transition; the following generic segment liquidated compatible loot in Midgaard.",
     ),
     practice_skill=None,
     segment_kill_limit=3,
@@ -1631,6 +1641,404 @@ _UNAVAILABLE_POLICY = ProgressionPolicy(
 )
 
 
+_PLAINS_ARUNCUS_LEVEL_TWELVE_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="plains-aruncus-probe-12-13",
+    minimum_level=12,
+    maximum_level=13,
+    status="research",
+    execution="plains-aruncus-research",
+    summary=(
+        "After an empty level-12 Fleshmonger segment, consider the non-aggressive "
+        "Plains druid Aruncus without initiating combat."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 300, Aruncus the Druid, resets once "
+        "in Plains of the North room 323.",
+        "His source level is 13 with normal mobile-level fuzz; his act flags are "
+        "stay-area and wimpy, not aggressive or sentinel, and he has no special procedure.",
+        "The source-derived route reaches room 323 from healer room 3054 and returns "
+        "by recall; its exact-keyword probe tolerates a wandering or absent target.",
+        "This probe replaces the retired Moria sanctuary-carrier research route: live "
+        "run 1606 proved that the carrier room can begin automatic combat before "
+        "consideration, costing a safe flee 101 net XP.",
+        "Live run 1607 reached the route endpoint at level 12, found Aruncus absent, "
+        "and returned to healer room 3054 without combat, damage, or XP loss.",
+    ),
+    practice_skill=None,
+)
+
+
+_AMBUSH_BARDOOSH_LEVEL_TWELVE_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="ambush-bardoosh-probe-12-13",
+    minimum_level=12,
+    maximum_level=13,
+    status="retired",
+    execution=None,
+    summary=(
+        "Retired: the apparent Bardoosh probe cannot guarantee a no-combat Ambush "
+        "approach because incidental mobile combat can occur en route."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 4515, Bardoosh, resets once in Ambush "
+        "room 4514 after the isolated goblin archer room.",
+        "Bardoosh has source level 12, sentinel rather than aggressive act flags, "
+        "the sleep affect, and no special procedure.",
+        "The exact source keyword is bardoosh; the reset equips armour, shield, "
+        "spear, gauntlets, sleeves, girdle, and a ring, so any later kill policy "
+        "must retain strict capacity and sale handling.",
+        "Live run 1612 encountered and killed an incidental goblin lieutenant and "
+        "goblin for 120 XP before safe healer recovery, so the route is not valid "
+        "for a no-combat research policy.",
+    ),
+    practice_skill=None,
+)
+
+
+_PLAINS_ARUNCUS_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="plains-aruncus-probe-13-15",
+    minimum_level=13,
+    maximum_level=15,
+    status="research",
+    execution="plains-aruncus-research",
+    summary=(
+        "Consider the Plains of the North druid Aruncus without initiating "
+        "combat, then return to the Midgaard healer."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 300, Aruncus the Druid, resets once in Plains of the North room 323.",
+        "His source level is 13 with normal mobile-level fuzz; his act flags are stay-area and wimpy, not aggressive or sentinel.",
+        "Aruncus has no special procedure, but can wander within the area, so the exact-keyword live probe must tolerate an absent target and cannot promote a combat policy.",
+        "The source room graph permits a non-hostile 323 -> 324 -> 322 -> 330 foothill loop; the probe issues `where aruncus` before checking each room.",
+        "Live runs 1637, 1641, and 1643 found Aruncus wandering through the source-named Dark smelly tunnels, Stones of G'harne, and room 337 on the preceding ancient path. The extension inspects every source-verified room from 322 through 343, travels through rooms carrying at most rabbits, and stops before room 344, whose level-24 giant worm reset is unsafe for this band.",
+        "The source-derived route reaches room 323 from healer room 3054 and returns by recall; this policy records the live reboot, crowd, target presence, and do_consider result only.",
+        "Live run 1607 verified the level-12 route endpoint and safe healer return while Aruncus was absent in this reboot window.",
+    ),
+    practice_skill=None,
+)
+
+
+_PLAINS_ARUNCUS_THIEF_KILL_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="plains-aruncus-thief-kill-research-13-15",
+    minimum_level=13,
+    maximum_level=15,
+    status="retired",
+    execution=None,
+    summary=(
+        "Retired exact-level Aruncus probe: it could only discover normal "
+        "source fuzz after paying an avoidable flee penalty."
+    ),
+    evidence=(
+        *_PLAINS_ARUNCUS_RESEARCH_POLICY.evidence,
+        "Live run 1645 found Aruncus in room 333, used exact selector #147, and received `The perfect match! However, you are a teensy bit healthier than he.`",
+        "DD4 act_info.c maps `The perfect match!` to level difference <= 1; with both live character and source mobile level 13, this is the exact-level branch rather than a below-band branch.",
+        "Live run 1647 found the same source mobile at live level 14 after `consider` said perfect match. The live ceiling gate fled immediately unharmed but cost 132 XP, proving that no pre-combat source or consider signal can safely enforce the exact-level restriction.",
+        "DD4 db.c fuzzes the loaded prototype level and fuzzes it again in create_mobile. This target remains evidence-only until the range-aware v2 probe has gathered a live bounded result.",
+    ),
+    practice_skill="backstab",
+    segment_kill_limit=1,
+)
+
+
+_PLAINS_ARUNCUS_THIEF_KILL_RESEARCH_V2_POLICY = ProgressionPolicy(
+    policy_id="plains-aruncus-thief-kill-research-v2-13-15",
+    minimum_level=13,
+    maximum_level=15,
+    status="retired",
+    execution=None,
+    summary=(
+        "Retired source-fuzz probe: the initial exact-target range lookup still "
+        "merged generic source keywords and therefore skipped safe combat."
+    ),
+    evidence=(
+        *_PLAINS_ARUNCUS_THIEF_KILL_RESEARCH_POLICY.evidence,
+        "Run 1648 found Aruncus in room 337 and received the perfect-match consider branch, but its source lookup merged the unrelated generic `druid` key and conservatively skipped combat as range 8-53.",
+        "The parser correction requires exact source identities for exact-target stops. The v3 result must remain distinct from the v2 safe no-combat result.",
+    ),
+    practice_skill="backstab",
+    segment_kill_limit=1,
+)
+
+
+_PLAINS_ARUNCUS_THIEF_KILL_RESEARCH_V3_POLICY = ProgressionPolicy(
+    policy_id="plains-aruncus-thief-kill-research-v3-13-15",
+    minimum_level=13,
+    maximum_level=15,
+    status="retired",
+    execution=None,
+    summary=(
+        "Retired one-kill probe: Aruncus's source wimpy behavior made the "
+        "evidenced fight an unsafe, zero-XP chase rather than a field circuit."
+    ),
+    evidence=(
+        *_PLAINS_ARUNCUS_THIEF_KILL_RESEARCH_V2_POLICY.evidence,
+        "The exact-target source-range gate now resolves only `Aruncus the Druid` to its 11-15 range, rather than merging generic source `druid` entries.",
+        "Live run 1649 found Aruncus in room 337, considered and attacked from 194/194 HP, then reduced him to a fleeing state at 128/194 HP. The bot did not pursue into the next room and returned to healer room 3054 at full recovery with no XP gain.",
+        "The source act flags mark Aruncus wimpy. Do not promote a mobile that must be chased after a long fight into a repeatable level-13 XP loop; use the verified Fleshmonger rotation instead.",
+    ),
+    practice_skill="backstab",
+    segment_kill_limit=1,
+)
+
+
+_PLAINS_ARUNCUS_THIEF_PURSUIT_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="plains-aruncus-thief-pursuit-research-13-15",
+    minimum_level=13,
+    maximum_level=15,
+    status="research",
+    execution="plains-aruncus-hunt",
+    summary=(
+        "Re-test the viable Aruncus fight with bounded pursuit restricted to "
+        "source-vetted foothill, ancient-path, and tunnel rooms."
+    ),
+    evidence=(
+        *_PLAINS_ARUNCUS_THIEF_KILL_RESEARCH_V3_POLICY.evidence,
+        "The current field runner can follow the requested target for at most three "
+        "observed flee steps, re-checking the destination room before re-engaging.",
+        "The pursuit allowlist covers source rooms 309-312, 322-326, 330, and "
+        "332-343, including empty dead-end room 341, but excludes room 344 and "
+        "its source-level-24 Shudde-M'ell reset.",
+        "Any flee direction whose live GMCP destination is absent from that "
+        "allowlist aborts the chase and recalls to healer room 3054.",
+    ),
+    practice_skill="backstab",
+    segment_kill_limit=1,
+)
+
+
+_MIRROR_REALM_WATCHMAN_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-watchman-probe-16-20",
+    minimum_level=16,
+    maximum_level=20,
+    status="research",
+    execution="mirror-realm-watchman-research",
+    summary=(
+        "Reach and consider a source-isolated Mirror Realm watchman without "
+        "initiating combat, then return to the Midgaard healer."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 19009 resets once in Mirror Realm room 19009; it is sentinel and stay-area, but not aggressive.",
+        "The source route reaches room 19009 from recall through only ordinary open exits and one reset-open north door. Its only static aggressor is level-0 Fido; update.c skips aggression when the player is more than ten levels higher.",
+        "The source prototype level is 19 with normal mobile-level fuzz, carries a staff, and has no special procedure. This policy only records presence, crowd state, and do_consider output.",
+        "Any unexpected combat aborts the probe with flee and healer recovery; no combat policy may be promoted until a bounded live probe confirms the route and target behavior.",
+    ),
+    practice_skill=None,
+)
+
+
+_MIRROR_REALM_WATCHMAN_HUNT_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-watchman-hunt-16-20",
+    minimum_level=16,
+    maximum_level=20,
+    status="research",
+    execution="mirror-realm-watchman-hunt",
+    summary=(
+        "Use a fresh viable watchman consideration to run one bounded field "
+        "fight, then re-consider before any further engagement."
+    ),
+    evidence=(
+        *_MIRROR_REALM_WATCHMAN_RESEARCH_POLICY.evidence,
+        "The watchman has no source special procedure and is non-aggressive, unlike later registered probes with caster, thief, guard, or breath specials.",
+        "The hunt repeats DD4 consider immediately before combat, requires 85% health, one exact source-matched target, no crowd, and a single confirmed kill.",
+        "A missing, unsuitable, or zero-XP hunt returns to the probe gate rather than retrying combat blindly.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
+_MIRROR_REALM_WATCHMAN_LEVEL_TWENTY_ONE_RESEARCH_POLICY = replace(
+    _MIRROR_REALM_WATCHMAN_RESEARCH_POLICY,
+    policy_id="mirror-realm-watchman-probe-21-25",
+    minimum_level=21,
+    maximum_level=25,
+    summary=(
+        "Revalidate the isolated Mirror Realm watchman through level 25 before "
+        "engaging its source-fuzzed, now borderline level range."
+    ),
+)
+
+
+_MIRROR_REALM_WATCHMAN_LEVEL_TWENTY_ONE_HUNT_POLICY = replace(
+    _MIRROR_REALM_WATCHMAN_HUNT_POLICY,
+    policy_id="mirror-realm-watchman-hunt-21-25",
+    minimum_level=21,
+    maximum_level=25,
+    summary=(
+        "Use a fresh viable Watchman consideration as a bounded level-21 to "
+        "25 hunt, while rejecting every below-band result before combat."
+    ),
+)
+
+
+_MIRROR_REALM_GARDENER_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-gardener-probe-21-25",
+    minimum_level=21,
+    maximum_level=25,
+    status="research",
+    execution="mirror-realm-gardener-research",
+    summary=(
+        "Reach and consider the Mirror Realm gardener without initiating combat, "
+        "then return to the Midgaard healer."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 19036, the gardener, resets once in Mirror Realm room 19091.",
+        "The source prototype is level 25 with normal mobile-level fuzz. Its act flags are stay-area rather than aggressive; it carries clippers and has spec_thief, so the route remains no-combat research only.",
+        "The gardener route extends the level-16 watchman approach through source rooms 19090 and 19091. Its only static aggressor is level-0 Fido; update.c skips aggression when the player is more than ten levels higher.",
+        "Any unexpected combat aborts the probe with flee and healer recovery; live presence, crowd state, and do_consider evidence are required before registering combat behavior.",
+    ),
+    practice_skill=None,
+)
+
+
+_SHIRE_BATTLE_MASTER_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="shire-battle-master-probe-26-30",
+    minimum_level=26,
+    maximum_level=30,
+    status="research",
+    execution="shire-battle-master-research",
+    summary=(
+        "Reach and consider the Shire battle master without initiating combat, "
+        "then return to the Midgaard healer."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 1121, the battle master, resets once in Shire room 1117 with up to three level-5 trainees.",
+        "The source prototype is level 25 with normal mobile-level fuzz; source level 23-27 remains within five levels of the registered 26-30 band.",
+        "The battle master is sentinel, not aggressive, carries a bardiche, and has spec_guard. The recall-origin route crosses only level-0 Fido, which update.c cannot aggro against a level-26-or-higher character.",
+        "This policy permits only live presence, crowd, and do_consider evidence. Any unexpected guard combat aborts the probe with flee and healer recovery.",
+    ),
+    practice_skill=None,
+)
+
+
+_MIRROR_REALM_GUARDIAN_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-guardian-probe-26-30",
+    minimum_level=26,
+    maximum_level=30,
+    status="research",
+    execution="mirror-realm-guardian-research",
+    summary=(
+        "Reach and consider the isolated Mirror Realm guardian before enabling "
+        "a bounded level-26 to 30 hunt."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 19001, the mirror guardian, resets once in Mirror Realm room 19041.",
+        "The source prototype is level 23 with normal mobile-level fuzz. Its act flags are sentinel and stay-area, not aggressive, and it has no special procedure.",
+        "The source-derived route reaches room 19041 through ordinary exits and two reset-open north doors. Its only static aggressor is level-0 Fido, which cannot aggro a character above level ten.",
+        "The target is exact, single-reset, and source-isolated. The probe records live crowd and consider evidence before combat is allowed.",
+    ),
+    practice_skill=None,
+)
+
+
+_MIRROR_REALM_GUARDIAN_HUNT_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-guardian-hunt-26-30",
+    minimum_level=26,
+    maximum_level=30,
+    status="research",
+    execution="mirror-realm-guardian-hunt",
+    summary=(
+        "Run a one-kill Mirror Guardian hunt only after a fresh viable live "
+        "consider result."
+    ),
+    evidence=(
+        *_MIRROR_REALM_GUARDIAN_RESEARCH_POLICY.evidence,
+        "The hunt repeats consider immediately before combat, requires 85% health, one exact source-matched target, no crowd, and a single confirmed kill.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
+_GALAXY_CANCER_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="galaxy-cancer-probe-31-35",
+    minimum_level=31,
+    maximum_level=35,
+    status="research",
+    execution="galaxy-cancer-research",
+    summary=(
+        "Reach and consider Cancer in the Galaxy area without initiating combat, "
+        "then return to the Midgaard healer."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 9319, Cancer, resets once in Galaxy room 9345 and is level 31, sentinel, and not aggressive.",
+        "Cancer has spec_cast_cleric and carries the Titanic Shell of Cancer, so this remains a no-combat probe despite its non-aggressive flag.",
+        "The source route has aggressive static or reachable mobiles only at levels 0-10. update.c skips their aggression when a character is more than ten levels higher; this gate holds throughout levels 31-35.",
+        "This policy records only live route completion, presence, crowd, and do_consider evidence. Any unexpected combat aborts with flee and healer recovery before a combat policy can be considered.",
+    ),
+    practice_skill=None,
+)
+
+
+_MINOTAUR_GATEKEEPER_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="minotaur-gatekeeper-probe-31-35",
+    minimum_level=31,
+    maximum_level=35,
+    status="research",
+    execution="minotaur-gatekeeper-research",
+    summary=(
+        "Reach and consider the isolated Mahn-Tor Gatekeeper before enabling "
+        "a bounded level-31 to 35 hunt."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 2318, the Minotaur Gatekeeper, resets once in Mahn-Tor room 2377.",
+        "The source prototype is level 25 with normal mobile-level fuzz. Its act flags are sentinel, scavenger, and stay-area, not aggressive, and it has no special procedure.",
+        "The source-derived route contains only aggressors whose fuzzed maximum is at least five levels below a level-31 character; one reset-closed, unlocked south door is opened explicitly.",
+        "The exact source keyword is gatekeeper. The probe records live presence, crowd, and consider evidence before combat is allowed.",
+    ),
+    practice_skill=None,
+)
+
+
+_MINOTAUR_GATEKEEPER_HUNT_POLICY = ProgressionPolicy(
+    policy_id="minotaur-gatekeeper-hunt-31-35",
+    minimum_level=31,
+    maximum_level=35,
+    status="research",
+    execution="minotaur-gatekeeper-hunt",
+    summary=(
+        "Run a one-kill Minotaur Gatekeeper hunt only after a fresh viable "
+        "live consider result."
+    ),
+    evidence=(
+        *_MINOTAUR_GATEKEEPER_RESEARCH_POLICY.evidence,
+        "The hunt repeats consider immediately before combat, requires 85% health, one exact source-matched target, no crowd, and a single confirmed kill.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
+_MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-jerry-garcia-probe-36-40",
+    minimum_level=36,
+    maximum_level=40,
+    status="research",
+    execution="mirror-realm-jerry-garcia-research",
+    summary=(
+        "Reach and consider Mirror Realm's Jerry Garcia without initiating "
+        "combat, then return to the Midgaard healer."
+    ),
+    evidence=(
+        "DD4 source revision d7cb330: mobile 19068, Jerry Garcia, resets once in Mirror Realm room 19170 and is level 35, sentinel, and not aggressive.",
+        "Jerry Garcia has spec_cast_adept and is a stationary healer, so the route remains no-combat research only.",
+        "The source path has only level-0 Fido as an aggressive static or reachable mobile. update.c skips aggression when a character is more than ten levels higher; this holds throughout levels 36-40.",
+        "This policy records only live route completion, presence, crowd, and do_consider evidence. Any unexpected combat aborts with flee and healer recovery before a combat policy can be considered.",
+    ),
+    practice_skill=None,
+)
+
+
+_PIT_OFFICIAL_RESEARCH_POLICY = ProgressionPolicy(
+    "pit-official-probe-41-45", 41, 45, "research", "pit-official-research",
+    "Reach and consider the Pit Official without initiating combat, then return to the Midgaard healer.",
+    (
+        "DD4 source revision d7cb330: mobile 13700 resets in safe Pit spectator room 13703; it is level 39, sentinel, and not aggressive.",
+        "The four-move recall route and its room companions are source-vetted; spec_breath_acid keeps this as no-combat research only.",
+        "Any unexpected combat aborts with flee and healer recovery.",
+    ), None,
+)
+
+
 def policy_for(
     level: int | float | None,
     character_class: str,
@@ -1657,6 +2065,8 @@ def policy_for(
     flight_purchase_failed: bool = False,
     boot_kill_counts: Mapping[str, int] | None = None,
     policy_xp_deltas: Mapping[str, int] | None = None,
+    research_results: Mapping[str, Mapping[str, object]] | None = None,
+    world_boot_id: str | int | None = None,
     stalled_segments: int = 0,
     last_policy_id: str | None = None,
 ) -> ProgressionPolicy:
@@ -1686,6 +2096,8 @@ def policy_for(
             flight_purchase_failed=flight_purchase_failed,
             boot_kill_counts=boot_kill_counts,
             policy_xp_deltas=policy_xp_deltas,
+            research_results=research_results,
+            world_boot_id=world_boot_id,
             stalled_segments=stalled_segments,
             last_policy_id=last_policy_id,
         )
@@ -2011,6 +2423,20 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 return _AMBUSH_RAIDER_LEVEL_TEN_POLICY
             return _AMBUSH_VILE_LEVEL_TEN_POLICY
         return _MORIA_SANCTUARY_LEVEL_TEN_POLICY
+    if normalized_level == 10 and context.character_class in {
+        "cleric",
+        "psionic",
+        "shifter",
+        "brawler",
+        "ranger",
+        "smithy",
+    }:
+        completed = context.policy_xp_deltas or {}
+        if _FLESHMONGER_GUARD_LEVEL_TEN_RESEARCH_POLICY.policy_id not in completed:
+            return replace(
+                _FLESHMONGER_GUARD_LEVEL_TEN_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
     if (
         field_martial
         and context.character_class == "thief"
@@ -2053,6 +2479,19 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 practice_skill=context.practice_skill,
             )
         if research_xp > 0:
+            if context.last_policy_id in {
+                _RETIRED_MORIA_SANCTUARY_LEVEL_TWELVE_RESEARCH_POLICY_ID,
+                _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY.policy_id,
+            } and (
+                context.last_policy_id
+                == _RETIRED_MORIA_SANCTUARY_LEVEL_TWELVE_RESEARCH_POLICY_ID
+                or completed.get(_FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY.policy_id)
+                == 0
+            ):
+                return replace(
+                    _PLAINS_ARUNCUS_LEVEL_TWELVE_RESEARCH_POLICY,
+                    practice_skill=context.practice_skill,
+                )
             return replace(
                 _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY,
                 practice_skill=context.practice_skill,
@@ -2268,14 +2707,10 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                     _FLESHMONGER_TWO_GUARD_RESEARCH_POLICY,
                     practice_skill=context.practice_skill,
                 )
-            recent_xp = completed.get(
-                _FLESHMONGER_GUARD_CIRCUIT_POLICY.policy_id
+            return replace(
+                _FLESHMONGER_GUARD_CIRCUIT_POLICY,
+                practice_skill=context.practice_skill,
             )
-            if recent_xp is None or recent_xp > 0:
-                return replace(
-                    _FLESHMONGER_GUARD_CIRCUIT_POLICY,
-                    practice_skill=context.practice_skill,
-                )
         return replace(
             _UNAVAILABLE_POLICY,
             minimum_level=10,
@@ -2333,9 +2768,13 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             if context.policy_xp_deltas is not None
             else None
         )
-        nanny_is_productive = nanny_recent_xp is None or nanny_recent_xp > 0
+        nanny_is_productive = (
+            nanny_recent_xp is None
+            or nanny_recent_xp >= _MEANINGFUL_LEVEL_SEVEN_SEGMENT_XP
+        )
         established_circuits_depleted = all(
-            recent_xp is not None and recent_xp <= 0
+            recent_xp is not None
+            and recent_xp < _MEANINGFUL_LEVEL_SEVEN_SEGMENT_XP
             for recent_xp in (
                 circus_recent_xp,
                 moria_recent_xp,
@@ -2352,13 +2791,46 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 _GNOME_LEVEL_SEVEN_POLICY.policy_id,
             }
         ):
+            completed = context.policy_xp_deltas or {}
+            if _GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY.policy_id not in completed:
+                return replace(
+                    _GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            for policy in (
+                _GNOME_SMALL_TROLL_CASTER_LEVEL_SEVEN_POLICY,
+                _AMBUSH_CASTER_LEVEL_SEVEN_POLICY,
+            ):
+                recent_xp = completed.get(policy.policy_id)
+                if (
+                    recent_xp is None
+                    or recent_xp >= _MEANINGFUL_LEVEL_SEVEN_SEGMENT_XP
+                ):
+                    return replace(
+                        policy,
+                        practice_skill=context.practice_skill,
+                    )
             return replace(
-                _GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY,
+                _GNOME_SMALL_TROLL_CASTER_LEVEL_SEVEN_POLICY,
                 practice_skill=context.practice_skill,
             )
+        caster_rotation = (
+            _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY,
+            _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY,
+            _GNOME_LEVEL_SEVEN_POLICY,
+            _MORIA_LEVEL_SEVEN_ORC_POLICY,
+        )
+        caster_previous_indexes = {
+            policy.policy_id: index for index, policy in enumerate(caster_rotation)
+        }
+        caster_previous_index = caster_previous_indexes.get(context.last_policy_id)
+        caster_recent_xp = (
+            (context.policy_xp_deltas or {}).get(context.last_policy_id or "")
+        )
         if (
             field_caster
             and not established_circuits_depleted
+            and caster_recent_xp is None
             and context.last_policy_id
             == _CIRCUS_ILLUSIONIST_LEVEL_SEVEN_POLICY.policy_id
         ):
@@ -2369,6 +2841,7 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         if (
             field_caster
             and not established_circuits_depleted
+            and caster_recent_xp is None
             and context.last_policy_id
             == _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY.policy_id
         ):
@@ -2376,6 +2849,20 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 _GNOME_LEVEL_SEVEN_POLICY,
                 practice_skill=context.practice_skill,
             )
+        if (
+            field_caster
+            and not established_circuits_depleted
+            and caster_previous_index is not None
+            and context.policy_xp_deltas is not None
+            and context.last_policy_id in context.policy_xp_deltas
+        ):
+            policy = _next_productive_policy(
+                caster_rotation,
+                previous_index=caster_previous_index,
+                xp_deltas=context.policy_xp_deltas,
+                minimum_xp=_MEANINGFUL_LEVEL_SEVEN_SEGMENT_XP,
+            )
+            return replace(policy, practice_skill=context.practice_skill)
         if (
             context.last_policy_id
             == _GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY.policy_id
@@ -2414,6 +2901,36 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         ):
             return replace(
                 _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            field_caster
+            and established_circuits_depleted
+            and context.last_policy_id
+            == _DAYCARE_ARMED_GUARD_LEVEL_SEVEN_POLICY.policy_id
+        ):
+            completed = context.policy_xp_deltas or {}
+            if _GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY.policy_id not in completed:
+                return replace(
+                    _GNOME_GUARD_CASTER_LEVEL_SEVEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            expanded_rotation = (
+                _GNOME_SMALL_TROLL_CASTER_LEVEL_SEVEN_POLICY,
+                _AMBUSH_CASTER_LEVEL_SEVEN_POLICY,
+            )
+            for policy in expanded_rotation:
+                recent_xp = completed.get(policy.policy_id)
+                if (
+                    recent_xp is None
+                    or recent_xp >= _MEANINGFUL_LEVEL_SEVEN_SEGMENT_XP
+                ):
+                    return replace(
+                        policy,
+                        practice_skill=context.practice_skill,
+                    )
+            return replace(
+                _GNOME_SMALL_TROLL_CASTER_LEVEL_SEVEN_POLICY,
                 practice_skill=context.practice_skill,
             )
         if (
@@ -2536,6 +3053,215 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             _MUD_SCHOOL_RESEARCH_POLICY,
             practice_skill=context.practice_skill,
         )
+    if (
+        field_martial
+        and context.character_class == "thief"
+        and normalized_level == 13
+    ):
+        completed = context.policy_xp_deltas or {}
+        aruncus_xp = completed.get(_PLAINS_ARUNCUS_RESEARCH_POLICY.policy_id)
+        aruncus_pursuit_xp = completed.get(
+            _PLAINS_ARUNCUS_THIEF_PURSUIT_RESEARCH_POLICY.policy_id
+        )
+        fleshmonger_xp = completed.get(
+            _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY.policy_id
+        )
+        if aruncus_xp is not None and (
+            aruncus_pursuit_xp is None or aruncus_pursuit_xp > 0
+        ):
+            return replace(
+                _PLAINS_ARUNCUS_THIEF_PURSUIT_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            aruncus_pursuit_xp is not None
+            and aruncus_pursuit_xp <= 0
+            and fleshmonger_xp is not None
+            and fleshmonger_xp <= 0
+            and context.last_policy_id
+            == _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY.policy_id
+        ):
+            return replace(
+                _PLAINS_ARUNCUS_THIEF_PURSUIT_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if aruncus_xp is not None and (
+            fleshmonger_xp is None or fleshmonger_xp > 0
+        ):
+            return replace(
+                _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if aruncus_xp is not None and fleshmonger_xp <= 0:
+            return replace(
+                _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY,
+                summary=(
+                    "Retry the verified level-13 Fleshmonger rotation under the "
+                    "campaign stall and outside-area reset controller."
+                ),
+                evidence=(
+                    *_FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY.evidence,
+                    "A zero-XP Fleshmonger pass after the retired Aruncus "
+                    "evidence loop is temporary area depletion, not proof that "
+                    "the source-backed route has become invalid.",
+                    "The campaign stall controller bounds immediate retries, "
+                    "logs out at the healer, waits outside the area, and then "
+                    "retries after an area-reset window.",
+                ),
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id
+            == _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY.policy_id
+            and fleshmonger_xp is not None
+            and fleshmonger_xp > 0
+        ):
+            return replace(
+                _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY,
+                practice_skill=context.practice_skill,
+            )
+    if normalized_level == 12:
+        return replace(
+            _PLAINS_ARUNCUS_LEVEL_TWELVE_RESEARCH_POLICY,
+            practice_skill=context.practice_skill,
+        )
+    if 13 <= normalized_level <= 15:
+        return replace(
+            _PLAINS_ARUNCUS_RESEARCH_POLICY,
+            practice_skill=context.practice_skill,
+        )
+    if 16 <= normalized_level <= 20:
+        watchman_policy = _research_hunt_policy(
+            context,
+            probe=_MIRROR_REALM_WATCHMAN_RESEARCH_POLICY,
+            hunt=_MIRROR_REALM_WATCHMAN_HUNT_POLICY,
+        )
+        if watchman_policy is not None:
+            return replace(watchman_policy, practice_skill=context.practice_skill)
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=16,
+            maximum_level=20,
+            summary=(
+                "The Mirror Realm watchman hunt produced no viable progress "
+                "on this reboot; wait for a new reboot before repeating the "
+                "source-backed probe."
+            ),
+            evidence=_MIRROR_REALM_WATCHMAN_RESEARCH_POLICY.evidence,
+            practice_skill=context.practice_skill,
+        )
+    if 21 <= normalized_level <= 25:
+        watchman_policy = _research_hunt_policy(
+            context,
+            probe=_MIRROR_REALM_WATCHMAN_LEVEL_TWENTY_ONE_RESEARCH_POLICY,
+            hunt=_MIRROR_REALM_WATCHMAN_LEVEL_TWENTY_ONE_HUNT_POLICY,
+        )
+        if watchman_policy is not None:
+            return replace(watchman_policy, practice_skill=context.practice_skill)
+        if not _research_result_recorded(
+            context,
+            _MIRROR_REALM_GARDENER_RESEARCH_POLICY.policy_id,
+        ):
+            return replace(
+                _MIRROR_REALM_GARDENER_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=21,
+            maximum_level=25,
+            summary=(
+                "The Mirror Realm gardener probe is recorded for this reboot; "
+                "do not authorize combat until its route and consider evidence "
+                "are reviewed."
+            ),
+            evidence=_MIRROR_REALM_GARDENER_RESEARCH_POLICY.evidence,
+            practice_skill=context.practice_skill,
+        )
+    if 26 <= normalized_level <= 30:
+        guardian_policy = _research_hunt_policy(
+            context,
+            probe=_MIRROR_REALM_GUARDIAN_RESEARCH_POLICY,
+            hunt=_MIRROR_REALM_GUARDIAN_HUNT_POLICY,
+        )
+        if guardian_policy is not None:
+            return replace(guardian_policy, practice_skill=context.practice_skill)
+        if not _research_result_recorded(
+            context,
+            _SHIRE_BATTLE_MASTER_RESEARCH_POLICY.policy_id,
+        ):
+            return replace(
+                _SHIRE_BATTLE_MASTER_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=26,
+            maximum_level=30,
+            summary=(
+                "The Shire battle-master probe is recorded for this reboot; "
+                "do not authorize combat until its route and consider evidence "
+                "are reviewed."
+            ),
+            evidence=_SHIRE_BATTLE_MASTER_RESEARCH_POLICY.evidence,
+            practice_skill=context.practice_skill,
+        )
+    if 31 <= normalized_level <= 35:
+        gatekeeper_policy = _research_hunt_policy(
+            context,
+            probe=_MINOTAUR_GATEKEEPER_RESEARCH_POLICY,
+            hunt=_MINOTAUR_GATEKEEPER_HUNT_POLICY,
+        )
+        if gatekeeper_policy is not None:
+            return replace(gatekeeper_policy, practice_skill=context.practice_skill)
+        if not _research_result_recorded(
+            context,
+            _GALAXY_CANCER_RESEARCH_POLICY.policy_id,
+        ):
+            return replace(
+                _GALAXY_CANCER_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=31,
+            maximum_level=35,
+            summary=(
+                "The Galaxy Cancer probe is recorded for this reboot; do not "
+                "authorize combat until its route and consider evidence are "
+                "reviewed."
+            ),
+            evidence=_GALAXY_CANCER_RESEARCH_POLICY.evidence,
+            practice_skill=context.practice_skill,
+        )
+    if 36 <= normalized_level <= 40:
+        completed = context.policy_xp_deltas or {}
+        if _MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY.policy_id not in completed:
+            return replace(
+                _MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=36,
+            maximum_level=40,
+            summary=(
+                "The Mirror Realm Jerry Garcia probe is recorded for this reboot; "
+                "do not authorize combat until its route and consider evidence are "
+                "reviewed."
+            ),
+            evidence=_MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY.evidence,
+            practice_skill=context.practice_skill,
+        )
+    if 41 <= normalized_level <= 45:
+        if _PIT_OFFICIAL_RESEARCH_POLICY.policy_id not in (context.policy_xp_deltas or {}):
+            return replace(_PIT_OFFICIAL_RESEARCH_POLICY, practice_skill=context.practice_skill)
+        return replace(
+            _UNAVAILABLE_POLICY, minimum_level=41, maximum_level=45,
+            summary="The Pit Official probe is recorded; do not authorize combat until its evidence is reviewed.",
+            evidence=_PIT_OFFICIAL_RESEARCH_POLICY.evidence,
+            practice_skill=context.practice_skill,
+        )
     return replace(
         _UNAVAILABLE_POLICY,
         minimum_level=normalized_level,
@@ -2555,18 +3281,68 @@ def _boot_kill_count(
     )
 
 
+def _research_result_recorded(context: ProgressionContext, policy_id: str) -> bool:
+    result = (context.research_results or {}).get(policy_id)
+    if not isinstance(result, Mapping):
+        return False
+    return (
+        result.get("boot_id") == context.world_boot_id
+        and isinstance(result.get("observed"), bool)
+    )
+
+
+def _research_result_is_viable(context: ProgressionContext, policy_id: str) -> bool:
+    result = (context.research_results or {}).get(policy_id)
+    return bool(
+        isinstance(result, Mapping)
+        and result.get("boot_id") == context.world_boot_id
+        and result.get("observed") is True
+        and result.get("viable") is True
+    )
+
+
+def _research_hunt_policy(
+    context: ProgressionContext,
+    *,
+    probe: ProgressionPolicy,
+    hunt: ProgressionPolicy,
+) -> ProgressionPolicy | None:
+    """Promote a reboot-scoped viable probe into a bounded live hunt."""
+    if context.last_policy_id == hunt.policy_id:
+        if (
+            (context.policy_xp_deltas or {}).get(hunt.policy_id, 0) > 0
+            and _research_result_is_viable(context, hunt.policy_id)
+        ):
+            return hunt
+        if _research_result_recorded(context, hunt.policy_id):
+            return None
+        return probe
+    if context.last_policy_id == probe.policy_id:
+        if _research_result_is_viable(context, probe.policy_id):
+            return hunt
+        if _research_result_recorded(context, probe.policy_id):
+            return None
+    if (
+        _research_result_recorded(context, probe.policy_id)
+        or _research_result_recorded(context, hunt.policy_id)
+    ):
+        return None
+    return probe
+
+
 def _next_productive_policy(
     rotation: tuple[ProgressionPolicy, ...],
     *,
     previous_index: int,
     xp_deltas: Mapping[str, int] | None,
+    minimum_xp: int = _MEANINGFUL_FIELD_SEGMENT_XP,
 ) -> ProgressionPolicy:
     ordered = rotation[previous_index + 1 :] + rotation[: previous_index + 1]
     if not xp_deltas:
         return ordered[0]
     for policy in ordered:
         recent_xp = xp_deltas.get(policy.policy_id)
-        if recent_xp is None or recent_xp >= _MEANINGFUL_FIELD_SEGMENT_XP:
+        if recent_xp is None or recent_xp >= minimum_xp:
             return policy
     return max(ordered, key=lambda policy: xp_deltas.get(policy.policy_id, 0))
 

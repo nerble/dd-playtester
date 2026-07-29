@@ -30,8 +30,9 @@ select behavior.
   resources, stat priorities, and equipment restrictions.
 - **Level-band policy:** suitable targets, protection requirements, kill limits,
   recovery points, and fallback actions.
-- **Execution adapter:** direct Telnet/GMCP is primary. A later Mudlet/VM adapter
-  must consume the same decisions and emit the same observations.
+- **Execution adapter:** direct Telnet/GMCP is primary. The Mudlet shared-file
+  bridge consumes the same decisions and emits the same GMCP/text observations;
+  VM and profile lifecycle automation remains a separate validation boundary.
 
 ## Representative Proof
 
@@ -41,3 +42,8 @@ matrix runner advances them round-robin, persists each campaign independently,
 continues after an isolated failure, and succeeds only when all three reach
 level 10. Live evidence, not configuration or unit tests alone, is required to
 claim that proof complete.
+
+Use `python -m dd4tester matrix-coverage <matrix.yaml>` to inspect both
+declared source-legal pair coverage and persisted target-level evidence. The
+two counts are intentionally separate: a generated entry is not validation
+until its campaign checkpoint records the matrix target level.
