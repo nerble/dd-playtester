@@ -67,6 +67,19 @@ def test_neck_gap_selects_war_dog_collar_damage_recovery() -> None:
     assert "+1 damroll" in policy.summary
 
 
+def test_martial_with_ring_selects_foundry_set_circlet_recovery() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        needs_foundry_set_circlet=True,
+    )
+
+    assert policy.policy_id == "recover-foundry-set-circlet"
+    assert policy.execution == "recover-foundry-set-circlet"
+    assert policy.segment_kill_limit == 1
+    assert "+2 strength" in policy.summary
+
+
 @pytest.mark.parametrize("character_class", sorted(CLASS_PRACTICE_SKILLS))
 def test_level_two_to_six_policy_is_verified_and_executable(
     character_class: str,
@@ -649,6 +662,19 @@ def test_level_seven_buys_flight_before_depleted_moria_rotation() -> None:
     assert policy.execution == "buy-flight"
 
 
+def test_critical_coin_encumbrance_preempts_field_progression() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        needs_coin_deposit=True,
+        needs_piercing_weapon_upgrade=True,
+        has_flight=True,
+    )
+
+    assert policy.policy_id == "bank-excess-coins"
+    assert policy.execution == "bank-excess-coins"
+
+
 def test_stalled_level_seven_non_mage_uses_daycare_fallback() -> None:
     policy = policy_for(7, "thief", stalled_segments=1)
 
@@ -1196,6 +1222,31 @@ def test_missing_primary_weapon_selects_safe_rearm_maintenance() -> None:
     assert policy.execution == "rearm-weapon"
 
 
+def test_thief_missing_piercing_primary_selects_safe_rearm_maintenance() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        has_weapon=True,
+        needs_piercing_weapon=True,
+    )
+
+    assert policy.policy_id == "rearm-primary-weapon"
+    assert policy.execution == "rearm-weapon"
+
+
+def test_bounty_hunter_missing_pounding_weapon_selects_rearm_maintenance() -> None:
+    policy = policy_for(
+        30,
+        "thief",
+        subclass="bounty hunter",
+        has_weapon=True,
+        needs_pounding_weapon=True,
+    )
+
+    assert policy.policy_id == "rearm-primary-weapon"
+    assert policy.execution == "rearm-weapon"
+
+
 def test_sellable_loot_selects_safe_liquidation_before_the_next_hunt() -> None:
     policy = policy_for(
         8,
@@ -1208,13 +1259,147 @@ def test_sellable_loot_selects_safe_liquidation_before_the_next_hunt() -> None:
     assert policy.execution == "sell-loot"
 
 
-def test_level_ten_mage_acquires_sanctuary_before_hunting() -> None:
+def test_level_ten_mage_collects_shared_fleshmonger_probe_before_hunting() -> None:
     policy = policy_for(10, "mage", has_large_sack=True)
+
+    assert policy.policy_id == "fleshmonger-guard-probe-10-12"
+    assert policy.execution == "fleshmonger-guard-research"
+    assert policy.status == "research"
+    assert policy.executable
+
+
+def test_level_ten_mage_acquires_sanctuary_after_shared_probe() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        policy_xp_deltas={"fleshmonger-guard-probe-10-12": 0},
+    )
 
     assert policy.policy_id == "moria-sanctuary-10-11"
     assert policy.execution == "moria-sanctuary-hunt"
     assert policy.maximum_level == 11
     assert policy.segment_kill_limit == 1
+
+
+def test_level_ten_mage_rotates_from_empty_moria_to_guard_research() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "moria-sanctuary-10-11": 0,
+        },
+        last_policy_id="moria-sanctuary-10-11",
+    )
+
+    assert policy.policy_id == "fleshmonger-mage-guard-kill-research-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "fleshmonger-guard-hunt"
+    assert policy.segment_kill_limit == 1
+    assert policy.executable
+
+
+def test_level_ten_mage_moves_from_empty_moria_and_guard_to_orc_research() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "moria-sanctuary-10-11": 0,
+            "fleshmonger-mage-guard-kill-research-10-11": 0,
+        },
+        last_policy_id="moria-sanctuary-10-11",
+    )
+
+    assert policy.policy_id == "moria-large-orc-mage-research-10-11"
+    assert policy.status == "research"
+    assert policy.executable
+
+
+def test_level_ten_mage_does_not_return_to_moria_after_nonviable_guard() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "moria-sanctuary-10-11": 0,
+            "fleshmonger-mage-guard-kill-research-10-11": 0,
+        },
+        last_policy_id="fleshmonger-mage-guard-kill-research-10-11",
+    )
+
+    assert policy.policy_id == "moria-large-orc-mage-research-10-11"
+    assert policy.status == "research"
+    assert policy.executable
+
+
+def test_level_ten_mage_uses_two_stop_moria_orc_research_after_guard() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "moria-sanctuary-10-11": 0,
+            "fleshmonger-mage-guard-kill-research-10-11": 0,
+        },
+        last_policy_id="fleshmonger-mage-guard-kill-research-10-11",
+    )
+
+    assert policy.policy_id == "moria-large-orc-mage-research-10-11"
+    assert policy.status == "research"
+    assert policy.execution == "moria-large-orc-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_ten_mage_promotes_productive_moria_orc_research() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "moria-sanctuary-10-11": 0,
+            "fleshmonger-mage-guard-kill-research-10-11": 0,
+            "moria-large-orc-mage-research-10-11": 539,
+        },
+        last_policy_id="moria-large-orc-mage-research-10-11",
+    )
+
+    assert policy.policy_id == "moria-large-orc-mage-10-11"
+    assert policy.status == "verified"
+    assert policy.execution == "moria-large-orc-hunt"
+
+
+def test_level_ten_mage_retries_absent_moria_orc_after_reset_wait() -> None:
+    policy = policy_for(
+        10,
+        "mage",
+        has_large_sack=True,
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "moria-sanctuary-10-11": 0,
+            "fleshmonger-mage-guard-kill-research-10-11": 0,
+            "moria-large-orc-mage-research-10-11": 0,
+        },
+        research_results={
+            "moria-large-orc-mage-research-10-11": {
+                "absent": True,
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+        world_boot_id="boot-1",
+        last_policy_id="moria-large-orc-mage-research-10-11",
+    )
+
+    assert policy.policy_id == "moria-large-orc-mage-research-10-11"
+    assert policy.executable
 
 
 def test_level_ten_mage_spends_confirmed_sanctuary_on_fresh_raider() -> None:
@@ -1223,6 +1408,7 @@ def test_level_ten_mage_spends_confirmed_sanctuary_on_fresh_raider() -> None:
         "mage",
         has_large_sack=True,
         has_sanctuary_potion=True,
+        policy_xp_deltas={"fleshmonger-guard-probe-10-12": 0},
     )
 
     assert policy.policy_id == "ambush-goblin-raider-10-11"
@@ -1237,6 +1423,7 @@ def test_level_ten_mage_rotates_from_repeated_raider_to_vile_goblin() -> None:
         has_large_sack=True,
         has_sanctuary_potion=True,
         boot_kill_counts={"goblin raider": 2, "vile goblin": 1},
+        policy_xp_deltas={"fleshmonger-guard-probe-10-12": 0},
     )
 
     assert policy.policy_id == "ambush-vile-goblin-10-11"
@@ -1276,11 +1463,63 @@ def test_thief_piercing_upgrade_selects_bounded_forest_research() -> None:
         has_flight=True,
     )
 
-    assert policy.policy_id == "forest-bear-claws-upgrade-10-14"
+    assert policy.policy_id == "forest-bear-claws-upgrade-10-29"
     assert policy.status == "research"
     assert policy.execution == "upgrade-piercing-weapon"
     assert policy.segment_kill_limit == 1
     assert policy.practice_skill == "backstab"
+
+
+def test_thief_selects_thalos_intermediate_upgrade_after_blocked_forest() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        needs_intermediate_piercing_weapon_upgrade=True,
+        needs_piercing_weapon_upgrade=True,
+        piercing_weapon_upgrade_attempted=True,
+    )
+
+    assert policy.policy_id == "thalos-long-dagger-upgrade-10-29"
+    assert policy.status == "research"
+    assert policy.execution == "upgrade-piercing-weapon"
+    assert policy.segment_kill_limit == 1
+
+
+def test_thalos_intermediate_failure_respects_shared_upgrade_cooldown() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        needs_intermediate_piercing_weapon_upgrade=True,
+        intermediate_piercing_weapon_upgrade_attempted=True,
+        needs_piercing_weapon_upgrade=True,
+        piercing_weapon_upgrade_attempted=True,
+    )
+
+    assert policy.execution != "upgrade-piercing-weapon"
+
+
+def test_level_fifteen_thief_retains_material_piercing_upgrade() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        has_flight=True,
+    )
+
+    assert policy.policy_id == "forest-bear-claws-upgrade-10-29"
+    assert policy.maximum_level == 29
+
+
+def test_level_thirty_thief_leaves_pre_subclass_piercing_upgrade() -> None:
+    policy = policy_for(
+        30,
+        "thief",
+        subclass="ninja",
+        needs_piercing_weapon_upgrade=True,
+        has_flight=True,
+    )
+
+    assert policy.execution != "upgrade-piercing-weapon"
 
 
 def test_thief_does_not_take_forest_route_without_enough_nonflight_capacity() -> None:
@@ -2014,6 +2253,23 @@ def test_level_thirteen_thief_adds_bounded_pursuit_after_aruncus_survey() -> Non
     assert "room 344" in " ".join(policy.evidence)
 
 
+@pytest.mark.parametrize("level", [13, 14, 15])
+def test_successful_aruncus_pursuit_promotes_verified_thief_hunt(level: int) -> None:
+    policy = policy_for(
+        level,
+        "thief",
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
+    assert policy.status == "verified"
+    assert policy.execution == "plains-aruncus-hunt"
+    assert "Live run 1879" in " ".join(policy.evidence)
+
+
 def test_level_thirteen_thief_defers_empty_fleshmonger_to_reset_controller() -> None:
     policy = policy_for(
         13,
@@ -2045,6 +2301,866 @@ def test_level_thirteen_thief_rotates_from_empty_fleshmonger_to_aruncus() -> Non
 
     assert policy.policy_id == "plains-aruncus-thief-pursuit-research-13-15"
     assert policy.execution == "plains-aruncus-hunt"
+
+
+def test_level_thirteen_thief_rotates_empty_verified_aruncus_to_fleshmonger() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-12-13"
+
+
+def test_level_thirteen_thief_probes_bardoosh_after_three_aruncus_kills() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        boot_kill_counts={"Aruncus the Druid": 3},
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 598,
+            "fleshmonger-thief-rotation-12-13": 0,
+        },
+    )
+
+    assert policy.policy_id == "ambush-bardoosh-thief-kill-research-13"
+    assert policy.status == "research"
+    assert policy.execution == "ambush-bardoosh-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_fourteen_thief_probes_worker_circuit_after_aruncus() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        world_boot_id="boot-2",
+        boot_kill_counts={"Aruncus the Druid": 10},
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 515,
+        },
+    )
+
+    assert policy.policy_id == "dwarven-workers-thief-probe-13-15"
+    assert policy.execution == "dwarven-workers-research"
+
+
+def test_level_fourteen_thief_leaves_retired_worker_combat_for_toad_probe() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="dwarven-workers-thief-probe-13-15",
+        world_boot_id="boot-2",
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 515,
+        },
+        research_results={
+            "dwarven-workers-thief-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-probe-14-15"
+    assert policy.execution == "mahntor-rock-toad-research"
+
+
+def test_level_fourteen_thief_rotates_retired_worker_hunt_to_rock_toad_probe() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="dwarven-workers-thief-kill-research-13-15",
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 515,
+            "dwarven-workers-thief-kill-research-13-15": 900,
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-probe-14-15"
+    assert policy.execution == "mahntor-rock-toad-research"
+
+
+def test_level_fourteen_thief_rotates_viable_worker_probe_to_rock_toad_probe() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="dwarven-workers-thief-probe-13-15",
+        world_boot_id="boot-2",
+        research_results={
+            "dwarven-workers-thief-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-probe-14-15"
+    assert policy.execution == "mahntor-rock-toad-research"
+
+
+def test_level_fourteen_thief_promotes_viable_rock_toad_probe_to_one_kill() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-probe-14-15",
+        world_boot_id="boot-2",
+        research_results={
+            "mahntor-rock-toad-thief-probe-14-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-kill-research-14-15"
+    assert policy.execution == "mahntor-rock-toad-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_fourteen_thief_promotes_successful_toad_kill_to_circuit() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-kill-research-14-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-kill-research-14-15": 1001,
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-14-15"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.status == "verified"
+    assert policy.segment_kill_limit == 2
+
+
+def test_level_fourteen_thief_repeats_productive_toad_without_sanctuary() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-14-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-kill-research-14-15": 1001,
+            "mahntor-rock-toad-thief-circuit-14-15": 1800,
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-14-15"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.segment_kill_limit == 2
+
+
+def test_level_fifteen_thief_rotates_productive_toad_to_known_aruncus_hunt() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-14-15",
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 541,
+            "mahntor-rock-toad-thief-kill-research-14-15": 473,
+            "mahntor-rock-toad-thief-circuit-14-15": 407,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+    assert "resets can repopulate" in policy.summary
+
+
+def test_level_fifteen_thief_rotates_repeated_one_kill_toad_to_aruncus() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-kill-research-14-15",
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 541,
+            "mahntor-rock-toad-thief-kill-research-14-15": 719,
+            "mahntor-rock-toad-thief-circuit-14-15": 588,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+    assert "one-kill Rock Toad" in policy.summary
+
+
+def test_level_fifteen_thief_rotates_productive_toad_to_viable_treasurer() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-14-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-kill-research-14-15": 473,
+            "mahntor-rock-toad-thief-circuit-14-15": 407,
+        },
+        boot_kill_counts={"the treasurer": 1},
+        world_boot_id="boot-2",
+        research_results={
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "gnome-treasurer-thief-kill-research-13-15"
+    assert policy.execution == "gnome-treasurer-hunt"
+    assert "resets can repopulate" in policy.summary
+
+
+def test_level_fifteen_thief_leaves_below_band_moria_for_aruncus() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        last_policy_id="moria-sanctuary-thief-14-15",
+        excluded_policy_ids={"moria-sanctuary-thief-14-15"},
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 541,
+            "mahntor-rock-toad-thief-kill-research-14-15": 719,
+            "mahntor-rock-toad-thief-circuit-14-15": 0,
+            "moria-sanctuary-thief-14-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+    assert "below-band Moria carrier" in policy.summary
+
+
+def test_live_below_band_exclusion_is_terminal_for_selected_policy() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-14-15",
+        excluded_policy_ids={"moria-sanctuary-thief-14-15"},
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-kill-research-14-15": 719,
+            "mahntor-rock-toad-thief-circuit-14-15": 0,
+        },
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == "unregistered-10-100"
+    assert policy.executable is False
+    assert "excluded by live consider evidence" in policy.summary
+
+
+def test_level_fourteen_thief_repeats_productive_toad_with_spare_sanctuary() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-14-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-kill-research-14-15": 1001,
+            "mahntor-rock-toad-thief-circuit-14-15": 1800,
+        },
+        has_sanctuary_potion=True,
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-14-15"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_fourteen_thief_acquires_sanctuary_after_weak_toad_segment() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-14-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-kill-research-14-15": 1001,
+            "mahntor-rock-toad-thief-circuit-14-15": 115,
+        },
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-14-15"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_fourteen_thief_spends_acquired_sanctuary_on_toad_circuit() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="moria-sanctuary-thief-14-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-kill-research-14-15": 1001,
+            "mahntor-rock-toad-thief-circuit-14-15": 115,
+        },
+        has_sanctuary_potion=True,
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-14-15"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_fourteen_thief_retries_toad_when_moria_carrier_is_absent() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="moria-sanctuary-thief-14-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-kill-research-14-15": 1001,
+            "mahntor-rock-toad-thief-circuit-14-15": 115,
+            "moria-sanctuary-thief-14-15": 0,
+        },
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-14-15"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.segment_kill_limit == 2
+
+
+def test_level_fourteen_thief_retries_expanded_worker_search() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="dwarven-workers-thief-probe-13-15",
+        last_fastwalk_abort_reason=(
+            "policy revision bound the worker survey to its exact source room "
+            "line"
+        ),
+        research_results={
+            "dwarven-workers-thief-probe-13-15": {
+                "observed": False,
+                "viable": False,
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-workers-thief-probe-13-15"
+
+
+def test_level_thirteen_thief_does_not_repeat_unproductive_bardoosh() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        boot_kill_counts={"Aruncus the Druid": 5},
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+            "ambush-bardoosh-thief-kill-research-13": 0,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+
+
+def test_level_thirteen_thief_probes_nobleman_after_bardoosh_and_repeated_aruncus() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        boot_kill_counts={"Aruncus the Druid": 8},
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 482,
+            "ambush-bardoosh-thief-kill-research-13": 125,
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-probe-13-15"
+    assert policy.status == "research"
+    assert policy.execution == "dwarven-nobleman-research"
+    assert policy.segment_kill_limit is None
+
+
+def test_level_thirteen_thief_returns_to_aruncus_after_nobleman_probe() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-probe-13-15",
+        boot_kill_counts={"Aruncus the Druid": 8},
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 482,
+            "ambush-bardoosh-thief-kill-research-13": 125,
+            "dwarven-nobleman-thief-probe-13-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+
+
+def test_level_thirteen_thief_retries_nobleman_after_destination_hop_fix() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        last_fastwalk_abort_reason=(
+            "policy revision removed the redundant nobleman destination hop"
+        ),
+        boot_kill_counts={"Aruncus the Druid": 8},
+        policy_xp_deltas={
+            "ambush-bardoosh-thief-kill-research-13": 125,
+            "dwarven-nobleman-thief-probe-13-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-probe-13-15"
+    assert policy.execution == "dwarven-nobleman-research"
+
+
+def test_level_thirteen_thief_retries_nobleman_after_exact_identity_fix() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-probe-13-15",
+        last_fastwalk_abort_reason=(
+            "policy revision aligned the nobleman stop with its source identity"
+        ),
+        boot_kill_counts={"Aruncus the Druid": 8},
+        policy_xp_deltas={
+            "ambush-bardoosh-thief-kill-research-13": 125,
+            "dwarven-nobleman-thief-probe-13-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-probe-13-15"
+    assert policy.execution == "dwarven-nobleman-research"
+
+
+def test_level_thirteen_thief_promotes_viable_nobleman_probe_to_one_hunt() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-probe-13-15",
+        world_boot_id="boot-1",
+        boot_kill_counts={"Aruncus the Druid": 8},
+        policy_xp_deltas={
+            "ambush-bardoosh-thief-kill-research-13": 125,
+            "dwarven-nobleman-thief-probe-13-15": 0,
+        },
+        research_results={
+            "dwarven-nobleman-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-kill-research-13-15"
+    assert policy.execution == "dwarven-nobleman-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_thirteen_thief_rechecks_absent_nobleman_after_two_other_areas() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        world_boot_id="boot-1",
+        boot_kill_counts={"Aruncus the Druid": 8},
+        policy_xp_deltas={
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+            "ambush-bardoosh-thief-kill-research-13": 125,
+            "dwarven-nobleman-thief-probe-13-15": 0,
+        },
+        research_results={
+            "dwarven-nobleman-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-probe-13-15"
+    assert policy.execution == "dwarven-nobleman-research"
+    assert "outside-area" in policy.summary
+
+
+def test_level_thirteen_thief_probes_treasurer_after_rejected_live_nobleman() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        world_boot_id="boot-1",
+        boot_kill_counts={"Aruncus the Druid": 8},
+        policy_xp_deltas={
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+            "ambush-bardoosh-thief-kill-research-13": 125,
+            "dwarven-nobleman-thief-probe-13-15": 0,
+        },
+        research_results={
+            "dwarven-nobleman-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": False,
+            }
+        },
+    )
+
+    assert policy.policy_id == "gnome-treasurer-thief-probe-13-15"
+    assert policy.execution == "gnome-treasurer-research"
+
+
+def test_level_thirteen_thief_promotes_viable_treasurer_probe_to_one_hunt() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="gnome-treasurer-thief-probe-13-15",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "gnome-treasurer-thief-probe-13-15": 0,
+        },
+        research_results={
+            "dwarven-workers-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+            },
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "gnome-treasurer-thief-kill-research-13-15"
+    assert policy.execution == "gnome-treasurer-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_thirteen_thief_rotates_empty_fleshmonger_to_productive_treasurer() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 0,
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+            "gnome-treasurer-thief-kill-research-13-15": 410,
+        },
+        research_results={
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "gnome-treasurer-thief-kill-research-13-15"
+    assert policy.execution == "gnome-treasurer-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_thirteen_thief_continues_productive_treasurer_after_maintenance() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="gnome-treasurer-thief-kill-research-13-15",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "fleshmonger-thief-rotation-12-13": 0,
+            "gnome-treasurer-thief-kill-research-13-15": 230,
+        },
+        research_results={
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "gnome-treasurer-thief-kill-research-13-15"
+    assert policy.execution == "gnome-treasurer-hunt"
+
+
+def test_level_thirteen_thief_leaves_empty_treasury_for_reset_interval() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="gnome-treasurer-thief-kill-research-13-15",
+        world_boot_id="boot-1",
+        boot_kill_counts={"the treasurer": 4},
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+            "gnome-treasurer-thief-kill-research-13-15": 0,
+        },
+        research_results={
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "fleshmonger-thief-rotation-12-13"
+
+
+def test_level_thirteen_thief_retries_treasurer_after_reset_interval() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        world_boot_id="boot-1",
+        boot_kill_counts={"the treasurer": 4},
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+            "gnome-treasurer-thief-kill-research-13-15": 0,
+        },
+        research_results={
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "gnome-treasurer-thief-kill-research-13-15"
+    assert policy.execution == "gnome-treasurer-hunt"
+
+
+def test_level_thirteen_thief_rechecks_rejected_nobleman_after_reboot() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="fleshmonger-thief-rotation-12-13",
+        world_boot_id="boot-2",
+        boot_kill_counts={"Aruncus the Druid": 8},
+        policy_xp_deltas={
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+            "ambush-bardoosh-thief-kill-research-13": 125,
+            "dwarven-nobleman-thief-probe-13-15": 0,
+        },
+        research_results={
+            "dwarven-nobleman-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": False,
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-probe-13-15"
+    assert "reboot" in policy.summary
+
+
+def test_level_thirteen_thief_returns_to_aruncus_after_bardoosh_attempt() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="ambush-bardoosh-thief-kill-research-13",
+        boot_kill_counts={"Aruncus the Druid": 5},
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "fleshmonger-thief-rotation-12-13": 0,
+            "ambush-bardoosh-thief-kill-research-13": 0,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
+    assert policy.execution == "plains-aruncus-hunt"
+
+
+def test_level_thirteen_thief_retries_bardoosh_after_route_interruption() -> None:
+    policy = policy_for(
+        13,
+        "thief",
+        last_policy_id="ambush-bardoosh-thief-kill-research-13",
+        last_fastwalk_abort_reason=(
+            "unexpected combat interrupted fastwalk 'ambush' before its objective"
+        ),
+        boot_kill_counts={"Aruncus the Druid": 5},
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "ambush-bardoosh-thief-kill-research-13": 0,
+        },
+    )
+
+    assert policy.policy_id == "ambush-bardoosh-thief-kill-research-13"
+    assert policy.execution == "ambush-bardoosh-hunt"
+    assert "interrupted" in policy.summary
+
+
+def test_level_fourteen_thief_keeps_empty_aruncus_under_reset_controller() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
+    assert policy.status == "verified"
+
+
+def test_level_fourteen_thief_rotates_empty_aruncus_to_viable_treasurer() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        world_boot_id="boot-1",
+        boot_kill_counts={"the treasurer": 5},
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "gnome-treasurer-thief-kill-research-13-15": 0,
+        },
+        research_results={
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "gnome-treasurer-thief-kill-research-13-15"
+    assert policy.execution == "gnome-treasurer-hunt"
+    assert "empty or escaped Aruncus" in policy.summary
+
+
+def test_level_fifteen_thief_rotates_empty_aruncus_to_productive_toad() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        excluded_policy_ids={"gnome-treasurer-thief-kill-research-13-15"},
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "mahntor-rock-toad-thief-kill-research-14-15": 1001,
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-kill-research-14-15"
+    assert policy.execution == "mahntor-rock-toad-hunt"
+    assert "empty or escaped Aruncus" in policy.summary
+
+
+def test_level_fifteen_thief_uses_reboot_kills_after_latest_toad_was_empty() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        boot_kill_counts={"the Rock Toad": 5},
+        excluded_policy_ids={"gnome-treasurer-thief-kill-research-13-15"},
+        policy_xp_deltas={
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 0,
+            "mahntor-rock-toad-thief-kill-research-14-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-kill-research-14-15"
+    assert policy.execution == "mahntor-rock-toad-hunt"
+    assert "same-reboot kills" in policy.summary
+
+
+def test_level_fourteen_thief_rotates_killed_aruncus_to_viable_treasurer() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        world_boot_id="boot-1",
+        boot_kill_counts={
+            "Aruncus the Druid": 1,
+            "the treasurer": 1,
+        },
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 538,
+            "gnome-treasurer-thief-kill-research-13-15": 282,
+        },
+        research_results={
+            "dwarven-workers-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+            },
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "gnome-treasurer-thief-kill-research-13-15"
+    assert "single reset" in policy.summary
+
+
+def test_level_fourteen_thief_skips_same_reboot_below_band_treasurer() -> None:
+    policy = policy_for(
+        14,
+        "thief",
+        last_policy_id="plains-aruncus-thief-hunt-13-15",
+        world_boot_id="boot-1",
+        boot_kill_counts={
+            "Aruncus the Druid": 2,
+            "the treasurer": 1,
+        },
+        policy_xp_deltas={
+            "plains-aruncus-probe-13-15": 0,
+            "plains-aruncus-thief-pursuit-research-13-15": 866,
+            "plains-aruncus-thief-hunt-13-15": 438,
+            "gnome-treasurer-thief-kill-research-13-15": 0,
+        },
+        research_results={
+            "dwarven-workers-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+            },
+            "gnome-treasurer-thief-probe-13-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            },
+        },
+        excluded_policy_ids=frozenset(
+            {"gnome-treasurer-thief-kill-research-13-15"}
+        ),
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-hunt-13-15"
 
 
 def test_level_thirteen_thief_repeats_productive_fleshmonger_rotation() -> None:
@@ -2135,7 +3251,7 @@ def test_watchman_hunt_never_uses_stale_reboot_evidence() -> None:
     assert policy.policy_id == "mirror-realm-watchman-probe-16-20"
 
 
-def test_zero_xp_watchman_hunt_waits_for_a_new_reboot() -> None:
+def test_nonviable_watchman_falls_back_to_white_stag_probe() -> None:
     policy = policy_for(
         16,
         "mage",
@@ -2151,8 +3267,2305 @@ def test_zero_xp_watchman_hunt_waits_for_a_new_reboot() -> None:
         },
     )
 
+    assert policy.policy_id == "crystalmir-white-stag-probe-16-20"
+    assert policy.execution == "crystalmir-white-stag-research"
+
+
+def test_viable_white_stag_probe_promotes_to_bounded_hunt() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        last_policy_id="crystalmir-white-stag-probe-16-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "crystalmir-white-stag-hunt-16-20"
+    assert policy.execution == "crystalmir-white-stag-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_nonviable_white_stag_falls_back_to_shadow_keep_soldier_probe() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "shadow-keep-undead-soldier-probe-16-20"
+    assert policy.execution == "shadow-keep-undead-soldier-research"
+
+
+def test_viable_shadow_keep_soldier_probe_promotes_to_bounded_hunt() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        last_policy_id="shadow-keep-undead-soldier-probe-16-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "shadow-keep-undead-soldier-hunt-16-20"
+    assert policy.execution == "shadow-keep-undead-soldier-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_viable_shadow_probe_repromotes_hunt_after_outside_progress() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "shadow-keep-undead-soldier-hunt-16-20"
+    assert policy.execution == "shadow-keep-undead-soldier-hunt"
+
+
+def test_level_seventeen_uses_galaxy_probe_after_earlier_targets_reject() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-hunt-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "galaxy-white-dwarf-probe-17-20"
+    assert policy.execution == "galaxy-white-dwarf-research"
+    assert policy.status == "research"
+
+
+def test_viable_galaxy_probe_promotes_one_bounded_hunt() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="galaxy-white-dwarf-probe-17-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-hunt-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "galaxy-white-dwarf-hunt-17-20"
+    assert policy.execution == "galaxy-white-dwarf-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seventeen_uses_nobleman_probe_after_galaxy_is_absent() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="galaxy-white-dwarf-probe-17-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-probe-17-18"
+    assert policy.execution == "dwarven-nobleman-research"
+    assert policy.status == "research"
+
+
+def test_level_seventeen_selects_red_supergiant_probe_after_white_is_absent() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        has_flight=True,
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True, "viable": False, "boot_id": "boot-1"
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+        },
+    )
+
+    assert policy.policy_id == "galaxy-red-supergiant-probe-17-20"
+    assert policy.execution == "galaxy-red-supergiant-research"
+
+
+def test_viable_red_supergiant_probe_promotes_one_bounded_hunt() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        has_flight=True,
+        last_policy_id="galaxy-red-supergiant-probe-17-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True, "viable": False, "boot_id": "boot-1"
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": True, "viable": True, "boot_id": "boot-1"
+            },
+        },
+    )
+
+    assert policy.policy_id == "galaxy-red-supergiant-hunt-17-20"
+    assert policy.execution == "galaxy-red-supergiant-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seventeen_thief_uses_jailor_after_nobleman_and_servant_reject() -> None:
+    research_results = {
+        "mirror-realm-watchman-probe-16-20": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+        "crystalmir-white-stag-probe-16-20": {
+            "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+        },
+        "shadow-keep-undead-soldier-probe-16-20": {
+            "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+        },
+        "galaxy-white-dwarf-probe-17-20": {
+            "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+        },
+        "galaxy-red-supergiant-probe-17-20": {
+            "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+        },
+        "dwarven-nobleman-thief-probe-17-18": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+        "dwarven-servant-thief-probe-17-18": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+        "dwarven-servant-thief-hunt-17-18": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+    }
+
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-servant-thief-hunt-17-18",
+        world_boot_id="boot-1",
+        research_results=research_results,
+    )
+
+    assert policy.policy_id == "hightower-jailor-probe-17-20"
+    assert policy.execution == "hightower-jailor-research"
+
+
+def test_level_seventeen_non_thief_uses_jailor_probe_after_earlier_targets_reject() -> None:
+    policy = policy_for(
+        17,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True, "viable": False, "boot_id": "boot-1"
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+        },
+    )
+
+    assert policy.policy_id == "hightower-jailor-probe-17-20"
+    assert policy.execution == "hightower-jailor-research"
+
+
+def test_viable_jailor_probe_promotes_one_bounded_hunt() -> None:
+    policy = policy_for(
+        17,
+        "warrior",
+        last_policy_id="hightower-jailor-probe-17-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True, "viable": False, "boot_id": "boot-1"
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "hightower-jailor-probe-17-20": {
+                "observed": True, "viable": True, "boot_id": "boot-1"
+            },
+        },
+    )
+
+    assert policy.policy_id == "hightower-jailor-hunt-17-20"
+    assert policy.execution == "hightower-jailor-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_failed_jailor_hunt_acquires_sanctuary_before_retry() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        last_policy_id="hightower-jailor-hunt-17-20",
+        last_fastwalk_abort_reason=(
+            "field combat aborted for safety: health at or below 10%"
+        ),
+        research_results={
+            "hightower-jailor-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "hightower-jailor-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+        },
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.status == "research"
+    assert policy.segment_kill_limit == 1
+
+
+def test_sanctuary_acquisition_returns_to_jailor_hunt() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=True,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        research_results={
+            "moria-sanctuary-thief-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "hightower-jailor-hunt-17-20"
+    assert policy.execution == "hightower-jailor-hunt"
+
+
+def test_missing_sanctuary_does_not_block_the_level_seventeen_fallback() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        excluded_policy_ids=frozenset(
+            {
+                "mahntor-rock-toad-thief-circuit-16-18",
+                "plains-aruncus-thief-fallback-17-18",
+            }
+        ),
+        policy_xp_deltas={"dwarven-nobleman-thief-hunt-17-18": 670},
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-hunt-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "moria-sanctuary-thief-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-hunt-17-18"
+    assert policy.execution == "dwarven-nobleman-hunt"
+
+
+def test_migrated_jailor_probe_can_be_replayed_after_its_stale_result_is_cleared() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="hightower-jailor-probe-17-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True, "viable": False, "boot_id": "boot-1"
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True, "viable": True, "boot_id": "boot-1"
+            },
+            "dwarven-nobleman-thief-hunt-17-18": {
+                "observed": True, "viable": True, "boot_id": "boot-1"
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True, "viable": True, "boot_id": "boot-1"
+            },
+            "dwarven-servant-thief-hunt-17-18": {
+                "observed": True, "viable": False, "boot_id": "boot-1"
+            },
+        },
+    )
+
+    assert policy.policy_id == "hightower-jailor-probe-17-20"
+    assert policy.execution == "hightower-jailor-research"
+
+
+def test_level_nineteen_reopens_watchman_research_after_level_seventeen_rejection() -> None:
+    policy = policy_for(
+        19,
+        "thief",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-probe-19-20"
+    assert policy.execution == "mirror-realm-watchman-research"
+
+
+def test_viable_level_nineteen_watchman_promotes_bounded_hunt() -> None:
+    policy = policy_for(
+        19,
+        "warrior",
+        last_policy_id="mirror-realm-watchman-probe-19-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-19-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-hunt-19-20"
+    assert policy.execution == "mirror-realm-watchman-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_viable_level_seventeen_nobleman_probe_promotes_one_hunt() -> None:
+    research_results = {
+        "mirror-realm-watchman-probe-16-20": {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        },
+        "crystalmir-white-stag-probe-16-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "shadow-keep-undead-soldier-probe-16-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "galaxy-white-dwarf-probe-17-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "galaxy-red-supergiant-probe-17-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-nobleman-thief-probe-17-18": {
+            "observed": True,
+            "viable": True,
+            "boot_id": "boot-1",
+        },
+    }
+
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-probe-17-18",
+        world_boot_id="boot-1",
+        research_results=research_results,
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-hunt-17-18"
+    assert policy.execution == "dwarven-nobleman-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_completed_level_seventeen_nobleman_hunt_rotates_onward() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-hunt-17-18",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"dwarven-nobleman-thief-hunt-17-18": 500},
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-hunt-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-servant-thief-probe-17-18"
+    assert policy.execution == "dwarven-servant-research"
+
+
+def test_viable_dwarven_servant_probe_promotes_one_bounded_hunt() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-servant-thief-probe-17-18",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-servant-thief-hunt-17-18"
+    assert policy.execution == "dwarven-servant-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_eighteen_thief_adds_shire_prince_probe_after_known_paths() -> None:
+    research_results = {
+        "mirror-realm-watchman-probe-16-20": {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        },
+        "crystalmir-white-stag-probe-16-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "shadow-keep-undead-soldier-probe-16-20": {
+            "observed": True,
+            "viable": True,
+            "boot_id": "boot-1",
+        },
+        "shadow-keep-undead-soldier-hunt-16-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "galaxy-white-dwarf-probe-17-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "galaxy-red-supergiant-probe-17-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-nobleman-thief-probe-17-18": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-nobleman-thief-hunt-17-18": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-servant-thief-probe-17-18": {
+            "observed": True,
+            "viable": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-servant-thief-hunt-17-18": {
+            "observed": True,
+            "viable": False,
+            "unattackable": "dwarven servant",
+            "boot_id": "boot-1",
+        },
+        "ambush-bardoosh-thief-kill-research-17-18": {
+            "observed": True,
+            "viable": False,
+            "below_band": True,
+            "boot_id": "boot-1",
+        },
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        stalled_segments=1,
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 0,
+        },
+        excluded_policy_ids=frozenset(
+            {"plains-aruncus-thief-fallback-17-18"}
+        ),
+        world_boot_id="boot-1",
+        research_results=research_results,
+    )
+
+    assert policy.policy_id == "shire-dwarven-prince-thief-probe-17-20"
+    assert policy.execution == "shire-dwarven-prince-research"
+    assert policy.status == "research"
+
+
+def test_level_eighteen_thief_opens_pyramid_probe_after_known_paths() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "hightower-jailor-probe-17-20",
+            "hightower-jailor-hunt-17-20",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+            "shire-thain-probe-17-20",
+            "shire-thain-hunt-17-20",
+            "moria-sanctuary-thief-17-20",
+        )
+    }
+    recorded_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "pyramid-ali-baba-probe-18-20"
+    assert policy.execution == "pyramid-ali-baba-research"
+    assert policy.status == "research"
+
+
+def test_viable_pyramid_probe_promotes_to_hunt_without_sanctuary() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "hightower-jailor-probe-17-20",
+            "hightower-jailor-hunt-17-20",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+            "shire-thain-probe-17-20",
+            "shire-thain-hunt-17-20",
+        )
+    }
+    recorded_results["pyramid-ali-baba-probe-18-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_sanctuary_potion=False,
+        last_policy_id="pyramid-ali-baba-probe-18-20",
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "pyramid-ali-baba-hunt-18-20"
+    assert policy.execution == "pyramid-ali-baba-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_crowded_research_probe_rotates_before_immediate_retry() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": False,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shire-dwarven-prince-thief-probe-17-20",
+        last_fastwalk_abort_reason=(
+            "field room contained 3 observed mobiles while evaluating "
+            "'dwarven prince'"
+        ),
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "shire-thain-probe-17-20"
+    assert policy.execution == "shire-thain-research"
+
+
+def test_viable_shire_thain_probe_promotes_bounded_hunt() -> None:
+    research_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    research_results["shire-thain-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shire-thain-probe-17-20",
+        world_boot_id="boot-1",
+        research_results=research_results,
+    )
+
+    assert policy.policy_id == "shire-thain-hunt-17-20"
+    assert policy.execution == "shire-thain-hunt"
+
+
+def test_absent_shire_thain_rotates_to_the_next_shire_research_probe() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    recorded_results["shire-thain-probe-17-20"] = {
+        "absent": True,
+        "observed": False,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shire-thain-probe-17-20",
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "shire-elven-wizard-probe-17-20"
+    assert policy.execution == "shire-elven-wizard-research"
+    assert policy.status == "research"
+
+
+def test_viable_shire_wizard_requires_sanctuary_before_hunt() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    recorded_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shire-elven-wizard-probe-17-20",
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
+@pytest.mark.parametrize(
+    "last_policy_id",
+    [
+        "shire-elven-wizard-probe-17-20",
+        "moria-sanctuary-thief-17-20",
+    ],
+)
+def test_shire_wizard_hunt_requires_and_uses_sanctuary(
+    last_policy_id: str,
+) -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    recorded_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_sanctuary_potion=True,
+        last_policy_id=last_policy_id,
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "shire-elven-wizard-hunt-17-20"
+    assert policy.execution == "shire-elven-wizard-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_cleared_moria_absence_reopens_the_required_wizard_reserve() -> None:
+    research_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    research_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        research_results=research_results,
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
+def test_level_eighteen_reuses_productive_hunt_after_crowded_probe() -> None:
+    research_results = {
+        policy_id: {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+        )
+    }
+    research_results.update(
+        {
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-hunt-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shire-dwarven-prince-thief-probe-17-20",
+        last_fastwalk_abort_reason=(
+            "field room contained 3 observed mobiles while evaluating "
+            "'dwarven prince'"
+        ),
+        policy_xp_deltas={"galaxy-white-dwarf-hunt-17-20": 655},
+        excluded_policy_ids=frozenset(
+            {"mahntor-rock-toad-thief-circuit-16-18"}
+        ),
+        world_boot_id="boot-1",
+        research_results=research_results,
+    )
+
+    assert policy.policy_id == "galaxy-white-dwarf-hunt-17-20"
+    assert policy.execution == "galaxy-white-dwarf-hunt"
+
+
+def test_viable_shire_prince_probe_promotes_bounded_hunt() -> None:
+    research_results = {
+        "mirror-realm-watchman-probe-16-20": {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        },
+        "crystalmir-white-stag-probe-16-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "shadow-keep-undead-soldier-probe-16-20": {
+            "observed": True,
+            "viable": True,
+            "boot_id": "boot-1",
+        },
+        "shadow-keep-undead-soldier-hunt-16-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "galaxy-white-dwarf-probe-17-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "galaxy-red-supergiant-probe-17-20": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-nobleman-thief-probe-17-18": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-nobleman-thief-hunt-17-18": {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-servant-thief-probe-17-18": {
+            "observed": True,
+            "viable": True,
+            "boot_id": "boot-1",
+        },
+        "dwarven-servant-thief-hunt-17-18": {
+            "observed": True,
+            "viable": False,
+            "unattackable": "dwarven servant",
+            "boot_id": "boot-1",
+        },
+        "shire-dwarven-prince-thief-probe-17-20": {
+            "observed": True,
+            "viable": True,
+            "boot_id": "boot-1",
+        },
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shire-dwarven-prince-thief-probe-17-20",
+        world_boot_id="boot-1",
+        research_results=research_results,
+    )
+
+    assert policy.policy_id == "shire-dwarven-prince-thief-hunt-17-20"
+    assert policy.execution == "shire-dwarven-prince-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_uncompleted_nobleman_hunt_retries_after_resource_withdrawal() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-hunt-17-18",
+        last_fastwalk_abort_reason=(
+            "field expedition withdrew before target evaluation because "
+            "food reserve was unavailable"
+        ),
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-hunt-17-18"
+    assert policy.execution == "dwarven-nobleman-hunt"
+
+
+def test_completed_level_seventeen_nobleman_hunt_repeats_when_fallbacks_are_excluded() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-hunt-17-18",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"dwarven-nobleman-thief-hunt-17-18": 670},
+        excluded_policy_ids=frozenset(
+            {
+                "mahntor-rock-toad-thief-circuit-16-18",
+                "plains-aruncus-thief-fallback-17-18",
+            }
+        ),
+        research_results={
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-hunt-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-hunt-17-18"
+    assert policy.execution == "dwarven-nobleman-hunt"
+
+
+def test_level_seventeen_nobleman_retries_known_approach_interrupt() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-hunt-17-18",
+        last_fastwalk_abort_reason=(
+            "unexpected combat interrupted fastwalk 'dwarven nobleman' "
+            "before its objective"
+        ),
+        world_boot_id="boot-1",
+        policy_xp_deltas={"dwarven-nobleman-thief-hunt-17-18": -208},
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-hunt-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-hunt-17-18"
+    assert policy.execution == "dwarven-nobleman-hunt"
+
+
+def test_crowded_level_seventeen_nobleman_hunt_retries_probe() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-hunt-17-18",
+        last_fastwalk_abort_reason=(
+            "field room contained 4 observed mobiles while evaluating "
+            "'dwarven nobleman'"
+        ),
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-probe-17-18"
+    assert policy.execution == "dwarven-nobleman-research"
+
+
+def test_assisted_level_seventeen_nobleman_hunt_retries_bounded_hunt() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="dwarven-nobleman-thief-hunt-17-18",
+        last_fastwalk_abort_reason=(
+            "field combat aborted after unapproved attacker 'A guest' joined"
+        ),
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-thief-hunt-17-18"
+    assert policy.execution == "dwarven-nobleman-hunt"
+
+
+def test_level_sixteen_waits_after_both_fallbacks_reject() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        last_policy_id="shadow-keep-undead-soldier-probe-16-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
     assert policy.status == "unavailable"
     assert "wait for a new reboot" in policy.summary
+
+
+def test_level_sixteen_thief_uses_proven_toad_after_both_probes_reject() -> None:
+    policy = policy_for(
+        16,
+        "thief",
+        last_policy_id="shadow-keep-undead-soldier-probe-16-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-16-18"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.status == "verified"
+    assert policy.segment_kill_limit == 2
+
+
+def test_level_sixteen_thief_tries_bardoosh_once_after_empty_toads() -> None:
+    policy = policy_for(
+        16,
+        "thief",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 0,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "ambush-bardoosh-thief-kill-research-16"
+    assert policy.execution == "ambush-bardoosh-hunt"
+    assert policy.status == "research"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_sixteen_thief_returns_to_toads_after_bardoosh_attempt() -> None:
+    policy = policy_for(
+        16,
+        "thief",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 0,
+            "ambush-bardoosh-thief-kill-research-16": 0,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-16-18"
+
+
+@pytest.mark.parametrize("level", [17, 18])
+@pytest.mark.parametrize("toad_xp", [0, 325])
+def test_later_thief_rotates_every_toad_pass_to_aruncus(
+    level: int,
+    toad_xp: int,
+) -> None:
+    policy = policy_for(
+        level,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": toad_xp,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-fallback-17-18"
+    assert policy.execution == "plains-aruncus-hunt"
+    assert policy.status == "verified"
+    assert policy.segment_kill_limit == 1
+    assert any("strange amulet" in item for item in policy.evidence)
+
+
+def test_later_thief_keeps_toad_fallback_when_aruncus_is_excluded() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        world_boot_id="boot-1",
+        excluded_policy_ids=frozenset(
+            {"plains-aruncus-thief-fallback-17-18"}
+        ),
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-hunt-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-hunt-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-hunt-17-18": {
+                "observed": True,
+                "viable": False,
+                "unattackable": "dwarven servant",
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-16-18"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.executable is True
+
+
+def test_level_eighteen_thief_uses_late_bardoosh_after_excluded_empty_toads() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        world_boot_id="boot-1",
+        excluded_policy_ids=frozenset(
+            {"plains-aruncus-thief-fallback-17-18"}
+        ),
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 0,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-hunt-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "ambush-bardoosh-thief-kill-research-17-18"
+    assert policy.execution == "ambush-bardoosh-hunt"
+    assert policy.status == "research"
+    assert policy.segment_kill_limit == 1
+
+
+def test_late_bardoosh_probe_promotes_then_returns_to_toads() -> None:
+    promoted = policy_for(
+        18,
+        "thief",
+        last_policy_id="ambush-bardoosh-thief-kill-research-17-18",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-hunt-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "ambush-bardoosh-thief-kill-research-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert promoted.policy_id == "ambush-bardoosh-thief-hunt-17-18"
+    assert promoted.status == "verified"
+
+    returned = policy_for(
+        18,
+        "thief",
+        last_policy_id="ambush-bardoosh-thief-hunt-17-18",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "ambush-bardoosh-thief-hunt-17-18": 450,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-hunt-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "ambush-bardoosh-thief-kill-research-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "ambush-bardoosh-thief-hunt-17-18": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert returned.policy_id == "mahntor-rock-toad-thief-circuit-16-18"
+
+
+@pytest.mark.parametrize("level", [17, 18])
+@pytest.mark.parametrize("aruncus_xp", [0, 400])
+def test_later_thief_returns_to_toads_after_aruncus(
+    level: int,
+    aruncus_xp: int,
+) -> None:
+    policy = policy_for(
+        level,
+        "thief",
+        last_policy_id="plains-aruncus-thief-fallback-17-18",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "plains-aruncus-thief-fallback-17-18": aruncus_xp,
+            "mahntor-rock-toad-thief-circuit-16-18": 0,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-16-18"
+
+
+def test_level_sixteen_thief_promotes_bardoosh_after_productive_toads() -> None:
+    policy = policy_for(
+        16,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 478,
+            "ambush-bardoosh-thief-kill-research-16": 535,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "ambush-bardoosh-thief-hunt-16"
+    assert policy.execution == "ambush-bardoosh-hunt"
+    assert policy.status == "verified"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_sixteen_thief_rotates_empty_toads_to_productive_bardoosh() -> None:
+    policy = policy_for(
+        16,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 0,
+            "ambush-bardoosh-thief-kill-research-16": 535,
+            "ambush-bardoosh-thief-hunt-16": 358,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "ambush-bardoosh-thief-hunt-16"
+    assert policy.execution == "ambush-bardoosh-hunt"
+
+
+def test_level_sixteen_thief_does_not_repoll_bardoosh_after_empty_toads() -> None:
+    policy = policy_for(
+        16,
+        "thief",
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 0,
+            "ambush-bardoosh-thief-kill-research-16": 535,
+            "ambush-bardoosh-thief-hunt-16": 0,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-16-18"
+
+
+def test_level_sixteen_thief_rotates_to_toads_after_bardoosh_hunt() -> None:
+    policy = policy_for(
+        16,
+        "thief",
+        last_policy_id="ambush-bardoosh-thief-hunt-16",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 478,
+            "ambush-bardoosh-thief-kill-research-16": 535,
+            "ambush-bardoosh-thief-hunt-16": 510,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-thief-circuit-16-18"
 
 
 @pytest.mark.parametrize("character_class", ["mage", "thief", "warrior", "psionic"])
@@ -2202,6 +5615,31 @@ def test_level_twenty_one_falls_back_to_gardener_research_after_watchman_rejects
     )
 
     assert policy.policy_id == "mirror-realm-gardener-probe-21-25"
+
+
+def test_level_twenty_one_promotes_a_viable_gardener_probe_to_a_hunt() -> None:
+    policy = policy_for(
+        21,
+        "warrior",
+        last_policy_id="mirror-realm-gardener-probe-21-25",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-21-25": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-gardener-probe-21-25": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-gardener-hunt-21-25"
+    assert policy.execution == "mirror-realm-gardener-hunt"
+    assert policy.segment_kill_limit == 1
 
 
 def test_level_twenty_one_waits_after_watchman_and_gardener_probes() -> None:
@@ -2386,6 +5824,446 @@ def test_level_forty_one_waits_for_review_after_pit_official_probe() -> None:
     assert "do not authorize combat" in policy.summary
 
 
+def test_level_forty_six_starts_with_dwarven_home_chess_dwarf_probe() -> None:
+    policy = policy_for(46, "warrior")
+
+    assert policy.policy_id == "dwarven-home-chess-dwarf-probe-46-50"
+    assert policy.status == "research"
+    assert policy.execution == "dwarven-home-chess-dwarf-research"
+    assert policy.executable
+
+
+def test_level_forty_six_promotes_viable_chess_dwarf_to_one_hunt() -> None:
+    policy = policy_for(
+        46,
+        "warrior",
+        last_policy_id="dwarven-home-chess-dwarf-probe-46-50",
+        world_boot_id="boot-1",
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-home-chess-dwarf-hunt-46-50"
+    assert policy.execution == "dwarven-home-chess-dwarf-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_forty_six_uses_storn_after_chess_dwarf_rejection() -> None:
+    policy = policy_for(
+        46,
+        "warrior",
+        last_policy_id="dwarven-home-chess-dwarf-probe-46-50",
+        world_boot_id="boot-1",
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-storn-probe-46-50"
+    assert policy.execution == "mirror-realm-storn-research"
+
+
+def test_level_forty_six_waits_after_both_registered_probes() -> None:
+    policy = policy_for(
+        46,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-storn-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.minimum_level == 46
+    assert policy.maximum_level == 50
+    assert not policy.executable
+
+
+def test_level_fifty_one_starts_with_darkwood_strange_mist_probe() -> None:
+    policy = policy_for(51, "warrior")
+
+    assert policy.policy_id == "darkwood-strange-mist-probe-51-55"
+    assert policy.status == "research"
+    assert policy.execution == "darkwood-strange-mist-research"
+    assert policy.executable
+
+
+def test_level_fifty_one_promotes_viable_strange_mist_to_one_hunt() -> None:
+    policy = policy_for(
+        51,
+        "warrior",
+        last_policy_id="darkwood-strange-mist-probe-51-55",
+        world_boot_id="boot-1",
+        research_results={
+            "darkwood-strange-mist-probe-51-55": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "darkwood-strange-mist-hunt-51-55"
+    assert policy.execution == "darkwood-strange-mist-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_fifty_one_uses_dwarven_home_gambler_after_mist_rejection() -> None:
+    policy = policy_for(
+        51,
+        "warrior",
+        last_policy_id="darkwood-strange-mist-probe-51-55",
+        world_boot_id="boot-1",
+        research_results={
+            "darkwood-strange-mist-probe-51-55": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-home-gambler-probe-51-55"
+    assert policy.execution == "dwarven-home-gambler-research"
+
+
+def test_level_fifty_one_waits_after_both_registered_probes() -> None:
+    policy = policy_for(
+        51,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "darkwood-strange-mist-probe-51-55": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-home-gambler-probe-51-55": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.minimum_level == 51
+    assert policy.maximum_level == 55
+    assert not policy.executable
+
+
+def test_level_fifty_six_starts_with_dwarven_home_master_probe() -> None:
+    policy = policy_for(56, "warrior")
+
+    assert policy.policy_id == "dwarven-home-master-probe-56-60"
+    assert policy.status == "research"
+    assert policy.execution == "dwarven-home-master-research"
+    assert policy.executable
+
+
+def test_level_fifty_six_promotes_viable_master_to_one_hunt() -> None:
+    policy = policy_for(
+        56,
+        "warrior",
+        last_policy_id="dwarven-home-master-probe-56-60",
+        world_boot_id="boot-1",
+        research_results={
+            "dwarven-home-master-probe-56-60": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-home-master-hunt-56-60"
+    assert policy.execution == "dwarven-home-master-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_fifty_six_waits_after_master_probe_rejection() -> None:
+    policy = policy_for(
+        56,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "dwarven-home-master-probe-56-60": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.minimum_level == 56
+    assert policy.maximum_level == 60
+    assert not policy.executable
+
+
+def test_level_sixty_one_starts_with_wounded_vampire_probe() -> None:
+    policy = policy_for(61, "warrior")
+
+    assert policy.policy_id == "vampire-hive-wounded-vampire-probe-61-65"
+    assert policy.status == "research"
+    assert policy.execution == "vampire-hive-wounded-vampire-research"
+    assert policy.executable
+
+
+def test_level_sixty_one_promotes_viable_wounded_vampire_to_one_hunt() -> None:
+    policy = policy_for(
+        61,
+        "warrior",
+        last_policy_id="vampire-hive-wounded-vampire-probe-61-65",
+        world_boot_id="boot-1",
+        research_results={
+            "vampire-hive-wounded-vampire-probe-61-65": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "vampire-hive-wounded-vampire-hunt-61-65"
+    assert policy.execution == "vampire-hive-wounded-vampire-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_sixty_one_waits_after_wounded_vampire_probe_rejection() -> None:
+    policy = policy_for(
+        61,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "vampire-hive-wounded-vampire-probe-61-65": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.minimum_level == 61
+    assert policy.maximum_level == 65
+    assert not policy.executable
+
+
+def test_level_sixty_six_starts_with_hulking_beast_probe() -> None:
+    policy = policy_for(66, "warrior")
+
+    assert policy.policy_id == "tabernacle-hulking-beast-probe-66-70"
+    assert policy.status == "research"
+    assert policy.execution == "tabernacle-hulking-beast-research"
+    assert policy.executable
+
+
+def test_level_sixty_six_promotes_viable_hulking_beast_to_one_hunt() -> None:
+    policy = policy_for(
+        66,
+        "warrior",
+        last_policy_id="tabernacle-hulking-beast-probe-66-70",
+        world_boot_id="boot-1",
+        research_results={
+            "tabernacle-hulking-beast-probe-66-70": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "tabernacle-hulking-beast-hunt-66-70"
+    assert policy.execution == "tabernacle-hulking-beast-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_sixty_six_waits_after_hulking_beast_probe_rejection() -> None:
+    policy = policy_for(
+        66,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "tabernacle-hulking-beast-probe-66-70": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.minimum_level == 66
+    assert policy.maximum_level == 70
+    assert not policy.executable
+
+
+def test_level_seventy_one_starts_with_rastafarians_probe() -> None:
+    policy = policy_for(71, "warrior")
+
+    assert policy.policy_id == "pirates-seas-rastafarians-probe-71-75"
+    assert policy.status == "research"
+    assert policy.execution == "pirates-seas-rastafarians-research"
+    assert policy.executable
+
+
+def test_level_seventy_one_promotes_viable_rastafarians_to_one_hunt() -> None:
+    policy = policy_for(
+        71,
+        "warrior",
+        last_policy_id="pirates-seas-rastafarians-probe-71-75",
+        world_boot_id="boot-1",
+        research_results={
+            "pirates-seas-rastafarians-probe-71-75": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "pirates-seas-rastafarians-hunt-71-75"
+    assert policy.execution == "pirates-seas-rastafarians-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seventy_one_waits_after_rastafarians_probe_rejection() -> None:
+    policy = policy_for(
+        71,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "pirates-seas-rastafarians-probe-71-75": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.minimum_level == 71
+    assert policy.maximum_level == 75
+    assert not policy.executable
+
+
+def test_level_seventy_six_starts_with_crypt_thing_probe() -> None:
+    policy = policy_for(76, "warrior")
+
+    assert policy.policy_id == "ghost-town-crypt-thing-probe-76"
+    assert policy.status == "research"
+    assert policy.execution == "ghost-town-crypt-thing-research"
+    assert policy.executable
+
+
+def test_level_seventy_six_promotes_viable_crypt_thing_to_one_hunt() -> None:
+    policy = policy_for(
+        76,
+        "warrior",
+        last_policy_id="ghost-town-crypt-thing-probe-76",
+        world_boot_id="boot-1",
+        research_results={
+            "ghost-town-crypt-thing-probe-76": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "ghost-town-crypt-thing-hunt-76"
+    assert policy.execution == "ghost-town-crypt-thing-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seventy_six_waits_after_crypt_thing_probe_rejection() -> None:
+    policy = policy_for(
+        76,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "ghost-town-crypt-thing-probe-76": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.minimum_level == 76
+    assert policy.maximum_level == 76
+    assert not policy.executable
+
+
+def test_level_seventy_seven_starts_with_retriever_probe() -> None:
+    policy = policy_for(77, "warrior")
+
+    assert policy.policy_id == "ghost-town-retriever-probe-77-80"
+    assert policy.status == "research"
+    assert policy.execution == "ghost-town-retriever-research"
+    assert policy.executable
+
+
+def test_level_seventy_seven_promotes_viable_retriever_to_one_hunt() -> None:
+    policy = policy_for(
+        77,
+        "warrior",
+        last_policy_id="ghost-town-retriever-probe-77-80",
+        world_boot_id="boot-1",
+        research_results={
+            "ghost-town-retriever-probe-77-80": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "ghost-town-retriever-hunt-77-80"
+    assert policy.execution == "ghost-town-retriever-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_seventy_seven_waits_after_retriever_probe_rejection() -> None:
+    policy = policy_for(
+        77,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "ghost-town-retriever-probe-77-80": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.minimum_level == 77
+    assert policy.maximum_level == 80
+    assert not policy.executable
+
+
 def test_level_ten_thief_retires_empty_verified_combined_rotation() -> None:
     policy = policy_for(
         10,
@@ -2472,14 +6350,32 @@ def test_level_eleven_mage_collects_same_bounded_source_probe() -> None:
     assert policy.executable
 
 
-def test_level_eleven_mage_does_not_repeat_completed_source_probe() -> None:
+def test_level_eleven_mage_continues_to_protected_moria_after_source_probe() -> None:
     policy = policy_for(
         11,
         "mage",
         policy_xp_deltas={"fleshmonger-guard-probe-10-12": 0},
     )
 
+    assert policy.policy_id == "moria-sanctuary-11-12"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.status == "verified"
+    assert policy.practice_skill == "magic missile"
+
+
+def test_level_eleven_mage_does_not_repeat_zero_xp_moria_hunt() -> None:
+    policy = policy_for(
+        11,
+        "mage",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "moria-sanctuary-11-12": 0,
+        },
+    )
+
     assert policy.status == "unavailable"
+    assert policy.minimum_level == 11
+    assert policy.maximum_level == 12
     assert not policy.executable
 
 

@@ -6,11 +6,14 @@ from dd4tester.equipment import (
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
     character_can_use_item,
+    is_blunt_weapon,
     item_category,
+    item_command_keyword,
     item_keyword,
     is_bow,
     is_capacity_infrastructure,
     is_piercing_weapon,
+    normalize_item_name,
     plan_stance_swaps,
     protects_from_sale,
     stance_score,
@@ -37,6 +40,29 @@ def _item(
     )
 
 
+def test_item_normalization_discards_ephemeral_targetmode_selector() -> None:
+    assert normalize_item_name("[#24943] a strange amulet") == "strange amulet"
+
+
+def test_catalog_matches_some_prefixed_multisentence_room_object() -> None:
+    gyvel = ObjectSource(
+        301,
+        "herbs herb gyvel",
+        "a small dusk of black gyvel",
+        19,
+        (1, 0, 0, 0),
+        25,
+        room_description=(
+            "Some black gyvel is lying here. It is dark green with black leaves "
+            "and tiny blood-red flowers."
+        ),
+    )
+    catalog = GearCatalog({gyvel.vnum: gyvel})
+
+    assert catalog.match("Some black gyvel") == gyvel
+    assert catalog.match("black gyvel") == gyvel
+
+
 def test_bow_detection_uses_dd4_item_bow_extra_flag() -> None:
     bow = ObjectSource(
         1,
@@ -60,6 +86,32 @@ def test_bow_detection_uses_dd4_item_bow_extra_flag() -> None:
 
     assert is_bow(bow)
     assert not is_bow(ordinary_weapon)
+
+
+def test_weapon_type_detection_matches_dd4_stun_and_backstab_checks() -> None:
+    pounding_weapon = ObjectSource(
+        4,
+        "mace",
+        "a mace",
+        5,
+        (0, 2, 5, 7),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    piercing_weapon = ObjectSource(
+        5,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+
+    assert is_blunt_weapon(pounding_weapon)
+    assert not is_blunt_weapon(piercing_weapon)
+    assert is_piercing_weapon(piercing_weapon)
+    assert not is_piercing_weapon(pounding_weapon)
 
 
 def test_body_part_weapons_are_never_usable_gear_candidates() -> None:
@@ -170,6 +222,32 @@ def test_weapon_damage_score_uses_source_dice_average() -> None:
     assert weapon_damage_score(claws) > weapon_damage_score(dagger)
 
 
+def test_combat_stance_compares_weapon_dice_plus_damroll() -> None:
+    small_damage_weapon = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        affects=((19, 1),),
+    )
+    bear_claws = ObjectSource(
+        18000,
+        "claws bears",
+        "a pair of bears claws",
+        5,
+        (0, 6, 12, 11),
+        0,
+        affects=((18, 3),),
+    )
+
+    assert stance_score(bear_claws, STANCE_COMBAT) > stance_score(
+        small_damage_weapon,
+        STANCE_COMBAT,
+    )
+
+
 def test_catalog_matches_source_room_description_to_object() -> None:
     armor = ObjectSource(
         4530,
@@ -249,6 +327,68 @@ def test_stance_swap_removes_conflict_before_wearing_better_item() -> None:
 
     assert removals == [damage]
     assert additions == [recovery]
+
+
+def test_combat_stance_prefers_piercing_weapon_for_backstab() -> None:
+    sword = ObjectSource(
+        4002,
+        "rusty sword",
+        "a rusty sword",
+        5,
+        (0, 4, 8, 3),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+
+    removals, additions = plan_stance_swaps(
+        [dagger],
+        [sword],
+        STANCE_COMBAT,
+        weapon_preference="piercing",
+    )
+
+    assert removals == [sword]
+    assert additions == [dagger]
+
+
+def test_recovery_stance_keeps_a_thief_piercing_primary() -> None:
+    sword = ObjectSource(
+        4002,
+        "rusty sword",
+        "a rusty sword",
+        5,
+        (0, 4, 8, 3),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+
+    removals, additions = plan_stance_swaps(
+        [sword],
+        [dagger],
+        STANCE_RECOVERY,
+        weapon_preference="piercing",
+    )
+
+    assert removals == []
+    assert additions == []
 
 
 def test_all_stances_remove_strength_penalty_rings_even_if_slot_is_empty() -> None:
@@ -488,3 +628,27 @@ def test_item_keyword_avoids_abbreviations_and_requires_a_source_keyword() -> No
     assert item_keyword(iron_cap) == "iron"
     assert item_keyword(velvet_cape) == "velvet"
     assert item_keyword(belt) == "belt"
+
+
+def test_item_command_keyword_disambiguates_shared_weapon_nouns() -> None:
+    ordinary = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+
+    assert item_command_keyword(long_dagger, [ordinary]) == "long"
+    assert item_command_keyword(ordinary, [long_dagger]) == "dagger"

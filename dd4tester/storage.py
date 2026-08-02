@@ -58,6 +58,16 @@ class RunStorage:
             CREATE INDEX IF NOT EXISTS idx_state_snapshots_run_id
             ON state_snapshots(run_id, id);
 
+            CREATE INDEX IF NOT EXISTS idx_state_snapshots_character_id
+            ON state_snapshots(
+                lower(json_extract(state_json, '$.name')), id DESC
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_state_snapshots_reason_character_id
+            ON state_snapshots(
+                reason, lower(json_extract(state_json, '$.name')), id DESC
+            );
+
             CREATE TABLE IF NOT EXISTS loot_sales (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -606,6 +616,21 @@ class RunStorage:
         )
         self.connection.commit()
 
+    def update_campaign_target_level(
+        self,
+        campaign_id: int,
+        target_level: int,
+    ) -> None:
+        self.connection.execute(
+            """
+            UPDATE campaigns
+            SET target_level = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (target_level, _now(), campaign_id),
+        )
+        self.connection.commit()
+
     def finish_campaign(
         self,
         campaign_id: int,
@@ -757,6 +782,19 @@ class RunStorage:
         )
         return cursor.fetchone()
 
+    def list_campaign_checkpoints(self, campaign_id: int) -> list[sqlite3.Row]:
+        cursor = self.connection.execute(
+            """
+            SELECT id, campaign_id, segment_id, run_id, phase, reason, created_at,
+                   state_json
+            FROM campaign_checkpoints
+            WHERE campaign_id = ?
+            ORDER BY id
+            """,
+            (campaign_id,),
+        )
+        return list(cursor.fetchall())
+
     def list_state_snapshots(self, run_id: int) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """
@@ -788,18 +826,21 @@ class RunStorage:
             """
             SELECT state_json
             FROM state_snapshots
+            WHERE lower(json_extract(state_json, '$.name')) = ?
             ORDER BY id DESC
-            """
+            LIMIT 1
+            """,
+            (character_name.casefold(),),
         )
-        expected = character_name.casefold()
-        for row in cursor:
-            try:
-                state = json.loads(row["state_json"])
-            except (TypeError, json.JSONDecodeError):
-                continue
-            name = state.get("name")
-            if isinstance(name, str) and name.casefold() == expected:
-                return dict(state)
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        try:
+            state = json.loads(row["state_json"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if isinstance(state, dict):
+            return dict(state)
         return None
 
     def character_has_acquired_item(
@@ -813,18 +854,16 @@ class RunStorage:
             SELECT state_json
             FROM state_snapshots
             WHERE reason = 'item_acquired'
+              AND lower(json_extract(state_json, '$.name')) = ?
             ORDER BY id DESC
-            """
+            """,
+            (character_name.casefold(),),
         )
-        expected_name = character_name.casefold()
         expected_item = item_name.casefold()
         for row in cursor:
             try:
                 state = json.loads(row["state_json"])
             except (TypeError, json.JSONDecodeError):
-                continue
-            name = state.get("name")
-            if not isinstance(name, str) or name.casefold() != expected_name:
                 continue
             for acquisition in state.get("acquired_items", []):
                 if not isinstance(acquisition, dict):

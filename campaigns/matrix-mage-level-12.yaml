@@ -1,0 +1,7 @@
+character_profile: ../profiles/matrix-mage.yaml
+name: Aeloria mage level-12 transition
+target_level: 12
+max_segments: 20
+max_total_runtime: 86400
+max_total_commands: 50000
+max_stalled_segments: 3

@@ -30,9 +30,44 @@ class SafeShop:
 # route has been derived from the same area's room exits.
 SAFE_MIDGAARD_SHOPS = (
     SafeShop(
+        "Magic Shop",
+        "3033",
+        2,
+        15,
+        ("west", "north", "north", "north"),
+    ),
+    SafeShop(
+        "Magic Shop",
+        "3033",
+        3,
+        15,
+        ("west", "north", "north", "north"),
+    ),
+    SafeShop(
+        "Magic Shop",
+        "3033",
+        4,
+        15,
+        ("west", "north", "north", "north"),
+    ),
+    SafeShop(
+        "Magic Shop",
+        "3033",
+        10,
+        15,
+        ("west", "north", "north", "north"),
+    ),
+    SafeShop(
         "General Store",
         "3010",
         15,
+        40,
+        ("west", "north", "north", "east", "east", "east", "north"),
+    ),
+    SafeShop(
+        "General Store",
+        "3010",
+        19,
         40,
         ("west", "north", "north", "east", "east", "east", "north"),
     ),

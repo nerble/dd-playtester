@@ -67,11 +67,11 @@
       "source_refs": ["server/src/pre_reqs/pre_req-ninja.c", "server/src/fight.c: multi_hit, one_hit, and do_decapitate"]
     },
     "bounty hunter": {
-      "strategy": "Convert the established thief stealth chain into assassinate while adding reliable target assessment and weapon maintenance.",
-      "practice_policy": "Raise stealth techniques and backstab to 85%, then improve assassinate; defer sharpen until maintenance economics are modeled.",
-      "highest_value_skills": ["stealth techniques", "backstab", "assassinate", "hunting arts", "advanced consider"],
+      "strategy": "Convert the established thief stealth chain into assassinate while adding reliable target assessment, stun control, and weapon maintenance.",
+      "practice_policy": "Raise stealth techniques and backstab to 85%, build unarmed combat knowledge to 80% for stun, then improve assassinate; keep both a pounding weapon and the primary piercing weapon available.",
+      "highest_value_skills": ["stealth techniques", "backstab", "unarmed combat knowledge", "stun", "assassinate", "hunting arts", "advanced consider"],
       "automation_gaps": ["Sharpen needs weapon-value and degradation policy; second circle needs a lag-aware combat controller."],
-      "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/fight.c: assassinate proc in one_hit"]
+      "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/fight.c: do_stun, do_backstab, and assassinate proc in one_hit"]
     },
     "thug": {
       "strategy": "Push the warrior passive attack chain to fourth attack, then add enhanced hit to every successful blow.",
@@ -199,6 +199,8 @@
     "bounty hunter": [
       {"skill": "stealth techniques", "source_skill": "group stealth", "type": "intellectual", "target": 85, "utility": "damage-gateway", "reason": "reaches the assassinate group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c"]},
       {"skill": "backstab", "type": "physical", "target": 85, "utility": "damage-gateway", "reason": "reaches the assassinate attack prerequisite while improving the opener", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/fight.c: do_backstab"]},
+      {"skill": "unarmed combat knowledge", "source_skill": "group unarmed", "type": "intellectual", "target": 80, "utility": "control-gateway", "reason": "reaches the source-defined group-unarmed prerequisite for stun", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/area/helpfile.are: HELP UNARMED COMBAT KNOWLEDGE"]},
+      {"skill": "stun", "type": "physical", "target": 60, "utility": "control", "reason": "renders a non-fighting target unconscious before the piercing backstab opener; DD4 requires a pounding weapon", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/area/helpfile.are: HELP STUN", "server/src/fight.c: do_stun"]},
       {"skill": "assassinate", "type": "physical", "target": 60, "utility": "damage", "reason": "adds a source-defined instant-kill proc to eligible attacks", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/fight.c: assassinate branch in one_hit"]},
       {"skill": "hunting arts", "source_skill": "group hunting", "type": "intellectual", "target": 85, "utility": "safety", "reason": "unlocks hunt for locating moving targets", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c"]},
       {"skill": "advanced consider", "type": "intellectual", "target": 45, "utility": "safety", "reason": "improves live target assessment", "source_refs": ["server/src/pre_reqs/pre_req-bounty.c", "server/src/act_info.c: do_consider"]}

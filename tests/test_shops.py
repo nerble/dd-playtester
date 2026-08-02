@@ -79,6 +79,30 @@ def test_source_item_type_overrides_name_based_shop_guess() -> None:
     )
 
 
+def test_safe_magic_and_food_buyers_cover_aruncus_drops() -> None:
+    scroll_shop = safe_shop_for_item(
+        "a scroll titled 'jhyfrdow'",
+        item_type=2,
+    )
+    ivy_shop = safe_shop_for_item(
+        "a small dusk of poison ivy",
+        item_type=19,
+    )
+
+    assert scroll_shop is not None
+    assert scroll_shop.name == "Magic Shop"
+    assert scroll_shop.room_vnum == "3033"
+    assert scroll_shop.route_from_mage_lab == (
+        "west",
+        "north",
+        "north",
+        "north",
+    )
+    assert ivy_shop is not None
+    assert ivy_shop.name == "General Store"
+    assert ivy_shop.room_vnum == "3010"
+
+
 def test_exhausted_duplicate_value_is_not_routed_to_a_shop() -> None:
     shop = safe_shop_for_item(
         "a length of metal piping",

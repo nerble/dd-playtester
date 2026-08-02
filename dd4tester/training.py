@@ -226,6 +226,7 @@ def plan_training(
     character_level: int | None = None,
     excluded_practice_types: set[str] | frozenset[str] = frozenset(),
     excluded_skills: set[str] | frozenset[str] = frozenset(),
+    stop_after_skill: str | None = None,
 ) -> tuple[TrainingChoice, ...]:
     listing = parse_practice_listing(text)
     budgets = {
@@ -237,9 +238,18 @@ def plan_training(
     priorities = training_priorities_for(character_class, subclass=subclass)
     spent_types = set(excluded_practice_types)
     blocked_skills = {_normalize(skill) for skill in excluded_skills}
+    priority_ceiling = _normalize(stop_after_skill) if stop_after_skill else None
+    priority_ceiling_index = max(
+        (
+            index
+            for index, selected in enumerate(priorities)
+            if selected.skill == priority_ceiling
+        ),
+        default=None,
+    )
 
-    for selected in priorities:
-        if (
+    for index, selected in enumerate(priorities):
+        eligible = not (
             not selected.automated
             or selected.skill in blocked_skills
             or selected.practice_type in spent_types
@@ -251,21 +261,23 @@ def plan_training(
                 and selected.minimum_level is not None
                 and character_level < selected.minimum_level
             )
-        ):
-            continue
-        current = skills[selected.skill]
-        choices.append(
-            TrainingChoice(
-                skill=selected.skill,
-                practice_type=selected.practice_type,
-                utility=selected.utility,
-                current_percent=current,
-                target_percent=selected.target_percent,
-                reason=selected.reason,
-                source_refs=selected.source_refs,
-            )
         )
-        spent_types.add(selected.practice_type)
+        if eligible:
+            current = skills[selected.skill]
+            choices.append(
+                TrainingChoice(
+                    skill=selected.skill,
+                    practice_type=selected.practice_type,
+                    utility=selected.utility,
+                    current_percent=current,
+                    target_percent=selected.target_percent,
+                    reason=selected.reason,
+                    source_refs=selected.source_refs,
+                )
+            )
+            spent_types.add(selected.practice_type)
+        if index == priority_ceiling_index:
+            break
     return tuple(choices)
 
 

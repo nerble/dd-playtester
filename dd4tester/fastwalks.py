@@ -30,6 +30,12 @@ class Fastwalk:
     notation: str
     recall_after_loot: bool = False
     loot_container: str | None = None
+    live_navigation_target: str | None = None
+    live_navigation_start_index: int | None = None
+    live_navigation_resume_index: int | None = None
+    live_navigation_room_vnums: tuple[str, ...] = ()
+    live_navigation_blocked_room_vnums: tuple[str, ...] = ()
+    live_navigation_preferred_destinations: tuple[str, ...] = ()
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -148,6 +154,60 @@ MAP_ROUTES = (
         recall_after_loot=True,
     ),
     Fastwalk(
+        "gnome treasury",
+        13,
+        15,
+        "2s5es6en3e3s",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "shire dwarven prince",
+        17,
+        20,
+        "2s5w4n2w5nw",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "shire thain",
+        17,
+        20,
+        "2s5w4n5e",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "shire elven wizard",
+        17,
+        20,
+        "2s5w4n5w",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "pyramid ali baba",
+        18,
+        20,
+        "3s;2e;2s;9e;ew2n2e;e;u;n;e;u;open down;2d;4e;n",
+        recall_after_loot=True,
+        live_navigation_target="2600",
+        live_navigation_start_index=16,
+        live_navigation_resume_index=22,
+        live_navigation_room_vnums=(
+            "5007",
+            "5024",
+            "5025",
+            "5026",
+            "5027",
+            "5028",
+            "5029",
+            "5030",
+            "5031",
+            "5032",
+            "5056",
+            "2600",
+        ),
+        live_navigation_blocked_room_vnums=("5028",),
+        live_navigation_preferred_destinations=("5056",),
+    ),
+    Fastwalk(
         "foundry captain",
         7,
         7,
@@ -157,22 +217,91 @@ MAP_ROUTES = (
     Fastwalk(
         "plains aruncus",
         13,
-        15,
+        18,
         "2s4w3n2e5nw",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "dwarven workers",
+        13,
+        15,
+        "2s6edn",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "dwarven nobleman",
+        13,
+        18,
+        (
+            "6sw2swsw2sw2s;open south;6s2w3s2w2s4en;"
+            "open east;e3n2en"
+        ),
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "dwarven servant",
+        17,
+        18,
+        (
+            "6sw2swsw2sw2s;open south;6s2w3s2w2s4en;"
+            "open east;e3n2e2nw"
+        ),
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "mahn tor rock toads",
+        14,
+        18,
+        "2s6e4s2es2ed3ne3se2swsw",
         recall_after_loot=True,
     ),
     Fastwalk(
         "mirror realm watchman",
         16,
         20,
-        "2s4w3n2e3ne3n2e4n;open north;4nw",
+        "2s4w3n2e3ne3n2e2n;open north;3nw",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "crystalmir white stag",
+        16,
+        20,
+        "6sw2swsw2sw2s;open south;6s2w3s2w5swnw2swsd2w2n3w",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "shadow keep soldier",
+        16,
+        20,
+        "6sw2s2ws3wn2wse",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "galaxy white dwarf",
+        17,
+        20,
+        "2s13ws2w2sws3wnwn",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "galaxy red supergiant",
+        17,
+        20,
+        "2s13ws2w2sws3wnwn",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "hightower jailor",
+        17,
+        20,
+        "2s13ws2w2sws3wnwn",
         recall_after_loot=True,
     ),
     Fastwalk(
         "mirror realm gardener",
         21,
         25,
-        "2s4w3n2e3ne3n2e4n;open north;4ne2d;open east;2e2n",
+        "2s4w3n2e3ne3n2e2n;open north;3ne2d;open east;e2n",
         recall_after_loot=True,
     ),
     Fastwalk(
@@ -211,4 +340,74 @@ MAP_ROUTES = (
         recall_after_loot=True,
     ),
     Fastwalk("pit official", 41, 45, "nund", recall_after_loot=True),
+    Fastwalk(
+        "dwarven home chess dwarf",
+        46,
+        50,
+        "6swswsw2s;open south;7s2w3s2ws4en;open east;e3n5e2s2es",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "mirror realm storn",
+        46,
+        50,
+        "2s4w3n2e3ne3n2e2n;open north;4ne2d;open east;6e2s",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "darkwood strange mist",
+        51,
+        55,
+        "2s6e4s2es2ed4n3w2nwnw4n",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "dwarven home gambler",
+        51,
+        55,
+        "6swswsw2s;open south;7s2w3s2ws4en;open east;e3n5e2s3e",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "dwarven home master",
+        56,
+        60,
+        "6swswsw2s;open south;7s2w3s2ws2s4en;open east;e3n5e3n",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "vampire hive wounded vampire",
+        61,
+        65,
+        "6sw2swsw2sw2s;open south;6s2w3s2w5swnw2swsdw7n2e3n;open down;d4n;open down;d7se",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "tabernacle hulking beast",
+        66,
+        70,
+        "6s;w;2s;w;s;w;2s;w;2s;open south;6s;2w;3s;2w;5s;w;n;w;2s;w;s;d;3w;n;10w;2u;3e;3s;e;w;s",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "pirates seas rastafarians",
+        71,
+        75,
+        "6s;w;2s;w;s;w;2s;w;2s;open south;6s;2w;3s;2w;5s;w;n;w;2s;w;s;d;3w;n;10w;4n;3e;2s;open down;d;2w;3s;e;2n;6w;n;e;n;e;n;e;6n",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "ghost town crypt thing",
+        76,
+        76,
+        "6s;w;2s;w;s;w;2s;w;2s;open south;6s;2w;3s;2w;5s;w;n;w;2s;w;s;d;3w;n;10w;4n;3e;2s;open down;d;2w;3s;e;2n;6w;n;w;17n;2w;3n;2w;2n;3e;2n;e;s;e;2n;w;4n;w;8n;3w;open west;3w;u;e;open north;n",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "ghost town retriever",
+        77,
+        80,
+        "6s;w;2s;w;s;w;2s;w;2s;open south;6s;2w;3s;2w;5s;w;n;w;2s;w;s;d;3w;n;10w;4n;3e;2s;open down;d;2w;3s;e;2n;6w;n;w;17n;2w;3n;2w;2n;3e;2n;e;s;e;2n;w;4n;w;8n;3w;open west;w;open north;n",
+        recall_after_loot=True,
+    ),
 )

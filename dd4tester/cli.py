@@ -42,6 +42,7 @@ from .starter import (
     run_midennir_research_profile,
     run_moria_research_profile,
     run_outfit_profile,
+    run_rearm_profile,
     run_restock_profile,
     run_return_home_profile,
     run_resupply_profile,
@@ -113,6 +114,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="visit the Midgaard fountain and Bakery, then save and quit",
     )
     restock_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to an existing character YAML profile",
+    )
+    rearm_parser = subcommands.add_parser(
+        "rearm",
+        help="buy, wield, verify, and persist a class-legal primary weapon",
+    )
+    rearm_parser.add_argument(
         "profile",
         type=Path,
         help="path to an existing character YAML profile",
@@ -432,8 +442,10 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_parser.add_argument(
         "--reset-retries",
         type=int,
-        default=0,
-        help="bounded retries after an empty-area checkpoint, default: 0",
+        help=(
+            "bounded retries after empty-area checkpoints; defaults to "
+            "--segments, or 0 when --max-segment-runtime is set"
+        ),
     )
     campaign_parser.add_argument(
         "--reset-wait",
@@ -470,6 +482,23 @@ def build_parser() -> argparse.ArgumentParser:
     hero_parser.add_argument(
         "--name",
         help="3-12 letter character name; a stable name is generated when omitted",
+    )
+    hero_parser.add_argument(
+        "--username",
+        help="alias for --name when resuming an existing DD4 character",
+    )
+    hero_parser.add_argument(
+        "--password",
+        help=(
+            "plaintext DD4 character password for this process only; it is not "
+            "written to generated files or transcripts"
+        ),
+    )
+    hero_parser.add_argument(
+        "--target-level",
+        type=int,
+        default=100,
+        help="stop after reaching this level (2-100), default: 100",
     )
     hero_parser.add_argument(
         "--personality",
@@ -511,7 +540,10 @@ def build_parser() -> argparse.ArgumentParser:
     hero_parser.add_argument(
         "--reset-retries",
         type=int,
-        help="bounded retries after empty-area checkpoints; defaults to --segments",
+        help=(
+            "bounded retries after empty-area checkpoints; defaults to "
+            "--segments, or 0 when --max-segment-runtime is set"
+        ),
     )
     hero_parser.add_argument(
         "--reset-wait",
@@ -870,6 +902,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Database: {result.database_path}")
         return 0
 
+    if args.command == "rearm":
+        try:
+            result = asyncio.run(run_rearm_profile(args.profile))
+        except Exception as exc:
+            print(f"Rearm run failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
     if args.command == "sell-loot":
         try:
             result = asyncio.run(run_sell_loot_profile(args.profile))
@@ -1096,8 +1139,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result.status in {"success", "ready"} else 1
 
     if args.command == "hero":
+        character_name = args.name
+        if args.username:
+            if (
+                character_name
+                and character_name.casefold() != args.username.casefold()
+            ):
+                print(
+                    "HERO campaign failed: --name and --username must identify "
+                    "the same DD4 character",
+                    file=sys.stderr,
+                )
+                return 1
+            character_name = args.username
         request = HeroRequest(
-            name=args.name,
+            name=character_name,
             race=args.race,
             sex=args.sex,
             character_class=args.character_class,
@@ -1112,6 +1168,7 @@ def main(argv: list[str] | None = None) -> int:
                     request,
                     source=args.source,
                     workspace=args.workspace,
+                    target_level=args.target_level,
                 )
                 result = None
             else:
@@ -1125,6 +1182,8 @@ def main(argv: list[str] | None = None) -> int:
                         reset_retries=args.reset_retries,
                         reset_wait=args.reset_wait,
                         max_segment_runtime=args.max_segment_runtime,
+                        target_level=args.target_level,
+                        password=args.password,
                     )
                 )
         except Exception as exc:

@@ -171,6 +171,40 @@ def test_thief_begins_source_prerequisite_chain_for_backstab() -> None:
     assert choices[0].target_percent == 60
 
 
+def test_thief_critical_unlock_ceiling_does_not_spend_on_later_defenses() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "second attack: 65%    hide: 23%    sneak: 99%    "
+            "stealth techniques: 56%    dodge: 50%    parry: 29%",
+            "parry: 29%",
+            physical=1,
+            intellectual=1,
+        ),
+        stop_after_skill="backstab",
+    )
+
+    assert [choice.skill for choice in choices] == ["stealth techniques"]
+
+
+def test_duplicate_skill_ceiling_uses_the_final_mastery_target() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 41%    second attack: 65%    "
+            "stealth techniques: 56%    hide: 23%    sneak: 99%    "
+            "defense knowledge: 55%    dodge: 50%    parry: 43%",
+            "unarmed combat knowledge: 0%",
+            physical=2,
+            intellectual=0,
+        ),
+        stop_after_skill="second attack",
+    )
+
+    assert [choice.skill for choice in choices] == ["second attack"]
+    assert choices[0].target_percent == 100
+
+
 def test_thief_skips_persistently_capped_gateway_for_next_priority() -> None:
     choices = plan_training(
         "thief",
@@ -223,6 +257,40 @@ def test_thief_keeps_practising_backstab_when_its_teacher_offers_it() -> None:
 
     assert [choice.skill for choice in choices] == ["backstab"]
     assert choices[0].target_percent == 100
+
+
+def test_thief_prioritizes_thievery_gateway_after_functional_backstab() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 41%    second attack: 65%    "
+            "stealth techniques: 60%    hide: 23%    sneak: 99%    "
+            "backstab: 48%",
+            "thievery skills: 0%",
+            physical=0,
+            intellectual=1,
+        ),
+    )
+
+    assert [choice.skill for choice in choices] == ["thievery skills"]
+    assert choices[0].target_percent == 40
+
+
+def test_thief_prioritizes_repeatable_knife_toss_after_gateway() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 41%    second attack: 65%    "
+            "stealth techniques: 60%    hide: 23%    sneak: 99%    "
+            "backstab: 48%    thievery skills: 40%",
+            "knife toss: 0%",
+            physical=1,
+            intellectual=0,
+        ),
+    )
+
+    assert [choice.skill for choice in choices] == ["knife toss"]
+    assert choices[0].target_percent == 45
 
 
 def test_thief_builds_disarm_chain_after_backstab() -> None:
@@ -313,6 +381,75 @@ def test_vampire_builds_short_subclass_disarm_chain() -> None:
 
     assert [choice.skill for choice in choices] == ["disarm"]
     assert choices[0].target_percent == 60
+
+
+def test_bounty_hunter_builds_unarmed_gateway_before_stun() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "stealth techniques: 85%    backstab: 85%",
+            "unarmed combat knowledge: 0%",
+            physical=0,
+            intellectual=1,
+        ),
+        subclass="bounty hunter",
+    )
+
+    assert [choice.skill for choice in choices] == [
+        "unarmed combat knowledge"
+    ]
+    assert choices[0].utility == "control-gateway"
+
+
+def test_bounty_hunter_selects_stun_after_unarmed_gateway() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "stealth techniques: 85%    backstab: 85%    "
+            "unarmed combat knowledge: 80%",
+            "stun: 0%",
+            physical=1,
+            intellectual=0,
+        ),
+        subclass="bounty hunter",
+    )
+
+    assert [choice.skill for choice in choices] == ["stun"]
+    assert choices[0].utility == "control"
+
+
+def test_warrior_builds_unarmed_gateway_before_stun() -> None:
+    choices = plan_training(
+        "warrior",
+        _listing(
+            "second attack: 100%    armed combat knowledge: 40%    "
+            "enhanced damage: 100%    unarmed combat knowledge: 20%",
+            "",
+            physical=0,
+            intellectual=1,
+        ),
+    )
+
+    assert [choice.skill for choice in choices] == [
+        "unarmed combat knowledge"
+    ]
+    assert choices[0].target_percent == 60
+
+
+def test_warrior_selects_stun_after_unarmed_gateway() -> None:
+    choices = plan_training(
+        "warrior",
+        _listing(
+            "second attack: 100%    armed combat knowledge: 40%    "
+            "enhanced damage: 100%    unarmed combat knowledge: 60%",
+            "stun: 0%",
+            physical=1,
+            intellectual=0,
+        ),
+    )
+
+    assert [choice.skill for choice in choices] == ["stun"]
+    assert choices[0].utility == "control"
 
 
 def test_warrior_prioritizes_enhanced_damage_after_its_gateway() -> None:

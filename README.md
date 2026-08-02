@@ -113,6 +113,7 @@ Prepare and run a durable level-100 campaign directly from a character request:
 python -m dd4tester hero-options
 python -m dd4tester hero --race human --sex female --class mage
 python -m dd4tester hero --name Valora --race elf --class thief --subclass ninja
+python -m dd4tester hero --username Kestrel --password SECRET --race drow --class thief --subclass ninja --target-level 30
 ```
 
 The command reads races, classes, and base/subclass relationships from the
@@ -123,9 +124,17 @@ and reused on the next identical invocation. Use `--prepare-only` to validate
 and inspect configuration without connecting. Sex is retained as a cosmetic
 identity choice but is not a progression coverage dimension.
 
+`--username` is an alias for `--name`. `--password` overrides the generated
+profile's password environment variable for that process only and is never
+written to the HERO manifest, profile, database, or transcript. Because command
+arguments can remain visible in shell history and process listings, prefer the
+profile's password environment variable for routine unattended runs.
+`--target-level` accepts levels 2 through 100 and updates a resumed campaign's
+durable target without rebuilding its character workspace.
+
 This command uses the existing verified policy graph. It will checkpoint and
 stop safely at the first level band that still lacks an executable policy;
-extending verified coverage from level 10 through HERO remains ongoing work.
+extending verified class-aware coverage through HERO remains ongoing work.
 
 ## Campaign execution
 

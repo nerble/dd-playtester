@@ -88,6 +88,67 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert run_sales[0]["id"] == sale_id
 
 
+def test_character_snapshot_lookups_are_indexed_and_case_insensitive(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    storage = RunStorage(database)
+    run_id = storage.create_run(
+        scenario_name="starter:Kestrel",
+        scenario_path=Path("profile.yaml"),
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="progress_changed",
+        state={"name": "Kestrel", "level": 1, "xp": 0},
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="item_acquired",
+        state={
+            "name": "kEsTrEl",
+            "level": 2,
+            "acquired_items": [{"item": "a large sack"}],
+        },
+    )
+
+    assert storage.get_latest_character_state("KESTREL")["level"] == 2
+    assert storage.character_has_acquired_item("kestrel", "large sack")
+
+    latest_plan = storage.connection.execute(
+        """
+        EXPLAIN QUERY PLAN
+        SELECT state_json
+        FROM state_snapshots
+        WHERE lower(json_extract(state_json, '$.name')) = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        ("kestrel",),
+    ).fetchall()
+    item_plan = storage.connection.execute(
+        """
+        EXPLAIN QUERY PLAN
+        SELECT state_json
+        FROM state_snapshots
+        WHERE reason = 'item_acquired'
+          AND lower(json_extract(state_json, '$.name')) = ?
+        ORDER BY id DESC
+        """,
+        ("kestrel",),
+    ).fetchall()
+    storage.close()
+
+    assert any(
+        "idx_state_snapshots_character_id" in row[3]
+        for row in latest_plan
+    )
+    assert any(
+        "idx_state_snapshots_reason_character_id" in row[3]
+        for row in item_plan
+    )
+
+
 def test_storage_marks_interrupted_runs_as_failed(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     run_id = storage.create_run(scenario_name="arena", scenario_path=Path("arena.yaml"))

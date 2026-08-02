@@ -20,10 +20,12 @@ APPLY_CRIT = 50
 APPLY_SWIFTNESS = 51
 ITEM_LIGHT = 1
 ITEM_WEAPON = 5
+ITEM_FOOD = 19
 ITEM_BODY_PART = 1 << 26
 ITEM_LANCE = 1 << 27
 ITEM_BOW = 1 << 30
 PIERCING_DAMAGE_TYPES = frozenset({2, 11})
+BLUNT_DAMAGE_TYPES = frozenset({6, 7, 8})
 
 STANCE_COMBAT = "combat"
 STANCE_PRE_LEVEL = "pre_level"
@@ -50,7 +52,7 @@ _WEAR_CATEGORIES = {
 }
 _CATEGORY_CAPACITY = {"finger": 2, "neck": 2, "wrist": 2}
 _DISPLAY_PREFIX = re.compile(
-    r"^(?:\[[^\]]+\]|\([^)]*\)|a|an|the)\s+",
+    r"^(?:\[[^\]]+\]|\([^)]*\)|a|an|some|the)\s+",
     re.IGNORECASE,
 )
 _COLOUR_CODE = re.compile(r"\{.")
@@ -163,6 +165,7 @@ def normalize_item_name(value: str) -> str:
     cleaned = _COLOUR_CODE.sub("", value)
     cleaned = _NUMERIC_COLOUR_CODE.sub("", cleaned)
     cleaned = re.sub(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", cleaned)
+    cleaned = re.sub(r"^\s*\[#\d+\]\s*", "", cleaned)
     cleaned = " ".join(cleaned.casefold().split())
     while True:
         reduced = _DISPLAY_PREFIX.sub("", cleaned)
@@ -174,7 +177,7 @@ def normalize_item_name(value: str) -> str:
 def normalize_room_item_name(value: str) -> str:
     cleaned = normalize_item_name(value)
     return re.sub(
-        r"\s+(?:is|are|lies?|sits?|rests?|waits?)\s+here$",
+        r"\s+(?:is|are|lies?|sits?|rests?|waits?)\b.*$",
         "",
         cleaned,
     )
@@ -195,6 +198,15 @@ def is_piercing_weapon(item: ObjectSource) -> bool:
         item.item_type == ITEM_WEAPON
         and len(item.values) > 3
         and item.values[3] in PIERCING_DAMAGE_TYPES
+    )
+
+
+def is_blunt_weapon(item: ObjectSource) -> bool:
+    """Mirror DD4's blunt-weapon check used by the stun command."""
+    return (
+        item.item_type == ITEM_WEAPON
+        and len(item.values) > 3
+        and item.values[3] in BLUNT_DAMAGE_TYPES
     )
 
 
@@ -229,11 +241,7 @@ def stance_score(
     mana = max(0, bonuses.get(APPLY_MANA, 0))
     recovery = hitpoints + mana
     armor = item.values[0] if item.item_type == 9 and item.values else 0
-    weapon = (
-        sum(item.values[1:3])
-        if item.item_type == 5 and len(item.values) >= 3
-        else 0
-    )
+    weapon = weapon_damage_score(item)
     if stance == STANCE_PRE_LEVEL:
         if level_gain_priorities:
             level_metrics = {
@@ -295,8 +303,9 @@ def stance_score(
         )
     if stance != STANCE_COMBAT:
         raise ValueError(f"Unknown equipment stance: {stance}")
+    direct_damage = weapon + 2 * damroll if weapon else damroll
     return (
-        damroll,
+        direct_damage,
         hitroll,
         swiftness,
         critical,
@@ -316,9 +325,26 @@ def protects_from_sale(item: ObjectSource) -> bool:
         APPLY_CRIT,
         APPLY_SWIFTNESS,
     }
+    if item.item_type == ITEM_WEAPON and any(
+        location == APPLY_DAMROLL and modifier < 0
+        for location, modifier in item.affects
+    ):
+        # A weapon with a damage penalty is not protected merely because it
+        # also carries a positive hit-roll modifier. The stance planner still
+        # retains it when its source dice make it the best available weapon.
+        return False
     return item.item_type == ITEM_LIGHT or is_capacity_infrastructure(item) or any(
         location in protected and modifier > 0
         for location, modifier in item.affects
+    )
+
+
+def is_disposable_food(item: ObjectSource) -> bool:
+    """Identify source food that explicitly poisons the eater."""
+    return (
+        item.item_type == ITEM_FOOD
+        and len(item.values) >= 4
+        and item.values[3] > 0
     )
 
 
@@ -361,6 +387,7 @@ def _stance_rank(
     stance: str,
     *,
     level_gain_priorities: tuple[str, ...],
+    weapon_preference: str | None = None,
 ) -> tuple[int, ...]:
     """Rank usable gear above emptiness without overlooking harmful stat gear."""
     if stance == STANCE_PRE_LEVEL:
@@ -374,13 +401,22 @@ def _stance_rank(
     else:
         score_length = 8
     if item is None:
-        return (0,) + (0,) * score_length
+        return (0, 0) + (0,) * score_length
     if is_strength_penalty_ring(item) or any(
         location in APPLY_STATS and modifier < 0
         for location, modifier in item.affects
     ):
-        return (-1,) + (0,) * score_length
-    return (1,) + stance_score(
+        return (-1, 0) + (0,) * score_length
+    preferred_weapon = int(
+        item_category(item) == "wield"
+        and (
+            weapon_preference == "piercing"
+            and is_piercing_weapon(item)
+            or weapon_preference == "blunt"
+            and is_blunt_weapon(item)
+        )
+    )
+    return (1, preferred_weapon) + stance_score(
         item,
         stance,
         level_gain_priorities=level_gain_priorities,
@@ -394,6 +430,7 @@ def plan_stance(
     *,
     character_level: int | None = None,
     level_gain_priorities: tuple[str, ...] = (),
+    weapon_preference: str | None = None,
 ) -> list[GearChoice]:
     """Return carried items that should replace or fill the current gear set."""
     carried_items = list(carried)
@@ -425,6 +462,7 @@ def plan_stance(
                     entry[0],
                     stance,
                     level_gain_priorities=level_gain_priorities,
+                    weapon_preference=weapon_preference,
                 ),
                 entry[1],
             ),
@@ -444,6 +482,7 @@ def plan_stance_swaps(
     stance: str,
     *,
     level_gain_priorities: tuple[str, ...] = (),
+    weapon_preference: str | None = None,
 ) -> tuple[list[ObjectSource], list[ObjectSource]]:
     """Return worn removals and carried additions needed for a stance."""
     carried_items = list(carried)
@@ -470,6 +509,7 @@ def plan_stance_swaps(
                         entry[0],
                         stance,
                         level_gain_priorities=level_gain_priorities,
+                        weapon_preference=weapon_preference,
                     ),
                     entry[1],
                 ),
@@ -527,6 +567,40 @@ def item_keyword(item: ObjectSource) -> str:
     if keyword_words:
         return keyword_words[0]
     return description_words[-1] if description_words else ""
+
+
+def item_command_keyword(
+    item: ObjectSource,
+    peers: Iterable[ObjectSource] = (),
+) -> str:
+    """Choose a source keyword that will select ``item`` among ``peers``.
+
+    DD4's ``wear`` and ``remove`` commands consume one keyword, so a generic
+    noun such as ``dagger`` can select the wrong prototype when a better
+    ``long dagger slim`` is also carried.  Prefer a source keyword that is
+    absent from the other prototypes and keep the legacy noun fallback for
+    genuinely ambiguous or uncontextualized items.
+    """
+    keyword_words = [word.casefold() for word in item.keywords.split() if word]
+    if not keyword_words:
+        return item_keyword(item)
+    other_keywords = {
+        word.casefold()
+        for peer in peers
+        if peer.vnum != item.vnum
+        for word in peer.keywords.split()
+    }
+    description_words = normalize_item_name(item.short_description).split()
+    noun = description_words[-1] if description_words else ""
+    if noun in keyword_words and len(noun) >= 5 and noun not in other_keywords:
+        return noun
+    unique_words = [word for word in keyword_words if word not in other_keywords]
+    if unique_words:
+        return next(
+            (word for word in unique_words if word in description_words),
+            unique_words[0],
+        )
+    return item_keyword(item)
 
 
 def _bonus_totals(item: ObjectSource) -> dict[int, int]:

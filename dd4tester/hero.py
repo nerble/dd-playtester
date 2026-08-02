@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .campaign import CampaignResult, run_campaign_file
 from .character import (
@@ -19,6 +21,7 @@ from .character import (
 )
 from .dd4_catalog import CharacterCatalog, load_character_catalog
 from .mudlet import MudletBridge
+from .scenario import load_yaml_mapping
 
 
 DEFAULT_HERO_WORKSPACE = Path("runs/heroes")
@@ -80,7 +83,9 @@ def prepare_hero_request(
     catalog: CharacterCatalog | None = None,
     source: str | Path | None = None,
     workspace: Path = DEFAULT_HERO_WORKSPACE,
+    target_level: int = 100,
 ) -> HeroPreparation:
+    _validate_target_level(target_level)
     catalog = catalog or load_character_catalog(source)
     validate_runtime_catalog(catalog)
     race = catalog.race_name(request.race)
@@ -145,6 +150,7 @@ def prepare_hero_request(
             )
         if not profile_path.is_file() or not campaign_path.is_file():
             raise ValueError(f"hero workspace is incomplete: {directory}")
+        _update_campaign_target(campaign_path, target_level)
         character = load_character_spec(profile_path)
         _initialize_mudlet_bridge(canonical_request)
         return HeroPreparation(
@@ -171,8 +177,12 @@ def prepare_hero_request(
         _render_yaml(
             {
                 "character_profile": "character.yaml",
-                "name": f"{name} to HERO",
-                "target_level": 100,
+                "name": (
+                    f"{name} to HERO"
+                    if target_level == 100
+                    else f"{name} to level {target_level}"
+                ),
+                "target_level": target_level,
                 "max_segments": 10000,
                 "max_total_runtime": 604800,
                 "max_total_commands": 1000000,
@@ -253,21 +263,66 @@ async def run_hero_request(
     reset_retries: int | None = None,
     reset_wait: float = 300.0,
     max_segment_runtime: float | None = None,
+    target_level: int = 100,
+    password: str | None = None,
 ) -> tuple[HeroPreparation, CampaignResult]:
     preparation = prepare_hero_request(
         request,
         source=source,
         workspace=workspace,
+        target_level=target_level,
     )
-    result = await run_campaign_file(
-        preparation.campaign_path,
-        force_new=force_new,
-        segments=segments,
-        reset_retries=segments if reset_retries is None else reset_retries,
-        reset_wait=reset_wait,
-        max_segment_runtime=max_segment_runtime,
-    )
+    with _temporary_character_password(
+        preparation.character.password_env,
+        password,
+    ):
+        result = await run_campaign_file(
+            preparation.campaign_path,
+            force_new=force_new,
+            segments=segments,
+            reset_retries=(
+                reset_retries
+                if reset_retries is not None
+                else (0 if max_segment_runtime is not None else segments)
+            ),
+            reset_wait=reset_wait,
+            max_segment_runtime=max_segment_runtime,
+        )
     return preparation, result
+
+
+def _validate_target_level(target_level: int) -> None:
+    if not 2 <= target_level <= 100:
+        raise ValueError("target_level must be between 2 and 100")
+
+
+def _update_campaign_target(path: Path, target_level: int) -> None:
+    mapping = load_yaml_mapping(path)
+    if int(mapping.get("target_level", 100)) == target_level:
+        return
+    mapping["target_level"] = target_level
+    path.write_text(_render_yaml(mapping), encoding="utf-8")
+
+
+@contextmanager
+def _temporary_character_password(
+    environment_name: str,
+    password: str | None,
+) -> Iterator[None]:
+    if password is None:
+        yield
+        return
+    if not password:
+        raise ValueError("password must not be empty")
+    previous = os.environ.get(environment_name)
+    os.environ[environment_name] = password
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(environment_name, None)
+        else:
+            os.environ[environment_name] = previous
 
 
 def _profile_mapping(request: HeroRequest) -> dict[str, Any]:

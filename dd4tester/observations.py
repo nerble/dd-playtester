@@ -104,6 +104,12 @@ class ObservationParser:
         events: list[GameEvent] = []
         for line in lines:
             events.extend(self._parse_line(line))
+        # DD4 prompts are normally the final unterminated line in a Telnet
+        # chunk. Parse a complete prompt immediately so GMCP-only traffic
+        # cannot leave command acknowledgement buffered indefinitely.
+        if self._pending_text and _PROMPT.search(self._pending_text):
+            events.extend(self._parse_line(self._pending_text))
+            self._pending_text = ""
         return events
 
     def flush_text(self) -> list[GameEvent]:

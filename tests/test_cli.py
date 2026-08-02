@@ -129,7 +129,23 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
 
     monkeypatch.setattr(dd4tester.cli, "run_hero_request", fake_hero)
 
-    exit_code = main(["hero", "--race", "human", "--sex", "female", "--class", "mage"])
+    exit_code = main(
+        [
+            "hero",
+            "--race",
+            "human",
+            "--sex",
+            "female",
+            "--class",
+            "mage",
+            "--username",
+            "Valora",
+            "--password",
+            "command-line-secret",
+            "--target-level",
+            "30",
+        ]
+    )
 
     assert exit_code == 0
     request = captured_request["request"]
@@ -139,8 +155,33 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
         "female",
         "mage",
     )
+    assert request.name == "Valora"
     assert captured_request["options"]["reset_retries"] is None
-    assert "awaiting the Mud School area reset" in capsys.readouterr().out
+    assert captured_request["options"]["target_level"] == 30
+    assert captured_request["options"]["password"] == "command-line-secret"
+    captured = capsys.readouterr()
+    assert "awaiting the Mud School area reset" in captured.out
+    assert "command-line-secret" not in captured.out
+
+
+def test_hero_command_rejects_conflicting_name_and_username(capsys) -> None:
+    exit_code = main(
+        [
+            "hero",
+            "--race",
+            "human",
+            "--class",
+            "mage",
+            "--name",
+            "Valora",
+            "--username",
+            "Someoneelse",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "must identify the same DD4 character" in captured.err
 
 
 def test_recover_runs_marks_orphaned_records(tmp_path, capsys) -> None:
@@ -347,6 +388,7 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
         assert path == config
         assert _kwargs["force_new"] is True
         assert _kwargs["segments"] == 1
+        assert _kwargs["reset_retries"] is None
         assert _kwargs["max_segment_runtime"] is None
         return CampaignResult(4, "blocked", 9, "awaiting verified policy", {"level": 2})
 
@@ -488,6 +530,29 @@ def test_restock_command_runs_city_provisioning(tmp_path, capsys, monkeypatch) -
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Run 10 success" in captured.out
+    assert f"Transcript: {transcript}" in captured.out
+
+
+def test_rearm_command_runs_verified_weapon_recovery(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "rearm-1.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_rearm(path: Path) -> RunResult:
+        assert path == profile
+        return RunResult(16, "success", transcript, database, {"level": 13})
+
+    monkeypatch.setattr(dd4tester.cli, "run_rearm_profile", fake_rearm)
+
+    exit_code = main(["rearm", str(profile)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 16 success" in captured.out
     assert f"Transcript: {transcript}" in captured.out
 
 

@@ -22,16 +22,20 @@ from .equipment import (
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
     is_capacity_infrastructure,
+    is_blunt_weapon,
     is_bow,
+    is_disposable_food,
     is_piercing_weapon,
     is_strength_penalty_ring,
     item_category,
+    item_command_keyword,
     item_keyword,
     load_gear_catalog,
     normalize_item_name,
     plan_stance,
     plan_stance_swaps,
     protects_from_sale,
+    stance_score,
 )
 from .fastwalks import Fastwalk, route_named
 from .hunt_candidates import (
@@ -60,6 +64,7 @@ _TARGET_SELECTOR_PREFIX = re.compile(
     r"^\s*\[#(?P<target_id>\d+)\]\s*",
     re.MULTILINE,
 )
+_MOBILE_STATUS_PREFIX = re.compile(r"^(?:\([^)]*\)\s*)+")
 _ATTRIBUTE_ROLL = re.compile(
     r"Str:\s*(?P<str>\d+)\s+Int:\s*(?P<int>\d+)\s+"
     r"Wis:\s*(?P<wis>\d+)\s+Dex:\s*(?P<dex>\d+)\s+Con:\s*(?P<con>\d+)",
@@ -168,12 +173,6 @@ _CONSIDER_DANGEROUS_FRAGMENTS = (
 _CONSIDER_REJECTED_FRAGMENTS = (
     _CONSIDER_BELOW_BAND_FRAGMENTS + _CONSIDER_DANGEROUS_FRAGMENTS
 )
-_CONSIDER_TARGET_HEALTHIER_FRAGMENTS = (
-    "is a teensy bit healthier than you",
-    "is slightly healthier than you",
-    "is healthier than you",
-    "is much healthier than you",
-)
 _EXPENDABLE_FIELD_JUNK = {
     "hairy key": "hairy",
     "shimmering key": "shimmering",
@@ -212,6 +211,35 @@ _OPPOSITE_DIRECTIONS = {
     "up": "down",
     "down": "up",
 }
+_CITY_REARM_PRIMARY_ROUTE = (
+    "south",
+    "south",
+    "south",
+    "east",
+    "east",
+    "north",
+)
+# Source-derived safe Midgaard road path from healer room 3054 to Dave the
+# Dealer in road-crossing room 3120, whose reset inventory includes object 3352.
+_CITY_REARM_POUNDING_ROUTE = (
+    "south",
+    "south",
+    "south",
+    "south",
+    "west",
+    "west",
+    "west",
+    "south",
+    "south",
+    "south",
+    "east",
+    "south",
+    "south",
+    "south",
+    "south",
+    "east",
+)
+_CITY_REARM_POUNDING_REQUIRED_FREE_WEIGHT = 5
 
 
 @dataclass(frozen=True)
@@ -220,10 +248,23 @@ class _ClassTrainerRoute:
     room_name: str
     keyword: str
     steps: tuple[tuple[str, str, str], ...]
+    minimum_level: int = 10
+    search_room_vnum: str | None = None
 
     @property
     def outbound(self) -> dict[str, str]:
         return {origin: command for origin, command, _ in self.steps}
+
+    @property
+    def destination_vnum(self) -> str:
+        return self.search_room_vnum or self.room_vnum
+
+    @property
+    def return_commands(self) -> tuple[str, ...]:
+        return tuple(
+            _OPPOSITE_DIRECTIONS[command]
+            for _, command, _ in reversed(self.steps)
+        )
 
     @property
     def return_to_healer(self) -> dict[str, str]:
@@ -369,14 +410,61 @@ _CLASS_TRAINERS = {
         ),
     ),
 }
+_ADVANCED_CLASS_TRAINERS = {
+    "thief": _ClassTrainerRoute(
+        "25205",
+        "Olive Grove",
+        "leader",
+        (
+            ("3001", "south", "3005"),
+            ("3005", "south", "3014"),
+            ("3014", "east", "3015"),
+            ("3015", "east", "3016"),
+            ("3016", "east", "3041"),
+            ("3041", "east", "3053"),
+            ("3053", "east", "3503"),
+            ("3503", "east", "3502"),
+            ("3502", "south", "5261"),
+            ("5261", "south", "5260"),
+            ("5260", "south", "5259"),
+            ("5259", "south", "5258"),
+            ("5258", "east", "5262"),
+            ("5262", "east", "5263"),
+            ("5263", "south", "5264"),
+            ("5264", "east", "5265"),
+            ("5265", "east", "5266"),
+            ("5266", "down", "5267"),
+            ("5267", "east", "1701"),
+            ("1701", "east", "1702"),
+            ("1702", "north", "1704"),
+            ("1704", "north", "1705"),
+            ("1705", "north", "1706"),
+            ("1706", "north", "1707"),
+            ("1707", "north", "1708"),
+            ("1708", "east", "1720"),
+            ("1720", "east", "25200"),
+            ("25200", "east", "25201"),
+            ("25201", "east", "25202"),
+            ("25202", "east", "25203"),
+            ("25203", "south", "25205"),
+            ("25205", "west", "25204"),
+        ),
+        minimum_level=15,
+        search_room_vnum="25204",
+    ),
+}
+_ALL_CLASS_TRAINERS = (
+    *_CLASS_TRAINERS.values(),
+    *_ADVANCED_CLASS_TRAINERS.values(),
+)
 _CLASS_TRAINER_HEALER_ROUTES = {
     room_vnum: direction
-    for trainer in _CLASS_TRAINERS.values()
+    for trainer in _ALL_CLASS_TRAINERS
     for room_vnum, direction in trainer.return_to_healer.items()
 }
 _CLASS_TRAINER_HEALER_RETURN_PATHS = {
     room_vnum: commands
-    for trainer in _CLASS_TRAINERS.values()
+    for trainer in _ALL_CLASS_TRAINERS
     for room_vnum, commands in trainer.healer_return_paths.items()
 }
 _MIDGAARD_HEALER_ROUTES = {
@@ -399,6 +487,48 @@ _MIDGAARD_HEALER_TO_MAGE_LAB_ROUTES = {
     "3054": "south",
     **_CLASS_TRAINERS["mage"].outbound,
 }
+# The Great Eastern Desert is a randomized maze and blocks recall. Navigate
+# it from live GMCP exits until the stable river-tunnel room, then use the
+# source-backed route to the Midgaard healer.
+_PYRAMID_DESERT_MAZE_ROOMS = frozenset(
+    {
+        "5007",
+        "5024",
+        "5025",
+        "5026",
+        "5027",
+        "5028",
+        "5029",
+        "5030",
+        "5031",
+        "5032",
+    }
+)
+_PYRAMID_LIVE_ROUTE_ROOMS = _PYRAMID_DESERT_MAZE_ROOMS | {"5056", "2600"}
+_PYRAMID_HEALER_RETURN_COMMANDS = (
+    *("west",) * 9,
+    *("north",) * 2,
+    *("west",) * 2,
+    *("north",) * 4,
+)
+# The Shadow Grove uses randomized exits and blocks recall.  Navigate the
+# grove from live GMCP exits to its stable entrance, then use the source-backed
+# reverse route through Haon Dor and Midgaard to the healer.
+_SHADOW_GROVE_ROOMS = frozenset({str(vnum) for vnum in range(1300, 1310)})
+_SHADOW_GROVE_HEALER_RETURN_COMMANDS = (
+    "south",
+    "east",
+    "south",
+    *("east",) * 3,
+    "north",
+    "east",
+    "north",
+    "north",
+    *("east",) * 2,
+    "north",
+    *("east",) * 13,
+    *("north",) * 3,
+)
 # Mud School resets at age 14. After a reset it starts at 12, and the two
 # randomized area pulses each take 30-90 seconds while the area is vacant.
 _ARENA_RESPAWN_WAIT_SECONDS = 180
@@ -406,17 +536,20 @@ _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
 _POST_FLEE_AUDIT_GRACE_SECONDS = 0.75
 _COMBAT_ACTION_COOLDOWN_SECONDS = 3.0
-_FIELD_COMBAT_TIMEOUT_SECONDS = 264.0
+# Field play is deliberately 50% more aggressive than the original safety
+# profile. These values are half of the original reserve thresholds, with a
+# longer combat bound; hard withdrawal conditions still take precedence.
+_FIELD_COMBAT_TIMEOUT_SECONDS = 360.0
 _FIELD_COMBAT_PLATEAU_SECONDS = 60.0
 _MIDGAARD_DRUNK_TIMEOUT_SECONDS = 60.0
 _PRE_LEVEL_XP_FRACTION = 0.10
-_FIELD_CONTINUE_HEALTH_RATIO = 0.405
-_FIELD_CONTINUE_MANA_RATIO = 0.135
-_FIELD_CONTINUE_MOVE_RATIO = 0.09
-_FIELD_READY_HEALTH_RATIO = 0.675
-_FIELD_READY_MANA_RATIO = 0.27
-_FIELD_WITHDRAW_HEALTH_RATIO = 0.27
-_FIELD_FINISH_HEALTH_RATIO = 0.18
+_FIELD_CONTINUE_HEALTH_RATIO = 0.225
+_FIELD_CONTINUE_MANA_RATIO = 0.075
+_FIELD_CONTINUE_MOVE_RATIO = 0.05
+_FIELD_READY_HEALTH_RATIO = 0.375
+_FIELD_READY_MANA_RATIO = 0.15
+_FIELD_WITHDRAW_HEALTH_RATIO = 0.15
+_FIELD_FINISH_HEALTH_RATIO = 0.10
 _CASTER_MITIGATION_SPELLS = {
     "mage": (("armor", "armor", 5),),
     "cleric": (("armor", "armor", 5),),
@@ -425,6 +558,8 @@ _CASTER_MITIGATION_SPELLS = {
 _CLERIC_COMBAT_HEAL_RATIO = 0.35
 _CLERIC_COMBAT_HEAL_MANA_RESERVE_RATIO = 0.30
 _CLERIC_COMBAT_HEAL_LIMIT = 2
+# High-risk and aggressive target approaches retain the 67.5% departure gate;
+# the 50% setting applies to continuation and withdrawal reserves.
 _FIELD_HIGH_RISK_START_HEALTH_RATIO = 0.675
 _PIE_WEIGHT = 5
 _MOVEMENT_COMMANDS = {
@@ -480,16 +615,18 @@ class FieldHuntStop:
     target: str | None = None
     command_keyword: str | None = None
     actions: tuple[str, ...] = ()
+    abort_if_where_target_absent: bool = False
+    abort_if_where_room_names: tuple[str, ...] = ()
     post_actions: tuple[str, ...] = ()
     required_items: tuple[str, ...] = ()
     allowed_bystanders: tuple[str, ...] = ()
     trivial_bystanders: tuple[str, ...] = ()
     rejected_consider_subjects: tuple[str, ...] = ()
-    reject_healthier_consider: bool = False
     minimum_health_ratio: float = _FIELD_CONTINUE_HEALTH_RATIO
     consider_only: bool = False
     exact_target: bool = False
     maximum_target_count: int = 1
+    require_isolated: bool = False
     allow_local_recovery: bool = False
     allow_below_band_for_required_loot: bool = False
     minimum_combat_health_ratio: float = 0.0
@@ -497,6 +634,8 @@ class FieldHuntStop:
     maximum_level_offset: int | None = None
     maximum_pursuit_steps: int = 1
     pursuit_room_vnums: tuple[str, ...] = ()
+    selective_loot_keywords: tuple[str, ...] = ()
+    abort_after_consider_rejection: bool = False
 
 
 class StarterPolicy:
@@ -514,11 +653,14 @@ class StarterPolicy:
         return_home: bool = False,
         city_restock: bool = False,
         city_rearm: bool = False,
+        city_rearm_pounding: bool = False,
         city_outfit: bool = False,
         audit_combat_pouch: bool = False,
+        use_sanctuary_potions: bool = True,
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
+        bank_excess_coins: bool = False,
         liquidate_loot: bool = False,
         loot_sale_counts: Mapping[tuple[str, str], int] | None = None,
         loot_sale_history: list[Mapping[str, Any]] | None = None,
@@ -552,6 +694,7 @@ class StarterPolicy:
         title_configured: bool = False,
         description_configured: bool = False,
         selected_training_stat: str | None = None,
+        fastwalk_skip_target_sightings: frozenset[tuple[str, str]] = frozenset(),
     ) -> None:
         if objective_level < 2:
             raise ValueError("objective_level must be at least 2")
@@ -580,11 +723,14 @@ class StarterPolicy:
         self.return_home = return_home
         self.city_restock = city_restock
         self.city_rearm = city_rearm
+        self.city_rearm_pounding = city_rearm_pounding
         self.city_outfit = city_outfit
         self.audit_combat_pouch = audit_combat_pouch
+        self.use_sanctuary_potions = use_sanctuary_potions
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
+        self.bank_excess_coins = bank_excess_coins
         self.liquidate_loot = liquidate_loot
         self.loot_sale_counts = dict(loot_sale_counts or {})
         self.loot_sale_history = [dict(row) for row in loot_sale_history or []]
@@ -610,6 +756,11 @@ class StarterPolicy:
         )
         self.fastwalk_collect_loot = True
         self.fastwalk_autoloot_configured = False
+        self.fastwalk_selective_loot = any(
+            stop.selective_loot_keywords for stop in fastwalk_hunt_stops
+        )
+        self.fastwalk_selective_loot_index = 0
+        self.fastwalk_autoloot_restored = not self.fastwalk_selective_loot
         self.fastwalk_targetmode_configured = False
         self.fastwalk_container_audited = False
         self.fastwalk_junk_disposal_attempted: set[str] = set()
@@ -659,6 +810,7 @@ class StarterPolicy:
         self.fastwalk_world_cache_post_complete = not self.fastwalk_world_cache_items
         self.fastwalk_train_before_departure = fastwalk_train_before_departure
         self.fastwalk_training_started = False
+        self.class_trainer_return_pending = False
         self.fastwalk_stat_training_configured = False
         self.selected_training_stat = selected_training_stat
         self.fastwalk_practice_audit_requested = False
@@ -677,7 +829,9 @@ class StarterPolicy:
         self.fastwalk_hunt_looked = False
         self.fastwalk_hunt_stop_killed = False
         self.fastwalk_hunt_stop_skipped = False
+        self.fastwalk_hunt_route_before_target = False
         self.fastwalk_hunt_preflight_food_attempted = False
+        self.fastwalk_water_preflight_step = 0
         self.moria_research = moria_research
         self.moria_depth = moria_depth
         self.gear_catalog = gear_catalog
@@ -717,7 +871,9 @@ class StarterPolicy:
         self.practiced = False
         self.practice_plan: tuple[TrainingChoice, ...] = ()
         self.practice_plan_index = 0
+        self.practice_listing_refresh_required = False
         self.known_skills: set[str] = set()
+        self.known_skill_levels: dict[str, int] = {}
         self.capability_audit_pending = False
         self.capability_audit_complete = False
         self.pending_practice_choice: TrainingChoice | None = None
@@ -778,6 +934,11 @@ class StarterPolicy:
         self.cleric_combat_heals = 0
         self.backstab_pending_target: str | None = None
         self.backstab_skip_once_target: str | None = None
+        self.stun_opener_step: str | None = None
+        self.stun_opener_target: str | None = None
+        self.stun_opener_selector: str | None = None
+        self.stun_opener_weapon_keyword: str | None = None
+        self.stun_opener_piercing_keyword: str | None = None
         self.shoot_pending_target: str | None = None
         self.shoot_skip_once_target: str | None = None
         self.chill_touch_unavailable = False
@@ -799,8 +960,11 @@ class StarterPolicy:
         self.insufficient_funds = False
         self.city_restock_step = 0
         self.city_rearm_step = 0
+        self.city_rearm_role = "primary"
         self.city_rearm_route_index = 0
         self.city_rearm_returning = False
+        self.city_rearm_direct_wield_attempted = False
+        self.city_rearm_piercing_keyword: str | None = None
         self.city_rearm_capacity_item: str | None = None
         self.city_rearm_capacity_checked = False
         self.city_rearm_borrowing = False
@@ -836,6 +1000,12 @@ class StarterPolicy:
         self.magic_shop_purchase_failed = False
         self.magic_shop_capacity_relief_attempted = False
         self.magic_shop_capacity_relief_pending = False
+        self.magic_shop_diploma_relief_step = 0
+        self.magic_shop_diploma_dropped = False
+        self.magic_shop_diploma_recovery_step = 0
+        self.magic_shop_tophat_relief_planned = False
+        self.magic_shop_tophat_dropped = False
+        self.bank_excess_coin_step = 0
         self.sale_plan: list[tuple[str, SafeShop]] = []
         self.sale_index = 0
         self.sale_route_index = 0
@@ -850,12 +1020,32 @@ class StarterPolicy:
         self.sale_identified_values: dict[str, int] = {}
         self.donation_plan: list[str] = []
         self.donation_index = 0
+        self.donation_pending_keyword: str | None = None
+        self.donation_rejected_keywords: set[str] = set()
+        self.cursed_sale_keyword: str | None = None
+        self.cursed_sale_shop: SafeShop | None = None
+        self.cursed_item_count = 0
+        self.curse_recovery_step = "idle"
+        self.curse_items_tossed = False
+        self.curse_drop_pending = False
+        self.curse_borrow_step = 0
+        self.curse_borrow_complete = False
         self.fastwalk_recall_started = False
         self.fastwalk_arrival_observed = False
         self.fastwalk_returning = False
         self.fastwalk_recovery_ready = False
         self.fastwalk_outbound_index = 0
         self.fastwalk_return_index = 0
+        self.fastwalk_recovery_commands: tuple[str, ...] | None = None
+        self.live_maze_context: str | None = None
+        self.live_maze_target: str | None = None
+        self.live_maze_allowed_rooms: frozenset[str] = frozenset()
+        self.live_maze_visited: set[str] = set()
+        self.live_maze_attempted: dict[str, set[str]] = {}
+        self.live_maze_stack: list[tuple[str, str, str]] = []
+        self.live_maze_backtrack_room: str | None = None
+        self.live_maze_rebases = 0
+        self.live_maze_complete = False
         self.fastwalk_explore_step = 0
         self.fastwalk_explore_distance = 0
         self.fastwalk_explore_look_pending = False
@@ -872,11 +1062,17 @@ class StarterPolicy:
         self.fastwalk_pursuit_direction: str | None = None
         self.fastwalk_pursuit_steps = 0
         self.fastwalk_target_absent = False
+        self.fastwalk_where_target_absent_observed = False
         self.consider_target: str | None = None
         self.consider_target_selector: str | None = None
         self.consider_viable: bool | None = None
         self.consider_level_offset_ceiling: int | None = None
         self.fastwalk_consider_outcomes: dict[str, bool] = {}
+        self.fastwalk_below_band_targets: set[str] = set()
+        self.fastwalk_below_band_sightings: set[tuple[str, str]] = {
+            (str(room_vnum), str(target).casefold())
+            for room_vnum, target in fastwalk_skip_target_sightings
+        }
         self.consider_response_pending = False
         self.fastwalk_loot_step = 0
         self.fastwalk_recall_after_loot = False
@@ -887,14 +1083,18 @@ class StarterPolicy:
         self.combat_pouch_potions: Counter[str] = Counter()
         self.fastwalk_last_kill_target: str | None = None
         self.fastwalk_abort_reason: str | None = None
+        self.fastwalk_unattackable_target: str | None = None
         self.fastwalk_emergency_recall_pending = False
         self.fastwalk_post_flee_audit_requested = False
         self.fastwalk_post_flee_audit_due: float | None = None
+        self.runtime_boundary_requested = False
         self.utility_abort_reason: str | None = None
         self.utility_emergency_recall_pending = False
         self.pending_fastwalk_outbound_move = False
         self.pending_fastwalk_hunt_move = False
         self.return_home_recall_started = False
+        self.return_home_recovery_commands: tuple[str, ...] | None = None
+        self.return_home_recovery_index = 0
         self.purgatory_recovery_active = False
         self.purgatory_judgement_step = 0
         self.purgatory_gear_restore_step = 0
@@ -926,6 +1126,23 @@ class StarterPolicy:
         self.last_response = cleaned
         recent = cleaned.casefold()
         self.text = (self.text + cleaned)[-24_000:]
+        current_stop = (
+            self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+            if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+            else None
+        )
+        if (
+            "you fail to find anyone by that name" in recent
+            and current_stop is not None
+            and current_stop.abort_if_where_target_absent
+            and any(
+                action.strip().casefold().startswith("where ")
+                for action in current_stop.actions[: self.fastwalk_hunt_action_index]
+            )
+        ):
+            # `where` output can arrive immediately before a prompt, which
+            # otherwise overwrites last_response before the hunt planner reads it.
+            self.fastwalk_where_target_absent_observed = True
         for match in _SCORE_STAT.finditer(cleaned):
             stat = match.group("stat").casefold()
             self.permanent_stats[stat] = int(match.group("permanent"))
@@ -949,6 +1166,7 @@ class StarterPolicy:
         if "skills known:" in recent:
             listing = parse_practice_listing(cleaned)
             self.known_skills.update(listing.known)
+            self.known_skill_levels.update(listing.known)
             self.capability_audit_pending = False
             self.capability_audit_complete = True
         if self.pending_practice_choice is not None:
@@ -1000,6 +1218,14 @@ class StarterPolicy:
             self.vault_storage_rejected = False
             self.vault_rejected_lodge_keyword = None
             self.vault_stow_command_index = len(self.vault_stow_commands)
+        if self.donation_pending_keyword is not None:
+            if "you do not have that item" in recent:
+                self.donation_rejected_keywords.add(
+                    self.donation_pending_keyword
+                )
+                self.donation_pending_keyword = None
+            elif "you donate " in recent:
+                self.donation_pending_keyword = None
         practice_balances = _practice_balances(cleaned)
         if practice_balances != (None, None):
             self.latest_practice_balances = practice_balances
@@ -1040,15 +1266,7 @@ class StarterPolicy:
                     for subject in stop.rejected_consider_subjects
                 )
             )
-            target_health_rejected = bool(
-                stop is not None
-                and stop.reject_healthier_consider
-                and any(
-                    phrase in recent
-                    for phrase in _CONSIDER_TARGET_HEALTHIER_FRAGMENTS
-                )
-            )
-            if resolved_to_rejected_subject or target_health_rejected:
+            if resolved_to_rejected_subject:
                 self.consider_viable = False
                 self.consider_level_offset_ceiling = None
             elif any(phrase in recent for phrase in _CONSIDER_VIABLE_FRAGMENTS):
@@ -1059,13 +1277,28 @@ class StarterPolicy:
             elif any(phrase in recent for phrase in _CONSIDER_REJECTED_FRAGMENTS):
                 self.consider_viable = False
                 self.consider_level_offset_ceiling = None
+                if any(
+                    phrase in recent for phrase in _CONSIDER_BELOW_BAND_FRAGMENTS
+                ):
+                    self.fastwalk_below_band_targets.add(
+                        self.consider_target.casefold()
+                    )
+                    if self.current_room:
+                        self.fastwalk_below_band_sightings.add(
+                            (
+                                str(self.current_room),
+                                self.consider_target.casefold(),
+                            )
+                        )
             if (
                 self.consider_viable is not None
                 and self.consider_viable != previous_consider_viable
             ):
-                self.fastwalk_consider_outcomes[
-                    self.consider_target.casefold()
-                ] = self.consider_viable
+                target_key = self.consider_target.casefold()
+                previous_outcome = self.fastwalk_consider_outcomes.get(target_key)
+                self.fastwalk_consider_outcomes[target_key] = bool(
+                    self.consider_viable or previous_outcome
+                )
         if self.between_round_action_issued and (
             "you launch a volley of" in recent
             or "you launch a magic missile" in recent
@@ -1073,6 +1306,8 @@ class StarterPolicy:
             or "your punch" in recent
             or "your kick" in recent
             or "you attempt to circle" in recent
+            or "your knife toss" in recent
+            or "your knife catches" in recent
             or "your disarm attempt" in recent
             or "you disarm " in recent
             or "your opponent is not wielding a weapon" in recent
@@ -1111,6 +1346,76 @@ class StarterPolicy:
             )
         ):
             self.fastwalk_invisibility_pending = False
+        if (
+            self.stun_opener_step == "wield_pounding"
+            and "you wield " in recent
+        ):
+            self.stun_opener_step = "stun"
+        elif self.stun_opener_step == "stun" and any(
+            phrase in recent
+            for phrase in (
+                "you viciously pound",
+                "you attempt to stun",
+                "your attempted stun",
+                "they are already stunned",
+                "you cannot stun a fighting person",
+                "you need a weapon that pounds",
+                "they aren't here",
+                "is too large for you to stun",
+                "has no head for you to whack",
+                "how can you knock yourself out",
+                "not while mounted",
+            )
+        ):
+            self.stun_opener_step = "wield_piercing"
+        elif (
+            self.stun_opener_step == "wield_piercing"
+            and "you wield " in recent
+        ):
+            self.stun_opener_step = "backstab"
+        current_form_rejection = any(
+            phrase in recent
+            for phrase in (
+                "you can't attack them in their current form",
+                "you cannot attack them in their current form",
+            )
+        )
+        current_form_target = (
+            self.backstab_pending_target
+            or self.stun_opener_target
+            or self.active_target
+            or self.fastwalk_attack_target
+        )
+        if current_form_rejection and current_form_target is not None:
+            # The source safety check can reject a live mobile after a positive
+            # consider, for example while the mobile has a non-corporeal affect.
+            # Do not feed that target into the ordinary opener fallback loop.
+            self.backstab_pending_target = None
+            self.stun_opener_step = None
+            self.stun_opener_target = None
+            self.stun_opener_selector = None
+            self.stun_opener_weapon_keyword = None
+            self.stun_opener_piercing_keyword = None
+            self.combat_active = False
+            self.active_target = None
+            self.active_target_selector = None
+            self.active_enemy_count = 0
+            self.between_round_action_issued = False
+            self.prompt_ready = True
+            if self.fastwalk_route is not None:
+                self.fastwalk_unattackable_target = current_form_target
+                self.fastwalk_abort_reason = (
+                    f"field target {current_form_target!r} was non-corporeal "
+                    "and could not be attacked"
+                )
+                self.fastwalk_target_absent = False
+                self.fastwalk_attack_target = None
+                self.fastwalk_attack_started = False
+                self.fastwalk_hunt_stop_skipped = bool(self.fastwalk_hunt_stops)
+                self.fastwalk_returning = True
+                self.backstab_skip_once_target = None
+            else:
+                self.backstab_skip_once_target = current_form_target
         if self.backstab_pending_target is not None and any(
             phrase in recent
             for phrase in (
@@ -1152,7 +1457,14 @@ class StarterPolicy:
                 None,
             )
             self.disarmed_weapon_keyword = (
-                item_keyword(wielded) if wielded is not None else None
+                item_command_keyword(
+                    wielded,
+                    self.gear_catalog.objects.values()
+                    if self.gear_catalog is not None
+                    else (),
+                )
+                if wielded is not None
+                else None
             )
             self.disarm_recovery_step = 1
             self.primary_weapon_lost = True
@@ -1170,6 +1482,7 @@ class StarterPolicy:
                 for phrase in (
                     "you cannot use ",
                     "your profession prohibits wearing anything in that location",
+                    "it is too heavy for you to wield",
                 )
             )
         ):
@@ -1192,6 +1505,35 @@ class StarterPolicy:
             phrase in recent for phrase in ("you wear ", "you wield ")
         ):
             self.gear_pending_wear_keyword = None
+        weapon_acknowledgement = _direct_weapon_slot_acknowledgement(cleaned)
+        if weapon_acknowledgement is not None and self.gear_catalog is not None:
+            if weapon_acknowledgement[0]:
+                acknowledged_weapon = self.gear_catalog.match(
+                    weapon_acknowledgement[1] or ""
+                )
+                if (
+                    acknowledged_weapon is not None
+                    and item_category(acknowledged_weapon) == "wield"
+                ):
+                    self.gear_worn = [
+                        item
+                        for item in self.gear_worn
+                        if item_category(item) != "wield"
+                    ]
+                    self.gear_worn.append(acknowledged_weapon)
+            else:
+                self.gear_worn = [
+                    item
+                    for item in self.gear_worn
+                    if item_category(item) != "wield"
+                ]
+        if "you stop using " in recent and "you wield " not in recent:
+            # A weapon switch can arrive separately from its replacement's
+            # acknowledgement.  Mark the primary absent until that second
+            # message (or a fresh equipment audit) confirms the new weapon.
+            self.primary_weapon_observed = False
+            self.primary_weapon_lost = True
+            self.gear_applied_stance = None
         if "you wield " in recent:
             self.primary_weapon_lost = False
             self.primary_weapon_observed = True
@@ -1247,8 +1589,28 @@ class StarterPolicy:
                 self.skin_ordered = False
             if self.magic_shop_research and self.magic_shop_buy_fly:
                 self.magic_shop_purchase_failed = True
-        if "you can't carry that much weight" in folded:
+        carry_rejected = any(
+            phrase in folded
+            for phrase in (
+                "you can't carry that much weight",
+                "you can't carry that many items",
+            )
+        )
+        if carry_rejected:
             self.purchase_carry_rejected = True
+            if (
+                not self.city_restock
+                and self.food_ordered
+                and self.needs_food
+                and self.last_pie_order_quantity is not None
+            ):
+                if self.last_pie_order_quantity <= 1:
+                    self.failure = (
+                        "no carry capacity remained for one essential pie"
+                    )
+                else:
+                    self.pie_order_limit = self.last_pie_order_quantity - 1
+                    self.food_ordered = False
         if "you can't use " in folded and " yet" in folded:
             self.purchase_level_rejected = True
         if self.magic_shop_capacity_relief_pending and (
@@ -1259,7 +1621,7 @@ class StarterPolicy:
             self.magic_shop_step = 1
         if (
             self.city_restock
-            and "can't carry that much weight" in folded
+            and carry_rejected
             and self.last_pie_order_quantity is not None
         ):
             if self.last_pie_order_quantity <= 1:
@@ -1276,6 +1638,24 @@ class StarterPolicy:
         offer = _VALUE_OFFER.search(cleaned)
         if offer is not None:
             self.sale_offer_coins = int(offer.group("coins"))
+        if (
+            self.liquidate_loot
+            and self.cursed_sale_keyword is None
+            and "you can't let go of it" in recent
+            and self.sale_index < len(self.sale_plan)
+        ):
+            keyword, shop = self.sale_plan[self.sale_index]
+            self.cursed_sale_keyword = keyword
+            self.cursed_sale_shop = shop
+            self.cursed_item_count = sum(
+                1 for planned_keyword, _ in self.sale_plan if planned_keyword == keyword
+            )
+            self.curse_recovery_step = "return"
+            self.curse_items_tossed = False
+            self.curse_drop_pending = False
+            self.curse_borrow_step = 0
+            self.curse_borrow_complete = False
+            self.sale_route_index = 0
         if (
             "looks uninterested in" in recent
             and self.sale_phase == "sell"
@@ -1438,6 +1818,10 @@ class StarterPolicy:
                     self.defeated_targets.setdefault(self.current_room, set()).add(
                         self.active_target
                     )
+                    self._forget_defeated_room_target(
+                        self.active_target,
+                        self.active_target_selector,
+                    )
                 if self.current_room != "3722":
                     if _is_arena_vnum(self.current_room):
                         self.arena_pending_loot = True
@@ -1533,9 +1917,13 @@ class StarterPolicy:
             and self.fastwalk_route is not None
         ):
             attacker = attacking_mobile.group("attacker")
+            if attacker.casefold().startswith("your "):
+                attacker = ""
             approved_target = self.fastwalk_attack_target or pending_endpoint_target
-            if approved_target is None or not _targets_match(
+            if attacker and (
+                approved_target is None or not _targets_match(
                 attacker, approved_target
+                )
             ):
                 if (
                     self.active_target is not None
@@ -1904,6 +2292,11 @@ class StarterPolicy:
 
         if not self.in_world or not self.prompt_ready:
             return None
+        if (
+            self.class_trainer_return_pending
+            and state.room_vnum == "3054"
+        ):
+            self.class_trainer_return_pending = False
         if self.pending_recall_origin is not None:
             if _room_key(state) == self.pending_recall_origin:
                 if self.pending_recall_origin == "3001":
@@ -1960,6 +2353,18 @@ class StarterPolicy:
             self.prompt_ready = False
             return None
         return self._tutorial_decision(state)
+
+    def request_runtime_boundary(self) -> None:
+        """Convert the runtime cap into a safe healer-return objective."""
+        if self.runtime_boundary_requested:
+            return
+        self.runtime_boundary_requested = True
+        self.return_home = True
+        self.fastwalk_abort_reason = (
+            "segment runtime boundary requested a safe healer return"
+        )
+        if self.fastwalk_route is not None:
+            self.fastwalk_emergency_recall_pending = True
 
     def after_command(self, decision: BotDecision) -> None:
         self.prompt_ready = False
@@ -2062,6 +2467,20 @@ class StarterPolicy:
         self.prompt_ready = False
         self.text = ""
         self.stand_confirmation_pending = False
+        if self.in_world and self.fastwalk_route is not None:
+            # A reconnect normally places the character back in Midgaard while
+            # the local field cursor still points at the old remote room.
+            # Force a healer return so stale route state cannot be interpreted
+            # as a live exit failure in the new session.
+            self.return_home = True
+            self.fastwalk_abort_reason = (
+                "field route interrupted by connection loss; "
+                "return home before retrying"
+            )
+            self.pending_travel_origin = None
+            self.pending_recall_origin = None
+            self.pending_fastwalk_hunt_move = False
+            self.pending_fastwalk_outbound_move = False
         self.room_target_selectors.clear()
         self.active_target_selector = None
         self.consider_target_selector = None
@@ -2257,6 +2676,12 @@ class StarterPolicy:
             self.field_combat_lowest_hp = None
             self.field_combat_last_progress_at = None
 
+        if self.runtime_boundary_requested and self.combat_active:
+            return BotDecision(
+                "recall",
+                "leave active combat before the bounded segment disconnects",
+            )
+
         blindness_recovery = self._blindness_recovery_decision(state)
         if blindness_recovery is not None:
             return blindness_recovery
@@ -2288,6 +2713,10 @@ class StarterPolicy:
                 "stand",
                 "wake because Midgaard recovery is only permitted at the healer",
             )
+
+        stun_opener = self._stun_opener_decision()
+        if stun_opener is not None:
+            return stun_opener
 
         if self.midgaard_logout_pending:
             return self._midgaard_logout_decision(state)
@@ -2459,6 +2888,8 @@ class StarterPolicy:
             if self.utility_emergency_recall_pending:
                 self.utility_emergency_recall_pending = False
                 self.return_home_recall_started = True
+                if state.room_vnum in _PYRAMID_DESERT_MAZE_ROOMS:
+                    return self._return_home_decision(state)
                 return BotDecision(
                     "recall",
                     "recall immediately after fleeing unexpected utility-run combat",
@@ -2480,6 +2911,26 @@ class StarterPolicy:
         ):
             return self._fastwalk_emergency_return_decision(state)
 
+        if (
+            self.return_home
+            and (
+                state.room_vnum in _PYRAMID_DESERT_MAZE_ROOMS
+                or self.return_home_recovery_commands is not None
+            )
+            and not _enemy_records(state.enemies)
+        ):
+            # A reconnect can leave the local combat flag set after the server
+            # has already cleared the enemy list. Prioritize the bounded return
+            # route so a stale flag cannot create a recall loop.
+            self.combat_active = False
+            self.active_target = None
+            self.active_target_selector = None
+            self.active_enemy_count = 0
+            self.utility_emergency_recall_pending = False
+            home = self._return_home_decision(state)
+            if home is not None:
+                return home
+
         if self.combat_active:
             if self.flee_pending:
                 self.prompt_ready = False
@@ -2489,14 +2940,29 @@ class StarterPolicy:
                 and self.fastwalk_hunt_stops
                 and all(stop.consider_only for stop in self.fastwalk_hunt_stops)
             ):
-                self.fastwalk_abort_reason = (
-                    "unexpected combat interrupted a no-combat field probe"
-                )
-                self.fastwalk_emergency_recall_pending = True
-                return BotDecision(
-                    "flee",
-                    "withdraw before combat can contaminate a no-combat field probe",
-                )
+                enemies = _enemy_records(state.enemies)
+                if (
+                    enemies
+                    and state.level is not None
+                    and all(
+                        self._enemy_is_known_below_useful_band(enemy, state)
+                        for enemy in enemies
+                    )
+                ):
+                    combat = self._between_round_combat_decision(state)
+                    if combat is not None:
+                        return combat
+                    self.prompt_ready = False
+                    return None
+                else:
+                    self.fastwalk_abort_reason = (
+                        "unexpected combat interrupted a no-combat field probe"
+                    )
+                    self.fastwalk_emergency_recall_pending = True
+                    return BotDecision(
+                        "flee",
+                        "withdraw before combat can contaminate a no-combat field probe",
+                    )
             if (
                 self.fastwalk_route is not None
                 and self.unapproved_field_attacker is not None
@@ -2575,6 +3041,21 @@ class StarterPolicy:
                     "flee",
                     "continue withdrawing after fastwalk recall was interrupted",
                 )
+            if self.return_home and state.room_vnum in _PYRAMID_DESERT_MAZE_ROOMS:
+                enemies = _enemy_records(state.enemies)
+                if (
+                    enemies
+                    and state.level is not None
+                    and all(
+                        self._enemy_is_known_below_useful_band(enemy, state)
+                        for enemy in enemies
+                    )
+                ):
+                    combat = self._between_round_combat_decision(state)
+                    if combat is not None:
+                        return combat
+                    self.prompt_ready = False
+                    return None
             if (
                 self.fastwalk_route is not None
                 and not self.fastwalk_attack_started
@@ -2605,7 +3086,7 @@ class StarterPolicy:
                 material_enemies = [
                     enemy
                     for enemy in enemies
-                    if not _enemy_is_below_useful_band(enemy, state.level)
+                    if not self._enemy_is_known_below_useful_band(enemy, state)
                 ]
                 unsafe_level = False
                 if len(material_enemies) == 1 and state.level is not None:
@@ -2969,6 +3450,16 @@ class StarterPolicy:
                 quit_reason="Magic Shop research complete",
             )
 
+        if self.bank_excess_coins:
+            banking = self._bank_excess_coin_decision(state)
+            if banking is not None:
+                return banking
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist excess-currency deposit",
+                quit_reason="excess-currency banking complete",
+            )
+
         if self.liquidate_loot:
             sale = self._liquidate_loot_decision(state)
             if sale is not None:
@@ -3007,6 +3498,21 @@ class StarterPolicy:
             if not self.fastwalk_world_cache_preflight_complete:
                 return None
 
+        if (
+            self.fastwalk_route is not None
+            and self.fastwalk_hunt_stops
+            and self.login_authenticated
+            and not self.capability_audit_complete
+        ):
+            if self.capability_audit_pending:
+                self.prompt_ready = False
+                return None
+            self.capability_audit_pending = True
+            return BotDecision(
+                "practice",
+                "refresh known combat capabilities before field decisions",
+            )
+
         if self._needs_fastwalk_training(state):
             training = self._fastwalk_training_decision(state)
             if training is not None:
@@ -3024,19 +3530,6 @@ class StarterPolicy:
                     return cache
                 if not self.fastwalk_world_cache_post_complete:
                     return None
-            if (
-                self.fastwalk_hunt_stops
-                and self.login_authenticated
-                and not self.capability_audit_complete
-            ):
-                if self.capability_audit_pending:
-                    self.prompt_ready = False
-                    return None
-                self.capability_audit_pending = True
-                return BotDecision(
-                    "practice",
-                    "refresh known combat capabilities before field decisions",
-                )
             research = self._fastwalk_research_decision(state)
             if research is not None:
                 return research
@@ -3049,6 +3542,9 @@ class StarterPolicy:
                 return cache
             if not self.fastwalk_world_cache_post_complete:
                 return None
+            restore_autoloot = self._restore_fastwalk_autoloot_decision(state)
+            if restore_autoloot is not None:
+                return restore_autoloot
             return self._begin_midgaard_logout(
                 state,
                 save_reason="persist official fastwalk route evidence",
@@ -3267,17 +3763,18 @@ class StarterPolicy:
             self.gear_worn,
             stance,
             level_gain_priorities=self.spec.effective_level_gain_priorities,
+            weapon_preference=self._combat_weapon_preference(),
         )
         stance_label = stance.replace("_", " ")
         self.gear_command_queue = [
             (
-                f"remove {item_keyword(item)}",
+                f"remove {item_command_keyword(item, (*carried, *self.gear_worn))}",
                 f"remove lower-priority gear for the {stance_label} stance",
             )
             for item in removals
         ] + [
             (
-                f"wear {item_keyword(item)}",
+                f"wear {item_command_keyword(item, (*carried, *self.gear_worn))}",
                 f"equip {stance_label} gear: {item.short_description}",
             )
             for item in additions
@@ -3439,7 +3936,10 @@ class StarterPolicy:
                     "buy the quantity the Quartermaster says is affordable",
                 )
             if self.needs_food and not self.food_ordered:
-                return BotDecision("buy 6 pie", "stock emergency food from the Quartermaster")
+                return BotDecision(
+                    f"buy {self.pie_order_limit} pie",
+                    "stock emergency food from the Quartermaster",
+                )
             if self.needs_drink and not self.skin_ordered:
                 return BotDecision("buy skin", "buy a full buffalo water skin from the Quartermaster")
             return None
@@ -3534,6 +4034,12 @@ class StarterPolicy:
             active_reason = (
                 "repeat the source-verified circle attack between automatic "
                 "weapon rounds"
+            )
+        elif "knife toss" in self.known_skills:
+            active_command = f"knife {target}"
+            active_reason = (
+                "repeat the source-verified level-scaled knife toss between "
+                "automatic rounds without consuming carried ammunition"
             )
         elif "punch" in self.known_skills:
             active_command = "punch"
@@ -3662,6 +4168,7 @@ class StarterPolicy:
         *,
         allow_backstab: bool = True,
         command_keyword: str | None = None,
+        state: CharacterState | None = None,
     ) -> BotDecision:
         """Choose a source-valid opening attack for the current loadout."""
         exact_selector = self._target_selector_for(target) or self.active_target_selector
@@ -3678,6 +4185,44 @@ class StarterPolicy:
         skip_shoot = self.shoot_skip_once_target == target
         if skip_shoot:
             self.shoot_skip_once_target = None
+        if (
+            state is not None
+            and allow_backstab
+            and self.spec.character_class.casefold() == "thief"
+            and "backstab" in self.known_skills
+            and "stun" in self.known_skills
+        ):
+            weapons = self._state_weapons(state)
+            pounding = self._best_weapon(weapons, is_blunt_weapon)
+            piercing = self._best_weapon(weapons, is_piercing_weapon)
+            if pounding is not None and piercing is not None:
+                self.stun_opener_target = target
+                self.stun_opener_selector = keyword
+                self.stun_opener_weapon_keyword = item_command_keyword(
+                    pounding,
+                    weapons,
+                )
+                self.stun_opener_piercing_keyword = item_command_keyword(
+                    piercing,
+                    weapons,
+                )
+                self.combat_active = False
+                current = next(
+                    (
+                        item
+                        for item in self.gear_worn
+                        if item_category(item) == "wield"
+                    ),
+                    None,
+                )
+                self.stun_opener_step = (
+                    "stun" if current is not None and current.vnum == pounding.vnum
+                    else "wield_pounding"
+                )
+                return self._stun_opener_decision() or BotDecision(
+                    f"backstab {keyword}",
+                    "begin combat with the piercing weapon after the stun attempt",
+                )
         if (
             not skip_shoot
             and self.spec.character_class == "ranger"
@@ -3727,6 +4272,11 @@ class StarterPolicy:
             and (balance is None or balance > 0)
             for practice_type, balance in balances.items()
         )
+        critical_unlock = self._critical_damage_unlock(state)
+        has_critical_unlock_budget = bool(
+            critical_unlock is not None
+            and any(balance is None or balance > 0 for balance in balances.values())
+        )
         preferred_stat = self._preferred_training_stat(state)
         needs_stat_selection = bool(
             preferred_stat is not None
@@ -3740,7 +4290,10 @@ class StarterPolicy:
         return bool(
             needs_stat_selection
             or needs_smithy_preparation
-            or (not self.practiced and has_unspent_practice)
+            or (
+                not self.practiced
+                and (has_unspent_practice or has_critical_unlock_budget)
+            )
         )
 
     def _needs_imminent_stat_training(self, state: CharacterState) -> bool:
@@ -3822,6 +4375,125 @@ class StarterPolicy:
             if priority.automated and priority.skill not in excluded
         }
 
+    def _critical_damage_unlock(
+        self,
+        state: CharacterState,
+        listing: Any | None = None,
+    ) -> str | None:
+        """Return the earliest reachable missing damage or control capability."""
+        if (state.level or 0) < 10:
+            return None
+        balances = {
+            "physical": (
+                listing.physical_practices
+                if listing is not None
+                else self.latest_practice_balances[0]
+            ),
+            "intellectual": (
+                listing.intellectual_practices
+                if listing is not None
+                else self.latest_practice_balances[1]
+            ),
+        }
+        priorities = training_priorities_for(
+            self.spec.character_class,
+            subclass=self._active_training_subclass(state),
+        )
+        pending_trainable_gateway = False
+        blocked_gateway = False
+        for priority in priorities:
+            if (
+                priority.skill in self.rejected_practice_skills
+                and self.known_skill_levels.get(priority.skill, -1)
+                < priority.target_percent
+            ):
+                blocked_gateway = True
+            if (
+                listing is not None
+                and priority.skill in listing.trainable
+                and listing.trainable[priority.skill] < priority.target_percent
+            ):
+                balance = balances.get(priority.practice_type)
+                if balance is None or balance > 0:
+                    pending_trainable_gateway = True
+                else:
+                    blocked_gateway = True
+            if (
+                priority.automated
+                and priority.utility == "damage"
+                and priority.skill not in self.known_skills
+                and (
+                    priority.minimum_level is None
+                    or (state.level or 0) >= priority.minimum_level
+                )
+            ):
+                if blocked_gateway:
+                    pending_trainable_gateway = False
+                    blocked_gateway = False
+                    continue
+                if (
+                    listing is None
+                    or priority.skill in listing.trainable
+                    or pending_trainable_gateway
+                ):
+                    return priority.skill
+                pending_trainable_gateway = False
+                blocked_gateway = False
+                continue
+            if (
+                priority.automated
+                and priority.utility == "control"
+                and priority.skill not in self.known_skills
+                and (
+                    priority.minimum_level is None
+                    or (state.level or 0) >= priority.minimum_level
+                )
+            ):
+                if blocked_gateway:
+                    pending_trainable_gateway = False
+                    blocked_gateway = False
+                    continue
+                if (
+                    listing is None
+                    or priority.skill in listing.trainable
+                    or pending_trainable_gateway
+                ):
+                    return priority.skill
+                pending_trainable_gateway = False
+                blocked_gateway = False
+                continue
+            if priority.utility in {"damage", "control"}:
+                pending_trainable_gateway = False
+                blocked_gateway = False
+        if listing is not None:
+            return next(
+                (
+                    priority.skill
+                    for priority in priorities
+                    if (
+                        priority.automated
+                        and priority.utility == "damage"
+                        and priority.skill in listing.trainable
+                        and listing.trainable[priority.skill]
+                        < priority.target_percent
+                        and (
+                            balances.get(priority.practice_type) is None
+                            or balances[priority.practice_type] > 0
+                        )
+                    )
+                ),
+                None,
+            )
+        return None
+
+    def _training_practice_type_exclusions(
+        self,
+        state: CharacterState,
+    ) -> frozenset[str]:
+        if self._critical_damage_unlock(state) is not None:
+            return frozenset()
+        return frozenset(self.practice_types_spent)
+
     @staticmethod
     def _active_training_subclass(state: CharacterState) -> str | None:
         if (state.level or 0) < 30:
@@ -3839,6 +4511,123 @@ class StarterPolicy:
             None,
         )
 
+    def _combat_weapon_preference(self) -> str | None:
+        """Select the source-backed weapon type required by the opener."""
+        if (
+            "backstab" in self.known_skills
+            or self.spec.character_class.casefold() == "thief"
+        ):
+            return "piercing"
+        return None
+
+    def _wielded_weapon(self) -> ObjectSource | None:
+        return next(
+            (
+                item
+                for item in self.gear_worn
+                if item_category(item) == "wield"
+            ),
+            None,
+        )
+
+    def _preferred_primary_weapon(
+        self,
+        state: CharacterState,
+    ) -> ObjectSource | None:
+        weapons = self._state_weapons(state)
+        preference = self._combat_weapon_preference()
+        if preference == "piercing":
+            return self._best_weapon(weapons, is_piercing_weapon)
+        return self._best_weapon(weapons, lambda _item: True)
+
+    def _preferred_pounding_weapon(
+        self,
+        state: CharacterState,
+    ) -> ObjectSource | None:
+        """Return the best source-matched blunt weapon for ``stun``."""
+        return self._best_weapon(
+            self._state_weapons(state),
+            is_blunt_weapon,
+        )
+
+    def _primary_weapon_satisfies_preference(
+        self,
+        weapon: ObjectSource | None,
+    ) -> bool:
+        if weapon is None:
+            return False
+        preference = self._combat_weapon_preference()
+        return preference is None or (
+            preference == "piercing" and is_piercing_weapon(weapon)
+        ) or (
+            preference == "blunt" and is_blunt_weapon(weapon)
+        )
+
+    def _state_weapons(self, state: CharacterState) -> list[ObjectSource]:
+        items = list(self.gear_worn)
+        if self.gear_catalog is None:
+            return items
+        items.extend(
+            item
+            for item in self.gear_catalog.match_many_usable(
+                _inventory_descriptions(state.inventory),
+                character_class=self.spec.character_class,
+                subclass=self.spec.subclass,
+            )
+            if item_category(item) == "wield"
+        )
+        return list({item.vnum: item for item in items}.values())
+
+    @staticmethod
+    def _best_weapon(
+        weapons: list[ObjectSource],
+        predicate: Callable[[ObjectSource], bool],
+    ) -> ObjectSource | None:
+        candidates = [
+            item
+            for item in weapons
+            if item_category(item) == "wield" and predicate(item)
+        ]
+        return max(
+            candidates,
+            key=lambda item: stance_score(item, STANCE_COMBAT),
+            default=None,
+        )
+
+    def _stun_opener_decision(self) -> BotDecision | None:
+        if self.stun_opener_step is None or self.stun_opener_target is None:
+            return None
+        target = self.stun_opener_target
+        keyword = self.stun_opener_selector or _target_keyword(target)
+        if self.stun_opener_step == "wield_pounding":
+            return BotDecision(
+                f"wield {self.stun_opener_weapon_keyword}",
+                "arm the source-verified pounding weapon before attempting stun",
+            )
+        if self.stun_opener_step == "stun":
+            return BotDecision(
+                f"stun {keyword}",
+                "attempt the source-verified stun opener before backstab",
+            )
+        if self.stun_opener_step == "wield_piercing":
+            return BotDecision(
+                f"wield {self.stun_opener_piercing_keyword}",
+                "switch to the source-verified piercing weapon after stun",
+            )
+        if self.stun_opener_step == "backstab":
+            self.stun_opener_step = None
+            self.stun_opener_target = None
+            self.stun_opener_selector = None
+            self.stun_opener_weapon_keyword = None
+            self.stun_opener_piercing_keyword = None
+            self.combat_active = True
+            self.backstab_pending_target = target
+            return BotDecision(
+                f"backstab {keyword}",
+                "begin combat with the piercing weapon after the stun attempt",
+            )
+        return None
+
     def _ranger_equipped_bow(self) -> ObjectSource | None:
         return next(
             (
@@ -3855,7 +4644,23 @@ class StarterPolicy:
     ) -> _ClassTrainerRoute | None:
         if (state.level or 0) < 10:
             return None
-        return _CLASS_TRAINERS.get(self.spec.character_class.casefold())
+        character_class = self.spec.character_class.casefold()
+        advanced = _ADVANCED_CLASS_TRAINERS.get(character_class)
+        if advanced is not None and (state.level or 0) >= advanced.minimum_level:
+            return advanced
+        return _CLASS_TRAINERS.get(character_class)
+
+    def _class_trainer_present(
+        self,
+        state: CharacterState,
+        trainer: _ClassTrainerRoute,
+    ) -> bool:
+        """Recognize a wandering teacher from its source-backed room line."""
+        room_vnum = state.room_vnum or ""
+        return any(
+            _targets_match(target, trainer.keyword)
+            for target in self.room_targets.get(room_vnum, ())
+        )
 
     def _fastwalk_training_decision(
         self,
@@ -3889,7 +4694,10 @@ class StarterPolicy:
             or "loremaster" in room_name
             or (
                 class_trainer is not None
-                and room_vnum == class_trainer.room_vnum
+                and (
+                    room_vnum == class_trainer.destination_vnum
+                    or self._class_trainer_present(state, class_trainer)
+                )
             )
         ):
             return self._loremaster_decision(state)
@@ -3916,6 +4724,7 @@ class StarterPolicy:
             "intellectual": intellectual,
         }
         useful_types = self._useful_practice_types(state)
+        critical_unlock = self._critical_damage_unlock(state)
         needs_smithy_preparation = bool(
             self.spec.character_class.casefold() == "smithy"
             and self.counterbalance_preparation_required
@@ -3923,7 +4732,10 @@ class StarterPolicy:
         if not needs_smithy_preparation and not any(
             balance > 0
             and practice_type in useful_types
-            and practice_type not in self.practice_types_spent
+            and (
+                critical_unlock is not None
+                or practice_type not in self.practice_types_spent
+            )
             for practice_type, balance in available.items()
         ):
             self.practiced = True
@@ -3951,14 +4763,16 @@ class StarterPolicy:
             return BotDecision(
                 direction,
                 (
-                    f"visit the level-10 {self.spec.character_class} trainer "
+                    f"visit the level-{class_trainer.minimum_level} "
+                    f"{self.spec.character_class} trainer "
                     "for the class-aware field practice plan"
                     if class_trainer is not None
                     else "visit the Loremaster for the level-aware field practice plan"
                 ),
             )
         destination = (
-            f"the level-10 {self.spec.character_class} trainer"
+            f"the level-{class_trainer.minimum_level} "
+            f"{self.spec.character_class} trainer"
             if class_trainer is not None
             else "the Loremaster"
         )
@@ -4343,20 +5157,54 @@ class StarterPolicy:
         )
 
     def _city_rearm_decision(self, state: CharacterState) -> BotDecision | None:
-        """Buy and verify a lightweight primary weapon through safe Midgaard."""
+        """Buy and verify the source-backed weapon roles through Midgaard."""
+        pounding_role = self.city_rearm_role == "pounding"
         outbound = (
-            "south",
-            "south",
-            "south",
-            "east",
-            "east",
-            "north",
+            _CITY_REARM_POUNDING_ROUTE
+            if pounding_role
+            else _CITY_REARM_PRIMARY_ROUTE
         )
         returning = _reverse_fastwalk_commands(outbound)
+        shop_room = "3120" if pounding_role else "3011"
+        shop_keyword = "mace" if pounding_role else "dagger"
+        required_free_weight = (
+            _CITY_REARM_POUNDING_REQUIRED_FREE_WEIGHT
+            if pounding_role
+            else 1
+        )
         room_vnum = state.room_vnum
-        weapon_wielded = bool(self.primary_weapon_observed) and not self.primary_weapon_lost
+        wielded_weapon = self._wielded_weapon()
+        weapon_wielded = (
+            bool(self.primary_weapon_observed)
+            and not self.primary_weapon_lost
+        )
 
-        if self.city_rearm_borrowing:
+        def reset_for_pounding_role() -> None:
+            self.city_rearm_role = "pounding"
+            self.city_rearm_step = 0
+            self.city_rearm_route_index = 0
+            self.city_rearm_returning = False
+            self.city_rearm_direct_wield_attempted = False
+            self.city_rearm_capacity_item = None
+            self.city_rearm_capacity_checked = False
+            self.purchase_carry_rejected = False
+            self.purchase_level_rejected = False
+            self.insufficient_funds = False
+
+        def finish_at_healer() -> BotDecision | None:
+            if room_vnum != "3054":
+                self.failure = (
+                    f"{shop_keyword} rearm return reached {state.room_name!r} "
+                    f"({room_vnum}), expected healer room 3054"
+                )
+                return None
+            if self.city_rearm_role == "primary" and self.city_rearm_pounding:
+                if self._preferred_pounding_weapon(state) is None:
+                    reset_for_pounding_role()
+                    return self._city_rearm_decision(state)
+            return None
+
+        if self.city_rearm_borrowing and not pounding_role:
             if (
                 room_vnum == "3007"
                 and (
@@ -4413,7 +5261,15 @@ class StarterPolicy:
                 )
                 return None
 
-        if room_vnum == "3011" and weapon_wielded:
+        if (
+            room_vnum == shop_room
+            and not pounding_role
+            and weapon_wielded
+            and (
+                self._combat_weapon_preference() is None
+                or self._primary_weapon_satisfies_preference(wielded_weapon)
+            )
+        ):
             self.primary_weapon_observed = True
             self.primary_weapon_lost = False
             self.city_rearm_returning = True
@@ -4428,10 +5284,84 @@ class StarterPolicy:
             if home is not None:
                 return home
             self.failure = (
-                f"primary-weapon rearm could not reach healer room 3054 from "
+                f"{shop_keyword} rearm could not reach healer room 3054 from "
                 f"{state.room_name!r} ({room_vnum})"
             )
             return None
+
+        if (
+            not self.city_rearm_returning
+            and self.city_rearm_route_index == 0
+            and room_vnum == "3054"
+        ):
+            if not pounding_role:
+                preferred_weapon = self._preferred_primary_weapon(state)
+                if self._primary_weapon_satisfies_preference(wielded_weapon):
+                    self.primary_weapon_observed = True
+                    self.primary_weapon_lost = False
+                    self.city_rearm_piercing_keyword = item_command_keyword(
+                        preferred_weapon or wielded_weapon,
+                        self._state_weapons(state),
+                    )
+                    if self.city_rearm_pounding and self._preferred_pounding_weapon(
+                        state
+                    ) is None:
+                        reset_for_pounding_role()
+                        return self._city_rearm_decision(state)
+                    self.city_rearm_returning = True
+                    self.city_rearm_route_index = len(returning)
+                    return None
+                if (
+                    preferred_weapon is not None
+                    and not self.city_rearm_direct_wield_attempted
+                ):
+                    self.city_rearm_direct_wield_attempted = True
+                    return BotDecision(
+                        f"wield {item_command_keyword(preferred_weapon, self._state_weapons(state))}",
+                        "make the source-preferred weapon the thief's primary weapon",
+                    )
+            else:
+                pounding_weapon = self._preferred_pounding_weapon(state)
+                primary_weapon = self._preferred_primary_weapon(state)
+                if pounding_weapon is not None:
+                    if primary_weapon is None:
+                        self.failure = (
+                            "pounding-weapon rearm found no source-matched "
+                            "primary weapon to restore after stun"
+                        )
+                        return None
+                    if (
+                        wielded_weapon is None
+                        or wielded_weapon.vnum != primary_weapon.vnum
+                    ):
+                        if not self.city_rearm_direct_wield_attempted:
+                            self.city_rearm_direct_wield_attempted = True
+                            self.city_rearm_piercing_keyword = item_command_keyword(
+                                primary_weapon,
+                                self._state_weapons(state),
+                            )
+                            return BotDecision(
+                                f"wield {self.city_rearm_piercing_keyword}",
+                                (
+                                    "restore the piercing primary after securing the pounding weapon"
+                                    if self._combat_weapon_preference() == "piercing"
+                                    else "restore the normal primary after securing the pounding weapon"
+                                ),
+                            )
+                        self.failure = (
+                            "pounding-weapon rearm could not verify the "
+                            "normal primary in the wield slot"
+                        )
+                        return None
+                    self.primary_weapon_observed = True
+                    self.primary_weapon_lost = False
+                    self.city_rearm_piercing_keyword = item_command_keyword(
+                        primary_weapon,
+                        self._state_weapons(state),
+                    )
+                    self.city_rearm_returning = True
+                    self.city_rearm_route_index = len(returning)
+                    return None
 
         if (
             not self.city_rearm_returning
@@ -4442,16 +5372,20 @@ class StarterPolicy:
             carry_weight = _state_stat(state, "carry_wt")
             maximum_weight = _state_stat(state, "maxcarry_wt")
             if carry_weight is None or maximum_weight is None:
-                self.failure = "carry capacity was unavailable before primary-weapon rearm"
+                self.failure = (
+                    "carry capacity was unavailable before "
+                    f"{shop_keyword} rearm"
+                )
                 return None
-            if maximum_weight - carry_weight < 1:
+            if maximum_weight - carry_weight < required_free_weight:
                 keyword = _sellable_inventory_keyword(
                     state.inventory,
                     self.gear_catalog,
                 )
                 if keyword is None:
                     self.failure = (
-                        "primary-weapon rearm needs one pound of free capacity, "
+                        f"{shop_keyword} rearm needs {required_free_weight} pounds "
+                        "of free capacity, "
                         "but no disposable carried equipment was available"
                     )
                     return None
@@ -4459,7 +5393,7 @@ class StarterPolicy:
                 self.city_rearm_capacity_checked = True
                 return BotDecision(
                     f"donate {keyword}",
-                    "free one pound for a primary weapon at the safe healer checkpoint",
+                    f"free capacity for the {shop_keyword} at the safe healer checkpoint",
                 )
             self.city_rearm_capacity_checked = True
 
@@ -4469,16 +5403,18 @@ class StarterPolicy:
             if (
                 carry_weight is None
                 or maximum_weight is None
-                or maximum_weight - carry_weight < 1
+                or maximum_weight - carry_weight < required_free_weight
             ):
                 self.failure = (
                     f"donating {self.city_rearm_capacity_item} did not free "
-                    "one pound for the primary weapon"
+                    f"enough capacity for the {shop_keyword}"
                 )
                 return None
             self.city_rearm_capacity_item = None
 
-        if not self.city_rearm_returning:
+        if not self.city_rearm_returning and not (
+            pounding_role and self.city_rearm_step == 5
+        ):
             if self.city_rearm_route_index < len(outbound):
                 command = outbound[self.city_rearm_route_index]
                 self.city_rearm_route_index += 1
@@ -4486,44 +5422,109 @@ class StarterPolicy:
                     command,
                     "walk through safe Midgaard to the source-backed weapon shop",
                 )
-            if room_vnum != "3011":
+            if room_vnum != shop_room:
                 self.failure = (
                     f"weapon-shop route reached {state.room_name!r} ({room_vnum}), "
-                    "expected room 3011"
+                    f"expected room {shop_room}"
                 )
                 return None
             if _has_named_affect(state.affects, "invis"):
-                return BotDecision("vis", "become visible before buying a weapon")
+                return BotDecision(
+                    "vis",
+                    f"become visible before buying the source-backed {shop_keyword}",
+                )
             if self.city_rearm_step == 0:
                 self.city_rearm_step = 1
                 return BotDecision(
-                    "list dagger",
-                    "record the reboot-priced dagger quote before attempting rearm",
+                    f"list {shop_keyword}",
+                    f"record the reboot-priced {shop_keyword} quote before attempting rearm",
                 )
             if self.city_rearm_step == 1:
                 self.city_rearm_step = 2
                 return BotDecision(
-                    "buy dagger",
-                    "buy the one-pound source dagger as a lightweight primary weapon",
+                    f"buy {shop_keyword}",
+                    (
+                        "buy the source mace as the Bounty Hunter's pounding weapon"
+                        if pounding_role
+                        else "buy the one-pound source dagger as a lightweight primary weapon"
+                    ),
                 )
             if self.city_rearm_step == 2:
                 if self.insufficient_funds:
+                    if pounding_role:
+                        self.failure = (
+                            "the source-backed pounding weapon was unaffordable "
+                            "after the safe rearm route"
+                        )
+                        return None
                     self.city_rearm_borrowing = True
                     self.city_rearm_borrow_step = 0
                     self.insufficient_funds = False
                     return self._city_rearm_decision(state)
                 if self.purchase_carry_rejected:
-                    self.failure = "insufficient carry capacity for the source-backed dagger"
+                    self.failure = (
+                        f"insufficient carry capacity for the source-backed {shop_keyword}"
+                    )
                     return None
                 self.city_rearm_step = 3
-                return BotDecision("wield dagger", "equip the purchased primary weapon")
+                return BotDecision(
+                    f"wield {shop_keyword}",
+                    (
+                        "equip the purchased pounding weapon before returning to the piercing primary"
+                        if pounding_role
+                        else "equip the purchased primary weapon"
+                    ),
+                )
             if self.city_rearm_step == 3:
                 self.city_rearm_step = 4
-                return BotDecision("eq all", "verify the dagger in the wield slot")
+                return BotDecision(
+                    "eq all",
+                    f"verify the source-backed {shop_keyword} in the wield slot",
+                )
             equipment_text = _ANSI_ESCAPE.sub("", self.last_response).casefold()
             weapon_slot_seen, weapon_description = _equipment_weapon_slot(
                 equipment_text
             )
+            if pounding_role:
+                verified_pounding = any(
+                    is_blunt_weapon(item)
+                    for item in self.gear_worn
+                    if item_category(item) == "wield"
+                )
+                if not verified_pounding:
+                    verified_pounding = bool(
+                        weapon_slot_seen
+                        and weapon_description is not None
+                        and "mace" in weapon_description
+                    )
+                if not verified_pounding:
+                    self.failure = (
+                        "equipment audit did not verify the purchased source-backed "
+                        "mace as wielded"
+                    )
+                    return None
+                primary = self._preferred_primary_weapon(state)
+                primary_keyword = (
+                    item_command_keyword(primary, self._state_weapons(state))
+                    if primary is not None
+                    else self.city_rearm_piercing_keyword
+                )
+                if not primary_keyword:
+                    self.failure = (
+                        "equipment audit verified the pounding weapon but found "
+                        "no primary weapon to restore after stun"
+                    )
+                    return None
+                self.city_rearm_piercing_keyword = primary_keyword
+                self.city_rearm_step = 5
+                return BotDecision(
+                    f"wield {primary_keyword}",
+                    (
+                        "switch back to the piercing weapon before leaving the rearm shop"
+                        if self._combat_weapon_preference() == "piercing"
+                        else "switch back to the normal primary before leaving the rearm shop"
+                    ),
+                )
             if not (
                 weapon_slot_seen
                 and weapon_description is not None
@@ -4533,19 +5534,56 @@ class StarterPolicy:
                 return None
             self.primary_weapon_observed = True
             self.primary_weapon_lost = False
+            self.city_rearm_piercing_keyword = "dagger"
+            self.city_rearm_returning = True
+            self.city_rearm_route_index = 0
+
+        if pounding_role and self.city_rearm_step == 5:
+            equipment_text = _ANSI_ESCAPE.sub("", self.last_response).casefold()
+            weapon_slot_seen, weapon_description = _equipment_weapon_slot(
+                equipment_text
+            )
+            verified_primary = any(
+                (
+                    is_piercing_weapon(item)
+                    if self._combat_weapon_preference() == "piercing"
+                    else item_command_keyword(
+                        item,
+                        self._state_weapons(state),
+                    )
+                    == self.city_rearm_piercing_keyword
+                )
+                for item in self.gear_worn
+                if item_category(item) == "wield"
+            )
+            if not verified_primary and self._combat_weapon_preference() == "piercing":
+                verified_primary = bool(
+                    weapon_slot_seen
+                    and weapon_description is not None
+                    and any(
+                        marker in weapon_description
+                        for marker in ("dagger", "knife", "rapier", "piercing")
+                    )
+                )
+            if not verified_primary:
+                self.failure = (
+                    "equipment audit did not verify the primary weapon after "
+                    "the pounding-weapon purchase"
+                )
+                return None
+            self.primary_weapon_observed = True
+            self.primary_weapon_lost = False
             self.city_rearm_returning = True
             self.city_rearm_route_index = 0
 
         if self.city_rearm_route_index < len(returning):
             command = returning[self.city_rearm_route_index]
             self.city_rearm_route_index += 1
-            return BotDecision(command, "return safely from the Midgaard weapon shop")
-        if room_vnum != "3054":
-            self.failure = (
-                f"weapon-shop return reached {state.room_name!r} ({room_vnum}), "
-                "expected healer room 3054"
+            return BotDecision(
+                command,
+                "return safely from the Midgaard weapon shop",
             )
-        return None
+        return finish_at_healer()
 
     def _city_outfit_decision(self, state: CharacterState) -> BotDecision | None:
         """Fill empty legal armour slots from the safe Midgaard leather shop."""
@@ -4942,9 +5980,14 @@ class StarterPolicy:
     def _pie_carry_capacity(self, state: CharacterState) -> int:
         carry_weight = _state_stat(state, "carry_wt")
         maximum_weight = _state_stat(state, "maxcarry_wt")
-        if carry_weight is None or maximum_weight is None:
-            return self.pie_order_limit
-        return max(0, (maximum_weight - carry_weight) // _PIE_WEIGHT)
+        carry_items = _state_stat(state, "carry_num")
+        maximum_items = _state_stat(state, "maxcarry_num")
+        capacities = [self.pie_order_limit]
+        if carry_weight is not None and maximum_weight is not None:
+            capacities.append((maximum_weight - carry_weight) // _PIE_WEIGHT)
+        if carry_items is not None and maximum_items is not None:
+            capacities.append(maximum_items - carry_items)
+        return max(0, min(capacities))
 
     def _city_restock_capacity_decision(
         self,
@@ -5132,6 +6175,9 @@ class StarterPolicy:
                     "become visible before asking the Magic Shop wizard to trade",
                 )
             if self.magic_shop_purchase_failed:
+                recovery = self._magic_shop_diploma_recovery_decision()
+                if recovery is not None:
+                    return recovery
                 return BotDecision(
                     "south",
                     "return after the current light blue potion price was unaffordable",
@@ -5147,11 +6193,63 @@ class StarterPolicy:
                         "eat pie",
                         "consume confirmed carried food to free capacity for flight",
                     )
-                self.magic_shop_purchase_failed = True
-                return BotDecision(
-                    "south",
-                    "return because no safe capacity relief was available for flight",
+                has_worn_diploma = any(
+                    "mud school diploma"
+                    in normalize_item_name(item.short_description)
+                    for item in self.gear_worn
                 )
+                has_worn_tophat = any(
+                    normalize_item_name(item.short_description) == "tophat"
+                    for item in self.gear_worn
+                )
+                if (
+                    not self.magic_shop_capacity_relief_attempted
+                    and has_worn_diploma
+                ):
+                    self.magic_shop_capacity_relief_attempted = True
+                    self.magic_shop_diploma_relief_step = 1
+                    self.magic_shop_tophat_relief_planned = has_worn_tophat
+                    return BotDecision(
+                        "remove diploma",
+                        "temporarily remove the one-weight diploma for flight capacity",
+                    )
+                if self.magic_shop_diploma_relief_step == 1:
+                    self.magic_shop_diploma_relief_step = 2
+                    self.magic_shop_diploma_dropped = True
+                    return BotDecision(
+                        "drop diploma",
+                        "cache the diploma in the safe Magic Shop during purchase",
+                    )
+                if self.magic_shop_diploma_relief_step == 2:
+                    if self.magic_shop_tophat_relief_planned:
+                        self.magic_shop_diploma_relief_step = 3
+                        return BotDecision(
+                            "remove tophat",
+                            "temporarily remove the one-weight tophat for flight capacity",
+                        )
+                    self.magic_shop_diploma_relief_step = 5
+                    self.purchase_carry_rejected = False
+                    self.magic_shop_step = 1
+                elif self.magic_shop_diploma_relief_step == 3:
+                    self.magic_shop_diploma_relief_step = 4
+                    self.magic_shop_tophat_dropped = True
+                    return BotDecision(
+                        "drop tophat",
+                        "cache the tophat in the safe Magic Shop during purchase",
+                    )
+                elif self.magic_shop_diploma_relief_step == 4:
+                    self.magic_shop_diploma_relief_step = 5
+                    self.purchase_carry_rejected = False
+                    self.magic_shop_step = 1
+                else:
+                    self.magic_shop_purchase_failed = True
+                    recovery = self._magic_shop_diploma_recovery_decision()
+                    if recovery is not None:
+                        return recovery
+                    return BotDecision(
+                        "south",
+                        "return because no safe capacity relief was available for flight",
+                    )
             commands = [("list", "record Magic Shop stock and potion prices")]
             if self.magic_shop_buy_fly:
                 commands.extend(
@@ -5168,6 +6266,9 @@ class StarterPolicy:
                 and not _has_inventory_item(state.inventory, "light blue potion")
             ):
                 self.magic_shop_purchase_failed = True
+                recovery = self._magic_shop_diploma_recovery_decision()
+                if recovery is not None:
+                    return recovery
                 return BotDecision(
                     "south",
                     "return because the light blue potion purchase was not confirmed",
@@ -5176,6 +6277,9 @@ class StarterPolicy:
                 command, reason = commands[self.magic_shop_step]
                 self.magic_shop_step += 1
                 return BotDecision(command, reason)
+            recovery = self._magic_shop_diploma_recovery_decision()
+            if recovery is not None:
+                return recovery
             return BotDecision("south", "return from the Magic Shop to the healer")
 
         if self.magic_shop_step == 0:
@@ -5215,12 +6319,322 @@ class StarterPolicy:
         )
         return None
 
+    def _magic_shop_diploma_recovery_decision(self) -> BotDecision | None:
+        if not self.magic_shop_diploma_dropped:
+            return None
+        if self.magic_shop_diploma_recovery_step == 0:
+            self.magic_shop_diploma_recovery_step = 1
+            return BotDecision(
+                "get diploma",
+                "retrieve the temporarily cached Mud School diploma",
+            )
+        if self.magic_shop_diploma_recovery_step == 1:
+            self.magic_shop_diploma_recovery_step = 2
+            return BotDecision(
+                "hold diploma",
+                "restore the Mud School diploma after the flight purchase",
+            )
+        if (
+            self.magic_shop_tophat_dropped
+            and self.magic_shop_diploma_recovery_step == 2
+        ):
+            self.magic_shop_diploma_recovery_step = 3
+            return BotDecision(
+                "get tophat",
+                "retrieve the temporarily cached tophat",
+            )
+        if (
+            self.magic_shop_tophat_dropped
+            and self.magic_shop_diploma_recovery_step == 3
+        ):
+            self.magic_shop_diploma_recovery_step = 4
+            return BotDecision(
+                "wear tophat",
+                "restore the tophat after the flight purchase",
+            )
+        self.magic_shop_diploma_dropped = False
+        self.magic_shop_tophat_dropped = False
+        return None
+
+    def _bank_excess_coin_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        room_vnum = state.room_vnum
+        if room_vnum == "3007":
+            if (
+                self.shop_visibility_rejected
+                or _has_named_affect(state.affects, "invis")
+            ):
+                self.shop_visibility_rejected = False
+                return BotDecision(
+                    "vis",
+                    "become visible before using Dragonhoard Bank",
+                )
+            commands = (
+                (
+                    "deposit all",
+                    "bank the critically encumbering carried coin hoard",
+                ),
+                (
+                    "withdraw 1 gold",
+                    "retain one compact gold coin for routine purchases",
+                ),
+                ("west", "leave Dragonhoard Bank after reducing coin weight"),
+            )
+            if self.bank_excess_coin_step < len(commands):
+                command, reason = commands[self.bank_excess_coin_step]
+                self.bank_excess_coin_step += 1
+                return BotDecision(command, reason)
+        returning = self.bank_excess_coin_step >= 3
+        routes = (
+            {
+                "3006": "west",
+                "3005": "north",
+                "3001": "north",
+            }
+            if returning
+            else {
+                "3054": "south",
+                "3001": "south",
+                "3014": "north",
+                "3005": "east",
+                "3006": "east",
+            }
+        )
+        command = routes.get(room_vnum)
+        if command is not None:
+            return BotDecision(
+                command,
+                "use the safe Midgaard bank route for excess currency",
+            )
+        if room_vnum == "3054" and returning:
+            return None
+        self.failure = (
+            "no verified excess-currency bank route for "
+            f"room {state.room_name!r} ({state.room_vnum})"
+        )
+        return None
+
+    def _live_maze_navigation_decision(
+        self,
+        state: CharacterState,
+        *,
+        context: str,
+        target: str,
+        allowed_rooms: frozenset[str],
+        blocked_rooms: frozenset[str] = frozenset(),
+        preferred_destinations: tuple[str, ...] = (),
+    ) -> BotDecision | None:
+        """Explore a randomized maze using each room's current GMCP exits."""
+        if self.live_maze_context != context:
+            self.live_maze_context = context
+            self.live_maze_target = target
+            self.live_maze_allowed_rooms = allowed_rooms
+            self.live_maze_visited = set()
+            self.live_maze_attempted = {}
+            self.live_maze_stack = []
+            self.live_maze_backtrack_room = None
+            self.live_maze_rebases = 0
+            self.live_maze_complete = False
+
+        room_vnum = str(state.room_vnum or "")
+        if room_vnum == target:
+            self.live_maze_complete = True
+            return None
+        if room_vnum not in allowed_rooms:
+            self.failure = (
+                f"live maze navigation reached unregistered room {room_vnum!r} "
+                f"while seeking {target}"
+            )
+            return None
+        if self.live_maze_backtrack_room is not None:
+            if room_vnum != self.live_maze_backtrack_room:
+                self.live_maze_rebases += 1
+                if self.live_maze_rebases > 8:
+                    self.failure = (
+                        "live maze navigation exceeded eight bounded rebases "
+                        f"while seeking {target} (last room {room_vnum!r})"
+                    )
+                    return None
+                self.live_maze_visited = {room_vnum}
+                self.live_maze_attempted = {}
+                self.live_maze_stack = []
+            self.live_maze_backtrack_room = None
+
+        self.live_maze_visited.add(room_vnum)
+        attempted = self.live_maze_attempted.setdefault(room_vnum, set())
+        exits: dict[str, str] = {}
+        for raw_direction, destination in state.exits.items():
+            if destination is None:
+                continue
+            direction = _DIRECTION_SHORTCUTS.get(
+                str(raw_direction).casefold(),
+                str(raw_direction).casefold(),
+            )
+            if direction in _MOVEMENT_COMMANDS:
+                exits[direction] = str(destination)
+
+        directions = (
+            "north",
+            "east",
+            "south",
+            "west",
+            "up",
+            "down",
+        )
+        preferred = (*preferred_destinations, target)
+        for preferred_destination in preferred:
+            for direction in directions:
+                destination = exits.get(direction)
+                if (
+                    destination != preferred_destination
+                    or destination in blocked_rooms
+                    or destination in self.live_maze_visited
+                    or direction in attempted
+                ):
+                    continue
+                attempted.add(direction)
+                self.live_maze_stack.append((room_vnum, direction, destination))
+                return BotDecision(
+                    direction,
+                    f"follow the live GMCP exit toward maze room {destination}",
+                )
+        for direction in directions:
+            destination = exits.get(direction)
+            if (
+                destination is None
+                or destination not in allowed_rooms
+                or destination in blocked_rooms
+                or destination in self.live_maze_visited
+                or direction in attempted
+            ):
+                continue
+            attempted.add(direction)
+            self.live_maze_stack.append((room_vnum, direction, destination))
+            return BotDecision(
+                direction,
+                f"follow the live GMCP exit toward maze room {destination}",
+            )
+
+        if not self.live_maze_stack:
+            self.failure = (
+                f"live maze navigation exhausted registered exits in room "
+                f"{room_vnum!r} while seeking {target}"
+            )
+            return None
+        parent_room, direction, child_room = self.live_maze_stack.pop()
+        if room_vnum != child_room:
+            self.live_maze_rebases += 1
+            if self.live_maze_rebases > 8:
+                self.failure = (
+                    "live maze navigation exceeded eight bounded rebases "
+                    f"while seeking {target} (last room {room_vnum!r})"
+                )
+                return None
+            self.live_maze_visited = {room_vnum}
+            self.live_maze_attempted = {}
+            self.live_maze_stack = []
+            return self._live_maze_navigation_decision(
+                state,
+                context=context,
+                target=target,
+                allowed_rooms=allowed_rooms,
+                blocked_rooms=blocked_rooms,
+                preferred_destinations=preferred_destinations,
+            )
+        self.live_maze_backtrack_room = parent_room
+        backtrack_direction = next(
+            (
+                candidate
+                for candidate, destination in exits.items()
+                if destination == parent_room
+            ),
+            None,
+        )
+        if backtrack_direction is None:
+            self.live_maze_rebases += 1
+            if self.live_maze_rebases > 8:
+                self.failure = (
+                    "live maze navigation could not find a live exit back to "
+                    f"room {parent_room!r} while seeking {target}"
+                )
+                return None
+            self.live_maze_visited = {room_vnum}
+            self.live_maze_attempted = {}
+            self.live_maze_stack = []
+            self.live_maze_backtrack_room = None
+            return self._live_maze_navigation_decision(
+                state,
+                context=context,
+                target=target,
+                allowed_rooms=allowed_rooms,
+                blocked_rooms=blocked_rooms,
+                preferred_destinations=preferred_destinations,
+            )
+        return BotDecision(
+            backtrack_direction,
+            f"backtrack through the live maze toward room {parent_room}",
+        )
+
     def _fastwalk_research_decision(self, state: CharacterState) -> BotDecision | None:
         """Exercise an official recall-origin route one command at a time."""
         assert self.fastwalk_route is not None
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
         room_key = room_vnum or ""
+
+        if (
+            self.fastwalk_returning
+            and self.fastwalk_recovery_commands is None
+            and room_key in _PYRAMID_DESERT_MAZE_ROOMS
+        ):
+            maze_return = self._live_maze_navigation_decision(
+                state,
+                context=f"fastwalk-return:{self.fastwalk_route.name}",
+                target="5007",
+                allowed_rooms=_PYRAMID_DESERT_MAZE_ROOMS,
+                blocked_rooms=frozenset({"5028"}),
+            )
+            if maze_return is not None:
+                return maze_return
+            if not self.live_maze_complete:
+                return None
+            self.fastwalk_recovery_commands = _PYRAMID_HEALER_RETURN_COMMANDS
+            self.fastwalk_return_index = 0
+
+        if (
+            self.fastwalk_returning
+            and self.fastwalk_recovery_commands is None
+            and room_key in _SHADOW_GROVE_ROOMS
+        ):
+            maze_return = self._live_maze_navigation_decision(
+                state,
+                context=f"fastwalk-return:shadow-grove:{self.fastwalk_route.name}",
+                target="1300",
+                allowed_rooms=_SHADOW_GROVE_ROOMS,
+            )
+            if maze_return is not None:
+                return maze_return
+            if not self.live_maze_complete:
+                return None
+            self.fastwalk_recovery_commands = _SHADOW_GROVE_HEALER_RETURN_COMMANDS
+            self.fastwalk_return_index = 0
+
+        if (
+            self.fastwalk_returning
+            and self.fastwalk_unattackable_target is not None
+        ):
+            if room_key == "3737":
+                return BotDecision(
+                    "enter portal",
+                    "leave arena Safety before recalling from an unattackable target",
+                )
+            if room_key != "3054" and room_key not in _MIDGAARD_HEALER_ROUTES:
+                return BotDecision(
+                    "recall",
+                    "return immediately after the field target was rejected by its current form",
+                )
 
         nested_container = self._nested_container_extraction_decision()
         if nested_container is not None:
@@ -5326,6 +6740,23 @@ class StarterPolicy:
             and self.active_target is None
             and room_key in self.pending_loot_rooms
         ):
+            selective_loot_keywords: tuple[str, ...] = ()
+            if (
+                self.fastwalk_selective_loot
+                and self.fastwalk_last_kill_target is not None
+                and self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+            ):
+                current_stop = self.fastwalk_hunt_stops[
+                    self.fastwalk_hunt_stop_index
+                ]
+                if (
+                    current_stop.target is not None
+                    and _targets_match(
+                        self.fastwalk_last_kill_target,
+                        current_stop.target,
+                    )
+                ):
+                    selective_loot_keywords = current_stop.selective_loot_keywords
             if self.fastwalk_loot_step == 0:
                 if not self.fastwalk_collect_loot:
                     self.fastwalk_loot_step = 4
@@ -5333,11 +6764,37 @@ class StarterPolicy:
                         "sacrifice corpse",
                         "take the field coin while preserving capacity for the next approved kill",
                     )
-                self.fastwalk_loot_step = 1
-                return BotDecision(
-                    "get all corpse",
-                    "collect equipment and money from a fastwalk-route kill",
-                )
+                if (
+                    self.fastwalk_selective_loot
+                    and not selective_loot_keywords
+                ):
+                    self.fastwalk_loot_step = 4
+                    return BotDecision(
+                        "sacrifice corpse",
+                        "skip unapproved loot while autoloot is disabled for a "
+                        "known cursed-drop hunt",
+                    )
+                if (
+                    self.fastwalk_selective_loot_index
+                    < len(selective_loot_keywords)
+                ):
+                    keyword = selective_loot_keywords[
+                        self.fastwalk_selective_loot_index
+                    ]
+                    self.fastwalk_selective_loot_index += 1
+                    return BotDecision(
+                        f"get all.{keyword} corpse",
+                        "collect one source-approved drop while leaving the "
+                        "known cursed object in the corpse",
+                    )
+                if selective_loot_keywords:
+                    self.fastwalk_loot_step = 1
+                else:
+                    self.fastwalk_loot_step = 1
+                    return BotDecision(
+                        "get all corpse",
+                        "collect equipment and money from a fastwalk-route kill",
+                    )
             if (
                 self.fastwalk_loot_step == 1
                 and self.fastwalk_route.loot_container is not None
@@ -5390,6 +6847,7 @@ class StarterPolicy:
                     "sacrifice the emptied field corpse for its level-band coin",
                 )
             self.fastwalk_loot_step = 0
+            self.fastwalk_selective_loot_index = 0
             self.fastwalk_pouch_attempted.clear()
             self.pending_loot_rooms.discard(room_key)
             objective_killed = (
@@ -5442,6 +6900,33 @@ class StarterPolicy:
             )
 
         if not self.fastwalk_returning:
+            if (
+                self.fastwalk_hunt_stops
+                and room_key == "3054"
+                and not self.fastwalk_recovery_ready
+                and not self.fastwalk_returning
+                and state.max_move is not None
+            ):
+                required_move_ratio = 0.4 if (
+                    _has_named_affect(state.affects, "fly")
+                    or _has_named_affect(state.affects, "levitation")
+                ) else 0.9
+                if self.fastwalk_required_move:
+                    required_move_ratio = max(
+                        required_move_ratio,
+                        min(
+                            1.0,
+                            self.fastwalk_required_move / state.max_move,
+                        ),
+                    )
+                if _move_ratio(state) < required_move_ratio:
+                    if _is_sleeping(state):
+                        self.prompt_ready = False
+                        return None
+                    return BotDecision(
+                        "sleep",
+                        "sleep beside the Midgaard healer before a long field departure",
+                    )
             if self.fastwalk_recall_after_loot:
                 self.fastwalk_recall_after_loot = False
                 self.fastwalk_returning = True
@@ -5484,7 +6969,15 @@ class StarterPolicy:
                 else:
                     self.fastwalk_recall_started = True
                     return BotDecision("recall", "start the official recall-origin fastwalk")
-            if self.fastwalk_outbound_index == 0 and room_vnum != "3001":
+            if (
+                self.fastwalk_outbound_index == 0
+                and room_vnum != "3001"
+                and not (
+                    self.fastwalk_hunt_stops
+                    and room_vnum == "3005"
+                    and 1 <= self.fastwalk_water_preflight_step <= 3
+                )
+            ):
                 recovery_routes = {
                     "3054": "south",
                     "3725": "down",
@@ -5586,11 +7079,22 @@ class StarterPolicy:
                 self.fastwalk_autoloot_configured = True
                 return BotDecision(
                     "config +autoloot"
-                    if self.fastwalk_collect_loot
+                    if (
+                        self.fastwalk_collect_loot
+                        and not self.fastwalk_selective_loot
+                    )
                     else "config -autoloot",
                     "secure corpse loot inside the kill before another mobile can interrupt"
-                    if self.fastwalk_collect_loot
-                    else "preserve carrying capacity for a second approved field kill",
+                    if (
+                        self.fastwalk_collect_loot
+                        and not self.fastwalk_selective_loot
+                    )
+                    else (
+                        "leave a source-known cursed drop in its corpse and "
+                        "collect only approved items manually"
+                        if self.fastwalk_selective_loot
+                        else "preserve carrying capacity for a second approved field kill"
+                    ),
                 )
             if (
                 room_vnum == "3001"
@@ -5637,6 +7141,37 @@ class StarterPolicy:
                             skill,
                             "reduce visibility to city greet-program ambushes before departure",
                         )
+            if (
+                self.fastwalk_hunt_stops
+                and self.fastwalk_outbound_index == 0
+                and self.fastwalk_water_preflight_step < 4
+            ):
+                water_preflight = {
+                    (0, "3001"): (
+                        1,
+                        "south",
+                        "reach the Temple Square fountain",
+                    ),
+                    (1, "3005"): (
+                        2,
+                        "fill skin",
+                        "fill the buffalo water skin before the field route",
+                    ),
+                    (2, "3005"): (
+                        3,
+                        "drink skin",
+                        "drink before beginning the field route",
+                    ),
+                    (3, "3005"): (
+                        4,
+                        "north",
+                        "return to recall after replenishing water",
+                    ),
+                }.get((self.fastwalk_water_preflight_step, room_key))
+                if water_preflight is not None:
+                    step, command, reason = water_preflight
+                    self.fastwalk_water_preflight_step = step
+                    return BotDecision(command, reason)
             while self.fastwalk_origin_action_index < len(
                 self.fastwalk_origin_actions
             ):
@@ -5646,11 +7181,47 @@ class StarterPolicy:
                 self.fastwalk_origin_action_index += 1
                 if command == "eat pie" and not self.needs_food:
                     continue
-                if command == "drink skin" and not self.needs_drink:
+                if (
+                    command == "drink skin"
+                    and not self.needs_drink
+                    and (
+                        not self.fastwalk_hunt_stops
+                        or self.fastwalk_water_preflight_step >= 4
+                    )
+                ):
                     continue
                 return BotDecision(
                     command,
                     "prepare inventory at the safe fastwalk origin",
+                )
+            live_navigation_active = (
+                self.fastwalk_route.live_navigation_target is not None
+                and self.fastwalk_route.live_navigation_start_index is not None
+                and self.fastwalk_route.live_navigation_resume_index is not None
+                and self.fastwalk_outbound_index
+                == self.fastwalk_route.live_navigation_start_index
+            )
+            if live_navigation_active:
+                live_navigation = self._live_maze_navigation_decision(
+                    state,
+                    context=f"fastwalk-outbound:{self.fastwalk_route.name}",
+                    target=self.fastwalk_route.live_navigation_target or "",
+                    allowed_rooms=frozenset(
+                        self.fastwalk_route.live_navigation_room_vnums
+                    ),
+                    blocked_rooms=frozenset(
+                        self.fastwalk_route.live_navigation_blocked_room_vnums
+                    ),
+                    preferred_destinations=(
+                        self.fastwalk_route.live_navigation_preferred_destinations
+                    ),
+                )
+                if live_navigation is not None:
+                    return live_navigation
+                if not self.live_maze_complete:
+                    return None
+                self.fastwalk_outbound_index = (
+                    self.fastwalk_route.live_navigation_resume_index
                 )
             if self.fastwalk_outbound_index < len(self.fastwalk_route.commands):
                 invisibility = self._fastwalk_invisibility_decision(
@@ -5734,6 +7305,7 @@ class StarterPolicy:
                         self.fastwalk_attack_target or "",
                         "re-engage the requested target after bounded pursuit",
                         allow_backstab=False,
+                        state=state,
                     )
                 self.fastwalk_target_absent = True
                 if (
@@ -5817,6 +7389,20 @@ class StarterPolicy:
                 "finish the fastwalk at the Midgaard healer",
             )
 
+        if self.fastwalk_recovery_commands is not None:
+            if self.fastwalk_return_index >= len(self.fastwalk_recovery_commands):
+                self.failure = (
+                    "no-recall recovery route did not reach the Midgaard healer "
+                    f"from room {state.room_name!r} ({state.room_vnum})"
+                )
+                return None
+            command = self.fastwalk_recovery_commands[self.fastwalk_return_index]
+            self.fastwalk_return_index += 1
+            return BotDecision(
+                command,
+                "follow the source-backed no-recall route to the Midgaard healer",
+            )
+
         if self.fastwalk_route.recall_after_loot:
             self.failure = (
                 "recall-only fastwalk did not reach the Midgaard healer route "
@@ -5879,8 +7465,23 @@ class StarterPolicy:
                 self.city_outfit,
                 self.guildmaster_research,
                 self.magic_shop_research,
+                self.bank_excess_coins,
                 self.resupply_only,
             )
+        )
+
+    def _has_persisted_below_band_sighting(
+        self,
+        state: CharacterState,
+        stop: FieldHuntStop,
+    ) -> bool:
+        if stop.target is None:
+            return False
+        room_vnum = str(state.room_vnum or self.current_room or "")
+        return any(
+            sighting_room == room_vnum
+            and _stop_target_matches(sighting_target, stop.target, stop)
+            for sighting_room, sighting_target in self.fastwalk_below_band_sightings
         )
 
     def _consider_fastwalk_target(
@@ -5928,7 +7529,7 @@ class StarterPolicy:
             if self.gear_catalog is None
             or self.gear_catalog.match(observed) is None
             if not any(
-                observed == bystander.casefold()
+                _targets_match(observed, bystander)
                 for bystander in allowed_bystanders + trivial_bystanders
             )
         )
@@ -5946,19 +7547,29 @@ class StarterPolicy:
             (not consider_only and target_count > maximum_target_count)
             or (consider_only and ambiguous_keyword)
             or (not consider_only and observed_mobile_count > target_count)
+            or (
+                stop is not None
+                and stop.require_isolated
+                and observed_mobile_count > target_count
+            )
         ):
-            self.fastwalk_abort_reason = (
+            crowd_reason = (
                 f"field room contained {observed_mobile_count} observed mobiles "
                 f"while evaluating {target!r}"
             )
-            self.fastwalk_target_absent = True
+            # A crowded room is a retryable area-state miss, not evidence that
+            # the requested mobile is absent from the area.
+            self.fastwalk_target_absent = False
             if self.fastwalk_hunt_stops:
+                if len(self.fastwalk_hunt_stops) == 1:
+                    self.fastwalk_abort_reason = crowd_reason
                 self.fastwalk_hunt_stop_skipped = True
                 self.fastwalk_attack_started = False
                 return BotDecision(
                     "look",
                     "skip a crowded circuit target before committing to combat",
                 )
+            self.fastwalk_abort_reason = crowd_reason
             self.fastwalk_returning = True
             return BotDecision(
                 "recall",
@@ -6038,6 +7649,7 @@ class StarterPolicy:
                 target,
                 "attack the considered viable fastwalk target",
                 command_keyword=command_keyword,
+                state=state,
             )
         if self.consider_viable is False:
             below_band_required_loot = bool(
@@ -6066,6 +7678,20 @@ class StarterPolicy:
                     "attack a source-registered below-band carrier solely for "
                     "required replacement gear, not XP",
                     command_keyword=command_keyword,
+                    state=state,
+                )
+            if stop is not None and stop.abort_after_consider_rejection:
+                self.fastwalk_abort_reason = (
+                    f"the unique field target {target!r} failed its live "
+                    "consider gate"
+                )
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_attack_started = False
+                self.fastwalk_returning = True
+                return BotDecision(
+                    "recall",
+                    "return after the unique field target fails its live "
+                    "consider gate",
                 )
             self.fastwalk_target_absent = True
             if self.fastwalk_hunt_stops:
@@ -6097,8 +7723,14 @@ class StarterPolicy:
                 "use the identified cure-critical potion at low combat health",
             )
         if (
-            self.combat_pouch_potions["purple"]
+            self.use_sanctuary_potions
+            and self.combat_pouch_potions["purple"]
             and not _has_named_affect(state.affects, "sanctuary")
+            and (
+                not self.active_target
+                or self.active_target.casefold()
+                not in self.fastwalk_below_band_targets
+            )
         ):
             self.combat_pouch_potions["purple"] -= 1
             if self.combat_pouch_potions["purple"] <= 0:
@@ -6132,6 +7764,16 @@ class StarterPolicy:
             if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
             else None
         )
+        if (
+            current_stop is not None
+            and current_stop.target is not None
+            and self.fastwalk_unattackable_target is not None
+            and _targets_match(
+                current_stop.target,
+                self.fastwalk_unattackable_target,
+            )
+        ):
+            self.fastwalk_hunt_stop_skipped = True
         nested_container = self._nested_container_extraction_decision()
         if nested_container is not None:
             return nested_container
@@ -6159,6 +7801,17 @@ class StarterPolicy:
                     "sleep",
                     "recover in the source-vetted hunt room before continuing",
                 )
+            resource_gaps = []
+            if missing_food:
+                resource_gaps.append("food")
+            if missing_water:
+                resource_gaps.append("water")
+            if resource_gaps:
+                self.fastwalk_abort_reason = (
+                    "field expedition withdrew before target evaluation because "
+                    + " and ".join(resource_gaps)
+                    + " reserve was unavailable"
+                )
             missing_items = self._missing_required_field_items(state)
             if missing_items:
                 self.fastwalk_abort_reason = (
@@ -6169,6 +7822,25 @@ class StarterPolicy:
             return BotDecision(
                 "recall",
                 "end the field circuit while recovery reserves remain",
+            )
+
+        rejected_opener_target = (
+            self.backstab_skip_once_target or self.shoot_skip_once_target
+        )
+        if (
+            current_stop is not None
+            and current_stop.target is not None
+            and rejected_opener_target == current_stop.target
+            and self.fastwalk_attack_started
+            and not self.combat_active
+        ):
+            self.active_target = current_stop.target
+            self.combat_active = True
+            return self._combat_opener_decision(
+                current_stop.target,
+                "start direct combat after the specialized opener was rejected",
+                command_keyword=current_stop.command_keyword,
+                state=state,
             )
 
         if (
@@ -6284,11 +7956,32 @@ class StarterPolicy:
             self.fastwalk_hunt_stop_skipped = False
             self.fastwalk_attack_started = False
             self.fastwalk_target_absent = False
+            self.fastwalk_where_target_absent_observed = False
             self.consider_target = None
             self.consider_target_selector = None
             self.consider_viable = None
+            next_stop = (
+                self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+                if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+                else None
+            )
+            self.fastwalk_hunt_route_before_target = bool(
+                next_stop is not None
+                and completed_stop.target is not None
+                and next_stop.target is not None
+                and _targets_match(completed_stop.target, next_stop.target)
+                and (next_stop.route_vnums or next_stop.route)
+            )
 
         if self.fastwalk_hunt_stop_index >= len(self.fastwalk_hunt_stops):
+            if (
+                not self.objective_kills
+                and not self.fastwalk_consider_outcomes
+                and not str(self.fastwalk_abort_reason or "").startswith(
+                    "field room contained "
+                )
+            ):
+                self.fastwalk_target_absent = True
             self.fastwalk_returning = True
             if state.room_vnum == "3054":
                 return None
@@ -6302,6 +7995,42 @@ class StarterPolicy:
                 "skip the next field target without its required health reserve",
             )
         self.fastwalk_attack_target = stop.target
+        targets = self.room_targets.get(state.room_vnum or "", [])
+        route_vnum_count = len(stop.route_vnums)
+        route_command_index = max(
+            0,
+            self.fastwalk_hunt_move_index - route_vnum_count,
+        )
+        route_length = route_vnum_count + len(stop.route)
+        if (
+            (
+                not self.fastwalk_hunt_route_before_target
+                or self.fastwalk_hunt_move_index >= route_length
+            )
+            and stop.target is not None
+            and any(
+                _stop_target_matches(target, stop.target, stop)
+                for target in targets
+            )
+        ):
+            if self._has_persisted_below_band_sighting(state, stop):
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_attack_started = False
+                return BotDecision(
+                    "look",
+                    "skip the same field mobile after its persisted below-band consider result",
+                )
+            if (
+                stop.consider_only
+                and self.consider_target == stop.target
+                and self.consider_viable is not None
+            ):
+                self.fastwalk_hunt_stop_skipped = True
+                return BotDecision(
+                    "look",
+                    "record live consideration without engaging the research target",
+                )
+            return self._consider_fastwalk_target(state)
         if self.fastwalk_hunt_move_index < len(stop.route_vnums):
             destination = stop.route_vnums[self.fastwalk_hunt_move_index]
             command = next(
@@ -6326,8 +8055,8 @@ class StarterPolicy:
                 command,
                 f"follow the live exit leading to source room {destination}",
             )
-        if self.fastwalk_hunt_move_index < len(stop.route):
-            command = stop.route[self.fastwalk_hunt_move_index]
+        if route_command_index < len(stop.route):
+            command = stop.route[route_command_index]
             self.fastwalk_hunt_move_index += 1
             return BotDecision(command, "follow the verified field-hunt circuit")
 
@@ -6358,6 +8087,43 @@ class StarterPolicy:
             self.fastwalk_shop_visible_action_pending = False
             return BotDecision(command, "perform the verified field-expedition action")
 
+        if (
+            stop.abort_if_where_target_absent
+            and (
+                self.fastwalk_where_target_absent_observed
+                or "you fail to find anyone by that name"
+                in self.last_response.casefold()
+            )
+        ):
+            self.fastwalk_target_absent = True
+            self.fastwalk_abort_reason = (
+                f"`where` confirmed {stop.target!r} absent from the current area"
+            )
+            self.fastwalk_returning = True
+            return BotDecision(
+                "recall",
+                "return after the global locator confirmed the field target absent",
+            )
+
+        unsafe_where_room = next(
+            (
+                room_name
+                for room_name in stop.abort_if_where_room_names
+                if room_name.casefold() in self.last_response.casefold()
+            ),
+            None,
+        )
+        if unsafe_where_room is not None:
+            self.fastwalk_abort_reason = (
+                f"`where` located {stop.target!r} in excluded room "
+                f"{unsafe_where_room!r}"
+            )
+            self.fastwalk_returning = True
+            return BotDecision(
+                "recall",
+                "return rather than enter the locator-confirmed unsafe target room",
+            )
+
         if stop.target is None:
             missing_items = _missing_required_inventory_items(
                 state.inventory,
@@ -6381,6 +8147,13 @@ class StarterPolicy:
             _stop_target_matches(target, stop.target, stop)
             for target in targets
         ):
+            if self._has_persisted_below_band_sighting(state, stop):
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_attack_started = False
+                return BotDecision(
+                    "look",
+                    "skip the same field mobile after its persisted below-band consider result",
+                )
             if (
                 stop.consider_only
                 and self.consider_target == stop.target
@@ -6473,6 +8246,48 @@ class StarterPolicy:
         # supersedes the old selector after a mobile dies, wanders, or resets.
         return matches[-1] if matches else None
 
+    def _forget_defeated_room_target(
+        self,
+        target: str,
+        selector: str | None,
+    ) -> None:
+        """Remove one defeated mobile without hiding same-identity bystanders."""
+        room = self.current_room
+        if room is None:
+            return
+        selectors_by_target = self.room_target_selectors.get(room, {})
+        matches = [
+            observed
+            for observed in self.room_targets.get(room, [])
+            if _targets_match(observed, target)
+        ]
+        if selector is not None:
+            selector_matches = [
+                observed
+                for observed in matches
+                if selector in selectors_by_target.get(observed, ())
+            ]
+            if selector_matches:
+                matches = selector_matches
+        if not matches:
+            return
+        observed = matches[0]
+        selectors = selectors_by_target.get(observed, [])
+        if selector in selectors:
+            selectors.remove(selector)
+        counts = self.room_target_counts.get(room, {})
+        remaining = max(0, counts.get(observed, 1) - 1)
+        if remaining:
+            counts[observed] = remaining
+            return
+        counts.pop(observed, None)
+        selectors_by_target.pop(observed, None)
+        self.room_targets[room] = [
+            candidate
+            for candidate in self.room_targets.get(room, [])
+            if candidate != observed
+        ]
+
     def _fastwalk_carried_gear_readiness_decision(
         self,
         state: CharacterState,
@@ -6495,6 +8310,16 @@ class StarterPolicy:
             if item_keyword(item) in self.gear_unusable_keywords:
                 continue
             if is_strength_penalty_ring(item):
+                continue
+            if (
+                category == "wield"
+                and self.primary_weapon_observed is True
+                and self.primary_weapon_lost is not True
+            ):
+                # ``eq all`` may have captured an empty weapon slot while a
+                # queued wield command was still being acknowledged.  Never
+                # let that stale audit replace a verified primary weapon with
+                # an arbitrary carried fallback.
                 continue
             if (
                 state.level is not None
@@ -6620,7 +8445,7 @@ class StarterPolicy:
         material_enemies = [
             enemy
             for enemy in enemies
-            if not _enemy_is_below_useful_band(enemy, state.level)
+            if not self._enemy_is_known_below_useful_band(enemy, state)
         ]
         assessed_enemies = material_enemies or enemies
         if len(assessed_enemies) != 1 or state.level is None:
@@ -6691,6 +8516,22 @@ class StarterPolicy:
                 return level, ceiling
         return None
 
+    def _enemy_is_known_below_useful_band(
+        self,
+        enemy: dict[str, Any],
+        state: CharacterState,
+    ) -> bool:
+        if _enemy_is_below_useful_band(enemy, state.level):
+            return True
+        if state.level is None:
+            return False
+        enemy_name = _TARGET_SELECTOR_PREFIX.sub(
+            "",
+            str(enemy.get("name", "")),
+        ).strip()
+        source_range = self._source_mobile_level_range(enemy_name)
+        return source_range is not None and source_range[1] <= state.level - 5
+
     def _field_attacker_is_known_below_band(
         self,
         attacker: str,
@@ -6705,7 +8546,7 @@ class StarterPolicy:
                 return True
         return any(
             _targets_match(str(enemy.get("name", "")), attacker)
-            and _enemy_is_below_useful_band(enemy, state.level)
+            and self._enemy_is_known_below_useful_band(enemy, state)
             for enemy in _enemy_records(state.enemies)
         )
 
@@ -6827,6 +8668,8 @@ class StarterPolicy:
     def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
         """Sell known equipment through source-backed safe Midgaard shops."""
         room_vnum = state.room_vnum
+        if self.cursed_sale_keyword is not None:
+            return self._cursed_sale_recovery_decision(state)
         if (
             self.shop_visibility_rejected
             or _has_named_affect(state.affects, "invis")
@@ -6897,7 +8740,10 @@ class StarterPolicy:
             if self.sale_identify_plan is None:
                 self.sale_identify_plan = list(
                     dict.fromkeys(
-                        sale_keyword(description)
+                        _inventory_command_keyword(
+                            description,
+                            self.gear_catalog,
+                        )
                         for description in descriptions
                         if "water skin" not in description.casefold()
                         and "pie" not in description.casefold()
@@ -6944,10 +8790,34 @@ class StarterPolicy:
                             level_gain_priorities=(
                                 self.spec.effective_level_gain_priorities
                             ),
+                            weapon_preference=(
+                                self._combat_weapon_preference()
+                                if stance == STANCE_COMBAT
+                                else None
+                            ),
                         )
+                        if stance == STANCE_COMBAT
+                        or item_category(choice.item) != "wield"
                     )
                     for vnum, count in stance_counts.items():
                         retained_counts[vnum] = max(retained_counts[vnum], count)
+                opener_preferences = []
+                if "backstab" in self.known_skills:
+                    opener_preferences.append(is_piercing_weapon)
+                if "stun" in self.known_skills:
+                    opener_preferences.append(is_blunt_weapon)
+                for preference in opener_preferences:
+                    if any(
+                        item_category(item) == "wield" and preference(item)
+                        for item in self.gear_worn
+                    ):
+                        continue
+                    opener_weapon = self._best_weapon(carried, preference)
+                    if opener_weapon is not None:
+                        retained_counts[opener_weapon.vnum] = max(
+                            retained_counts[opener_weapon.vnum],
+                            1,
+                        )
                 carried_counts = Counter(item.vnum for item in carried)
                 worn_counts = Counter(item.vnum for item in self.gear_worn)
                 for item in carried:
@@ -6991,7 +8861,10 @@ class StarterPolicy:
                 )
                 if self.gear_catalog is not None and item is None:
                     continue
-                keyword = sale_keyword(description)
+                keyword = _inventory_command_keyword(
+                    description,
+                    self.gear_catalog,
+                )
                 identified_value = self.sale_identified_values.get(keyword)
                 if (
                     self.gear_catalog is not None
@@ -7010,7 +8883,10 @@ class StarterPolicy:
                     item is not None
                     and (
                         is_capacity_infrastructure(item)
-                        or item.item_type in {10, 19}
+                        or (
+                            item.item_type in {10, 19}
+                            and not is_disposable_food(item)
+                        )
                     )
                 ):
                     continue
@@ -7022,14 +8898,14 @@ class StarterPolicy:
                     projected_counts,
                     item_type=item.item_type if item is not None else None,
                     item_value=self.sale_identified_values.get(
-                        sale_keyword(description)
+                        keyword
                     ),
                 )
                 if shop is not None:
                     self.sale_plan.append((keyword, shop))
                     projected_counts[(keyword, shop.name)] += 1
                 elif item is not None:
-                    self.donation_plan.append(sale_keyword(description))
+                    self.donation_plan.append(keyword)
             shop_order = list(dict.fromkeys(shop.name for _, shop in self.sale_plan))
             self.sale_plan = [
                 sale
@@ -7040,11 +8916,18 @@ class StarterPolicy:
             self.sale_phase = "outbound"
 
         if self.sale_index >= len(self.sale_plan):
+            while (
+                self.donation_index < len(self.donation_plan)
+                and self.donation_plan[self.donation_index]
+                in self.donation_rejected_keywords
+            ):
+                self.donation_index += 1
             if self.donation_index < len(self.donation_plan):
                 if room_vnum != "3019":
                     return self._return_home_decision(state)
                 keyword = self.donation_plan[self.donation_index]
                 self.donation_index += 1
+                self.donation_pending_keyword = keyword
                 return BotDecision(
                     f"donate {keyword}",
                     "donate redundant unsellable overflow after preserving useful gear",
@@ -7110,6 +8993,214 @@ class StarterPolicy:
         self.sale_phase = "outbound"
         return self._liquidate_loot_decision(state)
 
+    def _cursed_sale_recovery_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Clear a no-drop sale item at the healer and destroy expendable copies."""
+        keyword = self.cursed_sale_keyword
+        if keyword is None:
+            return None
+
+        if self.curse_recovery_step == "borrow":
+            return self._curse_borrow_decision(state)
+
+        if state.room_vnum != "3054":
+            shop = self.cursed_sale_shop
+            if (
+                shop is not None
+                and self.sale_route_index < len(shop.route_to_mage_lab)
+            ):
+                command = shop.route_to_mage_lab[self.sale_route_index]
+                self.sale_route_index += 1
+                return BotDecision(
+                    command,
+                    f"return from the {shop.name} after detecting cursed {keyword}",
+                )
+            return self._return_home_decision(state)
+
+        if _is_sleeping(state):
+            return BotDecision("stand", "wake before buying remove curse")
+
+        if self.curse_recovery_step == "return":
+            inventory_count = sum(
+                1
+                for description in _inventory_descriptions(state.inventory)
+                if _inventory_command_keyword(
+                    description,
+                    self.gear_catalog,
+                )
+                == keyword
+            )
+            self.cursed_item_count = max(self.cursed_item_count, inventory_count, 1)
+            self.curse_recovery_step = "heal"
+            return BotDecision(
+                "heal curse",
+                f"remove the curse preventing disposal of {keyword}",
+            )
+
+        if self.curse_recovery_step == "heal":
+            if "you do not have enough money" in self.last_response.casefold():
+                if self.curse_borrow_complete:
+                    self.failure = (
+                        "the healer's remove-curse service remained unaffordable "
+                        f"for {keyword} after one bounded bank loan"
+                    )
+                    return None
+                self.insufficient_funds = False
+                self.curse_recovery_step = "borrow"
+                return self._curse_borrow_decision(state)
+            self.curse_items_tossed = "you toss " in self.last_response.casefold()
+            self.curse_recovery_step = "destroy"
+
+        if self.curse_recovery_step == "destroy":
+            if self.cursed_item_count <= 0:
+                self.curse_recovery_step = "refresh"
+                return BotDecision(
+                    "inventory",
+                    f"confirm all cursed {keyword} copies were destroyed",
+                )
+            if self.curse_items_tossed:
+                self.cursed_item_count -= 1
+                return BotDecision(
+                    f"sacrifice {keyword}",
+                    f"destroy a source-confirmed no-drop {keyword} tossed by remove curse",
+                )
+            if not self.curse_drop_pending:
+                self.curse_drop_pending = True
+                return BotDecision(
+                    f"drop {keyword}",
+                    f"drop the now-uncursed expendable {keyword} before destruction",
+                )
+            self.curse_drop_pending = False
+            self.cursed_item_count -= 1
+            return BotDecision(
+                f"sacrifice {keyword}",
+                f"destroy the expendable {keyword} after removing its curse",
+            )
+
+        self.cursed_sale_keyword = None
+        self.cursed_sale_shop = None
+        self.cursed_item_count = 0
+        self.curse_recovery_step = "idle"
+        self.curse_items_tossed = False
+        self.curse_drop_pending = False
+        self.curse_borrow_step = 0
+        self.curse_borrow_complete = False
+        self.sale_plan = []
+        self.sale_index = 0
+        self.sale_route_index = 0
+        self.sale_phase = "plan"
+        self.sale_offer_coins = None
+        self.sale_identify_plan = None
+        self.sale_identify_index = 0
+        self.sale_identify_pending_keyword = None
+        self.donation_plan = []
+        self.donation_index = 0
+        self.donation_pending_keyword = None
+        self.donation_rejected_keywords.clear()
+        return self._liquidate_loot_decision(state)
+
+    def _curse_borrow_decision(self, state: CharacterState) -> BotDecision | None:
+        """Fund one remove-curse fee and return directly to the healer."""
+        room_vnum = state.room_vnum or ""
+        if _is_sleeping(state):
+            return BotDecision("stand", "wake before obtaining remove-curse funds")
+        if room_vnum == "3007":
+            if self.shop_visibility_rejected or _has_named_affect(
+                state.affects,
+                "invis",
+            ):
+                self.shop_visibility_rejected = False
+                return BotDecision(
+                    "vis",
+                    "become visible before asking the Dragonhoard banker for credit",
+                )
+            if self.curse_borrow_step == 0:
+                self.curse_borrow_step = 1
+                return BotDecision(
+                    "withdraw 5 gold",
+                    "use existing bank funds for the five-gold remove-curse fee",
+                )
+            response = self.last_response.casefold()
+            if self.curse_borrow_step == 1:
+                if "thank you for your custom" in response:
+                    self.curse_borrow_complete = True
+                    self.curse_borrow_step = 3
+                    return BotDecision(
+                        "west",
+                        "leave the bank after funding remove curse",
+                    )
+                if (
+                    "you have no gold coins to withdraw" in response
+                    or "you do not have 5 gold coins to withdraw" in response
+                ):
+                    self.curse_borrow_step = 2
+                    return BotDecision(
+                        "borrow 500",
+                        "take one bounded loan for the five-gold remove-curse fee",
+                    )
+                self.failure = (
+                    "the bank did not confirm or reject the five-gold "
+                    "remove-curse withdrawal"
+                )
+                return None
+            if self.curse_borrow_step == 2:
+                if "after borrowing: 500 coins" not in response:
+                    self.failure = (
+                        "the bank did not confirm the bounded remove-curse loan"
+                    )
+                    return None
+                self.curse_borrow_complete = True
+                self.curse_borrow_step = 3
+                return BotDecision(
+                    "west",
+                    "leave the bank after funding remove curse",
+                )
+
+        if self.curse_borrow_step == 0:
+            outbound = {
+                "3054": "south",
+                "3001": "south",
+                "3005": "east",
+                "3006": "east",
+            }
+            direction = outbound.get(room_vnum)
+            if direction is not None:
+                return BotDecision(
+                    direction,
+                    "visit Dragonhoard Bank for remove-curse credit",
+                )
+        else:
+            returning = {
+                "3006": "west",
+                "3005": "north",
+                "3001": "north",
+            }
+            direction = returning.get(room_vnum)
+            if direction is not None:
+                return BotDecision(
+                    direction,
+                    "return to the Midgaard healer with remove-curse funds",
+                )
+            if room_vnum == "3054":
+                if not self.curse_borrow_complete:
+                    self.failure = (
+                        "the remove-curse bank route returned without confirmed funds"
+                    )
+                    return None
+                self.curse_recovery_step = "heal"
+                return BotDecision(
+                    "heal curse",
+                    f"retry remove curse for {self.cursed_sale_keyword} after funding",
+                )
+
+        self.failure = (
+            "no verified remove-curse bank route for "
+            f"room {state.room_name!r} ({state.room_vnum})"
+        )
+        return None
+
     def _begin_midgaard_logout(
         self,
         state: CharacterState,
@@ -7121,6 +9212,26 @@ class StarterPolicy:
         self.midgaard_logout_save_reason = save_reason
         self.midgaard_logout_quit_reason = quit_reason
         return self._midgaard_logout_decision(state)
+
+    def _restore_fastwalk_autoloot_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Restore the standard field-loot setting after selective corpse looting."""
+        if not self.fastwalk_selective_loot or self.fastwalk_autoloot_restored:
+            return None
+        if state.room_vnum != "3054":
+            return None
+        if _is_sleeping(state):
+            return BotDecision(
+                "stand",
+                "wake before restoring autoloot after selective corpse looting",
+            )
+        self.fastwalk_autoloot_restored = True
+        return BotDecision(
+            "config +autoloot",
+            "restore normal corpse looting after leaving the known cursed drop behind",
+        )
 
     def _midgaard_logout_decision(
         self,
@@ -7159,6 +9270,59 @@ class StarterPolicy:
     def _return_home_decision(self, state: CharacterState) -> BotDecision | None:
         """Recall from an interrupted field run and return to the healer."""
         room_vnum = state.room_vnum
+        if (
+            self.return_home_recovery_commands is None
+            and room_vnum in _PYRAMID_DESERT_MAZE_ROOMS
+        ):
+            maze_return = self._live_maze_navigation_decision(
+                state,
+                context="return-home:pyramid-desert",
+                target="5007",
+                allowed_rooms=_PYRAMID_DESERT_MAZE_ROOMS,
+                blocked_rooms=frozenset({"5028"}),
+            )
+            if maze_return is not None:
+                return maze_return
+            if not self.live_maze_complete:
+                return None
+            self.return_home_recovery_commands = _PYRAMID_HEALER_RETURN_COMMANDS
+            self.return_home_recovery_index = 0
+        if (
+            self.return_home_recovery_commands is None
+            and room_vnum in _SHADOW_GROVE_ROOMS
+        ):
+            maze_return = self._live_maze_navigation_decision(
+                state,
+                context="return-home:shadow-grove",
+                target="1300",
+                allowed_rooms=_SHADOW_GROVE_ROOMS,
+            )
+            if maze_return is not None:
+                return maze_return
+            if not self.live_maze_complete:
+                return None
+            self.return_home_recovery_commands = _SHADOW_GROVE_HEALER_RETURN_COMMANDS
+            self.return_home_recovery_index = 0
+        if self.return_home_recovery_commands is not None:
+            if room_vnum == "3054":
+                self.utility_abort_reason = None
+                return None
+            if self.return_home_recovery_index >= len(
+                self.return_home_recovery_commands
+            ):
+                self.failure = (
+                    "no-recall recovery route did not reach the Midgaard healer "
+                    f"from room {state.room_name!r} ({state.room_vnum})"
+                )
+                return None
+            command = self.return_home_recovery_commands[
+                self.return_home_recovery_index
+            ]
+            self.return_home_recovery_index += 1
+            return BotDecision(
+                command,
+                "follow the source-backed no-recall route to the Midgaard healer",
+            )
         home_routes = {
             "3063": "north",
             "3060": "down",
@@ -7191,6 +9355,7 @@ class StarterPolicy:
         if direction is not None:
             return BotDecision(direction, "return from recall to the Midgaard healer")
         if room_vnum == "3054":
+            self.utility_abort_reason = None
             return None
         self.failure = (
             "recall recovery did not reach Midgaard from "
@@ -7349,6 +9514,19 @@ class StarterPolicy:
         state: CharacterState,
     ) -> BotDecision | None:
         """Route exhausted Midgaard characters to the healer and back."""
+        has_usable_food = (
+            self.needs_food
+            and _has_inventory_item(state.inventory, "pie")
+            and not self.food_unavailable
+        )
+        has_usable_water = (
+            self.needs_drink
+            and _has_inventory_item(state.inventory, "water skin")
+            and not self.water_unavailable
+        )
+        if has_usable_food or has_usable_water:
+            return self._resupply_decision(state)
+
         room_vnum = state.room_vnum or ""
         if (
             not self.movement_recovery_return_route
@@ -7912,6 +10090,7 @@ class StarterPolicy:
             return self._combat_opener_decision(
                 target,
                 f"fight required tutorial opponent {target}",
+                state=state,
             )
 
         return self._return_from_training_room(state, return_vnum)
@@ -7961,6 +10140,7 @@ class StarterPolicy:
             return self._combat_opener_decision(
                 target,
                 "defeat the final tutorial gladiator",
+                state=state,
             )
 
         step = self.post_kill_steps.get(key, 0)
@@ -7980,7 +10160,10 @@ class StarterPolicy:
         class_trainer = self._level_ten_class_trainer(state)
         at_class_trainer = bool(
             class_trainer is not None
-            and state.room_vnum == class_trainer.room_vnum
+            and (
+                state.room_vnum == class_trainer.destination_vnum
+                or self._class_trainer_present(state, class_trainer)
+            )
         )
         trainer_keyword = (
             class_trainer.keyword
@@ -7994,19 +10177,73 @@ class StarterPolicy:
                 f"ask the {trainer_keyword} about training",
             )
         if self.loremaster_step == 1:
+            if at_class_trainer and "you do not see that here" in self.last_response.casefold():
+                self.loremaster_step = 0
+                self.practiced = True
+                self.practice_exit_reason = (
+                    "defer class training because the source-registered teacher "
+                    "was absent from the live room"
+                )
+                self.pending_training_events.append(
+                    GameEvent(
+                        "training_deferred",
+                        "text",
+                        {
+                            "outcome": "deferred",
+                            "reason": "source-registered trainer absent",
+                            "trainer_keyword": trainer_keyword,
+                            "room_vnum": state.room_vnum,
+                        },
+                    )
+                )
+                return_command = class_trainer.return_to_healer.get(
+                    state.room_vnum or ""
+                )
+                if return_command is not None:
+                    if class_trainer.minimum_level > 10:
+                        self.class_trainer_return_pending = False
+                        self.waiting_for_move = True
+                        return BotDecision(
+                            "recall",
+                            "return from the distant mobile trainer before healer recovery",
+                        )
+                    self.class_trainer_return_pending = True
+                    return BotDecision(
+                        return_command,
+                        "leave the empty trainer room and retry after world movement",
+                    )
+                self.failure = (
+                    "source-registered class trainer was absent and no verified "
+                    f"return route exists from {state.room_vnum}"
+                )
+                return BotDecision("look", self.practice_exit_reason)
             self.loremaster_step = 2
             return BotDecision("practice", "list skills available to practice")
         if self.loremaster_step == 2:
+            if "skills known:" not in self.text.casefold():
+                self.prompt_ready = False
+                return None
             self.loremaster_step = 3
             listing = parse_practice_listing(self.text)
             self.known_skills.update(listing.known)
+            self.known_skill_levels.update(listing.known)
+            critical_unlock = self._critical_damage_unlock(
+                state,
+                listing,
+            )
+            practice_type_exclusions = (
+                frozenset()
+                if critical_unlock is not None
+                else frozenset(self.practice_types_spent)
+            )
             self.practice_plan = plan_training(
                 self.spec.character_class,
                 self.text,
                 subclass=self._active_training_subclass(state),
                 character_level=state.level,
-                excluded_practice_types=frozenset(self.practice_types_spent),
+                excluded_practice_types=practice_type_exclusions,
                 excluded_skills=frozenset(self._training_excluded_skills()),
+                stop_after_skill=critical_unlock,
             )
             total_practices = sum(
                 value or 0
@@ -8033,7 +10270,7 @@ class StarterPolicy:
                     if (
                         balance > 0
                         and practice_type in useful_types
-                        and practice_type not in self.practice_types_spent
+                        and practice_type not in practice_type_exclusions
                     ):
                         deferred_types.append(practice_type)
                         self.pending_training_events.append(
@@ -8055,6 +10292,15 @@ class StarterPolicy:
                         "retain available practice points because this teacher lists no "
                         "eligible source-backed priority skill"
                     )
+        if self.practice_listing_refresh_required:
+            self.practice_listing_refresh_required = False
+            self.practice_plan = ()
+            self.practice_plan_index = 0
+            self.loremaster_step = 2
+            return BotDecision(
+                "practice",
+                "refresh the trainer listing after unlocking a prerequisite gateway",
+            )
         if self.pending_practice_choice is not None:
             return None
         if self.practice_plan_index < len(self.practice_plan):
@@ -8079,7 +10325,17 @@ class StarterPolicy:
                 return preparation
         self.practiced = True
         if at_class_trainer and class_trainer is not None:
-            return_command = class_trainer.return_to_healer[class_trainer.room_vnum]
+            if class_trainer.minimum_level > 10:
+                self.class_trainer_return_pending = False
+                self.waiting_for_move = True
+                return BotDecision(
+                    "recall",
+                    "return from the distant mobile trainer before healer recovery",
+                )
+            self.class_trainer_return_pending = True
+            return_command = class_trainer.return_to_healer[
+                state.room_vnum or class_trainer.destination_vnum
+            ]
             return BotDecision(
                 return_command,
                 "walk back from the class trainer without paying the recall "
@@ -8191,6 +10447,11 @@ class StarterPolicy:
         if outcome == "accepted":
             self.known_skills.add(choice.skill)
             self.practice_types_spent.add(choice.practice_type)
+            if (
+                choice.utility.endswith("-gateway")
+                and self.practice_plan_index >= len(self.practice_plan)
+            ):
+                self.practice_listing_refresh_required = True
             if choice.skill == "chill touch":
                 self.chill_touch_unavailable = False
             if (
@@ -8336,6 +10597,7 @@ class StarterPolicy:
             return self._combat_opener_decision(
                 target,
                 f"fight arena opponent {target}",
+                state=state,
             )
 
         if self.room_query_counts.get(key, 0) == 0:
@@ -8474,10 +10736,12 @@ class StarterBotRunner:
         return_home: bool = False,
         city_restock: bool = False,
         city_rearm: bool = False,
+        city_rearm_pounding: bool = False,
         city_outfit: bool = False,
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
         magic_shop_buy_fly: bool = False,
+        bank_excess_coins: bool = False,
         liquidate_loot: bool = False,
         fastwalk_route: Fastwalk | None = None,
         fastwalk_explore_direction: str | None = None,
@@ -8507,7 +10771,9 @@ class StarterBotRunner:
         practice_types_spent: frozenset[str] = frozenset(),
         rejected_practice_skills: frozenset[str] = frozenset(),
         counterbalance_preparation_required: bool = False,
+        use_sanctuary_potions: bool = True,
         inactivity_timeout: float = 45.0,
+        fastwalk_skip_target_sightings: frozenset[tuple[str, str]] = frozenset(),
     ) -> None:
         if inactivity_timeout <= 0:
             raise ValueError("inactivity_timeout must be positive")
@@ -8523,10 +10789,12 @@ class StarterBotRunner:
         self.return_home = return_home
         self.city_restock = city_restock
         self.city_rearm = city_rearm
+        self.city_rearm_pounding = city_rearm_pounding
         self.city_outfit = city_outfit
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
         self.magic_shop_buy_fly = magic_shop_buy_fly
+        self.bank_excess_coins = bank_excess_coins
         self.liquidate_loot = liquidate_loot
         self.fastwalk_route = fastwalk_route
         self.fastwalk_explore_direction = fastwalk_explore_direction
@@ -8563,7 +10831,9 @@ class StarterBotRunner:
         self.counterbalance_preparation_required = (
             counterbalance_preparation_required
         )
+        self.use_sanctuary_potions = use_sanctuary_potions
         self.inactivity_timeout = inactivity_timeout
+        self.fastwalk_skip_target_sightings = fastwalk_skip_target_sightings
         self._last_gmcp_messages: dict[str, str] = {}
 
     async def run(self) -> RunResult:
@@ -8584,6 +10854,8 @@ class StarterBotRunner:
                 if self.guildmaster_research
                 else f"magic-shop:{self.spec.name}"
                 if self.magic_shop_research
+                else f"bank-excess-coins:{self.spec.name}"
+                if self.bank_excess_coins
                 else f"fastwalk-{self.fastwalk_route.name}:{self.spec.name}"
                 if self.fastwalk_route is not None
                 else f"moria:{self.spec.name}"
@@ -8611,6 +10883,8 @@ class StarterBotRunner:
                 if self.guildmaster_research
                 else f"magic-shop-{self.spec.name}"
                 if self.magic_shop_research
+                else f"bank-excess-coins-{self.spec.name}"
+                if self.bank_excess_coins
                 else f"fastwalk-{self.fastwalk_route.name}-{self.spec.name}"
                 if self.fastwalk_route is not None
                 else f"moria-{self.spec.name}"
@@ -8738,11 +11012,14 @@ class StarterBotRunner:
                 return_home=self.return_home,
                 city_restock=self.city_restock,
                 city_rearm=self.city_rearm,
+                city_rearm_pounding=self.city_rearm_pounding,
                 city_outfit=self.city_outfit,
                 audit_combat_pouch=self.fastwalk_route is not None,
+                use_sanctuary_potions=self.use_sanctuary_potions,
                 guildmaster_research=self.guildmaster_research,
                 magic_shop_research=self.magic_shop_research,
                 magic_shop_buy_fly=self.magic_shop_buy_fly,
+                bank_excess_coins=self.bank_excess_coins,
                 liquidate_loot=self.liquidate_loot,
                 loot_sale_history=[
                     dict(row) for row in storage.list_loot_sales(self.spec.name)
@@ -8804,6 +11081,9 @@ class StarterBotRunner:
                         prefix="train ",
                     )
                 ),
+                fastwalk_skip_target_sightings=(
+                    self.fastwalk_skip_target_sightings
+                ),
             )
             deadline = asyncio.get_running_loop().time() + self.spec.max_runtime
             commands = 0
@@ -8822,9 +11102,15 @@ class StarterBotRunner:
                 if policy.failure:
                     raise RuntimeError(policy.failure)
                 if asyncio.get_running_loop().time() >= deadline:
-                    raise TimeoutError(
-                        f"Starter bot exceeded {self.spec.max_runtime:g} second runtime"
-                    )
+                    if not policy.runtime_boundary_requested:
+                        policy.request_runtime_boundary()
+                        record(
+                            "state",
+                            {
+                                "state": "runtime_boundary_requested",
+                                "configured_seconds": self.spec.max_runtime,
+                            },
+                        )
                 if commands >= self.spec.max_commands:
                     raise RuntimeError(
                         f"Starter bot exceeded {self.spec.max_commands} command budget"
@@ -8929,12 +11215,28 @@ class StarterBotRunner:
                         repeat_limit,
                         _max_consecutive_command(route_commands, decision.command),
                     )
+                if policy.class_trainer_return_pending:
+                    class_trainer = policy._level_ten_class_trainer(
+                        self.character_state
+                    )
+                    if class_trainer is not None:
+                        repeat_limit = max(
+                            repeat_limit,
+                            _max_consecutive_command(
+                                class_trainer.return_commands,
+                                decision.command,
+                            ),
+                        )
                 if (
                     decision.command == "cast invis"
                     and self.fastwalk_require_invisibility
                 ):
                     repeat_limit = max(repeat_limit, 8)
-                if repeated_count > repeat_limit:
+                if _repeated_command_watchdog_applies(
+                    repeated_count,
+                    repeat_limit,
+                    registered_trainer_return=policy.class_trainer_return_pending,
+                ):
                     recovery = policy.recover_from_stall(
                         self.character_state,
                         decision.command,
@@ -8968,6 +11270,22 @@ class StarterBotRunner:
                 if _route_cycle_watchdog_applies(
                     decision.command,
                     cycle_repetitions,
+                    safe_city_return=(
+                        policy.midgaard_logout_pending
+                        or policy.class_trainer_return_pending
+                    ),
+                    randomized_maze=(
+                        self.character_state.room_vnum
+                        in _PYRAMID_DESERT_MAZE_ROOMS
+                        and (
+                            policy.return_home
+                            or (
+                                policy.fastwalk_route is not None
+                                and policy.fastwalk_route.live_navigation_target
+                                is not None
+                            )
+                        )
+                    ),
                 ):
                     recovery = policy.recover_from_stall(
                         self.character_state,
@@ -9045,6 +11363,7 @@ class StarterBotRunner:
                     "return_home": self.return_home,
                     "city_restock": self.city_restock,
                     "city_rearm": self.city_rearm,
+                    "city_rearm_pounding": self.city_rearm_pounding,
                     "city_outfit": self.city_outfit,
                     "guildmaster_research": self.guildmaster_research,
                     "magic_shop_research": self.magic_shop_research,
@@ -9061,13 +11380,21 @@ class StarterBotRunner:
                         {"keyword": keyword, "shop": shop.name}
                         for keyword, shop in policy.sale_plan
                     ],
+                    "cursed_sale_keyword": policy.cursed_sale_keyword,
+                    "curse_recovery_step": policy.curse_recovery_step,
                     "fastwalk_route": self.fastwalk_route.name if self.fastwalk_route else None,
                     "fastwalk_explore_direction": self.fastwalk_explore_direction,
                     "fastwalk_explore_depth": self.fastwalk_explore_depth,
                     "fastwalk_attack_target": self.fastwalk_attack_target,
                     "fastwalk_target_absent": policy.fastwalk_target_absent,
+                    "fastwalk_unattackable_target": (
+                        policy.fastwalk_unattackable_target
+                    ),
                     "fastwalk_objective_killed": policy.fastwalk_objective_killed,
                     "fastwalk_abort_reason": policy.fastwalk_abort_reason,
+                    "fastwalk_below_band_targets": sorted(
+                        policy.fastwalk_below_band_targets
+                    ),
                     "missing_targets": {
                         room: sorted(targets)
                         for room, targets in sorted(policy.missing_targets.items())
@@ -9080,7 +11407,6 @@ class StarterBotRunner:
             storage.finish_run(run_id, status="success")
             final_state = {
                 **self.character_state.to_dict(),
-                "combat_pouch_potions": dict(policy.combat_pouch_potions),
                 "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
                 "vault_storage_rejected": policy.vault_storage_rejected,
                 "vault_lodged_items": list(policy.vault_lodged_items),
@@ -9094,8 +11420,28 @@ class StarterBotRunner:
                 "campaign_fastwalk_consider_outcomes": dict(
                     policy.fastwalk_consider_outcomes
                 ),
+                "campaign_fastwalk_target_absent": policy.fastwalk_target_absent,
+                "campaign_fastwalk_unattackable_target": (
+                    policy.fastwalk_unattackable_target
+                ),
+                "campaign_fastwalk_below_band_targets": sorted(
+                    policy.fastwalk_below_band_targets
+                ),
+                "campaign_fastwalk_below_band_sightings": [
+                    {
+                        "room_vnum": room_vnum,
+                        "target": target,
+                    }
+                    for room_vnum, target in sorted(
+                        policy.fastwalk_below_band_sightings
+                    )
+                ],
                 "campaign_fastwalk_abort_reason": policy.fastwalk_abort_reason,
             }
+            if self.fastwalk_route is not None:
+                final_state["combat_pouch_potions"] = dict(
+                    policy.combat_pouch_potions
+                )
             if policy.primary_weapon_observed is not None:
                 final_state["campaign_has_weapon"] = (
                     policy.primary_weapon_observed
@@ -9119,6 +11465,7 @@ class StarterBotRunner:
                     "state": "runtime_cap" if runtime_cap_reached else "failed",
                     "error": str(exc),
                     "completed_kills": policy.completed_kills if policy else [],
+                    "objective_kills": policy.objective_kills if policy else [],
                 },
             )
             storage.finish_run(
@@ -9251,6 +11598,16 @@ async def run_restock_profile(path: str | Path) -> RunResult:
         spec,
         profile_path,
         city_restock=True,
+    ).run()
+
+
+async def run_rearm_profile(path: str | Path) -> RunResult:
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        city_rearm=True,
     ).run()
 
 
@@ -9463,11 +11820,28 @@ def ambush_bardoosh_research_stops() -> tuple[FieldHuntStop, ...]:
     """Consider the lone sleeping Bardoosh without authorizing combat."""
     return (
         FieldHuntStop(
-            ambush_archer_research_stops()[0].route + ("south",),
+            ambush_archer_research_stops()[0].route + ("west",),
             "Bardoosh",
             command_keyword="bardoosh",
             consider_only=True,
             exact_target=True,
+        ),
+    )
+
+
+def ambush_bardoosh_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Attack isolated Bardoosh after live consideration at level 13."""
+    stop = ambush_bardoosh_research_stops()[0]
+    return (
+        FieldHuntStop(
+            stop.route,
+            stop.target,
+            command_keyword=stop.command_keyword,
+            allowed_bystanders=("wyvern",),
+            trivial_bystanders=("goblin", "goblin lieutenant"),
+            minimum_health_ratio=0.9,
+            exact_target=True,
+            maximum_level_offset=1,
         ),
     )
 
@@ -9576,26 +11950,34 @@ def daycare_ring_hunt_route() -> Fastwalk:
 
 def daycare_ring_hunt_stops() -> tuple[FieldHuntStop, ...]:
     """Acquire both pink ice rings and restore the nearby stat-bearing robe."""
+    doll_common = {
+        "required_items": ("pink ice ring", "pink ice ring"),
+        "allowed_bystanders": ("old wrinkled nanny",),
+        "trivial_bystanders": ("young dwarf", "raggedy anne doll"),
+        "exact_target": True,
+        "maximum_target_count": 2,
+        "allow_below_band_for_required_loot": True,
+    }
     return (
         FieldHuntStop(
-            ("west", "south"),
+            ("west",),
             "abused and old doll",
-            required_items=("pink ice ring",),
-            allowed_bystanders=("old wrinkled nanny",),
-            trivial_bystanders=("young dwarf", "raggedy anne doll"),
-            exact_target=True,
-            maximum_target_count=2,
-            allow_below_band_for_required_loot=True,
+            **doll_common,
         ),
         FieldHuntStop(
             (),
             "abused and old doll",
-            required_items=("pink ice ring", "pink ice ring"),
-            allowed_bystanders=("old wrinkled nanny",),
-            trivial_bystanders=("young dwarf", "raggedy anne doll"),
-            exact_target=True,
-            maximum_target_count=1,
-            allow_below_band_for_required_loot=True,
+            **doll_common,
+        ),
+        FieldHuntStop(
+            ("south",),
+            "abused and old doll",
+            **doll_common,
+        ),
+        FieldHuntStop(
+            (),
+            "abused and old doll",
+            **doll_common,
         ),
         FieldHuntStop(
             ("north", "east"),
@@ -9629,14 +12011,19 @@ def forest_bear_claws_hunt_stops() -> tuple[FieldHuntStop, ...]:
         "command_keyword": "bear",
         "required_items": ("pair of bears claws",),
         "exact_target": True,
+        "allowed_bystanders": ("small boy",),
+        "trivial_bystanders": ("mountain goblin",),
         "allow_below_band_for_required_loot": True,
         "minimum_combat_health_ratio": 0.25,
         "maximum_level_offset": 0,
     }
-    return (
+    stops = [
         FieldHuntStop(
             (),
             "giant kodiak bear",
+            actions=("where kodiak",),
+            abort_if_where_target_absent=True,
+            abort_if_where_room_names=("River bed", "Medicine man's Lair"),
             **common,
         ),
         FieldHuntStop(
@@ -9662,6 +12049,99 @@ def forest_bear_claws_hunt_stops() -> tuple[FieldHuntStop, ...]:
             "giant kodiak bear",
             route_vnums=("18023", "18022"),
             **common,
+        ),
+    ]
+    # The bear is stay-area rather than sentinel. Traverse every source-vetted
+    # Forest room while excluding the poison-swarm branch, the medicine man's
+    # lair, and exits into adjacent areas.
+    safe_search = (
+        "18021", "18020", "18019", "18018", "18017", "18013",
+        "18012", "18011", "18010", "18009", "18008", "18007",
+        "18006", "18005", "18004", "18003", "18002", "18001",
+        "18000", "18001", "18002", "18003", "18004", "18031",
+        "18032", "18033", "18054", "18033", "18032", "18031",
+        "18004", "18034", "18035", "18036", "18037", "18038",
+        "18039", "18040", "18041", "18043", "18044", "18045",
+        "18046", "18045", "18044", "18043", "18041", "18040",
+        "18039", "18038", "18037", "18036", "18035", "18034",
+        "18004", "18005", "18006", "18007", "18008", "18009",
+        "18010", "18011", "18012", "18013", "18014", "18015",
+        "18016", "18048", "18016", "18047", "18049", "18050",
+        "18051", "18052", "18053",
+    )
+    stops.extend(
+        FieldHuntStop(
+            (),
+            "giant kodiak bear",
+            route_vnums=(vnum,),
+            **common,
+        )
+        for vnum in safe_search
+    )
+    return tuple(stops)
+
+
+def thalos_long_dagger_hunt_route() -> Fastwalk:
+    """Return the official Thalos route with required-loot recall behavior."""
+    route = route_named("thalos")
+    return Fastwalk(
+        "thalos long dagger",
+        10,
+        29,
+        route.notation,
+        recall_after_loot=True,
+    )
+
+
+def thalos_long_dagger_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Search source-isolated lamia resets for a stronger dagger."""
+    common = {
+        "command_keyword": "lamia",
+        "required_items": ("long slim dagger",),
+        "post_actions": ("wear long", "eq all"),
+        "exact_target": True,
+        "allow_below_band_for_required_loot": True,
+        "minimum_combat_health_ratio": 0.4,
+        "maximum_level_offset": 0,
+    }
+    routes = (
+        ("5201", "5239", "5240"),
+        ("5241", "5243", "5242"),
+        ("5243", "5209", "5228", "5224"),
+        ("5223", "5222", "5225"),
+        ("5207", "5220"),
+        (
+            "5207", "5225", "5222", "5223", "5224", "5228",
+            "5209", "5210", "5211", "5237",
+        ),
+        ("5211", "5204"),
+        ("5203",),
+        ("5206",),
+        ("5212", "5221"),
+        ("5212", "5213", "5214", "5218"),
+        ("5215", "5216"),
+        (
+            "5215", "5218", "5214", "5251", "5252", "5253",
+            "5255", "5235",
+        ),
+        ("5255", "5201", "5202", "5203", "5204", "5205"),
+    )
+    return (
+        FieldHuntStop(
+            (),
+            "lamia",
+            actions=("where lamia",),
+            abort_if_where_target_absent=True,
+            **common,
+        ),
+        *(
+            FieldHuntStop(
+                (),
+                "lamia",
+                route_vnums=route,
+                **common,
+            )
+            for route in routes
         ),
     )
 
@@ -9697,36 +12177,83 @@ def cult_fanatic_research_stops() -> tuple[FieldHuntStop, ...]:
 
 
 def plains_aruncus_research_stops() -> tuple[FieldHuntStop, ...]:
-    """Search the reset foothills and safe tunnel rooms without combat."""
-    safe_approach = (
-        ("east", "322"),
-        ("north", "324"),
-        ("east", "325"),
-        ("east", "326"),
-        ("east", "309"),
-        ("east", "310"),
-        ("east", "311"),
-        ("east", "312"),
-        ("south", "332"),
-        ("south", "333"),
-        ("south", "334"),
-        ("south", "335"),
-        ("east", "336"),
-        ("east", "337"),
-        ("east", "339"),
-        ("down", "340"),
-        ("west", "342"),
-        ("west", "343"),
+    """Search every source-vetted Plains room reachable from Aruncus's reset."""
+    grassy_circuit = (
+        "330",
+        "319",
+        "318",
+        "316",
+        "300",
+        "315",
+        "320",
+        "305",
+        "321",
+        "338",
+        "317",
+        "303",
+        "315",
+        "320",
+        "322",
+        "324",
+        "323",
+    )
+    broad_grassy_circuit = (
+        "330",
+        "319",
+        "318",
+        "316",
+        "300",
+        "301",
+        "302",
+        "303",
+        "304",
+        "305",
+        "321",
+        "338",
+        "317",
+        "303",
+        "315",
+        "320",
+        "322",
+        "324",
+        "323",
+    )
+    safe_search_path = (
+        *broad_grassy_circuit[1:],
+        *grassy_circuit,
+        *grassy_circuit,
+        "324", "325", "326", "306", "307", "308", "309", "310",
+        "327", "313", "314", "313", "312", "311", "310", "311",
+        "312", "332", "333", "334", "335", "336", "337", "339",
+        "340", "341", "340", "342", "343",
+    )
+    trivial_bystanders = (
+        "the cute rabbit",
+        "Sorbus the Hermit",
+        "the citizen",
     )
 
-    def research_stop(direction: str, destination: str) -> FieldHuntStop:
+    def research_stop(destination: str) -> FieldHuntStop:
         return FieldHuntStop(
-            (direction,),
+            (),
+            "Aruncus the Druid",
+            command_keyword="aruncus",
+            actions=("where aruncus",) if destination == "323" else (),
+            abort_if_where_target_absent=destination == "323",
+            consider_only=True,
+            exact_target=True,
+            route_vnums=(destination,),
+            trivial_bystanders=trivial_bystanders,
+        )
+
+    def hut_door_stop(*route: str) -> FieldHuntStop:
+        return FieldHuntStop(
+            route,
             "Aruncus the Druid",
             command_keyword="aruncus",
             consider_only=True,
             exact_target=True,
-            route_vnums=(destination,),
+            trivial_bystanders=trivial_bystanders,
         )
 
     return (
@@ -9735,47 +12262,51 @@ def plains_aruncus_research_stops() -> tuple[FieldHuntStop, ...]:
             "Aruncus the Druid",
             command_keyword="aruncus",
             actions=("where aruncus",),
+            abort_if_where_target_absent=True,
             consider_only=True,
             exact_target=True,
+            trivial_bystanders=trivial_bystanders,
         ),
-        FieldHuntStop(
-            ("east",),
-            "Aruncus the Druid",
-            command_keyword="aruncus",
-            consider_only=True,
-            exact_target=True,
-        ),
-        FieldHuntStop(
-            ("south",),
-            "Aruncus the Druid",
-            command_keyword="aruncus",
-            consider_only=True,
-            exact_target=True,
-        ),
-        FieldHuntStop(
-            ("west",),
-            "Aruncus the Druid",
-            command_keyword="aruncus",
-            consider_only=True,
-            exact_target=True,
-        ),
-        *(research_stop(direction, destination) for direction, destination in safe_approach),
+        research_stop("330"),
+        hut_door_stop("open west", "west"),
+        hut_door_stop("open east", "east"),
+        *(research_stop(destination) for destination in safe_search_path),
     )
 
 
 def plains_aruncus_hunt_stops() -> tuple[FieldHuntStop, ...]:
     """Make one source-fuzz-bounded Aruncus pursuit available for live research."""
     safe_pursuit_rooms = (
+        "300",
+        "301",
+        "302",
+        "303",
+        "304",
+        "305",
+        "306",
+        "307",
+        "308",
         "309",
         "310",
         "311",
         "312",
+        "313",
+        "314",
+        "315",
+        "316",
+        "317",
+        "318",
+        "319",
+        "320",
+        "321",
         "322",
         "323",
         "324",
         "325",
         "326",
+        "327",
         "330",
+        "331",
         "332",
         "333",
         "334",
@@ -9796,21 +12327,187 @@ def plains_aruncus_hunt_stops() -> tuple[FieldHuntStop, ...]:
             maximum_level_offset=2,
             maximum_pursuit_steps=3,
             pursuit_room_vnums=safe_pursuit_rooms,
+            selective_loot_keywords=("staff", "scroll", "ivy"),
+            abort_after_consider_rejection=True,
         )
         for stop in plains_aruncus_research_stops()
     )
 
 
-def mirror_realm_watchman_research_stops() -> tuple[FieldHuntStop, ...]:
-    """Consider the source-isolated Mirror Realm watchman without combat."""
+def dwarven_worker_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Search every safely reversible room reachable by a mountain worker."""
+    route_steps = (
+        ((), ()),
+        (("south",), ("6500",)),
+        (("north", "north"), ("6501", "6502")),
+        (("north",), ("6503",)),
+        (("east",), ("6540",)),
+        (("south",), ("6504",)),
+        (("north",), ("6506",)),
+        (("east",), ("6507",)),
+        (("north",), ("6508",)),
+        (("north",), ("6509",)),
+        (("west",), ("6522",)),
+    )
+    return tuple(
+        FieldHuntStop(
+            route,
+            "dwarven mining worker",
+            command_keyword="worker",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            route_vnums=route_vnums,
+        )
+        for route, route_vnums in route_steps
+    )
+
+
+def dwarven_nobleman_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated neutral nobleman without authorizing combat."""
     return (
         FieldHuntStop(
             (),
-            "a watchman",
-            command_keyword="watchman",
+            "dwarven nobleman",
+            command_keyword="nobleman",
+            allowed_bystanders=("maid",),
+            trivial_bystanders=("mountain goblin",),
             consider_only=True,
             exact_target=True,
-            route_vnums=("19009",),
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+        ),
+    )
+
+
+def dwarven_nobleman_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Run one bounded fight after a reboot-scoped viable probe."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.90,
+            maximum_level_offset=1,
+            maximum_target_count=1,
+        )
+        for stop in dwarven_nobleman_research_stops()
+    )
+
+
+def dwarven_servant_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the unique Dwarven Home servant without initiating combat."""
+    return (
+        FieldHuntStop(
+            (),
+            "dwarven servant",
+            command_keyword="servant",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+        ),
+    )
+
+
+def dwarven_servant_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Run one bounded fight after a reboot-scoped viable probe."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.90,
+            maximum_level_offset=1,
+            maximum_target_count=1,
+        )
+        for stop in dwarven_servant_research_stops()
+    )
+
+
+def mahntor_rock_toad_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider all four source reset rooms without initiating combat."""
+    return (
+        FieldHuntStop(
+            (),
+            "rather large rock toad",
+            command_keyword="toad",
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            (),
+            "rather large rock toad",
+            command_keyword="toad",
+            consider_only=True,
+            exact_target=True,
+            route_vnums=("2313",),
+        ),
+        FieldHuntStop(
+            (),
+            "rather large rock toad",
+            command_keyword="toad",
+            consider_only=True,
+            exact_target=True,
+            route_vnums=("2311", "2310", "2312"),
+        ),
+        FieldHuntStop(
+            (),
+            "rather large rock toad",
+            command_keyword="toad",
+            consider_only=True,
+            exact_target=True,
+            route_vnums=("2315", "2319"),
+        ),
+    )
+
+
+def mahntor_rock_toad_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Attack one live-vetted Rock Toad before enabling the full circuit."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.90,
+            maximum_level_offset=1,
+        )
+        for stop in mahntor_rock_toad_research_stops()[:1]
+    )
+
+
+def mahntor_rock_toad_circuit_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt the four live-vetted resets while health remains serviceable."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=(
+                0.675 if index == 0 else _FIELD_CONTINUE_HEALTH_RATIO
+            ),
+            maximum_level_offset=1,
+        )
+        for index, stop in enumerate(mahntor_rock_toad_research_stops())
+    )
+
+
+def mirror_realm_watchman_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider both source-isolated Mirror Realm watchmen without combat."""
+    common = {
+        "command_keyword": "watchman",
+        "consider_only": True,
+        "exact_target": True,
+        "maximum_level_offset": 1,
+        "abort_after_consider_rejection": True,
+    }
+    return (
+        FieldHuntStop(
+            (),
+            "watchman",
+            **common,
+        ),
+        FieldHuntStop(
+            ("east", "east"),
+            "watchman",
+            route_vnums=("19008", "19010"),
+            **common,
         ),
     )
 
@@ -9827,6 +12524,249 @@ def mirror_realm_watchman_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def crystalmir_white_stag_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Search every source-reachable low-risk room for the wandering White Stag."""
+    safe_search_path = (
+        "10015", "10014", "10013", "10036", "10037", "10033", "10034",
+        "10035", "10038", "10032", "10031", "10032", "10038", "10035",
+        "10034", "10033", "10037", "10036", "10013", "10007", "10004",
+        "10003", "10002", "10029", "10022", "10023", "10022", "10011",
+        "10010", "10025", "10026", "10027", "10028", "10021", "10008",
+        "10009", "10006", "10009", "10019", "10020", "10019", "10009",
+        "10008", "10012", "10008", "10021", "10028", "10027", "10026",
+        "10025", "10010", "10011", "10022", "10029", "10002", "10001",
+        "10002", "10003", "10004", "10007", "10013", "10014", "10015",
+        "10016", "10017", "10016",
+    )
+    common = {
+        "command_keyword": "stag",
+        "consider_only": True,
+        "exact_target": True,
+    }
+    return (
+        FieldHuntStop(
+            (),
+            "beautiful white stag",
+            actions=("where stag",),
+            abort_if_where_target_absent=True,
+            **common,
+        ),
+        *(
+            FieldHuntStop(
+                (),
+                "beautiful white stag",
+                route_vnums=(destination,),
+                **common,
+            )
+            for destination in safe_search_path
+        ),
+    )
+
+
+def crystalmir_white_stag_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one live-vetted White Stag under the normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in crystalmir_white_stag_research_stops()
+    )
+
+
+def shadow_keep_soldier_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the Soldier and two safe Wraith resets without combat."""
+    return (
+        FieldHuntStop(
+            (),
+            "undead soldier",
+            command_keyword="soldier",
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("west", "north", "north", "west", "up"),
+            "undead soldier",
+            command_keyword="soldier",
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("down", "east", "south", "west", "west"),
+            "undead soldier",
+            command_keyword="soldier",
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("east", "east", "east"),
+            "shadow wraith",
+            command_keyword="wraith",
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            ("east", "south", "east"),
+            "shadow wraith",
+            command_keyword="wraith",
+            consider_only=True,
+            exact_target=True,
+        ),
+    )
+
+
+def shadow_keep_soldier_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one previously viable Shadow Keep target under normal gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in shadow_keep_soldier_research_stops()
+    )
+
+
+def galaxy_white_dwarf_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the source-isolated room-9306 white dwarf without combat."""
+    return (
+        FieldHuntStop(
+            (),
+            "tiny white dwarf",
+            command_keyword="white",
+            actions=("where white",),
+            abort_if_where_target_absent=True,
+            consider_only=True,
+            exact_target=True,
+            maximum_level_offset=1,
+            abort_after_consider_rejection=True,
+            route_vnums=(
+                "1308",
+                "1305",
+                "1306",
+                "9301",
+                "9302",
+                "9303",
+                "9304",
+                "9305",
+                "9306",
+            ),
+        ),
+    )
+
+
+def galaxy_white_dwarf_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable white dwarf under the normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+        )
+        for stop in galaxy_white_dwarf_research_stops()
+    )
+
+
+def galaxy_red_supergiant_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Search the four source-isolated red-supergiant reset rooms."""
+    common = {
+        "command_keyword": "red",
+        "consider_only": True,
+        "exact_target": True,
+        "maximum_level_offset": 1,
+        "abort_after_consider_rejection": True,
+    }
+    return (
+        FieldHuntStop(
+            (),
+            "red supergiant",
+            actions=("where red",),
+            abort_if_where_target_absent=True,
+            route_vnums=(
+                "1308",
+                "1305",
+                "1306",
+                "9301",
+                "9302",
+                "9303",
+                "9304",
+            ),
+            **common,
+        ),
+        FieldHuntStop(
+            (),
+            "red supergiant",
+            route_vnums=("9303", "9308"),
+            **common,
+        ),
+        FieldHuntStop(
+            (),
+            "red supergiant",
+            route_vnums=("9312", "9313"),
+            **common,
+        ),
+        FieldHuntStop(
+            (),
+            "red supergiant",
+            route_vnums=("9314", "9309"),
+            **common,
+        ),
+    )
+
+
+def galaxy_red_supergiant_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable red supergiant under the normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+        )
+        for stop in galaxy_red_supergiant_research_stops()
+    )
+
+
+def hightower_jailor_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Reach the Jailor through the randomized Grove and consider it only."""
+    return (
+        FieldHuntStop(
+            ("open down", "down", "down", "east", "east"),
+            "jailor",
+            command_keyword="jailor",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            maximum_level_offset=1,
+            abort_after_consider_rejection=True,
+            route_vnums=(
+                "1308",
+                "1305",
+                "1302",
+                "1311",
+                "1312",
+                "1313",
+                "1314",
+                "1317",
+            ),
+        ),
+    )
+
+
+def hightower_jailor_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable Jailor under the normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.90,
+        )
+        for stop in hightower_jailor_research_stops()
+    )
+
+
 def mirror_realm_gardener_research_stops() -> tuple[FieldHuntStop, ...]:
     """Consider the source-isolated Mirror Realm gardener without combat."""
     return (
@@ -9838,6 +12778,19 @@ def mirror_realm_gardener_research_stops() -> tuple[FieldHuntStop, ...]:
             exact_target=True,
             route_vnums=("19091",),
         ),
+    )
+
+
+def mirror_realm_gardener_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable Mirror Realm gardener."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in mirror_realm_gardener_research_stops()
     )
 
 
@@ -9945,6 +12898,303 @@ def pit_official_research_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def dwarven_home_chess_dwarf_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated Dwarven Home chess-room dwarf."""
+    return (
+        FieldHuntStop(
+            (),
+            "dwarf",
+            command_keyword="dwarf",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+            route_vnums=("20530",),
+        ),
+    )
+
+
+def dwarven_home_chess_dwarf_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable chess-room dwarf under normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in dwarven_home_chess_dwarf_research_stops()
+    )
+
+
+def mirror_realm_storn_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated, non-aggressive Mirror Realm assassin."""
+    return (
+        FieldHuntStop(
+            (),
+            "storn the assassin",
+            command_keyword="storn",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+            route_vnums=("19114",),
+        ),
+    )
+
+
+def mirror_realm_storn_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable Storn under normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in mirror_realm_storn_research_stops()
+    )
+
+
+def darkwood_strange_mist_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated Darkwood strange mist."""
+    return (
+        FieldHuntStop(
+            (),
+            "strange mist",
+            command_keyword="mist",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+            route_vnums=("11211",),
+        ),
+    )
+
+
+def darkwood_strange_mist_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable strange mist under normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in darkwood_strange_mist_research_stops()
+    )
+
+
+def dwarven_home_gambler_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated Dwarven Home gambler."""
+    return (
+        FieldHuntStop(
+            (),
+            "dwarf",
+            command_keyword="dwarf",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+            route_vnums=("20531",),
+        ),
+    )
+
+
+def dwarven_home_gambler_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable Dwarven Home gambler under normal gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in dwarven_home_gambler_research_stops()
+    )
+
+
+def dwarven_home_master_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated Dwarven Home master of the house."""
+    return (
+        FieldHuntStop(
+            (),
+            "master of the house",
+            command_keyword="master",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+            route_vnums=("20537",),
+        ),
+    )
+
+
+def dwarven_home_master_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable Dwarven Home master under normal gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in dwarven_home_master_research_stops()
+    )
+
+
+def vampire_hive_wounded_vampire_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the source reset of the wandering wounded vampire."""
+    return (
+        FieldHuntStop(
+            (),
+            "wounded vampire",
+            command_keyword="vampire",
+            actions=("where vampire",),
+            abort_if_where_target_absent=True,
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+            route_vnums=("25641",),
+        ),
+    )
+
+
+def vampire_hive_wounded_vampire_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable wounded vampire under normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in vampire_hive_wounded_vampire_research_stops()
+    )
+
+
+def tabernacle_hulking_beast_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated Tabernacle hulking beast."""
+    return (
+        FieldHuntStop(
+            (),
+            "hulking beast",
+            command_keyword="beast",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            abort_after_consider_rejection=True,
+            route_vnums=("39016",),
+        ),
+    )
+
+
+def tabernacle_hulking_beast_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable hulking beast under normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in tabernacle_hulking_beast_research_stops()
+    )
+
+
+def pirates_seas_rastafarians_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the wandering Pirates Seas Rastafarians at their reset."""
+    return (
+        FieldHuntStop(
+            (),
+            "rastafarians",
+            command_keyword="rastafarians",
+            actions=("where rastafarians",),
+            abort_if_where_target_absent=True,
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            require_isolated=True,
+            abort_after_consider_rejection=True,
+            route_vnums=("17141",),
+        ),
+    )
+
+
+def pirates_seas_rastafarians_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable Rastafarians target under normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in pirates_seas_rastafarians_research_stops()
+    )
+
+
+def ghost_town_crypt_thing_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated Ghost Town crypt thing at its reset."""
+    return (
+        FieldHuntStop(
+            (),
+            "crypt thing",
+            command_keyword="crypt",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            require_isolated=True,
+            abort_after_consider_rejection=True,
+            route_vnums=("8850",),
+        ),
+    )
+
+
+def ghost_town_crypt_thing_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable crypt thing under normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in ghost_town_crypt_thing_research_stops()
+    )
+
+
+def ghost_town_retriever_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the isolated Ghost Town retriever at its reset."""
+    return (
+        FieldHuntStop(
+            (),
+            "retriever",
+            command_keyword="retriever",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            require_isolated=True,
+            abort_after_consider_rejection=True,
+            route_vnums=("8843",),
+        ),
+    )
+
+
+def ghost_town_retriever_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one freshly viable retriever under normal field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.85,
+            maximum_level_offset=1,
+        )
+        for stop in ghost_town_retriever_research_stops()
+    )
+
+
 def fleshmonger_guard_research_stops() -> tuple[FieldHuntStop, ...]:
     """Consider the Fleshmonger foyer guard while leaving combat disabled."""
     return (
@@ -9963,7 +13213,6 @@ def fleshmonger_guard_hunt_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             (),
             "patrolling guard",
-            reject_healthier_consider=True,
             minimum_health_ratio=0.85,
             exact_target=True,
         ),
@@ -9976,7 +13225,6 @@ def fleshmonger_guard_circuit_research_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             (),
             "patrolling guard",
-            reject_healthier_consider=True,
             minimum_health_ratio=0.85,
             exact_target=True,
             maximum_level_offset=1,
@@ -9984,7 +13232,6 @@ def fleshmonger_guard_circuit_research_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             ("open north", "north"),
             "on-duty guard",
-            reject_healthier_consider=True,
             minimum_health_ratio=0.60,
             exact_target=True,
             maximum_level_offset=1,
@@ -10050,7 +13297,6 @@ def fleshmonger_thief_rotation_research_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             (),
             "patrolling guard",
-            reject_healthier_consider=True,
             minimum_health_ratio=0.85,
             exact_target=True,
             maximum_level_offset=0,
@@ -10058,7 +13304,6 @@ def fleshmonger_thief_rotation_research_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             ("open north", "north"),
             "on-duty guard",
-            reject_healthier_consider=True,
             minimum_health_ratio=0.60,
             exact_target=True,
             maximum_level_offset=0,
@@ -10103,7 +13348,6 @@ def fleshmonger_servant_hunt_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             ("up", "up"),
             "hobgoblin servant",
-            reject_healthier_consider=True,
             minimum_health_ratio=0.85,
             exact_target=True,
             maximum_target_count=1,
@@ -10119,7 +13363,6 @@ def fleshmonger_thief_extended_rotation_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop(
             ("west", "up", "up"),
             "hobgoblin servant",
-            reject_healthier_consider=True,
             minimum_health_ratio=0.60,
             exact_target=True,
             maximum_target_count=1,
@@ -10217,6 +13460,173 @@ def shire_bull_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def shire_dwarven_prince_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the source-identified Shire prince without authorizing combat."""
+    return (
+        FieldHuntStop(
+            (),
+            "dwarven prince",
+            command_keyword="prince",
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            require_isolated=True,
+            abort_after_consider_rejection=True,
+        ),
+    )
+
+
+def shire_dwarven_prince_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one live-vetted prince only after a same-reboot probe."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.95,
+            maximum_level_offset=1,
+            require_isolated=True,
+        )
+        for stop in shire_dwarven_prince_research_stops()
+    )
+
+
+def shire_thain_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Search Shire rooms for the wandering source-identified Thain."""
+    search_path = (
+        "1110", "1109", "1106", "1104", "1105", "1104", "1103",
+        "1102", "1101", "1100", "1101", "1102", "1103", "1118",
+        "1119", "1118", "1120", "1121", "1120", "1122", "1123",
+        "1124", "1125", "1124", "1123", "1122", "1126", "1128",
+        "1127", "1128", "1129", "1128", "1130", "1128", "1126",
+        "1122", "1120", "1131", "1132", "1133", "1134", "1135",
+        "1136", "1135", "1134", "1133", "1145", "1133", "1138",
+        "1142", "1143", "1142", "1138", "1139", "1140", "1141",
+        "1140", "1139", "1138", "1133", "1132", "1144", "1157",
+        "1144", "1132", "1131", "1120", "1122", "1120", "1118",
+        "1103", "1104", "1106", "1109", "1112", "1117", "1112",
+        "1113", "1115", "1113", "1114", "1113", "1116", "1113",
+        "1112", "1109", "1106", "1104", "1103", "1118", "1120",
+    )
+    common = {
+        "command_keyword": "thain",
+        "consider_only": True,
+        "exact_target": True,
+        "maximum_target_count": 1,
+        "require_isolated": True,
+        "maximum_level_offset": 0,
+        "abort_after_consider_rejection": True,
+    }
+    return (
+        FieldHuntStop(
+            (),
+            "the Thain",
+            actions=("where thain",),
+            abort_if_where_target_absent=True,
+            **common,
+        ),
+        *(
+            FieldHuntStop(
+                (),
+                "the Thain",
+                route_vnums=(destination,),
+                **common,
+            )
+            for destination in search_path
+        ),
+    )
+
+
+def shire_thain_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one live-vetted Thain after a same-reboot probe."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.90,
+        )
+        for stop in shire_thain_research_stops()
+    )
+
+
+def shire_elven_wizard_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Consider the source-identified Wizard without authorizing combat."""
+    return (
+        FieldHuntStop(
+            (),
+            "elven wizard",
+            command_keyword="wizard",
+            trivial_bystanders=("halfling beauty",),
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            require_isolated=True,
+            maximum_level_offset=1,
+            abort_after_consider_rejection=True,
+        ),
+    )
+
+
+def shire_elven_wizard_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one live-vetted Wizard only with the caster safeguards active."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.95,
+            maximum_level_offset=1,
+        )
+        for stop in shire_elven_wizard_research_stops()
+    )
+
+
+def pyramid_ali_baba_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Probe Ali Baba at reset and the source-connected wandering rooms."""
+    common = {
+        "command_keyword": "ali baba",
+        "consider_only": True,
+        "exact_target": True,
+        "maximum_target_count": 1,
+        "require_isolated": True,
+        "maximum_level_offset": 1,
+        "abort_after_consider_rejection": True,
+    }
+    return (
+        FieldHuntStop(
+            (),
+            "Ali Baba",
+            actions=("where ali baba",),
+            abort_if_where_target_absent=True,
+            **common,
+        ),
+        FieldHuntStop((), "Ali Baba", route_vnums=("2642",), **common),
+        FieldHuntStop((), "Ali Baba", route_vnums=("2641",), **common),
+        FieldHuntStop((), "Ali Baba", route_vnums=("2640",), **common),
+        FieldHuntStop((), "Ali Baba", route_vnums=("2639",), **common),
+        FieldHuntStop(
+            (),
+            "Ali Baba",
+            route_vnums=("2640", "2641", "2642", "2636"),
+            **common,
+        ),
+        FieldHuntStop((), "Ali Baba", route_vnums=("2636",), **common),
+        FieldHuntStop((), "Ali Baba", route_vnums=("2635",), **common),
+        FieldHuntStop((), "Ali Baba", route_vnums=("2634",), **common),
+    )
+
+
+def pyramid_ali_baba_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one live-vetted Ali Baba under the ordinary field gates."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.90,
+            maximum_level_offset=1,
+        )
+        for stop in pyramid_ali_baba_research_stops()
+    )
+
+
 def gnome_hermit_hunt_route() -> Fastwalk:
     """Return the source-derived recall route to the Gnome hermit crab."""
     return Fastwalk("gnome-hermit", 1, 7, "2s5es6ene3n")
@@ -10283,6 +13693,33 @@ def gnome_guard_research_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def gnome_treasurer_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Collect loose source-keyed coins and consider the isolated treasurer."""
+    return (
+        FieldHuntStop(
+            (),
+            "treasurer",
+            actions=("get all.coins",),
+            consider_only=True,
+            exact_target=True,
+        ),
+    )
+
+
+def gnome_treasurer_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Run one gated treasurer fight after a viable same-reboot probe."""
+    return (
+        FieldHuntStop(
+            (),
+            "treasurer",
+            actions=("get all.coins",),
+            minimum_health_ratio=0.90,
+            exact_target=True,
+            maximum_level_offset=1,
+        ),
+    )
+
+
 def foundry_level_six_hunt_stops() -> tuple[FieldHuntStop, ...]:
     """Return the retired level-six Foundry template for evidence tests only."""
     return (
@@ -10303,6 +13740,44 @@ def foundry_body_gear_hunt_stops() -> tuple[FieldHuntStop, ...]:
             exact_target=True,
             allow_below_band_for_required_loot=True,
         ),
+    )
+
+
+def foundry_set_circlet_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Search Uburz's safe Foundry corridor for the trainer-cap circlet."""
+    routes = (
+        (),
+        ("west",),
+        ("east", "south"),
+        ("south",),
+        ("east",),
+        ("east",),
+        ("west", "south"),
+        ("west",),
+        ("north", "west"),
+        ("west",),
+        ("down",),
+        ("east",),
+    )
+    trivial_bystanders = (
+        "garshgob",
+        "olog",
+        "golgog",
+        "shargook",
+        "lobuk",
+        "hoobuk",
+    )
+    return tuple(
+        FieldHuntStop(
+            route,
+            "uburz",
+            required_items=("silver circlet",),
+            post_actions=("wear circlet", "eq all"),
+            exact_target=True,
+            allow_below_band_for_required_loot=True,
+            trivial_bystanders=trivial_bystanders,
+        )
+        for route in routes
     )
 
 
@@ -10666,19 +14141,21 @@ def moria_sanctuary_potion_consider_stops() -> tuple[FieldHuntStop, ...]:
 
 
 def moria_sanctuary_potion_hunt_stops() -> tuple[FieldHuntStop, ...]:
-    """Hunt one isolated potion carrier along the verified search circuit."""
-    return tuple(
+    """Hunt only the carrier's directly accessible reset room."""
+    reset_room = moria_sanctuary_potion_consider_stops()[0]
+    return (
         FieldHuntStop(
-            stop.route,
-            stop.target,
-            actions=stop.actions,
-            required_items=stop.required_items,
-            allowed_bystanders=stop.allowed_bystanders,
-            trivial_bystanders=stop.trivial_bystanders,
+            reset_room.route,
+            reset_room.target,
+            actions=reset_room.actions,
+            required_items=("purple potion", *reset_room.required_items),
+            allowed_bystanders=reset_room.allowed_bystanders,
+            trivial_bystanders=reset_room.trivial_bystanders,
             minimum_health_ratio=_FIELD_HIGH_RISK_START_HEALTH_RATIO,
-            exact_target=stop.exact_target,
+            exact_target=reset_room.exact_target,
+            allow_below_band_for_required_loot=True,
         )
-        for stop in moria_sanctuary_potion_consider_stops()
+        ,
     )
 
 
@@ -10934,12 +14411,53 @@ def _watchdog_progress_marker(state: CharacterState) -> tuple[object, ...]:
         state.in_combat,
         state.dead,
         state.position,
+        _state_stat(state, "carry_num"),
+        _state_stat(state, "carry_wt"),
+        tuple(sorted((state.currencies or {}).items())),
+        _watchdog_enemy_marker(state.enemies),
     )
 
 
-def _route_cycle_watchdog_applies(command: str, repetitions: int) -> bool:
+def _watchdog_enemy_marker(value: Any) -> tuple[tuple[object, ...], ...]:
+    """Track material GMCP combat progress without volatile description text."""
+    return tuple(
+        sorted(
+            (
+                normalize_item_name(str(enemy.get("name", ""))),
+                str(enemy.get("isnpc", "")),
+                _int_or_none(enemy.get("level")),
+                _int_or_none(enemy.get("hp")),
+                _int_or_none(enemy.get("maxhp")),
+            )
+            for enemy in _enemy_records(value)
+        )
+    )
+
+
+def _route_cycle_watchdog_applies(
+    command: str,
+    repetitions: int,
+    *,
+    safe_city_return: bool = False,
+    randomized_maze: bool = False,
+) -> bool:
     """Detect repeated travel without treating normal combat rounds as loops."""
-    return command in _MOVEMENT_COMMANDS and repetitions > 4
+    return (
+        not safe_city_return
+        and not randomized_maze
+        and command in _MOVEMENT_COMMANDS
+        and repetitions > 4
+    )
+
+
+def _repeated_command_watchdog_applies(
+    repetitions: int,
+    limit: int,
+    *,
+    registered_trainer_return: bool = False,
+) -> bool:
+    """Allow a verified trainer return to outlive delayed GMCP room updates."""
+    return not registered_trainer_return and repetitions > limit
 
 
 def _gear_response_matches(expectation: str, recent: str) -> bool:
@@ -11223,17 +14741,23 @@ def _training_targets(text: str) -> list[str]:
 def _load_source_mobile_targets(
     area_directory: str,
 ) -> dict[str, tuple[str, ...]]:
-    """Index exact mobile display lines from the public DD4 area files."""
-    world = load_world_source(Path(area_directory))
+    """Index exact mobile display lines from every public DD4 area file."""
+    world = load_world_source(Path(area_directory), include_all_areas=True)
     indexed: dict[str, list[str]] = {}
     for mobile in world.mobiles.values():
-        source_line = _normalize_mobile_line(mobile.room_description)
-        if not source_line:
-            continue
-        parsed = tuple(_training_target_counts(mobile.room_description))
-        targets = parsed or (normalize_item_name(mobile.short_description),)
-        known = indexed.setdefault(source_line, [])
-        known.extend(target for target in targets if target and target not in known)
+        targets = _source_mobile_identities(
+            mobile.room_description,
+            mobile.short_description,
+            mobile.keywords,
+        )
+        for source_line in {
+            _normalize_mobile_line(mobile.room_description),
+            _normalize_mobile_line(mobile.short_description),
+        } - {""}:
+            known = indexed.setdefault(source_line, [])
+            known.extend(
+                target for target in targets if target and target not in known
+            )
     return {line: tuple(targets) for line, targets in indexed.items()}
 
 
@@ -11242,11 +14766,13 @@ def _load_source_mobile_level_ranges(
     area_directory: str,
 ) -> dict[str, tuple[int, int]]:
     """Index conservative DD4 mobile levels after its two fuzz operations."""
-    world = load_world_source(Path(area_directory))
+    world = load_world_source(Path(area_directory), include_all_areas=True)
     indexed: dict[str, tuple[int, int]] = {}
     for mobile in world.mobiles.values():
-        targets = tuple(_training_target_counts(mobile.room_description)) or (
-            normalize_item_name(mobile.short_description),
+        targets = _source_mobile_identities(
+            mobile.room_description,
+            mobile.short_description,
+            mobile.keywords,
         )
         level_range = (max(1, mobile.level - 2), mobile.level + 2)
         for target in targets:
@@ -11259,6 +14785,44 @@ def _load_source_mobile_level_ranges(
                     max(previous[1], level_range[1]),
                 )
     return indexed
+
+
+def _source_mobile_identities(
+    room_description: str,
+    short_description: str,
+    keywords: str = "",
+) -> tuple[str, ...]:
+    """Prefer an explicit proper name when a mobile's live line is generic."""
+    parsed = tuple(_training_target_counts(room_description))
+    cleaned_short = _MUD_COLOUR_CODE.sub(
+        "",
+        _ANSI_ESCAPE.sub("", short_description),
+    ).strip()
+    normalized_short = normalize_item_name(cleaned_short)
+    normalized_keywords = normalize_item_name(keywords)
+    short_tokens = normalized_short.split()
+    keyword_tokens = normalized_keywords.split()
+    keyword_in_short = bool(
+        keyword_tokens
+        and any(
+            short_tokens[index : index + len(keyword_tokens)] == keyword_tokens
+            for index in range(len(short_tokens) - len(keyword_tokens) + 1)
+        )
+    )
+    display_words = cleaned_short.split()
+    if display_words and display_words[0].casefold() in {"a", "an", "the"}:
+        display_words = display_words[1:]
+    has_explicit_name = bool(
+        display_words
+        and display_words[0][:1].isupper()
+    )
+    if keyword_in_short and (len(keyword_tokens) > 1 or has_explicit_name):
+        return (normalized_keywords,)
+    if has_explicit_name and not any(
+        _targets_match(normalized_short, target) for target in parsed
+    ):
+        return (normalized_short,)
+    return parsed or (normalized_short or normalized_keywords,)
 
 
 def _room_mobile_target_counts(
@@ -11295,9 +14859,9 @@ def _room_mobile_target_counts(
 
 def _normalize_mobile_line(value: str) -> str:
     value = _TARGET_SELECTOR_PREFIX.sub("", value)
-    return " ".join(
-        _MUD_COLOUR_CODE.sub("", _ANSI_ESCAPE.sub("", value)).casefold().split()
-    )
+    value = _MUD_COLOUR_CODE.sub("", _ANSI_ESCAPE.sub("", value)).strip()
+    value = _MOBILE_STATUS_PREFIX.sub("", value)
+    return " ".join(value.casefold().split())
 
 
 def _training_target_counts(text: str) -> dict[str, int]:
@@ -11548,6 +15112,20 @@ def _known_combat_potion_keyword(value: Any) -> str | None:
     return None
 
 
+def _inventory_command_keyword(
+    description: str,
+    gear_catalog: GearCatalog | None,
+) -> str:
+    """Prefer the source keyword over display-text noun inference."""
+    inferred = sale_keyword(description)
+    item = gear_catalog.match(description) if gear_catalog is not None else None
+    if item is None:
+        return inferred
+    if inferred in item.keywords.casefold().split():
+        return inferred
+    return item_keyword(item)
+
+
 def _sellable_inventory_keyword(
     value: Any,
     gear_catalog: GearCatalog | None = None,
@@ -11585,7 +15163,10 @@ def _sellable_inventory_keyword(
                 return word
         if (
             item is not None
-            and item_category(item) is not None
+            and not (
+                item.item_type in {10, 19}
+                and not is_disposable_food(item)
+            )
             and safe_shop_for_item(
                 item.short_description,
                 item_type=item.item_type,
@@ -11650,6 +15231,21 @@ def _equipment_weapon_slot(text: str) -> tuple[bool, str | None]:
     if description == "-":
         return True, None
     return True, description
+
+
+def _direct_weapon_slot_acknowledgement(
+    response: str,
+) -> tuple[bool, str | None] | None:
+    """Extract a direct wield or stop-using acknowledgement from game text."""
+    wielded = re.search(
+        r"(?im)^\s*you wield\s+(?P<item>.+?)(?:[.!]\s*$|\s*$)",
+        response,
+    )
+    if wielded is not None:
+        return True, wielded.group("item").strip()
+    if re.search(r"(?im)^\s*you stop using\s+", response):
+        return False, None
+    return None
 
 
 def _equipment_descriptions(value: Any) -> list[str]:

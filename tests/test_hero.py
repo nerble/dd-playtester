@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -46,7 +47,14 @@ def test_hero_uses_segment_budget_for_default_reset_retries(
     prepared = type(
         "Prepared",
         (),
-        {"campaign_path": tmp_path / "campaign.yaml"},
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "character": type(
+                "Character",
+                (),
+                {"password_env": "DD4_VALORA_PASSWORD"},
+            )(),
+        },
     )()
 
     async def fake_campaign(path, **options):
@@ -82,6 +90,107 @@ def test_hero_uses_segment_budget_for_default_reset_retries(
     assert result.status == "ready"
     assert captured["segments"] == 17
     assert captured["reset_retries"] == 17
+
+
+def test_hero_disables_default_reset_retries_for_bounded_runs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "character": type(
+                "Character",
+                (),
+                {"password_env": "DD4_VALORA_PASSWORD"},
+            )(),
+        },
+    )()
+
+    async def fake_campaign(path, **options):
+        captured.update(options)
+        return CampaignResult(
+            1,
+            "ready",
+            2,
+            "Campaign checkpointed while awaiting the field area reset.",
+            {"level": 8},
+        )
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            segments=17,
+            max_segment_runtime=180,
+        )
+    )
+
+    assert captured["segments"] == 17
+    assert captured["reset_retries"] == 0
+
+
+def test_hero_uses_plaintext_password_only_for_campaign_process(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "character": type(
+                "Character",
+                (),
+                {"password_env": "DD4_VALORA_PASSWORD"},
+            )(),
+        },
+    )()
+
+    def fake_prepare(request, **options):
+        captured["prepare_options"] = options
+        return prepared
+
+    async def fake_campaign(path, **options):
+        captured["campaign_password"] = os.environ.get("DD4_VALORA_PASSWORD")
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 15})
+
+    monkeypatch.setattr("dd4tester.hero.prepare_hero_request", fake_prepare)
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+    monkeypatch.setenv("DD4_VALORA_PASSWORD", "previous-secret")
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            target_level=30,
+            password="command-line-secret",
+        )
+    )
+
+    assert captured["prepare_options"]["target_level"] == 30
+    assert captured["campaign_password"] == "command-line-secret"
+    assert os.environ["DD4_VALORA_PASSWORD"] == "previous-secret"
 
 
 def test_prepare_hero_request_writes_resumable_secret_free_configuration(
@@ -125,6 +234,36 @@ def test_prepare_hero_request_writes_resumable_secret_free_configuration(
     assert resumed.resumed
     assert resumed.directory == prepared.directory
     assert resumed.character.description == prepared.character.description
+
+
+def test_prepare_hero_request_updates_resumed_level_goal(tmp_path: Path) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Valora",
+        race="human",
+        sex="female",
+        character_class="mage",
+    )
+    prepared = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=30,
+    )
+    assert load_campaign_spec(prepared.campaign_path).target_level == 30
+
+    resumed = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=40,
+    )
+
+    assert resumed.resumed
+    assert load_campaign_spec(resumed.campaign_path).target_level == 40
+    assert "password" not in resumed.manifest_path.read_text(
+        encoding="utf-8"
+    ).casefold()
 
 
 def test_prepare_hero_request_generates_stable_name_when_omitted(

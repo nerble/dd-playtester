@@ -43,9 +43,31 @@ def test_text_observations_handle_split_chunks_and_unterminated_prompts() -> Non
     assert parser.feed_text("You have gain") == []
     events = parser.feed_text("ed level 3!\n<60/100 hp 20 mana>")
 
-    assert [event.type for event in events] == ["level_gained"]
-    flushed = parser.flush_text()
-    assert [event.type for event in flushed] == ["prompt_seen", "health_changed"]
+    assert [event.type for event in events] == [
+        "level_gained",
+        "prompt_seen",
+        "health_changed",
+    ]
+    assert parser.flush_text() == []
+
+
+def test_complete_dd4_prompt_is_not_held_behind_gmcp_only_traffic() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "The steep foothills\n"
+        "<205/205 hits 207/207 mana 247/280 move [Plains of the North]>"
+    )
+    gmcp_events = parser.feed_gmcp(
+        'Room.Info {"area":"Plains of the North","vnum":"324"}'
+    )
+
+    assert [event.type for event in events] == [
+        "prompt_seen",
+        "health_changed",
+    ]
+    assert [event.type for event in gmcp_events] == ["room_entered"]
+    assert parser.flush_text() == []
 
 
 def test_text_observations_recognize_existing_room_combat() -> None:
