@@ -20756,3 +20756,11 @@ The publication branch is prepared as codex/one-off-publish-20260804-moria-deep,
 
 [2026-08-04 9:00:57 AM NZST] CODEX COMMENTARY
 The feature branch push succeeded. Switching to main was correctly blocked because the append-only conversation log received the publication update after the first commit; I am preserving that line in a small follow-up commit, pushing it, and then completing the fast-forward merge instead of stashing or dropping any record.
+
+
+[2026-08-04 9:01:27 AM NZST] CODEX COMMENTARY
+The merge completed as a fast-forward and main has now been pushed successfully. I am doing the final remote hash/status verification and the requested process audit; I will leave the repository clean and call out the exact commits and branch state.
+
+
+[2026-08-04 9:01:47 AM NZST] CODEX COMMENTARY
+Remote verification is clean: both main and the publication branch resolve to a9778fed871d91e8813591f654f68caa262e3dfc. The process audit found the expected Discord streamer at PID 27976 and unrelated active Codex/Adobe node processes; no stale campaign Python process is running. I am committing this final audit line and pushing it so the worktree and remote remain synchronized.
