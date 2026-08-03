@@ -576,6 +576,34 @@ def test_funding_candidate_prefers_completed_target_for_flight_money(
     assert ordinary is fresh
     assert flight is completed
 
+    state_after_failed_retry = {
+        **state,
+        _PROVISION_FUNDING_ATTEMPTS_KEY: [
+            *state[_PROVISION_FUNDING_ATTEMPTS_KEY],
+            {
+                "boot_id": "boot-1",
+                "candidate_key": "test.are:20:20",
+                "completed_kill": False,
+            },
+        ],
+        _PROVISION_FUNDING_LAST_ATTEMPT_KEY: {
+            "boot_id": "boot-1",
+            "candidate_key": "test.are:20:20",
+            "completed_kill": False,
+        },
+    }
+    rotated_after_failed_retry = _select_provision_funding_candidate(
+        state_after_failed_retry,
+        character_level=18,
+        boot_kill_counts={},
+        boot_id="boot-1",
+        source_directory=tmp_path,
+        gear_catalog=None,
+        prefer_completed_funding_candidate=True,
+    )
+
+    assert rotated_after_failed_retry is fresh
+
 
 def test_provision_funding_dispatches_one_exact_source_target(
     tmp_path,
@@ -1490,6 +1518,37 @@ def test_research_segment_persists_a_reboot_scoped_consider_outcome() -> None:
             "viable": True,
             "boot_id": "boot-1",
         }
+    }
+
+
+def test_multi_stop_research_records_a_visible_endpoint_no_match() -> None:
+    policy = ProgressionPolicy(
+        policy_id="moria-deep-sanctuary-thief-probe-19-20",
+        minimum_level=19,
+        maximum_level=20,
+        status="research",
+        execution="moria-deep-sanctuary-research",
+        summary="probe",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    merged = _merge_campaign_research_result(
+        {},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_consider_outcomes": {
+                "large hobgoblin": False,
+            },
+            "campaign_fastwalk_target_absent": False,
+        },
+        policy=policy,
+    )
+
+    assert merged["campaign_research_results"][policy.policy_id] == {
+        "observed": True,
+        "viable": False,
+        "boot_id": "boot-1",
     }
 
 

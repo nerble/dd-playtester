@@ -8202,6 +8202,55 @@ def test_fastwalk_continues_circuit_above_aggressive_reserves() -> None:
     assert policy.fastwalk_returning is False
 
 
+def test_fastwalk_evaluates_visible_research_target_before_low_move_withdrawal() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "large hobgoblin",
+                consider_only=True,
+                exact_target=True,
+                trivial_bystanders=("hobgoblin", "snake", "warrior", "orc"),
+            ),
+        ),
+    )
+    policy.current_room = "4071"
+    policy.fastwalk_hunt_looked = True
+    policy.room_targets["4071"] = ["large hobgoblin", "small beat-up hobgoblin"]
+    policy.room_target_counts["4071"] = {
+        "large hobgoblin": 1,
+        "small beat-up hobgoblin": 1,
+    }
+    policy.room_target_selectors["4071"] = {
+        "large hobgoblin": ["#22407"],
+        "small beat-up hobgoblin": ["#2774"],
+    }
+
+    decision = policy._fastwalk_hunt_plan_decision(
+        CharacterState(
+            level=19,
+            hp=264,
+            max_hp=264,
+            mana=250,
+            max_mana=250,
+            move=8,
+            max_move=330,
+            position=7,
+            room_vnum="4071",
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "consider #22407"
+    assert policy.fastwalk_returning is False
+    policy.after_command(decision)
+    policy.observe_text("The large hobgoblin is no match for you.\n")
+    assert policy.fastwalk_consider_outcomes == {"large hobgoblin": False}
+
+
 def test_fastwalk_fights_viable_opportunistic_attacker_instead_of_fleeing() -> None:
     policy = StarterPolicy(
         _spec(),

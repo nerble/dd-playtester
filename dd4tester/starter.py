@@ -8743,10 +8743,11 @@ class StarterPolicy:
             == _target_keyword(target).casefold()
         )
         ambiguous_keyword = keyword_match_count > target_count
+        target_selector = self._target_selector_for(target, stop)
         maximum_target_count = stop.maximum_target_count if stop is not None else 1
         if (
             (not consider_only and target_count > maximum_target_count)
-            or (consider_only and ambiguous_keyword)
+            or (consider_only and ambiguous_keyword and target_selector is None)
             or (not consider_only and observed_mobile_count > target_count)
             or (
                 stop is not None
@@ -8778,7 +8779,7 @@ class StarterPolicy:
             )
         if self.consider_target != target:
             self.consider_target = target
-            self.consider_target_selector = self._target_selector_for(target, stop)
+            self.consider_target_selector = target_selector
             self.consider_viable = None
             self.consider_level_offset_ceiling = None
             return BotDecision(
@@ -8988,8 +8989,46 @@ class StarterPolicy:
         nested_container = self._nested_container_extraction_decision()
         if nested_container is not None:
             return nested_container
+        route_length = (
+            len(current_stop.route_vnums) + len(current_stop.route)
+            if current_stop is not None
+            else 0
+        )
+        route_complete = bool(
+            current_stop is not None
+            and (
+                not self.fastwalk_hunt_route_before_target
+                or self.fastwalk_hunt_move_index >= route_length
+            )
+        )
+        visible_target = bool(
+            current_stop is not None
+            and current_stop.target is not None
+            and route_complete
+            and self.fastwalk_hunt_action_index >= len(current_stop.actions)
+            and any(
+                _stop_target_matches(target, current_stop.target, current_stop)
+                for target in self.room_targets.get(self.current_room or "", [])
+            )
+        )
+        target_evaluation_pending = bool(
+            visible_target
+            and current_stop is not None
+            and (
+                current_stop.consider_only
+                or (
+                    current_stop.allow_below_band_for_required_loot
+                    and current_stop.required_items
+                    and _missing_required_inventory_items(
+                        state.inventory,
+                        current_stop.required_items,
+                    )
+                )
+            )
+        )
         if (
             not must_take_no_recall_exit
+            and not target_evaluation_pending
             and (
                 missing_food
                 or missing_water
