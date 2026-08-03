@@ -6984,6 +6984,11 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                         evidence=productive_late_hunt.evidence,
                         practice_skill=context.practice_skill,
                     )
+                if _moria_absent_cooldown_active(context):
+                    return _moria_sanctuary_wait_policy(
+                        context,
+                        evidence=productive_late_hunt.evidence,
+                    )
                 return replace(
                     _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
                     summary=(
@@ -7559,6 +7564,11 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                         return replace(
                             alternate_policy,
                             practice_skill=context.practice_skill,
+                        )
+                    if _moria_absent_cooldown_active(context):
+                        return _moria_sanctuary_wait_policy(
+                            context,
+                            evidence=magnus_policy.evidence,
                         )
                     return replace(
                         _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
@@ -8257,6 +8267,39 @@ def _moria_absent_cooldown_alternate_policy(
             ),
         )
     return None
+
+
+def _moria_absent_cooldown_active(context: ProgressionContext) -> bool:
+    """Return whether the current-reboot Moria carrier is absent and deferred."""
+    policy_id = _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
+    result = (context.research_results or {}).get(policy_id)
+    return bool(
+        isinstance(result, Mapping)
+        and result.get("absent") is True
+        and result.get("boot_id") == context.world_boot_id
+        and _research_absence_cooldown_active(context, policy_id)
+    )
+
+
+def _moria_sanctuary_wait_policy(
+    context: ProgressionContext,
+    *,
+    evidence: tuple[str, ...] = (),
+) -> ProgressionPolicy:
+    """Wait instead of re-entering an absent, cooldown-protected Moria route."""
+    return replace(
+        _UNAVAILABLE_POLICY,
+        minimum_level=17,
+        maximum_level=20,
+        summary=(
+            "The Moria sanctuary carrier is absent for this reboot and its "
+            "bounded retry cooldown is active; no source-backed alternate is "
+            "currently executable. Defer live work until the cooldown expires, "
+            "a reboot supplies the carrier, or new evidence is registered."
+        ),
+        evidence=evidence,
+        practice_skill=context.practice_skill,
+    )
 
 
 def _historical_productive_research_hunt(

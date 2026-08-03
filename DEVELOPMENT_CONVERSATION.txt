@@ -20568,3 +20568,123 @@ The worktree is on main and the remote is aligned at 33bc320; the five modified 
 
 [2026-08-04 7:43:10 AM NZST] CODEX COMMENTARY
 The full suite is green: 1,888 tests passed in 28.60 seconds. I’m moving the five intended tracked files onto a temporary codex publication branch, making one commit, pushing that branch, then merging it into main and pushing main so the remote receives the change cleanly.
+
+
+[2026-08-04 7:44:10 AM NZST] CODEX COMMENTARY
+Publication completed cleanly. Commit 40fe9e2 passed all 1,888 tests, the temporary branch was pushed, main was fast-forwarded from 33bc320, and origin/main now points to 40fe9e2. I’m leaving the temporary remote branch available for traceability and will not start any further live work in this one-off pass.
+
+
+[2026-08-04 7:44:25 AM NZST] CODEX FINAL
+One-off publication completed: commit 40fe9e2 was pushed to the temporary branch, fast-forward merged into main, and origin/main was pushed successfully. The full suite passed with 1888 tests.
+
+
+[2026-08-04 7:44:46 AM NZST] CODEX COMMENTARY
+I’m continuing the autonomous progression work from the published level-19 checkpoint. The next concrete blocker is level-20 training: I’m verifying the source-backed Goldmoon-to-Kerofk route and class trainer destinations, then I’ll wire that route into the generic trainer policy, test it, and run a bounded live validation without steering.
+
+
+[2026-08-04 7:50:11 AM NZST] CODEX COMMENTARY
+The source graph now gives a concrete route: the official Goldmoon fastwalk ends at room 10024, the Kerofk fastwalk ends at Moon Gate room 30232, and the level-20 teachers resolve to reachable rooms for mage 30251, thief 30248, cleric 30270, warrior 30272, ranger/bard 30254, brawler 30353, psionic 30297, and smithy 30273. Mage and thief require opening source-closed guild doors. The shifter teacher is explicitly reset into Kerofk’s player-inaccessible MobChute, so I’m keeping that as a research-gated exception rather than inventing a route.
+
+
+[2026-08-04 7:57:52 AM NZST] CODEX COMMENTARY
+The level-20 route implementation is now generic: it selects Kerofk only at level 20+, preserves repeated-room transitions in the official Goldmoon handoff, opens the source-closed travel and guild doors, and excludes distant level-20 routes from Midgaard’s local healer map so recovery cannot be redirected into transit areas. Focused starter coverage is green at 799 tests. I’m moving to full verification and then a bounded live Kestrel run to exercise the new frontier when he reaches level 20.
+
+
+[2026-08-04 7:58:38 AM NZST] CODEX COMMENTARY
+Full verification is green: 1,898 tests passed in 28.15 seconds, compileall passed, and diff-check is clean outside the append-only conversation log. I’m starting one bounded autonomous campaign segment now. It will use Kestrel’s stored credentials and current checkpoint, make no steering commands, and stop at the existing runtime boundary if the level-20 threshold is not reached in this pass.
+
+
+[2026-08-04 7:59:38 AM NZST] CODEX COMMENTARY
+The first resumed segment reached the campaign’s existing Moria sanctuary-reset checkpoint without opening a connection, so the new trainer route was not exercised yet. I’m continuing with five bounded autonomous segments and explicit 60-second reset retries; the runner will rotate or wait according to its persisted evidence rather than receiving a target or movement command from me.
+
+
+[2026-08-04 8:00:21 AM NZST] CODEX COMMENTARY
+The multi-segment run is still active and has produced no terminal result yet; it is inside the bounded reset/retry window as intended. I’m leaving the live runner alone while it follows its stored route and will report the checkpoint as soon as this process completes.
+
+
+[2026-08-04 8:01:06 AM NZST] CODEX COMMENTARY
+The bounded campaign is still waiting through the current reboot’s area cooldown rather than hanging: the process remains alive and no extra Python workers have been started. This is an evidence-gated wait, so I’m allowing the configured retry window to finish before deciding whether the next useful action is another field segment or a trainer-frontier probe.
+
+
+[2026-08-04 8:02:02 AM NZST] CODEX COMMENTARY
+The live command has now spent roughly two minutes inside its five-segment, 60-second reset retry budget. There is still no failure or prompt for input, and I’m keeping the process bounded; once it returns I’ll inspect the recorded checkpoint and, if Kestrel has not advanced, continue the software work on the next concrete gap rather than retrying blindly.
+
+
+[2026-08-04 8:02:45 AM NZST] CODEX COMMENTARY
+The retry loop remains healthy at about two and a half minutes. Because the configured segment cap is 300 seconds and reset wait is 60 seconds, this is still within the explicit liveness policy; no stale child process or permission review is involved.
+
+
+[2026-08-04 8:03:40 AM NZST] CODEX COMMENTARY
+The live runner is still within its bounded wait and remains the only active campaign worker. No new evidence has been emitted yet, so I’m not promoting or changing any combat policy while the reset controller is unresolved.
+
+
+[2026-08-04 8:04:38 AM NZST] CODEX COMMENTARY
+The process has crossed four minutes without a terminal result; that is still below the outer 390-second command timeout and consistent with multiple 60-second reset waits. I’m continuing to watch the bounded session, and I will terminate it only if the explicit outer deadline is reached.
+
+
+[2026-08-04 8:05:50 AM NZST] CODEX COMMENTARY
+The session remains alive just past the first five-minute mark, with no approval prompt and no process fan-out. The outer deadline is approaching; I’m preserving the run’s checkpoint behavior and will inspect the resulting state immediately when it returns.
+
+
+[2026-08-04 8:06:34 AM NZST] CODEX COMMENTARY
+The five-segment live command hit the 390-second outer deadline without returning, and its child remained alive after the shell wrapper timed out. I stopped that specific campaign PID immediately; the only remaining Python process is the Discord streamer. No checkpoint from this interrupted retry should be treated as new evidence, so I’m switching back to local verification and tightening the live launch boundary before the next attempt.
+
+
+[2026-08-04 8:11:25 AM NZST] CODEX COMMENTARY
+The interrupted live retry has been cleaned up: its specific child process is gone, and the only remaining Python process is the expected Discord streamer. I found a concrete scheduler problem in the resulting state: an absent Moria sanctuary carrier can be selected repeatedly while its reboot-scoped cooldown is active. I am testing that selection path now and will make it stop cleanly rather than burning another live connection.
+
+
+[2026-08-04 8:13:16 AM NZST] CODEX COMMENTARY
+The focused inspection reproduced the live stall in policy selection: when Magnus remains the only viable caster hunt, Kestrel has no sanctuary, and Moria’s carrier is recorded absent with a positive cooldown, the selector returns the Moria acquisition policy again after finding no alternate. I’m adding a regression guard that returns an explicit unavailable/wait policy in that exact state, then I’ll test both the policy layer and campaign handling.
+
+
+[2026-08-04 8:15:24 AM NZST] CODEX COMMENTARY
+The scheduler fix is now covered by a reproducer: three targeted progression tests pass, including the original Argent handoff and the new no-alternate wait case. The progression and campaign suites are green at 803 tests. I am running the complete suite next, then I will inspect the final diff and keep the live check bounded to a single decision rather than launching another long loop.
+
+
+[2026-08-04 8:16:09 AM NZST] CODEX COMMENTARY
+The complete regression suite is green: 1,899 tests passed in 26.61 seconds. Compileall and whitespace checks also pass. The local implementation now includes both the generic level-20 Kerofk trainer routes and the cooldown deadlock guard; I’m doing a final diff review and one bounded live-policy check, with no long-running campaign left unattended.
+
+
+[2026-08-04 8:16:39 AM NZST] CODEX COMMENTARY
+The final review is clean, and process audit shows only the expected Discord streamer (PID 27976). The CLI supports a clean per-segment runtime cap, so I’m doing exactly one resumed Kestrel segment with a 30-second cap and no reset retries; this is a bounded validation of the corrected scheduler, not an unattended progression loop.
+
+
+[2026-08-04 8:17:03 AM NZST] CODEX COMMENTARY
+The bounded live check completed cleanly in 3.8 seconds: campaign checkpoint 3209 remained at level 19 and reported the Moria target absent, then checkpointed while waiting for the area reset instead of selecting Moria again. The post-run process audit is clean; only the expected Discord streamer remains. I’m closing out this work pass with a final status/diff check.
+
+
+[2026-08-04 8:17:39 AM NZST] CODEX FINAL
+Test pass complete. Added source-backed level-20 Kerofk trainer routes for eight reachable classes, preserved repeated-room transitions and reset-closed doors, and kept the shifter trainer research-only because its source room is player-inaccessible. Fixed the level-19 absent-Moria cooldown deadlock so the campaign emits an unavailable/wait checkpoint instead of reconnecting and repeating the same route. Added regression coverage. Verification: 1,899 pytest tests passed; progression/campaign suites 803 passed; compileall and diff checks passed. Bounded live check checkpointed as 3209 at level 19 with Moria absent, without looping. Only the expected Discord streamer process remains. Changes are local and uncommitted on main; no remote push was made in this pass.
+
+
+[2026-08-04 8:17:56 AM NZST] CODEX COMMENTARY
+I am continuing the main HERO objective from the verified level-19 checkpoint. The last bounded run confirmed the scheduler now waits cleanly on an absent Moria carrier; I’m inspecting the current persisted campaign state and executable policy frontier, then I’ll remove the next concrete progression blocker beyond level 19 rather than broadening the report without a runnable path.
+
+
+[2026-08-04 8:18:48 AM NZST] CODEX COMMENTARY
+The persisted state is now clear: campaign 8 is at level 19, room 3054, with the same reboot identity and a Moria absence cooldown of 3. The live frontier still has several probes marked viable but their hunts failed or require sanctuary; the new wait policy is honest, but the campaign currently checkpoints immediately and leaves the cooldown unchanged. I’m tracing that unavailable-state path now, because autonomous recovery needs to wait/decrement/retry through the CLI rather than require a human to relaunch blindly.
+
+
+[2026-08-04 8:20:33 AM NZST] CODEX COMMENTARY
+The reset controller already supports the missing autonomous transition: normal HERO runs opt into bounded reset retries, and each productive field segment decrements absence cooldowns. The current Kestrel checkpoint has no current productive fallback, so I’m using one explicit 60-second reset retry now; the next segment will either reacquire the purple potion or leave a durable, bounded absence result. The process will have a 180-second outer deadline and I will audit it afterward.
+
+
+[2026-08-04 8:21:21 AM NZST] CODEX COMMENTARY
+The bounded reset retry is still running normally: the first pass has returned to the reset controller and the process remains within its 180-second outer deadline. I’m leaving the single retry to finish so its live absence or acquisition evidence is recorded, while monitoring for an orphaned child.
+
+
+[2026-08-04 8:22:06 AM NZST] CODEX COMMENTARY
+The retry remains inside the expected wait window; no timeout or process anomaly has appeared. I’m continuing the one bounded reset attempt rather than starting another campaign, and will collect the checkpoint and process audit as soon as it returns.
+
+
+[2026-08-04 8:24:06 AM NZST] CODEX COMMENTARY
+The single reset retry completed cleanly and again found no Moria carrier; checkpoint 3214 remains at level 19 with no XP gain, and the child exited leaving only the Discord streamer. That is useful evidence, but it also confirms the immediate progression blocker is sanctuary acquisition, not route scheduling. I’m now tracing source-defined sanctuary objects, shops, and alternative non-caster hunts so the next policy can make real XP progress without violating the level-band gates.
+
+
+[2026-08-04 8:28:39 AM NZST] CODEX COMMENTARY
+I am treating this as the requested one-off publication. I will inspect the exact local diff and remote state, create a focused commit for the current changes, push main, and verify the remote result; if authentication or merge state blocks the remote action, I will leave the local commit intact and report that promptly.
+
+
+[2026-08-04 8:29:49 AM NZST] CODEX COMMENTARY
+Verification is green: 1,899 pytest tests passed, compileall passed, and the code diff is clean when the append-only conversation log is excluded from whitespace checks. The pending changes are the generic level-20 trainer routes, the absent-Moria cooldown guard, their regression tests, and the logged development commentary. I am staging exactly those five files now, then I will create the one-off commit and publish main.

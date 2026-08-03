@@ -253,10 +253,30 @@ class _ClassTrainerRoute:
     steps: tuple[tuple[str, str, str], ...]
     minimum_level: int = 10
     search_room_vnum: str | None = None
+    open_before: frozenset[tuple[str, str]] = frozenset()
+    research_only: bool = False
 
     @property
     def outbound(self) -> dict[str, str]:
         return {origin: command for origin, command, _ in self.steps}
+
+    def command_for(
+        self,
+        room_vnum: str,
+        previous_room_vnum: str | None = None,
+    ) -> str | None:
+        """Return the next route command without collapsing repeated rooms."""
+        candidates = [
+            (index, command)
+            for index, (origin, command, _) in enumerate(self.steps)
+            if origin == room_vnum
+        ]
+        if len(candidates) == 1:
+            return candidates[0][1]
+        for index, command in candidates:
+            if index and self.steps[index - 1][0] == previous_room_vnum:
+                return command
+        return None
 
     @property
     def destination_vnum(self) -> str:
@@ -456,18 +476,255 @@ _ADVANCED_CLASS_TRAINERS = {
         search_room_vnum="25204",
     ),
 }
+
+_KEROFK_ROUTE_PREFIX = (
+    ("3001", "south", "3005"),
+    ("3005", "south", "3014"),
+    ("3014", "south", "3025"),
+    ("3025", "south", "3030"),
+    ("3030", "south", "3504"),
+    ("3504", "south", "3505"),
+    ("3505", "west", "3570"),
+    ("3570", "south", "3572"),
+    ("3572", "south", "3575"),
+    ("3575", "west", "3581"),
+    ("3581", "south", "4501"),
+    ("4501", "west", "4502"),
+    ("4502", "south", "4503"),
+    ("4503", "south", "4504"),
+    ("4504", "south", "4508"),
+    ("4508", "south", "4511"),
+    ("4511", "east", "4512"),
+    ("4512", "south", "4515"),
+    ("4515", "west", "4514"),
+    ("4514", "west", "4513"),
+    ("4513", "south", "18000"),
+    ("18000", "south", "18001"),
+    ("18001", "south", "18002"),
+    ("18002", "south", "18003"),
+    ("18003", "south", "18004"),
+    ("18004", "west", "18005"),
+    ("18005", "west", "18006"),
+    ("18006", "south", "18007"),
+    ("18007", "south", "18008"),
+    ("18008", "south", "18009"),
+    ("18009", "west", "18010"),
+    ("18010", "west", "18011"),
+    ("18011", "south", "18012"),
+    ("18012", "south", "18013"),
+    ("18013", "south", "18014"),
+    ("18014", "south", "18015"),
+    ("18015", "south", "18016"),
+    ("18016", "west", "18047"),
+    ("18047", "north", "18049"),
+    ("18049", "west", "18050"),
+    ("18050", "south", "18051"),
+    ("18051", "south", "18052"),
+    ("18052", "west", "18053"),
+    ("18053", "south", "10001"),
+    ("10001", "down", "10002"),
+    ("10002", "south", "10029"),
+    ("10029", "south", "10030"),
+    ("10030", "west", "10023"),
+    ("10023", "west", "10024"),
+    ("10024", "east", "10023"),
+    ("10023", "east", "10030"),
+    ("10030", "east", "18452"),
+    ("18452", "east", "18424"),
+    ("18424", "north", "18425"),
+    ("18425", "north", "18426"),
+    ("18426", "east", "18427"),
+    ("18427", "east", "18428"),
+    ("18428", "east", "18429"),
+    ("18429", "east", "18402"),
+    ("18402", "east", "18403"),
+    ("18403", "east", "18404"),
+    ("18404", "east", "18405"),
+    ("18405", "east", "18406"),
+    ("18406", "south", "18407"),
+    ("18407", "south", "18408"),
+    ("18408", "south", "18409"),
+    ("18409", "south", "18410"),
+    ("18410", "east", "18439"),
+    ("18439", "east", "18440"),
+    ("18440", "south", "18441"),
+    ("18441", "east", "30346"),
+    ("30346", "north", "30345"),
+    ("30345", "east", "30344"),
+    ("30344", "south", "30343"),
+    ("30343", "east", "30342"),
+    ("30342", "east", "30341"),
+    ("30341", "east", "30334"),
+    ("30334", "east", "30335"),
+    ("30335", "east", "30277"),
+    ("30277", "east", "30232"),
+)
+_KEROFK_ROUTE_OPEN_BEFORE = frozenset({("4512", "south")})
+
+
+def _kerofk_trainer_route(
+    room_vnum: str,
+    room_name: str,
+    keyword: str,
+    final_steps: tuple[tuple[str, str, str], ...],
+    *,
+    open_before: Collection[tuple[str, str]] = (),
+) -> _ClassTrainerRoute:
+    return _ClassTrainerRoute(
+        room_vnum,
+        room_name,
+        keyword,
+        _KEROFK_ROUTE_PREFIX + final_steps,
+        minimum_level=20,
+        open_before=_KEROFK_ROUTE_OPEN_BEFORE | frozenset(open_before),
+    )
+
+
+_LEVEL_20_CLASS_TRAINERS = {
+    "mage": _kerofk_trainer_route(
+        "30251",
+        "Leonna's Office",
+        "Leonna",
+        (
+            ("30232", "north", "30233"),
+            ("30233", "north", "30354"),
+            ("30354", "east", "30238"),
+            ("30238", "east", "30224"),
+            ("30224", "east", "30225"),
+            ("30225", "east", "30202"),
+            ("30202", "east", "30204"),
+            ("30204", "north", "30249"),
+            ("30249", "north", "30251"),
+        ),
+        open_before=(("30249", "north"),),
+    ),
+    "cleric": _kerofk_trainer_route(
+        "30270",
+        "Living Area",
+        "High Priest",
+        (
+            ("30232", "north", "30233"),
+            ("30233", "north", "30354"),
+            ("30354", "east", "30238"),
+            ("30238", "south", "30269"),
+            ("30269", "west", "30270"),
+        ),
+    ),
+    "thief": _kerofk_trainer_route(
+        "30248",
+        "Thieves Guild",
+        "Seobagn",
+        (
+            ("30232", "north", "30233"),
+            ("30233", "north", "30354"),
+            ("30354", "north", "30235"),
+            ("30235", "north", "30236"),
+            ("30236", "east", "30237"),
+            ("30237", "east", "30222"),
+            ("30222", "east", "30221"),
+            ("30221", "east", "30220"),
+            ("30220", "east", "30219"),
+            ("30219", "east", "30217"),
+            ("30217", "east", "30216"),
+            ("30216", "north", "30247"),
+            ("30247", "west", "30248"),
+        ),
+        open_before=(("30247", "west"),),
+    ),
+    "warrior": _kerofk_trainer_route(
+        "30272",
+        "Captain's Office",
+        "Captain",
+        (
+            ("30232", "north", "30233"),
+            ("30233", "north", "30354"),
+            ("30354", "north", "30235"),
+            ("30235", "east", "30271"),
+            ("30271", "east", "30272"),
+        ),
+    ),
+    "ranger": _kerofk_trainer_route(
+        "30254",
+        "The Herbalist's Shoppe",
+        "Herbalist",
+        (
+            ("30232", "north", "30233"),
+            ("30233", "north", "30354"),
+            ("30354", "east", "30238"),
+            ("30238", "east", "30224"),
+            ("30224", "north", "30223"),
+            ("30223", "east", "30254"),
+        ),
+    ),
+    "smithy": _kerofk_trainer_route(
+        "30273",
+        "Blacksmiths Foundry",
+        "Gorn",
+        (
+            ("30232", "east", "30231"),
+            ("30231", "east", "30229"),
+            ("30229", "east", "30228"),
+            ("30228", "east", "30227"),
+            ("30227", "south", "30273"),
+        ),
+    ),
+    "brawler": _kerofk_trainer_route(
+        "30353",
+        "House of Pugilism",
+        "Pugilist",
+        (
+            ("30232", "north", "30233"),
+            ("30233", "north", "30354"),
+            ("30354", "east", "30238"),
+            ("30238", "north", "30353"),
+        ),
+    ),
+    "psionic": _kerofk_trainer_route(
+        "30297",
+        "Bedroom",
+        "Psionic master",
+        (
+            ("30232", "north", "30233"),
+            ("30233", "north", "30354"),
+            ("30354", "east", "30238"),
+            ("30238", "east", "30224"),
+            ("30224", "east", "30225"),
+            ("30225", "east", "30202"),
+            ("30202", "east", "30204"),
+            ("30204", "east", "30205"),
+            ("30205", "north", "30218"),
+            ("30218", "west", "30278"),
+            ("30278", "west", "30279"),
+            ("30279", "west", "30280"),
+            ("30280", "up", "30291"),
+            ("30291", "north", "30295"),
+            ("30295", "west", "30297"),
+        ),
+    ),
+    "shifter": _ClassTrainerRoute(
+        "30250",
+        "The Kerofk MobChute",
+        "shifter",
+        (),
+        minimum_level=20,
+        research_only=True,
+    ),
+}
 _ALL_CLASS_TRAINERS = (
     *_CLASS_TRAINERS.values(),
     *_ADVANCED_CLASS_TRAINERS.values(),
+    *_LEVEL_20_CLASS_TRAINERS.values(),
 )
 _CLASS_TRAINER_HEALER_ROUTES = {
     room_vnum: direction
     for trainer in _ALL_CLASS_TRAINERS
+    if trainer.minimum_level <= 10
     for room_vnum, direction in trainer.return_to_healer.items()
 }
 _CLASS_TRAINER_HEALER_RETURN_PATHS = {
     room_vnum: commands
     for trainer in _ALL_CLASS_TRAINERS
+    if trainer.minimum_level <= 10
     for room_vnum, commands in trainer.healer_return_paths.items()
 }
 _MIDGAARD_HEALER_ROUTES = {
@@ -5064,6 +5321,9 @@ class StarterPolicy:
         if (state.level or 0) < 10:
             return None
         character_class = self.spec.character_class.casefold()
+        kerofk = _LEVEL_20_CLASS_TRAINERS.get(character_class)
+        if kerofk is not None and (state.level or 0) >= kerofk.minimum_level:
+            return kerofk
         advanced = _ADVANCED_CLASS_TRAINERS.get(character_class)
         if advanced is not None and (state.level or 0) >= advanced.minimum_level:
             return advanced
@@ -5159,26 +5419,39 @@ class StarterPolicy:
         ):
             self.practiced = True
             return None
-        routes = {
-            "3019": "west",
-            "3018": "north",
-            "3017": "north",
-            "3012": "east",
-            "3013": "east",
-            "3014": "north",
-            "3005": "north",
-            "3001": "up",
-            "3725": "east",
-            "3054": "south",
-            "3724": "down",
-        }
         if class_trainer is not None:
-            routes = {
+            direction = (
+                "south"
+                if room_vnum == "3054"
+                else class_trainer.command_for(room_vnum, self.previous_room)
+            )
+        else:
+            direction = {
+                "3019": "west",
+                "3018": "north",
+                "3017": "north",
+                "3012": "east",
+                "3013": "east",
+                "3014": "north",
+                "3005": "north",
+                "3001": "up",
+                "3725": "east",
                 "3054": "south",
-                **class_trainer.outbound,
-            }
-        direction = routes.get(room_vnum)
+                "3724": "down",
+            }.get(room_vnum)
         if direction is not None:
+            if (
+                class_trainer is not None
+                and (room_vnum, direction) in class_trainer.open_before
+            ):
+                return self._open_then_move(
+                    direction,
+                    (
+                        f"visit the level-{class_trainer.minimum_level} "
+                        f"{self.spec.character_class} trainer "
+                        "for the class-aware field practice plan"
+                    ),
+                )
             return BotDecision(
                 direction,
                 (
@@ -5189,6 +5462,13 @@ class StarterPolicy:
                     else "visit the Loremaster for the level-aware field practice plan"
                 ),
             )
+        if class_trainer is not None and class_trainer.research_only:
+            self.failure = (
+                f"the level-{class_trainer.minimum_level} "
+                f"{self.spec.character_class} trainer is source-registered in "
+                "a player-inaccessible room; no live route is promoted"
+            )
+            return None
         destination = (
             f"the level-{class_trainer.minimum_level} "
             f"{self.spec.character_class} trainer"

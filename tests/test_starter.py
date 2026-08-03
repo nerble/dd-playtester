@@ -13154,6 +13154,121 @@ def test_level_fifteen_thief_stops_for_wandering_trainer_on_route() -> None:
     assert decision.command == "look leader"
 
 
+@pytest.mark.parametrize(
+    ("character_class", "trainer_room", "trainer_keyword"),
+    (
+        ("mage", "30251", "Leonna"),
+        ("cleric", "30270", "High Priest"),
+        ("thief", "30248", "Seobagn"),
+        ("warrior", "30272", "Captain"),
+        ("ranger", "30254", "Herbalist"),
+        ("smithy", "30273", "Gorn"),
+        ("brawler", "30353", "Pugilist"),
+        ("psionic", "30297", "Psionic master"),
+    ),
+)
+def test_level_twenty_uses_source_backed_kerofk_trainer_route(
+    character_class: str,
+    trainer_room: str,
+    trainer_keyword: str,
+) -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": character_class, "subclass": None}),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.latest_practice_balances = (2, 2)
+    policy.selected_training_stat = "con"
+    policy.fastwalk_stat_training_configured = True
+
+    route = policy._level_ten_class_trainer(
+        CharacterState(level=20, room_vnum="3054")
+    )
+
+    assert route is not None
+    assert route.minimum_level == 20
+    assert route.room_vnum == trainer_room
+    assert route.keyword == trainer_keyword
+    assert route.steps[0] == ("3001", "south", "3005")
+    assert route.steps[-1][2] == trainer_room
+
+    for index, (room_vnum, direction, _) in enumerate(route.steps):
+        policy.previous_room = (
+            route.steps[index - 1][0] if index else None
+        )
+        state = CharacterState(
+            level=20,
+            room_name="Route",
+            room_vnum=room_vnum,
+        )
+        decision = policy._fastwalk_training_decision(state)
+
+        assert decision is not None
+        expected = (
+            f"open {direction}"
+            if (room_vnum, direction) in route.open_before
+            else direction
+        )
+        assert decision.command == expected
+        if expected.startswith("open "):
+            follow_up = policy._fastwalk_training_decision(state)
+            assert follow_up is not None
+            assert follow_up.command == direction
+
+    trainer_decision = policy._fastwalk_training_decision(
+        CharacterState(level=20, room_name="Trainer", room_vnum=trainer_room)
+    )
+    assert trainer_decision is not None
+    assert trainer_decision.command == f"look {trainer_keyword}"
+
+
+def test_level_twenty_kerofk_route_preserves_repeated_room_transitions() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.latest_practice_balances = (2, 2)
+    policy.selected_training_stat = "con"
+    policy.fastwalk_stat_training_configured = True
+    route = policy._level_ten_class_trainer(
+        CharacterState(level=20, room_vnum="3054")
+    )
+
+    assert route is not None
+    assert route.command_for("10030", "10029") == "west"
+    assert route.command_for("10030", "10023") == "east"
+    assert route.command_for("10023", "10030") == "west"
+    assert route.command_for("10023", "10024") == "east"
+
+
+def test_level_twenty_shifter_trainer_remains_research_gated() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "shifter", "subclass": None}),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_train_before_departure=True,
+    )
+    policy.latest_practice_balances = (2, 2)
+    policy.selected_training_stat = "con"
+    policy.fastwalk_stat_training_configured = True
+
+    route = policy._level_ten_class_trainer(
+        CharacterState(level=20, room_vnum="3054")
+    )
+    assert route is not None
+    assert route.research_only is True
+    decision = policy._fastwalk_training_decision(
+        CharacterState(level=20, room_name="The Temple", room_vnum="3001")
+    )
+
+    assert decision is None
+    assert policy.failure is not None
+    assert "player-inaccessible" in policy.failure
+
+
 def test_class_training_does_not_continue_after_missing_trainer() -> None:
     policy = StarterPolicy(
         _spec(**{"class": "thief", "subclass": "ninja"}),
