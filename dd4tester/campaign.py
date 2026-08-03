@@ -325,6 +325,19 @@ _RESEARCH_ABSENCE_COOLDOWN_KEY = "campaign_research_absence_cooldowns"
 _RESEARCH_CROWD_COOLDOWN_KEY = "campaign_research_crowd_cooldowns"
 _CLEARED_RESEARCH_POLICIES_KEY = "campaign_cleared_research_policies"
 _DEFAULT_RESEARCH_CROWD_COOLDOWN = 3
+_MORIA_DEEP_SANCTUARY_THIEF_PROBE_POLICY_ID = (
+    "moria-deep-sanctuary-thief-probe-19-20"
+)
+_MORIA_DEEP_SANCTUARY_THIEF_HUNT_POLICY_ID = (
+    "moria-deep-sanctuary-thief-hunt-19-20"
+)
+_MORIA_SANCTUARY_RESEARCH_POLICY_IDS = frozenset(
+    {
+        _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY_ID,
+        _MORIA_DEEP_SANCTUARY_THIEF_PROBE_POLICY_ID,
+        _MORIA_DEEP_SANCTUARY_THIEF_HUNT_POLICY_ID,
+    }
+)
 _LAST_PRODUCTIVE_POLICY_KEY = "campaign_last_productive_policy"
 _PRODUCTIVE_POLICY_HISTORY_KEY = "campaign_productive_policy_history"
 _POLICY_HANDOFF_KEY = "campaign_policy_handoff"
@@ -345,6 +358,8 @@ _RESEARCH_ABSENCE_RETRY_COOLDOWNS = {
     _HIGHTOWER_JAILOR_POLICY_ID: 3,
     _HIGHTOWER_JAILOR_HUNT_POLICY_ID: 3,
     _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY_ID: 3,
+    _MORIA_DEEP_SANCTUARY_THIEF_PROBE_POLICY_ID: 3,
+    _MORIA_DEEP_SANCTUARY_THIEF_HUNT_POLICY_ID: 3,
     _NOBLEMAN_LEVEL_SEVENTEEN_HUNT_POLICY_ID: 3,
     _NOBLEMAN_LEVEL_SEVENTEEN_PROBE_POLICY_ID: 3,
     "dwarven-servant-thief-hunt-17-18": 3,
@@ -7472,19 +7487,31 @@ def _campaign_should_await_research_reset(state: dict[str, Any]) -> bool:
     policy_id = str(state.get("campaign_last_policy") or "")
     if not policy_id:
         return False
-    result = _campaign_research_results(state).get(policy_id)
-    if not isinstance(result, dict) or result.get("boot_id") != state.get(
-        "world_boot_id"
-    ):
-        return False
-    if not (
-        result.get("absent") is True
-        or result.get("route_hazard")
-        == _DYNAMIC_FIELD_ROUTE_HAZARD_ABORT_REASON
-    ):
-        return False
+    results = _campaign_research_results(state)
     cooldowns = state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
-    return isinstance(cooldowns, dict) and int(cooldowns.get(policy_id) or 0) > 0
+    if not isinstance(cooldowns, dict):
+        return False
+    group = _research_absence_retry_group(policy_id)
+    group_cooldown_active = any(
+        int(cooldowns.get(candidate_id) or 0) > 0
+        for candidate_id in group
+    )
+    if not group_cooldown_active:
+        return False
+    for candidate_id in group:
+        result = results.get(candidate_id)
+        if not isinstance(result, dict) or result.get("boot_id") != state.get(
+            "world_boot_id"
+        ):
+            continue
+        if not (
+            result.get("absent") is True
+            or result.get("route_hazard")
+            == _DYNAMIC_FIELD_ROUTE_HAZARD_ABORT_REASON
+        ):
+            continue
+        return True
+    return False
 
 
 def _campaign_has_pending_dynamic_route_hazard(state: dict[str, Any]) -> bool:
@@ -7913,6 +7940,8 @@ def _run_primary_weapon_slot(
 
 def _research_absence_retry_group(policy_id: str) -> frozenset[str]:
     """Return the probe/hunt identities that share one reset target."""
+    if policy_id in _MORIA_SANCTUARY_RESEARCH_POLICY_IDS:
+        return _MORIA_SANCTUARY_RESEARCH_POLICY_IDS
     if policy_id in {
         _NOBLEMAN_LEVEL_SEVENTEEN_HUNT_POLICY_ID,
         _NOBLEMAN_LEVEL_SEVENTEEN_PROBE_POLICY_ID,
@@ -8252,25 +8281,36 @@ def _retry_required_sanctuary_research_policy(
 ) -> dict[str, Any]:
     """Reopen an absent sanctuary carrier after the bounded reset wait."""
     policy_id = _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY_ID
-    result = _campaign_research_results(state).get(policy_id)
+    moria_policy_ids = _MORIA_SANCTUARY_RESEARCH_POLICY_IDS
+    results = _campaign_research_results(state)
     cooldowns = state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+    moria_cooldown_active = isinstance(cooldowns, dict) and any(
+        int(cooldowns.get(candidate_id) or 0) > 0
+        for candidate_id in moria_policy_ids
+    )
+    moria_target_absent = any(
+        isinstance(results.get(candidate_id), dict)
+        and results[candidate_id].get("absent") is True
+        and results[candidate_id].get("boot_id") == state.get("world_boot_id")
+        for candidate_id in moria_policy_ids
+    )
     if not (
-        isinstance(result, dict)
-        and result.get("absent") is True
-        and result.get("boot_id") == state.get("world_boot_id")
-        and int(cooldowns.get(policy_id) or 0) > 0
+        moria_cooldown_active
+        and moria_target_absent
         and _campaign_sanctuary_recovery_required(state)
     ):
         return state
     retried = dict(state)
-    results = dict(_campaign_research_results(state))
-    results.pop(policy_id, None)
+    results = dict(results)
+    for candidate_id in moria_policy_ids:
+        results.pop(candidate_id, None)
     if results:
         retried["campaign_research_results"] = results
     else:
         retried.pop("campaign_research_results", None)
     remaining_cooldowns = dict(cooldowns)
-    remaining_cooldowns.pop(policy_id, None)
+    for candidate_id in moria_policy_ids:
+        remaining_cooldowns.pop(candidate_id, None)
     if remaining_cooldowns:
         retried[_RESEARCH_ABSENCE_COOLDOWN_KEY] = remaining_cooldowns
     else:
@@ -8279,7 +8319,7 @@ def _retry_required_sanctuary_research_policy(
         str(candidate_id)
         for candidate_id in state.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
     }
-    cleared.add(policy_id)
+    cleared.update(moria_policy_ids)
     retried[_CLEARED_RESEARCH_POLICIES_KEY] = sorted(cleared)
     retried["campaign_fastwalk_target_absent"] = False
     retried.pop("campaign_fastwalk_abort_reason", None)
@@ -8397,7 +8437,10 @@ def _retry_current_crowded_research_policy(state: dict[str, Any]) -> dict[str, A
     if retry_policy_id == policy_id:
         return _retry_any_crowded_research_policy(state)
     retried = dict(state)
-    retry_policy_ids = _research_absence_retry_group(retry_policy_id)
+    # Crowd rotation selects one executable route.  Paired probe/hunt
+    # identities share absence-reset state only in the dedicated reset path;
+    # clearing the whole group here can erase an unrelated sanctuary probe.
+    retry_policy_ids = (retry_policy_id,)
     results = dict(_campaign_research_results(state))
     for candidate_id in retry_policy_ids:
         results.pop(candidate_id, None)
