@@ -20920,3 +20920,39 @@ The full suite found one compatibility regression, not a live failure: the new s
 
 [2026-08-04 9:47:38 AM NZST] CODEX COMMENTARY
 The full suite is clean: 1,905 tests passed. The publish set is the shared Moria cooldown repair, its focused regression coverage, and the append-only development log. I am creating a one-off branch, committing with the requested bounded local operation, pushing it, then merging it into main and checking both refs.
+
+
+[2026-08-04 9:48:39 AM NZST] CODEX FINAL
+One-off publication completed. Commit 6d1b50c was pushed on codex/one-off-publish-20260804-shared-moria and merged into main as 5d0f536; origin/main matches 5d0f536. The shared Moria reset repair and regression tests are published. Verification passed: 1,905 pytest tests, compileall, and diff checks excluding the append-only conversation log.
+
+
+[2026-08-04 9:49:00 AM NZST] CODEX COMMENTARY
+I am continuing the HERO automation work from the published state. I will audit the current main branch, checkpoint, live processes, and source revision, then run the next bounded scheduler validation and repair the next concrete progression blocker it exposes.
+
+
+[2026-08-04 9:49:51 AM NZST] CODEX COMMENTARY
+The audit confirms Kestrel is safely checkpointed at level 19 in healer room 3054, with the Moria deep probe marked absent and the shared sanctuary cooldown at one productive segment. The source checkout is current at 1b759f5, and only the expected Discord streamer/Codex/Adobe processes are present. I am launching one bounded campaign pass with one reset retry to validate the published recovery path without steering the MUD.
+
+
+[2026-08-04 9:50:50 AM NZST] CODEX COMMENTARY
+The bounded campaign process is still active after its first watchdog interval; it remains the only campaign runner. I am leaving the live retry uninterrupted so the persisted transcript captures the scheduler transition and any safe Moria re-probe.
+
+
+[2026-08-04 9:51:28 AM NZST] CODEX COMMENTARY
+The live pass is still within the 180-second segment cap and has not emitted a terminal result. No second runner has been started; I am waiting on the same bounded process and will inspect the checkpoint immediately when it exits.
+
+
+[2026-08-04 9:51:50 AM NZST] CODEX COMMENTARY
+The live validation succeeded: run 3029 completed the shared reset retry safely, re-probed the primary Moria sanctuary route, found the carrier absent again, and checkpointed at healer room 3054 with no combat or death. This confirms the resumability fix. Kestrel is still level 19 with no current executable XP policy, so I am moving to the next real blocker: making source-ranked late-level progression discover and dispatch a fresh safe target instead of exhausting the static frontier.
+
+
+[2026-08-04 9:58:22 AM NZST] CODEX COMMENTARY
+The source audit shows the current level-19 reboot has no already-proven safe XP target: Aruncus is below-band, the Soldier is absent, the Galaxy/Crystalmir routes have current hazard or absence evidence, and prior nobleman evidence is nonviable at this level. I am implementing the missing generic fallback now: rank every source area, persist the selected mobile/route as reboot-scoped policy metadata, run the existing exact-selector combat runner, rotate after each bounded result, and preserve the same safety/evidence gates for every class.
+
+
+[2026-08-04 10:02:07 AM NZST] CODEX COMMENTARY
+I am checking the current branch, working tree, and remote state now, then I will perform the requested one-off commit, push, and main-branch merge without waiting on unrelated live work.
+
+
+[2026-08-04 10:02:31 AM NZST] CODEX COMMENTARY
+The working tree contains only the tracked append-only development conversation log; main already matches origin/main. I will publish this current log as a one-off branch commit, push that branch, merge it into local main, push main, and verify both remote refs.
