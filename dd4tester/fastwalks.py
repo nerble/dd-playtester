@@ -230,7 +230,7 @@ MAP_ROUTES = (
         "solace magnus",
         19,
         20,
-        "6s;w;2s;w;s;w;2s;w;2s;open south;5s;2w;3s;2w;5s;w;n;w;2s;w;s;d;w;6n;open west;w;u;2w;2n;2e;open south;s",
+        "6s;w;2s;w;s;w;2s;w;2s;open south;6s;2w;3s;2w;5s;w;n;w;2s;w;s;d;w;9n;open west;w;u;2w;2n;2e;open south;s",
         recall_after_loot=True,
     ),
     Fastwalk(

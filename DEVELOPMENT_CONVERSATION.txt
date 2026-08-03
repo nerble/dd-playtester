@@ -20064,3 +20064,191 @@ I am handling the requested one-off publication now. I will verify the current b
 
 [2026-08-04 5:17:48 AM NZST] CODEX COMMENTARY
 The publication checks are clean: all 1,879 pytest tests pass, compileall passes, and the code diff has no whitespace errors. The worktree contains the Magnus level-19 research/hunt capability and its regression coverage on main; I am staging exactly those nine changed files, committing locally, then pushing main and verifying the remote hash.
+
+
+[2026-08-04 5:18:25 AM NZST] CODEX FINAL
+One-off publication completed. Commit 08b50d9 (Add level-19 Magnus progression frontier) is on main and origin/main resolves to 08b50d945ee2abb6f4f96718f295855c32a68104. The worktree is clean, 1,879 tests pass, compileall and diff checks pass, and the only Python process left is the expected Discord streamer PID 27976.
+
+
+[2026-08-04 5:18:47 AM NZST] CODEX COMMENTARY
+I am continuing the active autonomous-HERO objective from the published level-19 checkpoint. I will inspect the current main tree and campaign state, identify the next executable progression blocker beyond Kestrel's frontier, then implement and verify one concrete capability before any bounded live run.
+
+
+[2026-08-04 5:21:36 AM NZST] CODEX COMMENTARY
+The live transcript exposed the next concrete blocker: the Magnus route stopped at Forest room 18003 because its source path used five south steps after the Miden'nir door, while the proven Lord Doom route shows the Solace branch requires six. The source map confirms Magnus resets in room 10300, reached from hallway 10310 via two east and south; I am correcting the reusable route to six south steps, updating its 62-command regression, and then I will rerun the bounded probe.
+
+
+[2026-08-04 5:22:04 AM NZST] CODEX COMMENTARY
+The route correction is in place and the focused regression passes: Magnus now expands to 62 commands, keeps the proven Solace endpoint sequence, and the policy evidence matches the source-derived path. I am launching one autonomous, consider-only campaign segment with no reset retry and no steering input; its result will tell us whether the source target is reachable and present on this reboot.
+
+
+[2026-08-04 5:22:51 AM NZST] CODEX COMMENTARY
+The bounded Magnus probe is still running inside its campaign-owned 264-second limit. The outer command has not reported a failure, and I am leaving the single autonomous connection undisturbed while monitoring its checkpoint and process state; no duplicate launcher or manual command will be introduced.
+
+
+[2026-08-04 5:23:35 AM NZST] CODEX COMMENTARY
+The live child remains healthy after the first observation window and the bounded segment has not exceeded its own limit. I am continuing to wait for the endpoint result; the important distinction is whether the corrected route reaches room 10300 and records Magnus evidence, so I am not treating mere connection success as progression.
+
+
+[2026-08-04 5:24:56 AM NZST] CODEX COMMENTARY
+The corrected live probe reached Solace safely, which confirms the first fix, but then exposed a second route transcription error: Magnus's path used six north steps and attempted the west door from room 10228, sending Kestrel back to Midgaard. The proven Lord Doom route and Solace room graph require nine north steps to room 10282 before opening west; I am applying that reusable correction and will keep the Magnus branch at the source room 10300 via two east and south.
+
+
+[2026-08-04 5:25:21 AM NZST] CODEX COMMENTARY
+The second route correction is implemented and its focused test passes: Magnus now uses the 65-command path, reaches the Solace entrance through nine north steps, opens the inn door at room 10282, and ends with the room-10300 branch. I am retrying the same bounded research segment once; this remains consider-only and will not consume a sanctuary potion or start combat.
+
+
+[2026-08-04 5:26:08 AM NZST] CODEX COMMENTARY
+The corrected Magnus research segment is still running inside its campaign-owned bound. I am monitoring the single child without intervention; route completion, exact target recognition, and live consider output are the only evidence that can promote this frontier.
+
+
+[2026-08-04 5:27:05 AM NZST] CODEX COMMENTARY
+The live connection remains within the bounded segment and has not returned a failure. I am allowing it to finish its source-backed route and inspection; if Magnus is absent, that will be a temporary current-reboot result, while a viable consideration will select the sanctuary-gated hunt rather than attack immediately.
+
+
+[2026-08-04 5:28:12 AM NZST] CODEX COMMENTARY
+This probe is now genuine reusable live evidence: Kestrel reached source room 10300, saw the exact Magnus selector, received the perfect-match and much-healthier-than-you response, and returned safely with no combat or XP claim. The research result is persisted viable for this reboot; because Kestrel has no sanctuary potion, the generic selector should now choose the Moria sanctuary supply policy before the Magnus hunt.
+
+
+[2026-08-04 5:29:20 AM NZST] CODEX COMMENTARY
+The persisted checkpoint has no carried or historical sanctuary reserve and no completed Moria acquisition, so the selector's next action is genuinely the required supply transition, not another Magnus probe. I am launching that next autonomous one-segment handoff now with the same 264-second bound; it may perform the registered below-band required-loot recovery, but it will not classify that kill as XP progress.
+
+
+[2026-08-04 5:30:05 AM NZST] CODEX COMMENTARY
+The autonomous sanctuary handoff is still running within its segment cap. I am leaving the connection alone and waiting for its persisted result; this checkpoint will tell us whether the supply policy found the Moria carrier, hit a current reset absence, or exposed another route or combat gate.
+
+
+[2026-08-04 5:31:02 AM NZST] CODEX COMMENTARY
+The Moria supply segment remains active and the process audit is clean apart from the expected streamer plus this one campaign child. I am continuing to let the policy own the route and recovery decisions; no manual target, direction, or combat command is being injected.
+
+
+[2026-08-04 5:32:11 AM NZST] CODEX COMMENTARY
+The supply handoff was preempted by the generic funding gate, which is correct for the actual state: Kestrel had only four copper and had reached carry capacity. The autonomous funding policy killed Bardoosh for three required saleable drops, gained 130 real XP incidentally without using it as an XP target, and returned safely to the healer. I am continuing through the normal liquidation/maintenance handoff so the acquired loot can fund the sanctuary recovery.
+
+
+[2026-08-04 5:32:57 AM NZST] CODEX COMMENTARY
+The maintenance handoff is still running inside its autonomous cap. I am waiting for the exact phase and persisted coin/weight state before deciding whether the next segment should sell, bank, or enter the Moria sanctuary route.
+
+
+[2026-08-04 5:33:43 AM NZST] CODEX COMMENTARY
+The post-sale selector is not yet Moria: it correctly chose buy-flight-potion because Kestrel's temporary flight affect expired during logout, and the next movement-heavy route requires active flight. The account history shows a prior sanctuary acquisition, but no carried potion, so I am letting the generic maintenance policy restore flight first and will then re-evaluate the sanctuary transition.
+
+
+[2026-08-04 5:35:04 AM NZST] CODEX COMMENTARY
+After flight was restored, the generic selector found a fresh current-reboot viable Shadow Keep probe and chose its reusable hunt before Magnus, which is the right XP frontier: it is a non-aggressive source-backed target and does not require spending sanctuary. I am launching that one-kill autonomous hunt now, with the normal exact-consider, crowd, disarm-recovery, and healer-return gates.
+
+
+[2026-08-04 5:35:51 AM NZST] CODEX COMMENTARY
+The Shadow Keep hunt is still running inside the campaign bound. I am waiting for its exact target result and XP delta; the campaign owns any disarm recovery or safe withdrawal and I will inspect the persisted transcript rather than infer success from the launcher state.
+
+
+[2026-08-04 5:36:35 AM NZST] CODEX COMMENTARY
+The live Shadow Keep child remains active and no failure has surfaced. I am continuing the single bounded run; its source circuit can check multiple exact stops but the hunt limit remains one productive kill, so I am not starting any parallel attempt.
+
+
+[2026-08-04 5:37:32 AM NZST] CODEX COMMENTARY
+The Shadow Keep route is still within its 264-second limit. I am allowing the research-backed circuit to finish; a successful kill will be verified through the persisted mob-kill and objective records, while an absent or unsafe stop will simply rotate the policy without being called progress.
+
+
+[2026-08-04 5:38:10 AM NZST] CODEX COMMENTARY
+The Shadow Keep hunt correctly found no current target and recorded a reboot-scoped absence without XP. The next selector now resolves explicitly to moria-sanctuary-thief-17-20, with the summary requesting the purple potion required before Magnus; I am launching that registered acquisition route next.
+
+
+[2026-08-04 5:38:57 AM NZST] CODEX COMMENTARY
+The Moria sanctuary acquisition is still running inside the autonomous cap. I am waiting for the exact carrier and required-loot result; this policy is allowed to use a below-band kill only to recover the registered sanctuary object and will not promote that kill as an XP route.
+
+
+[2026-08-04 5:39:43 AM NZST] CODEX COMMENTARY
+The single Moria child remains active and no launcher error has appeared. I am leaving the route and recovery logic autonomous; once it exits I will inspect the checkpoint, inventory, objective evidence, and transcript before deciding whether Magnus is now executable.
+
+
+[2026-08-04 5:40:25 AM NZST] CODEX COMMENTARY
+The Moria route completed safely but the sanctuary carrier was absent; the checkpoint now records a three-segment same-reboot cooldown. The selector has no other executable current-band route after the Shadow Keep absence, so this is the case where the bounded reset controller is appropriate: I will wait outside Moria for 60 seconds and retry once automatically, without manual MUD input.
+
+
+[2026-08-04 5:41:13 AM NZST] CODEX COMMENTARY
+The bounded reset retry is in progress and the launcher is still quiet, which is expected while it waits outside the depleted area. I am leaving that controller in charge; its single retry and 264-second live cap remain the only active campaign process.
+
+
+[2026-08-04 5:41:56 AM NZST] CODEX COMMENTARY
+The campaign has not returned an error after the reset wait; the single child is still within the planned bounded retry. I am continuing to wait for the carrier's live presence result rather than launching a second connection.
+
+
+[2026-08-04 5:42:55 AM NZST] CODEX COMMENTARY
+The reset-retry child remains alive and bounded; the wait plus route can legitimately take several minutes because the campaign must recover at healer before checkpointing. I am continuing the monitored run and will inspect the final run ID directly when it exits.
+
+
+[2026-08-04 5:43:54 AM NZST] CODEX COMMENTARY
+The bounded 60-second reset retry also found the Moria carrier absent, so I am not repeating it immediately. The required sanctuary path is now a real current-reboot blocker: Magnus is live-viable but protected combat is unavailable, and the only registered supply carrier has an active cooldown. I am inspecting the refreshed DD4 area/reset data for another source-legal sanctuary acquisition or a safer level-19 executable hunt before changing policy.
+
+
+[2026-08-04 5:46:19 AM NZST] CODEX COMMENTARY
+The two Moria attempts produced useful evidence rather than a dead end: run 2999 found the large-hobgoblin locator reports only in the distant maze while room 4064 was empty, and run 3000 repeated the absence after the bounded wait; both returned safely without entering the aggressive maze. I am recording the new Magnus viability and Moria absence evidence in the source-backed policy text, preserving the existing safety boundary instead of widening it speculatively.
+
+
+[2026-08-04 5:46:46 AM NZST] CODEX COMMENTARY
+The policy evidence update and route regression are clean: 33 focused tests pass, compileall passes, and the diff has no code whitespace errors. The live work has now proved the 65-command Magnus route and persisted both the viable probe and safe Moria absence; I am running the full offline suite next, then I will leave the local evidence changes uncommitted because the standing publication cadence is not due.
+
+
+[2026-08-04 5:47:25 AM NZST] CODEX COMMENTARY
+The full suite exposed one unrelated but real regression in the silent-connection watchdog test: 1,878 tests passed, while the test exceeded its 20-command budget instead of reaching the expected reconnect-limit error. The live policy work is unaffected, but I am isolating that test now and will fix the deterministic timeout/reconnect boundary before leaving the work unit.
+
+
+[2026-08-04 5:47:41 AM NZST] CODEX COMMENTARY
+The isolated watchdog test passes on rerun, so the earlier failure was timing-sensitive rather than a persistent code error; its expected reconnect-limit path and four connections are intact. I am rerunning the full suite once more to confirm the repository-wide result before closing this work unit.
+
+
+[2026-08-04 5:48:45 AM NZST] CODEX FINAL
+Work unit complete; the HERO goal remains active. Fixed the Magnus route from 61/62 to the source-correct 65-command path, live-validated run 2994 at room 10300 with exact selector #5760 and viable consider evidence, recorded safe Moria carrier absences from runs 2999 and 3000, and preserved the no-aggressive-maze boundary. Kestrel remains level 19 at healer room 3054 with no sanctuary potion. Full suite passes 1,879 tests; compileall, diff checks, and conversation-log validation pass. Local code changes remain uncommitted and unpublished under the standing cadence; only Discord streamer PID 27976 remains.
+
+
+[2026-08-04 5:49:13 AM NZST] CODEX COMMENTARY
+I am continuing from Kestrel's persisted level-19 checkpoint rather than treating the viable Magnus probe as progression completion. I will re-audit the current reboot state and policy selector, then either execute the next bounded sanctuary recovery or implement the next source-backed safe frontier that removes the present level-19 stall.
+
+
+[2026-08-04 5:50:01 AM NZST] CODEX COMMENTARY
+The re-audit confirms the selector still has exactly one required next action: Moria sanctuary recovery, with a current-reboot three-segment absence cooldown; no campaign child is left running and the streamer is the only persistent Python process. I am using one longer bounded reset retry now, waiting 300 seconds outside Moria because the earlier 60-second wait did not allow the area to repopulate.
+
+
+[2026-08-04 5:50:47 AM NZST] CODEX COMMENTARY
+The longer Moria reset controller is still waiting within its explicit 300-second bound. No manual MUD input or duplicate campaign process has been started; I am leaving the area reset and retry decision to the campaign runner.
+
+
+[2026-08-04 5:51:33 AM NZST] CODEX COMMENTARY
+The bounded reset wait remains active after the first minute and the process has not reported an error. I am continuing the single retry rather than treating the absence cooldown as a permanent policy failure; the current reboot identity remains the evidence scope.
+
+
+[2026-08-04 5:52:20 AM NZST] CODEX COMMENTARY
+The reset controller is still within the planned five-minute wait. I am keeping the monitor cadence visible and the live child untouched; when it resumes, the runner will either recover the carrier or checkpoint another bounded absence.
+
+
+[2026-08-04 5:53:33 AM NZST] CODEX COMMENTARY
+The same single campaign child is still active and bounded; the reset wait has not yet elapsed. I am not converting this into an unbounded launcher loop: once the 300-second wait and one retry finish, the result will be checkpointed and the next code or policy decision will be evidence-driven.
+
+
+[2026-08-04 5:54:17 AM NZST] CODEX COMMENTARY
+The longer reset retry remains in its expected waiting phase. This is the last authorized retry for this run; I am continuing to monitor it so the process cannot silently stall past its explicit bound.
+
+
+[2026-08-04 5:55:16 AM NZST] CODEX COMMENTARY
+The reset retry is still within its five-minute cap and the campaign child remains the only active worker besides the Discord streamer. I am allowing the final wait to finish; no further retry will be started from this launcher invocation.
+
+
+[2026-08-04 5:56:35 AM NZST] CODEX COMMENTARY
+The campaign process is still live with the requested finite command and no companion worker; the reset controller has not hung or spawned a duplicate. I am continuing until its own 300-second wait plus bounded route concludes, then I will inspect the exact checkpoint rather than interrupt it.
+
+
+[2026-08-04 5:57:27 AM NZST] CODEX COMMENTARY
+The outer launcher timed out after 424 seconds while the campaign child remained alive, and the database shows the campaign marked running with no completed retry checkpoint. This is exactly the hanging behavior the execution policy is meant to prevent: I am auditing the child’s CPU/state and campaign timestamps now, then I will terminate only this stale campaign process if it has exceeded the requested bound and repair its persisted status locally.
+
+
+[2026-08-04 5:59:46 AM NZST] CODEX COMMENTARY
+I am handling the requested one-off publication now: I will verify the current branch and scoped diff, commit the completed route and evidence changes, push main, and confirm the remote result. I will leave the autonomous HERO goal active; this is a repository publication step, not a claim of completion.
+
+
+[2026-08-04 6:00:04 AM NZST] CODEX COMMENTARY
+The pending diff is limited to the corrected Solace Magnus route, its regression expectation, and the associated live evidence plus the append-only conversation log. I am running the repository test suite and whitespace checks before staging so the one-off publication reflects a verified state.
+
+
+[2026-08-04 6:00:41 AM NZST] CODEX COMMENTARY
+The full suite is green: 1,879 tests passed in 26.58 seconds, and the scoped diff has no whitespace errors. I am staging the four intentional files now, then I will create the one-off commit and publish main to origin.

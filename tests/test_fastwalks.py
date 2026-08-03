@@ -699,7 +699,7 @@ def test_solace_magnus_route_is_source_derived_and_recall_safe() -> None:
     assert route.minimum_level == 19
     assert route.maximum_level == 20
     assert route.recall_after_loot is True
-    assert len(route.commands) == 61
+    assert len(route.commands) == 65
     assert route.commands[:7] == (
         "south",
         "south",

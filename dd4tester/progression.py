@@ -3225,10 +3225,20 @@ _SOLACE_MAGNUS_RESEARCH_POLICY = ProgressionPolicy(
         "19 the source special can select blindness, chill touch, weaken, "
         "lightning bolt, fireball, or colour spray while fighting; this makes "
         "the live consider and route-safety evidence mandatory.",
-        "The source-derived route is a 61-command return path from recall and "
+        "The source-derived route is a 65-command return path from recall and "
         "crosses three closed doors before reaching private room 10300. The "
         "first pass is exact-target, source-isolated, where-preflighted, and "
         "consider-only; unknown or useful-band route attackers abort the probe.",
+        "Live run 2994 completed the corrected 65-command route, reached source "
+        "room 10300, bound Magnus to exact selector #5760, and received the "
+        "perfect-match but much-healthier-than-you consider response. It "
+        "returned to healer room 3054 without combat or XP change and promoted "
+        "this probe viable for the current reboot.",
+        "The required sanctuary supply remains independently gated: live runs "
+        "2999 and 3000 found room 4064 empty even though `where hobgoblin` "
+        "reported large hobgoblins in the distant maze/cave branch. Both runs "
+        "returned safely without entering that aggressive maze; run 3000 used "
+        "one bounded 60-second reset wait before recording the same absence.",
     ),
     practice_skill="backstab",
 )
