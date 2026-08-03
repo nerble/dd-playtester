@@ -337,6 +337,42 @@ def test_candidate_ranking_can_expand_beyond_conservative_area_set(monkeypatch) 
     }
 
 
+def test_candidate_ranking_can_include_below_band_loot_targets() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "carrier",
+                "a loot carrier",
+                1,
+                0,
+                0,
+                "ambush.are",
+            )
+        },
+        objects={
+            300: ObjectSource(300, "sword", "a saleable sword", 5, (), 100),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Carrier room", "ambush.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, (300,))],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    ordinary = rank_hunt_candidates(world, character_level=8)
+    funding = rank_hunt_candidates(
+        world,
+        character_level=8,
+        include_below_band=True,
+    )
+
+    assert ordinary == []
+    assert len(funding) == 1
+    assert funding[0].estimated_level_range == (1, 3)
+
+
 def test_candidate_ranking_rejects_high_level_room_companion(monkeypatch) -> None:
     monkeypatch.setattr(
         "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",

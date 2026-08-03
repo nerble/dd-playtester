@@ -19520,3 +19520,231 @@ I am treating this as the requested one-off publication: first I will inspect th
 
 [2026-08-04 2:41:23 AM NZST] CODEX COMMENTARY
 The worktree is on main and is one commit ahead of no remote changes, with the intended campaign fixes plus the required development log. I am running the full offline suite and repository checks before staging so the one-off publication represents a verified checkpoint.
+
+
+[2026-08-04 2:42:11 AM NZST] CODEX COMMENTARY
+The full offline checks are clean: 1868 tests passed, compileall passed, and git diff --check found no whitespace errors. I staged exactly three files: the campaign implementation, its focused tests, and the development conversation log. I am creating the requested one-off checkpoint commit now, then I will push main and verify the remote merge state.
+
+
+[2026-08-04 2:43:21 AM NZST] CODEX COMMENTARY
+The one-off publication succeeded. Commit a7a4b11 is now on remote main, and git ls-remote confirms the remote branch resolves to a7a4b11ffb78d0b715d0fb59bf671907aae62236. Because the checked-out branch was already main, the remote update was the merge into main; there was no separate feature branch or pull request to merge. The only local modification now is the post-staging conversation-log entries.
+
+
+[2026-08-04 2:43:30 AM NZST] CODEX FINAL
+One-off publication complete: commit a7a4b11 was created from the verified campaign changes and pushed directly to remote main. Remote main resolves to a7a4b11ffb78d0b715d0fb59bf671907aae62236. Offline verification passed with 1868 pytest tests, compileall, and git diff --check. No separate merge was required because the working branch was already main.
+
+
+[2026-08-04 2:43:49 AM NZST] CODEX COMMENTARY
+I am resuming the autonomous-HERO work from the published checkpoint. I will first verify the current branch, campaign checkpoint, source revision, and running-process state, then choose the next concrete progression blocker that can be removed and validate it with offline tests plus one bounded no-steering live segment.
+
+
+[2026-08-04 2:46:21 AM NZST] CODEX COMMENTARY
+The checkpoint is still Kestrel at level 19 in the healer, with flight and food funding required and no live worker processes beyond the Discord streamer. Source runs/dd4-source is current at revision 1b759f5. The new funding fallback is present, but a direct selector audit exposed a deeper generic issue: Bardoosh is recorded as a successful funding target, yet the all-area candidate ranker does not return that registered policy candidate, so the fallback cannot reuse it. I am tracing that candidate-registration boundary before launching another live segment.
+
+
+[2026-08-04 2:47:37 AM NZST] CODEX COMMENTARY
+The source audit confirms the omission: Bardoosh loads at source level 12 with a normal live range of 10-14, and at Kestrel level 19 that range is exactly the prohibited XP band. The generic ranker discards it before the funding selector can apply its explicit required-loot, money-only exception. I will add an opt-in include_below_band parameter used only by provision funding, keep ordinary XP ranking unchanged, and add both ranker and selector regressions proving the separation.
+
+
+[2026-08-04 2:48:39 AM NZST] CODEX COMMENTARY
+The blocker is now removed in code and the live checkpoint selects Bardoosh as intended: ambush.are:4515:4514, source range 10-14, safe, with three prior same-reboot kills. The opt-in ranker path is covered by seven focused tests, compileall, and diff checks. I am running the complete offline suite now; after it passes I will launch one autonomous funding segment and inspect whether the character acquires saleable loot, food, and flight money without steering.
+
+
+[2026-08-04 2:49:30 AM NZST] CODEX COMMENTARY
+The full offline suite passes: 1869 tests in 25.55 seconds. I am starting the bounded live validation now with one autonomous campaign segment, no manual MUD commands, and a 264-second segment ceiling. The expected policy is provision-funding against the previously successful Bardoosh carrier; I will treat only persisted objective-kill and sale/food/flight evidence as proof.
+
+
+[2026-08-04 2:50:32 AM NZST] CODEX COMMENTARY
+The autonomous funding segment is still running inside its bounded 264-second window; there is no command prompt output or manual intervention. I am leaving the live connection alone and will inspect the persisted run and transcript as soon as the segment returns.
+
+
+[2026-08-04 2:51:12 AM NZST] CODEX COMMENTARY
+The live segment remains bounded and active after roughly another half-minute. I am not sending recovery or steering commands while it is inside the field policy; the next action will be evidence inspection, not a hand-guided continuation.
+
+
+[2026-08-04 2:52:16 AM NZST] CODEX COMMENTARY
+The no-steering live segment completed in 144 seconds. It killed the exact Bardoosh objective and cleared both funding flags, but the structured objective record has xp_gained: null, so I am auditing the transcript and run events before calling this a successful progression-money proof. The checkpoint is 3084 at level 19; no level gain is being claimed from this segment.
+
+
+[2026-08-04 2:53:19 AM NZST] CODEX COMMENTARY
+Evidence inspection confirms the new path is behaving as a required-loot funding action: run 2966, segment 1278, 101 commands, exact Bardoosh kill, hard leather helmet acquired, healer return, and no XP credited because the target is below-band. The flight retry marker remains set and no loot sale occurred in this segment, so the funding loop is not yet complete. I am allowing the next autonomous segment to choose its own liquidation or flight-retry policy.
+
+
+[2026-08-04 2:54:19 AM NZST] CODEX COMMENTARY
+The next autonomous segment selected liquidate-loot and completed in about 43 seconds at the healer. The campaign remains level 19, but this is useful evidence: the required loot was handed to the normal sale policy, while the flight retry marker correctly stayed active because the earlier purchase was still unaffordable. I am checking the sale record and then will let the campaign make its next autonomous funding decision.
+
+
+[2026-08-04 2:54:35 AM NZST] CODEX COMMENTARY
+The sale evidence is clean: run 2967 sold the acquired hard leather helmet to the Armoury for 26 copper, with the normal source-backed liquidation path and no manual commands. The campaign still has flight retry pending, so I am launching the next bounded segment to test whether that money is now enough for flight or whether the generic funding loop correctly returns to another source-safe candidate.
+
+
+[2026-08-04 2:55:38 AM NZST] CODEX COMMENTARY
+The restock transition also completed autonomously: checkpoint 3090 now has one big pot pie, a filled water skin, and three silver with flight still required. The funding loop is therefore making measurable progress but needs another saleable carrier drop before a flight purchase can succeed. I am continuing with one more bounded no-steering segment to test the completed-target reuse under the current reboot.
+
+
+[2026-08-04 2:56:25 AM NZST] CODEX COMMENTARY
+The next segment reached buy-flight-potion autonomously and confirmed the price is still unaffordable; checkpoint 3092 preserves flight_required: true and the failed purchase evidence. This is the intended bounded retry boundary, not a hang. I am inspecting the next policy choice now so the engine can either resume the funding loop or record a genuine temporary-unavailable state without manual steering.
+
+
+[2026-08-04 2:56:52 AM NZST] CODEX COMMENTARY
+The live sequence exposed the next real blocker: after restock, a stocked character with no flight and insufficient copper is not marked as needing provision funding because the context only considered missing food. The failed flight purchase then leaves the character at an unavailable flight gate instead of returning to a money loop. I will broaden the generic funding trigger to include an explicit unresolved flight requirement, add a regression for the stocked-but-grounded state, and rerun the offline suite before resuming live work.
+
+
+[2026-08-04 2:57:56 AM NZST] CODEX COMMENTARY
+The grounded-character fix is in place: _policy_for_state now treats a live unresolved flight requirement as generic funding demand, while preserving the existing unknown-affect behavior and food path. The targeted campaign/progression tests pass (8 tests), compileall and diff checks pass. I am running the full suite, then I will resume the live campaign from checkpoint 3092 without steering.
+
+
+[2026-08-04 2:58:35 AM NZST] CODEX COMMENTARY
+The full suite found one regression-test fixture mismatch, not a production failure: the new grounded-flight assertion omitted the affects snapshot, and the engine intentionally treats a missing affects payload as unknown rather than grounded. I will make the fixture explicit with an empty affects list, rerun the suite, and keep that conservative unknown-state behavior.
+
+
+[2026-08-04 2:59:28 AM NZST] CODEX COMMENTARY
+The corrected suite is green at 1869 tests. A direct policy dry-run against checkpoint 3092 now selects provision-funding for the stocked but grounded character, and the source selector again resolves the completed Bardoosh carrier. I am launching that live segment now with a 180-second ceiling and no steering.
+
+
+[2026-08-04 3:00:25 AM NZST] CODEX COMMENTARY
+The resumed funding segment is active under the bounded 180-second limit. It has not returned a result yet, and I am leaving the MUD connection untouched so the outcome remains a no-steering validation.
+
+
+[2026-08-04 3:01:11 AM NZST] CODEX COMMENTARY
+The same no-steering segment remains within its time bound after another half-minute. I am waiting for the runner's normal return or bounded abort rather than intervening in combat or travel.
+
+
+[2026-08-04 3:02:25 AM NZST] CODEX COMMENTARY
+The funding run is still inside the 180-second ceiling after the longer route and recovery phase. No steering command has been issued; I will inspect the persisted checkpoint immediately when the process returns.
+
+
+[2026-08-04 3:03:14 AM NZST] CODEX COMMENTARY
+The no-steering funding segment completed and the new generic trigger worked: it selected Bardoosh, returned safely, and advanced the checkpoint to 3094 at level 19 with flight_required cleared and flight_retry_pending set for the next purchase attempt. The objective record is again a required-loot kill with no credited XP; the apparent XP increase is being audited rather than attributed to Bardoosh.
+
+
+[2026-08-04 3:03:38 AM NZST] CODEX COMMENTARY
+Run 2970 provides the stronger funding evidence: the exact required-loot segment acquired five Bardoosh drops (helmet, leggings, boots, spear, gauntlets), returned to healer room 3054, and left the flight retry marker armed. DD4 credited 120 XP in the live snapshot despite the below-band policy classification, so I am retaining it as funding-only evidence and not promoting it into XP policy. The next autonomous step should liquidate these drops before retrying flight.
+
+
+[2026-08-04 3:04:37 AM NZST] CODEX COMMENTARY
+The post-funding liquidation segment is still active within its 180-second bound. I am allowing the normal shop-compatible sale route to finish before judging whether the accumulated money is enough for flight.
+
+
+[2026-08-04 3:04:51 AM NZST] CODEX COMMENTARY
+Liquidation completed at checkpoint 3097. The five drops converted into 25 silver and 21 copper, enough to cross the flight-purchase threshold; flight retry remains armed and the character is still safely at level 19 in the healer. I am letting the next autonomous segment attempt the purchase and confirm the affect live.
+
+
+[2026-08-04 3:05:44 AM NZST] CODEX COMMENTARY
+Flight funding is now proven end to end without steering: checkpoint 3099 has active fly, flight flags cleared, purchase failure false, and 12 silver plus 4 copper remaining. The engine traversed funding, liquidation, restock, and purchase as separate autonomous segments. I am checking the next level-19 progression policy and will continue the character into the next executable hunt frontier.
+
+
+[2026-08-04 3:05:58 AM NZST] CODEX COMMENTARY
+The next policy is a fresh level-19/20 Watchman hunt, not a research report: the prior probe was viable and the new flight affect satisfies its route gate. I am launching one bounded exact-target hunt with no steering; a kill will be counted only from the persisted objective-kill record and live XP delta.
+
+
+[2026-08-04 3:06:55 AM NZST] CODEX COMMENTARY
+The Watchman hunt is active inside its 264-second bound. This is a fully autonomous field run; I am waiting for its route, combat, and healer-return evidence rather than issuing any MUD command.
+
+
+[2026-08-04 3:08:09 AM NZST] CODEX COMMENTARY
+The Watchman route is still running after roughly another minute, with no manual intervention. The bounded runner is responsible for combat progress and safe return; I will inspect the persisted transcript and objective result when it exits.
+
+
+[2026-08-04 3:09:24 AM NZST] CODEX COMMENTARY
+The Watchman hunt remains within its hard 264-second segment ceiling. I am continuing to wait; if the route reaches the runtime boundary, the runner must request healer return and checkpoint rather than closing during field combat.
+
+
+[2026-08-04 3:09:45 AM NZST] CODEX COMMENTARY
+The Watchman hunt returned safely at checkpoint 3101, level 19, with no objective kill and a 136-XP decrease from the bounded flee/recovery path. I am not promoting it. I am inspecting the persisted rejection and next policy rotation so the engine can move to another verified or research-gated level-19 target instead of repeating this miss.
+
+
+[2026-08-04 3:10:04 AM NZST] CODEX COMMENTARY
+The policy rotation is working: after the Watchman no-kill, the next dry selection is the registered Shadow Keep Soldier/Wraith hunt, not a repeat of Watchman. Its earlier probe was viable and the current reboot evidence is still scoped; I am launching that bounded hunt with no steering.
+
+
+[2026-08-04 3:11:01 AM NZST] CODEX COMMENTARY
+The Shadow Keep hunt is active within its bounded 264-second window. I am leaving its route and combat decisions autonomous and will report the persisted target, XP, and recovery result when it returns.
+
+
+[2026-08-04 3:11:52 AM NZST] CODEX COMMENTARY
+The Shadow Keep segment completed safely in about 93 seconds but found no objective kill and left XP unchanged. I am auditing its research result now; the important distinction is whether the target was absent, route-blocked, or rejected by live consideration, because only the first two should rotate without weakening the generic combat gates.
+
+
+[2026-08-04 3:12:09 AM NZST] CODEX COMMENTARY
+The Shadow Keep result is a clean current-reboot absence, not a combat rejection: its hunt result records absent=true and the earlier probe remains viable. The selector advances to the Highland Keeper probe, so I am allowing that bounded research step to run next without steering.
+
+
+[2026-08-04 3:13:07 AM NZST] CODEX COMMENTARY
+The Highland Keeper probe is active inside its 180-second bound. I am waiting for the route recognizer to distinguish a genuine Keeper observation from incidental transit combat, with no manual MUD input.
+
+
+[2026-08-04 3:14:18 AM NZST] CODEX COMMENTARY
+The Highland route remains active after about another minute, still within the hard segment limit. I am not retrying or steering while the current probe owns the connection; its persisted result will determine the next policy.
+
+
+[2026-08-04 3:15:19 AM NZST] CODEX COMMENTARY
+The Highland run produced the first genuinely productive post-level-19 hunt: the exact Keeper objective was killed for 858 XP, the character returned safely, and checkpoint 3105 is still level 19 with 179,175 XP. I am preserving this as reusable same-reboot evidence and checking the next rotation rather than assuming one kill proves a repeatable band.
+
+
+[2026-08-04 3:15:36 AM NZST] CODEX COMMENTARY
+The productive Keeper run also recovered a source key and leechblood paste, but the next dry selection correctly schedules restock before another field segment. I am allowing that maintenance pass to run autonomously, then the policy selector can resume the level-19 hunt rotation with the new 858-XP evidence recorded.
+
+
+[2026-08-04 3:16:33 AM NZST] CODEX COMMENTARY
+Restock completed at checkpoint 3108 with four pies, leechblood paste, and a filled water skin. The next dry selection is the same source-registered Highland Keeper hunt, with active flight still present and the prior objective kill recorded. I am launching another bounded no-steering pass to test repeatability and advance toward level 20.
+
+
+[2026-08-04 3:17:31 AM NZST] CODEX COMMENTARY
+The repeat Highland hunt is active inside the 264-second bound. I am waiting for its exact target and XP outcome without steering the character.
+
+
+[2026-08-04 3:18:42 AM NZST] CODEX COMMENTARY
+The repeat Highland route remains active after about another minute; no commands are being injected. The runner will either finish the productive circuit or checkpoint a bounded safe return, preserving the evidence either way.
+
+
+[2026-08-04 3:19:54 AM NZST] CODEX COMMENTARY
+The repeat hunt is still inside the 264-second ceiling after the longer travel/combat phase. I am continuing to wait for the normal bounded return and will not mistake a slow route for a stuck process.
+
+
+[2026-08-04 3:20:54 AM NZST] CODEX COMMENTARY
+The repeat Keeper segment also succeeded for 498 XP; checkpoint 3111 is level 19 with 23,417 XP to level 20, four pies, water, and no flight deficit. The dry selector keeps the same productive Keeper route. I am running the next three bounded campaign segments as one unattended work unit so maintenance and hunt rotation can advance without steering, while I monitor the bounded process.
+
+
+[2026-08-04 3:21:52 AM NZST] CODEX COMMENTARY
+The three-segment unattended work unit is active; the first bounded Keeper pass has not returned yet. No steering commands have been sent, and the campaign runner owns all maintenance, combat, and recovery decisions.
+
+
+[2026-08-04 3:23:05 AM NZST] CODEX COMMENTARY
+The first segment of the unattended work unit is still within its 264-second ceiling after roughly a minute and a half. I am allowing the bounded route to finish before reporting intermediate evidence, so the next selection remains fully autonomous.
+
+
+[2026-08-04 3:24:21 AM NZST] CODEX COMMENTARY
+The unattended Keeper segment remains bounded and active after the longer field route. I am keeping the connection untouched; the tool will return before the next 264-second segment can begin.
+
+
+[2026-08-04 3:25:34 AM NZST] CODEX COMMENTARY
+The first work-unit segment has not returned yet, but it remains inside the configured per-segment bound. This is a slow live MUD route rather than an unbounded process; I am continuing to monitor it.
+
+
+[2026-08-04 3:26:49 AM NZST] CODEX COMMENTARY
+The unattended three-segment invocation has exceeded the usual single-route duration while its first connection is still active. I am checking process liveness without touching it; the configured campaign runner remains bounded per segment, and I will stop waiting only if the process itself is demonstrably orphaned.
+
+
+[2026-08-04 3:28:28 AM NZST] CODEX COMMENTARY
+The three-segment work unit completed all bounded segments and stopped cleanly at checkpoint 3116. Kestrel is level 19 with 179,947 XP, 23,353 XP to level 20, and repeated Keeper evidence; the latest Shadow Keep absence is cooldown-scoped. The selector now reports unavailable for this reboot because the remaining research routes are temporarily exhausted, so I am auditing the two transient python processes and then recording the exact next blocker rather than looping blindly.
+
+
+[2026-08-04 3:30:14 AM NZST] CODEX COMMENTARY
+The current unavailable state is a second campaign-control bug, not a missing MUD route: the state contains a reboot-scoped absent target with a positive reset cooldown, but the unavailable-policy branch only knows how to wait for crowd cooldowns and marks the campaign blocked. I will make any active absence/dynamic-hazard cooldown return a ready, bounded reset-wait result, add a regression, and use the existing reset_retries/reset_wait controller to resume the Keeper route safely.
+
+
+[2026-08-04 3:31:04 AM NZST] CODEX COMMENTARY
+The new absence regression revealed that this path is already covered by the earlier campaign branch: when the last policy itself has reboot-scoped absent evidence, CampaignRunner returns the correct awaiting-reset result before reaching the unavailable-policy branch. I am removing the redundant branch and test instead of keeping dead duplication; the existing test will remain the authoritative guard, and I will rerun the focused and full suites.
+
+
+[2026-08-04 3:33:08 AM NZST] CODEX COMMENTARY
+The offline suite is green again at 1869 tests. The existing campaign reset-wait branch already prevents this absent-route state from becoming a hard block; I am now exercising that controller directly with one bounded 30-second outside-area wait and one retry, without changing the cooldown semantics or sending MUD commands. This will tell us whether the current reset evidence can resume the productive route.
+
+
+[2026-08-04 3:34:36 AM NZST] CODEX COMMENTARY
+I am preparing the requested one-off publication now: first I will inspect the current branch and uncommitted scope, then create an intentional local commit, push it, and merge it into the remote main branch. I will keep the live MUD work untouched while doing the repository operation.
+
+
+[2026-08-04 3:35:44 AM NZST] CODEX COMMENTARY
+The publication scope is clean and the final verification passed: 1869 pytest tests and compileall are green. The commit will contain the generic below-band funding opt-in, the unresolved-flight funding loop, their regression tests, and the recorded development log. I am staging those five files now, then I will create the one-off commit and push main after checking the remote has not moved.

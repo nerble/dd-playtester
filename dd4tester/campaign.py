@@ -1802,6 +1802,18 @@ class CampaignRunner:
             and state.get(_PROVISION_FUNDING_REQUIRED_KEY)
             and not has_food
         )
+        has_flight = (
+            state.get("affects") is None
+            or any(
+                _state_has_active_affect(state.get("affects"), effect)
+                for effect in ("fly", "levitation")
+            )
+        )
+        needs_flight_funding = bool(
+            not school_exit_required
+            and state.get(_FLIGHT_FUNDING_REQUIRED_KEY)
+            and not has_flight
+        )
         vault_stow_items = _campaign_vault_stow_items(
             state,
             gear_catalog=self._gear_catalog,
@@ -1867,11 +1879,11 @@ class CampaignRunner:
                 and state.get(_PROVISION_FUNDING_REQUIRED_KEY)
             ),
             needs_provision_funding=bool(
-                # Flight is valuable but optional.  A failed or unaffordable
-                # purchase must not strand a stocked character in a
-                # money-only loop; the flight marker is retained so a later
-                # successful funding pass can retry the purchase.
-                needs_food_funding
+                # A failed or unaffordable flight purchase must not strand a
+                # stocked character at an unavailable flight gate. The
+                # unresolved flight marker re-enters the same generic,
+                # source-ranked money loop used for food funding.
+                needs_food_funding or needs_flight_funding
             ),
             has_weapon=bool(
                 school_exit_required
@@ -2002,13 +2014,7 @@ class CampaignRunner:
                 self._historical_sanctuary_potion
                 or bool(state.get("campaign_acquired_sanctuary_potion"))
             ),
-            has_flight=(
-                state.get("affects") is None
-                or any(
-                    _state_has_active_affect(state.get("affects"), effect)
-                    for effect in ("fly", "levitation")
-                )
-            ),
+            has_flight=has_flight,
             can_attempt_flight_purchase=_state_copper_value(state) >= 90,
             flight_purchase_failed=bool(state.get("magic_shop_purchase_failed")),
             flight_loan_attempted=bool(
@@ -5766,6 +5772,7 @@ def _select_provision_funding_candidate(
         world,
         character_level=character_level,
         boot_kill_counts=boot_kill_counts,
+        include_below_band=True,
         character_max_hp=(
             int(state["max_hp"])
             if isinstance(state.get("max_hp"), (int, float))

@@ -326,13 +326,16 @@ def test_below_band_funding_fallback_prefers_shortest_safe_route(
 
     long_route = candidate("long carrier", ("south",) * 8, 300)
     short_route = candidate("short carrier", ("south",) * 2, 0)
+    rank_kwargs: dict[str, object] = {}
     monkeypatch.setattr(
         "dd4tester.campaign.load_world_source",
         lambda *args, **kwargs: object(),
     )
     monkeypatch.setattr(
         "dd4tester.campaign.rank_hunt_candidates",
-        lambda *args, **kwargs: [long_route, short_route],
+        lambda *args, **kwargs: (
+            rank_kwargs.update(kwargs) or [long_route, short_route]
+        ),
     )
 
     selected = _select_provision_funding_candidate(
@@ -354,6 +357,7 @@ def test_below_band_funding_fallback_prefers_shortest_safe_route(
     )
 
     assert selected is short_route
+    assert rank_kwargs["include_below_band"] is True
 
 
 def test_funding_candidate_rotates_failed_attempts_after_pool_exhaustion(
@@ -9702,11 +9706,12 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(tmp_path) -> None:
         **with_food_after_failed_funding,
         _PROVISION_FUNDING_REQUIRED_KEY: False,
         _FLIGHT_FUNDING_REQUIRED_KEY: True,
+        "affects": [],
         "magic_shop_purchase_failed": True,
         "campaign_flight_loan_attempted": True,
     }
     assert runner._policy_for_state(with_food_after_failed_flight_funding).policy_id == (
-        "ambush-war-dog-8-9"
+        "provision-funding"
     )
 
     without_food_after_failed_funding = {

@@ -323,6 +323,7 @@ def rank_hunt_candidates(
     character_level: int,
     boot_kill_counts: Mapping[str, int] | None = None,
     include_xp_only: bool = False,
+    include_below_band: bool = False,
     character_max_hp: int | None = None,
     include_all_areas: bool = False,
 ) -> list[HuntCandidate]:
@@ -363,7 +364,7 @@ def rank_hunt_candidates(
         # DD4's do_consider treats a target five or more levels below the
         # character as a forbidden low-XP branch. Keep a target only when its
         # normal reset fuzz can still produce a useful live consideration.
-        if level_range[1] <= character_level - 5:
+        if not include_below_band and level_range[1] <= character_level - 5:
             continue
 
         loot_objects = _loot_objects(world, reset.object_vnums)
