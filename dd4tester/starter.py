@@ -15162,6 +15162,46 @@ def solace_lord_doom_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def solace_magnus_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Probe the source-isolated Solace Magnus reset without combat."""
+    trivial_bystanders = (
+        "Fewmaster Toede",
+        "a Giant Kodiak bear",
+        "the goblin",
+        "the goblin lieutenant",
+        "the beastly fido",
+        "an alley cat",
+    )
+    return (
+        FieldHuntStop(
+            (),
+            "Magnus wizard",
+            command_keyword="magnus",
+            actions=("where magnus",),
+            abort_if_where_target_absent=True,
+            trivial_bystanders=trivial_bystanders,
+            consider_only=True,
+            exact_target=True,
+            maximum_target_count=1,
+            require_isolated=True,
+            maximum_level_offset=1,
+            abort_after_consider_rejection=True,
+        ),
+    )
+
+
+def solace_magnus_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Hunt one live-vetted Magnus only after sanctuary is available."""
+    return tuple(
+        replace(
+            stop,
+            consider_only=False,
+            minimum_health_ratio=0.95,
+        )
+        for stop in solace_magnus_research_stops()
+    )
+
+
 def gnome_hermit_hunt_route() -> Fastwalk:
     """Return the source-derived recall route to the Gnome hermit crab."""
     return Fastwalk("gnome-hermit", 1, 7, "2s5es6ene3n")

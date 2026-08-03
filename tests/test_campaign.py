@@ -3490,6 +3490,91 @@ def test_dynamic_route_hazard_waits_and_reopens_after_reset() -> None:
     assert "campaign_fastwalk_abort_reason" not in retried
 
 
+def test_stale_dynamic_route_hazard_does_not_block_a_different_policy(
+    tmp_path,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    policy = ProgressionPolicy(
+        policy_id="solace-magnus-probe-19-20",
+        minimum_level=19,
+        maximum_level=20,
+        status="research",
+        execution="solace-magnus-research",
+        summary="Probe a different current-band route.",
+        evidence=(),
+        practice_skill=None,
+    )
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="highland-keeper-probe-17-20",
+            reason="ready",
+            state={
+                "level": 19,
+                "xp": 180_000,
+                "world_boot_id": "boot-1",
+                "campaign_last_policy": "highland-keeper-probe-17-20",
+                "campaign_fastwalk_abort_reason": (
+                    "unexpected combat interrupted a no-combat field probe"
+                ),
+                "campaign_research_results": {
+                    "highland-keeper-probe-17-20": {
+                        "observed": False,
+                        "viable": False,
+                        "route_hazard": (
+                            "unexpected combat interrupted a no-combat field probe"
+                        ),
+                        "boot_id": "boot-1",
+                    }
+                },
+                "campaign_research_absence_cooldowns": {
+                    "highland-keeper-probe-17-20": 3,
+                },
+                "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
+            },
+        )
+
+    async def different_route_segment(
+        character,
+        profile_path: Path,
+    ) -> RunResult:
+        return _record_segment_run(
+            character.database,
+            profile_path,
+            {
+                "level": 19,
+                "xp": 180_100,
+                "world_boot_id": "boot-1",
+            },
+        )
+
+    class DifferentRouteRunner(CampaignRunner):
+        def _policy_for_state(self, state) -> ProgressionPolicy:
+            return policy
+
+    result = asyncio.run(
+        DifferentRouteRunner(
+            spec,
+            config_path,
+            segment_runner=different_route_segment,
+        ).run()
+    )
+
+    assert result.ready_for_next_segment is True
+    with RunStorage(database) as storage:
+        segments = storage.list_campaign_segments(campaign_id)
+    assert [segment["phase"] for segment in segments] == [policy.policy_id]
+
+
 def test_campaign_reconstructs_latest_flight_purchase_result(tmp_path) -> None:
     with RunStorage(tmp_path / "runs.sqlite3") as storage:
         campaign_id = storage.create_campaign(
@@ -7336,6 +7421,68 @@ def test_solace_lord_doom_dispatches_research_and_bounded_hunt(
         assert stop.consider_only is consider_only
         assert stop.exact_target is True
         assert stop.require_isolated is True
+        assert captured["require_fastwalk_kill"] is False
+        assert captured.get("fastwalk_kill_limit") == (
+            None if consider_only else 1
+        )
+
+
+def test_solace_magnus_dispatches_research_and_sanctuary_bounded_hunt(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, config_path, {"level": 19})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    for execution, consider_only in (
+        ("solace-magnus-research", True),
+        ("solace-magnus-hunt", False),
+    ):
+        captured.clear()
+        policy = ProgressionPolicy(
+            policy_id=(
+                "solace-magnus-probe-19-20"
+                if consider_only
+                else "solace-magnus-hunt-19-20"
+            ),
+            minimum_level=19,
+            maximum_level=20,
+            status="research",
+            execution=execution,
+            summary="Source-backed Magnus policy.",
+            evidence=(),
+            practice_skill=None,
+            segment_kill_limit=None if consider_only else 1,
+        )
+
+        asyncio.run(
+            _run_policy_segment(
+                spec.character,
+                spec.character_profile,
+                policy,
+            )
+        )
+
+        assert captured["fastwalk_route"].name == "solace magnus"
+        (stop,) = captured["fastwalk_hunt_stops"]
+        assert stop.target == "Magnus wizard"
+        assert stop.command_keyword == "magnus"
+        assert stop.consider_only is consider_only
+        assert stop.exact_target is True
+        assert stop.require_isolated is True
+        assert stop.minimum_health_ratio == (
+            0.225 if consider_only else 0.95
+        )
         assert captured["require_fastwalk_kill"] is False
         assert captured.get("fastwalk_kill_limit") == (
             None if consider_only else 1

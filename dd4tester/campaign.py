@@ -156,6 +156,8 @@ from .starter import (
     pirates_seas_rastafarians_research_stops,
     solace_lord_doom_hunt_stops,
     solace_lord_doom_research_stops,
+    solace_magnus_hunt_stops,
+    solace_magnus_research_stops,
     thalos_long_dagger_hunt_route,
     thalos_long_dagger_hunt_stops,
     vampire_hive_wounded_vampire_hunt_stops,
@@ -265,6 +267,8 @@ _SOLACE_LORD_DOOM_HUNT_POLICY_ID = "solace-lord-doom-hunt-18-20"
 _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY_ID = (
     "solace-lord-doom-sanctuary-hunt-18-20"
 )
+_SOLACE_MAGNUS_POLICY_ID = "solace-magnus-probe-19-20"
+_SOLACE_MAGNUS_HUNT_POLICY_ID = "solace-magnus-hunt-19-20"
 _PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_POLICY_ID = (
     "plains-aruncus-thief-probe-19-20"
 )
@@ -350,6 +354,8 @@ _RESEARCH_ABSENCE_RETRY_COOLDOWNS = {
     _PYRAMID_ALI_BABA_HUNT_POLICY_ID: 3,
     _SOLACE_LORD_DOOM_POLICY_ID: 3,
     _SOLACE_LORD_DOOM_HUNT_POLICY_ID: 3,
+    _SOLACE_MAGNUS_POLICY_ID: 3,
+    _SOLACE_MAGNUS_HUNT_POLICY_ID: 3,
     _PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_POLICY_ID: 3,
     _PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_HUNT_POLICY_ID: 3,
     _SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_POLICY_ID: 3,
@@ -1613,6 +1619,8 @@ class CampaignRunner:
             if (
                 not self.retry_stalled
                 and policy.execution not in _MAINTENANCE_EXECUTIONS
+                and policy.policy_id
+                == str(state.get("campaign_last_policy") or "")
                 and _campaign_has_pending_dynamic_route_hazard(state)
             ):
                 message = (
@@ -4215,6 +4223,28 @@ async def _run_policy_segment(
                 solace_lord_doom_hunt_stops()
                 if lord_doom_hunt
                 else solace_lord_doom_research_stops()
+            ),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution in {
+        "solace-magnus-research",
+        "solace-magnus-hunt",
+    }:
+        magnus_hunt = policy.execution == "solace-magnus-hunt"
+        return await starter_runner(
+            objective_level=policy.maximum_level or 20,
+            fastwalk_route=route_named("solace magnus"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=(
+                solace_magnus_hunt_stops()
+                if magnus_hunt
+                else solace_magnus_research_stops()
             ),
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=True,
@@ -7702,6 +7732,8 @@ def _research_absence_retry_group(policy_id: str) -> frozenset[str]:
                 _NOBLEMAN_LEVEL_SEVENTEEN_PROBE_POLICY_ID,
             }
         )
+    if policy_id in {_SOLACE_MAGNUS_POLICY_ID, _SOLACE_MAGNUS_HUNT_POLICY_ID}:
+        return frozenset({_SOLACE_MAGNUS_POLICY_ID, _SOLACE_MAGNUS_HUNT_POLICY_ID})
     return frozenset({policy_id})
 
 

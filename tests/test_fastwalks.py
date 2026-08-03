@@ -692,3 +692,30 @@ def test_solace_lord_doom_route_is_source_derived_and_recall_safe() -> None:
         "south",
     )
 
+
+def test_solace_magnus_route_is_source_derived_and_recall_safe() -> None:
+    route = route_named("Solace Magnus")
+
+    assert route.minimum_level == 19
+    assert route.maximum_level == 20
+    assert route.recall_after_loot is True
+    assert len(route.commands) == 61
+    assert route.commands[:7] == (
+        "south",
+        "south",
+        "south",
+        "south",
+        "south",
+        "south",
+        "west",
+    )
+    assert route.commands[-7:] == (
+        "west",
+        "north",
+        "north",
+        "east",
+        "east",
+        "open south",
+        "south",
+    )
+

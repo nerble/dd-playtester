@@ -3206,6 +3206,53 @@ _SOLACE_LORD_DOOM_HUNT_POLICY = replace(
 )
 
 
+_SOLACE_MAGNUS_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="solace-magnus-probe-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    status="research",
+    execution="solace-magnus-research",
+    summary=(
+        "Reach Solace's source-isolated Magnus reset and record fresh "
+        "consideration without initiating combat."
+    ),
+    evidence=(
+        "DD4 source revision 1b759f5: mobile 10243, Magnus the wizard, "
+        "resets once in room 10300 at source level 19 with normal 17-21 "
+        "live fuzz; the source mobile is non-aggressive and has no reset "
+        "companion.",
+        "Magnus equips a robe and spellbook and uses spec_cast_mage. At level "
+        "19 the source special can select blindness, chill touch, weaken, "
+        "lightning bolt, fireball, or colour spray while fighting; this makes "
+        "the live consider and route-safety evidence mandatory.",
+        "The source-derived route is a 61-command return path from recall and "
+        "crosses three closed doors before reaching private room 10300. The "
+        "first pass is exact-target, source-isolated, where-preflighted, and "
+        "consider-only; unknown or useful-band route attackers abort the probe.",
+    ),
+    practice_skill="backstab",
+)
+
+
+_SOLACE_MAGNUS_HUNT_POLICY = replace(
+    _SOLACE_MAGNUS_RESEARCH_POLICY,
+    policy_id="solace-magnus-hunt-19-20",
+    execution="solace-magnus-hunt",
+    summary=(
+        "Use a fresh viable Magnus probe for one sanctuary-protected, "
+        "full-health thief fight, then return to the Midgaard healer."
+    ),
+    evidence=(
+        *_SOLACE_MAGNUS_RESEARCH_POLICY.evidence,
+        "Promotion requires a carried purple sanctuary potion, at least 95 "
+        "percent departure health, an exact sole target, a maximum one-level "
+        "live offset, one confirmed kill, and immediate healer recovery. The "
+        "engine must not spend this route as an unprotected caster fight.",
+    ),
+    segment_kill_limit=1,
+)
+
+
 _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY = replace(
     _SOLACE_LORD_DOOM_HUNT_POLICY,
     policy_id="solace-lord-doom-sanctuary-hunt-18-20",
@@ -6827,6 +6874,7 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 _SHIRE_ELVEN_WIZARD_HUNT_POLICY,
                 _PYRAMID_ALI_BABA_HUNT_POLICY,
                 _SOLACE_LORD_DOOM_HUNT_POLICY,
+                _SOLACE_MAGNUS_HUNT_POLICY,
                 _HIGHLAND_KEEPER_HUNT_POLICY,
             ),
         )
@@ -6836,6 +6884,7 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
                 _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
                 _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY.policy_id,
+                _SOLACE_MAGNUS_HUNT_POLICY.policy_id,
             }
             if (
                 context.character_class == "thief"
@@ -7408,6 +7457,28 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                     shire_prince_policy,
                     practice_skill=context.practice_skill,
                 )
+            magnus_policy = _research_hunt_policy(
+                context,
+                probe=_SOLACE_MAGNUS_RESEARCH_POLICY,
+                hunt=_SOLACE_MAGNUS_HUNT_POLICY,
+            )
+            if magnus_policy is not None:
+                if (
+                    magnus_policy.policy_id == _SOLACE_MAGNUS_HUNT_POLICY.policy_id
+                    and not context.has_sanctuary_potion
+                ):
+                    return replace(
+                        _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
+                        summary=(
+                            "Acquire one source-verified purple sanctuary "
+                            "potion before the live Magnus caster hunt."
+                        ),
+                        practice_skill=context.practice_skill,
+                    )
+                return replace(
+                    magnus_policy,
+                    practice_skill=context.practice_skill,
+                )
         if normalized_level >= 18:
             horsehead_policy = _research_hunt_policy(
                 context,
@@ -7886,6 +7957,7 @@ def _caster_hunt_requires_sanctuary_replenishment(
         _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
         _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
         _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY.policy_id,
+        _SOLACE_MAGNUS_HUNT_POLICY.policy_id,
     ):
         result = (context.research_results or {}).get(policy_id)
         if (
@@ -8065,6 +8137,7 @@ def _historical_productive_research_hunt(
         (_SHIRE_ELVEN_WIZARD_RESEARCH_POLICY, _SHIRE_ELVEN_WIZARD_HUNT_POLICY),
         (_PYRAMID_ALI_BABA_RESEARCH_POLICY, _PYRAMID_ALI_BABA_HUNT_POLICY),
         (_SOLACE_LORD_DOOM_RESEARCH_POLICY, _SOLACE_LORD_DOOM_HUNT_POLICY),
+        (_SOLACE_MAGNUS_RESEARCH_POLICY, _SOLACE_MAGNUS_HUNT_POLICY),
         (_ARGENT_BANDIT_LEADER_RESEARCH_POLICY, _ARGENT_BANDIT_LEADER_HUNT_POLICY),
         (_HIGHLAND_KEEPER_RESEARCH_POLICY, _HIGHLAND_KEEPER_HUNT_POLICY),
     )
@@ -8073,6 +8146,7 @@ def _historical_productive_research_hunt(
             _SHIRE_ELVEN_WIZARD_HUNT_POLICY.policy_id,
             _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
             _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
+            _SOLACE_MAGNUS_HUNT_POLICY.policy_id,
         }
     )
     for probe, hunt in pairs:

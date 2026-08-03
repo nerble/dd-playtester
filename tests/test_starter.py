@@ -142,6 +142,8 @@ from dd4tester.starter import (
     pyramid_ali_baba_research_stops,
     solace_lord_doom_hunt_stops,
     solace_lord_doom_research_stops,
+    solace_magnus_hunt_stops,
+    solace_magnus_research_stops,
     shire_bull_hunt_route,
     shire_bull_hunt_stops,
     shire_battle_master_research_stops,
@@ -262,6 +264,26 @@ def test_solace_lord_doom_probe_and_hunt_allow_only_source_trivial_bystanders() 
     assert hunt_stop.consider_only is False
     assert hunt_stop.minimum_health_ratio == 0.90
     assert hunt_stop.maximum_level_offset == 2
+
+
+def test_solace_magnus_probe_and_hunt_require_exact_isolated_caster_gates() -> None:
+    research_stop = solace_magnus_research_stops()[0]
+    hunt_stop = solace_magnus_hunt_stops()[0]
+
+    assert research_stop.target == "Magnus wizard"
+    assert research_stop.command_keyword == "magnus"
+    assert research_stop.actions == ("where magnus",)
+    assert research_stop.abort_if_where_target_absent is True
+    assert research_stop.consider_only is True
+    assert research_stop.exact_target is True
+    assert research_stop.require_isolated is True
+    assert research_stop.maximum_target_count == 1
+    assert research_stop.maximum_level_offset == 1
+    assert research_stop.abort_after_consider_rejection is True
+    assert "a Giant Kodiak bear" in research_stop.trivial_bystanders
+    assert hunt_stop.consider_only is False
+    assert hunt_stop.minimum_health_ratio == 0.95
+    assert hunt_stop.maximum_level_offset == 1
 
 
 def test_pyramid_fastwalk_has_a_no_recall_return_to_the_healer() -> None:

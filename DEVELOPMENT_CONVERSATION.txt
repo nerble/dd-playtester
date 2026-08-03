@@ -20012,3 +20012,55 @@ The strongest unregistered level-19 candidate is source mobile 10243, Magnus the
 
 [2026-08-04 4:57:19 AM NZST] CODEX COMMENTARY
 I am handling the requested one-off publication now: first I will inspect the local diff and branch state, then run the relevant verification, create an intentional commit, push it, and merge it into the remote main branch. I will stop retrying any remote step promptly if the host blocks it and leave the verified changes saved locally.
+
+
+[2026-08-04 4:59:15 AM NZST] CODEX FINAL
+One-off publication complete. Commit 0777e76 (Harden frontier retry and funding selection) was created on main and pushed to origin/main. Remote refs/heads/main resolves to 0777e7662affe66e83e057b521d0dde86910ee7c, so the requested merge is complete directly on the already-checked-out main branch. Verification passed with 1874 pytest tests, compileall, and git diff check. The only running Python process is the expected Discord streamer (PID 27976).
+
+
+[2026-08-04 4:59:38 AM NZST] CODEX COMMENTARY
+I am resuming the active autonomous-HERO objective after the publication checkpoint. Kestrel is still the live level-19 frontier, so this work unit will add the next reusable source-backed progression capability rather than merely report coverage: I will register the Solace Magnus probe/hunt boundary, add dispatcher and policy tests, run the full suite, and perform one bounded no-steering live validation if the offline gates pass.
+
+
+[2026-08-04 5:02:38 AM NZST] CODEX COMMENTARY
+The current selector confirms the existing level-19 Aruncus and Shire additions are reachable only after the earlier level-17/18 branch closes; I am placing Magnus in that same level-19 frontier, not in a dead fallback. The implementation will include a 63-command Solace route, exact source identity and where preflight, a consider-only first pass, a one-kill 95-percent-health hunt, and an explicit sanctuary gate because Magnus can cast blindness, weaken, lightning bolt, and fireball.
+
+
+[2026-08-04 5:08:22 AM NZST] CODEX COMMENTARY
+The focused checks are green: route expansion, starter-stop safeguards, Magnus dispatcher coverage, and level-19 selection/sanctuary promotion all pass. The route parser corrected the source path to 61 executable commands, and the policy evidence now matches that parsed command count. I am running the full offline suite next, then I will inspect Kestrel's persisted state before one bounded live probe.
+
+
+[2026-08-04 5:10:09 AM NZST] CODEX COMMENTARY
+The full suite is green at 1878 tests, compileall passes, and the dry selector against Kestrel's actual checkpoint chooses solace-magnus-probe-19-20. Kestrel is level 19, full health and movement in healer room 3054, flying, and has no sanctuary potion, so this live unit will be a consider-only probe and cannot initiate the Magnus hunt. I am launching it through the campaign runner with one 264-second cap and no reset retry or steering input.
+
+
+[2026-08-04 5:11:33 AM NZST] CODEX COMMENTARY
+The first live invocation exposed a real selector handoff defect rather than a MUD result: the campaign repaired an old Highland checkpoint, then the generic pending-hazard guard blocked the newly selected Magnus probe before opening a connection. I am fixing that guard to wait only when the selected policy is the hazardous policy itself, and I will add a regression test so a stale route hazard cannot suppress a different executable current-band route.
+
+
+[2026-08-04 5:12:40 AM NZST] CODEX COMMENTARY
+The handoff regression is fixed and its two focused tests pass. The stale Highland hazard now remains recorded for reset-scoped retry, but it no longer blocks a different selected policy; I am retrying the same bounded Magnus probe now. This is still consider-only, with no manual MUD input and no reset wait.
+
+
+[2026-08-04 5:13:12 AM NZST] CODEX COMMENTARY
+The bounded launcher did not finish inside the shell tool short polling window, and that wrapper terminated its wait before the campaign own 264-second cap could be reached. I am checking whether the child was cleaned up and whether any run checkpoint was persisted; then I will relaunch with the shell timeout set above the campaign cap so the autonomous field segment can complete normally.
+
+
+[2026-08-04 5:13:30 AM NZST] CODEX COMMENTARY
+The shell wrapper timed out, but its campaign child is still alive rather than orphaned: segment 2566 is running as solace-magnus-probe-19-20, with transcript fastwalk-solace-magnus-Kestrel-2992.jsonl open. I will monitor that existing autonomous process and will not start a duplicate connection or kill the live child; its own 264-second campaign cap remains authoritative.
+
+
+[2026-08-04 5:14:08 AM NZST] CODEX COMMENTARY
+The Magnus child is still running after the first 25-second monitor and the expected Discord streamer is the only other Python process. The campaign has not returned a result yet, so I am continuing the bounded observation rather than treating the outer shell timeout as a MUD failure.
+
+
+[2026-08-04 5:14:49 AM NZST] CODEX COMMENTARY
+The bounded live probe completed cleanly: run 2992, 84 commands, 88.7 seconds, and no surviving campaign child. I am inspecting its transcript and persisted research result now to determine whether Magnus was absent, below-band, viable, or interrupted by a route hazard; this result will decide the next executable action and I will not claim XP without a confirmed kill.
+
+
+[2026-08-04 5:16:55 AM NZST] CODEX COMMENTARY
+I am handling the requested one-off publication now. I will verify the current branch and diff, run the relevant checks, create an intentional local commit, push it, and ensure the remote main branch contains the result; I will report any publication limitation instead of waiting on it.
+
+
+[2026-08-04 5:17:48 AM NZST] CODEX COMMENTARY
+The publication checks are clean: all 1,879 pytest tests pass, compileall passes, and the code diff has no whitespace errors. The worktree contains the Magnus level-19 research/hunt capability and its regression coverage on main; I am staging exactly those nine changed files, committing locally, then pushing main and verifying the remote hash.
