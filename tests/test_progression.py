@@ -3,6 +3,7 @@ import pytest
 from dd4tester.progression import (
     CLASS_PRACTICE_SKILLS,
     ProgressionContext,
+    _caster_hunt_requires_sanctuary_replenishment,
     policy_for,
     select_policy,
 )
@@ -439,6 +440,21 @@ def test_level_nineteen_thief_opens_magnus_and_requires_sanctuary_for_hunt() -> 
 
     assert unprotected.policy_id == "moria-sanctuary-thief-17-20"
     assert unprotected.execution == "moria-sanctuary-hunt"
+
+
+def test_protection_recovery_flag_applies_to_any_failed_thief_hunt() -> None:
+    context = ProgressionContext(
+        level=19,
+        character_class="thief",
+        subclass=None,
+        progression_track="",
+        practice_skill="",
+        capabilities=frozenset(),
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+    )
+
+    assert _caster_hunt_requires_sanctuary_replenishment(context) is True
 
 
 def test_emergency_provision_sale_precedes_field_funding() -> None:

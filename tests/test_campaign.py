@@ -29,6 +29,7 @@ from dd4tester.campaign import (
     _retry_current_absent_research_policy,
     _next_pending_absent_research_retry_policy,
     _retry_any_pending_absent_research_policy,
+    _retry_any_crowded_research_policy,
     _retry_current_crowded_research_policy,
     _campaign_policy_xp_deltas,
     _campaign_productive_policy_ids,
@@ -39,6 +40,9 @@ from dd4tester.campaign import (
     _clear_crowd_absence_marker,
     _merge_campaign_research_result,
     _merge_campaign_below_band_policy_exclusions,
+    _merge_protection_recovery_metadata,
+    _protection_recovery_required,
+    _repair_protection_recovery_metadata,
     _campaign_rejected_practice_skills,
     _campaign_vault_stow_items,
     _select_provision_funding_candidate,
@@ -1945,6 +1949,84 @@ def test_considered_research_hunt_without_kill_does_not_become_absence() -> None
     assert "campaign_research_absence_cooldowns" not in merged
 
 
+def test_viable_failed_hunt_records_protection_recovery_metadata() -> None:
+    policy = ProgressionPolicy(
+        policy_id="mirror-realm-watchman-hunt-19-20",
+        minimum_level=19,
+        maximum_level=20,
+        status="research",
+        execution="mirror-realm-watchman-hunt",
+        summary="hunt",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    merged = _merge_protection_recovery_metadata(
+        {
+            "world_boot_id": "boot-1",
+            "level": 19,
+            "campaign_fastwalk_consider_outcomes": {"watchman": True},
+            "campaign_objective_kills": [],
+        },
+        policy=policy,
+        xp_delta=-136,
+    )
+
+    assert merged["campaign_protection_recovery_required"] == {
+        "boot_id": "boot-1",
+        "level": 19,
+        "policy_id": policy.policy_id,
+        "xp_delta": -136,
+        "reason": "viable hunt withdrew with an XP loss before a kill",
+    }
+
+
+def test_campaign_start_repairs_protection_recovery_from_history() -> None:
+    segments = [
+        {
+            "status": "success",
+            "phase": "mirror-realm-watchman-hunt-19-20",
+            "run_id": 42,
+            "start_state_json": json.dumps(
+                {"level": 19, "xp": 178343, "world_boot_id": "boot-1"}
+            ),
+            "end_state_json": json.dumps(
+                {
+                    "level": 19,
+                    "xp": 178207,
+                    "world_boot_id": "boot-1",
+                    "campaign_fastwalk_consider_outcomes": {
+                        "watchman": True
+                    },
+                    "campaign_objective_kills": [],
+                }
+            ),
+        }
+    ]
+
+    repaired = _repair_protection_recovery_metadata(
+        {"level": 19, "world_boot_id": "boot-1"},
+        segments,
+    )
+
+    assert _protection_recovery_required(repaired) is True
+    assert repaired["campaign_protection_recovery_required"]["policy_id"] == (
+        "mirror-realm-watchman-hunt-19-20"
+    )
+    assert _protection_recovery_required(
+        {
+            **repaired,
+            "world_boot_id": "boot-2",
+        }
+    ) is False
+    assert _protection_recovery_required(
+        {
+            **repaired,
+            "inventory": [{"short_desc": "a purple potion"}],
+        }
+    ) is False
+
+
 def test_previously_productive_research_hunt_gets_retryable_failure_cooldown() -> None:
     policy = ProgressionPolicy(
         policy_id="argent-bandit-leader-hunt-19-20",
@@ -3258,6 +3340,74 @@ def test_reset_retry_reopens_unrelated_active_crowd_route() -> None:
     assert "campaign_research_results" not in retried
     assert "campaign_research_crowd_cooldowns" not in retried
     assert retried["campaign_fastwalk_target_absent"] is False
+
+
+def test_reset_retry_reopens_source_ranked_crowd_when_last_policy_is_moria() -> None:
+    policy_id = "source-ranked-hunt-dwarven-home-20504-20506-19"
+    state = {
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": "moria-sanctuary-thief-17-20",
+        "campaign_research_results": {
+            policy_id: {
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+                "boot_id": "boot-1",
+            }
+        },
+        "campaign_research_crowd_cooldowns": {policy_id: 3},
+    }
+
+    retried = _retry_any_crowded_research_policy(state)
+
+    assert retried["campaign_last_policy"] == policy_id
+    assert "campaign_research_results" not in retried
+    assert "campaign_research_crowd_cooldowns" not in retried
+
+
+def test_reset_retry_orders_sanctuary_cleanup_before_crowd_handoff() -> None:
+    source_policy_id = "source-ranked-hunt-dwarven-home-20504-20506-19"
+    moria_policy_id = "moria-sanctuary-thief-17-20"
+    state = {
+        "level": 19,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": moria_policy_id,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 19,
+            "policy_id": "shire-dwarven-prince-thief-hunt-19-20",
+        },
+        "campaign_research_results": {
+            moria_policy_id: {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            source_policy_id: {
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+                "boot_id": "boot-1",
+            },
+            "shire-elven-wizard-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+        },
+        "campaign_research_absence_cooldowns": {moria_policy_id: 3},
+        "campaign_research_crowd_cooldowns": {source_policy_id: 3},
+    }
+
+    state = _retry_required_sanctuary_research_policy(state)
+    retried = _retry_current_crowded_research_policy(state)
+
+    assert retried["campaign_last_policy"] == source_policy_id
+    assert moria_policy_id not in retried["campaign_research_results"]
+    assert source_policy_id not in retried["campaign_research_results"]
+    assert "campaign_research_crowd_cooldowns" not in retried
 
 
 def test_stag_absence_requires_three_productive_segments_before_retry() -> None:
