@@ -4060,6 +4060,30 @@ class StarterPolicy:
         if recovery is not None:
             return recovery
 
+        if self.return_home and (
+            self.combat_active or _enemy_records(state.enemies)
+        ):
+            # A city mobile can enter combat after the room snapshot while
+            # GMCP still reports `in_combat` false.  Treat its enemy record as
+            # authoritative during a return-home route so movement cannot
+            # repeat against the combat lock.
+            self.combat_active = True
+            if self.flee_pending:
+                self.prompt_ready = False
+                return None
+            if self.fastwalk_route is not None:
+                self.fastwalk_emergency_recall_pending = True
+            else:
+                self.utility_emergency_recall_pending = True
+                if self.utility_abort_reason is None:
+                    self.utility_abort_reason = (
+                        "unexpected combat interrupted return-home travel"
+                    )
+            return BotDecision(
+                "flee",
+                "withdraw before continuing the healer return route",
+            )
+
         if self.return_home:
             home = self._return_home_decision(state)
             if home is not None:
