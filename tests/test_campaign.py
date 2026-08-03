@@ -42,6 +42,12 @@ from dd4tester.campaign import (
     _campaign_rejected_practice_skills,
     _campaign_vault_stow_items,
     _select_provision_funding_candidate,
+    _select_source_ranked_hunt_candidate,
+    _source_ranked_candidate_from_record,
+    _source_ranked_candidate_record,
+    _source_ranked_fallback_needed,
+    _source_ranked_policy_id,
+    _source_ranked_target_identity,
     _has_campaign_food,
     _has_campaign_sellable_loot,
     _needs_piercing_weapon_upgrade,
@@ -80,10 +86,50 @@ from dd4tester.campaign import (
 )
 from dd4tester.equipment import GearCatalog
 from dd4tester.hunt_candidates import HuntCandidate, ObjectSource
-from dd4tester.progression import ProgressionPolicy, policy_for
+from dd4tester.progression import (
+    ProgressionPolicy,
+    _SOURCE_RANKED_HUNT_POLICY,
+    policy_for,
+)
 from dd4tester.runner import RunResult
 from dd4tester.starter import ambush_exterior_hunt_stops
 from dd4tester.storage import RunStorage
+
+
+def _source_test_candidate(
+    *,
+    target: str,
+    level_range: tuple[int, int],
+    score: float = 100,
+    mobile_vnum: int = 100,
+    room_vnum: int = 200,
+    status: str = "caution",
+    boot_kills: int = 0,
+    autonomy_rejections: tuple[str, ...] = (),
+) -> HuntCandidate:
+    return HuntCandidate(
+        status=status,
+        score=score,
+        area_file="test.are",
+        mobile_vnum=mobile_vnum,
+        target=target,
+        target_keyword=target.split()[-1],
+        level=level_range[1] - 2,
+        room_vnum=room_vnum,
+        room_name="a test room",
+        route=("south",),
+        source_spawn_limit=1,
+        room_spawn_count=1,
+        boot_kills=boot_kills,
+        loot=("a saleable sword",),
+        source_value=10,
+        contained_coins=0,
+        hazards=(),
+        estimated_level_range=level_range,
+        estimated_base_hp_range=(10, 20),
+        estimated_peak_round_damage=10,
+        autonomy_rejections=autonomy_rejections,
+    )
 
 
 def test_coin_banking_is_campaign_maintenance() -> None:
@@ -96,6 +142,201 @@ def test_flight_funding_loan_is_campaign_maintenance() -> None:
 
 def test_provision_funding_hunt_is_campaign_maintenance() -> None:
     assert "provision-funding" in _MAINTENANCE_EXECUTIONS
+
+
+def test_source_ranked_policy_fallback_opens_unregistered_late_levels() -> None:
+    policy = policy_for(81, "thief", source_ranked_fallback=True)
+
+    assert policy.policy_id == _SOURCE_RANKED_HUNT_POLICY.policy_id
+    assert policy.execution == "source-ranked-hunt"
+    assert policy.minimum_level == 81
+    assert policy.maximum_level == 81
+
+
+def test_source_ranked_candidate_identity_and_checkpoint_round_trip() -> None:
+    candidate = _source_test_candidate(
+        target="a white dwarf",
+        level_range=(15, 19),
+    )
+    record = _source_ranked_candidate_record(
+        candidate,
+        character_level=19,
+    )
+    restored = _source_ranked_candidate_from_record(record)
+
+    assert _source_ranked_target_identity(candidate) == "white dwarf"
+    assert _source_ranked_policy_id(candidate, character_level=19).startswith(
+        "source-ranked-hunt-test-100-200-19"
+    )
+    assert restored == candidate
+
+
+def test_source_ranked_selection_prefers_fresh_target_over_current_reboot_failure() -> None:
+    blocked = _source_test_candidate(
+        target="an undead soldier",
+        level_range=(13, 17),
+        score=500,
+        mobile_vnum=101,
+        room_vnum=201,
+    )
+    fresh = _source_test_candidate(
+        target="a white dwarf",
+        level_range=(15, 19),
+        score=10,
+        mobile_vnum=102,
+        room_vnum=202,
+    )
+    blocked_policy = "shadow-keep-undead-soldier-hunt-16-20"
+    state = {
+        "level": 19,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            blocked_policy: {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+                "absent": True,
+            }
+        },
+        "campaign_research_absence_cooldowns": {blocked_policy: 3},
+    }
+
+    selected = _select_source_ranked_hunt_candidate(
+        (blocked, fresh),
+        state,
+        character_level=19,
+    )
+
+    assert selected == fresh
+
+
+def test_source_ranked_selection_ignores_evidence_from_an_old_reboot() -> None:
+    candidate = _source_test_candidate(
+        target="an undead soldier",
+        level_range=(13, 17),
+    )
+    state = {
+        "level": 19,
+        "world_boot_id": "boot-2",
+        "campaign_research_results": {
+            "shadow-keep-undead-soldier-hunt-16-20": {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+                "absent": True,
+            }
+        },
+        "campaign_research_absence_cooldowns": {
+            "shadow-keep-undead-soldier-hunt-16-20": 3,
+        },
+    }
+
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        character_level=19,
+    ) == candidate
+
+
+def test_source_ranked_selection_does_not_reuse_static_route_hazard() -> None:
+    candidate = _source_test_candidate(
+        target="a white dwarf",
+        level_range=(15, 19),
+    )
+    state = {
+        "level": 19,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            "galaxy-white-dwarf-probe-17-20": {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+                "route_hazard": "field route preflight found source hazard",
+            }
+        },
+    }
+
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        character_level=19,
+    ) is None
+
+
+def test_source_ranked_selection_honors_crowd_cooldown() -> None:
+    candidate = _source_test_candidate(
+        target="the dwarven nobleman",
+        level_range=(13, 15),
+    )
+    policy_id = "source-ranked-hunt-test-100-200-19"
+    state = {
+        "level": 19,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": policy_id,
+        "campaign_research_results": {
+            policy_id: {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+            }
+        },
+        "campaign_research_crowd_cooldowns": {policy_id: 3},
+    }
+
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        character_level=19,
+    ) is None
+
+
+def test_source_ranked_blocked_route_is_persisted_with_retry_cooldown() -> None:
+    policy = replace(
+        _SOURCE_RANKED_HUNT_POLICY,
+        policy_id="source-ranked-hunt-test-100-200-19",
+        minimum_level=19,
+        maximum_level=19,
+    )
+    merged = _merge_campaign_research_result(
+        {"world_boot_id": "boot-1"},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_abort_reason": (
+                "official fastwalk 'source-ranked hunt' was blocked before its endpoint"
+            ),
+            "campaign_fastwalk_consider_outcomes": {},
+            "campaign_objective_kills": [],
+        },
+        policy=policy,
+    )
+
+    result = merged["campaign_research_results"][policy.policy_id]
+    assert result["route_hazard"].startswith("official fastwalk")
+    assert merged["campaign_research_absence_cooldowns"][policy.policy_id] == 3
+
+
+def test_source_ranked_fallback_respects_productive_handoff() -> None:
+    policy = ProgressionPolicy(
+        policy_id="highland-keeper-hunt-17-20",
+        minimum_level=17,
+        maximum_level=20,
+        status="research",
+        execution="highland-keeper-hunt",
+        summary="test",
+        evidence=(),
+        practice_skill=None,
+    )
+
+    assert not _source_ranked_fallback_needed(
+        {
+            "level": 18,
+            "world_boot_id": "boot-1",
+            "campaign_last_policy": policy.policy_id,
+            "campaign_last_productive_policy": policy.policy_id,
+        },
+        policy,
+    )
 
 
 def test_productive_policy_history_is_same_reboot_and_requires_a_kill() -> None:

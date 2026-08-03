@@ -20964,3 +20964,83 @@ The one-off commit is local as e9ed279; I am pushing that branch now. Once the r
 
 [2026-08-04 10:03:09 AM NZST] CODEX COMMENTARY
 The branch push succeeded. I am merging e9ed279 into main now, then I will push main and confirm the exact remote commit.
+
+
+[2026-08-04 10:03:53 AM NZST] CODEX FINAL
+One-off push and merge completed. The current development conversation was committed on codex/one-off-publish-20260804-current-log as e9ed279 and c1ec6bb, pushed to origin, merged into main as 5853a63, and pushed to origin/main. Remote main and local main both resolve to 5853a63; no code changes were included beyond the requested conversation-log publication.
+
+
+[2026-08-04 10:04:14 AM NZST] CODEX COMMENTARY
+I am resuming the HERO engine work from the published main state. I will audit the current tree and live checkpoint, then implement and test the next concrete blocker: generic source-ranked progression after the registered level-19 frontier is exhausted.
+
+
+[2026-08-04 10:14:57 AM NZST] CODEX COMMENTARY
+The fallback is now wired into campaign policy selection and dispatch. It ranks source-reset candidates with the existing autonomy gates, checkpoints the selected candidate, uses exact TARGETMODE-aware combat, and treats absence, crowd, and route hazards as reboot-scoped retry evidence; I am checking syntax and focused regressions before tightening any edge cases.
+
+
+[2026-08-04 10:17:30 AM NZST] CODEX COMMENTARY
+The focused campaign suite is clean at 399 tests, including source identity round-tripping, same-reboot candidate filtering, old-reboot evidence isolation, and late-level fallback selection. I am running the full offline suite now; after that I will inspect the live checkpoint and run one bounded no-steering campaign pass.
+
+
+[2026-08-04 10:19:03 AM NZST] CODEX COMMENTARY
+The offline suite is fully clean at 1,910 tests. Kestrel remains level 19 in healer room 3054; the scheduler now selects the fresh Moria deep probe as its next registered step, and the source-ranked fallback should become eligible after that frontier step records its current-reboot result. I am starting two bounded segments with no steering commands and no reset wait retries.
+
+
+[2026-08-04 10:20:02 AM NZST] CODEX COMMENTARY
+The two-segment live validation is still running inside its bounded 180-second segment cap. The campaign is the only additional Python process; I am leaving it uninterrupted so its checkpoint and transcript capture the real scheduler transition.
+
+
+[2026-08-04 10:21:14 AM NZST] CODEX COMMENTARY
+The live pass remains active with no terminal output yet. It is still within the configured bounds, and I have not launched a second runner or issued any in-game intervention; I am waiting for the same process to finish and persist its result.
+
+
+[2026-08-04 10:22:25 AM NZST] CODEX COMMENTARY
+The bounded runner has now been active long enough to cover a full segment watchdog window and is still alive. This is expected for a long MUD route; I am continuing to wait on the existing process rather than treating silence as a reason to duplicate it.
+
+
+[2026-08-04 10:22:38 AM NZST] CODEX COMMENTARY
+The live validation exercised the new path: after the registered Moria frontier step, the campaign selected and completed a source-ranked hunt for the source-defined Galaxy white dwarf reset at room 9306, checkpoint 3262, still level 19, with no steering commands. I am inspecting the run transcript and persisted research outcome now to determine whether this was a confirmed XP kill or a safe research rotation result.
+
+
+[2026-08-04 10:25:57 AM NZST] CODEX COMMENTARY
+The first dynamic live pass was safe but did not reach its endpoint: the source-ranked Galaxy route was blocked before arrival, and the old merger silently discarded that failure. I repaired this concrete gap by recording dynamic pre-consider route aborts as reboot-scoped route hazards with a three-segment cooldown, and by excluding static route-hazard evidence from generic retry selection. Focused coverage now passes 401 tests; I am running the full suite again before the next bounded live retry.
+
+
+[2026-08-04 10:26:51 AM NZST] CODEX COMMENTARY
+The full suite remains clean at 1,912 tests. The repaired scheduler now rejects the previously blocked Galaxy route and has selected the source-ranked dwarven nobleman reset at room 20506 as the next current-band candidate, with its source route including the registered door openings. I am running one bounded live segment to validate this next candidate without steering.
+
+
+[2026-08-04 10:27:47 AM NZST] CODEX COMMENTARY
+The source-ranked nobleman validation is still running inside the 180-second cap. No second campaign process or manual MUD command has been started; I am waiting on the bounded run so any door, target, or route outcome is recorded in its normal transcript and checkpoint.
+
+
+[2026-08-04 10:30:57 AM NZST] CODEX COMMENTARY
+The second live validation also completed safely: the dwarven nobleman route reached a room with two observed mobiles, so the exact isolation gate declined combat and returned to healer room 3054. Checkpoint 3265 records a source-ranked crowded result and a three-segment crowd cooldown. I have extended candidate selection to honor crowd cooldowns, so this target will not be retried immediately; I am doing the final offline verification for this work unit now.
+
+
+[2026-08-04 10:33:13 AM NZST] CODEX COMMENTARY
+The offline verification is clean at 1,913 tests. The current checkpoint is correctly waiting on the source-ranked nobleman crowd cooldown, so I am starting one bounded reset-retry pass with a 60-second wait outside the area; the retry will clear only that crowd marker and re-evaluate the generic source-ranked frontier, with no steering commands.
+
+
+[2026-08-04 10:34:07 AM NZST] CODEX COMMENTARY
+The reset-retry invocation is in its bounded 60-second outside-area wait; the initial scheduler check did not open another MUD session. I am leaving the same process to perform its single authorized retry, then I will inspect whether the nobleman reset became isolated.
+
+
+[2026-08-04 10:35:19 AM NZST] CODEX COMMENTARY
+The 60-second wait has elapsed and the same bounded process is now in its single live retry. No duplicate campaign runner is present; I am waiting for the route to finish under the 180-second segment cap.
+
+
+[2026-08-04 10:36:20 AM NZST] CODEX COMMENTARY
+The bounded reset retry completed at checkpoint 3271 without an error; the scheduler resumed the registered Shadow Keep undead-soldier hunt rather than forcing the crowded nobleman route. I am inspecting the authoritative segment end state and kill record now to see whether this produced the first post-fallback XP gain or another safe research result.
+
+
+[2026-08-04 10:37:55 AM NZST] CODEX COMMENTARY
+I am pausing the live progression loop to audit the current worktree, identify the exact source and test changes to publish, and then I will create a one-off branch commit, push it, and merge it into main if the remote workflow permits.
+
+
+[2026-08-04 10:38:11 AM NZST] CODEX COMMENTARY
+The audit found four intended changes on main: the generic source-ranked progression fallback, its campaign routing and reboot/crowd evidence handling, focused regression tests, and the append-only development log. I am running the verification suite and whitespace check before staging them for the requested one-off publication.
+
+
+[2026-08-04 10:38:55 AM NZST] CODEX COMMENTARY
+Verification is clean: all 1,913 pytest tests passed, compileall passed, and git diff --check reported only the repository's existing LF/CRLF conversion warnings. I am staging the four intended files now, then I will push a one-off publication branch and merge it into main.

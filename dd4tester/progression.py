@@ -2032,6 +2032,26 @@ _UNAVAILABLE_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-hunt-13-100",
+    minimum_level=13,
+    maximum_level=100,
+    status="research",
+    execution="source-ranked-hunt",
+    summary=(
+        "Rank source-defined current-band mobiles and run one bounded, "
+        "exact-target hunt after the registered frontier is exhausted."
+    ),
+    evidence=(
+        "The source candidate parser supplies reset-derived level ranges, "
+        "route hazards, target identity, and autonomy rejection reasons.",
+        "Live consideration, isolation, health, and confirmed-kill gates "
+        "remain required before this research policy is promoted.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
 
 _PLAINS_ARUNCUS_LEVEL_TWELVE_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="plains-aruncus-probe-12-13",
@@ -4744,6 +4764,7 @@ def policy_for(
     last_policy_id: str | None = None,
     last_fastwalk_abort_reason: str | None = None,
     handoff_policy_id: str | None = None,
+    source_ranked_fallback: bool = False,
 ) -> ProgressionPolicy:
     context = ProgressionContext.from_values(
         level,
@@ -4815,6 +4836,20 @@ def policy_for(
             )
 
     selected = select_policy(context)
+    if (
+        source_ranked_fallback
+        and context.level >= _SOURCE_RANKED_HUNT_POLICY.minimum_level
+        and (
+            selected.policy_id == _UNAVAILABLE_POLICY.policy_id
+            or selected.policy_id in context.excluded_policy_ids
+        )
+    ):
+        return replace(
+            _SOURCE_RANKED_HUNT_POLICY,
+            minimum_level=context.level,
+            maximum_level=context.level,
+            practice_skill=context.practice_skill,
+        )
     excluded_retry_allowed = bool(
         selected.policy_id
         == _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
