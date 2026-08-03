@@ -19220,3 +19220,303 @@ The pending diff is scoped to the generic source-graph locator, its reusable Tha
 
 [2026-08-04 1:11:59 AM NZST] CODEX COMMENTARY
 The full offline suite is green at 1,861 tests and the code-only diff check is clean. I am staging the four intentional files now, then I will create the one-off main checkpoint and verify the staged summary before pushing.
+
+
+[2026-08-04 1:12:19 AM NZST] CODEX COMMENTARY
+Commit f6a50e3 was created on main after the green suite. I am pushing this explicit one-off checkpoint to origin/main now with a 60-second bound; after that I will verify the remote tip and clean worktree.
+
+
+[2026-08-04 1:12:41 AM NZST] CODEX COMMENTARY
+The one-off remote update is verified: origin/main and local main both point to f6a50e3c988a6c159eaaf3c07254694b55d45bec. The code and tests are published on main; only the newly appended conversation-log entry is now uncommitted, as required by the normal commentary logging cadence.
+
+
+[2026-08-04 1:12:51 AM NZST] CODEX FINAL
+One-off push and merge complete. Commit f6a50e3 (Generalize Thain research routes from source graph) was created directly on main and pushed to origin/main. Local and remote main match at f6a50e3c988a6c159eaaf3c07254694b55d45bec. The full pytest suite passed 1,861 tests. The conversation log has the expected post-push final entry pending the normal local commit cadence.
+
+
+[2026-08-04 1:13:07 AM NZST] CODEX COMMENTARY
+I am continuing the active HERO objective from the newly published checkpoint. I will audit the current main state, identify the next concrete progression blocker beyond the level-18 frontier, then implement and validate one reusable source-backed work unit with tests and bounded live evidence.
+
+
+[2026-08-04 1:15:25 AM NZST] CODEX COMMENTARY
+The audit confirms the immediate blocker precisely: Kestrel is safely at level 18 with 252 XP to level 19, but every current level-18 hunt is either absent, crowded, rejected, or has zero recent XP, so the selector falls back to unregistered-10-100. The source ranking found only one presently clean candidate, the already-probed Shadow Keep soldier, so I am tracing the policy transition logic and live evidence to add a genuinely new executable route rather than papering over the unavailable state.
+
+
+[2026-08-04 1:17:00 AM NZST] CODEX COMMENTARY
+The transition trace shows a reusable route-reset mechanism already exists but was not exercised with a retry: it can wait outside the area, clear one reboot-scoped absence marker, and reopen a bounded probe. I am running one 60-second, no-steering retry now; the result will tell us whether the next code change belongs in reset scheduling or in a new source-backed target policy.
+
+
+[2026-08-04 1:17:49 AM NZST] CODEX COMMENTARY
+The bounded reset retry is still the only live campaign process after about half a minute. It has completed the intentional outside-area wait and is now allowed to run one reopened policy pass under the 120-second field bound; I am waiting for its checkpoint rather than issuing steering commands.
+
+
+[2026-08-04 1:18:28 AM NZST] CODEX COMMENTARY
+The reopened pass remains within its single bounded live unit and has not produced an error. No second campaign process appeared; I am leaving the connection intact until the runner either records a target result or returns safely to healer room 3054.
+
+
+[2026-08-04 1:19:06 AM NZST] CODEX COMMENTARY
+The live retry is still bounded and active at roughly two minutes including the reset wait. I am checking its completion through the runner output only; if it crosses the configured ceiling, I will audit and move directly to the code-level reset fix instead of allowing an open-ended process.
+
+
+[2026-08-04 1:19:17 AM NZST] CODEX COMMENTARY
+The reset controller completed safely: after the 60-second wait it reopened the graph, routed to the Moria sanctuary policy, and returned to healer room 3054, but the carrier was still absent, so no XP was gained. This confirms reset handling is bounded and safe, but it also exposes the real generic gap: the late-level graph needs an executable progress fallback when every current research target is temporarily absent.
+
+
+[2026-08-04 1:23:22 AM NZST] CODEX COMMENTARY
+The live result gives us a sharper implementation target: the campaign has durable, same-reboot successful kills from the Highland Keeper, Shadow Keep Soldier, and Hightower Jailor, but the selector loses those routes when their latest retry is empty. I am adding a generic productive-policy history derived from confirmed objective kills, then teaching the level-band selector to re-enter those source-verified routes only after their existing absence cooldowns expire.
+
+
+[2026-08-04 1:30:48 AM NZST] CODEX COMMENTARY
+I am taking the requested one-off repository checkpoint now: I will inspect the current local changes and branch state, create an intentional commit, push it, and merge it into main. I will report any verification caveat explicitly.
+
+
+[2026-08-04 1:31:39 AM NZST] CODEX COMMENTARY
+The first focused regression exposed a real ordering bug: the level-18 Moria transition returned the Hightower hunt directly, bypassing its recorded failure and cooldown gates. I am correcting that transition to use the same generic research gate as every other route, so the new historical-policy fallback can actually operate on the live checkpoint.
+
+
+[2026-08-04 1:33:38 AM NZST] CODEX COMMENTARY
+The progression regression is now green after the transition fix. The campaign-history test caught an assertion mistake in its synthetic data: the second sample is a valid positive kill on boot-2, so I am correcting the test to assert that boot-specific result and separately verify an unrelated reboot has no history.
+
+
+[2026-08-04 1:34:01 AM NZST] CODEX COMMENTARY
+The focused campaign-history regression is green as well. I am running the complete offline suite and a code-only whitespace check now; the conversation log is intentionally excluded from that check because its required blank separator lines are stored as trailing whitespace by the logging format.
+
+
+[2026-08-04 1:34:43 AM NZST] CODEX COMMENTARY
+The full suite found one intentional compatibility failure: the existing sanctuary-acquisition test expects the first Hightower pass to enter combat directly when no Hightower result exists. I am preserving that first-pass behavior only when both Hightower records are genuinely absent and no cooldown is active; recorded failures will continue through the generic gate.
+
+
+[2026-08-04 1:35:16 AM NZST] CODEX COMMENTARY
+The compatibility guard is now green alongside the new regression: the initial no-evidence Hightower transition still selects the hunt, while an explicit failed or absent Hightower result can no longer bypass the cooldown gate. I am rerunning the full suite before creating the requested repository commit.
+
+
+[2026-08-04 1:35:59 AM NZST] CODEX COMMENTARY
+The full offline suite is green: 1,863 tests passed, and the code-only diff check is clean. I am staging only the campaign/progression implementation and its focused tests; the required conversation log will remain a separate local working-tree change rather than being bundled into the source checkpoint.
+
+
+[2026-08-04 1:36:18 AM NZST] CODEX COMMENTARY
+The source checkpoint is committed locally as e1b31c3 on main, with the conversation log intentionally unstaged. I am performing the requested one-off push to origin/main now with the repository-level 60-second bound.
+
+
+[2026-08-04 1:36:41 AM NZST] CODEX FINAL
+One-off push and merge complete. Commit e1b31c3 (Retain productive research routes across transient misses) was created directly on main and pushed to origin/main. Local HEAD and remote main both verify as e1b31c32fe02530d49651e3b8b328451f80f042a. The full pytest suite passed 1,863 tests. Only the required conversation-log append remains uncommitted locally.
+
+
+[2026-08-04 1:36:56 AM NZST] CODEX COMMENTARY
+I am resuming the active HERO objective from the published main checkpoint. I will first audit the current worktree, campaign checkpoint, source revision, and running processes, then choose the next concrete executable progression blocker to remove and validate it with tests and bounded live evidence.
+
+
+[2026-08-04 1:40:12 AM NZST] CODEX COMMENTARY
+The audit is complete: main is at e1b31c3, the DD4 source is current at 1b759f5, Kestrel is safely checkpointed at level 18 in healer room 3054, and only the expected Discord streamer process is running. The selector now sees four same-reboot hunts that previously produced kills, but their area-state cooldowns are active; I am starting a three-retry, 60-second-wait, 120-second-per-segment live run with no steering commands to validate the reset handoff.
+
+
+[2026-08-04 1:41:03 AM NZST] CODEX COMMENTARY
+The bounded retry is still active after its first half-minute. No second campaign or stale Python process has appeared; the runner is keeping the connection open inside the configured 120-second field bound while the outside-area reset controller handles the first retry.
+
+
+[2026-08-04 1:41:45 AM NZST] CODEX COMMENTARY
+The live controller is now past the first 60-second reset window and remains bounded. I am waiting for the first reopened segment to return its structured checkpoint; I will inspect the selected policy and objective-kill state as soon as the process completes.
+
+
+[2026-08-04 1:42:49 AM NZST] CODEX COMMENTARY
+The first reopened field unit is still within the 120-second segment ceiling. The process remains the single expected campaign runner; I am allowing the safe-return watchdog to finish rather than sending any gameplay input or spawning a duplicate attempt.
+
+
+[2026-08-04 1:43:24 AM NZST] CODEX COMMENTARY
+The bounded run completed safely after one reset wait and one reopened field unit. It selected the historical Shadow Keep Soldier policy, returned to healer room 3054, and gained no XP because the target was absent; no commands were steered. I am reading the new segment/checkpoint now to verify the policy handoff and determine the next productive route.
+
+
+[2026-08-04 1:48:10 AM NZST] CODEX COMMENTARY
+The live checkpoint exposed the next scheduler defect: the history is correctly persisted, but campaign_last_productive_policy still points at an older hunt whose latest result is now negative. After Shadow was absent, the retry path could not use the durable productive-history set to choose another eligible hunt. I am adding a generic history-based handoff that respects each route cooldown and preserves the existing current-evidence behavior.
+
+
+[2026-08-04 1:50:25 AM NZST] CODEX COMMENTARY
+The history-handoff implementation is green: three campaign retry tests and two progression compatibility tests pass, and the code-only diff check is clean. It now hands off an absent route to a previously productive hunt only when the same-reboot history is valid, the latest result is retryable, and neither the probe nor hunt has an active cooldown. I am running the full suite next.
+
+
+[2026-08-04 1:51:09 AM NZST] CODEX COMMENTARY
+The complete offline suite passes 1,865 tests. I am moving to bounded live validation of the new retry handoff now: one no-steering campaign invocation with up to three 60-second reset waits and a 120-second field bound per unit. I will verify the new checkpoint and process table after it returns.
+
+
+[2026-08-04 1:51:55 AM NZST] CODEX COMMENTARY
+The second bounded live validation is active at roughly 30 seconds. It is still a single runner inside the configured wait/runtime limits; no steering input has been sent and no duplicate or zombie process is present.
+
+
+[2026-08-04 1:52:36 AM NZST] CODEX COMMENTARY
+The live validation has crossed its first 60-second reset window and remains bounded. I am waiting for the reopened policy segment to complete its safe healer return; the next output will identify whether history handoff or another registered route was selected.
+
+
+[2026-08-04 1:53:47 AM NZST] CODEX COMMENTARY
+The reopened segment is still inside its 120-second field ceiling at about two minutes total. The watchdog has not reported a fault, so I am letting the runner finish its structured return rather than interrupting it or launching another connection.
+
+
+[2026-08-04 1:55:02 AM NZST] CODEX COMMENTARY
+The live runner has completed more than one bounded field unit without an error and is still within the three-retry envelope. I am checking only its eventual result output, not injecting gameplay commands; this run may continue through the next reset wait if the target remains absent.
+
+
+[2026-08-04 1:56:22 AM NZST] CODEX COMMENTARY
+The second live validation also returned safely after rotating through Moria and Shadow, but it gained no XP and did not select the new history handoff because every previously productive route still had an active source-area cooldown or a current nonviable result. I am giving the field area one full five-minute outside reset window now, then I will run one bounded no-steering retry rather than burning more short cycles.
+
+
+[2026-08-04 1:57:05 AM NZST] CODEX COMMENTARY
+The deliberate outside reset wait is 30 seconds in. No live runner is active during the wait; Kestrel remains checkpointed at healer room 3054 and the only persistent Python process is the Discord streamer.
+
+
+[2026-08-04 1:57:50 AM NZST] CODEX COMMENTARY
+The outside wait has reached one minute of the five-minute reset window. I am keeping the character logged out at the healer as the area-reset strategy requires; no commands or manual target choices are being issued.
+
+
+[2026-08-04 1:58:30 AM NZST] CODEX COMMENTARY
+The outside wait is at 90 seconds. The local process audit remains clean, and the repository changes are still safely stored locally while the live world gets an uncontested reset interval.
+
+
+[2026-08-04 1:59:07 AM NZST] CODEX COMMENTARY
+The reset wait is two minutes. I am keeping this bounded and observable; after five minutes I will launch exactly one campaign retry and inspect its target, XP delta, and healer checkpoint.
+
+
+[2026-08-04 1:59:49 AM NZST] CODEX COMMENTARY
+The outside reset wait is at 150 seconds. No connection is open, and the streamer remains the only persistent Python process.
+
+
+[2026-08-04 2:00:26 AM NZST] CODEX COMMENTARY
+The reset wait has reached three minutes. The intended field area has been unoccupied for the whole interval; I am continuing to the five-minute mark before testing the reset rather than assuming it repopulated.
+
+
+[2026-08-04 2:01:04 AM NZST] CODEX COMMENTARY
+The outside wait is at 210 seconds. Everything remains idle and bounded; one final two-minute interval remains before the live retry.
+
+
+[2026-08-04 2:01:43 AM NZST] CODEX COMMENTARY
+The reset wait is at four minutes. I am preparing the single retry command now, still with no manual target selection and a 120-second live segment ceiling.
+
+
+[2026-08-04 2:02:21 AM NZST] CODEX COMMENTARY
+The outside reset wait is at 270 seconds. The final 30 seconds will complete the planned five-minute uncontested interval.
+
+
+[2026-08-04 2:03:14 AM NZST] CODEX COMMENTARY
+The five-minute outside reset interval is complete. I am launching one final bounded retry with a one-second handoff wait because the deliberate reset wait has already occurred; this keeps the live test short while preserving the normal no-steering scheduler.
+
+
+[2026-08-04 2:04:01 AM NZST] CODEX COMMENTARY
+The post-reset live retry is active at roughly 30 seconds, within its single 120-second field bound. No steering commands or duplicate process have appeared; I am waiting for the target probe/hunt result.
+
+
+[2026-08-04 2:04:40 AM NZST] CODEX COMMENTARY
+The post-reset retry remains active past one minute and is still inside the live bound. The runner is preserving its normal safe-return path; I will report the exact segment phase and XP delta when it closes.
+
+
+[2026-08-04 2:05:58 AM NZST] CODEX COMMENTARY
+The retry has crossed the nominal 120-second segment ceiling but the outer command is still waiting for the runner safe-checkpoint output. I am not interrupting it; if it returns beyond the bound, I will audit the process immediately and treat that as a runtime-boundary defect.
+
+
+[2026-08-04 2:08:21 AM NZST] CODEX COMMENTARY
+The bounded retry has now returned cleanly at checkpoint 3071 after about 199 seconds. It found no usable target, earned no XP, and left Kestrel safely in the Healer's room at level 18. I am auditing the persisted segment and process state now, then I will adjust the scheduler so repeated empty research does not become the whole progression strategy.
+
+
+[2026-08-04 2:13:50 AM NZST] CODEX COMMENTARY
+The audit found the concrete scheduler defect: the reset-retry path clears any absent route with a positive cooldown, so a one-second or five-minute wait can immediately re-run a route that explicitly requires three productive field segments. That explains the observed Moria/Shadow/Thain churn. I am correcting the retry gate to honor the persisted cooldown, preserving only zero-cooldown routes for reopening, and I will update the regression tests before any further live connection.
+
+
+[2026-08-04 2:15:59 AM NZST] CODEX COMMENTARY
+The focused absence tests pass, and the full offline suite found one intentional interaction: crowd rotation shares the candidate helper but has a separate explicit crowd-reset rule. I am separating those semantics now so absence retries require an expired productive-work cooldown while crowd retries retain their existing bounded reset behavior.
+
+
+[2026-08-04 2:17:40 AM NZST] CODEX COMMENTARY
+The cooldown fix is now verified: all 1,867 offline tests pass, compilation and diff checks are clean, and a dry checkpoint replay leaves Kestrel's Shadow route untouched at cooldown 3 instead of reopening it. The only special exception is the required Moria sanctuary supply path, whose existing tests and policy deliberately permit a bounded reset retry; I am treating that as a resource recovery rule rather than silently changing it.
+
+
+[2026-08-04 2:17:53 AM NZST] CODEX COMMENTARY
+The offline gate is clean, so I am running one no-steering live campaign segment with no reset retry. This is a bounded validation of the corrected scheduler: it may execute the already-required Moria reserve attempt, but it must not erase or re-enter the active Shadow absence cooldown. I will inspect the persisted phase and process table immediately when it returns.
+
+
+[2026-08-04 2:18:50 AM NZST] CODEX COMMENTARY
+The bounded live validation is still inside its 120-second field limit and has not returned a checkpoint yet. I am leaving the single campaign process alone; the watchdog will request a safe return at the limit, after which I will verify the Shadow cooldown and whether the process exited cleanly.
+
+
+[2026-08-04 2:19:05 AM NZST] CODEX COMMENTARY
+The live validation returned safely at checkpoint 3073 after the Moria reserve route reached its destination and found no carrier. It earned no XP, left Kestrel in healer room 3054, and persisted both Moria and Shadow absence cooldowns at 3; the corrected retry path did not re-enter Shadow. I am doing the final segment and process audit now.
+
+
+[2026-08-04 2:20:23 AM NZST] CODEX FINAL
+Tested and fixed the absent-route retry defect. Absence retries now require an expired cooldown, while independent ready routes may still be selected; crowd-reset behavior is unchanged. Offline verification: 1,867 pytest tests passed, compileall passed, and diff check passed. Live checkpoint 3073 completed safely: Kestrel remains level 18 with 177,398 XP in healer room 3054, no XP gained, Moria target absent, Shadow cooldown preserved at 3. Only the expected Discord streamer process remains. Changes are saved locally and intentionally uncommitted/unpushed.
+
+
+[2026-08-04 2:20:51 AM NZST] CODEX COMMENTARY
+I am resuming the HERO objective from the last verified checkpoint. The prior live test proved the cooldown fix, but Kestrel is still level 18, so I am auditing the current source revision, policy graph, uncommitted changes, and campaign state before selecting the next concrete blocker beyond level 18.
+
+
+[2026-08-04 2:23:55 AM NZST] CODEX COMMENTARY
+The audit found a second concrete blocker: the current checkpoint contains an orphaned highland-keeper absence cooldown of 3 with no corresponding research result. That stale marker suppresses the historically productive Highland route even though its evidence was later cleared by a new probe. I am adding a generic checkpoint repair that retains cooldowns only when same-reboot absence or dynamic-hazard evidence still exists, then I will test whether the next autonomous selection reopens Highland safely.
+
+
+[2026-08-04 2:25:44 AM NZST] CODEX COMMENTARY
+The orphan-cooldown repair is implemented and the full offline suite now passes 1,868 tests. A dry replay of the real Kestrel checkpoint removes only the stale Highland marker and selects the historically productive highland-keeper-hunt-17-20 as the next autonomous handoff. I am moving to one bounded no-steering live validation of that route.
+
+
+[2026-08-04 2:26:44 AM NZST] CODEX COMMENTARY
+The Highland handoff is still running inside the 264-second bounded field window. No second campaign process has been started; I am waiting for the runner's own safe combat or return boundary and will report the persisted kill, XP, and cooldown evidence when it closes.
+
+
+[2026-08-04 2:27:24 AM NZST] CODEX COMMENTARY
+The live Highland segment has passed its first progress interval without returning a result, which is expected for a long route and does not indicate a hang. I am keeping the single bounded invocation alive and will audit for a safe healer checkpoint rather than interrupting combat.
+
+
+[2026-08-04 2:28:04 AM NZST] CODEX COMMENTARY
+The same bounded invocation is still active and no new connection has been launched. I am allowing the route to reach its 264-second watchdog because Highland combat can include travel, target selection, loot handling, and healer recovery; the next update will include the final run status or a process audit if the outer boundary is reached.
+
+
+[2026-08-04 2:28:47 AM NZST] CODEX COMMENTARY
+The Highland validation returned safely at checkpoint 3075 and advanced Kestrel from level 18 to 19 with 715 XP, but the route ended after an incidental gigantic-frog kill and an insufficient-resource withdrawal; no Keeper objective kill was recorded. I am auditing the run's structured kill events and transcript before treating this as valid progression evidence, because XP gain alone must not promote the wrong target policy.
+
+
+[2026-08-04 2:29:46 AM NZST] CODEX COMMENTARY
+The structured audit confirms the Highland segment did not promote a Keeper hunt: its only kill was the incidental gigantic frog, and the research result was correctly cleared. The accidental XP nevertheless moved Kestrel to level 19, where the next graph node is the fresh mirror-realm-watchman-probe-19-20 policy. I am running that no-steering level-19 probe now, with the same bounded runtime and no reset retry.
+
+
+[2026-08-04 2:30:45 AM NZST] CODEX COMMENTARY
+The level-19 Mirror Realm probe is still inside its 180-second bound. It is the first fresh policy after the level transition, so I am allowing its source-backed route and GMCP room verification to finish without steering or launching any competing process.
+
+
+[2026-08-04 2:31:25 AM NZST] CODEX COMMENTARY
+The probe remains active and has not crossed its safety boundary. I am keeping the operation bounded and single-threaded; when it returns I will inspect whether the level-19 policy produced a viable target, a safe absence result, or a source-backed route hazard.
+
+
+[2026-08-04 2:32:04 AM NZST] CODEX COMMENTARY
+The Mirror Realm run is nearing the 180-second limit without a returned result. I am not interrupting it prematurely; the runner's safe-return watchdog is the evidence we need for this route, and I will audit the process immediately if the outer command does not close after that boundary.
+
+
+[2026-08-04 2:32:13 AM NZST] CODEX COMMENTARY
+The level-19 Mirror Realm probe returned safely at checkpoint 3077 with no XP or objective kill and left Kestrel at healer room 3054. I am inspecting its exact consider/route result and the next selected policy now; this is a fresh level-band probe, so the outcome will determine whether Watchman can become a level-19 hunt or must hand off to another registered route.
+
+
+[2026-08-04 2:32:58 AM NZST] CODEX COMMENTARY
+The Watchman probe produced a clean same-reboot viable result, but the generic state selector correctly inserted a mandatory provision-restock pass before combat. I am letting that maintenance segment run autonomously now; after it checkpoints, the next selection should be the level-19 Watchman hunt rather than bypassing food or water preparation.
+
+
+[2026-08-04 2:33:54 AM NZST] CODEX COMMENTARY
+The autonomous restock pass is still within its 120-second bound. I am leaving it uninterrupted because this is a required resource transition before the Watchman fight; the runner will return to the healer or shop checkpoint on its own.
+
+
+[2026-08-04 2:34:35 AM NZST] CODEX COMMENTARY
+The restock process has not returned yet, but it remains the only active campaign invocation and is still inside its watchdog window. I am monitoring for a clean checkpoint rather than starting the combat segment concurrently.
+
+
+[2026-08-04 2:35:14 AM NZST] CODEX COMMENTARY
+The maintenance segment is approaching its 120-second boundary without output. I am keeping the bounded process under observation; if it crosses the outer timeout I will inspect and terminate only the confirmed stale child, then preserve the local checkpoint and continue with offline diagnosis.
+
+
+[2026-08-04 2:35:31 AM NZST] CODEX COMMENTARY
+The autonomous maintenance pass returned safely at checkpoint 3080, but provision funding was deferred because the Dwarven Home route contained three mobiles while evaluating the nobleman. No combat or XP occurred, and the viable Watchman evidence remains intact. I am auditing the funding state and crowd cooldown to determine whether the generic fallback should wait, rotate to another safe money source, or repair a route-specific crowd handling gap before the hunt.
+
+
+[2026-08-04 2:37:59 AM NZST] CODEX COMMENTARY
+The funding audit identifies the next concrete defect: the only same-reboot successful funding target, Bardoosh, is filtered out after three kills even when flight and food are both essential and every fresh safe carrier is absent or crowded. The selector's documented completed-target fallback never gets a chance because the boot-kill cap is applied first. I am permitting reuse of an already completed source-safe candidate only in that essential-funding mode, with a regression proving ordinary XP rotation still keeps the cap.
+
+
+[2026-08-04 2:41:05 AM NZST] CODEX COMMENTARY
+I am treating this as the requested one-off publication: first I will inspect the worktree and remote state, then commit the current source intentionally, push it, and merge it into remote main if the repository is not already on main. I will keep the local checkpoint even if any remote step fails or exceeds a short bound.
+
+
+[2026-08-04 2:41:23 AM NZST] CODEX COMMENTARY
+The worktree is on main and is one commit ahead of no remote changes, with the intended campaign fixes plus the required development log. I am running the full offline suite and repository checks before staging so the one-off publication represents a verified checkpoint.

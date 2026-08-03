@@ -1422,6 +1422,7 @@ class CampaignRunner:
                 state,
                 completed_policy_ids=self._policy_xp_deltas,
             )
+            state = _repair_research_absence_cooldowns(state)
             state = _remember_last_productive_policy(
                 state,
                 policy_xp_deltas=self._policy_xp_deltas,
@@ -5808,7 +5809,13 @@ def _select_provision_funding_candidate(
             candidate.status != "reject"
             and candidate.autonomous_safe
             and candidate.estimated_level_range[1] <= character_level
-            and candidate.boot_kills < 3
+            and (
+                candidate.boot_kills < 3
+                or (
+                    prefer_completed_funding_candidate
+                    and candidate_key in completed_attempts
+                )
+            )
             and _candidate_has_saleable_funding_drop(
                 candidate,
                 gear_catalog=gear_catalog,
@@ -6522,6 +6529,46 @@ def _campaign_research_results(state: dict[str, Any]) -> dict[str, dict[str, Any
     }
 
 
+def _repair_research_absence_cooldowns(
+    state: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Drop absence cooldowns whose reboot-scoped evidence no longer exists."""
+    raw_cooldowns = state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY)
+    if not isinstance(raw_cooldowns, Mapping):
+        return dict(state)
+    results = _campaign_research_results(dict(state))
+    boot_id = state.get("world_boot_id")
+    retained: dict[str, int] = {}
+    for raw_policy_id, raw_remaining in raw_cooldowns.items():
+        policy_id = str(raw_policy_id)
+        try:
+            remaining = int(raw_remaining)
+        except (TypeError, ValueError):
+            continue
+        result = results.get(policy_id)
+        if (
+            remaining <= 0
+            or not isinstance(result, dict)
+            or result.get("boot_id") != boot_id
+            or not (
+                result.get("absent") is True
+                or result.get("route_hazard")
+                == _DYNAMIC_FIELD_ROUTE_HAZARD_ABORT_REASON
+            )
+        ):
+            continue
+        retained[policy_id] = remaining
+    original = dict(raw_cooldowns)
+    if retained == original:
+        return dict(state)
+    repaired = dict(state)
+    if retained:
+        repaired[_RESEARCH_ABSENCE_COOLDOWN_KEY] = retained
+    else:
+        repaired.pop(_RESEARCH_ABSENCE_COOLDOWN_KEY, None)
+    return repaired
+
+
 def _remember_last_productive_policy(
     state: dict[str, Any],
     *,
@@ -6564,6 +6611,55 @@ def _remember_last_productive_policy(
     remembered = dict(state)
     remembered[_LAST_PRODUCTIVE_POLICY_KEY] = selected
     return remembered
+
+
+def _historical_productive_handoff_policy_id(
+    state: Mapping[str, Any],
+    *,
+    current_group: frozenset[str],
+) -> str | None:
+    """Find a previously productive hunt whose current miss is retryable."""
+    history = state.get(_PRODUCTIVE_POLICY_HISTORY_KEY)
+    boot_id = state.get("world_boot_id")
+    if not isinstance(history, Mapping) or history.get("boot_id") != boot_id:
+        return None
+    policy_ids = history.get("policy_ids")
+    if not isinstance(policy_ids, (list, tuple, set, frozenset)):
+        return None
+    cooldowns = state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+    results = _campaign_research_results(dict(state))
+    candidates: list[str] = []
+    for raw_policy_id in policy_ids:
+        policy_id = str(raw_policy_id)
+        if "-hunt-" not in policy_id or policy_id in current_group:
+            continue
+        probe_id = policy_id.replace("-hunt-", "-probe-", 1)
+        if any(
+            int(cooldowns.get(candidate_id) or 0) > 0
+            for candidate_id in (policy_id, probe_id)
+        ):
+            continue
+        hunt_result = results.get(policy_id)
+        probe_result = results.get(probe_id)
+        blocked = False
+        for result, is_hunt in (
+            (hunt_result, True),
+            (probe_result, False),
+        ):
+            if not isinstance(result, dict) or result.get("boot_id") != boot_id:
+                continue
+            if result.get("absent") is True or result.get("unobserved") is True:
+                continue
+            if is_hunt and result.get("completed_kill") is False:
+                blocked = True
+                break
+            if result.get("observed") is True and result.get("viable") is True:
+                continue
+            blocked = True
+            break
+        if not blocked:
+            candidates.append(policy_id)
+    return sorted(candidates)[0] if candidates else None
 
 
 def _campaign_sanctuary_recovery_required(state: dict[str, Any]) -> bool:
@@ -7560,6 +7656,7 @@ def _next_absent_research_retry_policy(
     *,
     current_group: frozenset[str],
     current_policy_id: str,
+    only_expired: bool = True,
 ) -> str:
     """Rotate to another absent target after retrying the current one.
 
@@ -7580,8 +7677,9 @@ def _next_absent_research_retry_policy(
         except (TypeError, ValueError):
             continue
         result = results.get(candidate_id)
+        cooldown_ready = remaining <= 0 if only_expired else remaining > 0
         if (
-            remaining > 0
+            cooldown_ready
             and isinstance(result, dict)
             and result.get("absent") is True
             and result.get("boot_id") == boot_id
@@ -7627,18 +7725,46 @@ def _retry_current_absent_research_policy(
         and productive_result.get("viable") is True
         and productive_result.get("completed_kill") is True
     )
-    if productive_only and not productive_handoff:
+    historical_handoff = (
+        None
+        if productive_handoff
+        else _historical_productive_handoff_policy_id(
+            state,
+            current_group=current_group,
+        )
+    )
+    handoff_policy_id = (
+        productive_policy_id
+        if productive_handoff
+        else historical_handoff
+    )
+    if productive_only and handoff_policy_id is None:
         return state
-    if productive_handoff:
-        selected_policy_id = productive_policy_id
+    if handoff_policy_id is not None:
+        selected_policy_id = handoff_policy_id
         retry_policy_ids = ()
         retried[_POLICY_HANDOFF_KEY] = selected_policy_id
     else:
+        cooldowns = state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+        current_cooldown = 0
+        for candidate_id in current_group:
+            try:
+                current_cooldown = max(
+                    current_cooldown,
+                    int(cooldowns.get(candidate_id) or 0),
+                )
+            except (TypeError, ValueError):
+                continue
         selected_policy_id = _next_absent_research_retry_policy(
             state,
             current_group=current_group,
             current_policy_id=policy_id,
         )
+        if (
+            selected_policy_id == policy_id
+            and current_cooldown > 0
+        ):
+            return state
         retry_policy_ids = _research_absence_retry_group(selected_policy_id)
     for candidate_id in retry_policy_ids:
         results.pop(candidate_id, None)
@@ -7813,6 +7939,7 @@ def _retry_current_crowded_research_policy(state: dict[str, Any]) -> dict[str, A
         state,
         current_group=_research_absence_retry_group(policy_id),
         current_policy_id=policy_id,
+        only_expired=False,
     )
     if retry_policy_id == policy_id:
         return _retry_any_crowded_research_policy(state)

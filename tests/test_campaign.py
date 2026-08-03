@@ -31,6 +31,7 @@ from dd4tester.campaign import (
     _campaign_policy_xp_deltas,
     _campaign_productive_policy_ids,
     _campaign_productive_sanctuary_handoff,
+    _historical_productive_handoff_policy_id,
     _campaign_liquidation_signature,
     _campaign_practice_types_spent,
     _clear_crowd_absence_marker,
@@ -47,6 +48,7 @@ from dd4tester.campaign import (
     _repair_failed_flight_funding_state,
     _repair_exhausted_flight_funding_state,
     _repair_confirmed_research_kills,
+    _repair_research_absence_cooldowns,
     _repair_provision_funding_history,
     _remember_last_productive_policy,
     _newer_progress_state,
@@ -526,6 +528,7 @@ def test_funding_candidate_prefers_completed_target_for_flight_money(
         )
 
     completed = candidate("completed carrier", 20)
+    completed = replace(completed, boot_kills=3)
     fresh = candidate("fresh carrier", 30)
     monkeypatch.setattr(
         "dd4tester.campaign.load_world_source",
@@ -2781,7 +2784,7 @@ def test_expired_absence_retry_reopens_the_current_research_policy() -> None:
                     "boot_id": "boot-1",
                 }
             },
-            "campaign_research_absence_cooldowns": {policy_id: 1},
+            "campaign_research_absence_cooldowns": {policy_id: 0},
         }
     )
 
@@ -2821,7 +2824,7 @@ def test_absence_retry_rotates_to_the_next_current_reboot_target() -> None:
             },
             "campaign_research_absence_cooldowns": {
                 current_id: 3,
-                next_id: 1,
+                next_id: 0,
                 "moria-sanctuary-thief-17-20": 3,
             },
         }
@@ -2872,6 +2875,147 @@ def test_absence_retry_hands_off_to_a_current_productive_hunt() -> None:
     assert productive_id in retried["campaign_research_results"]
     assert retried["campaign_research_absence_cooldowns"][current_id] == 1
     assert "campaign_cleared_research_policies" not in retried
+
+
+def test_absence_retry_does_not_bypass_an_active_cooldown() -> None:
+    policy_id = "shadow-keep-undead-soldier-hunt-16-20"
+    state = {
+        "campaign_last_policy": policy_id,
+        "world_boot_id": "boot-1",
+        "campaign_fastwalk_target_absent": True,
+        "campaign_research_results": {
+            policy_id: {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            }
+        },
+        "campaign_research_absence_cooldowns": {policy_id: 3},
+    }
+
+    retried = _retry_current_absent_research_policy(state)
+
+    assert retried == state
+
+
+def test_orphaned_absence_cooldown_is_removed_without_erasing_live_evidence() -> None:
+    repaired = _repair_research_absence_cooldowns(
+        {
+            "world_boot_id": "boot-1",
+            "campaign_research_absence_cooldowns": {
+                "highland-keeper-probe-17-20": 3,
+                "shadow-keep-undead-soldier-hunt-16-20": 2,
+            },
+            "campaign_research_results": {
+                "shadow-keep-undead-soldier-hunt-16-20": {
+                    "absent": True,
+                    "boot_id": "boot-1",
+                    "observed": False,
+                    "viable": False,
+                }
+            },
+        }
+    )
+
+    assert repaired["campaign_research_absence_cooldowns"] == {
+        "shadow-keep-undead-soldier-hunt-16-20": 2,
+    }
+    assert repaired["campaign_research_results"][
+        "shadow-keep-undead-soldier-hunt-16-20"
+    ]["absent"] is True
+
+
+def test_absence_retry_can_select_an_independently_expired_route() -> None:
+    current_id = "shadow-keep-undead-soldier-hunt-16-20"
+    next_id = "highland-keeper-probe-17-20"
+    retried = _retry_current_absent_research_policy(
+        {
+            "campaign_last_policy": current_id,
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_target_absent": True,
+            "campaign_research_results": {
+                current_id: {
+                    "observed": False,
+                    "viable": False,
+                    "absent": True,
+                    "boot_id": "boot-1",
+                },
+                next_id: {
+                    "observed": False,
+                    "viable": False,
+                    "absent": True,
+                    "boot_id": "boot-1",
+                },
+            },
+            "campaign_research_absence_cooldowns": {
+                current_id: 3,
+                next_id: 0,
+            },
+        }
+    )
+
+    assert retried["campaign_last_policy"] == next_id
+    assert current_id in retried["campaign_research_results"]
+    assert next_id not in retried["campaign_research_results"]
+    assert retried["campaign_research_absence_cooldowns"][current_id] == 3
+
+
+def test_absence_retry_hands_off_to_historical_productive_hunt() -> None:
+    current_id = "shadow-keep-undead-soldier-hunt-16-20"
+    historical_id = "highland-keeper-hunt-17-20"
+    retried = _retry_current_absent_research_policy(
+        {
+            "campaign_last_policy": current_id,
+            "campaign_last_productive_policy": "shire-elven-wizard-hunt-17-20",
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_target_absent": True,
+            "campaign_research_results": {
+                current_id: {
+                    "observed": False,
+                    "viable": False,
+                    "absent": True,
+                    "boot_id": "boot-1",
+                },
+                "shire-elven-wizard-hunt-17-20": {
+                    "observed": True,
+                    "viable": False,
+                    "completed_kill": False,
+                    "boot_id": "boot-1",
+                },
+            },
+            "campaign_productive_policy_history": {
+                "boot_id": "boot-1",
+                "policy_ids": [historical_id],
+            },
+            "campaign_research_absence_cooldowns": {current_id: 3},
+        },
+        productive_only=True,
+    )
+
+    assert retried["campaign_last_policy"] == historical_id
+    assert retried["campaign_policy_handoff"] == historical_id
+    assert retried["campaign_research_results"][current_id]["absent"] is True
+    assert retried["campaign_research_absence_cooldowns"][current_id] == 3
+
+
+def test_historical_productive_handoff_respects_route_cooldown() -> None:
+    assert (
+        _historical_productive_handoff_policy_id(
+            {
+                "world_boot_id": "boot-1",
+                "campaign_productive_policy_history": {
+                    "boot_id": "boot-1",
+                    "policy_ids": ["highland-keeper-hunt-17-20"],
+                },
+                "campaign_research_absence_cooldowns": {
+                    "highland-keeper-probe-17-20": 2,
+                },
+            },
+            current_group=frozenset(),
+        )
+        is None
+    )
 
 
 def test_last_productive_policy_is_derived_from_current_reboot_kills() -> None:
@@ -2999,8 +3143,8 @@ def test_expired_nobleman_probe_retry_clears_its_paired_hunt_result() -> None:
                 },
             },
             "campaign_research_absence_cooldowns": {
-                probe_id: 1,
-                hunt_id: 1,
+                probe_id: 0,
+                hunt_id: 0,
             },
         }
     )
