@@ -20748,3 +20748,11 @@ I am switching to the requested one-off publication pass. I will inspect the cur
 
 [2026-08-04 8:59:50 AM NZST] CODEX COMMENTARY
 The current worktree is on main, with six tracked files changed and the remote still pointing at f1ea565. The full offline suite is clean (1,901 passed), compilation passes, and the code diff has no whitespace errors. I am checking the existing remote publication branch before committing so the merge does not accidentally discard or duplicate its earlier commits.
+
+
+[2026-08-04 9:00:35 AM NZST] CODEX COMMENTARY
+The publication branch is prepared as codex/one-off-publish-20260804-moria-deep, and the verified six-file change set is committed as 7699aea. I am pushing that branch with terminal prompts disabled and a bounded timeout, then I will fast-forward main and push main so the remote merge is explicit.
+
+
+[2026-08-04 9:00:57 AM NZST] CODEX COMMENTARY
+The feature branch push succeeded. Switching to main was correctly blocked because the append-only conversation log received the publication update after the first commit; I am preserving that line in a small follow-up commit, pushing it, and then completing the fast-forward merge instead of stashing or dropping any record.
