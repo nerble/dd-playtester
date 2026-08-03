@@ -6904,6 +6904,14 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 moria_policy_id = (
                     _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
                 )
+                alternate_policy = _moria_absent_cooldown_alternate_policy(
+                    context
+                )
+                if alternate_policy is not None:
+                    return replace(
+                        alternate_policy,
+                        practice_skill=context.practice_skill,
+                    )
                 if _research_crowd_is_active(context, moria_policy_id):
                     return replace(
                         _UNAVAILABLE_POLICY,
@@ -7477,6 +7485,14 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                     magnus_policy.policy_id == _SOLACE_MAGNUS_HUNT_POLICY.policy_id
                     and not context.has_sanctuary_potion
                 ):
+                    alternate_policy = _moria_absent_cooldown_alternate_policy(
+                        context
+                    )
+                    if alternate_policy is not None:
+                        return replace(
+                            alternate_policy,
+                            practice_skill=context.practice_skill,
+                        )
                     return replace(
                         _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
                         summary=(
@@ -8121,6 +8137,36 @@ def _research_hunt_policy(
     ):
         return None
     return probe
+
+
+def _moria_absent_cooldown_alternate_policy(
+    context: ProgressionContext,
+) -> ProgressionPolicy | None:
+    """Use the next source-backed probe while an absent Moria carrier resets."""
+    moria_policy_id = _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
+    result = (context.research_results or {}).get(moria_policy_id)
+    if not (
+        isinstance(result, Mapping)
+        and result.get("absent") is True
+        and result.get("boot_id") == context.world_boot_id
+        and _research_absence_cooldown_active(context, moria_policy_id)
+    ):
+        return None
+    for probe, hunt in (
+        (
+            _SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY,
+            _SHIRE_DWARVEN_PRINCE_THIEF_HUNT_POLICY,
+        ),
+        (_SHIRE_THAIN_RESEARCH_POLICY, _SHIRE_THAIN_HUNT_POLICY),
+    ):
+        alternate_policy = _research_hunt_policy(
+            context,
+            probe=probe,
+            hunt=hunt,
+        )
+        if alternate_policy is not None:
+            return alternate_policy
+    return None
 
 
 def _historical_productive_research_hunt(

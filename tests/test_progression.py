@@ -4715,6 +4715,82 @@ def test_moria_reset_cooldown_opens_shire_research_without_sanctuary() -> None:
     assert policy.status == "research"
 
 
+def test_level_nineteen_magnus_sanctuary_gate_hands_off_during_moria_absence() -> None:
+    results = _level_eighteen_research_outcomes()
+    results.update(
+        {
+            "mirror-realm-watchman-probe-19-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-watchman-hunt-19-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "plains-aruncus-thief-probe-19-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-probe-19-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-hunt-19-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "solace-magnus-probe-19-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "moria-sanctuary-thief-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+    results.pop("shire-thain-probe-17-20", None)
+    results.pop("shire-thain-hunt-17-20", None)
+
+    policy = policy_for(
+        19,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        research_results=results,
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+        },
+    )
+
+    assert policy.policy_id == "shire-thain-probe-17-20"
+    assert policy.execution == "shire-thain-research"
+    assert policy.status == "research"
+
+
 def test_viable_secondary_white_dwarf_probe_promotes_one_bounded_hunt() -> None:
     results = _level_eighteen_research_outcomes()
     results["galaxy-white-dwarf-secondary-probe-17-20"] = {

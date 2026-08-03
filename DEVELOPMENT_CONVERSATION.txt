@@ -20252,3 +20252,71 @@ The pending diff is limited to the corrected Solace Magnus route, its regression
 
 [2026-08-04 6:00:41 AM NZST] CODEX COMMENTARY
 The full suite is green: 1,879 tests passed in 26.58 seconds, and the scoped diff has no whitespace errors. I am staging the four intentional files now, then I will create the one-off commit and publish main to origin.
+
+
+[2026-08-04 6:00:50 AM NZST] CODEX COMMENTARY
+The intended files are staged on main: route code, regression test, progression evidence, and the append-only development log. I am creating the one-off commit now; after that I will push main and verify that origin/main points to the new commit.
+
+
+[2026-08-04 6:00:58 AM NZST] CODEX COMMENTARY
+Commit 92471af was created successfully on main. I am pushing it to origin/main now; once the remote accepts it, I will verify the published hash and clean working tree.
+
+
+[2026-08-04 6:01:10 AM NZST] CODEX COMMENTARY
+The push succeeded: origin/main advanced from 08b50d9 to 92471af. I am doing the final remote, working-tree, conversation-log, and process audit now so I can report the publication precisely.
+
+
+[2026-08-04 6:01:50 AM NZST] CODEX FINAL
+One-off publication completed. Commit 92471af corrected the 65-command Solace Magnus route, updated its regression test and live progression evidence, and was pushed directly to origin/main. Remote and local HEAD match. The full suite passed with 1,879 tests. Only the expected append-only conversation log has uncommitted entries from this exchange; the Discord streamer is the only Python process running.
+
+
+[2026-08-04 6:02:18 AM NZST] CODEX COMMENTARY
+I am resuming from Kestrel's level-19 checkpoint. The last work proved Magnus can be reached and considered safely, but the current sanctuary supply carrier is absent; I am auditing the live selector and source-backed candidate set now so this work unit can add an executable progression frontier rather than merely expand a report.
+
+
+[2026-08-04 6:02:57 AM NZST] CODEX COMMENTARY
+Correction to the previous update: I found the working tree is clean apart from the expected conversation log, and main still matches origin/main. The current source has only one executable level-19 hunt family registered for Kestrel: Magnus is a valid probe but explicitly sanctuary-gated, while Moria has already been absent twice under bounded waits. I am checking the scheduler fallback ordering and source-derived candidate inventory before choosing the next live probe.
+
+
+[2026-08-04 6:05:18 AM NZST] CODEX COMMENTARY
+The source candidate inventory confirms the immediate gap: no new autonomous-safe level-19 target is available from the generic candidate scanner, while the scheduler still has an untried Shire Thain probe after the Moria absence cooldown. I am running one bounded campaign segment with no retry wait to verify the actual selector and collect the next live state without steering.
+
+
+[2026-08-04 6:08:28 AM NZST] CODEX COMMENTARY
+The live segment exposed the concrete selector bug: at level 19, a historical productive hunt is evaluated before the existing Moria-cooldown handoff, so the scheduler returns Moria and the campaign exits ready instead of choosing the next source-backed non-caster probe. I am repairing that ordering generically and adding a level-19 regression beside the existing level-18 cooldown test.
+
+
+[2026-08-04 6:11:29 AM NZST] CODEX COMMENTARY
+The scheduler fix is in place: an absent current-reboot Moria result with an active cooldown now hands off to the next unrecorded Shire probe before the Magnus sanctuary gate can return a waiting state. The fallback is source-backed and bounded; it does not attack the below-band carrier or weaken any combat gate. I am running the focused progression regression and checking Kestrel's persisted selector before the live retry.
+
+
+[2026-08-04 6:13:09 AM NZST] CODEX COMMENTARY
+Focused tests now pass (2/2), and the persisted Kestrel campaign selector has changed from Moria to the reusable Shire Thain research policy. I am launching that one bounded no-steering segment now; its purpose is to advance the cooldown handoff and record fresh live presence/consider evidence, not to force a below-band kill.
+
+
+[2026-08-04 6:13:57 AM NZST] CODEX COMMENTARY
+The Thain segment is still active inside the configured 180-second live bound. No second campaign worker has been launched; I am letting the route/search and healer-return logic complete before inspecting the persisted result.
+
+
+[2026-08-04 6:15:08 AM NZST] CODEX COMMENTARY
+The live worker is still the single expected campaign process (PID 37264), and its database row remains the Thain research segment in progress. This is normal route latency for the source-connected Shire sweep; I am keeping the bounded watchdog in place and not issuing any gameplay input.
+
+
+[2026-08-04 6:15:37 AM NZST] CODEX COMMENTARY
+The no-steering live validation completed cleanly: the repaired scheduler ran the Thain research policy, checkpointed 3169 at level 19, and returned a normal ready state without a wait-loop. I am inspecting its exact live result and the next automatic selector now, then I will run the offline suite and decide whether the next step is a productive hunt retry or another source-backed frontier probe.
+
+
+[2026-08-04 6:20:03 AM NZST] CODEX COMMENTARY
+I am checking the exact local state first, then I will make the one-off publication deliberate: commit the current source/test changes, push them, and merge them into main if the remote workflow allows it.
+
+
+[2026-08-04 6:20:22 AM NZST] CODEX COMMENTARY
+The repository is already on main, tracking origin/main; the only code changes are the scheduler handoff and its regression test, plus the required conversation log. I am reviewing that diff and running the relevant checks before publishing so the remote receives a coherent commit.
+
+
+[2026-08-04 6:21:13 AM NZST] CODEX COMMENTARY
+The focused regression and full pytest suite both pass: 2 focused tests and 1,880 tests overall. I am now checking repository hygiene, then I will commit and publish the verified change.
+
+
+[2026-08-04 6:21:34 AM NZST] CODEX COMMENTARY
+The hygiene checks are clean, Python compilation passes, and the previous publication pattern includes the append-only conversation log in commits. I am staging exactly these three files now, then I will create one focused commit and push main directly because it is already the checked-out publication branch.
