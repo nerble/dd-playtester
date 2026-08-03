@@ -1619,6 +1619,266 @@ def test_considered_research_hunt_without_kill_does_not_become_absence() -> None
     assert "campaign_research_absence_cooldowns" not in merged
 
 
+def test_previously_productive_research_hunt_gets_retryable_failure_cooldown() -> None:
+    policy = ProgressionPolicy(
+        policy_id="argent-bandit-leader-hunt-19-20",
+        minimum_level=19,
+        maximum_level=20,
+        status="research",
+        execution="argent-bandit-leader-hunt",
+        summary="hunt",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    merged = _merge_campaign_research_result(
+        {
+            "world_boot_id": "boot-1",
+            "campaign_productive_policy_history": {
+                "boot_id": "boot-1",
+                "policy_ids": [policy.policy_id],
+            },
+            "campaign_research_results": {
+                policy.policy_id: {
+                    "observed": True,
+                    "viable": True,
+                    "boot_id": "boot-1",
+                }
+            },
+        },
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_consider_outcomes": {
+                "bandit leader": True
+            },
+            "campaign_objective_kills": [],
+        },
+        policy=policy,
+    )
+
+    assert merged["campaign_research_results"][policy.policy_id] == {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "retryable_failure": True,
+        "previously_productive": True,
+        "boot_id": "boot-1",
+    }
+    assert merged["campaign_research_absence_cooldowns"] == {
+        policy.policy_id: 3
+    }
+
+
+def test_policy_revision_migrates_productive_incomplete_hunt_to_retry_rotation() -> None:
+    policy_id = "argent-bandit-leader-hunt-19-20"
+    migrated = _refresh_policy_revision(
+        {
+            "campaign_policy_revision": 111,
+            "world_boot_id": "boot-1",
+            "campaign_productive_policy_history": {
+                "boot_id": "boot-1",
+                "policy_ids": [policy_id],
+            },
+            "campaign_research_results": {
+                policy_id: {
+                    "observed": True,
+                    "viable": False,
+                    "completed_kill": False,
+                    "boot_id": "boot-1",
+                }
+            },
+        }
+    )
+
+    assert migrated["campaign_research_results"][policy_id][
+        "retryable_failure"
+    ] is True
+    assert migrated["campaign_research_absence_cooldowns"] == {
+        policy_id: 3
+    }
+
+
+def test_policy_revision_repairs_missing_retryable_hunt_cooldown() -> None:
+    policy_id = "argent-bandit-leader-hunt-19-20"
+    repaired = _refresh_policy_revision(
+        {
+            "campaign_policy_revision": 112,
+            "world_boot_id": "boot-1",
+            "campaign_productive_policy_history": {
+                "boot_id": "boot-1",
+                "policy_ids": [policy_id],
+            },
+            "campaign_research_results": {
+                policy_id: {
+                    "observed": True,
+                    "viable": False,
+                    "completed_kill": False,
+                    "retryable_failure": True,
+                    "previously_productive": True,
+                    "boot_id": "boot-1",
+                }
+            },
+        }
+    )
+
+    assert repaired["campaign_research_results"][policy_id][
+        "retryable_failure"
+    ] is True
+    assert repaired["campaign_research_absence_cooldowns"] == {
+        policy_id: 3
+    }
+
+
+def test_research_cooldown_repair_preserves_retryable_failure_marker() -> None:
+    policy_id = "argent-bandit-leader-hunt-19-20"
+    state = {
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            policy_id: {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "retryable_failure": True,
+                "boot_id": "boot-1",
+            }
+        },
+        "campaign_research_absence_cooldowns": {policy_id: 3},
+    }
+
+    repaired = _repair_research_absence_cooldowns(state)
+
+    assert repaired["campaign_research_absence_cooldowns"] == {
+        policy_id: 3
+    }
+
+
+def test_campaign_start_metadata_repair_is_checkpointable_for_early_return(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    policy = ProgressionPolicy(
+        policy_id="moria-sanctuary-thief-17-20",
+        minimum_level=17,
+        maximum_level=20,
+        status="research",
+        execution="moria-sanctuary-hunt",
+        summary="wait for the sanctuary carrier",
+        evidence=(),
+        practice_skill=None,
+    )
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="shire-thain-probe-17-20",
+            reason="segment_complete",
+            state={
+                "level": 19,
+                "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
+                "world_boot_id": "boot-1",
+                "campaign_last_policy": "shire-thain-probe-17-20",
+                "campaign_productive_policy_history": {
+                    "boot_id": "boot-1",
+                    "policy_ids": [
+                        "argent-bandit-leader-hunt-19-20",
+                    ],
+                },
+                "campaign_research_results": {
+                    "argent-bandit-leader-hunt-19-20": {
+                        "observed": True,
+                        "viable": False,
+                        "completed_kill": False,
+                        "retryable_failure": True,
+                        "previously_productive": True,
+                        "boot_id": "boot-1",
+                    },
+                    "moria-sanctuary-thief-17-20": {
+                        "observed": False,
+                        "viable": False,
+                        "absent": True,
+                        "boot_id": "boot-1",
+                    },
+                    "hightower-jailor-hunt-17-20": {
+                        "observed": True,
+                        "viable": False,
+                        "completed_kill": False,
+                        "boot_id": "boot-1",
+                    },
+                },
+                "campaign_research_absence_cooldowns": {
+                    "moria-sanctuary-thief-17-20": 3,
+                },
+            },
+        )
+
+    runner = CampaignRunner(spec, config_path)
+    monkeypatch.setattr(runner, "_policy_for_state", lambda state: policy)
+    result = asyncio.run(runner.run())
+
+    assert result.status == "ready"
+    assert "sanctuary reserve" in result.message
+    with RunStorage(database) as storage:
+        checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+    assert checkpoint is not None
+    assert checkpoint["reason"] == "campaign_metadata_repaired"
+    persisted = json.loads(checkpoint["state_json"])
+    assert persisted["campaign_research_absence_cooldowns"] == {
+        "argent-bandit-leader-hunt-19-20": 3,
+        "moria-sanctuary-thief-17-20": 3,
+    }
+
+
+def test_productive_work_expires_retryable_hunt_and_paired_probe_together() -> None:
+    hunt_id = "argent-bandit-leader-hunt-19-20"
+    probe_id = "argent-bandit-leader-probe-19-20"
+    state = {
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            probe_id: {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            hunt_id: {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "retryable_failure": True,
+                "boot_id": "boot-1",
+            },
+        },
+        "campaign_research_absence_cooldowns": {hunt_id: 3},
+    }
+
+    for expected_remaining in (2, 1):
+        state = _clear_absent_research_results(
+            state,
+            except_policy_id="another-productive-hunt",
+        )
+        assert state["campaign_research_absence_cooldowns"] == {
+            hunt_id: expected_remaining
+        }
+
+    state = _clear_absent_research_results(
+        state,
+        except_policy_id="another-productive-hunt",
+    )
+
+    assert hunt_id not in state.get("campaign_research_results", {})
+    assert probe_id not in state.get("campaign_research_results", {})
+    assert "campaign_research_absence_cooldowns" not in state
+    assert state["campaign_cleared_research_policies"] == [hunt_id, probe_id]
+
+
 def test_successful_research_hunt_promotes_from_run_objective_kills(
     tmp_path,
 ) -> None:

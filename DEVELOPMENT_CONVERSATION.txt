@@ -20320,3 +20320,251 @@ The focused regression and full pytest suite both pass: 2 focused tests and 1,88
 
 [2026-08-04 6:21:34 AM NZST] CODEX COMMENTARY
 The hygiene checks are clean, Python compilation passes, and the previous publication pattern includes the append-only conversation log in commits. I am staging exactly these three files now, then I will create one focused commit and push main directly because it is already the checked-out publication branch.
+
+
+[2026-08-04 6:22:03 AM NZST] CODEX COMMENTARY
+The commit 33bc320 was created and pushed successfully to origin/main. I am doing the final remote/status check and process audit now; I will report any lingering worker rather than leaving a stale campaign process behind.
+
+
+[2026-08-04 6:22:28 AM NZST] CODEX FINAL
+One-off publication completed: commit 33bc320 was pushed to origin/main. Full pytest passed with 1880 tests; compileall and diff checks passed. The process audit found only the expected Discord streamer PID 27976 and no campaign worker or stale Python process. The local conversation log remains intentionally append-only and dirty after the publication.
+
+
+[2026-08-04 6:22:54 AM NZST] CODEX COMMENTARY
+Resuming the autonomy goal from the published scheduler fix. I am checking the level-19 checkpoint, current policy selection, fresh DD4 source revision, and live process state before choosing the next concrete progression blocker to remove.
+
+
+[2026-08-04 6:23:40 AM NZST] CODEX COMMENTARY
+The current checkpoint is level 19 with XP unchanged at 179,939. The new handoff reached the Shire Thain probe, but that target was also absent; the scheduler now falls back to Moria again while several other research policies are cooling down. I am tracing cooldown advancement and candidate ordering so the next fix can move through the available frontier instead of cycling.
+
+
+[2026-08-04 6:27:54 AM NZST] CODEX COMMENTARY
+The concrete level-19 blocker is now clear: an absent sanctuary carrier and exhausted research probes trap Kestrel before the reusable non-caster Mahn-Tor route can be selected. I am extending the evidence-backed Rock Toad circuit through level 20 with a one-kill trial cap, and making the sanctuary handoff choose that bounded fallback only when no unprotected research route remains.
+
+
+[2026-08-04 6:30:06 AM NZST] CODEX COMMENTARY
+The level-19 selector now resolves to the one-kill Mahn-Tor trial, and all offline tests pass: 1,881 passed. I am launching exactly one bounded no-steering campaign segment to let live consider decide whether the current Rock Toad is still useful at level 19; no target will be forced if it falls into a prohibited branch.
+
+
+[2026-08-04 6:30:47 AM NZST] CODEX COMMENTARY
+The bounded live segment is active under one campaign worker (PID 38528); the only other Python process is the expected Discord streamer. The route is still within its explicit 240-second segment bound, so I am letting the live consider and safety gates finish before reading the checkpoint.
+
+
+[2026-08-04 6:31:40 AM NZST] CODEX COMMENTARY
+The live worker remains active and has not exceeded the bounded runtime; no second campaign worker appeared. The Mahn-Tor traversal is longer than a simple recall loop, so I am continuing to wait for its recorded consider result rather than issuing any steering command.
+
+
+[2026-08-04 6:33:47 AM NZST] CODEX COMMENTARY
+The live trial completed safely at healer room 3054, but all four Rock Toad stops returned a false consider at level 19; the runner persisted the current-reboot below-band exclusion and gained no XP. I am moving to a fresh level-19 Argent bandit-leader probe: its source range reaches 19, and the new band-specific policy will retain the prior unapproved-companion abort as a hard safety gate rather than blindly repeating it.
+
+
+[2026-08-04 6:35:46 AM NZST] CODEX COMMENTARY
+Focused policy tests pass (3 passed), and the persisted live checkpoint now selects the fresh argent-bandit-leader-probe-19-20 policy. I am running one bounded no-steering probe; its sole job is to confirm current presence/isolation and live consider before any hunt promotion.
+
+
+[2026-08-04 6:36:40 AM NZST] CODEX COMMENTARY
+The Argent probe worker is active as the sole campaign worker (PID 31860) alongside the expected streamer. It remains inside the 240-second bound and has not requested a hunt; I am waiting for the route to return its source-matched live result.
+
+
+[2026-08-04 6:37:44 AM NZST] CODEX COMMENTARY
+The bounded Argent probe is still running normally with one worker and no stale child process. The route is continuing through its connected live-room search; I am preserving the no-steering validation and will inspect the checkpoint immediately on completion.
+
+
+[2026-08-04 6:38:33 AM NZST] CODEX COMMENTARY
+The fresh Argent probe reached an isolated bandit leader, passed live consider at level 19, and returned safely to healer room 3054 with no damage or XP change. The scheduler promoted the fresh hunt policy; I am running its one-kill bounded combat pass now, with the prior unapproved-joiner abort preserved.
+
+
+[2026-08-04 6:39:25 AM NZST] CODEX COMMENTARY
+The Argent hunt is active under one campaign worker (PID 19832) and remains within the explicit segment bound. I am waiting for the combat watchdog and joiner gate to produce the authoritative kill or safe-abort result; no manual command is being injected.
+
+
+[2026-08-04 6:40:27 AM NZST] CODEX COMMENTARY
+The bounded Argent hunt is still active with the expected single worker and no stale Python child. Combat is taking longer than the probe, so I am leaving the 240-second watchdog in control and will inspect the persisted end state rather than interrupting it.
+
+
+[2026-08-04 6:41:25 AM NZST] CODEX COMMENTARY
+The fresh level-19 Argent hunt succeeded: Kestrel killed the bandit leader for 794 XP, returned autonomously to healer room 3054 at 121/264 HP, and retained the run evidence with no unapproved joiner. This is the first positive result from the new post-19 frontier. I am recording it as reusable evidence, then I will let the campaign perform its normal loot-sale maintenance and resume the hunt.
+
+
+[2026-08-04 6:41:46 AM NZST] CODEX COMMENTARY
+The live result is now recorded in the level-19 policy evidence, and the focused regression set remains green (3 passed). The campaign checkpoint is ready for its ordinary sell-loot maintenance before the next Argent pass; I am continuing that autonomous transition now.
+
+
+[2026-08-04 6:42:38 AM NZST] CODEX COMMENTARY
+The maintenance segment is active under one worker (PID 20856) and the expected streamer. It is still within the bounded 180-second segment limit; I am letting the built-in sale, banking, and checkpoint logic complete before the next combat selection.
+
+
+[2026-08-04 6:43:52 AM NZST] CODEX COMMENTARY
+The maintenance worker remains alive and bounded; no duplicate or zombie campaign process is present. The sale route is taking the same network round-trip time as a field segment, so I am continuing to wait for its normal checkpoint rather than restarting it.
+
+
+[2026-08-04 6:44:23 AM NZST] CODEX COMMENTARY
+The loot-sale maintenance completed safely and restored full health, but the next selector exposed the next scheduler bug: the new Argent hunt is productive, yet the late-hunt rotation does not include its new level-band identity, so sanctuary gating still wins. I am adding that identity to the productive rotation and a regression for maintenance-to-hunt resumption before continuing.
+
+
+[2026-08-04 6:46:20 AM NZST] CODEX COMMENTARY
+The apparent Moria selection in a standalone inspection was a diagnostic artifact: a fresh CampaignRunner has no in-memory XP deltas until run() loads the campaign segments. The real runner will populate the 794-XP Argent delta and the new rotation test proves maintenance resumes the Argent hunt; I am starting the next autonomous segment to confirm that live path.
+
+
+[2026-08-04 6:47:16 AM NZST] CODEX COMMENTARY
+The resumed Argent hunt is active under one worker (PID 39528), alongside only the expected Discord streamer. The campaign has selected the live reusable route without steering; I am letting its one-kill gate and healer return complete.
+
+
+[2026-08-04 6:48:36 AM NZST] CODEX COMMENTARY
+The resumed Argent hunt remains inside its 240-second bound with exactly one worker. No error or stale process has appeared; the route is simply completing the same bounded combat and recovery sequence that produced the first positive kill.
+
+
+[2026-08-04 6:50:30 AM NZST] CODEX COMMENTARY
+The resumed Argent hunt also succeeded without steering: run 3007 killed the leader for 955 XP and returned full to healer room 3054. Kestrel is still level 19 at 180,870 XP, but the post-19 route now has two positive same-reboot kills; the sanctuary and other absence cooldowns have advanced to one, so the engine is making genuine progress. I am recording the second sample and continuing through maintenance.
+
+
+[2026-08-04 6:51:29 AM NZST] CODEX COMMENTARY
+The post-kill maintenance worker is active as the only campaign worker (PID 30432) and remains bounded. It is processing the normal loot and capacity transition before the next autonomous Argent segment.
+
+
+[2026-08-04 6:51:52 AM NZST] CODEX COMMENTARY
+Loot-sale maintenance completed at checkpoint 3183 with Kestrel still level 19 at 180,870 XP. The current-reboot Argent route remains the productive frontier, so I am launching the next bounded autonomous hunt to keep moving toward level 20.
+
+
+[2026-08-04 6:52:41 AM NZST] CODEX COMMENTARY
+The campaign inserted its normal flight replenishment at checkpoint 3185, safely in healer room 3054; Kestrel remains level 19 at 180,870 XP and has fly active again. The standalone selector again lacks runtime deltas, but the live campaign runner will reload them, so I am continuing with the next real segment rather than treating that diagnostic view as a stall.
+
+
+[2026-08-04 6:53:33 AM NZST] CODEX COMMENTARY
+The post-flight campaign worker (PID 31492) is active and is the only campaign worker. It is now executing the next live frontier segment within the 240-second bound; no steering input or second worker has been introduced.
+
+
+[2026-08-04 6:54:41 AM NZST] CODEX COMMENTARY
+The live frontier segment is still progressing under the same bounded worker and no stale child. I am keeping the run in the campaign controller until it records the full Argent combat/recovery outcome, rather than aborting a productive route on wall-clock impatience.
+
+
+[2026-08-04 6:56:29 AM NZST] CODEX COMMENTARY
+The worker is still alive with no duplicate process; the segment remains inside the configured 240-second runtime watchdog. I am allowing the watchdog to make the controlled decision, and will inspect whether it recorded a kill, a safety withdrawal, or a timeout boundary immediately afterward.
+
+
+[2026-08-04 6:58:36 AM NZST] CODEX COMMENTARY
+The third Argent attempt exposed a real combat-throughput boundary: the target was still in-band, but repeated disarms and low damage forced a safe flee at 54 HP; Kestrel retained 55 net XP and returned to healer room 3054. The Moria sanctuary absence cooldown has now expired and its result was cleared, so the autonomous next step is to retry the source-vetted sanctuary acquisition before another Argent fight.
+
+
+[2026-08-04 6:59:30 AM NZST] CODEX COMMENTARY
+The campaign first repaired the disarmed primary weapon autonomously at checkpoint 3189, restoring full health and a confirmed weapon in healer room 3054. The next live segment can now retry Moria; I am continuing without manually intervening in the recovery sequence.
+
+
+[2026-08-04 7:00:28 AM NZST] CODEX COMMENTARY
+The Moria retry is active under one campaign worker (PID 37168) and the expected streamer. It is within the explicit 240-second bound; I am letting the source-room carrier search and sanctuary evidence gate finish before deciding whether the route supplied the potion.
+
+
+[2026-08-04 7:01:31 AM NZST] CODEX COMMENTARY
+The bounded Moria carrier search is still active with no duplicate or stale worker. I am leaving the route under its explicit watchdog and will read the checkpoint on completion, including whether the carrier was absent again or an objective potion was acquired.
+
+
+[2026-08-04 7:05:19 AM NZST] CODEX COMMENTARY
+The last bounded invocation did not enter Moria; the scheduler selected Shadow Keep instead, found its Soldier absent, recorded a three-segment cooldown, and returned safely at level 19 with 180,925 XP. I am fixing the generic research rotation so a previously productive hunt can recover from a partial flee without erasing its evidence or retrying immediately.
+
+
+[2026-08-04 7:08:58 AM NZST] CODEX COMMENTARY
+The checkpoint confirms the failure was a viable consider followed by a safe, incomplete hunt; it was not evidence that the bandit route is permanently bad. I am preserving that distinction in state: a previously productive research hunt will enter a three-productive-segment retry cooldown, then both its cached probe and hunt result will be cleared for a fresh re-probe.
+
+
+[2026-08-04 7:11:40 AM NZST] CODEX COMMENTARY
+The full suite exposed one compatibility issue in the retry helper: paired probe/hunt cleanup was being applied to ordinary absence rotation, changing an established handoff test. I am narrowing the paired cleanup to the new previously productive but incomplete marker only, so ordinary absence behavior remains unchanged.
+
+
+[2026-08-04 7:12:41 AM NZST] CODEX COMMENTARY
+All offline checks now pass: 1,885 tests. The retry marker is isolated from ordinary absence rotation, and paired probe/hunt state is cleared only when the productive-hunt cooldown expires. I am running the real campaign next to confirm the persisted Kestrel checkpoint migrates correctly and the scheduler chooses a productive, bounded route.
+
+
+[2026-08-04 7:13:53 AM NZST] CODEX COMMENTARY
+The live validation is connected and still within its 300-second segment cap; no duplicate campaign worker is present. The run is quiet at the console because the campaign records progress in SQLite and the append-only transcript, so I am waiting for its bounded checkpoint rather than starting another connection.
+
+
+[2026-08-04 7:14:27 AM NZST] CODEX COMMENTARY
+The bounded live segment is still running at roughly the first minute, with the worker process singular and the streamer still healthy. I am letting the bot complete its current route and recovery boundary so the new retry state is tested through the real persistence path.
+
+
+[2026-08-04 7:14:57 AM NZST] CODEX COMMENTARY
+The live validation succeeded at the persistence boundary: Kestrel checkpointed at 3193, level 19, safely at the healer, and the bandit hunt now carries retryable_failure: true with its cooldown intact. The scheduler correctly chose the Moria carrier retry instead of immediately replaying the failed bandit fight; Moria was absent again and received its own three-segment cooldown. I am continuing through the next bounded selection to verify rotation rather than stall on either route.
+
+
+[2026-08-04 7:15:46 AM NZST] CODEX COMMENTARY
+The next live segment remains within its 300-second cap and the previous worker has exited cleanly before this connection. No additional steering commands are being injected; I am observing which registered policy the cooldown graph selects next.
+
+
+[2026-08-04 7:16:51 AM NZST] CODEX COMMENTARY
+The database shows one active segment, shire-thain-probe-17-20, running under the single campaign worker; it is not a duplicate or zombie. The checkpoint remains safely at the healer while that bounded route completes, and the configured 300-second cap is still governing it.
+
+
+[2026-08-04 7:18:06 AM NZST] CODEX COMMENTARY
+The Thain probe is still inside its bounded source-room search at about two and a half minutes. I am allowing the route to finish its own absence checkpoint; if the hard cap fires, the runner will return through the healer boundary and persist the result rather than leave an open connection.
+
+
+[2026-08-04 7:19:19 AM NZST] CODEX COMMENTARY
+The second bounded validation also completed cleanly: the scheduler moved from the absent Moria route to the Thain probe, found that target absent after a 226-second source-backed search, and checkpointed at 3195 with the cooldown recorded. No worker remains; only the Discord streamer is running. I am now recording these live outcomes beside the policy definitions and then I will rerun the focused regression set once more.
+
+
+[2026-08-04 7:20:15 AM NZST] CODEX COMMENTARY
+The live evidence is now recorded in the Moria, Thain, and level-19 Argent policy definitions. Focused regressions pass (14 passed), and the broader suite already passed at 1,885 passed. The next concrete blocker is now clear from run 3010: combat throughput under repeated disarms, not route discovery, so I am auditing the reusable rearm/recurring-attack loop before choosing another live hunt.
+
+
+[2026-08-04 7:24:11 AM NZST] CODEX COMMENTARY
+I’ve refreshed the read-only DD4 source checkout and am checking two things in parallel: whether the retry marker has a missing cooldown in the live checkpoint, and where the next class trainer is exposed. That will tell me whether this is a scheduler defect, a trainer-routing gap, or both.
+
+
+[2026-08-04 7:26:03 AM NZST] CODEX COMMENTARY
+I found the concrete defect: the live checkpoint contains retryable productive failures for Argent, Hightower, and Shire, but their cooldown map is empty. The repair helper only acted on unmarked results, so I’m fixing it to restore a missing cooldown idempotently and adding a regression test before exercising the repaired checkpoint.
+
+
+[2026-08-04 7:27:08 AM NZST] CODEX COMMENTARY
+The repair is now covered and verified: the focused campaign tests pass, the live checkpoint preview restores a three-segment cooldown for all three retryable productive hunts, and the full offline suite passes at 1,886 tests. I’m moving to an end-to-end state transition check now so the fix is tested at the campaign boundary, not only as a pure helper.
+
+
+[2026-08-04 7:27:41 AM NZST] CODEX COMMENTARY
+The boundary check exposed the second half of the bug: the campaign entry path repairs the missing cooldown, then the older cooldown scrubber immediately deletes it because it only recognized absent and route-hazard evidence. I’m extending that scrubber to recognize the new retryable-failure marker and will add a test for the complete refresh-and-repair sequence.
+
+
+[2026-08-04 7:29:08 AM NZST] CODEX COMMENTARY
+The complete repair path now passes: 1,887 tests are green, including the refresh-plus-cooldown-scrub regression. I’m going to run one bounded Kestrel campaign segment next; this will validate that the scheduler carries the restored cooldown into a real checkpoint and does not immediately replay the incomplete Argent hunt.
+
+
+[2026-08-04 7:30:10 AM NZST] CODEX COMMENTARY
+The live boundary test found a persistence gap rather than a scheduler-selection failure: the campaign correctly repaired the cooldown in memory, but returned early on the sanctuary wait before writing that repaired state, leaving checkpoint 3196 without Argent’s cooldown. I’m adding a durable metadata checkpoint whenever campaign-start repairs change the state, then I’ll rerun the same bounded command to confirm the value survives.
+
+
+[2026-08-04 7:33:05 AM NZST] CODEX COMMENTARY
+The first integration fixture was too shallow, so I’m tightening it before calling the result verified. I’ve reproduced the early-return path with the real campaign runner shape; the test will now invoke CampaignRunner.run, stub only policy selection, force the same sanctuary wait, and assert that the newly written metadata checkpoint contains Argent’s cooldown.
+
+
+[2026-08-04 7:34:51 AM NZST] CODEX COMMENTARY
+The tightened integration test exposed an expected legacy-migration interaction: its synthetic checkpoint had revision zero, so the normal policy refresh intentionally retired old Jailor evidence before the sanctuary gate. I’m pinning the fixture to the current policy revision, which isolates the persistence behavior being tested.
+
+
+[2026-08-04 7:35:35 AM NZST] CODEX COMMENTARY
+The end-to-end test now passes, and the full suite is green at 1,888 tests. I’m rerunning the real Kestrel campaign boundary now; it should return at the same sanctuary wait, but this time create a metadata-repaired checkpoint whose cooldown map includes the Argent retry.
+
+
+[2026-08-04 7:36:00 AM NZST] CODEX COMMENTARY
+The live boundary test now passes exactly: command 1 returned the expected sanctuary wait, checkpoint 3197 is marked campaign_metadata_repaired, and the persisted cooldown map includes rgent-bandit-leader-hunt-19-20: 3 alongside the other retryable routes. The process audit is clean; only the expected Discord streamer remains.
+
+
+[2026-08-04 7:36:32 AM NZST] CODEX COMMENTARY
+The live validation is successful. Before closing this test pass, I’m cleaning two small implementation details surfaced by the diff review: restoring the generator-call indentation and making the retry marker’s cleared-policy removal count as a state change, plus simplifying the type-safe same-boot comparison.
+
+
+[2026-08-04 7:38:11 AM NZST] CODEX FINAL
+Verified the retryable research-state path end to end. Productive incomplete hunts now regain cooldowns, those cooldowns survive early campaign returns, and paired probe/hunt evidence expires together. Offline suite: 1,888 passed; live Kestrel checkpoint 3197 persisted Argent cooldown 3; process audit found only the expected Discord streamer. No commit or remote push was made.
+
+
+[2026-08-04 7:38:44 AM NZST] CODEX COMMENTARY
+I’m resuming from the verified level-19 checkpoint, not starting over. The source checkout is current at revision 1b759f5, only the Discord streamer process is alive, and Kestrel is still level 19 with checkpoint 3197. The immediate executable gap is now the level-20 trainer frontier: HELP TEACHER CLUES says all class trainers move to Kerofk, while the runner only has Midgaard and thief level-15 routes.
+
+
+[2026-08-04 7:41:49 AM NZST] CODEX COMMENTARY
+I’m handling the requested one-off publication now: I’ll inspect the current branch and diff, commit the intended source changes, push them, and fast-forward or merge main on the remote. I’ll stop quickly on any remote hang and report the exact result.
+
+
+[2026-08-04 7:42:32 AM NZST] CODEX COMMENTARY
+The worktree is on main and the remote is aligned at 33bc320; the five modified tracked files are the current campaign/progression changes, their regression tests, and the append-only development log. I’m running the test suite before creating the one-off publication commit, then I’ll push a temporary branch, fast-forward main, and push main.
+
+
+[2026-08-04 7:43:10 AM NZST] CODEX COMMENTARY
+The full suite is green: 1,888 tests passed in 28.60 seconds. I’m moving the five intended tracked files onto a temporary codex publication branch, making one commit, pushing that branch, then merging it into main and pushing main so the remote receives the change cleanly.

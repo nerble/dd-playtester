@@ -258,6 +258,12 @@ _SHIRE_DWARVEN_PRINCE_HUNT_POLICY_ID = "shire-dwarven-prince-thief-hunt-17-20"
 _SHIRE_THAIN_POLICY_ID = "shire-thain-probe-17-20"
 _SHIRE_THAIN_HUNT_POLICY_ID = "shire-thain-hunt-17-20"
 _ARGENT_BANDIT_LEADER_POLICY_ID = "argent-bandit-leader-probe-17-20"
+_ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_POLICY_ID = (
+    "argent-bandit-leader-probe-19-20"
+)
+_ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY_ID = (
+    "argent-bandit-leader-hunt-19-20"
+)
 _SHIRE_ELVEN_WIZARD_POLICY_ID = "shire-elven-wizard-probe-17-20"
 _SHIRE_ELVEN_WIZARD_HUNT_POLICY_ID = "shire-elven-wizard-hunt-17-20"
 _PYRAMID_ALI_BABA_POLICY_ID = "pyramid-ali-baba-probe-18-20"
@@ -348,6 +354,8 @@ _RESEARCH_ABSENCE_RETRY_COOLDOWNS = {
     _SHIRE_THAIN_HUNT_POLICY_ID: 3,
     _ARGENT_BANDIT_LEADER_POLICY_ID: 3,
     "argent-bandit-leader-hunt-17-20": 3,
+    _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_POLICY_ID: 3,
+    _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY_ID: 3,
     _SHIRE_ELVEN_WIZARD_POLICY_ID: 3,
     _SHIRE_ELVEN_WIZARD_HUNT_POLICY_ID: 3,
     _PYRAMID_ALI_BABA_POLICY_ID: 3,
@@ -693,6 +701,7 @@ def _refresh_policy_revision(
     ):
         state = dict(state)
         state[_RESEARCH_ABSENCE_COOLDOWN_KEY] = absence_cooldowns
+    state = _mark_retryable_research_failures(state)
 
     # A no-combat research probe that has already fled an unexpected attacker
     # is route-risk evidence. Preserve the current checkpoint's result instead
@@ -1431,6 +1440,8 @@ class CampaignRunner:
             self._policy_xp_deltas = _campaign_policy_xp_deltas(
                 storage.list_campaign_segments(campaign_id), storage=storage
             )
+            checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+            state_before_policy_repair = dict(state)
             state = _with_productive_policy_history(
                 state,
                 policy_ids=_campaign_productive_policy_ids(
@@ -1449,7 +1460,16 @@ class CampaignRunner:
                 state,
                 policy_xp_deltas=self._policy_xp_deltas,
             )
-            checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+            if checkpoint is not None and state != state_before_policy_repair:
+                storage.record_campaign_checkpoint(
+                    campaign_id,
+                    segment_id=checkpoint["segment_id"],
+                    run_id=checkpoint["run_id"],
+                    phase=str(checkpoint["phase"]),
+                    reason=_CAMPAIGN_METADATA_REPAIRED_REASON,
+                    state=state,
+                )
+                checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
             checkpoint_id = int(checkpoint["id"]) if checkpoint is not None else None
 
             if _level(state) >= self.spec.target_level:
@@ -6299,6 +6319,71 @@ def _state_productive_policy_ids(state: Mapping[str, Any]) -> frozenset[str]:
     return frozenset(str(policy_id) for policy_id in policy_ids if policy_id)
 
 
+def _mark_retryable_research_failures(state: dict[str, Any]) -> dict[str, Any]:
+    """Keep productive hunts retryable after a safe, incomplete combat pass."""
+    boot_id = state.get("world_boot_id")
+    if boot_id is None:
+        return state
+    productive_policy_ids = _state_productive_policy_ids(state)
+    if not productive_policy_ids:
+        return state
+    results = dict(state.get("campaign_research_results") or {})
+    absence_cooldowns = dict(
+        state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+    )
+    cleared_research_policies = {
+        str(policy_id)
+        for policy_id in state.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
+    }
+    changed = False
+    for policy_id in productive_policy_ids:
+        raw_result = results.get(policy_id)
+        if not (
+            isinstance(raw_result, dict)
+            and raw_result.get("boot_id") == boot_id
+            and raw_result.get("observed") is True
+            and raw_result.get("viable") is False
+            and raw_result.get("completed_kill") is False
+            and not raw_result.get("absent")
+            and not raw_result.get("route_hazard")
+            and not raw_result.get("crowded")
+            and not raw_result.get("unattackable")
+        ):
+            continue
+        result = dict(raw_result)
+        retry_cooldown = _RESEARCH_ABSENCE_RETRY_COOLDOWNS.get(
+            policy_id,
+            _DEFAULT_RESEARCH_CROWD_COOLDOWN,
+        )
+        if not result.get("retryable_failure"):
+            result["retryable_failure"] = True
+            changed = True
+        if not result.get("previously_productive"):
+            result["previously_productive"] = True
+            changed = True
+        if results.get(policy_id) != result:
+            results[policy_id] = result
+            changed = True
+        if absence_cooldowns.get(policy_id) != retry_cooldown:
+            absence_cooldowns[policy_id] = retry_cooldown
+            changed = True
+        if policy_id in cleared_research_policies:
+            cleared_research_policies.discard(policy_id)
+            changed = True
+    if not changed:
+        return state
+    updated = dict(state)
+    updated["campaign_research_results"] = results
+    updated[_RESEARCH_ABSENCE_COOLDOWN_KEY] = absence_cooldowns
+    if cleared_research_policies:
+        updated[_CLEARED_RESEARCH_POLICIES_KEY] = sorted(
+            cleared_research_policies
+        )
+    else:
+        updated.pop(_CLEARED_RESEARCH_POLICIES_KEY, None)
+    return updated
+
+
 def _with_productive_policy_history(
     state: Mapping[str, Any],
     *,
@@ -6638,6 +6723,7 @@ def _repair_research_absence_cooldowns(
                 result.get("absent") is True
                 or result.get("route_hazard")
                 == _DYNAMIC_FIELD_ROUTE_HAZARD_ABORT_REASON
+                or result.get("retryable_failure") is True
             )
         ):
             continue
@@ -7133,7 +7219,42 @@ def _merge_campaign_research_result(
                 if retry_cooldown is not None:
                     absence_cooldowns[policy.policy_id] = retry_cooldown
             else:
-                absence_cooldowns.pop(policy.policy_id, None)
+                previous_result = results.get(policy.policy_id)
+                same_boot = bool(
+                    current.get("world_boot_id") is not None
+                    and (
+                        previous_result is None
+                        or (
+                            isinstance(previous_result, dict)
+                            and previous_result.get("boot_id")
+                            == current.get("world_boot_id")
+                        )
+                    )
+                )
+                previously_productive = bool(
+                    same_boot
+                    and (
+                        policy.policy_id
+                        in _state_productive_policy_ids(previous)
+                        or (
+                            isinstance(previous_result, dict)
+                            and previous_result.get("viable") is True
+                            and previous_result.get("completed_kill") is not False
+                        )
+                    )
+                )
+                if previously_productive and viable is True:
+                    # Preserve positive same-reboot history, but do not replay
+                    # a route that just failed to finish its target.
+                    result["retryable_failure"] = True
+                    result["previously_productive"] = True
+                    retry_cooldown = _RESEARCH_ABSENCE_RETRY_COOLDOWNS.get(
+                        policy.policy_id,
+                        _DEFAULT_RESEARCH_CROWD_COOLDOWN,
+                    )
+                    absence_cooldowns[policy.policy_id] = retry_cooldown
+                else:
+                    absence_cooldowns.pop(policy.policy_id, None)
             results[policy.policy_id] = result
             recorded_current_result = True
             crowd_cooldowns.pop(policy.policy_id, None)
@@ -7226,8 +7347,33 @@ def _clear_absent_research_results(
         for policy_id in state.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
     }
     retained: dict[str, dict[str, Any]] = {}
+    expired_retryable_groups: set[frozenset[str]] = set()
     for policy_id, result in results.items():
-        if policy_id == except_policy_id or not result.get("absent"):
+        if policy_id == except_policy_id:
+            retained[policy_id] = result
+            continue
+        if result.get("retryable_failure"):
+            remaining = int(
+                cooldowns.get(
+                    policy_id,
+                    _RESEARCH_ABSENCE_RETRY_COOLDOWNS.get(
+                        policy_id,
+                        _DEFAULT_RESEARCH_CROWD_COOLDOWN,
+                    ),
+                )
+                or 0
+            )
+            if remaining > 1:
+                retained[policy_id] = result
+                cooldowns[policy_id] = remaining - 1
+            else:
+                cooldowns.pop(policy_id, None)
+                expired_retryable_groups.add(
+                    _research_retryable_failure_group(policy_id)
+                )
+                cleared_research_policies.add(policy_id)
+            continue
+        if not result.get("absent"):
             retained[policy_id] = result
             continue
         remaining = int(cooldowns.get(policy_id) or 0)
@@ -7253,6 +7399,12 @@ def _clear_absent_research_results(
         else:
             crowd_cooldowns.pop(policy_id, None)
             retained.pop(policy_id, None)
+            cleared_research_policies.add(policy_id)
+    for retryable_group in expired_retryable_groups:
+        for policy_id in retryable_group:
+            retained.pop(policy_id, None)
+            cooldowns.pop(policy_id, None)
+            crowd_cooldowns.pop(policy_id, None)
             cleared_research_policies.add(policy_id)
     if retained:
         merged["campaign_research_results"] = retained
@@ -7734,6 +7886,112 @@ def _research_absence_retry_group(policy_id: str) -> frozenset[str]:
         )
     if policy_id in {_SOLACE_MAGNUS_POLICY_ID, _SOLACE_MAGNUS_HUNT_POLICY_ID}:
         return frozenset({_SOLACE_MAGNUS_POLICY_ID, _SOLACE_MAGNUS_HUNT_POLICY_ID})
+    return frozenset({policy_id})
+
+
+def _research_retryable_failure_group(policy_id: str) -> frozenset[str]:
+    """Return paired identities only for previously productive hunt retries."""
+    for group in (
+        frozenset(
+            {
+                "mirror-realm-watchman-probe-19-20",
+                "mirror-realm-watchman-hunt-19-20",
+            }
+        ),
+        frozenset(
+            {
+                "crystalmir-white-stag-probe-16-20",
+                "crystalmir-white-stag-hunt-16-20",
+            }
+        ),
+        frozenset(
+            {
+                "shadow-keep-undead-soldier-probe-16-20",
+                "shadow-keep-undead-soldier-hunt-16-20",
+            }
+        ),
+        frozenset(
+            {
+                "galaxy-white-dwarf-probe-17-20",
+                "galaxy-white-dwarf-hunt-17-20",
+            }
+        ),
+        frozenset(
+            {
+                "galaxy-white-dwarf-secondary-probe-17-20",
+                "galaxy-white-dwarf-secondary-hunt-17-20",
+            }
+        ),
+        frozenset(
+            {
+                "galaxy-red-supergiant-probe-17-20",
+                "galaxy-red-supergiant-hunt-17-20",
+            }
+        ),
+        frozenset(
+            {
+                "galaxy-horsehead-nebula-probe-18-20",
+                "galaxy-horsehead-nebula-hunt-18-20",
+            }
+        ),
+        frozenset(
+            {
+                _HIGHTOWER_JAILOR_POLICY_ID,
+                _HIGHTOWER_JAILOR_HUNT_POLICY_ID,
+            }
+        ),
+        frozenset(
+            {
+                _SHIRE_DWARVEN_PRINCE_POLICY_ID,
+                _SHIRE_DWARVEN_PRINCE_HUNT_POLICY_ID,
+            }
+        ),
+        frozenset(
+            {
+                "shire-dwarven-prince-thief-probe-19-20",
+                "shire-dwarven-prince-thief-hunt-19-20",
+            }
+        ),
+        frozenset({_SHIRE_THAIN_POLICY_ID, _SHIRE_THAIN_HUNT_POLICY_ID}),
+        frozenset(
+            {
+                _SHIRE_ELVEN_WIZARD_POLICY_ID,
+                _SHIRE_ELVEN_WIZARD_HUNT_POLICY_ID,
+            }
+        ),
+        frozenset(
+            {
+                _PYRAMID_ALI_BABA_POLICY_ID,
+                _PYRAMID_ALI_BABA_HUNT_POLICY_ID,
+            }
+        ),
+        frozenset(
+            {
+                _SOLACE_LORD_DOOM_POLICY_ID,
+                _SOLACE_LORD_DOOM_HUNT_POLICY_ID,
+            }
+        ),
+        frozenset(
+            {
+                _ARGENT_BANDIT_LEADER_POLICY_ID,
+                "argent-bandit-leader-hunt-17-20",
+            }
+        ),
+        frozenset(
+            {
+                _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_POLICY_ID,
+                _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY_ID,
+            }
+        ),
+        frozenset(
+            {
+                _HIGHLAND_KEEPER_POLICY_ID,
+                _HIGHLAND_KEEPER_HUNT_POLICY_ID,
+            }
+        ),
+    ):
+        if policy_id in group:
+            return group
     return frozenset({policy_id})
 
 

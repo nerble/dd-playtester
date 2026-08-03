@@ -1564,6 +1564,9 @@ _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY = replace(
         "The source Moria reset gives purple potion 4050 to large hobgoblin "
         "4055 in room 4064; the carrier is admitted below the XP band only "
         "when the required purple potion is missing.",
+        "Live run 3013 repeated the source-room carrier search without steering; "
+        "the current-reboot `where` preflight found the carrier absent, so the "
+        "runner returned safely and preserved a three-segment retry cooldown.",
     ),
 )
 
@@ -2637,14 +2640,16 @@ _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY = replace(
     _MAHNTOR_ROCK_TOAD_THIEF_CIRCUIT_POLICY,
     policy_id="mahntor-rock-toad-thief-circuit-16-18",
     minimum_level=16,
-    maximum_level=18,
+    maximum_level=20,
     summary=(
-        "Use the proven Mahn-Tor Rock Toad circuit as a two-kill thief fallback "
-        "after the level-16 watchman and Undead Soldier probes reject."
+        "Use the proven Mahn-Tor Rock Toad circuit as a bounded thief fallback "
+        "through level 20 after the higher-band research routes reject."
     ),
     evidence=(
         *_MAHNTOR_ROCK_TOAD_THIEF_CIRCUIT_POLICY.evidence,
         "The source-level-14 Toad has a normal 12-16 live range. Through thief level 18, every attempt retains exact-target live consider and rejects the `diff <= -5` and `diff <= -10` branches before combat.",
+        "The extension through level 20 does not assume a useful XP result: at levels 19-20 the live target must still pass the exact consider gate, and any `diff <= -5` or `diff <= -10` response remains a terminal below-band exclusion for XP selection.",
+        "Until a level-19 or level-20 kill is independently recorded, this extension authorizes one isolated target per segment and keeps the existing health, crowd, movement, encumbrance, and healer-return gates.",
         "Same-reboot live runs 2176, 2181, and 2184 earned 488, 382, and 444 XP from single bounded Toad kills; run 2184 reached level 16 and returned safely to healer room 3054.",
         "Live run 2192 proved the extended policy at thief level 16: Kestrel killed an exact level-14 Toad for 472 XP, finished at 213/233 HP with full mana, ate the severed leg, sacrificed the corpse, and recovered fully at healer room 3054.",
         "Because run 2192 retained 91% health after the kill, the cap is two independently gated targets; the second stop still requires the established 40.5% health floor and a fresh exact live consider.",
@@ -2966,6 +2971,9 @@ _SHIRE_THAIN_RESEARCH_POLICY = ProgressionPolicy(
         "reporting A chicken coop; the computed route completed in 82 commands "
         "and 35 room updates, safely returned to room 3054, and persisted a "
         "same-reboot absent result with a three-segment retry cooldown.",
+        "Live run 3014 repeated the bounded Shire search without steering; it "
+        "spent 226 seconds checking the registered route, found the Thain absent, "
+        "returned safely, and persisted the same three-segment absence cooldown.",
     ),
     practice_skill="backstab",
 )
@@ -3090,6 +3098,54 @@ _ARGENT_BANDIT_LEADER_HUNT_POLICY = replace(
         "movement, or combat-progress boundary.",
     ),
     segment_kill_limit=1,
+)
+
+
+_ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_RESEARCH_POLICY = replace(
+    _ARGENT_BANDIT_LEADER_RESEARCH_POLICY,
+    policy_id="argent-bandit-leader-probe-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    summary=(
+        "Reach the Argent Olive Grove and make a fresh level-19 consider-only "
+        "probe of the source-legal bandit leader."
+    ),
+    evidence=(
+        *_ARGENT_BANDIT_LEADER_RESEARCH_POLICY.evidence,
+        "This level-19 band is a fresh research identity because an earlier "
+        "level-17 hunt was interrupted when an unapproved bandit joined. The "
+        "new pass must rediscover an isolated leader and may not inherit that "
+        "failed combat as positive evidence.",
+    ),
+)
+
+
+_ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY = replace(
+    _ARGENT_BANDIT_LEADER_HUNT_POLICY,
+    policy_id="argent-bandit-leader-hunt-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    summary=(
+        "Use one fresh, isolated level-19 Argent bandit-leader consideration "
+        "for a bounded hunt; abort immediately if an unapproved companion joins."
+    ),
+    evidence=(
+        *_ARGENT_BANDIT_LEADER_HUNT_POLICY.evidence,
+        "The prior same-reboot level-17 attempt aborted after an unapproved "
+        "bandit joined. This level-19 retry remains one-kill, requires a new "
+        "consider and exact selector, and treats any unapproved joiner as a "
+        "route failure rather than a fight to finish.",
+        "Live run 3005 passed the fresh level-19 consider, killed the bandit "
+        "leader for 794 XP, returned to healer room 3054 at 121/264 hit "
+        "points, and recorded no unapproved joiner.",
+        "Live run 3007 repeated the fresh level-19 route without steering, "
+        "killed the bandit leader for 955 XP, and returned to healer room 3054 "
+        "at full hit points.",
+        "Live run 3010 then passed consider but did not finish the kill: repeated "
+        "disarms and re-arms exhausted the bounded fight, Kestrel fled safely at "
+        "54/264 hit points with 55 net partial XP, and the route was recorded as "
+        "retryable after productive work rather than permanently rejected.",
+    ),
 )
 
 
@@ -6885,6 +6941,7 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 _PYRAMID_ALI_BABA_HUNT_POLICY,
                 _SOLACE_LORD_DOOM_HUNT_POLICY,
                 _SOLACE_MAGNUS_HUNT_POLICY,
+                _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY,
                 _HIGHLAND_KEEPER_HUNT_POLICY,
             ),
         )
@@ -7423,10 +7480,20 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                         practice_skill=context.practice_skill,
                     )
             if normalized_level >= 17 and context.character_class == "thief":
+                argent_probe_policy = (
+                    _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_RESEARCH_POLICY
+                    if normalized_level >= 19
+                    else _ARGENT_BANDIT_LEADER_RESEARCH_POLICY
+                )
+                argent_hunt_policy = (
+                    _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY
+                    if normalized_level >= 19
+                    else _ARGENT_BANDIT_LEADER_HUNT_POLICY
+                )
                 argent_bandit_policy = _research_hunt_policy(
                     context,
-                    probe=_ARGENT_BANDIT_LEADER_RESEARCH_POLICY,
-                    hunt=_ARGENT_BANDIT_LEADER_HUNT_POLICY,
+                    probe=argent_probe_policy,
+                    hunt=argent_hunt_policy,
                 )
                 if argent_bandit_policy is not None:
                     return replace(
@@ -8152,6 +8219,14 @@ def _moria_absent_cooldown_alternate_policy(
         and _research_absence_cooldown_active(context, moria_policy_id)
     ):
         return None
+    if context.level >= 19:
+        alternate_policy = _research_hunt_policy(
+            context,
+            probe=_ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_RESEARCH_POLICY,
+            hunt=_ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY,
+        )
+        if alternate_policy is not None:
+            return alternate_policy
     for probe, hunt in (
         (
             _SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY,
@@ -8166,6 +8241,21 @@ def _moria_absent_cooldown_alternate_policy(
         )
         if alternate_policy is not None:
             return alternate_policy
+    if (
+        context.character_class == "thief"
+        and context.level >= 19
+        and _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY.policy_id
+        not in context.excluded_policy_ids
+    ):
+        return replace(
+            _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY,
+            segment_kill_limit=1,
+            summary=(
+                "Use one isolated Mahn-Tor Rock Toad as a level-19 trial "
+                "while the sanctuary carrier and higher-band research routes "
+                "are unavailable; live consider remains mandatory."
+            ),
+        )
     return None
 
 
@@ -8194,6 +8284,10 @@ def _historical_productive_research_hunt(
         (_PYRAMID_ALI_BABA_RESEARCH_POLICY, _PYRAMID_ALI_BABA_HUNT_POLICY),
         (_SOLACE_LORD_DOOM_RESEARCH_POLICY, _SOLACE_LORD_DOOM_HUNT_POLICY),
         (_SOLACE_MAGNUS_RESEARCH_POLICY, _SOLACE_MAGNUS_HUNT_POLICY),
+        (
+            _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_RESEARCH_POLICY,
+            _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY,
+        ),
         (_ARGENT_BANDIT_LEADER_RESEARCH_POLICY, _ARGENT_BANDIT_LEADER_HUNT_POLICY),
         (_HIGHLAND_KEEPER_RESEARCH_POLICY, _HIGHLAND_KEEPER_HUNT_POLICY),
     )
