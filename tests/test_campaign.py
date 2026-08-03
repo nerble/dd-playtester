@@ -1552,6 +1552,32 @@ def test_multi_stop_research_records_a_visible_endpoint_no_match() -> None:
     }
 
 
+def test_deep_moria_absence_gets_a_shared_reset_cooldown() -> None:
+    policy = ProgressionPolicy(
+        policy_id="moria-deep-sanctuary-thief-probe-19-20",
+        minimum_level=19,
+        maximum_level=20,
+        status="research",
+        execution="moria-deep-sanctuary-research",
+        summary="probe",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    merged = _merge_campaign_research_result(
+        {},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_target_absent": True,
+        },
+        policy=policy,
+    )
+
+    assert merged["campaign_research_absence_cooldowns"] == {
+        policy.policy_id: 3
+    }
+
+
 def test_research_hunt_requires_a_confirmed_objective_kill() -> None:
     policy = ProgressionPolicy(
         policy_id="jailor-hunt",
@@ -3480,6 +3506,45 @@ def test_required_sanctuary_absence_reopens_after_reset_wait() -> None:
     assert retried["campaign_research_results"][
         "solace-lord-doom-hunt-18-20"
     ]["completed_kill"] is False
+
+
+def test_deep_moria_absence_reopens_with_primary_sanctuary_cooldown() -> None:
+    deep_id = "moria-deep-sanctuary-thief-probe-19-20"
+    primary_id = "moria-sanctuary-thief-17-20"
+    state = {
+        "campaign_last_policy": "restock-provisions",
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            "solace-lord-doom-hunt-18-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            deep_id: {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+        "campaign_research_absence_cooldowns": {primary_id: 1},
+        "campaign_fastwalk_target_absent": True,
+    }
+
+    assert _campaign_should_await_research_reset(
+        {**state, "campaign_last_policy": deep_id}
+    ) is True
+
+    retried = _retry_required_sanctuary_research_policy(state)
+
+    assert deep_id not in retried["campaign_research_results"]
+    assert primary_id not in retried.get(
+        "campaign_research_absence_cooldowns", {}
+    )
+    assert deep_id in retried["campaign_cleared_research_policies"]
+    assert primary_id in retried["campaign_cleared_research_policies"]
+    assert retried["campaign_last_policy"] == primary_id
 
 
 def test_crowd_retry_rotates_to_an_absent_current_reboot_target() -> None:

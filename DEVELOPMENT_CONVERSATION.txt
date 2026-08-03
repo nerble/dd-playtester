@@ -20852,3 +20852,71 @@ I am handling the requested one-off publication now: first I will audit the curr
 
 [2026-08-04 9:25:26 AM NZST] CODEX COMMENTARY
 The full offline verification is clean: 1,903 pytest tests passed, compileall passed, and the source diff has no whitespace errors. The change is limited to target evaluation under low movement, latest-outcome funding rotation, and their regression tests plus the append-only development log. I am now creating a short-lived publication branch, pushing it, merging it into main, and pushing main.
+
+
+[2026-08-04 9:26:45 AM NZST] CODEX FINAL
+One-off publication completed. Commit c99295e was pushed on codex/one-off-publish-20260804-funding-rotation, merged into main as 9d1a108, and origin/main now points to 9d1a108. Verification passed: 1,903 pytest tests, compileall, and git diff --check. The process audit found the expected Discord streamer plus Codex and Adobe node processes, with no stale campaign process.
+
+
+[2026-08-04 9:27:14 AM NZST] CODEX COMMENTARY
+I am resuming the autonomous-HERO work from the published state. I will first audit the current checkpoint, source revision, repository status, and live processes, then select the next concrete progression blocker beyond level 19, implement the smallest character-independent repair, run regression coverage, and validate it with one bounded live segment.
+
+
+[2026-08-04 9:27:48 AM NZST] CODEX COMMENTARY
+The checkpoint is still safely at healer room 3054, level 19, with the same reboot identity and no death. The repaired funding rotation did choose the elite goblin guard after Bardoosh failed, but that bounded attempt also produced no kill; the current history now has five source-backed funding candidates with false latest outcomes and flight money is still required. I am tracing the generic candidate filters and retry ordering next so the engine can discover or select another legal money loop rather than cycling these same failures.
+
+
+[2026-08-04 9:29:07 AM NZST] CODEX COMMENTARY
+The source-ranked inventory confirms this is not an exhausted-world condition: at level 19 there are seventeen autonomous-safe saleable or coin-bearing candidates still available, including two Fleshmonger guards, several Ambush targets, Moria, Circus, and Shadow Keep. The generic selector now rotates to the patrolling Fleshmonger guard after the five prior failures. I will run exactly one bounded campaign segment to validate that next candidate without steering the character.
+
+
+[2026-08-04 9:29:54 AM NZST] CODEX COMMENTARY
+The Fleshmonger funding segment is still running as the single bounded campaign process; no terminal result or error has appeared yet. I am leaving the runner under its 180-second segment watchdog and will inspect the persisted checkpoint immediately when it returns.
+
+
+[2026-08-04 9:30:37 AM NZST] CODEX COMMENTARY
+The same bounded segment remains active after another watchdog interval. This route is longer than the previous Ambush probes, so I am allowing the configured limit to finish rather than starting a second process or treating silence as a failure.
+
+
+[2026-08-04 9:31:33 AM NZST] CODEX COMMENTARY
+The rotated Fleshmonger guard succeeded: run 3024 completed one source-backed funding kill, safely returned to healer room 3054, and raised XP to 181,165 without death. The flight-money requirement is cleared and the candidate history records the successful latest outcome. I am continuing through the normal maintenance handoff now so the engine can sell that loot, retry flight at the current reboot price, and then re-enter the level-19 frontier autonomously.
+
+
+[2026-08-04 9:32:18 AM NZST] CODEX COMMENTARY
+The post-funding maintenance segment is still active under the same single-process watchdog and has not emitted a terminal result. I am letting the existing campaign runner complete its sell/retry sequence before deciding whether the next blocker is code or only a reboot-priced live transaction.
+
+
+[2026-08-04 9:33:30 AM NZST] CODEX COMMENTARY
+Loot liquidation completed safely (run 3025). The checkpoint now has the flight retry marker, fresh cash, and no provisioning debt; the remaining purchase cooldown is the deliberate three-productive-segment retry gate from the earlier unaffordable price. I am advancing one normal scheduler segment to verify whether the current selector correctly buys flight or routes through its bounded loan/purchase policy.
+
+
+[2026-08-04 9:34:22 AM NZST] CODEX COMMENTARY
+The bounded maintenance handoff worked end to end: run 3026 bought and confirmed the fly affect at the current reboot price, cleared the flight retry markers, and safely quit in healer room 3054. I am now letting the scheduler take the next level-19 frontier segment; this is the live test of the low-movement target-evaluation repair at the Moria deep probe.
+
+
+[2026-08-04 9:35:08 AM NZST] CODEX COMMENTARY
+The frontier segment is still active under the single 180-second watchdog and has not returned terminal output. I am keeping the live probe uninterrupted so its transcript records the exact selector, movement boundary, and research result rather than interrupting it mid-route.
+
+
+[2026-08-04 9:36:06 AM NZST] CODEX COMMENTARY
+The live probe is still within its configured runtime and remains the only campaign process. The route is spending the movement reserve on the registered Moria path as intended; I will wait for its checkpoint instead of issuing any manual in-game command.
+
+
+[2026-08-04 9:36:55 AM NZST] CODEX COMMENTARY
+The Moria live probe completed safely, but this reboot had no large hobgoblin at the registered circuit rooms: the transcript shows the source-room route reaching 4071, a live look, and an absent-target result with no combat or death. This is valid temporary absence evidence, not a code failure; the scheduler recorded it reboot-scoped and returned to healer. I am advancing to the next executable level-19 policy so the character keeps making progress instead of retrying the empty circuit.
+
+
+[2026-08-04 9:41:15 AM NZST] CODEX COMMENTARY
+The scheduler audit found a concrete resumability bug: the deep Moria probe records absence under a different policy id from the sanctuary-reserve cooldown, so after safe restock the campaign returns a blocking summary instead of entering its bounded reset-wait loop. I am repairing that probe/hunt identity group so the default hero loop can wait and retry the shared Moria reset without manual relaunch; I will add regression tests for both checkpoint detection and group reopening.
+
+
+[2026-08-04 9:45:25 AM NZST] CODEX COMMENTARY
+I am verifying the new shared Moria reset handling and the current worktree before publishing this one-off change. I will only push after the focused checks and full suite are clean, then I will merge main and verify the remote.
+
+
+[2026-08-04 9:46:13 AM NZST] CODEX COMMENTARY
+The full suite found one compatibility regression, not a live failure: the new shared Moria research group clears three related IDs where an older crowd-retry test expects only the selected target. I am narrowing that grouping to the sanctuary-reset path so the new cooldown repair remains correct without changing unrelated crowd rotation.
+
+
+[2026-08-04 9:47:38 AM NZST] CODEX COMMENTARY
+The full suite is clean: 1,905 tests passed. The publish set is the shared Moria cooldown repair, its focused regression coverage, and the append-only development log. I am creating a one-off branch, committing with the requested bounded local operation, pushing it, then merging it into main and checking both refs.
