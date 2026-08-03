@@ -18056,3 +18056,367 @@ The staged diff is exactly the nine intended files, and the source/test portion 
 
 [2026-08-03 8:04:15 PM NZST] CODEX COMMENTARY
 Commit eb9ee0d was created successfully with the campaign fix, tests, route/policy evidence, and conversation log. I am amending once to include this publication update in the recorded log, then pushing main to origin and verifying the exact remote SHA.
+
+
+[2026-08-03 8:04:57 PM NZST] CODEX COMMENTARY
+Remote publication is verified: local main and origin/main both resolve to 8b97b97, with a clean worktree. The campaign checkpoint now selects the generic Highland Keeper hunt next, so I am continuing the no-steering live proof from level 18 without another push.
+
+
+[2026-08-03 8:05:46 PM NZST] CODEX COMMENTARY
+The Highland Keeper hunt is active within its 180-second segment bound. There is no approval wait and no second campaign worker; I am waiting for the authenticated run to finish and will inspect its XP/health outcome from SQLite rather than steering it.
+
+
+[2026-08-03 8:07:04 PM NZST] CODEX COMMENTARY
+The resumed hunt is still making normal bounded progress at the MUD layer; run 2896 is the only active campaign run and checkpoint 2922 is the metadata repair from the preceding segment. I am keeping the live process under the configured watchdog and will not issue gameplay commands manually.
+
+
+[2026-08-03 8:09:19 PM NZST] CODEX COMMENTARY
+Checkpoint 2923 is a real progression result: the generic Highland Keeper hunt killed its exact target for 682 XP, returned at 254/254 HP and 315 movement, and raised Kestrel to 165,994 XP. The next policy is the source-backed Moria sanctuary replenishment pass, so the campaign is moving through its level-18 safety chain rather than stalling on flight money.
+
+
+[2026-08-03 8:10:16 PM NZST] CODEX COMMENTARY
+The Moria sanctuary pass is active under the same bounded live-run policy. It is a supply/recovery route rather than an XP hunt, so I am waiting for its exact carrier/crowd result and will let the campaign rotate afterward.
+
+
+[2026-08-03 8:14:17 PM NZST] CODEX COMMENTARY
+Run 2897 completed safely, but it only encountered a trivial bogleech and gained no useful objective XP. I am auditing the generic hunt-result handling now so an empty or low-value pass cannot quietly trap the campaign on one route.
+
+
+[2026-08-03 8:16:48 PM NZST] CODEX COMMENTARY
+The checkpoint is not trapped on Highland: the completed Keeper hunt is recorded as viable, while the next policy is the separate Crystalmir Stag research probe. The route result correctly marked the no-Keeper pass as non-viable; I am proceeding with that next bounded policy.
+
+
+[2026-08-03 8:17:33 PM NZST] CODEX COMMENTARY
+The next Stag probe is running under a bounded 180-second segment limit. The launcher returned immediately while the child owns run 2898, so I can monitor the database and process directly without leaving an unobserved command hanging.
+
+
+[2026-08-03 8:18:15 PM NZST] CODEX COMMENTARY
+Run 2898 is still live and bounded; the database remains in running state with no new checkpoint yet. I am letting the route finish its normal bounded recovery instead of interrupting mid-probe.
+
+
+[2026-08-03 8:18:58 PM NZST] CODEX COMMENTARY
+The Stag route is still active after roughly one minute, with the campaign process responsive and run 2898 still open. No death or failure marker has appeared; I am continuing to watch for the checkpoint or the hard runtime boundary.
+
+
+[2026-08-03 8:20:58 PM NZST] CODEX COMMENTARY
+Run 2898 returned safely to healer room 3054. The Stag probe was interrupted by an unexpected goblin lieutenant, so it was correctly recorded as a retryable route hazard rather than target evidence. The next selection is ordinary provision restock; I am letting that bounded maintenance pass resolve the food-state before the next XP policy.
+
+
+[2026-08-03 8:21:21 PM NZST] CODEX COMMENTARY
+The bounded restock pass is running as a separate child and is being monitored by PID and run status. Its purpose is narrow: confirm whether the identified food reserve is usable, and if it is unaffordable, leave the explicit funding marker for later loot funding instead of looping.
+
+
+[2026-08-03 8:22:13 PM NZST] CODEX COMMENTARY
+Run 2899 successfully restocked two big pot pies and left Kestrel safe at healer room 3054. The campaign now selects the level-16 Shadow Keep Undead Soldier hunt, which is a source-backed research route and the next useful XP opportunity; I am starting it with the same bounded runtime and recovery controls.
+
+
+[2026-08-03 8:23:10 PM NZST] CODEX COMMENTARY
+The Shadow Keep segment is still active as run 2900 and has not produced a failure or death marker. The campaign is also repairing the prior restock metadata before the field handoff, so I am keeping the child bounded and observing its live transcript rather than launching a duplicate.
+
+
+[2026-08-03 8:24:37 PM NZST] CODEX COMMENTARY
+Run 2900 completed the Shadow Keep probe without combat and confirmed the registered Soldier was absent, then checkpointed safely. The scheduler has rotated back to the proven Highland Keeper policy after the nonproductive probes; the route now has time to repopulate and will be tested again under the same exact-target and bounded-circuit gates.
+
+
+[2026-08-03 8:25:32 PM NZST] CODEX COMMENTARY
+Run 2901 is live on the Highland route; the process remains responsive and the run is still open. It is currently in the expected metadata-repair/field transition window, with no safety failure reported.
+
+
+[2026-08-03 8:26:20 PM NZST] CODEX COMMENTARY
+The Highland retry has reached the exact Keeper of the Tower and is fighting it with the verified TARGETMODE selector. Kestrel is at 205/254 hit points, the Keeper is already at small wounds and bruises, and the runner is issuing its recurring knife-toss damage action as intended.
+
+
+[2026-08-03 8:27:03 PM NZST] CODEX COMMENTARY
+The Highland retry succeeded: Kestrel killed the Keeper of the Tower and recovered its tower key, gaining 798 XP. Combat ended at 126/254 HP, so the runner recalled immediately and is sleeping in healer room 3054 before checkpointing; no death or unsafe logout risk is present.
+
+
+[2026-08-03 8:28:00 PM NZST] CODEX COMMENTARY
+Run 2901 checkpointed the Keeper kill at 166,760 XP, leaving 10,890 XP to level 19. The next policy remains the proven Highland hunt because its current-reboot evidence is productive; I am taking another bounded pass so the campaign can accumulate real progression rather than stopping after a single kill.
+
+
+[2026-08-03 8:29:00 PM NZST] CODEX COMMENTARY
+Run 2902 is active after the campaign repaired its prior checkpoint metadata. I am monitoring the live run rather than treating those repair checkpoints as progress; only an authoritative objective kill or a safe, explicit route result will advance policy evidence.
+
+
+[2026-08-03 8:30:18 PM NZST] CODEX COMMENTARY
+Run 2902 has reached the registered Highland endpoint safely. A hideous bogleech was an unavoidable route interruption and yielded only ordinary scavenged paste; it is not being counted as an objective. The runner is now traversing the bounded Keeper circuit and will only promote an exact Keeper kill.
+
+
+[2026-08-03 8:31:02 PM NZST] CODEX COMMENTARY
+The second Highland pass also succeeded: the Keeper was killed for another 855 XP, bringing Kestrel to 167,615 XP with 10,035 XP to level 19. The runner is again sleeping at healer room 3054 after returning at 149/254 HP; the route is now producing repeatable, source-identified progression.
+
+
+[2026-08-03 8:31:55 PM NZST] CODEX COMMENTARY
+Run 2902 checkpointed with the second Keeper kill at 167,615 XP. The scheduler has now rotated to the Moria sanctuary replenishment route instead of immediately repeating Highland; this tests the registered purple-potion supply loop and broadens level-18 evidence before the next progression pass.
+
+
+[2026-08-03 8:32:49 PM NZST] CODEX COMMENTARY
+The Moria sanctuary pass is active as run 2903 after the normal campaign metadata repair. I am watching its source-room carrier checks and will accept only a live purple-potion acquisition or a clear safe absence/crowd result.
+
+
+[2026-08-03 8:33:56 PM NZST] CODEX COMMENTARY
+The live campaign runner chose another Highland segment through its persisted last-productive handoff; the standalone policy probe I ran earlier did not execute the campaign’s full metadata-refresh path. Run 2903 is safely in the field, where an incidental bogleech has been handled without being promoted as XP evidence, and I am letting the authoritative runner finish this segment before judging the rotation.
+
+
+[2026-08-03 8:35:20 PM NZST] CODEX COMMENTARY
+Run 2903 returned safely after two unavoidable bogleech interruptions; it did not record a Keeper objective kill, and the Highland policy remains viable only because its earlier exact Keeper kills are preserved. I am checking the authoritative next-policy handoff now, then will continue the level-18 XP loop without treating incidental low-value kills as progression evidence.
+
+
+[2026-08-03 8:36:42 PM NZST] CODEX COMMENTARY
+Run 2903 confirmed the safety behavior under pressure: incidental bogleeches were finished, but the runner withdrew when their damage consumed the field reserve, returned to healer room 3054, and kept the positive Keeper evidence separate. I am continuing the current-reboot fallback loop; the next exact Keeper pass is still the productive route while Moria remains crowd-cooled.
+
+
+[2026-08-03 8:37:45 PM NZST] CODEX COMMENTARY
+Run 2904 is traversing the Highland circuit with full health after the previous incidental interruption. It has not yet begun combat; the transcript shows only the registered fastwalk and source-keyed paste inventory, so I am waiting for the exact endpoint result.
+
+
+[2026-08-03 8:38:30 PM NZST] CODEX COMMENTARY
+Run 2904 has reached the exact Keeper and is making strong progress: the Keeper is at 118/386 HP while Kestrel is at 170/254, with no crowd. The recurring knife-toss action is landing and the runner remains within the configured finish threshold.
+
+
+[2026-08-03 8:39:13 PM NZST] CODEX COMMENTARY
+Run 2904 completed a third exact Keeper kill and recovered the heart and tower key, adding 720 XP. Kestrel is back in healer room 3054 and the current level-19 gap is now 9,105 XP; recovery is underway before the next checkpoint.
+
+
+[2026-08-03 8:40:11 PM NZST] CODEX COMMENTARY
+After run 2904, the authoritative campaign state is 168,545 XP and the Moria crowd cooldown has dropped to one. The persisted handoff deliberately keeps the proven Highland hunt active for one more productive segment, after which Moria can be retried; I am following that explicit cooldown rather than guessing at area reset timing.
+
+
+[2026-08-03 8:41:05 PM NZST] CODEX COMMENTARY
+Run 2905 is active on the final Highland handoff segment before the Moria retry window. The child is responsive, the run is open, and no death or route-failure event has appeared.
+
+
+[2026-08-03 8:41:50 PM NZST] CODEX COMMENTARY
+Run 2905 encountered a single source-identified bogleech at level 10; it is already nearly dead and Kestrel remains at full health. The runner is finishing that unavoidable combat, then will continue the registered circuit rather than treating the bogleech as the XP objective.
+
+
+[2026-08-03 8:42:35 PM NZST] CODEX COMMENTARY
+Run 2905 cleared the incidental bogleech while Kestrel stayed at full health, then reached the Keeper. The Keeper is now down to 250/378 HP with Kestrel unharmed; this is the useful target the route was designed to find.
+
+
+[2026-08-03 8:43:14 PM NZST] CODEX COMMENTARY
+The Keeper in run 2905 is now at 3/378 HP while Kestrel remains at 227/254, so the objective kill is effectively complete pending the next combat round. The runner is not withdrawing from a nearly finished useful target.
+
+
+[2026-08-03 8:44:34 PM NZST] CODEX COMMENTARY
+Run 2905 completed the fourth exact Keeper kill, adding 782 XP and leaving Kestrel at 169,427 XP with 8,223 XP to level 19. The Moria crowd cooldown is now cleared, but the current productive Highland evidence still wins selection; I am continuing the same-character progression with the route’s explicit bounded kill limit.
+
+
+[2026-08-03 8:45:31 PM NZST] CODEX COMMENTARY
+Run 2906 is active and still within the normal metadata-repair/route window. I am watching the run-owned transcript and database row; no duplicate child or safety failure has appeared.
+
+
+[2026-08-03 8:46:16 PM NZST] CODEX COMMENTARY
+Run 2906 is in a clean one-on-one Keeper fight: Kestrel is at 183/254 HP, the exact level-17 Keeper is at 216/404 HP, and the recurring knife-toss watchdog is active. No incidental mobile is joining this combat.
+
+
+[2026-08-03 8:46:57 PM NZST] CODEX COMMENTARY
+Run 2906 completed another Keeper kill for 735 XP, taking Kestrel to 170,180 XP with 7,470 XP to level 19. The character is safely sleeping at healer room 3054, but carry count is now exactly 46/46; I am letting the campaign’s capacity and liquidation gates handle that before another field launch.
+
+
+[2026-08-03 8:48:03 PM NZST] CODEX COMMENTARY
+Run 2906 is fully checkpointed at healer room 3054. The live inventory is at the numerical carry-count ceiling, but the campaign’s source-aware loot and capacity predicates still select the executable Keeper route; I am confirming that behavior with the next bounded segment rather than manually changing the character state.
+
+
+[2026-08-03 8:49:03 PM NZST] CODEX COMMENTARY
+Run 2907 is active; the carry-count ceiling has not caused a hang or failure. I am waiting for the route’s actual loot/target result so we can tell whether capacity handling needs a generic change or is already filtering the optional drops correctly.
+
+
+[2026-08-03 8:49:52 PM NZST] CODEX COMMENTARY
+Run 2907 is still progressing through the live-vnum Highland path with 223/254 HP; the carry ceiling is being tolerated without a failed pickup loop. It is approaching the Keeper room, so I am waiting for the exact target/crowd gate.
+
+
+[2026-08-03 8:51:05 PM NZST] CODEX COMMENTARY
+Run 2907 returned safely after a bogleech-only circuit pass and gained no objective XP; the route did not promote the bystander. The next authoritative selection is the bounded Shadow Keep Soldier hunt, because its retry cooldown has matured; I am using that source-registered absence check before the scheduler resumes the productive fallback.
+
+
+[2026-08-03 8:52:01 PM NZST] CODEX COMMENTARY
+Run 2908 is active on the Shadow Keep retry and remains bounded and responsive. I am waiting for its exact Soldier presence result; this is a research check, not an assumption that the earlier absence has become permanent.
+
+
+[2026-08-03 8:52:52 PM NZST] CODEX COMMENTARY
+Run 2908 completed the Shadow Keep presence check without combat and is returning through Midgaard to healer room 3054. The transcript shows no Soldier engagement and no safety issue; I am waiting for its final recorded absence marker before selecting the next XP route.
+
+
+[2026-08-03 8:53:40 PM NZST] CODEX COMMENTARY
+Run 2908 confirmed the Soldier absence and checkpointed cleanly. The authoritative scheduler has returned to the productive Highland Keeper fallback at 170,290 XP, with 7,360 XP still needed for level 19; I am continuing that rotation while keeping the Soldier absence reboot-scoped.
+
+
+[2026-08-03 8:54:41 PM NZST] CODEX COMMENTARY
+Run 2909 is active on the Highland fallback. The child remains responsive and the database has not reported an error; I am waiting for its exact target/crowd result under the same no-steering controls.
+
+
+[2026-08-03 8:55:31 PM NZST] CODEX COMMENTARY
+Run 2909 has reached the exact Keeper cleanly. The Keeper is at 216/409 HP and Kestrel at 206/254, with no joining mobile; the recurring knife-toss action is progressing the fight as expected.
+
+
+[2026-08-03 8:56:11 PM NZST] CODEX COMMENTARY
+Run 2909 has driven the Keeper to 20/409 HP while Kestrel remains at 183/254. The exact target is nearly finished and the bounded combat loop is still making progress.
+
+
+[2026-08-03 8:56:58 PM NZST] CODEX COMMENTARY
+Run 2909 completed another Keeper kill and returned safely to healer room 3054. Kestrel is at 171,112 XP with 6,538 XP to level 19; the carry ceiling did not stall combat, and the route did not count any low-value bystander as objective progress.
+
+
+[2026-08-03 8:57:57 PM NZST] CODEX COMMENTARY
+The authoritative state after run 2909 is stable at 171,112 XP and healer room 3054. I am taking the next Highland segment; the carry-count limit is still a known observation, not a failure, because the route’s required target can be completed without forcing optional loot.
+
+
+[2026-08-03 8:58:53 PM NZST] CODEX COMMENTARY
+Run 2910 remains active and bounded. I am monitoring its run row and transcript directly; no second campaign child or failure state has appeared.
+
+
+[2026-08-03 9:00:27 PM NZST] CODEX COMMENTARY
+Run 2910 was an intentionally nonproductive Highland pass: it only finished a bystander, recorded no Keeper objective kill, and safely returned to healer. The scheduler now downgrades to the Highland research probe before choosing another hunt, so the failed pass cannot silently masquerade as fresh progression evidence.
+
+
+[2026-08-03 9:01:27 PM NZST] CODEX COMMENTARY
+Run 2911 is active on the Highland research probe and remains within the bounded runtime. I am waiting for the live target-presence result before promoting any further hunt.
+
+
+[2026-08-03 9:02:13 PM NZST] CODEX COMMENTARY
+Run 2911 is traversing the registered Highland route at 238/254 HP; it has not engaged the Keeper yet. Any incidental 210 XP already reflected in the live state is being treated as bystander noise, while the research probe continues toward the exact source room.
+
+
+[2026-08-03 9:03:02 PM NZST] CODEX COMMENTARY
+Run 2911 completed the Highland probe and confirmed the Keeper remains live and viable, but did not engage it. Kestrel is safe at healer room 3054 with 171,422 XP; the next policy can legitimately promote the probe back to the bounded Keeper hunt.
+
+
+[2026-08-03 9:04:01 PM NZST] CODEX COMMENTARY
+Run 2912 is active on the newly authorized Highland hunt after the live probe. The process is responsive and still bounded; I am waiting for the exact Keeper combat result.
+
+
+[2026-08-03 9:07:16 PM NZST] CODEX COMMENTARY
+I am checking the live run that was already in progress after the requested publication. I will let that bounded run finish, verify the checkpoint and process state, and then report the exact remote commit and any remaining local commentary-log change.
+
+
+[2026-08-03 9:07:46 PM NZST] CODEX COMMENTARY
+Run 2912 finished successfully: the Shadow Keep Soldier was absent, Kestrel returned to the healer, and no process was left behind. The requested one-off publication is verified at commit 8b97b97 on origin/main; only the ongoing conversation log is now a later local modification. I am continuing the next bounded progression segment.
+
+
+[2026-08-03 9:08:49 PM NZST] CODEX COMMENTARY
+Run 2913 is still alive under its bounded 180-second segment limit. The database shows it is running and no stale process is involved; I am monitoring the child directly and will inspect its checkpoint as soon as it returns.
+
+
+[2026-08-03 9:09:36 PM NZST] CODEX COMMENTARY
+Run 2913 is in The Highlands and remains live. The transcript shows an incidental hideous bogleech encounter at 225/254 HP, not a deliberate XP target; the runner is applying the bounded combat watchdog and should continue the registered Keeper search or withdraw safely according to the existing gates.
+
+
+[2026-08-03 9:10:21 PM NZST] CODEX COMMENTARY
+The productive target has now been reached: Kestrel is fighting the Keeper of the Tower. The Keeper is down to small wounds, Kestrel is at 225/254 HP with 123 movement, and the bounded combat loop is still making progress.
+
+
+[2026-08-03 9:11:04 PM NZST] CODEX COMMENTARY
+Run 2913 completed the Keeper kill and returned safely to healer room 3054. Kestrel gained 873 XP this segment, now has 172,295 XP and 5,355 XP to level 19, with 250/254 HP and 77/320 movement; the child is finishing its checkpoint bookkeeping.
+
+
+[2026-08-03 9:12:43 PM NZST] CODEX FINAL
+The one-off remote publication is complete. Commit 8b97b97 was pushed to origin/main and local main matches origin/main. The bounded live verification also completed safely: Kestrel killed the Keeper of the Tower for 873 XP and returned to healer room 3054. No Python campaign processes remain; the Discord streamer remains alive. The conversation log append itself is intentionally an uncommitted local change after the push.
+
+
+[2026-08-03 9:13:00 PM NZST] CODEX COMMENTARY
+I am resuming the autonomous-HERO work from the current repository state. I will first audit the published code, active checkpoint, source revision, tests, and live processes, then choose the next concrete progression blocker to remove and verify it with focused tests and a bounded no-steering run.
+
+
+[2026-08-03 9:13:33 PM NZST] CODEX COMMENTARY
+The audit found no campaign child processes: only the known Discord streamer and two unrelated image-batch processes are running. Kestrel is safely checkpointed after run 2913 at level 18 with the Keeper route productive. The working tree contains only the expected post-push conversation-log edit; I also noticed an untracked conversation-log file inside the read-only source checkout and am checking that boundary before selecting the next blocker.
+
+
+[2026-08-03 9:14:18 PM NZST] CODEX COMMENTARY
+The source checkout is still at revision 1b759f5 and git pull --ff-only reports it is up to date. Its untracked conversation-log file predates this session and is being left untouched. I am running the full offline suite now, then I will launch the next bounded level-18 segment against the live MUD.
+
+
+[2026-08-03 9:15:03 PM NZST] CODEX COMMENTARY
+The full offline suite remains green at 1,844 passed. No new code defect appeared in the audit; the immediate executable blocker is simply obtaining enough productive level-18 evidence to reach 19 without steering. I am starting one bounded campaign segment now; it will select the persisted generic policy and stop at the existing runtime boundary.
+
+
+[2026-08-03 9:16:12 PM NZST] CODEX COMMENTARY
+Run 2914 is live in The Highlands, at full HP/mana with 105 movement. It is traversing the registered Keeper circuit without steering; I am watching for the exact target and for the route\'s bounded return behavior.
+
+
+[2026-08-03 9:16:56 PM NZST] CODEX COMMENTARY
+The exact Keeper target has appeared in run 2914 and combat is progressing: the Keeper has quite a few wounds, while Kestrel is at 216/254 HP and 89 movement. The runner remains inside the existing safety thresholds.
+
+
+[2026-08-03 9:17:38 PM NZST] CODEX COMMENTARY
+Run 2914 completed another Keeper kill and returned to healer room 3054. Kestrel gained 858 XP, now at 173,153 XP with 4,497 XP to level 19; the live state is safe and the process is completing its normal checkpoint/quit bookkeeping.
+
+
+[2026-08-03 9:18:29 PM NZST] CODEX COMMENTARY
+The process audit is clear: run 2914 closed successfully with checkpoint 2977 and no lingering campaign child. Two consecutive no-steering Keeper kills have now produced 1,731 XP, leaving 4,497 XP to level 19. I am continuing the same generic campaign path while its live evidence remains productive.
+
+
+[2026-08-03 9:19:34 PM NZST] CODEX COMMENTARY
+Run 2915 is alive and has entered the official Highland Keeper fastwalk. It is still in the route/tutorial phase rather than combat; the process and database are healthy, and I am continuing to the target without steering.
+
+
+[2026-08-03 9:21:04 PM NZST] CODEX COMMENTARY
+Run 2915 exposed the next generic blocker: the Highland hunt found no Keeper, consumed the movement reserve, recovered safely, but the persisted hunt result was not given an absence cooldown, so the scheduler can repeat a cleared route. I am tracing the research-result merge and its tests now, then I will add a policy-level cooldown regression rather than hard-coding Kestrel or this character.
+
+
+[2026-08-03 9:23:17 PM NZST] CODEX COMMENTARY
+The code confirms the cause: hunt research deliberately clears absence cooldowns whenever there is no confirmed kill, even when the hunt produced no consider outcome at all. I will split that case from a real considered-but-withdrawn fight: an unobserved hunt gets the existing policy-specific temporary cooldown, while a considered no-kill remains immediately retryable only when the live target was actually observed.
+
+
+[2026-08-03 9:26:54 PM NZST] CODEX COMMENTARY
+The focused tests passed, while the broader campaign suite exposed that the repository treats revision 111 as the current live metadata format in several compatibility paths. I am preserving that established revision number and making the new migration idempotent at refresh time, rather than forcing unrelated old-revision fixtures through a new global version. This keeps existing repair semantics intact while still repairing Kestrel\'s current unobserved hunt.
+
+
+[2026-08-03 9:28:57 PM NZST] CODEX COMMENTARY
+The migration now repairs the actual run-2915 end state: Highland is marked unobserved/temporarily absent with a three-segment cooldown, while the revision remains 111. The complete campaign module passes at 367 tests. I am running the full suite before the live regression, then the next campaign run should demonstrate rotation away from the empty Highland circuit.
+
+
+[2026-08-03 9:29:38 PM NZST] CODEX COMMENTARY
+The full suite passes at 1,847 tests after the generic cooldown fix. I am launching the live regression as run 2916 with no steering commands; its key acceptance condition is that the scheduler does not immediately replay Highland after run 2915\'s empty circuit.
+
+
+[2026-08-03 9:30:16 PM NZST] CODEX COMMENTARY
+Run 2916 has selected the magic-shop maintenance segment instead of replaying Highland, which confirms the repaired absence cooldown is influencing the generic scheduler. I am letting this bounded maintenance pass finish and will inspect its checkpoint and post-maintenance policy handoff.
+
+
+[2026-08-03 9:31:00 PM NZST] CODEX COMMENTARY
+Run 2916 finished successfully in 20 commands: the magic-shop flight attempt failed quickly and safely, with no reconnect hang, and Kestrel remained at the healer. The checkpoint preserves Highland as unobserved with cooldown 3; the live acceptance condition is met. I am continuing one more bounded segment to verify the scheduler finds productive work after maintenance.
+
+
+[2026-08-03 9:32:09 PM NZST] CODEX COMMENTARY
+Run 2917 has rotated to the Shadow Keep Soldier policy rather than Highland, so the scheduler is honoring the new cooldown and selecting another current-level route. The Soldier transcript is still in its bounded research pass; I will let it finish and then inspect whether it found a target or recorded a temporary absence.
+
+
+[2026-08-03 9:33:29 PM NZST] CODEX COMMENTARY
+Run 2917 has completed the Shadow Keep circuit without combat and is back at healer room 3054 with full vitals; the live transcript is in normal checkpoint processing. This is another non-Highland rotation and should produce temporary absence evidence for the Soldier if the route found no target.
+
+
+[2026-08-03 9:35:29 PM NZST] CODEX COMMENTARY
+The runner is behaving according to the command flags: --reset-retries 1 caused one automatic one-second retry after run 2917\'s absent-target checkpoint, creating run 2918. That is not a zombie or permission hang; it is a separate bounded probe, and I am inspecting its policy and cooldown handoff before changing anything.
+
+
+[2026-08-03 9:36:22 PM NZST] CODEX COMMENTARY
+Run 2918 is the distinct Highland research probe, not the blocked hunt: it is traversing live exits through the registered rooms after the optional reset retry. The prior hunt cooldown remains intact; I am allowing this probe to complete because it can legitimately refresh a wandering target\'s current evidence.
+
+
+[2026-08-03 9:37:17 PM NZST] CODEX COMMENTARY
+Run 2918 completed safely and supplied useful current-reboot evidence: the probe saw a viable Keeper, while only four incidental bogleeches were finished, yielding 440 incidental XP and no objective kill. The probe correctly cleared Highland\'s temporary cooldown, so the next scheduler pass can return to the productive Keeper hunt without repeating an empty circuit.
+
+
+[2026-08-03 9:38:21 PM NZST] CODEX COMMENTARY
+Run 2919 first selected the failed flight-purchase maintenance again before reaching the Keeper hunt. The failed purchase is bounded and the connection is live, but this reveals a second scheduler inefficiency: the flight marker is being retried between productive hunts even though flight is optional. I am letting the pass close, then I will trace that retry gate and add a generic cadence test.
+
+
+[2026-08-03 9:45:22 PM NZST] CODEX COMMENTARY
+I am checking the current branch, remote state, and working tree before finalizing the requested one-off publication. The earlier push may already have completed, so I will verify the exact commit and only publish any source changes that are genuinely pending.
+
+
+[2026-08-03 9:45:44 PM NZST] CODEX COMMENTARY
+The remote main branch is exactly at 8b97b97, but the current working tree contains an uncommitted generic campaign fix in campaign.py and its regression tests, plus the ongoing conversation log. I will review the diff, run the focused verification, then commit and push this one-off change directly to main.
+
+
+[2026-08-03 9:46:01 PM NZST] CODEX COMMENTARY
+The diff is limited to the unobserved-research rotation fix, three regression tests, and the tracked development conversation log. I am running the campaign tests and the full offline suite now; after they pass I will create the requested one-off commit and push main.
+
+
+[2026-08-03 9:46:26 PM NZST] CODEX COMMENTARY
+Campaign verification is clean: 367 tests passed in 16.85 seconds. I am running the full offline suite next so the one-off publication includes a verified source state.
+
+
+[2026-08-03 9:47:00 PM NZST] CODEX COMMENTARY
+The full offline suite is clean: 1,847 tests passed in 25.81 seconds. I am staging the three pending files, committing them as the requested one-off publication, and then pushing main; the remote currently has no competing commit.

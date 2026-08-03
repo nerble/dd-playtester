@@ -580,6 +580,7 @@ def _refresh_policy_revision(
             state[_RESEARCH_ABSENCE_COOLDOWN_KEY] = absence_cooldowns
         else:
             state.pop(_RESEARCH_ABSENCE_COOLDOWN_KEY, None)
+    previous_revision = int(state.get("campaign_policy_revision", 0))
     unobserved_policy_ids = {
         policy_id
         for policy_id, result in research_results.items()
@@ -589,6 +590,12 @@ def _refresh_policy_revision(
             and not result.get("absent")
             and not result.get("route_hazard")
             and not result.get("crowded")
+            and not (
+                previous_revision < 112
+                and policy_id in _RESEARCH_ABSENCE_RETRY_COOLDOWNS
+                and result.get("completed_kill") is False
+                and result.get("boot_id") == state.get("world_boot_id")
+            )
         )
     }
     if unobserved_policy_ids:
@@ -600,6 +607,43 @@ def _refresh_policy_revision(
         }
         if not state["campaign_research_results"]:
             state.pop("campaign_research_results")
+    if previous_revision < 112:
+        # A research hunt that ended without a consider outcome was previously
+        # recorded as a generic failed hunt, which allowed an empty circuit to
+        # repeat immediately. Migrate only same-reboot, unobserved hunt results
+        # into the temporary absence rotation introduced by the merge logic.
+        migrated_results = dict(
+            state.get("campaign_research_results") or {}
+        )
+        absence_cooldowns = dict(
+            state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+        )
+        changed = False
+        for policy_id, raw_result in list(migrated_results.items()):
+            if not (
+                policy_id in _RESEARCH_ABSENCE_RETRY_COOLDOWNS
+                and isinstance(raw_result, dict)
+                and raw_result.get("completed_kill") is False
+                and raw_result.get("observed") is False
+                and raw_result.get("boot_id") == state.get("world_boot_id")
+                and not raw_result.get("absent")
+                and not raw_result.get("route_hazard")
+                and not raw_result.get("crowded")
+                and not raw_result.get("unattackable")
+            ):
+                continue
+            migrated_result = dict(raw_result)
+            migrated_result["absent"] = True
+            migrated_result["unobserved"] = True
+            migrated_results[policy_id] = migrated_result
+            absence_cooldowns[policy_id] = _RESEARCH_ABSENCE_RETRY_COOLDOWNS[
+                policy_id
+            ]
+            changed = True
+        if changed:
+            state = dict(state)
+            state["campaign_research_results"] = migrated_results
+            state[_RESEARCH_ABSENCE_COOLDOWN_KEY] = absence_cooldowns
     absence_cooldowns = dict(
         state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
     )
@@ -6576,6 +6620,14 @@ def _merge_campaign_research_result(
             str(policy.execution or "").endswith("-hunt")
             and not current.get("campaign_objective_kills")
         )
+        unobserved_hunt = bool(
+            hunt_without_confirmed_kill
+            and viable is None
+            and not current.get("campaign_fastwalk_consider_outcomes")
+            and not current.get("campaign_fastwalk_target_absent")
+            and not current.get("campaign_fastwalk_abort_reason")
+            and not current.get("campaign_fastwalk_unattackable_target")
+        )
         unattackable_target = current.get(
             "campaign_fastwalk_unattackable_target"
         )
@@ -6666,14 +6718,28 @@ def _merge_campaign_research_result(
             # probing. A research hunt is not viable until the runner records
             # the deliberate kill, even if the character dealt partial damage
             # before a safe withdrawal.
-            results[policy.policy_id] = {
+            result = {
                 "observed": viable is not None,
                 "viable": False,
                 "completed_kill": False,
                 "boot_id": current.get("world_boot_id"),
             }
+            if unobserved_hunt:
+                # A bounded hunt that never produced a live consideration did
+                # not find a target to fight. Treat it as temporary absence so
+                # the scheduler rotates to another policy instead of replaying
+                # an empty, movement-expensive circuit immediately.
+                result["absent"] = True
+                result["unobserved"] = True
+                retry_cooldown = _RESEARCH_ABSENCE_RETRY_COOLDOWNS.get(
+                    policy.policy_id
+                )
+                if retry_cooldown is not None:
+                    absence_cooldowns[policy.policy_id] = retry_cooldown
+            else:
+                absence_cooldowns.pop(policy.policy_id, None)
+            results[policy.policy_id] = result
             recorded_current_result = True
-            absence_cooldowns.pop(policy.policy_id, None)
             crowd_cooldowns.pop(policy.policy_id, None)
         else:
             result = {

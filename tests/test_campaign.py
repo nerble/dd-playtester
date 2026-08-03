@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from dd4tester.campaign import (
+    _CAMPAIGN_POLICY_REVISION,
     CampaignResult,
     CampaignRunner,
     _MAINTENANCE_EXECUTIONS,
@@ -1447,6 +1448,99 @@ def test_research_hunt_requires_a_confirmed_objective_kill() -> None:
         "completed_kill": False,
         "boot_id": "boot-1",
     }
+
+
+def test_unobserved_research_hunt_gets_temporary_absence_cooldown() -> None:
+    policy = ProgressionPolicy(
+        policy_id="highland-keeper-hunt-17-20",
+        minimum_level=17,
+        maximum_level=20,
+        status="research",
+        execution="highland-keeper-hunt",
+        summary="hunt",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    merged = _merge_campaign_research_result(
+        {},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_target_absent": False,
+            "campaign_fastwalk_consider_outcomes": {},
+        },
+        policy=policy,
+    )
+
+    assert merged["campaign_research_results"][policy.policy_id] == {
+        "observed": False,
+        "viable": False,
+        "completed_kill": False,
+        "absent": True,
+        "unobserved": True,
+        "boot_id": "boot-1",
+    }
+    assert merged["campaign_research_absence_cooldowns"] == {
+        policy.policy_id: 3
+    }
+
+
+def test_policy_revision_migrates_unobserved_hunt_to_absence_rotation() -> None:
+    policy_id = "highland-keeper-hunt-17-20"
+    migrated = _refresh_policy_revision(
+        {
+            "campaign_policy_revision": 111,
+            "world_boot_id": "boot-1",
+            "campaign_research_results": {
+                policy_id: {
+                    "observed": False,
+                    "viable": False,
+                    "completed_kill": False,
+                    "boot_id": "boot-1",
+                }
+            },
+        }
+    )
+
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert migrated["campaign_research_results"][policy_id]["absent"] is True
+    assert migrated["campaign_research_results"][policy_id]["unobserved"] is True
+    assert migrated["campaign_research_absence_cooldowns"] == {
+        policy_id: 3
+    }
+
+
+def test_considered_research_hunt_without_kill_does_not_become_absence() -> None:
+    policy = ProgressionPolicy(
+        policy_id="highland-keeper-hunt-17-20",
+        minimum_level=17,
+        maximum_level=20,
+        status="research",
+        execution="highland-keeper-hunt",
+        summary="hunt",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    merged = _merge_campaign_research_result(
+        {},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_consider_outcomes": {
+                "keeper of the tower": True
+            },
+            "campaign_objective_kills": [],
+        },
+        policy=policy,
+    )
+
+    assert merged["campaign_research_results"][policy.policy_id] == {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+    assert "campaign_research_absence_cooldowns" not in merged
 
 
 def test_successful_research_hunt_promotes_from_run_objective_kills(
