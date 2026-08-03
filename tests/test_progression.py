@@ -5441,6 +5441,76 @@ def test_viable_shire_wizard_requires_sanctuary_before_hunt() -> None:
     assert policy.execution == "moria-sanctuary-hunt"
 
 
+def test_productive_shire_wizard_history_cannot_bypass_sanctuary_gate() -> None:
+    research_results = _level_eighteen_research_outcomes()
+    research_results.update(
+        {
+            "shire-elven-wizard-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shire-elven-wizard-hunt-17-20": {
+                "observed": True,
+                "viable": True,
+                "completed_kill": True,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shadow-keep-undead-soldier-hunt-16-20",
+        policy_xp_deltas={"shire-elven-wizard-hunt-17-20": 1_048},
+        world_boot_id="boot-1",
+        research_results=research_results,
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
+def test_productive_shire_wizard_history_defers_while_moria_is_crowded() -> None:
+    research_results = _level_eighteen_research_outcomes()
+    research_results.update(
+        {
+            "moria-sanctuary-thief-17-20": {
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+                "boot_id": "boot-1",
+            },
+            "shire-elven-wizard-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shire-elven-wizard-hunt-17-20": {
+                "observed": True,
+                "viable": True,
+                "completed_kill": True,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shadow-keep-undead-soldier-hunt-16-20",
+        policy_xp_deltas={"shire-elven-wizard-hunt-17-20": 1_048},
+        research_results=research_results,
+        research_crowd_cooldowns={"moria-sanctuary-thief-17-20": 1},
+        world_boot_id="boot-1",
+    )
+
+    assert policy.executable is False
+    assert policy.policy_id == "unregistered-10-100"
+    assert "crowd cooldown" in policy.summary
+
+
 @pytest.mark.parametrize(
     "last_policy_id",
     [

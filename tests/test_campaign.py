@@ -16,6 +16,7 @@ from dd4tester.campaign import (
     _advance_piercing_weapon_upgrade_cooldown,
     _advance_war_dog_collar_cooldown,
     _campaign_counterbalance_preparation_required,
+    _active_crowded_research_policy_id,
     _campaign_below_band_policy_ids,
     _campaign_below_band_sightings,
     _campaign_has_item,
@@ -2582,6 +2583,31 @@ def test_productive_work_expires_crowd_cooldown_without_absence_evidence() -> No
     assert state["campaign_cleared_research_policies"] == [policy_id]
 
 
+def test_reset_retry_reopens_unrelated_active_crowd_route() -> None:
+    policy_id = "moria-sanctuary-thief-17-20"
+    state = {
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": "shadow-keep-undead-soldier-hunt-16-20",
+        "campaign_research_results": {
+            policy_id: {
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+                "boot_id": "boot-1",
+            }
+        },
+        "campaign_research_crowd_cooldowns": {policy_id: 1},
+    }
+
+    assert _active_crowded_research_policy_id(state) == policy_id
+    retried = _retry_current_crowded_research_policy(state)
+
+    assert retried["campaign_last_policy"] == policy_id
+    assert "campaign_research_results" not in retried
+    assert "campaign_research_crowd_cooldowns" not in retried
+    assert retried["campaign_fastwalk_target_absent"] is False
+
+
 def test_stag_absence_requires_three_productive_segments_before_retry() -> None:
     policy_id = "crystalmir-white-stag-probe-16-20"
     policy = ProgressionPolicy(
@@ -3536,6 +3562,50 @@ def test_crowded_moria_recovery_hands_off_to_productive_hunt(tmp_path) -> None:
         state,
         character_class="thief",
     ) == "highland-keeper-hunt-17-20"
+
+
+def test_crowded_moria_does_not_hand_off_to_unprotected_caster(tmp_path) -> None:
+    config_path, _ = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    thief = replace(spec.character, character_class="thief", subclass="ninja")
+    runner = CampaignRunner(replace(spec, character=thief), config_path)
+    state = {
+        "level": 18,
+        "room_vnum": "3054",
+        "world_boot_id": "boot-1",
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": [],
+        "campaign_worn_equipment": ["a long slim dagger"],
+        "inventory": [[{"quan": "1", "short_desc": "a big pot pie"}]],
+        "affects": [[{"name": "fly"}]],
+        "campaign_last_policy": "shire-elven-wizard-hunt-17-20",
+        "campaign_last_productive_policy": "shire-elven-wizard-hunt-17-20",
+        "campaign_research_results": {
+            "moria-sanctuary-thief-17-20": {
+                "boot_id": "boot-1",
+                "crowded": True,
+                "observed": False,
+                "viable": False,
+            },
+            "shire-elven-wizard-hunt-17-20": {
+                "boot_id": "boot-1",
+                "completed_kill": True,
+                "observed": True,
+                "viable": True,
+            },
+        },
+        "campaign_research_crowd_cooldowns": {
+            "moria-sanctuary-thief-17-20": 3,
+        },
+    }
+
+    assert _campaign_productive_sanctuary_handoff(
+        state,
+        character_class="thief",
+    ) is None
+    policy = runner._policy_for_state(state)
+    assert policy.policy_id != "shire-elven-wizard-hunt-17-20"
+    assert policy.execution != "shire-elven-wizard-hunt"
 
 
 def test_martial_with_pink_ring_selects_one_foundry_circlet_recovery(
@@ -4572,6 +4642,63 @@ def test_campaign_policy_xp_deltas_reconstruct_latest_segment_result(tmp_path) -
         results = _campaign_policy_xp_deltas(storage.list_campaign_segments(campaign_id))
 
     assert results == {"gnome-hermit-7-8": 0, "foundry-circuit-7-8": 1}
+
+
+def test_campaign_policy_xp_deltas_preserve_productive_history_through_crowd(
+    tmp_path,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="outcomes",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=20,
+        )
+        productive = storage.start_campaign_segment(
+            campaign_id,
+            phase="shire-elven-wizard-hunt-17-20",
+            start_state={"level": 18, "xp": 163_123},
+        )
+        storage.finish_campaign_segment(
+            productive,
+            status="success",
+            run_id=None,
+            end_state={
+                "level": 18,
+                "xp": 164_171,
+                "campaign_objective_kills": [
+                    {"mob_name": "the Elven Wizard", "xp_gained": 1_048}
+                ],
+            },
+            command_count=1,
+            duration_seconds=1.0,
+        )
+        crowded = storage.start_campaign_segment(
+            campaign_id,
+            phase="shire-elven-wizard-hunt-17-20",
+            start_state={"level": 18, "xp": 164_171},
+        )
+        storage.finish_campaign_segment(
+            crowded,
+            status="success",
+            run_id=None,
+            end_state={
+                "level": 18,
+                "xp": 164_171,
+                "campaign_objective_kills": [],
+                "campaign_fastwalk_abort_reason": (
+                    "field room contained 2 observed mobiles while evaluating "
+                    "'elven wizard'"
+                ),
+            },
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        results = _campaign_policy_xp_deltas(storage.list_campaign_segments(campaign_id))
+
+    assert results == {"shire-elven-wizard-hunt-17-20": 1_048}
 
 
 def test_campaign_policy_xp_deltas_discounts_positive_xp_without_a_kill(tmp_path) -> None:
@@ -12670,6 +12797,73 @@ def test_research_absence_survives_maintenance_and_requests_reset_wait(
         "absent"
     ] is True
     assert checkpoint_state["campaign_research_absence_cooldowns"][absent_policy_id] == 3
+
+
+def test_unavailable_policy_waits_for_active_crowd_reset(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    unavailable = ProgressionPolicy(
+        policy_id="unavailable-10-100",
+        minimum_level=18,
+        maximum_level=100,
+        status="unavailable",
+        execution=None,
+        summary="No alternate route is available yet.",
+        evidence=(),
+        practice_skill=None,
+    )
+    state = {
+        "level": 18,
+        "xp": 177_398,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            "moria-sanctuary-thief-17-20": {
+                "boot_id": "boot-1",
+                "crowded": True,
+                "observed": False,
+                "viable": False,
+            }
+        },
+        "campaign_research_crowd_cooldowns": {
+            "moria-sanctuary-thief-17-20": 1,
+        },
+    }
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase=unavailable.policy_id,
+            reason="ready",
+            state=state,
+        )
+
+    async def should_not_connect(*_args) -> RunResult:
+        pytest.fail("unavailable crowd state should wait before connecting")
+
+    class CrowdedRunner(CampaignRunner):
+        def _policy_for_state(self, current_state) -> ProgressionPolicy:
+            return unavailable
+
+    result = asyncio.run(
+        CrowdedRunner(
+            spec,
+            config_path,
+            segment_runner=should_not_connect,
+        ).run()
+    )
+
+    assert result.status == "ready"
+    assert result.awaiting_area_reset is True
+    assert result.message is not None
+    assert "temporarily crowded" in result.message
+    assert "awaiting the field area reset" in result.message
 
 
 @pytest.mark.parametrize(

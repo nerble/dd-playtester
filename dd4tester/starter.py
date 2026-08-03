@@ -618,6 +618,7 @@ class FieldHuntStop:
     where_target: str | None = None
     command_keyword: str | None = None
     actions: tuple[str, ...] = ()
+    where_location_routes: tuple[tuple[str, tuple[str, ...]], ...] = ()
     abort_if_where_target_absent: bool = False
     abort_if_where_room_names: tuple[str, ...] = ()
     post_actions: tuple[str, ...] = ()
@@ -1103,6 +1104,7 @@ class StarterPolicy:
         self.fastwalk_pursuit_steps = 0
         self.fastwalk_target_absent = False
         self.fastwalk_where_target_absent_observed = False
+        self.fastwalk_where_location: str | None = None
         self.consider_target: str | None = None
         self.consider_target_selector: str | None = None
         self.consider_viable: bool | None = None
@@ -1186,6 +1188,27 @@ class StarterPolicy:
             # `where` output can arrive immediately before a prompt, which
             # otherwise overwrites last_response before the hunt planner reads it.
             self.fastwalk_where_target_absent_observed = True
+        if (
+            current_stop is not None
+            and current_stop.where_location_routes
+            and any(
+                action.strip().casefold().startswith("where ")
+                for action in current_stop.actions[: self.fastwalk_hunt_action_index]
+            )
+        ):
+            where_location = _where_location_from_response(
+                cleaned,
+                current_stop.where_target or current_stop.target,
+            )
+            if (
+                where_location is not None
+                and where_location != self.fastwalk_where_location
+            ):
+                self.fastwalk_where_location = where_location
+                self._narrow_fastwalk_stops_to_where_location(
+                    current_stop,
+                    where_location,
+                )
         route_preflight = self.fastwalk_route
         if (
             route_preflight is not None
@@ -8867,6 +8890,7 @@ class StarterPolicy:
             self.fastwalk_attack_started = False
             self.fastwalk_target_absent = False
             self.fastwalk_where_target_absent_observed = False
+            self.fastwalk_where_location = None
             self.consider_target = None
             self.consider_target_selector = None
             self.consider_viable = None
@@ -9090,6 +9114,37 @@ class StarterPolicy:
         self.fastwalk_target_absent = True
         self.fastwalk_hunt_stop_skipped = True
         return BotDecision("look", "record an absent circuit target before continuing")
+
+    def _narrow_fastwalk_stops_to_where_location(
+        self,
+        current_stop: FieldHuntStop,
+        location: str,
+    ) -> None:
+        routes = {
+            name.casefold(): route
+            for name, route in current_stop.where_location_routes
+        }
+        destination_route = routes.get(location.casefold())
+        if not destination_route:
+            return
+        remaining_by_destination = {
+            stop.route_vnums[0]: stop
+            for stop in self.fastwalk_hunt_stops[
+                self.fastwalk_hunt_stop_index + 1 :
+            ]
+            if len(stop.route_vnums) == 1
+        }
+        narrowed = tuple(
+            remaining_by_destination[destination]
+            for destination in destination_route
+            if destination in remaining_by_destination
+        )
+        if not narrowed:
+            return
+        self.fastwalk_hunt_stops = (
+            self.fastwalk_hunt_stops[: self.fastwalk_hunt_stop_index + 1]
+            + narrowed
+        )
 
     def _nested_container_extraction_decision(self) -> BotDecision | None:
         if self.gear_catalog is None:
@@ -14790,6 +14845,15 @@ def shire_thain_research_stops() -> tuple[FieldHuntStop, ...]:
         "1113", "1115", "1113", "1114", "1113", "1116", "1113",
         "1112", "1109", "1106", "1104", "1103", "1118", "1120",
     )
+    where_location_routes = (
+        (
+            "delving lane",
+            (
+                "1110", "1109", "1106", "1104", "1103", "1118",
+                "1120", "1131", "1132", "1133", "1134",
+            ),
+        ),
+    )
     common = {
         "command_keyword": "thain",
         "consider_only": True,
@@ -14804,6 +14868,7 @@ def shire_thain_research_stops() -> tuple[FieldHuntStop, ...]:
             (),
             "the Thain",
             actions=("where thain",),
+            where_location_routes=where_location_routes,
             abort_if_where_target_absent=True,
             **common,
         ),
@@ -16391,6 +16456,36 @@ def _defeated_mobile(text: str) -> str | None:
 def _text_mentions_target(text: str, target: str) -> bool:
     keyword = _target_keyword(target)
     return bool(re.search(rf"\b{re.escape(keyword)}\b", text, re.IGNORECASE))
+
+
+def _where_location_from_response(text: str, target: str | None) -> str | None:
+    """Extract a locator room label from a ``where`` response line."""
+    if not target or "you detect the presence of:" not in text.casefold():
+        return None
+    target_words = target.casefold().split()
+    while target_words and target_words[0] in {"a", "an", "the"}:
+        target_words.pop(0)
+    if not target_words:
+        return None
+    in_locator = False
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.split())
+        if not line:
+            continue
+        if line.casefold().startswith("you detect the presence of:"):
+            in_locator = True
+            continue
+        if not in_locator:
+            continue
+        words = line.casefold().split()
+        for start in range(min(2, len(words))):
+            end = start + len(target_words)
+            if words[start:end] != target_words:
+                continue
+            location = " ".join(words[end:]).strip()
+            if location and not location.startswith("<"):
+                return location
+    return None
 
 
 def _target_keyword(target: str) -> str:

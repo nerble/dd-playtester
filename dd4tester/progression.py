@@ -6671,6 +6671,43 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             ),
         )
         if productive_late_hunt is not None:
+            sanctuary_required_hunt_ids = {
+                _SHIRE_ELVEN_WIZARD_HUNT_POLICY.policy_id,
+                _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
+                _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
+                _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY.policy_id,
+            }
+            if (
+                context.character_class == "thief"
+                and productive_late_hunt.policy_id in sanctuary_required_hunt_ids
+                and not context.has_sanctuary_potion
+            ):
+                moria_policy_id = (
+                    _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
+                )
+                if _research_crowd_is_active(context, moria_policy_id):
+                    return replace(
+                        _UNAVAILABLE_POLICY,
+                        minimum_level=17,
+                        maximum_level=20,
+                        summary=(
+                            "A productive caster hunt is retained, but its "
+                            "sanctuary reserve is empty and the Moria "
+                            "replacement route is still under a crowd "
+                            "cooldown; defer until that source-vetted "
+                            "reserve route can be retried."
+                        ),
+                        evidence=productive_late_hunt.evidence,
+                        practice_skill=context.practice_skill,
+                    )
+                return replace(
+                    _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
+                    summary=(
+                        "Replenish the source-verified sanctuary reserve "
+                        "before resuming the productive caster hunt."
+                    ),
+                    practice_skill=context.practice_skill,
+                )
             return replace(
                 productive_late_hunt,
                 practice_skill=context.practice_skill,

@@ -42,6 +42,7 @@ from dd4tester.starter import (
     _sellable_inventory_keyword,
     _stop_target_matches,
     _training_target_counts,
+    _where_location_from_response,
     _watchdog_progress_marker,
     _policy_inactivity_due,
     ambush_archer_hunt_stops,
@@ -2260,12 +2261,50 @@ def test_shire_thain_probe_and_hunt_keep_special_risk_bounded() -> None:
     assert probe[0].maximum_level_offset == 0
     assert probe[0].abort_after_consider_rejection is True
     assert probe[0].route_vnums == ()
+    assert probe[0].where_location_routes == (
+        (
+            "delving lane",
+            (
+                "1110", "1109", "1106", "1104", "1103", "1118",
+                "1120", "1131", "1132", "1133", "1134",
+            ),
+        ),
+    )
     assert probe[1].route_vnums == ("1110",)
     assert probe[-1].route_vnums == ("1120",)
     assert len(hunt) == len(probe)
     assert hunt[0].consider_only is False
     assert hunt[0].minimum_health_ratio == 0.90
     assert hunt[0].maximum_level_offset == 0
+
+
+def test_where_locator_narrows_a_wandering_target_to_source_room_group() -> None:
+    stops = shire_thain_research_stops()
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=stops,
+    )
+    policy.fastwalk_hunt_action_index = 1
+
+    response = (
+        "You detect the presence of:\n"
+        "The Thain                    Delving Lane\n"
+        "\n<254/254 hits 242/242 mana 248/320 move [The Shire]>"
+    )
+    policy.observe_text(response)
+
+    assert _where_location_from_response(response, "the Thain") == (
+        "delving lane"
+    )
+    assert policy.fastwalk_where_location == "delving lane"
+    assert tuple(
+        stop.route_vnums[0]
+        for stop in policy.fastwalk_hunt_stops[1:]
+    ) == (
+        "1110", "1109", "1106", "1104", "1103", "1118",
+        "1120", "1131", "1132", "1133", "1134",
+    )
 
 
 def test_argent_bandit_leader_probe_allows_only_source_companion() -> None:

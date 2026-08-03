@@ -18916,3 +18916,195 @@ I am handling the requested one-off publication now: first I will inspect the cu
 
 [2026-08-03 11:51:37 PM NZST] CODEX COMMENTARY
 The publication scope is clear: main is clean against origin/main at b1433d0, and the local delta is the generic current-reboot absence-cooldown gate plus its regression test and the required conversation log. The source checkout is at 1b759f5 and only the known Discord streamer is running. I am running the focused regression and full suite before staging this one-off publication.
+
+
+[2026-08-03 11:52:36 PM NZST] CODEX COMMENTARY
+The validation is green: the focused progression file passed 402 tests and the full suite passed 1,853 tests. I staged and committed the requested one-off publication as 9d25321 (Prevent repeated absent research routes), and the push to origin/main has completed. I am verifying that local main matches the remote and checking for any leftover DD4 campaign processes now.
+
+
+[2026-08-03 11:53:16 PM NZST] CODEX FINAL
+One-off publication complete: commit 9d25321 (Prevent repeated absent research routes) was pushed directly to origin/main, and the remote main ref matches local HEAD. The focused progression tests passed 402 and the full suite passed 1,853. No DD4 campaign process or zombie Python process remains; the only Python process is the known Discord streamer. The required post-publication conversation log entries remain a local uncommitted change under the 24-hour commit cadence.
+
+
+[2026-08-03 11:53:35 PM NZST] CODEX COMMENTARY
+I am resuming the autonomous HERO work from the published level-18 reliability checkpoint. I will audit the current repository, source revision, campaign state, and live processes first, then choose and implement the next concrete generic progression blocker with focused tests and bounded no-steering evidence.
+
+
+[2026-08-03 11:54:41 PM NZST] CODEX COMMENTARY
+The audit shows the code is published and the live environment is clean. Kestrel is still safely at healer room 3054, level 18, with roughly 350 XP to level 19; the current reboot has exhausted or rejected the registered level-18 research frontier, while the stored evidence still contains a historically productive Shire hunt whose latest attempt was crowded. I am narrowing the next change around that durable evidence and selection boundary rather than launching another blind route.
+
+
+[2026-08-03 11:58:12 PM NZST] CODEX COMMENTARY
+The concrete blocker is now isolated in the selector: _campaign_policy_xp_deltas treats the latest Shire Wizard crowd checkpoint as a zero-XP result, even though the same reboot has a confirmed 1,048-XP objective kill and the research result deliberately preserves that positive evidence. I am adding a generic crowd-only history rule that keeps the latest productive delta available while still allowing the existing crowd/absence gates to control retries, with a regression test for this exact pattern.
+
+
+[2026-08-03 11:59:15 PM NZST] CODEX COMMENTARY
+The fix is working offline: the new campaign-history regression passes, and the real Kestrel checkpoint now selects the executable shire-elven-wizard-hunt-17-20 with a preserved 1,048-XP delta instead of the unavailable policy. I am reviewing the policy’s live safety gates before launching one bounded no-steering hunt, then I will run the broader suite.
+
+
+[2026-08-04 12:00:59 AM NZST] CODEX COMMENTARY
+Safety review caught a second edge in the same transition: a preserved positive Wizard delta can bypass the older sanctuary-reserve gate when the latest policy was a different route. Kestrel currently carries no purple potion, so I will add a thief-specific guard that routes to the Moria reserve policy when the reserve is available to retry, and returns an explicit unavailable state while the current Moria crowd cooldown is active. This prevents an unsafe live hunt before validation.
+
+
+[2026-08-04 12:02:05 AM NZST] CODEX COMMENTARY
+The safety regression behaved correctly: it blocked the hunt, but the test assumed unavailable policies rewrite their stable identifier when only their level bounds change. DD4 uses the shared unregistered policy id for that case, so I am correcting the assertion to verify the stable id plus the explicit sanctuary-cooldown explanation, then rerunning the focused tests.
+
+
+[2026-08-04 12:04:25 AM NZST] CODEX COMMENTARY
+The current checkpoint has one temporary Moria crowd cooldown but no safe executable alternative. I am extending the campaign controller so this state becomes a bounded area-reset wait rather than a terminal blocked result: on the retry pass it will clear the active crowd marker, re-probe the sanctuary carrier, and continue autonomously. This closes the live dead-end exposed by the new sanctuary guard.
+
+
+[2026-08-04 12:05:25 AM NZST] CODEX COMMENTARY
+The focused crowd-retry test found the controller’s existing early return still ignored crowd metadata when the last segment was an unrelated policy. I am routing that path through the new active-crowd helper, then I will rerun the focused checks before exercising the reset retry live.
+
+
+[2026-08-04 12:07:26 AM NZST] CODEX COMMENTARY
+The focused history, sanctuary, and crowd-controller checks are green. I am running the full offline suite now, then I will verify the retry transition and exercise it in one bounded live campaign pass.
+
+
+[2026-08-04 12:08:01 AM NZST] CODEX COMMENTARY
+The full offline suite passes: 1,857 tests. I am checking the live campaign checkpoint with the temporary crowd marker removed in memory, so I can confirm the scheduler now chooses sanctuary replenishment rather than launching the unsafe caster hunt.
+
+
+[2026-08-04 12:09:08 AM NZST] CODEX COMMENTARY
+The in-memory check confirms the fix: the persisted checkpoint defers as unavailable while Moria is crowded, and the same state without that temporary marker selects the Moria sanctuary-hunt execution. I am starting one bounded no-steering live retry with a 60-second reset wait; it will either reopen the reserve route or return ready with a recorded reason.
+
+
+[2026-08-04 12:09:50 AM NZST] CODEX COMMENTARY
+The live retry is still running and the process remains bounded; no second campaign process has been started. I am waiting for the reset/retry result, then I will inspect the resulting checkpoint and process list before deciding whether to launch the next hunt.
+
+
+[2026-08-04 12:10:31 AM NZST] CODEX COMMENTARY
+The retry has crossed the one-minute reset window and is now in the bounded connection/work phase. I am keeping this as the single live process and will let its configured 120-second segment boundary decide the outcome.
+
+
+[2026-08-04 12:11:22 AM NZST] CODEX COMMENTARY
+The live retry completed cleanly in 119.5 seconds and left the campaign ready at checkpoint 3046, with the next policy recorded as the Shire hunt. I am inspecting the two new segment records now to distinguish sanctuary acquisition from the subsequent caster attempt and to verify the character was left safely at the healer.
+
+
+[2026-08-04 12:15:10 AM NZST] CODEX COMMENTARY
+The live audit exposed a second bypass in the campaign handoff path: when Moria was crowded, the handoff returned the last productive caster policy before progression safety gates ran. The character did not engage a target, but this is still an authorization defect. I am closing that bypass, adding a campaign-level regression test, and then rerunning the full suite before another live attempt.
+
+
+[2026-08-04 12:15:56 AM NZST] CODEX COMMENTARY
+The new campaign regression passes with the existing sanctuary and history tests: 6 focused tests are green. The handoff now declines caster hunts that need a carried potion, allowing the ordinary crowd-aware unavailable policy to take over. I am running the full suite and a read-only scheduler check before retrying live.
+
+
+[2026-08-04 12:16:36 AM NZST] CODEX COMMENTARY
+The full run found one test assumption that was too strict, not a product failure: with only the minimal synthetic research graph, the scheduler correctly chose the next watchman probe rather than an unavailable state. I am relaxing that test to assert the real invariant, namely that the unprotected Shire hunt is never returned.
+
+
+[2026-08-04 12:16:47 AM NZST] CODEX COMMENTARY
+The regression now checks the authorization boundary directly and leaves valid alternate research selection intact. I am rerunning the full 1,857-test suite; after it passes I will verify the live checkpoint now defers instead of launching the caster route.
+
+
+[2026-08-04 12:17:23 AM NZST] CODEX COMMENTARY
+The full suite is green at 1,858 tests. I am performing the final offline gate against Kestrel’s actual post-run checkpoint: it must not authorize the Shire caster hunt without a currently carried potion, and the current policy must be a safe retry or research probe before any new live connection.
+
+
+[2026-08-04 12:18:02 AM NZST] CODEX COMMENTARY
+The post-run gate is safe: no potion is carried and the caster handoff is gone, but the current unavailable summary points at an excluded fallback while the Moria crowd marker remains active. I am widening the controller’s reset-wait condition so any unavailable state with an active crowd marker returns ready for one bounded retry instead of blocking or spinning.
+
+
+[2026-08-04 12:18:37 AM NZST] CODEX COMMENTARY
+The retry transition now behaves correctly in memory: clearing the active crowd marker selects the Moria sanctuary-hunt execution, while the persisted state remains safe and non-caster. Focused crowd/reset checks pass, and I am running the full suite once more before the live bounded controller test.
+
+
+[2026-08-04 12:19:15 AM NZST] CODEX COMMENTARY
+The full suite is green again at 1,858 tests. I am now running the corrected live controller with one 60-second reset retry and a 120-second segment boundary; this pass should wait on the crowded area first, then attempt only the source-vetted Moria reserve route, never the unprotected caster hunt.
+
+
+[2026-08-04 12:20:20 AM NZST] CODEX COMMENTARY
+The corrected live controller is still in its single bounded pass; it has not spawned a second campaign process. I am waiting through the reset window and will inspect the recorded policy, potion state, healer location, and process list when it returns.
+
+
+[2026-08-04 12:21:27 AM NZST] CODEX COMMENTARY
+The reset wait has elapsed and the live route is inside its 120-second work boundary. I am leaving the connection to the bounded runner rather than interrupting it, so the resulting transcript and checkpoint capture the real Moria outcome.
+
+
+[2026-08-04 12:22:24 AM NZST] CODEX COMMENTARY
+The corrected live pass completed in 171.5 seconds, stayed at healer room 3054, and recorded the Moria reserve policy without launching the Shire caster hunt. It did not acquire a potion, so I am reading the exact live result and auditing processes before deciding the next research step.
+
+
+[2026-08-04 12:23:04 AM NZST] CODEX COMMENTARY
+The live evidence is now clear: run 2949 found the Moria carrier absent, left Kestrel fully safe at healer room 3054, and no campaign process remains; only the Discord streamer PID 27976 is running. I am adding one controller regression for this exact unavailable-plus-crowd state, then I will finish with a clean suite, diff audit, and next-policy checkpoint.
+
+
+[2026-08-04 12:23:37 AM NZST] CODEX COMMENTARY
+The new unavailable-plus-crowd controller regression is green. I am running the final full suite and whitespace audit now; after that I will inspect the compact diff and record the exact current Kestrel checkpoint without starting another live route.
+
+
+[2026-08-04 12:24:17 AM NZST] CODEX COMMENTARY
+The final suite passes: 1,859 tests, and git diff --check reports no whitespace errors. I am taking the closing repository/status snapshot now: source revision, uncommitted files, current campaign checkpoint, next policy, and live-process health.
+
+
+[2026-08-04 12:25:01 AM NZST] CODEX COMMENTARY
+The closing snapshot is clean: root main still matches origin/main, source evidence remains at 1b759f5, Kestrel is level 18 at 177,398 XP in healer room 3054, and the scheduler’s next safe action is the Shire Thain research probe. I am running that one bounded probe now because it requires no sanctuary potion and can extend the level-18 policy graph without combat risk.
+
+
+[2026-08-04 12:26:03 AM NZST] CODEX COMMENTARY
+The safe Shire Thain probe is still running inside its single 120-second boundary. No second live campaign has started; I am waiting for its real route result and will checkpoint at healer as usual.
+
+
+[2026-08-04 12:27:06 AM NZST] CODEX COMMENTARY
+The Thain probe has crossed the one-minute mark and remains bounded with no error output. I am allowing the route to finish so its absence or viable-target evidence is durable rather than inferred from a timeout.
+
+
+[2026-08-04 12:28:17 AM NZST] CODEX COMMENTARY
+The Thain probe completed cleanly at checkpoint 3050 and healer room 3054 with no XP or combat change. The returned state retained Moria as the campaign handoff marker, so I am reading the exact research result and current policy before choosing the next safe probe.
+
+
+[2026-08-04 12:28:49 AM NZST] CODEX COMMENTARY
+The Thain route reached its 120-second field boundary, issued the safe healer return, and recorded no target result; it did not fight or change XP. The scheduler correctly moved to restock-provisions next. I am running that low-risk maintenance segment now, then I will stop the live loop with the character safe and audit the remaining process list.
+
+
+[2026-08-04 12:29:37 AM NZST] CODEX COMMENTARY
+The maintenance segment completed in 31.3 seconds at healer room 3054, preserving the character’s level and safe state. I am doing the final compact checkpoint and process audit now; no more live launches after this pass.
+
+
+[2026-08-04 12:30:22 AM NZST] CODEX FINAL
+Milestone work unit complete. Added crowd-history preservation, closed the sanctuary handoff bypass, and made unavailable active-crowd states wait for a bounded reset retry. Full suite: 1,859 passed; diff check clean. Live: Moria carrier absent and safe return; Shire Thain probe bounded safely; restock completed. Kestrel remains level 18 at 177,398 XP, healer room 3054, full HP/mana, food and water stocked, no sanctuary potion. Only Discord streamer PID 27976 remains. Root main still matches origin/main at 9d25321; source evidence is 1b759f5. No new commit or push was made.
+
+
+[2026-08-04 12:30:52 AM NZST] CODEX COMMENTARY
+I am resuming the HERO progression work by auditing the current uncommitted code, latest campaign checkpoint, source revision, and executable level-18 policy. I will identify the next concrete blocker beyond level 13, implement the narrowest generic fix that removes it, run the full suite, and then exercise one bounded live work unit.
+
+
+[2026-08-04 12:33:24 AM NZST] CODEX COMMENTARY
+The transcript shows the concrete waste: where thain reported Delving Lane in room 1111, but the runner then visited about 100 candidate rooms and hit the runtime boundary. I am tracing the existing source room catalog and hunt-state machine so the generic fix can turn locator room names into a bounded route subset without relying on Kestrel-specific behavior.
+
+
+[2026-08-04 12:38:19 AM NZST] CODEX COMMENTARY
+The first focused run caught only a test-fixture detail: the real planner increments the where action index before the response arrives, while the synthetic test had left it at zero. The locator parser itself returns delving lane; I am aligning the fixture with the live state machine and rerunning both focused files.
+
+
+[2026-08-04 12:38:58 AM NZST] CODEX COMMENTARY
+The focused starter and campaign dispatch tests now pass. The generic route narrowing keeps the original full sweep as fallback, but when a source-registered locator room name is recognized it prunes the remaining stops to the corresponding source VNUM sequence. I am running the complete offline suite and whitespace audit before using it live.
+
+
+[2026-08-04 12:39:44 AM NZST] CODEX COMMENTARY
+The complete suite passes: 1,860 tests, with no diff-check errors. I am starting one bounded live Thain probe now; the expected evidence is a materially shorter locator-directed sweep, safe healer return, and either a viable target record or a bounded absence result.
+
+
+[2026-08-04 12:40:45 AM NZST] CODEX COMMENTARY
+The locator-directed live probe is still running as the only campaign process. I am waiting through the shortened field circuit and will compare its command count and route endpoint against the prior 296-command boundary run.
+
+
+[2026-08-04 12:41:52 AM NZST] CODEX COMMENTARY
+The shortened probe has crossed one minute without a safety event. I am keeping the 120-second bound intact; if the target is not reached, the runner will still return through the healer and preserve a measurable route result.
+
+
+[2026-08-04 12:42:49 AM NZST] CODEX COMMENTARY
+The revised probe completed safely at checkpoint 3055 and healer room 3054. I am measuring the durable segment record now; the wall-clock bound remains similar, but the key test is whether the command and room-scan counts dropped and whether the locator produced a usable research observation.
+
+
+[2026-08-04 12:45:11 AM NZST] CODEX COMMENTARY
+I am checking the current branch, local changes, and remote state now, then I will perform the requested one-off publish and merge without disturbing unrelated work.
+
+
+[2026-08-04 12:45:30 AM NZST] CODEX COMMENTARY
+The repository is on main and origin/main is still at 9d25321. There are seven tracked modifications from the current progression work and its tests, so I am running the full suite before staging this one-off publish.
+
+
+[2026-08-04 12:46:04 AM NZST] CODEX COMMENTARY
+The complete offline suite passes: 1860 tests in 25.51 seconds. I am staging the seven current files now, creating the one-off commit on main, and then pushing that commit to origin/main.

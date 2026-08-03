@@ -1639,6 +1639,28 @@ class CampaignRunner:
                 return CampaignResult(campaign_id, "blocked", checkpoint_id, budget_failure, state)
 
             if not policy.executable:
+                crowd_wait_policy_id = _active_crowded_research_policy_id(state)
+                if (
+                    not self.retry_stalled
+                    and crowd_wait_policy_id is not None
+                ):
+                    message = (
+                        f"{crowd_wait_policy_id} is temporarily crowded. "
+                        "Campaign checkpointed while awaiting the field area "
+                        "reset before retrying the source-vetted route."
+                    )
+                    storage.finish_campaign(
+                        campaign_id,
+                        status="ready",
+                        error=message,
+                    )
+                    return CampaignResult(
+                        campaign_id,
+                        "ready",
+                        checkpoint_id,
+                        message,
+                        state,
+                    )
                 message = policy.blocks_message(self.spec.character.character_class)
                 checkpoint_id = self._checkpoint(
                     storage,
@@ -6095,7 +6117,24 @@ def _campaign_policy_xp_deltas(
             objective_kills = end.get("campaign_completed_kills")
         if objective_kills is None and storage is not None and segment["run_id"]:
             objective_kills = _run_objective_kills(storage, int(segment["run_id"]))
-        results[str(segment["phase"])] = _effective_policy_xp_delta(
+        phase = str(segment["phase"])
+        if (
+            results.get(phase, 0) > 0
+            and isinstance(objective_kills, list)
+            and not objective_kills
+            and any(
+                str(end.get("campaign_fastwalk_abort_reason") or "").startswith(
+                    prefix
+                )
+                for prefix in _FIELD_CROWD_ABORT_PREFIXES
+            )
+        ):
+            # A crowded field is transient route-state evidence. Preserve a
+            # confirmed productive result for this policy so a later rotation
+            # can retry it after the crowd cooldown instead of erasing its
+            # only useful progression path.
+            continue
+        results[phase] = _effective_policy_xp_delta(
             start,
             end,
             completed_kills=objective_kills,
@@ -6516,6 +6555,15 @@ def _campaign_productive_sanctuary_handoff(
             )
         )
     ):
+        return None
+    if productive_policy_id in {
+        _SHIRE_ELVEN_WIZARD_HUNT_POLICY_ID,
+        _HIGHTOWER_JAILOR_HUNT_POLICY_ID,
+        _SOLACE_LORD_DOOM_HUNT_POLICY_ID,
+        _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY_ID,
+    }:
+        # A crowd checkpoint must never bypass the progression safety gate
+        # for a caster hunt that requires a currently carried potion.
         return None
     return productive_policy_id
 
@@ -7572,6 +7620,63 @@ def _retry_required_sanctuary_research_policy(
     return retried
 
 
+def _active_crowded_research_policy_id(
+    state: dict[str, Any],
+) -> str | None:
+    """Return the first current-reboot crowd route with an active cooldown."""
+    results = _campaign_research_results(state)
+    cooldowns = state.get(_RESEARCH_CROWD_COOLDOWN_KEY) or {}
+    candidates: list[tuple[int, str]] = []
+    for policy_id, result in results.items():
+        if (
+            not isinstance(result, dict)
+            or result.get("crowded") is not True
+            or result.get("boot_id") != state.get("world_boot_id")
+        ):
+            continue
+        try:
+            remaining = int(cooldowns.get(policy_id) or 0)
+        except (TypeError, ValueError):
+            continue
+        if remaining > 0:
+            candidates.append((remaining, policy_id))
+    if not candidates:
+        return None
+    return min(candidates)[1]
+
+
+def _retry_any_crowded_research_policy(state: dict[str, Any]) -> dict[str, Any]:
+    """Reopen one crowded route after its explicit reset wait."""
+    policy_id = _active_crowded_research_policy_id(state)
+    if policy_id is None:
+        return state
+    retried = dict(state)
+    results = dict(_campaign_research_results(state))
+    results.pop(policy_id, None)
+    if results:
+        retried["campaign_research_results"] = results
+    else:
+        retried.pop("campaign_research_results", None)
+    cooldowns = dict(state.get(_RESEARCH_CROWD_COOLDOWN_KEY) or {})
+    cooldowns.pop(policy_id, None)
+    if cooldowns:
+        retried[_RESEARCH_CROWD_COOLDOWN_KEY] = cooldowns
+    else:
+        retried.pop(_RESEARCH_CROWD_COOLDOWN_KEY, None)
+    cleared_research_policies = {
+        str(candidate_id)
+        for candidate_id in state.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
+    }
+    cleared_research_policies.add(policy_id)
+    retried[_CLEARED_RESEARCH_POLICIES_KEY] = sorted(
+        cleared_research_policies
+    )
+    retried["campaign_fastwalk_target_absent"] = False
+    retried.pop("campaign_fastwalk_abort_reason", None)
+    retried["campaign_last_policy"] = policy_id
+    return retried
+
+
 def _retry_current_crowded_research_policy(state: dict[str, Any]) -> dict[str, Any]:
     """Rotate a crowded research checkpoint after its bounded wait."""
     policy_id = str(state.get("campaign_last_policy") or "")
@@ -7615,14 +7720,14 @@ def _retry_current_crowded_research_policy(state: dict[str, Any]) -> dict[str, A
     if not policy_id or not any(
         abort_reason.startswith(prefix) for prefix in _FIELD_CROWD_ABORT_PREFIXES
     ):
-        return state
+        return _retry_any_crowded_research_policy(state)
     retry_policy_id = _next_absent_research_retry_policy(
         state,
         current_group=_research_absence_retry_group(policy_id),
         current_policy_id=policy_id,
     )
     if retry_policy_id == policy_id:
-        return state
+        return _retry_any_crowded_research_policy(state)
     retried = dict(state)
     retry_policy_ids = _research_absence_retry_group(retry_policy_id)
     results = dict(_campaign_research_results(state))
