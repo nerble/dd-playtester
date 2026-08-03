@@ -98,6 +98,7 @@ class ProgressionContext:
     movement_capacity: int = 0
     has_sanctuary_potion: bool = False
     has_acquired_sanctuary_potion: bool = False
+    protection_recovery_required: bool = False
     has_flight: bool = True
     can_attempt_flight_purchase: bool = False
     flight_purchase_failed: bool = False
@@ -4747,6 +4748,7 @@ def policy_for(
     movement_capacity: int = 0,
     has_sanctuary_potion: bool = False,
     has_acquired_sanctuary_potion: bool = False,
+    protection_recovery_required: bool = False,
     has_flight: bool = True,
     can_attempt_flight_purchase: bool = False,
     flight_purchase_failed: bool = False,
@@ -4800,6 +4802,7 @@ def policy_for(
         movement_capacity=movement_capacity,
         has_sanctuary_potion=has_sanctuary_potion,
         has_acquired_sanctuary_potion=has_acquired_sanctuary_potion,
+        protection_recovery_required=protection_recovery_required,
         has_flight=has_flight,
         can_attempt_flight_purchase=can_attempt_flight_purchase,
         flight_purchase_failed=flight_purchase_failed,
@@ -8135,6 +8138,8 @@ def _caster_hunt_requires_sanctuary_replenishment(
     context: ProgressionContext,
 ) -> bool:
     """Return whether a current-reboot protected hunt failed without a kill."""
+    if context.protection_recovery_required:
+        return True
     for policy_id in (
         _SHIRE_ELVEN_WIZARD_HUNT_POLICY.policy_id,
         _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,

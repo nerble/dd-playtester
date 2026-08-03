@@ -21056,3 +21056,135 @@ The publication branch is now on origin at commit 2e50114. I am switching back t
 
 [2026-08-04 10:39:44 AM NZST] CODEX COMMENTARY
 The main switch was correctly refused because the required timestamped commentary appended after the first commit left DEVELOPMENT_CONVERSATION.txt dirty. I am recording that final publication note as a second branch commit, pushing it, and then continuing the merge without dropping the log entry.
+
+
+[2026-08-04 10:40:23 AM NZST] CODEX COMMENTARY
+The one-off publication completed successfully: branch b0883f4 is on origin, main was fast-forwarded from 5853a63 to b0883f4, and origin/main now contains the verified change set. I am doing the final repository and process audit before reporting the exact result.
+
+
+[2026-08-04 10:40:46 AM NZST] CODEX FINAL
+One-off remote publication completed. Branch codex/one-off-publish-20260804-source-ranked-frontier and main both point to b0883f4; origin/main matches. The verified change set passed 1,913 pytest tests, compileall, and diff checks. Process audit found only the expected Discord streamer and desktop node processes; no dead campaign or zombie Python process was present.
+
+
+[2026-08-04 10:41:12 AM NZST] CODEX COMMENTARY
+I am resuming the autonomous-progression work from the newly published main state. I will first inspect the latest no-steering campaign checkpoint and authoritative XP/kill evidence, then use that result to choose the next concrete executable frontier beyond level 13 rather than adding coverage-only metadata.
+
+
+[2026-08-04 10:41:44 AM NZST] CODEX COMMENTARY
+The latest bounded retry was safe but did not advance Kestrel: the Shadow Keep soldier was absent, so XP stayed at 181,165 and level 19. The database confirms the run returned to healer room 3054 and recorded absence evidence; I am now tracing why the source-ranked candidate set collapses at this level and will repair the executable selection or research path rather than repeatedly retrying an absent target.
+
+
+[2026-08-04 10:47:49 AM NZST] CODEX COMMENTARY
+The blocker is now concrete: Kestrel's level-19 watchman attempt made meaningful partial damage but fled at 62/264, losing 256 XP, because no sanctuary reserve was available; the engine did record the failure and rotated safely. Three productive/maintenance segments have since elapsed, so the existing bounded Moria required-loot retry is eligible again. I am running exactly one no-steering segment to test whether the source carrier has respawned and can supply the protection needed for the next progression fight.
+
+
+[2026-08-04 10:48:39 AM NZST] CODEX COMMENTARY
+The bounded live segment is still running within its 180-second ceiling; no steering command has been injected. I am leaving the runner to complete its own route, target gates, recovery, and checkpoint so the result remains valid evidence.
+
+
+[2026-08-04 10:49:31 AM NZST] CODEX COMMENTARY
+The autonomous Moria retry reached its verified destination and confirmed the source carrier was still absent; it returned safely to healer and checkpointed at 3275 without spending a below-band XP kill. I am using the campaign's bounded 60-second reset controller once now, then I will inspect whether it acquired the required sanctuary potion or correctly rotated away again.
+
+
+[2026-08-04 10:50:32 AM NZST] CODEX COMMENTARY
+The bounded reset retry is in its single 60-second wait/launch window; I am not intervening. The process remains within the declared timeout and will either capture a fresh carrier result or checkpoint the same absence for later rotation.
+
+
+[2026-08-04 10:55:13 AM NZST] CODEX COMMENTARY
+The reset retry also found the carrier absent and checkpointed at 3280. I am making the next concrete code change now: persist a generic current-reboot protection-recovery fact when a viable hunt causes a no-kill XP loss, feed that fact into the class-aware policy context, and route an unprotected level-17+ thief back through the existing source-verified sanctuary acquisition path before retrying combat. Regression tests will cover both persistence and policy selection.
+
+
+[2026-08-04 10:58:36 AM NZST] CODEX COMMENTARY
+I am continuing from the live level-19 evidence. The protection-recovery change is in place locally; I am now adding focused regression tests and a small historical-state repair so an existing campaign checkpoint can learn from the earlier failed hunt instead of needing another avoidable failure. Then I will run the focused suite, the full tests, and one bounded campaign segment.
+
+
+[2026-08-04 11:01:03 AM NZST] CODEX COMMENTARY
+The checkpoint audit confirmed the earlier failed Watchman hunt is still present as segment 2547: a viable consider, no objective kill, and an XP loss. I am wiring that historical segment into startup metadata repair, with reboot matching and sanctuary-presence clearing, so the policy graph can act on evidence already recorded.
+
+
+[2026-08-04 11:03:12 AM NZST] CODEX COMMENTARY
+The new campaign-history tests passed. One progression test exposed that ProgressionContext intentionally keeps four identity fields required for direct construction; I am correcting the test fixture to provide those neutral fields, then I will rerun the focused tests before exercising the repaired live checkpoint.
+
+
+[2026-08-04 11:03:30 AM NZST] CODEX COMMENTARY
+The focused regression tests are green: progression protection routing and campaign metadata recovery both pass, along with compile checks. I am running the full pytest suite now; after that I will let the campaign startup repair the live checkpoint and run one bounded segment to verify the policy actually changes in the real database.
+
+
+[2026-08-04 11:04:08 AM NZST] CODEX COMMENTARY
+Full verification is green: 1,916 tests passed in 26.49 seconds. I am moving to the live checkpoint now with one bounded campaign segment and the existing 180-second runtime cap; startup should checkpoint the recovered protection requirement before choosing the next executable route.
+
+
+[2026-08-04 11:05:15 AM NZST] CODEX COMMENTARY
+The live check behaved as intended at startup: checkpoint 3283 is a metadata-repair checkpoint carrying the current-reboot protection requirement recovered from the failed hunt. The Moria carrier is still on its bounded absence cooldown, so this invocation correctly stopped rather than entering an unbounded search. I am doing one explicit 60-second reset retry, then I will inspect whether the campaign advances or records another bounded absence.
+
+
+[2026-08-04 11:06:00 AM NZST] CODEX COMMENTARY
+The bounded reset retry is still in its planned 60-second wait; the live process remains active and has not hung. I am leaving the retry window intact, then I will read its terminal result and the new checkpoint state.
+
+
+[2026-08-04 11:07:50 AM NZST] CODEX COMMENTARY
+The retry has passed the reset wait and is inside the same 180-second bounded live segment window. No output has arrived yet because the command reports only on completion; I am checking the process boundary rather than starting a second live connection.
+
+
+[2026-08-04 11:08:39 AM NZST] CODEX FINAL
+Tested the protection-recovery change end to end. Full pytest: 1,916 passed. Live Kestrel campaign: startup repaired checkpoint 3283 from the earlier viable no-kill XP-loss hunt; one bounded 60-second reset retry completed at checkpoint 3288 without hanging. The Moria sanctuary carrier was still absent, so no XP or potion was gained and the recovery requirement remains correctly persisted for this reboot. No campaign processes remain running. Changes are local and intentionally uncommitted/unpushed.
+
+
+[2026-08-04 11:08:57 AM NZST] CODEX COMMENTARY
+I am resuming the HERO-engine work from the verified level-19 checkpoint. I will first audit the current local diff, executable policy frontier, and Kestrel’s latest state, then choose the next concrete blocker beyond level 13 and implement a generic fix with tests and a bounded live proof run.
+
+
+[2026-08-04 11:11:15 AM NZST] CODEX COMMENTARY
+The frontier audit found the next executable route: with the real reboot kill counts loaded, the policy selector now chooses the generic source-ranked Dwarven Home nobleman hunt rather than returning unavailable. I am running that route once without steering; its exact live consider gate will decide whether it can supply useful level-19 XP.
+
+
+[2026-08-04 11:16:09 AM NZST] CODEX COMMENTARY
+The live state exposed a concrete scheduler bug: a source-ranked Dwarven Home route has a current crowd cooldown, but the retry path only clears the last policy’s crowd marker, which is Moria. As a result, the campaign keeps reopening the absent sanctuary route instead of retrying the only remaining source-ranked candidate. I am fixing the explicit reset-retry path to clear one bounded crowded route when no executable route remains, then I will add a regression test and prove the next retry selects Dwarven Home.
+
+
+[2026-08-04 11:16:51 AM NZST] CODEX COMMENTARY
+The regression coverage is green: the new retry helper test and existing crowd-cooldown test both pass, and compilation is clean. I am now running one bounded reset retry against the live campaign; the expected proof is that after the wait the scheduler opens the Dwarven Home source-ranked segment instead of reopening Moria immediately.
+
+
+[2026-08-04 11:17:37 AM NZST] CODEX COMMENTARY
+The live retry is still within its planned 60-second reset wait; no second connection has been started and the process remains bounded. I will read the completion result and inspect the next segment phase directly from SQLite.
+
+
+[2026-08-04 11:19:01 AM NZST] CODEX COMMENTARY
+The reset wait has elapsed and the bounded live run is now executing its single selected field segment. I am keeping the 180-second cap in force and will not launch a parallel campaign process.
+
+
+[2026-08-04 11:20:08 AM NZST] CODEX COMMENTARY
+The retry run exposed a second ordering defect in the same handoff: the generic crowd reset was clearing the Dwarven marker, then the sanctuary reset restored Moria as the last policy, so the segment still ran Moria. I am reordering the existing bounded reset transitions so sanctuary cleanup happens first and the final crowd handoff leaves the source-ranked candidate selected. I will add an order-sensitive regression test before the next live attempt.
+
+
+[2026-08-04 11:20:59 AM NZST] CODEX COMMENTARY
+The new order test caught an existing contract detail rather than a code defect: the sanctuary reset helper only reopens Moria when an earlier protected caster hunt is explicitly recorded as incomplete. I am tightening the fixture to include that required same-reboot evidence and asserting the relevant Moria/source markers are removed while unrelated research remains intact.
+
+
+[2026-08-04 11:21:21 AM NZST] CODEX COMMENTARY
+The corrected order-sensitive fixture now passes, including preservation of unrelated research. The earlier live run left Moria absent with no source crowd marker, so the next bounded retry should clear the sanctuary blocker first and let the existing source-ranked candidate proceed. I am running that verification now.
+
+
+[2026-08-04 11:22:09 AM NZST] CODEX COMMENTARY
+The live verification is still in its explicit 60-second reset wait and remains a single bounded process. I will report the selected phase from the resulting checkpoint rather than infer it from elapsed time.
+
+
+[2026-08-04 11:23:35 AM NZST] CODEX COMMENTARY
+The reset wait has elapsed and the single live segment is now running under the 180-second cap. I am waiting for its persisted segment phase and target result; no extra process is being launched.
+
+
+[2026-08-04 11:26:35 AM NZST] CODEX COMMENTARY
+I am auditing the current local changes and remote branch state now, then I will commit the intended source changes, push them, and complete the requested merge while preserving the append-only development log.
+
+
+[2026-08-04 11:26:59 AM NZST] CODEX COMMENTARY
+The worktree contains only the campaign/progression scheduler changes, their pytest coverage, and the required conversation log; main is synchronized with origin/main. I am running the full offline suite before publishing.
+
+
+[2026-08-04 11:27:37 AM NZST] CODEX COMMENTARY
+The full offline suite is green: 1,918 tests passed in about 28 seconds. I am preparing a one-off publication branch and checking the configured GitHub authentication so the change can be pushed and merged cleanly into main.
+
+
+[2026-08-04 11:27:52 AM NZST] CODEX COMMENTARY
+GitHub authentication is active for the configured nerble account, and the remote is nerble/dd-playtester. I am creating a short-lived publication branch, staging the five intentional tracked changes, and committing them with the passing test result recorded in the development log.

@@ -347,6 +347,7 @@ _PRODUCTIVE_POLICY_HISTORY_KEY = "campaign_productive_policy_history"
 _POLICY_HANDOFF_KEY = "campaign_policy_handoff"
 _SOURCE_RANKED_CANDIDATE_KEY = "campaign_source_ranked_hunt_candidate"
 _SOURCE_RANKED_POLICY_PREFIX = "source-ranked-hunt-"
+_PROTECTION_RECOVERY_KEY = "campaign_protection_recovery_required"
 _RESEARCH_ABSENCE_RETRY_COOLDOWNS = {
     _MIRROR_WATCHMAN_LEVEL_NINETEEN_POLICY_ID: 3,
     _CRYSTALMIR_WHITE_STAG_POLICY_ID: 3,
@@ -531,6 +532,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     "campaign_training_cap_gear_attempted_level",
     "campaign_training_cap_gear_recovered_level",
     _SOURCE_RANKED_CANDIDATE_KEY,
+    _PROTECTION_RECOVERY_KEY,
 )
 _CAMPAIGN_METADATA_REPAIRED_REASON = "campaign_metadata_repaired"
 
@@ -1531,17 +1533,18 @@ class CampaignRunner:
                         self.spec.character.name,
                         boot_id=boot_id,
                     )
-                )
+            )
             campaign_id, state = self._open_campaign(storage)
+            campaign_segments = storage.list_campaign_segments(campaign_id)
             self._policy_xp_deltas = _campaign_policy_xp_deltas(
-                storage.list_campaign_segments(campaign_id), storage=storage
+                campaign_segments, storage=storage
             )
             checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
             state_before_policy_repair = dict(state)
             state = _with_productive_policy_history(
                 state,
                 policy_ids=_campaign_productive_policy_ids(
-                    storage.list_campaign_segments(campaign_id),
+                    campaign_segments,
                     storage=storage,
                     boot_id=state.get("world_boot_id") or boot_id,
                 ),
@@ -1552,6 +1555,11 @@ class CampaignRunner:
                 completed_policy_ids=self._policy_xp_deltas,
             )
             state = _repair_research_absence_cooldowns(state)
+            state = _repair_protection_recovery_metadata(
+                state,
+                campaign_segments,
+                storage=storage,
+            )
             state = _remember_last_productive_policy(
                 state,
                 policy_xp_deltas=self._policy_xp_deltas,
@@ -1605,8 +1613,8 @@ class CampaignRunner:
             )
             if self.retry_stalled:
                 state = _retry_current_absent_research_policy(state)
-                state = _retry_current_crowded_research_policy(state)
                 state = _retry_required_sanctuary_research_policy(state)
+                state = _retry_current_crowded_research_policy(state)
                 if not self._policy_for_state(state).executable:
                     state = _retry_any_pending_absent_research_policy(state)
             policy = self._policy_for_state(state)
@@ -2213,6 +2221,7 @@ class CampaignRunner:
                 self._historical_sanctuary_potion
                 or bool(state.get("campaign_acquired_sanctuary_potion"))
             ),
+            protection_recovery_required=_protection_recovery_required(state),
             has_flight=has_flight,
             can_attempt_flight_purchase=_state_copper_value(state) >= 90,
             flight_purchase_failed=bool(state.get("magic_shop_purchase_failed")),
@@ -3226,6 +3235,11 @@ class CampaignRunner:
             state,
             end_state,
             policy=policy,
+        )
+        end_state = _merge_protection_recovery_metadata(
+            end_state,
+            policy=policy,
+            xp_delta=xp_delta,
         )
         if xp_delta > 0:
             end_state = _clear_absent_research_results(
@@ -7290,6 +7304,66 @@ def _repair_research_absence_cooldowns(
     return repaired
 
 
+def _repair_protection_recovery_metadata(
+    state: Mapping[str, Any],
+    segments: list[Any],
+    *,
+    storage: RunStorage | None = None,
+) -> dict[str, Any]:
+    """Recover a current-reboot protection need from recorded hunt evidence."""
+    updated = dict(state)
+    if _state_has_sanctuary_reserve(updated):
+        updated.pop(_PROTECTION_RECOVERY_KEY, None)
+        return updated
+    boot_id = updated.get("world_boot_id")
+    if boot_id is None:
+        return updated
+    existing = updated.get(_PROTECTION_RECOVERY_KEY)
+    if (
+        isinstance(existing, Mapping)
+        and existing.get("boot_id") == boot_id
+    ):
+        return updated
+    for segment in reversed(segments):
+        if segment["status"] not in {"success", "ready"}:
+            continue
+        phase = str(segment["phase"])
+        if "-hunt-" not in phase:
+            continue
+        try:
+            start = json.loads(segment["start_state_json"] or "{}")
+            end = json.loads(segment["end_state_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not end or end.get("world_boot_id") != boot_id:
+            continue
+        outcomes = end.get("campaign_fastwalk_consider_outcomes")
+        if not (
+            isinstance(outcomes, Mapping)
+            and any(value is True for value in outcomes.values())
+        ):
+            continue
+        objective_kills = end.get("campaign_objective_kills")
+        if objective_kills is None:
+            objective_kills = end.get("campaign_completed_kills")
+        if objective_kills is None and storage is not None and segment["run_id"]:
+            objective_kills = _run_objective_kills(storage, int(segment["run_id"]))
+        if not isinstance(objective_kills, list) or objective_kills:
+            continue
+        xp_delta = _xp_delta(start, end)
+        if xp_delta >= 0:
+            continue
+        updated[_PROTECTION_RECOVERY_KEY] = {
+            "boot_id": boot_id,
+            "level": _level(end),
+            "policy_id": phase,
+            "xp_delta": xp_delta,
+            "reason": "recorded viable hunt withdrew with an XP loss before a kill",
+        }
+        return updated
+    return updated
+
+
 def _remember_last_productive_policy(
     state: dict[str, Any],
     *,
@@ -7381,6 +7455,29 @@ def _historical_productive_handoff_policy_id(
         if not blocked:
             candidates.append(policy_id)
     return sorted(candidates)[0] if candidates else None
+
+
+def _state_has_sanctuary_reserve(state: Mapping[str, Any]) -> bool:
+    """Return whether a usable sanctuary potion is carried or pouch-held."""
+    if _state_has_item(state.get("inventory"), "purple potion"):
+        return True
+    try:
+        return int(
+            dict(state.get("combat_pouch_potions") or {}).get("purple", 0)
+            or 0
+        ) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _protection_recovery_required(state: Mapping[str, Any]) -> bool:
+    """Return whether a current-reboot hunt needs a protection upgrade."""
+    record = state.get(_PROTECTION_RECOVERY_KEY)
+    if not isinstance(record, Mapping):
+        return False
+    if record.get("boot_id") != state.get("world_boot_id"):
+        return False
+    return not _state_has_sanctuary_reserve(state)
 
 
 def _campaign_sanctuary_recovery_required(state: dict[str, Any]) -> bool:
@@ -7615,6 +7712,40 @@ def _merge_campaign_below_band_policy_exclusions(
     else:
         merged.pop(_BELOW_BAND_SIGHTINGS_KEY, None)
     return merged
+
+
+def _merge_protection_recovery_metadata(
+    current: dict[str, Any],
+    *,
+    policy: ProgressionPolicy,
+    xp_delta: int,
+) -> dict[str, Any]:
+    """Remember a costly failed hunt until a protection reserve is restored."""
+    updated = dict(current)
+    if _state_has_sanctuary_reserve(updated):
+        updated.pop(_PROTECTION_RECOVERY_KEY, None)
+        return updated
+    execution = str(policy.execution or "")
+    outcomes = updated.get("campaign_fastwalk_consider_outcomes")
+    viable = isinstance(outcomes, Mapping) and any(
+        value is True for value in outcomes.values()
+    )
+    if (
+        policy.status == "research"
+        and execution.endswith("-hunt")
+        and not updated.get("campaign_objective_kills")
+        and viable
+        and xp_delta < 0
+        and updated.get("world_boot_id") is not None
+    ):
+        updated[_PROTECTION_RECOVERY_KEY] = {
+            "boot_id": updated.get("world_boot_id"),
+            "level": _level(updated),
+            "policy_id": policy.policy_id,
+            "xp_delta": xp_delta,
+            "reason": "viable hunt withdrew with an XP loss before a kill",
+        }
+    return updated
 
 
 def _merge_campaign_research_result(
