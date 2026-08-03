@@ -21044,3 +21044,15 @@ The audit found four intended changes on main: the generic source-ranked progres
 
 [2026-08-04 10:38:55 AM NZST] CODEX COMMENTARY
 Verification is clean: all 1,913 pytest tests passed, compileall passed, and git diff --check reported only the repository's existing LF/CRLF conversion warnings. I am staging the four intended files now, then I will push a one-off publication branch and merge it into main.
+
+
+[2026-08-04 10:39:18 AM NZST] CODEX COMMENTARY
+The intended files are staged and the one-off branch codex/one-off-publish-20260804-source-ranked-frontier is ready. I am committing this verified change set, then I will push that branch and fast-forward the merge into main.
+
+
+[2026-08-04 10:39:34 AM NZST] CODEX COMMENTARY
+The publication branch is now on origin at commit 2e50114. I am switching back to main, syncing it with origin, and merging the published commit there before pushing main.
+
+
+[2026-08-04 10:39:44 AM NZST] CODEX COMMENTARY
+The main switch was correctly refused because the required timestamped commentary appended after the first commit left DEVELOPMENT_CONVERSATION.txt dirty. I am recording that final publication note as a second branch commit, pushing it, and then continuing the merge without dropping the log entry.
