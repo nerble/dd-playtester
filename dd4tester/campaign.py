@@ -265,6 +265,18 @@ _SOLACE_LORD_DOOM_HUNT_POLICY_ID = "solace-lord-doom-hunt-18-20"
 _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY_ID = (
     "solace-lord-doom-sanctuary-hunt-18-20"
 )
+_PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_POLICY_ID = (
+    "plains-aruncus-thief-probe-19-20"
+)
+_PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_HUNT_POLICY_ID = (
+    "plains-aruncus-thief-hunt-19-20"
+)
+_SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_POLICY_ID = (
+    "shire-dwarven-prince-thief-probe-19-20"
+)
+_SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_HUNT_POLICY_ID = (
+    "shire-dwarven-prince-thief-hunt-19-20"
+)
 _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY_ID = (
     "mahntor-rock-toad-thief-circuit-16-18"
 )
@@ -338,6 +350,10 @@ _RESEARCH_ABSENCE_RETRY_COOLDOWNS = {
     _PYRAMID_ALI_BABA_HUNT_POLICY_ID: 3,
     _SOLACE_LORD_DOOM_POLICY_ID: 3,
     _SOLACE_LORD_DOOM_HUNT_POLICY_ID: 3,
+    _PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_POLICY_ID: 3,
+    _PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_HUNT_POLICY_ID: 3,
+    _SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_POLICY_ID: 3,
+    _SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_HUNT_POLICY_ID: 3,
     _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY_ID: 3,
     _DWARVEN_HOME_CHESS_DWARF_POLICY_ID: 3,
     "dwarven-home-chess-dwarf-hunt-46-50": 3,
@@ -1469,6 +1485,8 @@ class CampaignRunner:
                 state = _retry_current_absent_research_policy(state)
                 state = _retry_current_crowded_research_policy(state)
                 state = _retry_required_sanctuary_research_policy(state)
+                if not self._policy_for_state(state).executable:
+                    state = _retry_any_pending_absent_research_policy(state)
             policy = self._policy_for_state(state)
             state.pop(_POLICY_HANDOFF_KEY, None)
 
@@ -1660,6 +1678,31 @@ class CampaignRunner:
                         f"{crowd_wait_policy_id} is temporarily crowded. "
                         "Campaign checkpointed while awaiting the field area "
                         "reset before retrying the source-vetted route."
+                    )
+                    storage.finish_campaign(
+                        campaign_id,
+                        status="ready",
+                        error=message,
+                    )
+                    return CampaignResult(
+                        campaign_id,
+                        "ready",
+                        checkpoint_id,
+                        message,
+                        state,
+                    )
+                pending_absence_policy_id = (
+                    _next_pending_absent_research_retry_policy(state)
+                )
+                if (
+                    self.defer_stall_for_reset
+                    and pending_absence_policy_id is not None
+                ):
+                    message = (
+                        "No executable current-band route is available; "
+                        f"{pending_absence_policy_id} is at its final "
+                        "reboot-scoped retry step. Campaign checkpointed while "
+                        "awaiting the field area reset before reopening it."
                     )
                     storage.finish_campaign(
                         campaign_id,
@@ -3253,7 +3296,11 @@ class CampaignRunner:
                 f"{policy.policy_id} segment completed at level {_level(end_state)}. "
                 "Campaign checkpointed for the next verified segment."
             )
-        elif _campaign_should_await_research_reset(checkpoint_state):
+        elif _campaign_should_await_research_reset(checkpoint_state) or (
+            self.defer_stall_for_reset
+            and _next_pending_absent_research_retry_policy(checkpoint_state)
+            is not None
+        ):
             message = (
                 f"{policy.policy_id} completed without an executable current-"
                 "band route. Campaign checkpointed while awaiting the field "
@@ -7697,6 +7744,40 @@ def _next_absent_research_retry_policy(
     return min(candidates)[1]
 
 
+def _next_pending_absent_research_retry_policy(
+    state: dict[str, Any],
+    *,
+    maximum_remaining: int = 1,
+) -> str | None:
+    """Find a current-reboot absence retry that is one step from reopening."""
+    results = _campaign_research_results(state)
+    boot_id = state.get("world_boot_id")
+    cooldowns = state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+    candidates: list[tuple[int, str]] = []
+    for raw_policy_id, raw_remaining in cooldowns.items():
+        policy_id = str(raw_policy_id)
+        if policy_id not in _RESEARCH_ABSENCE_RETRY_COOLDOWNS:
+            continue
+        result = results.get(policy_id)
+        if not (
+            isinstance(result, dict)
+            and result.get("boot_id") == boot_id
+            and (
+                result.get("absent") is True
+                or result.get("route_hazard")
+                == _DYNAMIC_FIELD_ROUTE_HAZARD_ABORT_REASON
+            )
+        ):
+            continue
+        try:
+            remaining = int(raw_remaining)
+        except (TypeError, ValueError):
+            continue
+        if 0 < remaining <= maximum_remaining:
+            candidates.append((remaining, policy_id))
+    return min(candidates)[1] if candidates else None
+
+
 def _retry_current_absent_research_policy(
     state: dict[str, Any],
     *,
@@ -7798,6 +7879,41 @@ def _retry_current_absent_research_policy(
     retried["campaign_fastwalk_target_absent"] = False
     retried.pop("campaign_fastwalk_abort_reason", None)
     retried["campaign_last_policy"] = selected_policy_id
+    return retried
+
+
+def _retry_any_pending_absent_research_policy(state: dict[str, Any]) -> dict[str, Any]:
+    """Reopen a nearly-expired absence route after the frontier is exhausted."""
+    policy_id = _next_pending_absent_research_retry_policy(state)
+    if policy_id is None:
+        return state
+    retry_policy_ids = _research_absence_retry_group(policy_id)
+    retried = dict(state)
+    results = dict(_campaign_research_results(state))
+    for candidate_id in retry_policy_ids:
+        results.pop(candidate_id, None)
+    if results:
+        retried["campaign_research_results"] = results
+    else:
+        retried.pop("campaign_research_results", None)
+    cooldowns = dict(state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {})
+    for candidate_id in retry_policy_ids:
+        cooldowns.pop(candidate_id, None)
+    if cooldowns:
+        retried[_RESEARCH_ABSENCE_COOLDOWN_KEY] = cooldowns
+    else:
+        retried.pop(_RESEARCH_ABSENCE_COOLDOWN_KEY, None)
+    cleared_research_policies = {
+        str(candidate_id)
+        for candidate_id in state.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
+    }
+    cleared_research_policies.update(retry_policy_ids)
+    retried[_CLEARED_RESEARCH_POLICIES_KEY] = sorted(
+        cleared_research_policies
+    )
+    retried["campaign_fastwalk_target_absent"] = False
+    retried.pop("campaign_fastwalk_abort_reason", None)
+    retried["campaign_last_policy"] = policy_id
     return retried
 
 
@@ -8176,11 +8292,10 @@ def _has_campaign_sellable_loot(
                     continue
                 return True
             return False
-    if state.get("magic_shop_purchase_failed"):
-        # A previous no-op liquidation may have recorded the current loot as
-        # a baseline. An unresolved purchase shortfall makes that baseline
-        # stale: retry the source-backed sale before deferring the purchase.
-        return True
+    # A failed purchase is not new loot. Once a liquidation checkpoint has
+    # recorded the retained inventory, repeating the same no-op sale only
+    # stalls the pending purchase retry; a changed signature will still
+    # schedule one fresh liquidation pass.
     return not _matches_liquidation_baseline(state, gear_catalog=gear_catalog)
 
 

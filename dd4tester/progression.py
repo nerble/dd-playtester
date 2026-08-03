@@ -2406,6 +2406,52 @@ _PLAINS_ARUNCUS_THIEF_LEVEL_SEVENTEEN_FALLBACK_POLICY = replace(
 )
 
 
+_PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY = replace(
+    _PLAINS_ARUNCUS_RESEARCH_POLICY,
+    policy_id="plains-aruncus-thief-probe-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    summary=(
+        "Probe the source-ranked Plains of the North Aruncus route after the "
+        "current level-19 frontier is exhausted; only a live consider result "
+        "above the prohibited below-band branch may promote combat."
+    ),
+    evidence=(
+        "DD4 source revision 1b759f5 ranks mobile 300, Aruncus the Druid, "
+        "at source level 13 with normal live range 11-15 and one reset in "
+        "room 323.",
+        "At thief level 19 the route is research-only because the upper end "
+        "of the source range can still produce a live diff of -4; the runner "
+        "must reject every consider result from the diff <= -5 or diff <= -10 "
+        "branches before any attack.",
+        "The existing source-vetted foothill, Hermit's Hut, and ancient-path "
+        "circuits provide bounded pursuit, selective loot, and healer recall; "
+        "this policy adds no character-specific route or keyword behavior.",
+    ),
+    practice_skill="backstab",
+)
+
+
+_PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_HUNT_POLICY = replace(
+    _PLAINS_ARUNCUS_THIEF_HUNT_POLICY,
+    policy_id="plains-aruncus-thief-hunt-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    status="research",
+    summary=(
+        "Run one live-considered Aruncus kill at levels 19-20, with bounded "
+        "pursuit and the normal selective-loot healer return."
+    ),
+    evidence=(
+        *_PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY.evidence,
+        "The inherited runner still requires at least 85% health, rejects "
+        "the prohibited below-band consideration, limits pursuit to three "
+        "source-vetted flee steps, and records objective XP before promotion.",
+    ),
+    practice_skill="backstab",
+)
+
+
 _DWARVEN_WORKERS_THIEF_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="dwarven-workers-thief-probe-13-15",
     minimum_level=13,
@@ -2838,6 +2884,50 @@ _SHIRE_DWARVEN_PRINCE_THIEF_HUNT_POLICY = replace(
         "unapproved bystander.",
     ),
     segment_kill_limit=1,
+)
+
+
+_SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY = replace(
+    _SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY,
+    policy_id="shire-dwarven-prince-thief-probe-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    summary=(
+        "Reopen the source-vetted Shire dwarven prince probe at levels 19-20 "
+        "after lower-band and current-frontier routes have been exhausted."
+    ),
+    evidence=(
+        *_SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY.evidence,
+        "The level-19 retry is independent of the earlier 17-20 hunt result: "
+        "a crowded or temporarily interrupted attempt must not erase a fresh "
+        "same-reboot probe, but the exact companion, consider, alignment, "
+        "and route safety gates remain mandatory.",
+    ),
+)
+
+
+_SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_HUNT_POLICY = replace(
+    _SHIRE_DWARVEN_PRINCE_THIEF_HUNT_POLICY,
+    policy_id="shire-dwarven-prince-thief-hunt-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    status="research",
+    summary=(
+        "Run one fresh, exact-target Shire dwarven prince hunt at levels 19-20 "
+        "only after the live companion and consider gates pass."
+    ),
+    evidence=(
+        *_SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY.evidence,
+        "The inherited runner admits only the source elven-warrior bystander, "
+        "requires at least 95-percent departure health and a maximum +1 live "
+        "level offset, and returns after one confirmed kill or any unapproved "
+        "crowd, disabling effect, or combat boundary.",
+        "Live run 2990 passed the level-band consider gate but did not complete "
+        "the kill: the prince's mage special and claw damage drove Kestrel from "
+        "full health to 57/264 before a flee. DD4 granted 70 partial XP and "
+        "charged 256 XP for fleeing, so this retry hunt is closed for the "
+        "current reboot and must not be repeated immediately.",
+    ),
 )
 
 
@@ -3403,6 +3493,16 @@ _HIGHLAND_KEEPER_RESEARCH_POLICY = ProgressionPolicy(
         "The probe records live isolation and do_consider output without "
         "attacking. Level difference, not the HP wording in consider, controls "
         "useful XP eligibility.",
+        "Live run 2991 encountered wandering hideous bogleeches in the Bog "
+        "during the no-combat sweep. A Keeper later passed consider, but "
+        "dynamic occupants still forced two flee penalties totaling 512 XP; "
+        "the runner returned safely and persisted an unexpected-combat route "
+        "hazard. Keep this as a bounded research retry, not a preferred "
+        "level-19 XP circuit.",
+        "The interrupting attacker was a gigantic frog, source mobile 11500 "
+        "at level 15 with a normal 13-17 live range; that range still overlaps "
+        "the useful band at level 19, so it is not an automatically trivial "
+        "bystander and must remain a hard route-safety boundary.",
     ),
     practice_skill=None,
 )
@@ -7287,6 +7387,27 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY,
                 practice_skill=context.practice_skill,
             )
+        if normalized_level >= 19 and context.character_class == "thief":
+            aruncus_policy = _research_hunt_policy(
+                context,
+                probe=_PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY,
+                hunt=_PLAINS_ARUNCUS_THIEF_LEVEL_NINETEEN_HUNT_POLICY,
+            )
+            if aruncus_policy is not None:
+                return replace(
+                    aruncus_policy,
+                    practice_skill=context.practice_skill,
+                )
+            shire_prince_policy = _research_hunt_policy(
+                context,
+                probe=_SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY,
+                hunt=_SHIRE_DWARVEN_PRINCE_THIEF_LEVEL_NINETEEN_HUNT_POLICY,
+            )
+            if shire_prince_policy is not None:
+                return replace(
+                    shire_prince_policy,
+                    practice_skill=context.practice_skill,
+                )
         if normalized_level >= 18:
             horsehead_policy = _research_hunt_policy(
                 context,

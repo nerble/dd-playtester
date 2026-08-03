@@ -19748,3 +19748,267 @@ I am preparing the requested one-off publication now: first I will inspect the c
 
 [2026-08-04 3:35:44 AM NZST] CODEX COMMENTARY
 The publication scope is clean and the final verification passed: 1869 pytest tests and compileall are green. The commit will contain the generic below-band funding opt-in, the unresolved-flight funding loop, their regression tests, and the recorded development log. I am staging those five files now, then I will create the one-off commit and push main after checking the remote has not moved.
+
+
+[2026-08-04 3:36:40 AM NZST] CODEX COMMENTARY
+The one-off publication succeeded: commit 3e72044 is pushed, and remote refs/heads/main resolves to the same commit. Because the checked-out branch was already main, the remote update is the requested merge into main; there was no separate feature branch or pull request to merge. I am doing one final local status check and will report the exact commit and verification result.
+
+
+[2026-08-04 3:36:54 AM NZST] CODEX FINAL
+One-off publication complete. Commit 3e72044 (Harden funding routes for grounded campaigns) was pushed directly to remote main, and git ls-remote confirms main at 3e72044b0d0cdcadf67ff0bd2fc8e806e2a60313. Verification passed with 1869 pytest tests and compileall. The working branch is main and the only post-push local modification is the newly appended conversation log entry.
+
+
+[2026-08-04 3:37:11 AM NZST] CODEX COMMENTARY
+I am resuming the autonomous-HERO work from the published checkpoint. I will first inspect the current worktree, Kestrel campaign checkpoint, source revision, and running-process state, then select the next concrete progression blocker and work it through offline tests plus bounded live evidence.
+
+
+[2026-08-04 3:38:48 AM NZST] CODEX COMMENTARY
+The audit is complete: root main is clean except the local conversation log, remote main is at the published funding commit, DD4 source is current at 1b759f5, and only the Discord streamer process is running. Kestrel is safely in healer room 3054 at level 19 with 23,353 XP to level 20; the latest checkpoint is waiting on the current reboot's absent Shadow Keep target. I am exercising the existing one-retry reset controller now with a bounded 30-second outside-area wait, without sending manual MUD commands.
+
+
+[2026-08-04 3:39:51 AM NZST] CODEX COMMENTARY
+The reset-controller invocation is still running inside the configured 264-second field ceiling, after the bounded 30-second outside-area wait. No manual MUD input has been sent; I am leaving the retry path autonomous and will inspect the persisted checkpoint when it returns.
+
+
+[2026-08-04 3:40:29 AM NZST] CODEX COMMENTARY
+The retry remains active after another bounded interval; the runner has not returned a result yet. I am monitoring the live process rather than injecting recovery commands, so this test distinguishes a real reset wait from an unbounded or orphaned connection.
+
+
+[2026-08-04 3:41:08 AM NZST] CODEX COMMENTARY
+The live retry is still within the per-segment limit, but it has now spent longer than the previous single-route runs. I am checking only process liveness and preserving the autonomous connection; if it reaches the runner's hard boundary, the normal healer-return checkpoint must close the work unit safely.
+
+
+[2026-08-04 3:41:49 AM NZST] CODEX COMMENTARY
+The bounded reset/retry controller returned cleanly after 161 seconds at checkpoint 3119. It did not hang or block: the retry path selected provision-funding, completed the source-registered Bardoosh funding action, returned safely, and left Kestrel at level 19 with 180,067 XP and 23,233 XP to level 20. The objective record correctly keeps xp_gained null because this was below-band funding, so I am inspecting the segment and next-policy state before choosing the next progression action.
+
+
+[2026-08-04 3:42:27 AM NZST] CODEX COMMENTARY
+The persisted result confirms the reset test did what it needed to do: the retry returned safely, preserved the absent-route cooldown, and did not create an orphan process. The next generic policy is the verified liquidate-loot maintenance phase because the funding drops filled the carry limit; its source-backed shop routing will clear saleable gear before the next level-19 hunt. I am letting that maintenance segment run autonomously now.
+
+
+[2026-08-04 3:43:26 AM NZST] CODEX COMMENTARY
+The autonomous liquidation segment is still active within its 180-second bound. I am leaving the shop routing and safe healer checkpoint untouched; no manual MUD commands have been sent.
+
+
+[2026-08-04 3:43:52 AM NZST] CODEX COMMENTARY
+Liquidation completed safely in 48 seconds: the funding drops were reduced to one retained hard leather shield, carry weight fell from 298 to 221, and currency rose to 11 silver 19 copper. The dry selector now chooses the verified buy-flight-potion phase, so I am allowing the engine to check the live price, purchase flight, and verify the affect before returning to the level-19 progression frontier.
+
+
+[2026-08-04 3:44:37 AM NZST] CODEX COMMENTARY
+The flight purchase phase completed safely in 29 seconds but the current reboot price is still above Kestrel's 11 silver 19 copper; purchase_failed remains true and no flight affect was verified. This is the intended generic unresolved-flight boundary: I am checking that the selector returns to provision-funding rather than stalling, then I will let it acquire and liquidate another safe drop if needed.
+
+
+[2026-08-04 3:44:50 AM NZST] CODEX COMMENTARY
+The dry selector confirms the generic fix: with food stocked but flight required and the purchase failed, the next policy is provision-funding, not an unavailable state or a repeated flight attempt. I am launching that no-steering funding segment now; its result will be measured by safe return, saleable loot, and the subsequent flight retry.
+
+
+[2026-08-04 3:45:49 AM NZST] CODEX COMMENTARY
+The autonomous flight-funding segment is active inside the 264-second limit. I am leaving target selection, combat, loot collection, and healer return entirely to the campaign runner; no steering commands have been issued.
+
+
+[2026-08-04 3:46:27 AM NZST] CODEX COMMENTARY
+The funding run remains active after another bounded interval, with no command prompt result yet. I am preserving the no-steering test and will inspect the persisted objective and currency state as soon as the runner returns.
+
+
+[2026-08-04 3:47:05 AM NZST] CODEX COMMENTARY
+The same autonomous segment is still within its hard 264-second field window. The longer duration is expected for the distant funding route; I am not treating it as stuck while the process remains live and bounded.
+
+
+[2026-08-04 3:47:51 AM NZST] CODEX COMMENTARY
+The second funding pass returned safely at checkpoint 3126 after 141 seconds and acquired three more saleable drops, adding another 120 live XP that remains funding-only. Flight is still unresolved, but the engine has correctly converted the next action into bank-excess-coins maintenance before further sale or purchase; this is a capacity-management step, not a new combat policy. I am letting that verified bank phase run next.
+
+
+[2026-08-04 3:48:38 AM NZST] CODEX COMMENTARY
+Banking completed in 26 seconds and converted the small coin hoard to one gold coin, freeing capacity without touching protected gear. The selector now returns to verified liquidation for the remaining helmet, leggings, and ring; I am letting that sale pass finish before retrying the live flight purchase.
+
+
+[2026-08-04 3:49:37 AM NZST] CODEX COMMENTARY
+Liquidation completed safely at checkpoint 3131, converting the remaining drops to one gold, six silver, and eight copper while preserving the shield and supplies. The flight reserve is still pending, but the engine now has ample currency for the next live price check; I am allowing the buy-flight phase to retry autonomously.
+
+
+[2026-08-04 3:53:13 AM NZST] CODEX COMMENTARY
+The live evidence exposed a genuine generic loop: after the failed 147-copper flight purchase, liquidation sold all newly acquired drops but retained Kestrel's usable hard leather shield; the campaign baseline now equals that retained item, yet magic_shop_purchase_failed unconditionally reselects liquidation and repeats a no-op forever. I am changing the selector to honor the persisted liquidation baseline even after a failed purchase, and I will add a regression proving a stale no-op cannot outrank the pending flight retry while genuinely changed loot still triggers one sale pass.
+
+
+[2026-08-04 3:53:56 AM NZST] CODEX COMMENTARY
+The selector repair is in place and the focused regressions pass (3 tests). A direct dry-run against the live checkpoint now selects buy-flight-potion, exactly as intended, instead of liquidate-loot. I am running the full offline suite and compileall before retrying the live purchase; the pending flight retry will remain untouched during verification.
+
+
+[2026-08-04 3:54:36 AM NZST] CODEX COMMENTARY
+The complete offline suite is green again at 1869 tests and compileall passed. The live checkpoint still has one gold, six silver, and eight copper, while the dry selector is now buy-flight-potion with the corrected baseline guard. I am launching one bounded no-steering purchase segment to confirm the 147-copper light-blue potion is bought and flight is verified.
+
+
+[2026-08-04 3:55:42 AM NZST] CODEX COMMENTARY
+The corrected live retry succeeded: Kestrel bought the 147-copper light-blue potion, retained one gold-to-copper balance of 21 copper, and GMCP verified active fly; flight markers are cleared. The next level-19 field selector is currently unavailable only because this reboot's research routes are all cooldown-scoped or nonviable. I am exercising one bounded reset-wait/retry cycle now, with flight active, to let the existing controller reopen the next source-backed route without manual steering.
+
+
+[2026-08-04 3:56:39 AM NZST] CODEX COMMENTARY
+The reset retry returned in 36 seconds without a live command hang, but the controller correctly exposed the real next blocker: every currently registered level-19 research route is nonviable or cooldown-exhausted on this reboot, so the campaign returned a bounded blocked result at checkpoint 3137 rather than looping. I am auditing the generic policy catalog and source-ranked level-19 candidates now; the next work unit will register or prove a new class-independent route, not hand-steer Kestrel.
+
+
+[2026-08-04 4:02:40 AM NZST] CODEX COMMENTARY
+The route patch is present: a generic level-19/20 Aruncus research and hunt pair, reboot-aware cooldowns, and a regression proving it is selected after the existing frontier is exhausted. I am running focused policy and campaign tests next, then I will inspect the live checkpoint before launching the bounded probe.
+
+
+[2026-08-04 4:06:28 AM NZST] CODEX COMMENTARY
+The focused regression caught an indentation mistake in my first route insertion: the new level-19 branch was nested inside the older level-17/18 thief block, so it could never execute at level 19. I have isolated that cause and am moving the selector to the level-19 boundary before rerunning the test.
+
+
+[2026-08-04 4:06:54 AM NZST] CODEX COMMENTARY
+The corrected selector now passes the new level-19 regression: 46 focused progression tests, 3 campaign regression tests, and compileall are clean. I am running the complete offline suite before checking Kestrel's persisted checkpoint and selecting the new live probe.
+
+
+[2026-08-04 4:07:40 AM NZST] CODEX COMMENTARY
+The full offline suite is green at 1870 tests in 28.42 seconds; compileall also passed. The route selector is now covered without weakening the existing level-band gates. I am reading the persisted campaign state and dry-running the actual live runner selector before starting the Aruncus probe.
+
+
+[2026-08-04 4:08:58 AM NZST] CODEX COMMENTARY
+The persisted live state is healthy: campaign 8 is blocked only at the old unavailable checkpoint, Kestrel is level 19 in healer room 3054 at 180,187 XP, and active fly remains verified. After replaying the runner's state normalization, the actual selector now chooses plains-aruncus-thief-probe-19-20. I am launching one bounded no-steering live probe; its outcome will be persisted as temporary absence, a viable hunt promotion, or a live safety rejection.
+
+
+[2026-08-04 4:09:48 AM NZST] CODEX COMMENTARY
+The autonomous Aruncus probe is still running inside the 264-second field bound. No manual MUD commands have been sent; I am monitoring the bounded process and will read its persisted research result when the runner returns.
+
+
+[2026-08-04 4:10:18 AM NZST] CODEX COMMENTARY
+The probe remains live after another bounded interval. Its route includes source-vetted movement and live target recognition, so this duration is expected; I am preserving the autonomous run rather than interrupting it or injecting a target command.
+
+
+[2026-08-04 4:11:12 AM NZST] CODEX COMMENTARY
+The live probe is still within the hard 264-second ceiling and has not produced a prompt result yet. I am checking process liveness only; the runner's normal timeout, healer return, and checkpoint path remain in control.
+
+
+[2026-08-04 4:12:04 AM NZST] CODEX COMMENTARY
+The Aruncus probe continues as one bounded live segment; there is no evidence of an orphaned process or stalled permission review. I am allowing the configured field ceiling to resolve the route and will audit the checkpoint immediately afterward.
+
+
+[2026-08-04 4:12:35 AM NZST] CODEX COMMENTARY
+The bounded Aruncus probe returned safely after 194 seconds at checkpoint 3139. It found Aruncus in source room 306 but live consider classified him in the prohibited below-band band for level 19, so no combat or XP was taken; the policy is now correctly excluded for this reboot. Kestrel remains at healer room 3054, full health and mana, with 23,113 XP to level 20. I am now re-running the selector and auditing the remaining source-ranked candidates rather than forcing a low-value kill.
+
+
+[2026-08-04 4:15:13 AM NZST] CODEX COMMENTARY
+The selector audit confirms the current frontier is genuinely exhausted only for the registered policies: Aruncus is below-band, while the proven Keeper route is waiting on a one-segment absence cooldown. Source ranking shows the Shire dwarven prince as the strongest remaining level-19 candidate (source range 15-19, no autonomous hard rejection, but companion/special gates). I am registering a level-19/20 retry pair for that existing source-vetted route, with independent cooldown and live crowd/consider gates, then I will test and probe it.
+
+
+[2026-08-04 4:17:49 AM NZST] CODEX COMMENTARY
+The new Shire retry pair is registered and the dry runner now selects shire-dwarven-prince-thief-probe-19-20 at checkpoint 3139. Focused progression tests pass (47), the existing Shire campaign tests pass (7), and compileall is clean. I am running the full offline suite once more, then I will launch this source-vetted probe as the next bounded live work unit.
+
+
+[2026-08-04 4:18:26 AM NZST] CODEX COMMENTARY
+The complete suite is green at 1871 tests in 25.93 seconds, with compileall still clean. The new route has no unverified code path beyond the existing Shire dispatcher and target recognizer. I am launching one bounded no-steering Shire probe now; a live companion or crowd will be recorded as a route-state result, not overridden.
+
+
+[2026-08-04 4:19:13 AM NZST] CODEX COMMENTARY
+The Shire probe is still running inside the 264-second field bound. It is using the existing source-derived route and live crowd gates; no manual target or combat commands have been sent.
+
+
+[2026-08-04 4:20:07 AM NZST] CODEX COMMENTARY
+The Shire route remains active after another bounded interval. I am letting the recognizer complete its room-1136 presence and companion checks; if it returns a viable exact target, the next autonomous segment will promote the new hunt policy, otherwise the evidence will close this route without combat.
+
+
+[2026-08-04 4:21:01 AM NZST] CODEX COMMENTARY
+The probe is still live and bounded; there is no permission-review wait or detached process. I am preserving the route's autonomous stop conditions and will inspect the checkpoint immediately on return.
+
+
+[2026-08-04 4:21:22 AM NZST] CODEX COMMENTARY
+The Shire probe succeeded as research evidence: after 164 seconds it returned safely to healer room 3054, full health and movement, and live consider marked the exact dwarven prince viable with no below-band sighting or crowd abort. No combat was initiated. The persisted result is ready to promote the new level-19 hunt; I am dry-checking that promotion now, then I will let the hunt run autonomously.
+
+
+[2026-08-04 4:21:43 AM NZST] CODEX COMMENTARY
+The dry runner promotes exactly to shire-dwarven-prince-thief-hunt-19-20. Its execution is the existing bounded hunt path, with the live exact selector, sole-target/approved-bystander gate, 95-percent health floor, and one-kill limit preserved. I am launching that single autonomous hunt now.
+
+
+[2026-08-04 4:22:27 AM NZST] CODEX COMMENTARY
+The Shire hunt is still active within its 264-second field ceiling. I am leaving the exact-target and crowd watchdogs in charge; no manual combat input has been sent.
+
+
+[2026-08-04 4:23:22 AM NZST] CODEX COMMENTARY
+The hunt remains live after another bounded interval, with no process or permission-review stall. The route is spending time on source-vetted travel and the prince's exact room/crowd checks before any combat opener; I am allowing the configured safety boundary to decide the result.
+
+
+[2026-08-04 4:25:01 AM NZST] CODEX COMMENTARY
+The Shire hunt produced valuable negative evidence rather than a kill: the exact prince passed level-band consider, but his spell/claw damage drove Kestrel from full health to 57 HP, the bot fled, and the MUD awarded 70 partial XP but charged a 256-XP flee penalty. Kestrel returned safely to healer room 3054; the new hunt result is now closed for this reboot, so it will not be repeated blindly. I am auditing the next selector and recording this outcome in the policy evidence before the next route decision.
+
+
+[2026-08-04 4:28:11 AM NZST] CODEX COMMENTARY
+The Shire prince probe was viable by level band, but the live hunt was not: Kestrel took heavy special damage, fled, and lost net XP. I am turning that evidence into a generic reset/retry test now, so the campaign can wait for a route reset and resume another productive frontier instead of stalling after a failed hunt.
+
+
+[2026-08-04 4:30:16 AM NZST] CODEX COMMENTARY
+The campaign already tracks reboot-scoped absence cooldowns, but its fallback only wakes a route when that route was the last policy. That is the gap exposed here: after a failed hunt, a nearly-ready productive route can be stranded behind an unavailable-policy stop. I am adding a narrow scheduler path that waits only when a recorded absence retry is at its final cooldown step, then reopens that route once.
+
+
+[2026-08-04 4:32:22 AM NZST] CODEX COMMENTARY
+The focused regression tests pass. The new behavior is deliberately narrow: a failed level-19 hunt cannot make the campaign wait forever, but only a current-reboot absence record at cooldown one can trigger the reset handoff; routes still at cooldown two or three remain deferred. I am running the broader suite and then I will exercise the real Kestrel checkpoint through that controller.
+
+
+[2026-08-04 4:33:05 AM NZST] CODEX COMMENTARY
+The full offline suite is green: 1,874 tests passed in 26.61 seconds. I am now checking the live checkpoint, source revision, and process list once, then I will run one bounded campaign invocation with a short reset wait so the new handoff is tested against the real Kestrel state rather than only fixtures.
+
+
+[2026-08-04 4:34:06 AM NZST] CODEX COMMENTARY
+The live dry-run confirms the new handoff exactly: before retry, the real runner selected unavailable-10-100; the pending route was highland-keeper-hunt-17-20 at cooldown one; after the handoff state was applied, the selector reopened highland-keeper-probe-17-20. Source is still at 1b759f5, compileall is clean, and the only persistent Python process is the Discord streamer. I am starting the one bounded live reset/retry invocation now.
+
+
+[2026-08-04 4:34:57 AM NZST] CODEX COMMENTARY
+The live reset/retry invocation is still inside its bounded window after the 30-second outside-area wait. No manual MUD commands or permission review are involved; the autonomous runner has moved from the reset handoff into the source-vetted Highland probe, and I am waiting for its normal healer-return checkpoint.
+
+
+[2026-08-04 4:35:31 AM NZST] CODEX COMMENTARY
+The Highland probe is still live but bounded; the connection has not returned a result yet. I am checking liveness without interrupting it, and the configured 264-second ceiling plus the runner's healer recovery remain the stop conditions.
+
+
+[2026-08-04 4:36:05 AM NZST] CODEX COMMENTARY
+The live process audit still shows only the expected Discord streamer and this one foreground campaign runner; there are no stale or duplicate bot processes. The probe has not crossed its hard field ceiling, so I am keeping the test intact and waiting for the persisted result.
+
+
+[2026-08-04 4:36:50 AM NZST] CODEX COMMENTARY
+The Highland route remains active after another bounded interval, still under the 264-second ceiling. This is the source-backed room sweep and live locator doing its work, not an approval or subprocess hang; I will inspect the checkpoint as soon as the runner closes the segment.
+
+
+[2026-08-04 4:37:37 AM NZST] CODEX COMMENTARY
+The reset/retry test is still progressing within its explicit time budget. I am not extending that budget or sending corrective input; if the target is absent or the route reaches a safety boundary, the runner will return to healer and persist the result rather than retrying blindly.
+
+
+[2026-08-04 4:38:20 AM NZST] CODEX COMMENTARY
+The live runner is still the single foreground bot process and remains inside its hard ceiling. The important result is the control path, so I am letting it complete the entire probe and healer checkpoint instead of cutting it short for a partial transcript.
+
+
+[2026-08-04 4:38:42 AM NZST] CODEX COMMENTARY
+The live test completed cleanly after 245 seconds: the reset handoff reopened Highland, but the no-combat probe encountered an unexpected dynamic attacker, returned Kestrel safely to healer room 3054 at full health, and persisted a reboot-scoped route hazard with cooldown three. No objective kill or progression XP was recorded; Kestrel is level 19 at 179,809 XP. The foreground runner exited and only the expected Discord streamer remains. I am extracting the exact live hazard evidence and will register it before selecting the next route.
+
+
+[2026-08-04 4:39:43 AM NZST] CODEX COMMENTARY
+The transcript confirms the hazard was dynamic and specific: two hideous bogleeches emerged from the Highlands bog during the no-combat sweep, then a Keeper passed consider but the route still had unapproved wandering attackers; Kestrel fled twice, lost 512 XP, and returned safely. The existing policy already models bogleech as below-band rather than an XP target, but I am adding this run as explicit evidence so the route remains a bounded research retry, never a preferred level-19 XP circuit.
+
+
+[2026-08-04 4:45:13 AM NZST] CODEX COMMENTARY
+The exact live attacker was a gigantic frog, not a harmless bogleech: source mobile 11500 is level 15 with a 13-17 fuzzed range, so at Kestrel's level 19 it still overlaps the useful band and must remain a hard boundary. I am adding that source-backed distinction to the policy evidence and leaving the safety gate intact; the bot should not guess that every low-looking room mob is below-band.
+
+
+[2026-08-04 4:46:06 AM NZST] CODEX COMMENTARY
+The final offline verification is green again: 1,874 tests passed in 26.51 seconds, and the source evidence update introduces no regressions. The reset handoff has now been tested against the real campaign, the run returned safely, and the next level-19 frontier is recorded as reboot-scoped research rather than an invented XP route. I am doing the final local status/process check now; no remote publication is being attempted in this work unit.
+
+
+[2026-08-04 4:46:47 AM NZST] CODEX FINAL
+Reset/retry handoff tested successfully. The campaign now waits only for a current-reboot absence retry at cooldown one after the executable frontier is exhausted, then reopens that route once. Full verification: 1,874 pytest tests passed, compileall passed, DD4 source was already current at 1b759f5, and the live foreground runner exited cleanly. Kestrel is safely sleeping in healer room 3054 at level 19 and 179,809 XP; the reopened Highland probe encountered the source-overlapping gigantic frog hazard, persisted cooldown three, and recorded no objective progression kill. Changes remain local and were not pushed in this work unit.
+
+
+[2026-08-04 4:47:07 AM NZST] CODEX COMMENTARY
+I am continuing the active HERO objective from the live level-19 checkpoint. The last work unit proved reset handoff safety but did not add progression XP; I am auditing the current frontier and source-derived candidate routes now, then I will implement the next reusable progression capability and validate it with offline tests plus one bounded no-steering live segment.
+
+
+[2026-08-04 4:49:00 AM NZST] CODEX COMMENTARY
+I am continuing the active HERO objective from the live level-19 checkpoint. The last work unit proved reset handoff safety but did not add progression XP; I am auditing the current frontier and source-derived candidate routes now, then I will implement the next reusable progression capability and validate it with offline tests plus one bounded no-steering live segment.
+
+
+[2026-08-04 4:50:00 AM NZST] CODEX COMMENTARY
+The source refresh is clean, the root worktree contains only the intended local campaign changes and conversation log, and the Discord streamer is the sole persistent Python process. The current frontier is genuinely level 19: the remaining registered targets are either absent, below-band, or have now shown route or combat hazards. I am narrowing the next candidate against the source flags, resets, and route shape before adding it to policy.
+
+
+[2026-08-04 4:51:08 AM NZST] CODEX COMMENTARY
+The strongest unregistered level-19 candidate is source mobile 10243, Magnus the wizard in Solace room 10300: source level 19 with normal 17-21 fuzz, no aggressive flag, no reset companion, and peak source damage below Kestrel’s current maximum HP. The route has three source-closed doors and a mage special, so I am adding a consider-only probe first, with a separate hunt policy that cannot activate until live evidence and a sanctuary-aware combat gate justify it.
+
+
+[2026-08-04 4:57:19 AM NZST] CODEX COMMENTARY
+I am handling the requested one-off publication now: first I will inspect the local diff and branch state, then run the relevant verification, create an intentional commit, push it, and merge it into the remote main branch. I will stop retrying any remote step promptly if the host blocks it and leave the verified changes saved locally.

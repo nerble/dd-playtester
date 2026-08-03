@@ -27,6 +27,8 @@ from dd4tester.campaign import (
     _retry_required_sanctuary_research_policy,
     _campaign_should_await_research_reset,
     _retry_current_absent_research_policy,
+    _next_pending_absent_research_retry_policy,
+    _retry_any_pending_absent_research_policy,
     _retry_current_crowded_research_policy,
     _campaign_policy_xp_deltas,
     _campaign_productive_policy_ids,
@@ -2903,6 +2905,77 @@ def test_absence_retry_does_not_bypass_an_active_cooldown() -> None:
     assert retried == state
 
 
+def test_pending_absence_retry_selects_only_the_final_cooldown_step() -> None:
+    state = {
+        "campaign_last_policy": "shire-dwarven-prince-thief-hunt-19-20",
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            "highland-keeper-hunt-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-hunt-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        },
+        "campaign_research_absence_cooldowns": {
+            "highland-keeper-hunt-17-20": 1,
+            "shadow-keep-undead-soldier-hunt-16-20": 2,
+        },
+    }
+
+    assert (
+        _next_pending_absent_research_retry_policy(state)
+        == "highland-keeper-hunt-17-20"
+    )
+    assert (
+        _next_pending_absent_research_retry_policy(
+            state,
+            maximum_remaining=0,
+        )
+        is None
+    )
+
+
+def test_pending_absence_retry_reopens_a_route_after_frontier_exhaustion() -> None:
+    policy_id = "highland-keeper-hunt-17-20"
+    failed_policy_id = "shire-dwarven-prince-thief-hunt-19-20"
+    state = {
+        "campaign_last_policy": failed_policy_id,
+        "world_boot_id": "boot-1",
+        "campaign_fastwalk_target_absent": False,
+        "campaign_research_results": {
+            policy_id: {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            failed_policy_id: {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+        },
+        "campaign_research_absence_cooldowns": {policy_id: 1},
+    }
+
+    retried = _retry_any_pending_absent_research_policy(state)
+
+    assert retried["campaign_last_policy"] == policy_id
+    assert policy_id not in retried["campaign_research_results"]
+    assert failed_policy_id in retried["campaign_research_results"]
+    assert "campaign_research_absence_cooldowns" not in retried
+    assert policy_id in retried["campaign_cleared_research_policies"]
+    assert retried["campaign_fastwalk_target_absent"] is False
+
+
 def test_orphaned_absence_cooldown_is_removed_without_erasing_live_evidence() -> None:
     repaired = _repair_research_absence_cooldowns(
         {
@@ -5500,6 +5573,7 @@ def test_liquidation_baseline_suppresses_retained_gear_until_loot_changes() -> N
             {"short_desc": "a metal shield"},
             {"short_desc": "a big pot pie"},
         ]],
+        "magic_shop_purchase_failed": True,
     }
     state["campaign_liquidation_baseline"] = list(
         _campaign_liquidation_signature(state)
@@ -5512,7 +5586,7 @@ def test_liquidation_baseline_suppresses_retained_gear_until_loot_changes() -> N
     assert _has_campaign_sellable_loot(state) is True
 
 
-def test_purchase_shortfall_retries_sellable_loot_despite_stale_baseline() -> None:
+def test_purchase_shortfall_does_not_repeat_noop_liquidation() -> None:
     primary = ObjectSource(
         9023,
         "long slim dagger",
@@ -5543,7 +5617,7 @@ def test_purchase_shortfall_retries_sellable_loot_despite_stale_baseline() -> No
     assert _has_campaign_sellable_loot(
         state,
         gear_catalog=GearCatalog({primary.vnum: primary, sword.vnum: sword}),
-    ) is True
+    ) is False
 
 
 def test_liquidation_signature_counts_only_redundant_protected_copies() -> None:
@@ -13069,6 +13143,78 @@ def test_unavailable_policy_waits_for_active_crowd_reset(tmp_path) -> None:
     assert result.awaiting_area_reset is True
     assert result.message is not None
     assert "temporarily crowded" in result.message
+    assert "awaiting the field area reset" in result.message
+
+
+def test_unavailable_policy_waits_for_pending_absence_retry(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    unavailable = ProgressionPolicy(
+        policy_id="unavailable-10-100",
+        minimum_level=18,
+        maximum_level=100,
+        status="unavailable",
+        execution=None,
+        summary="No alternate route is available yet.",
+        evidence=(),
+        practice_skill=None,
+    )
+    pending_id = "highland-keeper-hunt-17-20"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase=unavailable.policy_id,
+            reason="ready",
+            state={
+                "level": 19,
+                "xp": 180_001,
+                "world_boot_id": "boot-1",
+                "campaign_research_results": {
+                    pending_id: {
+                        "observed": False,
+                        "viable": False,
+                        "absent": True,
+                        "boot_id": "boot-1",
+                    },
+                    "shire-dwarven-prince-thief-hunt-19-20": {
+                        "observed": True,
+                        "viable": False,
+                        "completed_kill": False,
+                        "boot_id": "boot-1",
+                    },
+                },
+                "campaign_research_absence_cooldowns": {pending_id: 1},
+            },
+        )
+
+    async def should_not_connect(*_args) -> RunResult:
+        pytest.fail("pending absence retry should wait before connecting")
+
+    class PendingRetryRunner(CampaignRunner):
+        def _policy_for_state(self, current_state) -> ProgressionPolicy:
+            return unavailable
+
+    result = asyncio.run(
+        PendingRetryRunner(
+            spec,
+            config_path,
+            segment_runner=should_not_connect,
+            defer_stall_for_reset=True,
+        ).run()
+    )
+
+    assert result.status == "ready"
+    assert result.awaiting_area_reset is True
+    assert result.message is not None
+    assert pending_id in result.message
     assert "awaiting the field area reset" in result.message
 
 

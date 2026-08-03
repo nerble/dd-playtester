@@ -230,6 +230,127 @@ def test_level_eighteen_reenters_historical_productive_route_after_cooldown() ->
     assert policy.status == "research"
 
 
+def test_level_nineteen_thief_opens_aruncus_fallback_after_frontier_exhaustion() -> None:
+    policy_ids = (
+        "mirror-realm-watchman-probe-16-20",
+        "mirror-realm-watchman-hunt-16-20",
+        "mirror-realm-watchman-probe-19-20",
+        "mirror-realm-watchman-hunt-19-20",
+        "crystalmir-white-stag-probe-16-20",
+        "crystalmir-white-stag-hunt-16-20",
+        "shadow-keep-undead-soldier-probe-16-20",
+        "shadow-keep-undead-soldier-hunt-16-20",
+        "galaxy-white-dwarf-probe-17-20",
+        "galaxy-white-dwarf-hunt-17-20",
+        "galaxy-white-dwarf-secondary-probe-17-20",
+        "galaxy-white-dwarf-secondary-hunt-17-20",
+        "galaxy-red-supergiant-probe-17-20",
+        "galaxy-red-supergiant-hunt-17-20",
+        "galaxy-horsehead-nebula-probe-18-20",
+        "galaxy-horsehead-nebula-hunt-18-20",
+        "hightower-jailor-probe-17-20",
+        "hightower-jailor-hunt-17-20",
+        "shire-dwarven-prince-thief-probe-17-20",
+        "shire-dwarven-prince-thief-hunt-17-20",
+        "shire-thain-probe-17-20",
+        "shire-thain-hunt-17-20",
+        "shire-elven-wizard-probe-17-20",
+        "shire-elven-wizard-hunt-17-20",
+        "pyramid-ali-baba-probe-18-20",
+        "pyramid-ali-baba-hunt-18-20",
+        "solace-lord-doom-probe-18-20",
+        "solace-lord-doom-hunt-18-20",
+        "argent-bandit-leader-probe-17-20",
+        "argent-bandit-leader-hunt-17-20",
+        "highland-keeper-probe-17-20",
+        "highland-keeper-hunt-17-20",
+    )
+    results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in policy_ids
+    }
+
+    policy = policy_for(
+        19,
+        "thief",
+        last_policy_id="shadow-keep-undead-soldier-hunt-16-20",
+        world_boot_id="boot-1",
+        has_sanctuary_potion=True,
+        research_results=results,
+    )
+
+    assert policy.policy_id == "plains-aruncus-thief-probe-19-20"
+    assert policy.execution == "plains-aruncus-research"
+    assert policy.status == "research"
+
+
+def test_level_nineteen_thief_opens_shire_retry_after_aruncus_is_below_band() -> None:
+    policy_ids = (
+        "mirror-realm-watchman-probe-16-20",
+        "mirror-realm-watchman-hunt-16-20",
+        "mirror-realm-watchman-probe-19-20",
+        "mirror-realm-watchman-hunt-19-20",
+        "crystalmir-white-stag-probe-16-20",
+        "crystalmir-white-stag-hunt-16-20",
+        "shadow-keep-undead-soldier-probe-16-20",
+        "shadow-keep-undead-soldier-hunt-16-20",
+        "galaxy-white-dwarf-probe-17-20",
+        "galaxy-white-dwarf-hunt-17-20",
+        "galaxy-white-dwarf-secondary-probe-17-20",
+        "galaxy-white-dwarf-secondary-hunt-17-20",
+        "galaxy-red-supergiant-probe-17-20",
+        "galaxy-red-supergiant-hunt-17-20",
+        "galaxy-horsehead-nebula-probe-18-20",
+        "galaxy-horsehead-nebula-hunt-18-20",
+        "hightower-jailor-probe-17-20",
+        "hightower-jailor-hunt-17-20",
+        "shire-dwarven-prince-thief-probe-17-20",
+        "shire-dwarven-prince-thief-hunt-17-20",
+        "shire-thain-probe-17-20",
+        "shire-thain-hunt-17-20",
+        "shire-elven-wizard-probe-17-20",
+        "shire-elven-wizard-hunt-17-20",
+        "pyramid-ali-baba-probe-18-20",
+        "pyramid-ali-baba-hunt-18-20",
+        "solace-lord-doom-probe-18-20",
+        "solace-lord-doom-hunt-18-20",
+        "argent-bandit-leader-probe-17-20",
+        "argent-bandit-leader-hunt-17-20",
+        "highland-keeper-probe-17-20",
+        "highland-keeper-hunt-17-20",
+    )
+    results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in policy_ids
+    }
+    results["plains-aruncus-thief-probe-19-20"] = {
+        "observed": True,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        19,
+        "thief",
+        last_policy_id="plains-aruncus-thief-probe-19-20",
+        world_boot_id="boot-1",
+        has_sanctuary_potion=True,
+        research_results=results,
+    )
+
+    assert policy.policy_id == "shire-dwarven-prince-thief-probe-19-20"
+    assert policy.execution == "shire-dwarven-prince-research"
+    assert policy.status == "research"
+
+
 def test_emergency_provision_sale_precedes_field_funding() -> None:
     policy = policy_for(
         18,
