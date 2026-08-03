@@ -11773,6 +11773,35 @@ def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
     assert recall.command == "recall"
 
 
+def test_return_home_flees_when_gmcp_enemy_blocks_city_route() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        return_home=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+
+    decision = policy.next_decision(
+        CharacterState(
+            level=19,
+            hp=264,
+            max_hp=264,
+            room_name="The Temple Square",
+            room_vnum="3005",
+            room_flags=["safe"],
+            position=7,
+            enemies=[[{"name": "the drunk", "level": "3"}]],
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.combat_active is True
+    assert policy.utility_emergency_recall_pending is True
+
+
 def test_emergency_liquidation_flees_even_from_a_trivial_city_attacker() -> None:
     policy = StarterPolicy(
         _spec(),

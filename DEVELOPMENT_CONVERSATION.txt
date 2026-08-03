@@ -21188,3 +21188,55 @@ The full offline suite is green: 1,918 tests passed in about 28 seconds. I am pr
 
 [2026-08-04 11:27:52 AM NZST] CODEX COMMENTARY
 GitHub authentication is active for the configured nerble account, and the remote is nerble/dd-playtester. I am creating a short-lived publication branch, staging the five intentional tracked changes, and committing them with the passing test result recorded in the development log.
+
+
+[2026-08-04 11:29:51 AM NZST] CODEX FINAL
+One-off publication completed. Commit 3a07ce3 was pushed on codex/one-off-publish-20260804-scheduler, pull request #1 was merged into main as b0ceff3, and origin/main matches local main. Verification passed: 1918 pytest tests.
+
+
+[2026-08-04 11:30:15 AM NZST] CODEX COMMENTARY
+I am resuming the active HERO-engine work by checking the post-merge worktree, campaign checkpoint, and current scheduler behavior. I will use the next concrete failure in the level-19 path to guide the implementation, then run regression tests and a bounded live proof segment.
+
+
+[2026-08-04 11:32:02 AM NZST] CODEX COMMENTARY
+I found the concrete post-level-13 failure: Kestrel has reached level 19, but the scheduler is still re-entering the Moria sanctuary fallback after source-ranked probes either hit a crowd or a route hazard. The persisted evidence shows the source-ranked Dwarven route was actually attempted and rejected for two mobiles at the endpoint; I am tracing the policy-selection and retry handoff now so this state cannot loop back into the same exhausted fallback.
+
+
+[2026-08-04 11:35:21 AM NZST] CODEX COMMENTARY
+The Dwarven endpoint evidence is now clear: the extra mobile is a source-level-20 wandering guest, not a below-band trivial bystander, so the existing sole-target gate is correct and should remain. The immediate next executable step is the mandatory flight maintenance segment; after that I will let the generic scheduler choose the next source-backed current-band route and record the result without steering.
+
+
+[2026-08-04 11:36:18 AM NZST] CODEX COMMENTARY
+Flight maintenance completed at checkpoint 3306. The next policy is provision-funding because the purchase reduced available cash below the campaign food reserve, and the Dwarven route is now recorded as crowded for this reboot. I am running the bounded source-safe funding loop next so the character can keep progressing instead of consuming the remaining provisions.
+
+
+[2026-08-04 11:37:05 AM NZST] CODEX COMMENTARY
+The funding segment is still active within its 180-second boundary; no manual steering has been sent. I am leaving the source-safe loop running and will inspect its exact target, XP delta, and recovery state when the process returns.
+
+
+[2026-08-04 11:39:01 AM NZST] CODEX COMMENTARY
+The funding loop has run for roughly two minutes and remains inside its hard runtime bound, which indicates it is traversing or completing a real source-backed money route rather than hanging on permission review. I am keeping the bounded process alive until it returns or the 180-second guard fires.
+
+
+[2026-08-04 11:39:26 AM NZST] CODEX COMMENTARY
+The funding segment completed safely at checkpoint 3309 and earned 100 XP, but the route returned with saleable gear rather than enough cash. The next autonomous state is correctly maintenance-oriented; I am letting the runner perform its liquidation and flight/provision reconciliation before the next frontier hunt.
+
+
+[2026-08-04 11:40:39 AM NZST] CODEX COMMENTARY
+The maintenance pass exposed the next real blocker: loot liquidation failed at checkpoint 3313 because the route watchdog saw repeated north commands without room-state progress. I am inspecting the failed run transcript and the liquidation return-home route, then I will add a focused regression test before retrying the live campaign.
+
+
+[2026-08-04 11:42:07 AM NZST] CODEX COMMENTARY
+The failure is a real ordering bug: next_decision enters the unconditional return_home route before the combat handler, so a wandering city drunk can block north movement and make the watchdog repeat north. I am changing that dispatch to defer to the existing flee-and-recall combat recovery whenever combat or GMCP enemies are present, and I will add a regression test for a liquidation run at room 3005.
+
+
+[2026-08-04 11:44:39 AM NZST] CODEX COMMENTARY
+I am picking up the publication request by checking the current branch, uncommitted source changes, and the pending regression fix first. I will verify the tests, create a deliberate one-off commit, push it, and merge it into main; any unrelated working-tree material will remain intact.
+
+
+[2026-08-04 11:44:54 AM NZST] CODEX COMMENTARY
+The focused regression suite is clean: 24 relevant starter-policy tests passed. I am running the full offline suite next, then I will inspect the final diff and publish the tested changes.
+
+
+[2026-08-04 11:45:36 AM NZST] CODEX COMMENTARY
+The full offline suite passes: 1,919 tests in 29.15 seconds. I am doing the final publication audit now, including whitespace checks, remote/PR capability, and the exact staged file set before committing.
