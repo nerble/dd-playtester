@@ -4086,6 +4086,60 @@ def test_level_eighteen_uses_highland_keeper_after_current_routes_are_consumed()
     assert policy.status == "research"
 
 
+def test_level_eighteen_absence_cooldown_defers_highland_after_another_policy() -> None:
+    results = _level_eighteen_research_outcomes()
+    results.update(
+        {
+            "galaxy-white-dwarf-secondary-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "solace-lord-doom-probe-18-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "solace-lord-doom-hunt-18-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "argent-bandit-leader-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        last_policy_id="shadow-keep-undead-soldier-hunt-16-20",
+        world_boot_id="boot-1",
+        research_results=results,
+        research_absence_cooldowns={
+            "highland-keeper-probe-17-20": 3,
+        },
+    )
+
+    assert policy.policy_id != "highland-keeper-probe-17-20"
+
+
 def test_viable_highland_keeper_probe_promotes_one_bounded_hunt() -> None:
     results = _level_eighteen_research_outcomes()
     results.update(

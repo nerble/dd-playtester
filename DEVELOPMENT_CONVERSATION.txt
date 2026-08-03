@@ -18800,3 +18800,119 @@ The worktree is on main and has the intended campaign, capacity-relief, equipmen
 
 [2026-08-03 11:17:55 PM NZST] CODEX COMMENTARY
 Verification is clean: the source/test diff passes git diff --check, and the full offline suite passes at 1,852 tests. I am staging the six intended files and committing them on main, then I will push main and verify the remote commit.
+
+
+[2026-08-03 11:18:28 PM NZST] CODEX COMMENTARY
+Publication succeeded: commit b1433d0 is now on origin/main, local main matches the remote after fetch, and no DD4 campaign process remains. The only Python process is the known Discord streamer. I am recording the final publication result and will leave the project ready for the next autonomous progression pass.
+
+
+[2026-08-03 11:18:40 PM NZST] CODEX FINAL
+One-off publication complete: commit b1433d0 was pushed to origin/main, local main matches origin/main, and the full offline suite passed with 1,852 tests. No DD4 campaign process remains; the known Discord streamer is still running.
+
+
+[2026-08-03 11:19:21 PM NZST] CODEX COMMENTARY
+I am resuming the autonomous HERO work from the published level-18 reliability checkpoint. I will first inspect the current worktree, source revision, stored campaign state, and live processes, then address the next generic progression blocker with tests and a bounded no-steering live validation.
+
+
+[2026-08-03 11:22:02 PM NZST] CODEX COMMENTARY
+The audit found Kestrel safely checkpointed at healer room 3054, level 18, with 177,300 XP and 350 XP to level 19; the source checkout is current at 1b759f5 and no campaign child is running. The latest Highland probe was clean but empty, while the prior Shire Wizard route has a same-reboot positive kill followed by a later zero-XP result, so the scheduler correctly does not treat that route as currently productive. I am testing the next autonomous policy decision before changing selection logic.
+
+
+[2026-08-03 11:22:17 PM NZST] CODEX COMMENTARY
+A single no-steering campaign segment is now running as PID 37952 with reset retries disabled and a 120-second live cap. I am observing the persisted policy phase and transcript, not issuing a target or route command manually.
+
+
+[2026-08-03 11:22:58 PM NZST] CODEX COMMENTARY
+The live segment remains healthy after 30 seconds: it selected the expected Highland Keeper probe, has not opened a second connection, and remains inside the 120-second bound. I am waiting for its source-presence result and healer checkpoint.
+
+
+[2026-08-03 11:23:47 PM NZST] CODEX COMMENTARY
+The probe is still traversing its registered Highland endpoints at about one minute, with the campaign child healthy and no permission or launcher stall. The database has not recorded a terminal result yet; I am keeping the single bounded run alive until its own healer-return path completes.
+
+
+[2026-08-03 11:24:45 PM NZST] CODEX COMMENTARY
+The Highland probe has crossed 100 seconds but is still inside its configured live cap and remains the only campaign child. I am allowing the runner to issue its bounded return request rather than treating elapsed route time as a failure.
+
+
+[2026-08-03 11:25:24 PM NZST] CODEX COMMENTARY
+Run 2942 completed cleanly after the full Highland probe: it returned to healer room 3054 at level 18, gained 100 incidental XP from an unavoidable bogleech, and did not confirm a Keeper kill. This is useful evidence that the current route can keep the character alive but is not enough for level progression; I am now checking the scheduler’s remaining verified options and latest effective XP records.
+
+
+[2026-08-03 11:26:29 PM NZST] CODEX COMMENTARY
+The scheduler’s post-boundary decision is healthy: after the Highland probe hit its soft runtime return, it now selects the source-registered Shadow Keep hunt rather than repeating Highland immediately. I am launching that next bounded segment to test whether the current reboot has an executable level-18 target.
+
+
+[2026-08-03 11:27:16 PM NZST] CODEX COMMENTARY
+Run 2943 has selected the Shadow Keep hunt and is still traversing after 30 seconds under the same 120-second cap. The child is healthy and isolated; I am waiting for the exact Soldier/Wraith result and the automatic healer return.
+
+
+[2026-08-03 11:28:12 PM NZST] CODEX COMMENTARY
+The Shadow Keep hunt remains active at roughly 75 seconds, with no duplicate child and no permission review. The database still shows its segment open, so I am allowing the route’s bounded return and evidence recording to finish rather than interrupting it.
+
+
+[2026-08-03 11:29:36 PM NZST] CODEX COMMENTARY
+Run 2943 completed safely with zero XP, and the next scheduler inspection exposed the concrete blocker: Highland Keeper’s absence cooldown is still 3, yet the generic research selector proposes the same Highland probe again after the Shadow route because _research_hunt_policy does not consult cooldowns when another policy was the last segment. I am adding a reusable cooldown gate at the research-policy boundary and regression coverage, so current-reboot absence evidence cannot cause repeated expensive trips.
+
+
+[2026-08-03 11:31:31 PM NZST] CODEX COMMENTARY
+The cooldown fix is covered by the focused and full progression tests (402 passed), and the actual Kestrel checkpoint now resolves to the unavailable/reset-wait state instead of another Highland trip. I am running the complete offline suite next; after that I will use one bounded reset retry to see whether the current reboot repopulates a productive route.
+
+
+[2026-08-03 11:32:05 PM NZST] CODEX COMMENTARY
+The full suite is green at 1,853 passed. The live acceptance run will now use exactly one documented 60-second outside-area reset wait and one automatic retry, with the same 120-second segment cap; no target or route steering will be supplied.
+
+
+[2026-08-03 11:32:56 PM NZST] CODEX COMMENTARY
+The reset controller is in its expected outside-area wait after 30 seconds; no new child segment has started and the known Discord streamer is untouched. I am letting the single 60-second wait expire before reviewing the automatic retry.
+
+
+[2026-08-03 11:33:45 PM NZST] CODEX COMMENTARY
+The authorized retry launched automatically as Shadow Keep probe run 2944 after the 60-second wait, so the new cooldown gate is working: it did not repeat Highland. The probe is still live under the 120-second bound; I am waiting for its target result.
+
+
+[2026-08-03 11:34:52 PM NZST] CODEX COMMENTARY
+Run 2944 remains inside the Shadow Keep probe at roughly one minute, with the parent controller and one live campaign child only. The retry has not stalled; I am keeping the source-backed circuit bounded while it reaches its healer checkpoint.
+
+
+[2026-08-03 11:36:24 PM NZST] CODEX COMMENTARY
+Run 2944’s Shadow probe finished cleanly and found a viable source target state; the next policy is now the corresponding one-kill Shadow hunt. This is the intended promotion path after fresh evidence, so I am launching one bounded hunt without steering.
+
+
+[2026-08-03 11:38:24 PM NZST] CODEX COMMENTARY
+The promoted Shadow hunt is still active at about 100 seconds, with one healthy child and no launcher or permission stall. I am letting its bounded combat/return watchdog finish so any exact Soldier result is preserved rather than inferred from the open segment.
+
+
+[2026-08-03 11:39:31 PM NZST] CODEX COMMENTARY
+Run 2945 completed safely with no objective kill and recorded a same-reboot Shadow absence cooldown of 3; the scheduler now correctly returns unavailable rather than repeating Highland or Shadow immediately. I am allowing one more bounded outside-area reset retry so the current reboot can repopulate a target; if it still finds no executable route, I will retain the checkpoint and inspect the next source-backed policy frontier.
+
+
+[2026-08-03 11:40:19 PM NZST] CODEX COMMENTARY
+The second reset controller is still in its configured outside-area wait at 35 seconds; no field child has launched yet and the parent is healthy. I am waiting for the automatic retry rather than polling or steering the MUD connection.
+
+
+[2026-08-03 11:41:13 PM NZST] CODEX COMMENTARY
+The reset controller launched Shadow Keep probe run 2946 after the wait, which is the expected registered retry path. It is still active under the single 120-second bound; I am waiting for fresh live evidence before deciding whether the reboot changed availability.
+
+
+[2026-08-03 11:44:49 PM NZST] CODEX COMMENTARY
+The post-fix checkpoint is healthy at level 18 and 250 XP from level 19, with no campaign child left running. Fresh Shadow probe evidence has promoted one bounded hunt; I am giving that exact current-reboot target one autonomous attempt, then I will stop repeating the route if the live gate rejects it.
+
+
+[2026-08-03 11:45:37 PM NZST] CODEX COMMENTARY
+The fresh Shadow hunt is traversing normally after 35 seconds; run 2947 is the only campaign child and remains within its 120-second live cap. I am waiting for the exact target outcome before rotating again.
+
+
+[2026-08-03 11:48:54 PM NZST] CODEX FINAL
+Progress unit complete: added a generic current-reboot research absence-cooldown gate with regression coverage. The full offline suite passes at 1,853 tests; no-steering live runs 2942-2947 all returned safely to healer room 3054, and the gate prevented immediate Highland replay. Kestrel remains level 18 at 177,400 XP, 250 XP from level 19, because the current reboot has no safe executable field target. No campaign child remains; only the known Discord streamer is running. Source changes remain local under the 24-hour commit cadence.
+
+
+[2026-08-03 11:49:20 PM NZST] CODEX COMMENTARY
+I am continuing from the level-18 checkpoint rather than treating the previous cooldown fix as the destination. I will audit the current tree, source revision, live state, and process list, then work on the next concrete source-backed route that can move a generic character from level 18 to 19.
+
+
+[2026-08-03 11:51:06 PM NZST] CODEX COMMENTARY
+I am handling the requested one-off publication now: first I will inspect the current branch and local changes, then commit the intended source, push it, and verify the remote/main state. I will keep the publication attempt bounded and audit leftover processes afterward.
+
+
+[2026-08-03 11:51:37 PM NZST] CODEX COMMENTARY
+The publication scope is clear: main is clean against origin/main at b1433d0, and the local delta is the generic current-reboot absence-cooldown gate plus its regression test and the required conversation log. The source checkout is at 1b759f5 and only the known Discord streamer is running. I am running the focused regression and full suite before staging this one-off publication.

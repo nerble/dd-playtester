@@ -7703,6 +7703,21 @@ def _research_result_is_viable(context: ProgressionContext, policy_id: str) -> b
     )
 
 
+def _research_absence_cooldown_active(
+    context: ProgressionContext,
+    *policy_ids: str,
+) -> bool:
+    """Return whether an unexpired current-reboot absence defers a route."""
+    cooldowns = context.research_absence_cooldowns or {}
+    for policy_id in policy_ids:
+        try:
+            if int(cooldowns.get(policy_id, 0) or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def _highland_keeper_frontier_ready(context: ProgressionContext) -> bool:
     """Open the Highland fallback only after the current-band frontier is known."""
     required = (
@@ -7732,6 +7747,21 @@ def _research_hunt_policy(
     hunt: ProgressionPolicy,
 ) -> ProgressionPolicy | None:
     """Promote a reboot-scoped viable probe into a bounded live hunt."""
+    if (
+        _research_absence_cooldown_active(
+            context,
+            probe.policy_id,
+            hunt.policy_id,
+        )
+        and not (
+            _research_result_is_viable(context, probe.policy_id)
+            or _research_result_is_viable(context, hunt.policy_id)
+        )
+    ):
+        # A route that was recently absent must not be selected again merely
+        # because another policy completed. Fresh viable evidence can override
+        # a stale cooldown, but otherwise the campaign rotates or waits.
+        return None
     if (
         context.last_policy_id != hunt.policy_id
         and _research_result_recorded(context, hunt.policy_id)
