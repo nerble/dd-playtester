@@ -20764,3 +20764,7 @@ The merge completed as a fast-forward and main has now been pushed successfully.
 
 [2026-08-04 9:01:47 AM NZST] CODEX COMMENTARY
 Remote verification is clean: both main and the publication branch resolve to a9778fed871d91e8813591f654f68caa262e3dfc. The process audit found the expected Discord streamer at PID 27976 and unrelated active Codex/Adobe node processes; no stale campaign Python process is running. I am committing this final audit line and pushing it so the worktree and remote remain synchronized.
+
+
+[2026-08-04 9:02:06 AM NZST] CODEX FINAL
+One-off publication complete: the verified Moria level-19 recovery frontier was committed, pushed, fast-forward merged to main, and the final publication audit was recorded. Offline verification remains 1,901 passing tests with no stale campaign process running.
