@@ -21188,3 +21188,15 @@ The full offline suite is green: 1,918 tests passed in about 28 seconds. I am pr
 
 [2026-08-04 11:27:52 AM NZST] CODEX COMMENTARY
 GitHub authentication is active for the configured nerble account, and the remote is nerble/dd-playtester. I am creating a short-lived publication branch, staging the five intentional tracked changes, and committing them with the passing test result recorded in the development log.
+
+
+[2026-08-04 11:28:13 AM NZST] CODEX COMMENTARY
+The publication commit 3a07ce3 was created successfully on codex/one-off-publish-20260804-scheduler. The staged diff contains only the scheduler/protection implementation, focused regression tests, and the conversation log; I am pushing this branch now, then I will merge it into remote main.
+
+
+[2026-08-04 11:28:28 AM NZST] CODEX COMMENTARY
+The publication branch is now pushed to origin. I am opening a pull request against main and will use the authenticated GitHub CLI to merge it, then verify that local and remote main contain the new commit.
+
+
+[2026-08-04 11:28:51 AM NZST] CODEX COMMENTARY
+The merge command stopped before changing branches because the required post-commit commentary entry made DEVELOPMENT_CONVERSATION.txt dirty. I am preserving that entry, committing the log update on the publication branch, pushing it, and retrying the merge; no source change was lost.
