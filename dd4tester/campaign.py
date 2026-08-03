@@ -5905,6 +5905,7 @@ def _select_provision_funding_candidate(
     attempt_order: list[str] = []
     completed_attempts: set[str] = set()
     failed_attempts: set[str] = set()
+    latest_attempt_completed: dict[str, bool] = {}
     last_attempted: str | None = None
     raw_attempts = state.get(_PROVISION_FUNDING_ATTEMPTS_KEY)
     if isinstance(raw_attempts, (list, tuple)):
@@ -5923,6 +5924,9 @@ def _select_provision_funding_candidate(
                 completed_attempts.add(candidate_key)
             else:
                 failed_attempts.add(candidate_key)
+            latest_attempt_completed[candidate_key] = (
+                record.get("completed_kill") is True
+            )
     last_attempt = state.get(_PROVISION_FUNDING_LAST_ATTEMPT_KEY)
     if (
         isinstance(last_attempt, dict)
@@ -5973,7 +5977,13 @@ def _select_provision_funding_candidate(
         reusable_completed = [
             candidate
             for candidate in all_candidates
-            if _provision_funding_candidate_key(candidate) in completed_attempts
+            if (
+                _provision_funding_candidate_key(candidate) in completed_attempts
+                and latest_attempt_completed.get(
+                    _provision_funding_candidate_key(candidate)
+                )
+                is True
+            )
         ]
         if reusable_completed:
             eligible = reusable_completed
@@ -6003,7 +6013,13 @@ def _select_provision_funding_candidate(
     reusable_completed = [
         candidate
         for candidate in all_candidates
-        if _provision_funding_candidate_key(candidate) in completed_attempts
+        if (
+            _provision_funding_candidate_key(candidate) in completed_attempts
+            and latest_attempt_completed.get(
+                _provision_funding_candidate_key(candidate)
+            )
+            is True
+        )
     ]
     if prefer_completed_funding_candidate and reusable_completed:
         eligible = reusable_completed

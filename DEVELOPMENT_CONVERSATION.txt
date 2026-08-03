@@ -20768,3 +20768,87 @@ Remote verification is clean: both main and the publication branch resolve to a9
 
 [2026-08-04 9:02:06 AM NZST] CODEX FINAL
 One-off publication complete: the verified Moria level-19 recovery frontier was committed, pushed, fast-forward merged to main, and the final publication audit was recorded. Offline verification remains 1,901 passing tests with no stale campaign process running.
+
+
+[2026-08-04 9:02:44 AM NZST] CODEX COMMENTARY
+I am resuming the active HERO objective from the newly published state. I will re-audit the repository, current Kestrel campaign checkpoint, live processes, and the level-19 Moria handoff first, then implement the next concrete blocker beyond the current executable frontier, verify it offline, and run one bounded autonomous validation.
+
+
+[2026-08-04 9:03:48 AM NZST] CODEX COMMENTARY
+The audit confirms the published change is not yet enough: Kestrel is still level 19, and the deep Moria segment safely reached the second source route but persisted observed:false with no target outcome. That is the concrete blocker I am repairing now: a completed multi-stop research route must record whether the endpoint target was seen/considered, otherwise the campaign cannot promote or choose the next executable policy.
+
+
+[2026-08-04 9:06:34 AM NZST] CODEX COMMENTARY
+The live transcript shows the target was visibly present in room 4071, but the runner applied its 13.5% movement withdrawal gate before evaluating the endpoint; Kestrel had only 8/330 movement after the deep route. I will make target evaluation take precedence for an already-visible consider-only stop, while retaining the withdrawal gate for ordinary field travel, then add regression tests for the low-movement endpoint and research-result promotion.
+
+
+[2026-08-04 9:09:17 AM NZST] CODEX COMMENTARY
+The focused regression now passes, including the existing safety case that still rejects an ambiguous keyword when no selector exists. With a live TARGETMODE selector, the new test issues consider #22407 at 8/330 movement and records the no-match outcome. I am running the full offline suite next, then I will replay the same autonomous campaign segment to confirm the database records observed:true instead of silently abandoning the visible carrier.
+
+
+[2026-08-04 9:10:04 AM NZST] CODEX COMMENTARY
+Offline verification is clean: all 1,903 tests pass, compileall passes, and the code diff has no whitespace errors. I am launching one bounded campaign segment now with no steering commands; the expected evidence is a live exact-selector consider at the room-4071 endpoint, safe healer return, and a reboot-scoped research result that records the carrier as observed but below-band.
+
+
+[2026-08-04 9:10:55 AM NZST] CODEX COMMENTARY
+The autonomous replay remains inside the same bounded campaign process and has not produced a terminal line yet. I am keeping the single segment under observation; no second campaign process has been started, and the runner's own watchdog and 180-second cap remain in control.
+
+
+[2026-08-04 9:11:39 AM NZST] CODEX COMMENTARY
+The live replay is still within the same bounded connection and remains quiet at the outer command level. I am waiting for its authenticated route work to finish rather than interrupting it or launching a duplicate; the next check will inspect the resulting segment and transcript directly.
+
+
+[2026-08-04 9:12:27 AM NZST] CODEX COMMENTARY
+The single live segment has now run for roughly another half-minute without a terminal result, but it remains inside the explicit 180-second bound. I am continuing to wait on this one process; if the runner reaches its cap it will perform the configured healer return and leave a ready checkpoint for inspection.
+
+
+[2026-08-04 9:13:12 AM NZST] CODEX COMMENTARY
+The replay remains in the same process and has not spawned a retry. I am preserving the bounded wait because the previous Moria segment completed in about 98 seconds; this run is still below its 180-second limit, after which I will inspect the database even if the CLI output is delayed.
+
+
+[2026-08-04 9:13:57 AM NZST] CODEX COMMENTARY
+The live process completed safely, but the scheduler correctly spent this segment on provision-funding: Bardoosh supplied the needed field money, and Kestrel returned to healer room 3054 with no death. It did not yet exercise the new endpoint gate, so this is useful autonomous maintenance evidence rather than completion of the targeted regression. I am starting one next segment now; with funding repaired, the deep Moria probe should be the next eligible frontier.
+
+
+[2026-08-04 9:14:58 AM NZST] CODEX COMMENTARY
+The follow-up autonomous segment is still running as the same single campaign process, with no terminal output or duplicate launch. I am keeping it bounded and will inspect the segment row and transcript immediately when it returns.
+
+
+[2026-08-04 9:15:17 AM NZST] CODEX COMMENTARY
+The follow-up segment completed another safe maintenance step: loot liquidation at healer room 3054, with no death and no XP loss. The checkpoint now has funding and liquidation cleared and no pending maintenance marker, so the next scheduler choice is the deep Moria research policy itself. I am running that next bounded segment to capture the endpoint evidence.
+
+
+[2026-08-04 9:16:11 AM NZST] CODEX COMMENTARY
+The scheduler inserted one more autonomous maintenance pass for flight funding before the deep route; the purchase segment completed safely but left its expected retry marker while the potion reserve is being verified. Kestrel remains level 19 at the healer. I am continuing through this queued maintenance rather than forcing the field policy.
+
+
+[2026-08-04 9:17:09 AM NZST] CODEX COMMENTARY
+The queued flight-funding segment is still running inside its single bounded process and has not emitted a terminal result. I am leaving the campaign scheduler in control; no manual MUD command or duplicate process is being introduced.
+
+
+[2026-08-04 9:17:53 AM NZST] CODEX COMMENTARY
+The same flight-funding run remains active after another bounded wait. It is still below the outer timeout and has not started another child; once it returns I will inspect whether the reserve was confirmed or whether this is the next state-machine deadlock to fix.
+
+
+[2026-08-04 9:18:49 AM NZST] CODEX COMMENTARY
+The same autonomous state machine exposed a second real blocker: after the flight purchase pass, it still considers flight funding required and selected provision-funding again; the latest Bardoosh attempt completed without a kill. I am inspecting those two transcripts and the funding state now, because repeating an already-used candidate is not useful progression and must be repaired before the deep probe can run.
+
+
+[2026-08-04 9:19:20 AM NZST] CODEX COMMENTARY
+The transcript explains the funding loop: the Magic Shop listed the flight potion at 147 copper but Kestrel had only 4 silver (40 copper), so the purchase correctly failed. The provisioning fallback then retried Bardoosh after an earlier successful funding kill, because its last-attempt marker was overwritten by the failed retry. I am tracing candidate selection and will preserve completed funding history while adding the next accessible money route instead of repeating a spent target.
+
+
+[2026-08-04 9:21:14 AM NZST] CODEX COMMENTARY
+The funding selection repair is implemented and its focused tests pass. Candidate history now tracks the latest outcome per source identity, so a completed target followed by an absent/no-kill retry is no longer preferred for flight money; the current Kestrel checkpoint now rotates to the source-backed elite goblin guard instead of Bardoosh. I will verify this autonomous rotation live, then retry the deep frontier.
+
+
+[2026-08-04 9:22:16 AM NZST] CODEX COMMENTARY
+The rotated funding run is still active as one bounded campaign process and has not produced terminal output yet. I am keeping it under the configured watchdog and will inspect whether the elite-guard route yielded saleable loot or a safe absence result.
+
+
+[2026-08-04 9:24:29 AM NZST] CODEX COMMENTARY
+I am handling the requested one-off publication now: first I will audit the current branch and uncommitted scope, then commit the source and regression-test changes, push them, merge the published branch into main, and verify the remote result. The live campaign process has finished cleanly, so I will not leave a duplicate run behind while doing the Git work.
+
+
+[2026-08-04 9:25:26 AM NZST] CODEX COMMENTARY
+The full offline verification is clean: 1,903 pytest tests passed, compileall passed, and the source diff has no whitespace errors. The change is limited to target evaluation under low movement, latest-outcome funding rotation, and their regression tests plus the append-only development log. I am now creating a short-lived publication branch, pushing it, merging it into main, and pushing main.
