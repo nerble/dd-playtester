@@ -105,6 +105,7 @@ class ProgressionContext:
     flight_funding_retry_pending: bool = False
     boot_kill_counts: Mapping[str, int] | None = None
     policy_xp_deltas: Mapping[str, int] | None = None
+    productive_policy_ids: frozenset[str] = frozenset()
     research_results: Mapping[str, Mapping[str, object]] | None = None
     research_absence_cooldowns: Mapping[str, int] | None = None
     research_crowd_cooldowns: Mapping[str, int] | None = None
@@ -4475,6 +4476,7 @@ def policy_for(
     flight_funding_retry_pending: bool = False,
     boot_kill_counts: Mapping[str, int] | None = None,
     policy_xp_deltas: Mapping[str, int] | None = None,
+    productive_policy_ids: frozenset[str] = frozenset(),
     research_results: Mapping[str, Mapping[str, object]] | None = None,
     research_absence_cooldowns: Mapping[str, int] | None = None,
     research_crowd_cooldowns: Mapping[str, int] | None = None,
@@ -4526,6 +4528,7 @@ def policy_for(
         flight_funding_retry_pending=flight_funding_retry_pending,
         boot_kill_counts=boot_kill_counts,
         policy_xp_deltas=policy_xp_deltas,
+        productive_policy_ids=productive_policy_ids,
         research_results=research_results,
         research_absence_cooldowns=research_absence_cooldowns,
         research_crowd_cooldowns=research_crowd_cooldowns,
@@ -6418,14 +6421,62 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 == _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
                 and context.has_sanctuary_potion
             ):
-                return replace(
-                    _HIGHTOWER_JAILOR_HUNT_POLICY,
-                    summary=(
-                        "Retry the source-verified Jailor only after the "
-                        "Moria carrier supplied a sanctuary reserve."
-                    ),
-                    practice_skill=context.practice_skill,
+                jailor_policy = _research_hunt_policy(
+                    context,
+                    probe=_HIGHTOWER_JAILOR_RESEARCH_POLICY,
+                    hunt=_HIGHTOWER_JAILOR_HUNT_POLICY,
                 )
+                if jailor_policy is not None and (
+                    jailor_policy.policy_id
+                    != _HIGHTOWER_JAILOR_RESEARCH_POLICY.policy_id
+                    or _research_result_recorded(
+                        context,
+                        _HIGHTOWER_JAILOR_RESEARCH_POLICY.policy_id,
+                    )
+                    or _research_result_recorded(
+                        context,
+                        _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
+                    )
+                    or _research_absence_cooldown_active(
+                        context,
+                        _HIGHTOWER_JAILOR_RESEARCH_POLICY.policy_id,
+                        _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
+                    )
+                ):
+                    return replace(
+                        jailor_policy,
+                        summary=(
+                            "Retry the source-verified Jailor only after the "
+                            "Moria carrier supplied a sanctuary reserve."
+                        ),
+                        practice_skill=context.practice_skill,
+                    )
+                if (
+                    not _research_result_recorded(
+                        context,
+                        _HIGHTOWER_JAILOR_RESEARCH_POLICY.policy_id,
+                    )
+                    and not _research_result_recorded(
+                        context,
+                        _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
+                    )
+                    and not _research_absence_cooldown_active(
+                        context,
+                        _HIGHTOWER_JAILOR_RESEARCH_POLICY.policy_id,
+                        _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
+                    )
+                ):
+                    # The sanctuary acquisition transition historically opens
+                    # the first Jailor hunt directly. Preserve that behavior
+                    # only before any Jailor evidence exists.
+                    return replace(
+                        _HIGHTOWER_JAILOR_HUNT_POLICY,
+                        summary=(
+                            "Retry the source-verified Jailor only after the "
+                            "Moria carrier supplied a sanctuary reserve."
+                        ),
+                        practice_skill=context.practice_skill,
+                    )
             if (
                 context.last_policy_id == _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id
                 and not context.has_sanctuary_potion
@@ -7226,6 +7277,12 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                         keeper_policy,
                         practice_skill=context.practice_skill,
                     )
+            historical_policy = _historical_productive_research_hunt(context)
+            if historical_policy is not None:
+                return replace(
+                    historical_policy,
+                    practice_skill=context.practice_skill,
+                )
             return replace(
                 _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY,
                 practice_skill=context.practice_skill,
@@ -7274,6 +7331,12 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                     keeper_policy,
                     practice_skill=context.practice_skill,
                 )
+        historical_policy = _historical_productive_research_hunt(context)
+        if historical_policy is not None:
+            return replace(
+                historical_policy,
+                practice_skill=context.practice_skill,
+            )
         return replace(
             _UNAVAILABLE_POLICY,
             minimum_level=16,
@@ -7855,6 +7918,72 @@ def _research_hunt_policy(
     ):
         return None
     return probe
+
+
+def _historical_productive_research_hunt(
+    context: ProgressionContext,
+) -> ProgressionPolicy | None:
+    """Re-enter a confirmed current-reboot hunt after transient route misses."""
+    pairs = (
+        (_MIRROR_REALM_WATCHMAN_RESEARCH_POLICY, _MIRROR_REALM_WATCHMAN_HUNT_POLICY),
+        (_CRYSTALMIR_WHITE_STAG_RESEARCH_POLICY, _CRYSTALMIR_WHITE_STAG_HUNT_POLICY),
+        (_SHADOW_KEEP_SOLDIER_RESEARCH_POLICY, _SHADOW_KEEP_SOLDIER_HUNT_POLICY),
+        (_GALAXY_WHITE_DWARF_RESEARCH_POLICY, _GALAXY_WHITE_DWARF_HUNT_POLICY),
+        (
+            _GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY,
+            _GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY,
+        ),
+        (_GALAXY_RED_SUPERGIANT_RESEARCH_POLICY, _GALAXY_RED_SUPERGIANT_HUNT_POLICY),
+        (_GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY, _GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY),
+        (_HIGHTOWER_JAILOR_RESEARCH_POLICY, _HIGHTOWER_JAILOR_HUNT_POLICY),
+        (
+            _SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY,
+            _SHIRE_DWARVEN_PRINCE_THIEF_HUNT_POLICY,
+        ),
+        (_SHIRE_THAIN_RESEARCH_POLICY, _SHIRE_THAIN_HUNT_POLICY),
+        (_SHIRE_ELVEN_WIZARD_RESEARCH_POLICY, _SHIRE_ELVEN_WIZARD_HUNT_POLICY),
+        (_PYRAMID_ALI_BABA_RESEARCH_POLICY, _PYRAMID_ALI_BABA_HUNT_POLICY),
+        (_SOLACE_LORD_DOOM_RESEARCH_POLICY, _SOLACE_LORD_DOOM_HUNT_POLICY),
+        (_ARGENT_BANDIT_LEADER_RESEARCH_POLICY, _ARGENT_BANDIT_LEADER_HUNT_POLICY),
+        (_HIGHLAND_KEEPER_RESEARCH_POLICY, _HIGHLAND_KEEPER_HUNT_POLICY),
+    )
+    sanctuary_hunts = frozenset(
+        {
+            _SHIRE_ELVEN_WIZARD_HUNT_POLICY.policy_id,
+            _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
+            _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
+        }
+    )
+    for probe, hunt in pairs:
+        if hunt.policy_id not in context.productive_policy_ids:
+            continue
+        if hunt.policy_id in sanctuary_hunts and not context.has_sanctuary_potion:
+            continue
+        if _research_absence_cooldown_active(
+            context,
+            probe.policy_id,
+            hunt.policy_id,
+        ):
+            continue
+        if _research_result_is_viable(context, hunt.policy_id):
+            return hunt
+        latest_results = context.research_results or {}
+        current_results = (
+            latest_results.get(probe.policy_id),
+            latest_results.get(hunt.policy_id),
+        )
+        if any(
+            isinstance(result, Mapping)
+            and result.get("observed") is True
+            and result.get("absent") is not True
+            for result in current_results
+        ):
+            # A current-reboot non-absence rejection still stands. An absence
+            # is different: once its cooldown expires, a previously productive
+            # route may be probed again after the area has had time to reset.
+            continue
+        return probe
+    return None
 
 
 def _next_productive_research_hunt(

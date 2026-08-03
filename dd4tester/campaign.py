@@ -302,6 +302,7 @@ _RESEARCH_CROWD_COOLDOWN_KEY = "campaign_research_crowd_cooldowns"
 _CLEARED_RESEARCH_POLICIES_KEY = "campaign_cleared_research_policies"
 _DEFAULT_RESEARCH_CROWD_COOLDOWN = 3
 _LAST_PRODUCTIVE_POLICY_KEY = "campaign_last_productive_policy"
+_PRODUCTIVE_POLICY_HISTORY_KEY = "campaign_productive_policy_history"
 _POLICY_HANDOFF_KEY = "campaign_policy_handoff"
 _RESEARCH_ABSENCE_RETRY_COOLDOWNS = {
     _MIRROR_WATCHMAN_LEVEL_NINETEEN_POLICY_ID: 3,
@@ -439,6 +440,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     _CLEARED_RESEARCH_POLICIES_KEY,
     "campaign_research_results",
     _LAST_PRODUCTIVE_POLICY_KEY,
+    _PRODUCTIVE_POLICY_HISTORY_KEY,
     "campaign_policy_revision",
     "campaign_last_policy",
     _HIGHLAND_KEEPER_ROUTE_REPAIR_KEY,
@@ -1407,6 +1409,15 @@ class CampaignRunner:
             self._policy_xp_deltas = _campaign_policy_xp_deltas(
                 storage.list_campaign_segments(campaign_id), storage=storage
             )
+            state = _with_productive_policy_history(
+                state,
+                policy_ids=_campaign_productive_policy_ids(
+                    storage.list_campaign_segments(campaign_id),
+                    storage=storage,
+                    boot_id=state.get("world_boot_id") or boot_id,
+                ),
+                boot_id=state.get("world_boot_id") or boot_id,
+            )
             state = _refresh_policy_revision(
                 state,
                 completed_policy_ids=self._policy_xp_deltas,
@@ -2007,6 +2018,7 @@ class CampaignRunner:
             ),
             boot_kill_counts=self._boot_kill_counts,
             policy_xp_deltas=self._policy_xp_deltas,
+            productive_policy_ids=_state_productive_policy_ids(state),
             research_results=_campaign_research_results(state),
             research_absence_cooldowns=dict(
                 state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
@@ -2919,6 +2931,12 @@ class CampaignRunner:
             end_state["campaign_objective_kills"] = objective_kills
             if policy.execution and policy.execution.endswith("-hunt"):
                 end_state[_LAST_PRODUCTIVE_POLICY_KEY] = policy.policy_id
+                if xp_delta > 0:
+                    end_state = _with_productive_policy_history(
+                        end_state,
+                        policy_ids=(policy.policy_id,),
+                        boot_id=segment_boot_id or end_state.get("world_boot_id"),
+                    )
         if policy.execution == "provision-funding":
             if provision_funding_candidate is not None:
                 end_state = _record_provision_funding_attempt(
@@ -6140,6 +6158,76 @@ def _campaign_policy_xp_deltas(
             completed_kills=objective_kills,
         )
     return results
+
+
+def _campaign_productive_policy_ids(
+    segments: list[Any],
+    *,
+    storage: RunStorage | None = None,
+    boot_id: str | int | None = None,
+) -> frozenset[str]:
+    """Collect same-reboot hunt policies with a confirmed positive kill."""
+    productive: set[str] = set()
+    for segment in segments:
+        if segment["status"] not in {"success", "ready"}:
+            continue
+        phase = str(segment["phase"])
+        if "-hunt" not in phase:
+            continue
+        try:
+            start = json.loads(segment["start_state_json"] or "{}")
+            end = json.loads(segment["end_state_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not end or (boot_id is not None and end.get("world_boot_id") != boot_id):
+            continue
+        objective_kills = end.get("campaign_objective_kills")
+        if objective_kills is None:
+            objective_kills = end.get("campaign_completed_kills")
+        if objective_kills is None and storage is not None and segment["run_id"]:
+            objective_kills = _run_objective_kills(storage, int(segment["run_id"]))
+        if (
+            isinstance(objective_kills, list)
+            and objective_kills
+            and _xp_delta(start, end) > 0
+        ):
+            productive.add(phase)
+    return frozenset(productive)
+
+
+def _state_productive_policy_ids(state: Mapping[str, Any]) -> frozenset[str]:
+    """Read productive-policy history only when it matches the current boot."""
+    history = state.get(_PRODUCTIVE_POLICY_HISTORY_KEY)
+    if not isinstance(history, Mapping):
+        return frozenset()
+    if history.get("boot_id") != state.get("world_boot_id"):
+        return frozenset()
+    policy_ids = history.get("policy_ids")
+    if not isinstance(policy_ids, (list, tuple, set, frozenset)):
+        return frozenset()
+    return frozenset(str(policy_id) for policy_id in policy_ids if policy_id)
+
+
+def _with_productive_policy_history(
+    state: Mapping[str, Any],
+    *,
+    policy_ids: Collection[str],
+    boot_id: str | int | None,
+) -> dict[str, Any]:
+    """Merge durable same-reboot productive hunt identities into state."""
+    updated = dict(state)
+    if boot_id is None:
+        return updated
+    current_ids = _state_productive_policy_ids(state)
+    merged_ids = current_ids | {str(policy_id) for policy_id in policy_ids}
+    if merged_ids:
+        updated[_PRODUCTIVE_POLICY_HISTORY_KEY] = {
+            "boot_id": boot_id,
+            "policy_ids": sorted(merged_ids),
+        }
+    else:
+        updated.pop(_PRODUCTIVE_POLICY_HISTORY_KEY, None)
+    return updated
 
 
 def _effective_policy_xp_delta(

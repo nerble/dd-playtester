@@ -29,6 +29,7 @@ from dd4tester.campaign import (
     _retry_current_absent_research_policy,
     _retry_current_crowded_research_policy,
     _campaign_policy_xp_deltas,
+    _campaign_productive_policy_ids,
     _campaign_productive_sanctuary_handoff,
     _campaign_liquidation_signature,
     _campaign_practice_types_spent,
@@ -91,6 +92,62 @@ def test_flight_funding_loan_is_campaign_maintenance() -> None:
 
 def test_provision_funding_hunt_is_campaign_maintenance() -> None:
     assert "provision-funding" in _MAINTENANCE_EXECUTIONS
+
+
+def test_productive_policy_history_is_same_reboot_and_requires_a_kill() -> None:
+    segments = [
+        {
+            "status": "success",
+            "phase": "highland-keeper-hunt-17-20",
+            "start_state_json": json.dumps({"level": 18, "xp": 100}),
+            "end_state_json": json.dumps(
+                {
+                    "level": 18,
+                    "xp": 750,
+                    "world_boot_id": "boot-1",
+                    "campaign_objective_kills": [{"target": "keeper"}],
+                }
+            ),
+            "run_id": None,
+        },
+        {
+            "status": "success",
+            "phase": "solace-lord-doom-hunt-18-20",
+            "start_state_json": json.dumps({"level": 18, "xp": 900}),
+            "end_state_json": json.dumps(
+                {
+                    "level": 18,
+                    "xp": 1200,
+                    "world_boot_id": "boot-2",
+                    "campaign_objective_kills": [{"target": "doom"}],
+                }
+            ),
+            "run_id": None,
+        },
+        {
+            "status": "success",
+            "phase": "highland-keeper-hunt-17-20",
+            "start_state_json": json.dumps({"level": 18, "xp": 750}),
+            "end_state_json": json.dumps(
+                {
+                    "level": 18,
+                    "xp": 750,
+                    "world_boot_id": "boot-1",
+                    "campaign_objective_kills": [],
+                }
+            ),
+            "run_id": None,
+        },
+    ]
+
+    assert _campaign_productive_policy_ids(segments, boot_id="boot-1") == frozenset(
+        {"highland-keeper-hunt-17-20"}
+    )
+    assert _campaign_productive_policy_ids(
+        segments,
+        boot_id="boot-2",
+    ) == frozenset({"solace-lord-doom-hunt-18-20"})
+    assert _campaign_productive_policy_ids(segments, boot_id="boot-3") == frozenset()
 
 
 def test_unaffordable_restock_marks_provision_funding_required() -> None:

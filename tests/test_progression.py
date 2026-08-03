@@ -144,6 +144,92 @@ def test_level_eighteen_thief_rotates_to_argent_after_registered_probes_fail() -
     assert policy.status == "research"
 
 
+def test_level_eighteen_reenters_historical_productive_route_after_cooldown() -> None:
+    policy_ids = (
+        "mirror-realm-watchman-probe-16-20",
+        "mirror-realm-watchman-hunt-16-20",
+        "crystalmir-white-stag-probe-16-20",
+        "crystalmir-white-stag-hunt-16-20",
+        "shadow-keep-undead-soldier-probe-16-20",
+        "shadow-keep-undead-soldier-hunt-16-20",
+        "galaxy-white-dwarf-probe-17-20",
+        "galaxy-white-dwarf-hunt-17-20",
+        "galaxy-white-dwarf-secondary-probe-17-20",
+        "galaxy-white-dwarf-secondary-hunt-17-20",
+        "galaxy-red-supergiant-probe-17-20",
+        "galaxy-red-supergiant-hunt-17-20",
+        "galaxy-horsehead-nebula-probe-18-20",
+        "galaxy-horsehead-nebula-hunt-18-20",
+        "hightower-jailor-probe-17-20",
+        "hightower-jailor-hunt-17-20",
+        "dwarven-nobleman-thief-probe-17-18",
+        "dwarven-nobleman-thief-hunt-17-18",
+        "dwarven-servant-thief-probe-17-18",
+        "dwarven-servant-thief-hunt-17-18",
+        "shire-dwarven-prince-thief-probe-17-20",
+        "shire-dwarven-prince-thief-hunt-17-20",
+        "shire-elven-wizard-probe-17-20",
+        "shire-elven-wizard-hunt-17-20",
+        "pyramid-ali-baba-probe-18-20",
+        "pyramid-ali-baba-hunt-18-20",
+        "solace-lord-doom-probe-18-20",
+        "solace-lord-doom-hunt-18-20",
+        "argent-bandit-leader-probe-17-20",
+        "argent-bandit-leader-hunt-17-20",
+        "highland-keeper-probe-17-20",
+        "highland-keeper-hunt-17-20",
+    )
+    recorded_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in policy_ids
+    }
+    recorded_results["shire-thain-probe-17-20"] = {
+        "absent": True,
+        "observed": False,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+    recorded_results["moria-sanctuary-thief-17-20"] = {
+        "absent": True,
+        "observed": False,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+    recorded_results["highland-keeper-probe-17-20"] = {
+        "absent": True,
+        "observed": False,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+    recorded_results["highland-keeper-hunt-17-20"] = {
+        "absent": True,
+        "observed": False,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        has_sanctuary_potion=True,
+        research_results=recorded_results,
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+        },
+        productive_policy_ids=frozenset({"highland-keeper-hunt-17-20"}),
+    )
+
+    assert policy.policy_id == "highland-keeper-probe-17-20"
+    assert policy.execution == "highland-keeper-research"
+    assert policy.status == "research"
+
+
 def test_emergency_provision_sale_precedes_field_funding() -> None:
     policy = policy_for(
         18,
