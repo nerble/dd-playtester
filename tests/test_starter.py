@@ -27,6 +27,7 @@ from dd4tester.starter import (
     StarterPolicy,
     _equipment_empty_categories,
     _equipment_slot_categories,
+    _capacity_relief_inventory_keyword,
     _emergency_provision_potion_keyword,
     _has_named_affect,
     _inventory_descriptions,
@@ -5887,6 +5888,88 @@ def test_city_restock_fails_after_a_capacity_audit_finds_no_food() -> None:
 
     assert decision is None
     assert policy.failure == "no carry capacity remained for one essential pie"
+
+
+def test_city_restock_sacrifices_one_duplicate_paint_consumable_for_capacity() -> None:
+    paste = ObjectSource(
+        11525,
+        "leechblood paste blood",
+        "leechblood paste",
+        28,
+        (13,),
+        0,
+        wear_flags=1,
+    )
+    catalog = GearCatalog({paste.vnum: paste})
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        city_restock=True,
+        gear_catalog=catalog,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.gear_audited = True
+    policy.gear_allowed_categories = set()
+    policy.city_restock_step = 4
+    full_bakery = CharacterState(
+        room_name="The Bakery",
+        room_vnum="3009",
+        position=7,
+        stats={"carry_num": 46, "maxcarry_num": 46, "carry_wt": 189, "maxcarry_wt": 300},
+        inventory=[[{"short_desc": "leechblood paste", "quan": "2"}]],
+    )
+
+    audit = policy.next_decision(full_bakery)
+    assert audit is not None
+    assert audit.command == "inventory"
+
+    policy.prompt_ready = True
+    relief = policy.next_decision(full_bakery)
+    assert relief is not None
+    assert relief.command == "drop paste"
+
+    policy.after_command(relief)
+    policy.observe_text("You drop the leechblood paste.")
+    policy.prompt_ready = True
+    sacrifice = policy.next_decision(full_bakery)
+    assert sacrifice is not None
+    assert sacrifice.command == "sacrifice paste"
+
+    policy.after_command(sacrifice)
+    policy.observe_text("You sacrifice the leechblood paste to your god.")
+    policy.prompt_ready = True
+    decision = policy.next_decision(
+        CharacterState(
+            room_name="The Bakery",
+            room_vnum="3009",
+            position=7,
+            stats={"carry_num": 45, "maxcarry_num": 46, "carry_wt": 188, "maxcarry_wt": 300},
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "buy 1 pie"
+
+
+def test_capacity_relief_does_not_discard_duplicate_potions() -> None:
+    potion = ObjectSource(
+        11526,
+        "light blue potion",
+        "a light blue potion",
+        10,
+        (10,),
+        100,
+        wear_flags=1,
+    )
+
+    assert (
+        _capacity_relief_inventory_keyword(
+            [[{"short_desc": "a light blue potion", "quan": "2"}]],
+            GearCatalog({potion.vnum: potion}),
+        )
+        is None
+    )
 
 
 def test_returning_fastwalk_at_healer_does_not_divert_to_supplies_when_overweight() -> None:

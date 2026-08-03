@@ -18420,3 +18420,383 @@ Campaign verification is clean: 367 tests passed in 16.85 seconds. I am running 
 
 [2026-08-03 9:47:00 PM NZST] CODEX COMMENTARY
 The full offline suite is clean: 1,847 tests passed in 25.81 seconds. I am staging the three pending files, committing them as the requested one-off publication, and then pushing main; the remote currently has no competing commit.
+
+
+[2026-08-03 9:47:44 PM NZST] CODEX COMMENTARY
+Publication succeeded. Commit 9518db5 is on origin/main, local main matches the remote, the working tree was clean at verification, and no DD4 campaign process remains. The requested one-off push is complete.
+
+
+[2026-08-03 9:47:50 PM NZST] CODEX FINAL
+One-off publication complete: commit 9518db5 was pushed to origin/main. Verification passed with 367 campaign tests and 1847 total offline tests. The source checkout is clean of campaign processes.
+
+
+[2026-08-03 9:48:17 PM NZST] CODEX COMMENTARY
+I am resuming the autonomous HERO work from the last verified checkpoint. The previous fix is published at 9518db5; I am auditing the current tree, source revision, and live-process state before addressing the next concrete blocker: repeated optional flight-purchase maintenance interrupting productive level-18 progression.
+
+
+[2026-08-03 9:50:14 PM NZST] CODEX COMMENTARY
+The state confirms the issue is generic: flight failure is currently re-evaluated from cash alone, so one copper of incidental income can reopen the optional purchase gate. I am adding a reboot-scoped three-productive-field-segment cooldown, preserving the existing one-loan semantics and allowing the purchase to be reconsidered later or immediately after a reboot.
+
+
+[2026-08-03 9:53:53 PM NZST] CODEX COMMENTARY
+The cooldown is now durable across checkpoints, migrates the existing same-reboot failed purchase, decrements only after positive-XP field work, ignores maintenance and empty segments, and clears on a successful purchase or reboot. I am running the focused campaign and progression tests before a live check.
+
+
+[2026-08-03 9:54:21 PM NZST] CODEX COMMENTARY
+Focused verification is clean: 370 campaign tests and 401 progression tests passed. I am running the complete offline suite, then I will launch one bounded no-steering campaign segment with reset retries disabled so we can verify the scheduler reaches field work instead of reattempting the failed shop purchase.
+
+
+[2026-08-03 9:55:13 PM NZST] CODEX COMMENTARY
+The full offline suite is clean at 1,850 passed. The live test will resume Kestrel from the stored campaign with exactly one segment, no automatic reset retry, a one-second reset wait, and a 180-second segment cap; this is a bounded no-steering acceptance run.
+
+
+[2026-08-03 9:55:56 PM NZST] CODEX COMMENTARY
+The bounded live segment is still active after roughly half a minute, with no outer timeout or permission review involved. I am leaving the connection alone and waiting for its checkpoint; the acceptance criterion is the selected phase and resulting state, not a forced early return.
+
+
+[2026-08-03 9:56:26 PM NZST] CODEX COMMENTARY
+The live socket remains active at about one minute and the bounded 180-second limit is behaving as intended. I am continuing to wait for the campaign result rather than starting a second connection or retrying the shop path in parallel.
+
+
+[2026-08-03 9:57:05 PM NZST] CODEX COMMENTARY
+The campaign is still inside the same bounded live attempt at roughly two minutes. No duplicate campaign process has been launched; I am allowing the runner to finish its own healer return and checkpoint path.
+
+
+[2026-08-03 9:58:33 PM NZST] CODEX COMMENTARY
+The no-steering acceptance run completed cleanly at campaign checkpoint 2989. Its selected phase was highland-keeper-hunt-17-20, not buy-flight, proving the cooldown prevented the repeated optional shop attempt; the segment completed at level 18 and returned ready for the next verified segment. I am inspecting the persisted end state and transcript before deciding the next blocker.
+
+
+[2026-08-03 9:59:09 PM NZST] CODEX COMMENTARY
+Persisted evidence confirms the fix exactly: run 2920 started with cooldown 3, one copper more than the failed purchase, selected Highland Keeper hunt, killed the Keeper for 691 objective XP (801 total XP delta), returned to healer room 3054, and ended with cooldown 2. I am continuing the same no-steering campaign to consume the cooldown through real productive work and expose the next level-18 policy boundary.
+
+
+[2026-08-03 10:00:02 PM NZST] CODEX COMMENTARY
+The next no-steering level-18 segment is still active after about forty seconds. It is running under the same single-segment and 180-second boundary; I am waiting for its checkpoint rather than intervening.
+
+
+[2026-08-03 10:00:40 PM NZST] CODEX COMMENTARY
+The second live segment remains healthy and bounded at about ninety seconds. No permission review, duplicate process, or manual steering has appeared; I am letting the policy runner complete its field and healer sequence.
+
+
+[2026-08-03 10:01:07 PM NZST] CODEX COMMENTARY
+The second segment completed at checkpoint 2992 without an executable current-band route and correctly paused for the field reset; it did not hang or start a retry loop. I am reading its persisted research, cooldown, and XP state now to distinguish a temporary target absence from the next genuine progression blocker.
+
+
+[2026-08-03 10:03:18 PM NZST] CODEX COMMENTARY
+Run 2921 found the Highland target absent and earned no XP, so the flight cooldown correctly stayed at 2 rather than treating travel or incidental state as productive work. The scheduler is now in its bounded reset-wait state because every previously proven current-band hunt has a zero effective XP result or an active safety exclusion. I am allowing one 60-second reset retry to test the registered target recovery path.
+
+
+[2026-08-03 10:04:13 PM NZST] CODEX COMMENTARY
+The reset-retry controller is still in its single bounded wait/launch sequence after about forty seconds. No parallel campaign or permission prompt is involved; I am waiting for the one authorized retry to finish.
+
+
+[2026-08-03 10:04:51 PM NZST] CODEX COMMENTARY
+The bounded reset retry remains active at roughly eighty seconds, which is consistent with the configured 60-second outside-area wait plus a live route. I am not restarting it or extending the retry count.
+
+
+[2026-08-03 10:06:05 PM NZST] CODEX COMMENTARY
+The retry has crossed two minutes without an outer timeout and remains within the configured live-segment boundary. I am allowing the runner’s normal checkpoint and healer-return handling to complete before reviewing the result.
+
+
+[2026-08-03 10:06:57 PM NZST] CODEX COMMENTARY
+The reset controller recovered into a fresh Shadow Keep probe, and the persisted scheduler now selects the bounded Shadow Soldier hunt as executable. I am launching that single no-steering hunt next; this is the next productive opportunity rather than another flight purchase or an unbounded reset loop.
+
+
+[2026-08-03 10:07:53 PM NZST] CODEX COMMENTARY
+The Shadow Keep hunt is still live after about forty seconds under the same bounded single-segment policy. I am waiting for the exact target and healer-return evidence.
+
+
+[2026-08-03 10:08:37 PM NZST] CODEX COMMENTARY
+The Shadow Keep route remains active at roughly eighty seconds with no timeout or duplicate process. I am leaving combat and recovery control to the runner.
+
+
+[2026-08-03 10:09:37 PM NZST] CODEX COMMENTARY
+After the Shadow absence, the scheduler has a concrete executable maintenance step: restock provisions in Midgaard. I am running that bounded maintenance segment now; it should preserve the flight cooldown and restore the supplies needed for the next field rotation.
+
+
+[2026-08-03 10:10:33 PM NZST] CODEX COMMENTARY
+The provision restock completed safely and preserved flight cooldown 2, but no field route was executable in that checkpoint, so no XP was earned. I am using one more bounded 60-second reset retry to let the current-reboot research rotation find a repopulated target; this remains fully autonomous and does not alter the cooldown policy.
+
+
+[2026-08-03 10:11:34 PM NZST] CODEX COMMENTARY
+The current reset retry is active after about forty seconds and remains within the single configured wait/launch boundary. I am waiting for the policy decision and persisted checkpoint.
+
+
+[2026-08-03 10:12:13 PM NZST] CODEX COMMENTARY
+The retry is still live at roughly eighty seconds. It has not triggered a duplicate process or permission wait; I am leaving the bounded controller to complete normally.
+
+
+[2026-08-03 10:13:26 PM NZST] CODEX COMMENTARY
+The retry has crossed two minutes and is still inside the 180-second live cap. I am allowing the runner to finish rather than interrupting a potentially productive target search.
+
+
+[2026-08-03 10:13:55 PM NZST] CODEX COMMENTARY
+Run 2925 used the fresh Highland probe after the reset, earned 110 incidental XP without a confirmed objective kill, returned safely, and reduced the flight cooldown from 2 to 1. The next selected policy is the bounded Highland hunt; I am running it once more so the scheduler can reach the intended post-cooldown decision point.
+
+
+[2026-08-03 10:14:48 PM NZST] CODEX COMMENTARY
+The final pre-expiry hunt is still active after about forty seconds. I am waiting for its exact target outcome and will inspect whether the next checkpoint reaches cooldown zero without reopening the shop prematurely.
+
+
+[2026-08-03 10:15:27 PM NZST] CODEX COMMENTARY
+The hunt remains within its bounded live window at roughly eighty seconds. No intervention is needed; I am keeping the connection single and waiting for the healer checkpoint.
+
+
+[2026-08-03 10:16:39 PM NZST] CODEX COMMENTARY
+The hunt has crossed two minutes but is still below the 180-second cap. I am allowing normal combat completion and recovery; the watchdog remains bounded and no stalled child process has appeared.
+
+
+[2026-08-03 10:17:21 PM NZST] CODEX COMMENTARY
+Run 2926 completed the third productive field segment, killed the Keeper for 484 objective XP, returned safely, and reduced the flight cooldown to zero. The next scheduler decision is now the important boundary: it may recheck the reboot-priced potion once, but only after the productive cadence has elapsed.
+
+
+[2026-08-03 10:18:15 PM NZST] CODEX COMMENTARY
+The post-cooldown scheduler decision is still bounded and live after about forty seconds. I am waiting for the shop result, which will show whether current funds can buy flight or whether the failure cooldown is correctly re-armed.
+
+
+[2026-08-03 10:19:28 PM NZST] CODEX COMMENTARY
+The post-cooldown segment is still within its 120-second cap at roughly two minutes. It may have selected a field policy instead of shop maintenance; I am waiting for the actual persisted phase rather than inferring from elapsed time.
+
+
+[2026-08-03 10:20:01 PM NZST] CODEX COMMENTARY
+Run 2927 correctly stayed in field work while cooldown was zero but the balance was still at or below the failed-purchase threshold; it killed the Keeper for 643 XP and ended with 907 copper-value, now above the failed 815 threshold. The next checkpoint should therefore permit exactly one optional flight recheck.
+
+
+[2026-08-03 10:20:57 PM NZST] CODEX COMMENTARY
+The threshold-triggered follow-up is still active after about forty seconds. I am waiting for the persisted phase to confirm whether the current reboot price is affordable and whether flight becomes an active affect.
+
+
+[2026-08-03 10:21:35 PM NZST] CODEX COMMENTARY
+The threshold follow-up remains bounded at about eighty seconds with no duplicate process. I am allowing the shop workflow to complete and will inspect its durable cooldown/failure state rather than guessing from the elapsed time.
+
+
+[2026-08-03 10:26:05 PM NZST] CODEX COMMENTARY
+The post-cooldown field decision was correctly retained by a productive-policy handoff after a crowd interruption, so it did not detour to shop maintenance mid-recovery. Run 2928 returned safely with only 2 incidental XP and a bounded gigantic-frog crowd marker; I am allowing the handoff hunt one retry to seek a clean Keeper kill.
+
+
+[2026-08-03 10:26:59 PM NZST] CODEX COMMENTARY
+Run 2929 performed the first permitted post-cooldown shop recheck. The reboot price was still unaffordable, so it failed once, returned safely, and re-armed the cooldown at 3; no repeated shop loop occurred. I am continuing with the field rotation, which now has about 1,800 XP remaining to level 19.
+
+
+[2026-08-03 10:27:58 PM NZST] CODEX COMMENTARY
+The first post-failure field segment is still live after about forty seconds. It is bounded by the same 180-second cap and is not eligible to retry the shop while cooldown 3 is active.
+
+
+[2026-08-03 10:28:37 PM NZST] CODEX COMMENTARY
+The bounded field segment remains active at roughly eighty seconds. I am waiting for its target outcome and XP delta before deciding whether the next run can continue the level-19 approach.
+
+
+[2026-08-03 10:29:15 PM NZST] CODEX COMMENTARY
+The field segment has crossed two minutes but is still inside the 180-second boundary. The runner is handling the live route and healer return without intervention; I am waiting for the checkpoint.
+
+
+[2026-08-03 10:30:47 PM NZST] CODEX COMMENTARY
+The bounded outer launcher timed out after 214 seconds before returning the campaign result; this is the first live command in this pass to hit the outer boundary. I am auditing the exact campaign process and persisted segment now, and will reconcile or terminate only a confirmed DD4 campaign child before continuing.
+
+
+[2026-08-03 10:31:12 PM NZST] CODEX COMMENTARY
+Audit found one confirmed orphaned DD4 campaign process (PID 2092) still holding the timed-out run, plus the unrelated Discord streamer PID 27976. I am stopping only PID 2092, then I will use the project’s interrupted-run cleanup path so the running segment is reconciled before any retry.
+
+
+[2026-08-03 10:31:46 PM NZST] CODEX COMMENTARY
+PID 2092 is stopped and recover-runs marked the orphaned run and campaign segment failed with an explicit outer-timeout reason; the unrelated Discord streamer remains untouched. The zero-byte run-2930 transcript means the child stalled before useful live output, so I am tracing the connection/launcher boundary now instead of immediately retrying the same hang.
+
+
+[2026-08-03 10:33:22 PM NZST] CODEX COMMENTARY
+The previous trace was too broad to trust, so I am narrowing this to the connection setup and launcher boundary before another live attempt. I will keep the stalled-child cleanup and the new flight retry policy intact while I isolate the timeout.
+
+
+[2026-08-03 10:36:13 PM NZST] CODEX COMMENTARY
+The interrupted run did not stall at connection setup: it reached the healer, and the cleanup audit reconciled it as failed after the outer launcher limit. The durable transcript shows the remaining gap was safe recovery after a long fight, so I am resuming with a wider launcher margin and a shorter segment cap, then I will inspect the next checkpoint before changing code.
+
+
+[2026-08-03 10:36:59 PM NZST] CODEX COMMENTARY
+The resumed segment is alive as PID 22100 and has opened the next Highland Keeper hunt checkpoint. I am letting the bounded run proceed under the wider launcher margin; the prior zero-run concern is ruled out because this checkpoint is producing a live campaign record.
+
+
+[2026-08-03 10:37:41 PM NZST] CODEX COMMENTARY
+PID 22100 remains healthy after another 30 seconds; the segment is still running and the campaign checkpoint is unchanged at level 18 with flight retry cooldown 3. I am keeping the observation bounded and will inspect its terminal state rather than interrupting a productive field pass prematurely.
+
+
+[2026-08-03 10:38:24 PM NZST] CODEX COMMENTARY
+The live run now has durable run 2931 and is still active after roughly a minute; this is normal bounded combat work, not a pre-connection wait. I am continuing to watch the exact child and database status, with the timeout margin still available for healer recovery and checkpointing.
+
+
+[2026-08-03 10:39:05 PM NZST] CODEX COMMENTARY
+Run 2931 is still making progress according to the latest game event, while the exact campaign child remains alive. I am leaving the live loop alone through its configured boundary so we can capture a clean healer return instead of creating another externally truncated run.
+
+
+[2026-08-03 10:40:04 PM NZST] CODEX COMMENTARY
+Run 2931 completed cleanly and checkpointed level 18 at 176,630 XP, earning 839 XP while the flight retry cooldown moved from 3 to 2. The segment returned to the healer and left no campaign child running. I am running the offline suite now, then I will resume the next verified segment rather than treating this as a stopping point.
+
+
+[2026-08-03 10:40:39 PM NZST] CODEX COMMENTARY
+The full offline suite remains green: 1,850 tests passed in 26.06 seconds. The live cooldown behavior and its migration are covered without regressions, so I am moving on to the next checkpointed field segment.
+
+
+[2026-08-03 10:41:24 PM NZST] CODEX COMMENTARY
+The next campaign segment is running as PID 15120 and has selected the same source-verified Highland Keeper hunt, which remains the current productive level-18 policy. I am watching it with the same bounded recovery margin and will record whether this pass advances XP or exposes a new blocker.
+
+
+[2026-08-03 10:42:05 PM NZST] CODEX COMMENTARY
+Run 2932 has opened cleanly and is now in its live field loop; no new process or launcher anomaly has appeared. The child is still within its configured cap, so I am letting the target circuit finish or return on its own.
+
+
+[2026-08-03 10:42:45 PM NZST] CODEX COMMENTARY
+Run 2932 is advancing through The Highlands; its latest durable response shows 235/254 health and the expected low movement on the source-backed route. It remains healthy and active, so I am continuing the observation without steering the target selection.
+
+
+[2026-08-03 10:43:37 PM NZST] CODEX COMMENTARY
+Run 2932 completed cleanly at healer room 3054 with full health, 241/320 movement, and no active combat. It added 220 XP (176,630 to 176,850), left the campaign at level 18, and reduced the flight retry cooldown from 2 to 1; the next verified segment will consume the final cooldown unit before any optional purchase retry.
+
+
+[2026-08-03 10:44:22 PM NZST] CODEX COMMENTARY
+The next field segment is running as PID 18224 and remains on the verified Highland route. This is the final productive-field decrement for the current flight retry cooldown; I am allowing the segment to finish before checking whether the campaign schedules the one permitted shop recheck.
+
+
+[2026-08-03 10:45:03 PM NZST] CODEX COMMENTARY
+Run 2933 has a durable live record and is still in the field circuit after its first minute. No connection or process issue is present; I am continuing until the configured runtime boundary brings it back through the healer.
+
+
+[2026-08-03 10:46:05 PM NZST] CODEX COMMENTARY
+Run 2933 completed in 98 seconds with a clean healer checkpoint, no objective kill, and 100 incidental XP; the flight cooldown is now 0. Current cash is still only 10 silver 14 copper and the persistent funding requirement remains active, so the next scheduler decision will test the newly eligible optional flight purchase exactly once.
+
+
+[2026-08-03 10:46:40 PM NZST] CODEX COMMENTARY
+The scheduler correctly chose a short restock checkpoint before the flight recheck; run 2934 is active as the provisions maintenance segment, not a duplicate hunt. I am allowing this prerequisite to finish and will inspect the following policy transition.
+
+
+[2026-08-03 10:47:36 PM NZST] CODEX COMMENTARY
+The newly eligible transition exposed a real generic blocker: restock reached the bakery but Kestrel was at 46/46 carried items, mostly 24 leechblood paste entries plus worn gear, so the runner refused to buy an essential pie and checkpointed failed. I am tracing the existing capacity-relief and expendable-loot rules now; this is a reusable inventory-management fix, not a character-specific workaround.
+
+
+[2026-08-03 10:50:09 PM NZST] CODEX COMMENTARY
+Source inspection confirms the paste is an ITEM_PAINT with a cure-poison use, not ordinary food and not a weapon, container, potion, or stat-bearing gear. I am adding a narrow source-backed duplicate-consumable relief path: retain one copy, sacrifice one duplicate in a safe room, and only then retry the essential pie purchase. I will add regression tests for both the allowed paint case and protected inventory.
+
+
+[2026-08-03 10:51:42 PM NZST] CODEX COMMENTARY
+The first focused test run caught a small integration omission in the new source classification: equipment.py did not yet export the existing DD4 paint type constant. I am adding that shared constant, then I will rerun the starter tests before touching the live campaign again.
+
+
+[2026-08-03 10:52:06 PM NZST] CODEX COMMENTARY
+The starter suite now has 785 passing tests and one fixture-only failure: the new capacity test entered the normal pre-restock equipment audit before reaching the bakery logic. I am aligning that fixture with the existing restock tests, then I will rerun the complete starter module.
+
+
+[2026-08-03 10:53:05 PM NZST] CODEX COMMENTARY
+The capacity-relief fix is now covered: duplicate paint consumables trigger one source-keyed sacrifice and duplicate potions remain protected. Targeted tests pass, and the full starter module is green at 786 passed in 5.01 seconds. I am running the complete suite before retrying the failed campaign checkpoint.
+
+
+[2026-08-03 10:53:43 PM NZST] CODEX COMMENTARY
+The complete suite is green at 1,852 passed in 25.81 seconds. I am retrying the failed restock checkpoint now; the live inventory still has the exact duplicate paint case covered by the new rule, so this is the direct end-to-end validation of the fix.
+
+
+[2026-08-03 10:54:22 PM NZST] CODEX COMMENTARY
+Retry run 2935 has opened the same restock policy cleanly as PID 17328. It is now moving through the bakery with the new relief logic available; I am waiting for the inventory audit and purchase result before declaring the blocker resolved.
+
+
+[2026-08-03 10:54:53 PM NZST] CODEX COMMENTARY
+Run 2935 is still active and has completed the fountain leg; the latest command is the expected water refill step. I am keeping the child bounded while it reaches the bakery and exercises the duplicate-paint capacity release.
+
+
+[2026-08-03 10:56:25 PM NZST] CODEX COMMENTARY
+The end-to-end transcript found the next important source fact: DD4 sacrifice only searches room contents, so the direct carried-item command correctly returned You can’t find it and the watchdog stopped. I am correcting the generic flow to drop the duplicate paint first, then sacrifice it from the room, with explicit failure handling so a rejected disposal cannot hang the runner.
+
+
+[2026-08-03 10:57:02 PM NZST] CODEX COMMENTARY
+The focused retry exposed a state-initialization gap in the new two-step flow: the new relief step and keyword were used before being initialized, affecting both the new paint test and the existing food-capacity test. I am adding those constructor defaults now; no live retry will occur until this is green.
+
+
+[2026-08-03 10:57:30 PM NZST] CODEX COMMENTARY
+The two-step disposal flow is now green: focused tests pass, and the complete starter module is 786 passed. The prior live child is gone and its failed segment is durably recorded, so I am running the full suite once more before a fresh end-to-end retry.
+
+
+[2026-08-03 10:58:06 PM NZST] CODEX COMMENTARY
+The full suite is green again at 1,852 passed in 25.85 seconds. I am launching the fresh restock retry with the corrected drop-then-sacrifice behavior; the previous failed run remains preserved as evidence of the command semantics, and this attempt will verify recovery rather than overwrite it.
+
+
+[2026-08-03 10:58:46 PM NZST] CODEX COMMENTARY
+Retry run 2936 is active as the expected restock policy. I am watching for the two disposal commands in its transcript, then the pie purchase and safe healer return.
+
+
+[2026-08-03 10:59:38 PM NZST] CODEX COMMENTARY
+Run 2936 proved the fix end to end: it issued drop paste, sacrifice paste, bought one pie, saved, and quit cleanly in 19.94 seconds. The campaign remains at level 18 but now has 23 paste copies, one pie, 8 silver 3 copper, and no outstanding funding marker; I am returning to progression now.
+
+
+[2026-08-03 11:00:33 PM NZST] CODEX COMMENTARY
+The next scheduler choice is the source-registered Shadow Keep Undead Soldier hunt, now running as PID 33912 / run 2937. This is the intended level-16-to-20 fallback after the Highland work; I am observing the exact target and its live consider/combat result.
+
+
+[2026-08-03 11:01:15 PM NZST] CODEX COMMENTARY
+Run 2937 is traversing the Shadow Keep route and has reached room 16600 without an unapproved fight. The live target probe is still in progress; the process is healthy and inside its bounded segment window.
+
+
+[2026-08-03 11:02:12 PM NZST] CODEX COMMENTARY
+Run 2937 completed safely after a full Shadow Keep circuit: the Undead Soldier was absent, so no combat was attempted and the policy received a temporary three-segment absence cooldown. The character is fully recovered at healer room 3054; I am continuing with the next currently executable policy rather than retrying the absent target.
+
+
+[2026-08-03 11:03:11 PM NZST] CODEX COMMENTARY
+The scheduler correctly paused after the Shadow Keep absence because every currently eligible field policy is on a bounded absence/crowd cooldown; it did not launch a duplicate segment. I am invoking the documented one-retry, 60-second outside-area reset controller now so the campaign can resume without manually selecting a target.
+
+
+[2026-08-03 11:03:58 PM NZST] CODEX COMMENTARY
+The reset controller is running as PID 37972 and is currently in its low-CPU outside-area wait; no new field child has started yet. I am allowing the full 60-second reset interval to elapse, then I will inspect the automatically selected retry.
+
+
+[2026-08-03 11:04:44 PM NZST] CODEX COMMENTARY
+The reset wait completed and the controller has launched a fresh Highland Keeper retry as run 2938; the parent controller PID 37972 remains active around that child. This is the authorized cooldown retry, not a duplicate immediate probe, so I am watching its live outcome.
+
+
+[2026-08-03 11:05:26 PM NZST] CODEX COMMENTARY
+Run 2938 is active and producing live vital updates on the Highland retry; it is still healthy at full hit points while movement is being spent on the route. I am keeping the parent process under the bounded observation window.
+
+
+[2026-08-03 11:06:09 PM NZST] CODEX COMMENTARY
+Run 2938 reached The Bog and encountered two source-known level-11 bogleeches while searching for the Keeper. They are below the useful XP band and are being treated as trivial bystanders rather than selected targets; the runner is continuing its registered crowd/target gates instead of converting them into an XP policy.
+
+
+[2026-08-03 11:07:03 PM NZST] CODEX COMMENTARY
+The reset retry has advanced into a Highland Keeper probe checkpoint (segment 2513) while the live run remains active; this is the campaign’s source-presence phase after the bogleech crowd, not a new manual target choice. I am letting the probe finish and will use its durable result to decide whether the Keeper hunt is still executable.
+
+
+[2026-08-03 11:07:54 PM NZST] CODEX COMMENTARY
+Run 2938 completed cleanly after the authorized reset retry: it finished two unavoidable level-11 bogleech fights, gained 230 incidental XP (176,950 to 177,180), and returned to the healer. The Highland probe is now viable again with a two-segment hunt cooldown state; I am continuing through the next scheduler choice.
+
+
+[2026-08-03 11:08:55 PM NZST] CODEX COMMENTARY
+The next automatic maintenance pass (run 2939) restocked provisions cleanly in 19.3 seconds and returned to the healer; it did not alter XP. Cash is now 5 silver 3 copper and the optional flight marker remains failed with cooldown 0, so I am proceeding to the next productive policy rather than forcing another unaffordable shop attempt.
+
+
+[2026-08-03 11:09:46 PM NZST] CODEX COMMENTARY
+Run 2940 is now in the authorized Highland Keeper hunt after the probe and restock transitions. The exact child is healthy and running under the bounded field policy; I am watching for a productive Keeper kill or a source-backed absence/crowd result.
+
+
+[2026-08-03 11:10:32 PM NZST] CODEX COMMENTARY
+Run 2940 found one source-level-12 bogleech in The Bog, still below the useful level band for an 18th-level thief; the policy is not selecting it for XP. Movement is low but the character remains at full health, and the bounded route is proceeding toward its next registered stop.
+
+
+[2026-08-03 11:11:14 PM NZST] CODEX COMMENTARY
+The Highland hunt is still moving through its registered circuit as PID 40444; the latest command is a source-backed eastward exit after the below-band bogleech sighting. No health or process fault has appeared, so I am letting the bounded return logic decide when to withdraw.
+
+
+[2026-08-03 11:12:11 PM NZST] CODEX COMMENTARY
+Run 2940 completed safely at healer room 3054 with 120 incidental XP (177,180 to 177,300) and no Keeper objective kill. The same-reboot absence/crowd controls are preventing unsafe repetition; Kestrel is 350 XP from level 19, and I am continuing the policy rotation to find a productive target.
+
+
+[2026-08-03 11:13:03 PM NZST] CODEX COMMENTARY
+The scheduler selected a fresh Highland Keeper presence probe as run 2941, reflecting the policy-specific cooldown rather than immediately entering another full hunt. I am allowing this bounded source-presence check to finish; if it confirms the Keeper absent again, I will inspect why the known productive Shire policy is not being selected next.
+
+
+[2026-08-03 11:13:45 PM NZST] CODEX COMMENTARY
+Run 2941 is still traversing the Highland probe after its first minute; no orphan or launcher issue is present. I am keeping the live segment bounded and will use its final source result to guide the next policy selection.
+
+
+[2026-08-03 11:16:27 PM NZST] CODEX COMMENTARY
+I am treating this as an explicit one-off publication exception: I will inspect the current worktree, commit the intended source and test changes, push them to origin/main, and verify the remote result before reporting back.
+
+
+[2026-08-03 11:16:53 PM NZST] CODEX COMMENTARY
+The worktree is on main and has the intended campaign, capacity-relief, equipment, and regression-test changes, plus the required conversation log. The live campaign has already exited cleanly; only the known Discord streamer remains. I am running a final diff check and test verification before committing and pushing.
+
+
+[2026-08-03 11:17:55 PM NZST] CODEX COMMENTARY
+Verification is clean: the source/test diff passes git diff --check, and the full offline suite passes at 1,852 tests. I am staging the six intended files and committing them on main, then I will push main and verify the remote commit.

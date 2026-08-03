@@ -19,6 +19,7 @@ from .decisions import classify_decision
 from .equipment import (
     GearCatalog,
     ITEM_FOOD,
+    ITEM_PAINT,
     STANCE_COMBAT,
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
@@ -1001,6 +1002,8 @@ class StarterPolicy:
         self.city_restock_capacity_audited = False
         self.city_restock_capacity_relief_attempted = False
         self.city_restock_capacity_relief_pending = False
+        self.city_restock_capacity_relief_keyword: str | None = None
+        self.city_restock_capacity_relief_step = 0
         self.restock_borrowing = False
         self.restock_borrow_step = 0
         self.restock_borrow_confirmed = False
@@ -1649,9 +1652,26 @@ class StarterPolicy:
             self.needs_food = False
             self.food_unavailable = False
         if self.city_restock_capacity_relief_pending and (
-            "you eat" in recent or "you are full" in recent
+            "you eat" in recent
+            or "you are full" in recent
+            or "you sacrifice" in recent
+            or "you donate" in recent
         ):
             self.city_restock_capacity_relief_pending = False
+        if self.city_restock_capacity_relief_pending and "you drop " in recent:
+            self.city_restock_capacity_relief_pending = False
+            self.city_restock_capacity_relief_step = 2
+        if self.city_restock_capacity_relief_step in {1, 2} and any(
+            phrase in recent
+            for phrase in ("you can't find it", "you can't sacrifice that")
+        ):
+            keyword = self.city_restock_capacity_relief_keyword or "item"
+            self.city_restock_capacity_relief_pending = False
+            self.city_restock_capacity_relief_step = 0
+            self.failure = (
+                "source-keyed capacity relief could not dispose of "
+                f"{keyword}"
+            )
         if "you drink" in folded or "do not feel thirsty" in folded:
             self.needs_drink = False
             self.water_unavailable = False
@@ -6648,6 +6668,16 @@ class StarterPolicy:
         if room_vnum == "3013" or room_name == "main street":
             return BotDecision("north", "enter the Midgaard Bakery")
         if at_bakery:
+            if (
+                self.city_restock_capacity_relief_step == 2
+                and self.city_restock_capacity_relief_keyword is not None
+            ):
+                self.city_restock_capacity_relief_step = 3
+                self.city_restock_capacity_relief_pending = True
+                return BotDecision(
+                    f"sacrifice {self.city_restock_capacity_relief_keyword}",
+                    "sacrifice the dropped duplicate paint consumable in the safe bakery",
+                )
             if self.insufficient_funds and not self.restock_borrow_complete:
                 self.restock_borrowing = True
                 return BotDecision(
@@ -6736,6 +6766,23 @@ class StarterPolicy:
             return BotDecision(
                 f"eat {food_keyword}",
                 "consume confirmed carried food to free capacity for a fresh reserve",
+            )
+        expendable_keyword = _capacity_relief_inventory_keyword(
+            state.inventory,
+            self.gear_catalog,
+        )
+        if (
+            not self.city_restock_capacity_relief_attempted
+            and expendable_keyword is not None
+        ):
+            self.city_restock_capacity_relief_attempted = True
+            self.city_restock_capacity_relief_pending = True
+            self.city_restock_capacity_relief_keyword = expendable_keyword
+            self.city_restock_capacity_relief_step = 1
+            return BotDecision(
+                f"drop {expendable_keyword}",
+                "discard one duplicate source-identified paint consumable to free "
+                "capacity for a fresh reserve",
             )
         self.failure = "no carry capacity remained for one essential pie"
         return None
@@ -16432,6 +16479,28 @@ def _inventory_food_keyword(
         for keyword in ("pie", "steak"):
             if keyword in normalized:
                 return keyword
+    return None
+
+
+def _capacity_relief_inventory_keyword(
+    value: Any,
+    gear_catalog: GearCatalog | None = None,
+) -> str | None:
+    """Return a source keyword for one duplicate, non-food paint consumable."""
+    if gear_catalog is None:
+        return None
+    descriptions = _inventory_descriptions(value)
+    duplicate_counts = Counter(normalize_item_name(description) for description in descriptions)
+    for description in descriptions:
+        normalized = normalize_item_name(description)
+        if duplicate_counts[normalized] <= 1:
+            continue
+        item = gear_catalog.match(description)
+        if item is None or item.item_type != ITEM_PAINT:
+            continue
+        if protects_from_sale(item) or is_capacity_infrastructure(item):
+            continue
+        return item_command_keyword(item)
     return None
 
 

@@ -11,6 +11,7 @@ from dd4tester.campaign import (
     CampaignRunner,
     _MAINTENANCE_EXECUTIONS,
     _advance_daycare_ring_cooldown,
+    _advance_flight_purchase_cooldown,
     _advance_intermediate_piercing_weapon_upgrade_cooldown,
     _advance_piercing_weapon_upgrade_cooldown,
     _advance_war_dog_collar_cooldown,
@@ -40,6 +41,7 @@ from dd4tester.campaign import (
     _has_campaign_sellable_loot,
     _needs_piercing_weapon_upgrade,
     _maintenance_failure_state,
+    _ensure_flight_purchase_retry_cooldown,
     _repair_failed_flight_funding_state,
     _repair_exhausted_flight_funding_state,
     _repair_confirmed_research_kills,
@@ -51,6 +53,8 @@ from dd4tester.campaign import (
     _PROVISION_FUNDING_LAST_ATTEMPT_KEY,
     _FLIGHT_FUNDING_REQUIRED_KEY,
     _FLIGHT_FUNDING_RETRY_KEY,
+    _FLIGHT_PURCHASE_COOLDOWN_KEY,
+    _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS,
     _latest_character_run,
     _prioritize_sack_vault_claims,
     _repair_reconciled_campaign_metadata,
@@ -1065,12 +1069,16 @@ def test_flight_purchase_failure_arms_generic_funding_loop() -> None:
 
     assert merged[_FLIGHT_FUNDING_REQUIRED_KEY] is True
     assert _FLIGHT_FUNDING_RETRY_KEY not in merged
+    assert merged[_FLIGHT_PURCHASE_COOLDOWN_KEY] == (
+        _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS
+    )
 
 
 def test_actual_flight_execution_clears_funding_retry_after_flight() -> None:
     merged = _campaign_segment_end_state(
         {
             _FLIGHT_FUNDING_RETRY_KEY: True,
+            _FLIGHT_PURCHASE_COOLDOWN_KEY: 2,
             "magic_shop_purchase_failed": True,
         },
         {
@@ -1083,6 +1091,7 @@ def test_actual_flight_execution_clears_funding_retry_after_flight() -> None:
 
     assert _FLIGHT_FUNDING_REQUIRED_KEY not in merged
     assert _FLIGHT_FUNDING_RETRY_KEY not in merged
+    assert _FLIGHT_PURCHASE_COOLDOWN_KEY not in merged
 
 
 def test_completed_flight_funding_arms_one_purchase_retry() -> None:
@@ -3263,6 +3272,92 @@ def test_campaign_retries_flight_purchase_after_money_increases(tmp_path) -> Non
                 },
             )
             is False
+        )
+
+
+def test_campaign_flight_purchase_cooldown_overrides_small_cash_increase(
+    tmp_path,
+) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="flight",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=10,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="buy-flight-potion",
+            start_state={"level": 9},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=None,
+            end_state={
+                "level": 9,
+                "currencies": {"silver": 10, "copper": 18},
+                "magic_shop_purchase_failed": True,
+                "world_boot_id": "boot-a",
+            },
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        assert (
+            _campaign_flight_purchase_failed(
+                storage,
+                campaign_id,
+                current_state={
+                    "currencies": {"silver": 16, "copper": 19},
+                    "world_boot_id": "boot-a",
+                    _FLIGHT_PURCHASE_COOLDOWN_KEY: 2,
+                },
+            )
+            is True
+        )
+
+
+def test_campaign_migrates_legacy_flight_failure_to_retry_cooldown(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="flight",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=10,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="buy-flight-potion",
+            start_state={"level": 9},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=None,
+            end_state={
+                "level": 9,
+                "currencies": {"silver": 10, "copper": 18},
+                "magic_shop_purchase_failed": True,
+                "world_boot_id": "boot-a",
+            },
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        repaired = _ensure_flight_purchase_retry_cooldown(
+            storage,
+            campaign_id,
+            {
+                "level": 9,
+                "currencies": {"silver": 16, "copper": 19},
+                "world_boot_id": "boot-a",
+            },
+            boot_id="boot-a",
+        )
+
+        assert repaired[_FLIGHT_PURCHASE_COOLDOWN_KEY] == (
+            _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS
         )
 
 
@@ -9850,6 +9945,31 @@ def test_daycare_ring_retry_cooldown_ignores_maintenance_and_zero_xp() -> None:
 
     assert maintenance["campaign_daycare_ring_cooldown"] == 3
     assert empty_hunt["campaign_daycare_ring_cooldown"] == 3
+
+
+def test_flight_purchase_retry_cooldown_counts_productive_field_segments() -> None:
+    state = {_FLIGHT_PURCHASE_COOLDOWN_KEY: 3}
+
+    state = _advance_flight_purchase_cooldown(
+        state,
+        execution="field-hunt",
+        xp_delta=0,
+    )
+    assert state[_FLIGHT_PURCHASE_COOLDOWN_KEY] == 3
+
+    for _ in range(3):
+        state = _advance_flight_purchase_cooldown(
+            state,
+            execution="field-hunt",
+            xp_delta=50,
+        )
+
+    assert state[_FLIGHT_PURCHASE_COOLDOWN_KEY] == 0
+    assert _advance_flight_purchase_cooldown(
+        {_FLIGHT_PURCHASE_COOLDOWN_KEY: 3},
+        execution="buy-flight",
+        xp_delta=500,
+    )[_FLIGHT_PURCHASE_COOLDOWN_KEY] == 3
 
 
 def test_war_dog_collar_retry_cooldown_counts_productive_field_segments() -> None:

@@ -191,6 +191,8 @@ _PROVISION_FUNDING_ATTEMPTS_KEY = "campaign_provision_funding_attempts"
 _PROVISION_FUNDING_LAST_ATTEMPT_KEY = "campaign_provision_funding_last_attempt"
 _FLIGHT_FUNDING_REQUIRED_KEY = "campaign_flight_funding_required"
 _FLIGHT_FUNDING_RETRY_KEY = "campaign_flight_funding_retry_pending"
+_FLIGHT_PURCHASE_COOLDOWN_KEY = "campaign_flight_purchase_cooldown"
+_FLIGHT_PURCHASE_COOLDOWN_SEGMENTS = 3
 _SACK_VAULT_ITEMS_KEY = "campaign_sack_vault_items"
 _SACK_VAULT_RECLAIM_LEVEL_KEY = "campaign_sack_vault_reclaim_attempted_level"
 _CAMPAIGN_POLICY_REVISION = 111
@@ -430,6 +432,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     _PROVISION_FUNDING_LAST_ATTEMPT_KEY,
     _FLIGHT_FUNDING_REQUIRED_KEY,
     _FLIGHT_FUNDING_RETRY_KEY,
+    _FLIGHT_PURCHASE_COOLDOWN_KEY,
     _BELOW_BAND_SIGHTINGS_KEY,
     _RESEARCH_ABSENCE_COOLDOWN_KEY,
     _RESEARCH_CROWD_COOLDOWN_KEY,
@@ -2046,6 +2049,22 @@ class CampaignRunner:
         checkpoint_state = _checkpoint_state(checkpoint)
         live_state = storage.get_latest_character_state(self.spec.character.name)
         state = _newer_progress_state(checkpoint_state, live_state)
+        flight_cooldown_state = _ensure_flight_purchase_retry_cooldown(
+            storage,
+            campaign_id,
+            state,
+            boot_id=self._boot_id,
+        )
+        if flight_cooldown_state != state and checkpoint is not None:
+            storage.record_campaign_checkpoint(
+                campaign_id,
+                segment_id=checkpoint["segment_id"],
+                run_id=checkpoint["run_id"],
+                phase=str(checkpoint["phase"]),
+                reason=_CAMPAIGN_METADATA_REPAIRED_REASON,
+                state=flight_cooldown_state,
+            )
+        state = flight_cooldown_state
         state = _repair_reconciled_campaign_metadata(
             storage,
             campaign_id,
@@ -2971,6 +2990,12 @@ class CampaignRunner:
                 execution=policy.execution,
                 xp_delta=xp_delta,
             )
+        if policy.execution not in {"buy-flight", "buy-flight-potion"}:
+            end_state = _advance_flight_purchase_cooldown(
+                end_state,
+                execution=policy.execution,
+                xp_delta=xp_delta,
+            )
         if not intermediate_upgrade:
             end_state = _advance_intermediate_piercing_weapon_upgrade_cooldown(
                 end_state,
@@ -3378,21 +3403,57 @@ def _campaign_flight_purchase_failed(
     current_state: dict[str, Any] | None = None,
 ) -> bool | None:
     """Return whether the latest failed flight purchase still applies."""
+    state = _latest_flight_purchase_state(storage, campaign_id)
+    if state is None:
+        return None
+    failed = bool(state.get("magic_shop_purchase_failed"))
+    if not failed or current_state is None:
+        return failed
+    failed_boot = state.get("world_boot_id")
+    current_boot = current_state.get("world_boot_id")
+    if failed_boot and current_boot and failed_boot != current_boot:
+        return False
+    if int(current_state.get(_FLIGHT_PURCHASE_COOLDOWN_KEY) or 0) > 0:
+        return True
+    return _state_copper_value(current_state) <= _state_copper_value(state)
+
+
+def _latest_flight_purchase_state(
+    storage: RunStorage,
+    campaign_id: int,
+) -> dict[str, Any] | None:
+    """Return the latest completed flight-purchase segment state."""
     for segment in reversed(storage.list_campaign_segments(campaign_id)):
         if segment["phase"] != "buy-flight-potion":
             continue
         if segment["status"] != "success" or not segment["end_state_json"]:
             continue
-        state = json.loads(segment["end_state_json"])
-        failed = bool(state.get("magic_shop_purchase_failed"))
-        if not failed or current_state is None:
-            return failed
-        failed_boot = state.get("world_boot_id")
-        current_boot = current_state.get("world_boot_id")
-        if failed_boot and current_boot and failed_boot != current_boot:
-            return False
-        return _state_copper_value(current_state) <= _state_copper_value(state)
+        return json.loads(segment["end_state_json"])
     return None
+
+
+def _ensure_flight_purchase_retry_cooldown(
+    storage: RunStorage,
+    campaign_id: int,
+    state: dict[str, Any],
+    *,
+    boot_id: int | None = None,
+) -> dict[str, Any]:
+    """Migrate a same-reboot legacy purchase failure into bounded retry state."""
+    if _FLIGHT_PURCHASE_COOLDOWN_KEY in state:
+        return state
+    failed_state = _latest_flight_purchase_state(storage, campaign_id)
+    if not failed_state or not failed_state.get("magic_shop_purchase_failed"):
+        return state
+    failed_boot = failed_state.get("world_boot_id")
+    current_boot = state.get("world_boot_id") or boot_id
+    if failed_boot and current_boot and failed_boot != current_boot:
+        return state
+    repaired = dict(state)
+    repaired[_FLIGHT_PURCHASE_COOLDOWN_KEY] = (
+        _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS
+    )
+    return repaired
 
 
 async def _run_policy_segment(
@@ -6163,6 +6224,21 @@ def _advance_intermediate_piercing_weapon_upgrade_cooldown(
     )
 
 
+def _advance_flight_purchase_cooldown(
+    state: dict[str, Any],
+    *,
+    execution: str,
+    xp_delta: int,
+) -> dict[str, Any]:
+    """Retry an optional flight purchase after productive field work."""
+    return _advance_retry_cooldown(
+        state,
+        key=_FLIGHT_PURCHASE_COOLDOWN_KEY,
+        execution=execution,
+        xp_delta=xp_delta,
+    )
+
+
 def _xp_delta(before: dict[str, Any], after: dict[str, Any]) -> int:
     """Treat a level gain as progress even when DD4 resets cumulative XP."""
     level_delta = _level(after) - _level(before)
@@ -6261,9 +6337,13 @@ def _apply_flight_funding_state_transition(
     if active_flight or transitioned.get("magic_shop_purchase_failed") is False:
         transitioned.pop(_FLIGHT_FUNDING_REQUIRED_KEY, None)
         transitioned.pop(_FLIGHT_FUNDING_RETRY_KEY, None)
+        transitioned.pop(_FLIGHT_PURCHASE_COOLDOWN_KEY, None)
     elif transitioned.get("magic_shop_purchase_failed") is True:
         transitioned[_FLIGHT_FUNDING_REQUIRED_KEY] = True
         transitioned.pop(_FLIGHT_FUNDING_RETRY_KEY, None)
+        transitioned[_FLIGHT_PURCHASE_COOLDOWN_KEY] = (
+            _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS
+        )
     return transitioned
 
 
