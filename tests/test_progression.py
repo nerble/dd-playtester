@@ -16,11 +16,158 @@ def test_starter_policy_is_executable_before_level_two() -> None:
     assert policy.execution == "starter"
 
 
+def test_policy_for_honors_a_productive_hunt_handoff() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="crystalmir-white-stag-probe-16-20",
+        research_results={
+            "crystalmir-white-stag-probe-16-20": {
+                "absent": True,
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+            },
+            "highland-keeper-hunt-17-20": {
+                "boot_id": "boot-1",
+                "completed_kill": True,
+                "observed": True,
+                "viable": True,
+            },
+        },
+        handoff_policy_id="highland-keeper-hunt-17-20",
+    )
+
+    assert policy.policy_id == "highland-keeper-hunt-17-20"
+    assert policy.execution == "highland-keeper-hunt"
+
+
 def test_empty_basic_slots_select_midgaard_outfit_maintenance() -> None:
     policy = policy_for(8, "mage", needs_basic_gear=True)
 
     assert policy.policy_id == "outfit-basic-gear"
     assert policy.execution == "outfit-basic-gear"
+    assert policy.executable is True
+
+
+def test_unaffordable_provisions_select_source_funding_policy() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_food=False,
+        needs_provision_funding=True,
+    )
+
+    assert policy.policy_id == "provision-funding"
+    assert policy.execution == "provision-funding"
+    assert policy.segment_kill_limit == 1
+    assert policy.executable is True
+
+
+def test_excluded_source_funding_remains_available_for_required_loot() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_food=True,
+        needs_provision_funding=True,
+        excluded_policy_ids=frozenset({"provision-funding"}),
+    )
+
+    assert policy.policy_id == "provision-funding"
+    assert policy.execution == "provision-funding"
+
+
+def test_excluded_provision_funding_falls_back_to_city_restock_without_food() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_food=False,
+        needs_provision_funding=True,
+        excluded_policy_ids=frozenset({"provision-funding"}),
+    )
+
+    assert policy.policy_id == "restock-provisions"
+    assert policy.execution == "restock"
+    assert policy.executable is True
+
+
+def test_level_eighteen_thief_rotates_to_argent_after_registered_probes_fail() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "mirror-realm-watchman-hunt-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-white-dwarf-hunt-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "galaxy-red-supergiant-hunt-17-20",
+            "hightower-jailor-probe-17-20",
+            "hightower-jailor-hunt-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+            "shire-elven-wizard-probe-17-20",
+            "shire-elven-wizard-hunt-17-20",
+            "pyramid-ali-baba-probe-18-20",
+            "pyramid-ali-baba-hunt-18-20",
+            "solace-lord-doom-probe-18-20",
+            "solace-lord-doom-hunt-18-20",
+        )
+    }
+    recorded_results["shire-thain-probe-17-20"] = {
+        "absent": True,
+        "observed": False,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="shire-thain-probe-17-20",
+        world_boot_id="boot-1",
+        has_sanctuary_potion=True,
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "argent-bandit-leader-probe-17-20"
+    assert policy.execution == "argent-bandit-leader-research"
+    assert policy.status == "research"
+
+
+def test_emergency_provision_sale_precedes_field_funding() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_food=False,
+        needs_provision_funding=True,
+        has_emergency_provision_sale=True,
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
+    assert policy.executable is True
+
+
+def test_interrupted_mud_school_funding_run_returns_home_first() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        needs_return_home=True,
+        needs_provision_funding=True,
+    )
+
+    assert policy.policy_id == "return-home"
+    assert policy.execution == "return-home"
     assert policy.executable is True
 
 
@@ -1215,6 +1362,18 @@ def test_missing_primary_weapon_selects_safe_rearm_maintenance() -> None:
         9,
         "mage",
         has_large_sack=True,
+        has_weapon=False,
+    )
+
+    assert policy.policy_id == "rearm-primary-weapon"
+    assert policy.execution == "rearm-weapon"
+
+
+def test_missing_primary_weapon_selects_rearm_without_actionable_loot() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_sellable_loot=False,
         has_weapon=False,
     )
 
@@ -3557,6 +3716,675 @@ def test_viable_red_supergiant_probe_promotes_one_bounded_hunt() -> None:
     assert policy.segment_kill_limit == 1
 
 
+def test_level_eighteen_uses_horsehead_probe_after_red_supergiant_absence() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        last_policy_id="galaxy-horsehead-nebula-probe-18-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True, "viable": False, "boot_id": "boot-1"
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-red-supergiant-hunt-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+        },
+    )
+
+    assert policy.policy_id == "galaxy-horsehead-nebula-probe-18-20"
+    assert policy.execution == "galaxy-horsehead-nebula-research"
+    assert policy.status == "research"
+
+
+def test_galaxy_policy_is_deferred_when_flight_purchase_has_failed() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        flight_purchase_failed=True,
+        flight_loan_attempted=True,
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.execution is None
+    assert "requires active fly or levitation" in policy.summary
+    assert "galaxy-white-dwarf-secondary" not in policy.policy_id
+
+
+def test_failed_flight_purchase_uses_source_funding_after_loan_is_used() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_food=True,
+        needs_provision_funding=True,
+        has_flight=False,
+        flight_purchase_failed=True,
+        flight_loan_attempted=True,
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "provision-funding"
+    assert policy.execution == "provision-funding"
+
+
+def test_completed_flight_funding_allows_loot_liquidation_before_retry() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_sellable_loot=True,
+        has_flight=False,
+        flight_purchase_failed=True,
+        flight_loan_attempted=True,
+        flight_funding_retry_pending=True,
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
+
+
+def test_completed_flight_funding_retries_purchase_after_maintenance() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=False,
+        flight_purchase_failed=True,
+        flight_loan_attempted=True,
+        flight_funding_retry_pending=True,
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+def test_galaxy_policy_takes_one_bounded_loan_after_flight_purchase_failure() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=False,
+        flight_purchase_failed=True,
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "borrow-flight-potion"
+    assert policy.execution == "borrow-flight"
+
+
+def test_excluded_current_policy_takes_bounded_loan_after_flight_failure() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=False,
+        flight_purchase_failed=True,
+        excluded_policy_ids=frozenset(
+            {"mahntor-rock-toad-thief-circuit-16-18"}
+        ),
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "borrow-flight-potion"
+    assert policy.execution == "borrow-flight"
+
+
+def test_galaxy_policy_requests_flight_before_launch_when_purchase_is_available() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+def test_viable_horsehead_probe_promotes_one_bounded_hunt() -> None:
+    policy = policy_for(
+        18,
+        "warrior",
+        has_flight=True,
+        last_policy_id="galaxy-horsehead-nebula-probe-18-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True, "viable": False, "boot_id": "boot-1"
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": False, "viable": False, "absent": True, "boot_id": "boot-1"
+            },
+            "galaxy-horsehead-nebula-probe-18-20": {
+                "observed": True, "viable": True, "boot_id": "boot-1"
+            },
+        },
+    )
+
+    assert policy.policy_id == "galaxy-horsehead-nebula-hunt-18-20"
+    assert policy.execution == "galaxy-horsehead-nebula-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def _level_eighteen_research_outcomes() -> dict[str, dict[str, object]]:
+    return {
+        "mirror-realm-watchman-probe-16-20": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+        "mirror-realm-watchman-hunt-16-20": {
+            "observed": False, "viable": False, "boot_id": "boot-1"
+        },
+        "crystalmir-white-stag-probe-16-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "crystalmir-white-stag-hunt-16-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "shadow-keep-undead-soldier-probe-16-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "shadow-keep-undead-soldier-hunt-16-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "galaxy-white-dwarf-probe-17-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "galaxy-red-supergiant-probe-17-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "galaxy-red-supergiant-hunt-17-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "galaxy-horsehead-nebula-probe-18-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "dwarven-nobleman-thief-probe-17-18": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+        "dwarven-servant-thief-probe-17-18": {
+            "observed": True, "viable": True, "boot_id": "boot-1"
+        },
+        "dwarven-servant-thief-hunt-17-18": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+        "hightower-jailor-probe-17-20": {
+            "observed": True, "viable": True, "boot_id": "boot-1"
+        },
+        "hightower-jailor-hunt-17-20": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+        "shire-thain-probe-17-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+        "shire-elven-wizard-probe-17-20": {
+            "observed": True, "viable": True, "boot_id": "boot-1"
+        },
+        "shire-elven-wizard-hunt-17-20": {
+            "observed": True, "viable": False, "boot_id": "boot-1"
+        },
+        "pyramid-ali-baba-probe-18-20": {
+            "observed": False, "viable": False, "absent": True,
+            "boot_id": "boot-1"
+        },
+    }
+
+
+def test_level_eighteen_uses_secondary_white_dwarf_after_horsehead_absence() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        last_policy_id="galaxy-horsehead-nebula-probe-18-20",
+        world_boot_id="boot-1",
+        research_results=_level_eighteen_research_outcomes(),
+    )
+
+    assert policy.policy_id == "galaxy-white-dwarf-secondary-probe-17-20"
+    assert policy.execution == "galaxy-white-dwarf-secondary-research"
+    assert policy.status == "research"
+
+
+def test_level_eighteen_thief_opens_pyramid_after_secondary_routes_are_consumed() -> None:
+    results = _level_eighteen_research_outcomes()
+    results.pop("pyramid-ali-baba-probe-18-20")
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        last_policy_id="galaxy-horsehead-nebula-probe-18-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "pyramid-ali-baba-probe-18-20"
+    assert policy.execution == "pyramid-ali-baba-research"
+    assert policy.status == "research"
+
+
+@pytest.mark.parametrize("character_class", ["thief", "warrior", "mage"])
+def test_level_eighteen_opens_generic_lord_doom_probe_after_registered_routes(
+    character_class: str,
+) -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        character_class,
+        has_flight=True,
+        last_policy_id="crystalmir-white-stag-probe-16-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "solace-lord-doom-probe-18-20"
+    assert policy.execution == "solace-lord-doom-research"
+    assert policy.status == "research"
+
+
+def test_level_eighteen_uses_highland_keeper_after_current_routes_are_consumed() -> None:
+    results = _level_eighteen_research_outcomes()
+    results.update(
+        {
+            "galaxy-white-dwarf-secondary-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "solace-lord-doom-probe-18-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "solace-lord-doom-hunt-18-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "argent-bandit-leader-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        last_policy_id="argent-bandit-leader-probe-17-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "highland-keeper-probe-17-20"
+    assert policy.execution == "highland-keeper-research"
+    assert policy.status == "research"
+
+
+def test_viable_highland_keeper_probe_promotes_one_bounded_hunt() -> None:
+    results = _level_eighteen_research_outcomes()
+    results.update(
+        {
+            "galaxy-white-dwarf-secondary-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "solace-lord-doom-probe-18-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "solace-lord-doom-hunt-18-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "argent-bandit-leader-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "highland-keeper-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="highland-keeper-probe-17-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "highland-keeper-hunt-17-20"
+    assert policy.execution == "highland-keeper-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_viable_lord_doom_probe_promotes_one_bounded_hunt() -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-probe-18-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        last_policy_id="solace-lord-doom-probe-18-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "solace-lord-doom-hunt-18-20"
+    assert policy.execution == "solace-lord-doom-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_failed_lord_doom_hunt_opens_sanctuary_recovery() -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-probe-18-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-hunt-18-20"] = {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+    results["moria-sanctuary-thief-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        has_acquired_sanctuary_potion=False,
+        last_policy_id="solace-lord-doom-hunt-18-20",
+        world_boot_id="boot-1",
+        research_results=results,
+        excluded_policy_ids=frozenset({"moria-sanctuary-thief-17-20"}),
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
+def test_moria_sanctuary_acquisition_promotes_distinct_lord_doom_retry() -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-hunt-18-20"] = {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+    results["moria-sanctuary-thief-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "objective_kill": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=True,
+        has_acquired_sanctuary_potion=True,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "solace-lord-doom-sanctuary-hunt-18-20"
+    assert policy.execution == "solace-lord-doom-hunt"
+    assert "purple sanctuary potion" in policy.summary
+
+
+def test_recorded_failed_lord_doom_hunt_is_not_promoted_from_stale_probe() -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-probe-18-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-hunt-18-20"] = {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        last_policy_id="solace-lord-doom-probe-18-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.policy_id != "solace-lord-doom-hunt-18-20"
+
+
+def test_failed_lord_doom_keeps_absent_sanctuary_recovery_live_after_maintenance() -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-probe-18-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-hunt-18-20"] = {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+    results["moria-sanctuary-thief-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        has_acquired_sanctuary_potion=False,
+        last_policy_id="restock-provisions",
+        world_boot_id="boot-1",
+        research_results=results,
+        excluded_policy_ids=frozenset({"moria-sanctuary-thief-17-20"}),
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
+def test_moria_reset_cooldown_opens_shire_research_without_sanctuary() -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-hunt-18-20"] = {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+    results["moria-sanctuary-thief-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        research_results=results,
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+        },
+    )
+
+    assert policy.policy_id == "shire-dwarven-prince-thief-probe-17-20"
+    assert policy.execution == "shire-dwarven-prince-research"
+    assert policy.status == "research"
+
+
+def test_viable_secondary_white_dwarf_probe_promotes_one_bounded_hunt() -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    policy = policy_for(
+        18,
+        "warrior",
+        has_flight=True,
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "galaxy-white-dwarf-secondary-hunt-17-20"
+    assert policy.execution == "galaxy-white-dwarf-secondary-hunt"
+    assert policy.segment_kill_limit == 1
+
+
 def test_level_seventeen_thief_uses_jailor_after_nobleman_and_servant_reject() -> None:
     research_results = {
         "mirror-realm-watchman-probe-16-20": {
@@ -4168,6 +4996,92 @@ def test_level_eighteen_thief_opens_pyramid_probe_after_known_paths() -> None:
     assert policy.status == "research"
 
 
+def test_level_eighteen_thief_opens_unrecorded_prince_probe_after_late_route() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "hightower-jailor-hunt-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "moria-sanctuary-thief-17-20",
+            "pyramid-ali-baba-probe-18-20",
+        )
+    }
+    recorded_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="pyramid-ali-baba-probe-18-20",
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "shire-dwarven-prince-thief-probe-17-20"
+    assert policy.execution == "shire-dwarven-prince-research"
+    assert policy.status == "research"
+
+
+def test_level_eighteen_thief_opens_thain_after_absent_prince_probe() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "hightower-jailor-hunt-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "moria-sanctuary-thief-17-20",
+            "pyramid-ali-baba-probe-18-20",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    recorded_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="pyramid-ali-baba-probe-18-20",
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "shire-thain-probe-17-20"
+    assert policy.execution == "shire-thain-research"
+    assert policy.status == "research"
+
+
 def test_viable_pyramid_probe_promotes_to_hunt_without_sanctuary() -> None:
     recorded_results = {
         policy_id: {
@@ -4332,6 +5246,107 @@ def test_absent_shire_thain_rotates_to_the_next_shire_research_probe() -> None:
     assert policy.status == "research"
 
 
+def test_absent_shire_thain_enters_viable_wizard_sanctuary_path() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    recorded_results["shire-thain-probe-17-20"] = {
+        "absent": True,
+        "observed": False,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+    recorded_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_sanctuary_potion=False,
+        last_policy_id="shire-thain-probe-17-20",
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.status == "research"
+
+
+def test_absent_thain_reuses_productive_wizard_hunt_after_probe_and_hunt() -> None:
+    recorded_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    recorded_results["shire-thain-probe-17-20"] = {
+        "absent": True,
+        "observed": False,
+        "viable": False,
+        "boot_id": "boot-1",
+    }
+    recorded_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    recorded_results["shire-elven-wizard-hunt-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_sanctuary_potion=True,
+        last_policy_id="shire-thain-probe-17-20",
+        policy_xp_deltas={"shire-elven-wizard-hunt-17-20": 1048},
+        world_boot_id="boot-1",
+        research_results=recorded_results,
+    )
+
+    assert policy.policy_id == "shire-elven-wizard-hunt-17-20"
+    assert policy.execution == "shire-elven-wizard-hunt"
+
+
 def test_viable_shire_wizard_requires_sanctuary_before_hunt() -> None:
     recorded_results = {
         policy_id: {
@@ -4462,6 +5477,177 @@ def test_cleared_moria_absence_reopens_the_required_wizard_reserve() -> None:
     assert policy.execution == "moria-sanctuary-hunt"
 
 
+def test_incomplete_moria_sanctuary_recovery_retries_missing_potion() -> None:
+    research_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+        )
+    }
+    research_results["shire-elven-wizard-probe-17-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    research_results["moria-sanctuary-thief-17-20"] = {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_sanctuary_potion=False,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        research_results=research_results,
+        excluded_policy_ids=frozenset({"moria-sanctuary-thief-17-20"}),
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
+def test_historical_sanctuary_recovery_reopens_after_caster_hunt_failure() -> None:
+    research_results = {
+        policy_id: {
+            "observed": False,
+            "viable": False,
+            "absent": True,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "shadow-keep-undead-soldier-hunt-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "dwarven-nobleman-thief-probe-17-18",
+            "dwarven-nobleman-thief-hunt-17-18",
+            "dwarven-servant-thief-probe-17-18",
+            "dwarven-servant-thief-hunt-17-18",
+            "shire-dwarven-prince-thief-probe-17-20",
+            "shire-dwarven-prince-thief-hunt-17-20",
+            "shire-thain-probe-17-20",
+            "shire-thain-hunt-17-20",
+            "pyramid-ali-baba-probe-18-20",
+            "pyramid-ali-baba-hunt-18-20",
+            "galaxy-red-supergiant-hunt-17-20",
+        )
+    }
+    research_results.update(
+        {
+            "hightower-jailor-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "hightower-jailor-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "shire-elven-wizard-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shire-elven-wizard-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "moria-sanctuary-thief-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_sanctuary_potion=False,
+        has_acquired_sanctuary_potion=True,
+        has_flight=True,
+        last_policy_id="galaxy-red-supergiant-hunt-17-20",
+        world_boot_id="boot-1",
+        research_results=research_results,
+        excluded_policy_ids=frozenset(
+            {
+                "moria-sanctuary-thief-17-20",
+                "mahntor-rock-toad-thief-circuit-16-18",
+                "plains-aruncus-thief-fallback-17-18",
+            }
+        ),
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert "Replenish" in policy.summary
+
+
+def test_explicit_moria_absence_does_not_loop_after_historical_acquisition() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_sanctuary_potion=False,
+        has_acquired_sanctuary_potion=True,
+        has_flight=True,
+        last_policy_id="galaxy-red-supergiant-hunt-17-20",
+        world_boot_id="boot-1",
+        research_results={
+            "moria-sanctuary-thief-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shire-elven-wizard-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "hightower-jailor-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+        },
+        excluded_policy_ids=frozenset(
+            {
+                "moria-sanctuary-thief-17-20",
+                "mahntor-rock-toad-thief-circuit-16-18",
+                "plains-aruncus-thief-fallback-17-18",
+            }
+        ),
+    )
+
+    assert policy.policy_id != "moria-sanctuary-thief-17-20"
+
+
 def test_level_eighteen_reuses_productive_hunt_after_crowded_probe() -> None:
     research_results = {
         policy_id: {
@@ -4513,6 +5699,46 @@ def test_level_eighteen_reuses_productive_hunt_after_crowded_probe() -> None:
 
     assert policy.policy_id == "galaxy-white-dwarf-hunt-17-20"
     assert policy.execution == "galaxy-white-dwarf-hunt"
+
+
+def test_level_eighteen_crowded_moria_defers_to_productive_keeper_hunt() -> None:
+    research_results = _level_eighteen_research_outcomes()
+    research_results.update(
+        {
+            "moria-sanctuary-thief-17-20": {
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+                "boot_id": "boot-1",
+            },
+            "highland-keeper-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "highland-keeper-hunt-17-20": {
+                "observed": True,
+                "viable": True,
+                "completed_kill": True,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=True,
+        has_acquired_sanctuary_potion=True,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        policy_xp_deltas={"highland-keeper-hunt-17-20": 1159},
+        research_results=research_results,
+        research_crowd_cooldowns={"moria-sanctuary-thief-17-20": 3},
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "highland-keeper-hunt-17-20"
+    assert policy.execution == "highland-keeper-hunt"
 
 
 def test_viable_shire_prince_probe_promotes_bounded_hunt() -> None:
@@ -5228,6 +6454,207 @@ def test_level_eighteen_thief_uses_late_bardoosh_after_excluded_empty_toads() ->
     assert policy.execution == "ambush-bardoosh-hunt"
     assert policy.status == "research"
     assert policy.segment_kill_limit == 1
+
+
+def test_level_eighteen_thief_enters_late_bardoosh_after_aruncus_exclusion() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="plains-aruncus-thief-fallback-17-18",
+        world_boot_id="boot-1",
+        excluded_policy_ids=frozenset(
+            {
+                "mahntor-rock-toad-thief-circuit-16-18",
+                "plains-aruncus-thief-fallback-17-18",
+            }
+        ),
+        policy_xp_deltas={
+            "mahntor-rock-toad-thief-circuit-16-18": 0,
+            "plains-aruncus-thief-fallback-17-18": 0,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "ambush-bardoosh-thief-kill-research-17-18"
+    assert policy.execution == "ambush-bardoosh-hunt"
+    assert policy.status == "research"
+
+
+def test_level_eighteen_thief_advances_from_rejected_bardoosh_to_hightower() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="ambush-bardoosh-thief-kill-research-17-18",
+        world_boot_id="boot-1",
+        excluded_policy_ids=frozenset(
+            {
+                "mahntor-rock-toad-thief-circuit-16-18",
+                "plains-aruncus-thief-fallback-17-18",
+                "ambush-bardoosh-thief-kill-research-17-18",
+            }
+        ),
+        policy_xp_deltas={
+            "ambush-bardoosh-thief-kill-research-17-18": 0,
+        },
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "ambush-bardoosh-thief-kill-research-17-18": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "hightower-jailor-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "hightower-jailor-hunt-17-20"
+    assert policy.execution == "hightower-jailor-hunt"
+    assert policy.status == "research"
+
+
+def test_level_eighteen_thief_revisits_hightower_after_current_band_probes() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        last_policy_id="crystalmir-white-stag-probe-16-20",
+        world_boot_id="boot-1",
+        excluded_policy_ids=frozenset(
+            {
+                "mahntor-rock-toad-thief-circuit-16-18",
+                "plains-aruncus-thief-fallback-17-18",
+            }
+        ),
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-white-dwarf-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "galaxy-red-supergiant-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-nobleman-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-servant-thief-probe-17-18": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "hightower-jailor-probe-17-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "hightower-jailor-hunt-17-20"
+    assert policy.execution == "hightower-jailor-hunt"
+    assert policy.status == "research"
 
 
 def test_late_bardoosh_probe_promotes_then_returns_to_toads() -> None:

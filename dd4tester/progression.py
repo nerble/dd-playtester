@@ -45,6 +45,11 @@ class ProgressionPolicy:
     def executable(self) -> bool:
         return self.execution is not None and self.status in {"verified", "research"}
 
+    @property
+    def requires_flight(self) -> bool:
+        """Return whether the registered route uses Galaxy's flight gate."""
+        return bool(self.execution and self.execution.startswith("galaxy-"))
+
     def blocks_message(self, character_class: str) -> str:
         if self.status == "research":
             return (
@@ -72,6 +77,9 @@ class ProgressionContext:
     needs_coin_deposit: bool = False
     needs_capacity_relief: bool = False
     has_food: bool = True
+    needs_provision_funding: bool = False
+    has_emergency_provision_sale: bool = False
+    needs_return_home: bool = False
     has_weapon: bool = True
     needs_basic_gear: bool = False
     needs_body_gear_recovery: bool = False
@@ -89,12 +97,17 @@ class ProgressionContext:
     movement_available: int = 0
     movement_capacity: int = 0
     has_sanctuary_potion: bool = False
+    has_acquired_sanctuary_potion: bool = False
     has_flight: bool = True
     can_attempt_flight_purchase: bool = False
     flight_purchase_failed: bool = False
+    flight_loan_attempted: bool = False
+    flight_funding_retry_pending: bool = False
     boot_kill_counts: Mapping[str, int] | None = None
     policy_xp_deltas: Mapping[str, int] | None = None
     research_results: Mapping[str, Mapping[str, object]] | None = None
+    research_absence_cooldowns: Mapping[str, int] | None = None
+    research_crowd_cooldowns: Mapping[str, int] | None = None
     excluded_policy_ids: frozenset[str] = frozenset()
     world_boot_id: str | int | None = None
     stalled_segments: int = 0
@@ -1624,6 +1637,43 @@ _RESTOCK_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_PROVISION_FUNDING_POLICY = ProgressionPolicy(
+    policy_id="provision-funding",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="provision-funding",
+    summary=(
+        "Use a source-ranked, autonomous-safe field target with saleable loot "
+        "or coins to fund essential food and water."
+    ),
+    evidence=(
+        "The campaign ranks current source resets by live-safe level range, "
+        "route hazards, source loot, and current-reboot kill counts.",
+        "Funding hunts are bounded to one exact target, recall after loot, "
+        "and feed the ordinary liquidation and restock policies afterward.",
+        "Live run 2766 killed Bardoosh for 498 XP and returned five saleable "
+        "drops plus one silver; live run 2767 sold those drops at the Leather "
+        "Shop, Weapon Shop, and Armoury, raising carried funds to 4 gold, "
+        "17 silver, and 36 copper before the flight purchase.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_RETURN_HOME_POLICY = ProgressionPolicy(
+    policy_id="return-home",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="return-home",
+    summary="Leave an interrupted tutorial or field room and recover at the Midgaard healer.",
+    evidence=(
+        "The starter runner has a source-backed return route from Mud School rooms to healer room 3054.",
+    ),
+    practice_skill=None,
+)
+
 _REARM_WEAPON_POLICY = ProgressionPolicy(
     policy_id="rearm-primary-weapon",
     minimum_level=2,
@@ -1894,8 +1944,30 @@ _BUY_FLIGHT_POLICY = ProgressionPolicy(
         "Live run 437 bought the same potion for 94 copper after becoming visible and verifying the purchase.",
         "Live run 1113 bought the potion for 534 copper on reboot Mon Jul 20 06:53:03 2026 and confirmed the fly affect before Dorrik's martial field rotation.",
         "Live run 1128 rechecked the shop, bought the currently listed 94-copper potion, and confirmed the fly affect before the level-nine Ambush sweep.",
+        "Live run 2768 listed the reboot-priced light blue potion at 147 copper, bought it after the generic funding hunt and compatible loot sale, and confirmed the fly affect before returning to healer room 3054.",
         "The workflow checks current stock and affordability instead of assuming a fixed reboot price.",
         "DD4 fight.c suppresses NPC trip attempts against flying, fly-affected, or levitating targets.",
+    ),
+    practice_skill=None,
+)
+
+_BORROW_FLIGHT_POLICY = ProgressionPolicy(
+    policy_id="borrow-flight-potion",
+    minimum_level=5,
+    maximum_level=None,
+    status="verified",
+    execution="borrow-flight",
+    summary=(
+        "After a confirmed flight-potion purchase shortfall, use one bounded "
+        "Dragonhoard Bank funding action before retrying the current price."
+    ),
+    evidence=(
+        "DD4 source revision 1b759f5: act_obj.c do_borrow requires a banker, "
+        "allows a minimum loan of 100 coins, and records the amount borrowed.",
+        "DD4 source revision 1b759f5: midgaard.are room 3007 is the safe "
+        "Dragonhoard Bank branch and documents the Borrow command.",
+        "The campaign records one funding attempt and never repeats it after "
+        "an unconfirmed banker response.",
     ),
     practice_skill=None,
 )
@@ -2727,14 +2799,23 @@ _SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY = ProgressionPolicy(
         "DD4 source revision d7cb330: mobile 1117, the dwarven prince, "
         "resets once in Shire room 1136 at source level 17 with normal "
         "15-19 live fuzz.",
-        "The source reset also loads one elven warrior in room 1136, so the "
-        "probe requires a single exact target and rejects the companion as a "
-        "combat crowd.",
+        "The source reset also loads one elven warrior in room 1136. Source "
+        "refresh 1b759f5 confirms both mobiles are sentinel and non-aggressive; "
+        "the warrior's spec_cast_mage only selects a victim fighting that "
+        "warrior, so it is an approved bystander while the prince is targeted.",
+        "Source refresh 1b759f5 also defines mobile 1111, the mobile shiriff, "
+        "at level 8 with ACT_SCAVENGER|ACT_STAY_AREA and no ACT_AGGRESSIVE. "
+        "Its spec_guard responds to flagged player crimes or NPC-on-NPC fights, "
+        "so it is a trivial below-band bystander rather than an unsafe crowd "
+        "during a direct prince fight.",
         "The prince is sentinel and non-aggressive but has spec_cast_mage, "
         "positive alignment, and a mithril axe; this policy records route, "
         "presence, crowd, and consider evidence before any hunt promotion.",
         "The source-derived recall route is 2s5w4n2w5nw and ends at room 1136 "
         "without entering the Thain's guard office.",
+        "Live run 2758 reached room 1136, considered the exact target-mode "
+        "selector #720 for the prince without combat, then returned to healer "
+        "room 3054 at full health.",
     ),
     practice_skill="backstab",
 )
@@ -2751,7 +2832,8 @@ _SHIRE_DWARVEN_PRINCE_THIEF_HUNT_POLICY = replace(
     evidence=(
         *_SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY.evidence,
         "Combat remains limited to one exact target, a 95% departure-health "
-        "floor, a maximum +1 live-level offset, and no elven-warrior or other "
+        "floor, a maximum +1 live-level offset, the registered elven-warrior "
+        "bystander, the source-proven trivial shiriff bystander, and no other "
         "unapproved bystander.",
     ),
     segment_kill_limit=1,
@@ -2860,6 +2942,57 @@ _SHIRE_ELVEN_WIZARD_HUNT_POLICY = replace(
 )
 
 
+_ARGENT_BANDIT_LEADER_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="argent-bandit-leader-probe-17-20",
+    minimum_level=17,
+    maximum_level=20,
+    status="research",
+    execution="argent-bandit-leader-research",
+    summary=(
+        "Reach the Argent Olive Grove and consider the isolated bandit leader "
+        "with its source-identified bandit companion without initiating combat."
+    ),
+    evidence=(
+        "DD4 source revision 1b759f5: mobile 25202, the bandit leader, resets "
+        "once in Argent room 25205 at source level 17 with normal 15-19 live "
+        "fuzz and no aggressive flag.",
+        "The same reset room can contain source mobile 25201, a level-16 bandit, "
+        "up to two copies. The probe therefore permits only the canonical "
+        "bandit bystander and rejects every other mobile or target duplicate.",
+        "The source special is spec_thief. special.c only transfers a random "
+        "1-20 percent of carried coins and does not perform a combat attack; "
+        "the runner still keeps a bounded coin-loss record.",
+        "The source route is 2s6e4s2es2ed2e5n5es from recall and ends at room "
+        "25205. The connected live search then follows 25205-25203-25202, "
+        "25202-25203, 25203-25202-25204, and 25204-25205 rather than asking "
+        "GMCP for a non-adjacent exit. The reset loads the leader's shortsword "
+        "and leather equipment.",
+        "A useful-band live consider and exact target-mode selector are required "
+        "before any hunt promotion; a failed or absent probe is reboot-scoped.",
+    ),
+    practice_skill="backstab",
+)
+
+
+_ARGENT_BANDIT_LEADER_HUNT_POLICY = replace(
+    _ARGENT_BANDIT_LEADER_RESEARCH_POLICY,
+    policy_id="argent-bandit-leader-hunt-17-20",
+    execution="argent-bandit-leader-hunt",
+    summary=(
+        "Use one same-reboot viable, isolated Argent bandit-leader probe for a "
+        "bounded hunt while allowing only its source-identified bandit companion."
+    ),
+    evidence=(
+        *_ARGENT_BANDIT_LEADER_RESEARCH_POLICY.evidence,
+        "Combat requires at least 90% departure health, a maximum +1 live-level "
+        "offset, one exact leader target, no second leader, and no unapproved "
+        "bystander. Return after one confirmed kill or any disarm, health, "
+        "movement, or combat-progress boundary.",
+    ),
+    segment_kill_limit=1,
+)
+
+
 _PYRAMID_ALI_BABA_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="pyramid-ali-baba-probe-18-20",
     minimum_level=18,
@@ -2922,6 +3055,71 @@ _PYRAMID_ALI_BABA_HUNT_POLICY = replace(
         "an attack-safe guarantee.",
     ),
     segment_kill_limit=1,
+)
+
+
+_SOLACE_LORD_DOOM_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="solace-lord-doom-probe-18-20",
+    minimum_level=18,
+    maximum_level=20,
+    status="research",
+    execution="solace-lord-doom-research",
+    summary=(
+        "Reach Solace's source-isolated Lord Doom reset and record fresh "
+        "consideration before authorizing combat."
+    ),
+    evidence=(
+        "DD4 source revision 1b759f5: mobile 10244, Lord Doom, resets once "
+        "in Solace room 10301 at source level 18 with normal 16-20 live fuzz.",
+        "Lord Doom is sentinel, non-aggressive, has no special procedure, and "
+        "has no reset companion in the source room. It equips a crystal shield "
+        "and wields a crystal longsword, so the armed-mobile damage risk remains "
+        "a live consider gate rather than an assumed safe kill.",
+        "The source-derived route is a 66-command return path from recall with "
+        "three reset-open doors. Source candidate analysis identifies only "
+        "lower-band wandering route mobiles; the probe permits their exact "
+        "source identities but still aborts on any unknown or useful-band "
+        "attacker.",
+        "The first pass is exact-target, isolated, and consider-only. A hunt "
+        "requires fresh same-reboot viability, at least 90-percent health, a "
+        "maximum two-level live offset, and one confirmed kill.",
+    ),
+    practice_skill=None,
+)
+
+
+_SOLACE_LORD_DOOM_HUNT_POLICY = replace(
+    _SOLACE_LORD_DOOM_RESEARCH_POLICY,
+    policy_id="solace-lord-doom-hunt-18-20",
+    execution="solace-lord-doom-hunt",
+    summary=(
+        "Use one fresh viable Lord Doom consideration for a bounded current-"
+        "band hunt, then return to the Midgaard healer."
+    ),
+    evidence=(
+        *_SOLACE_LORD_DOOM_RESEARCH_POLICY.evidence,
+        "The hunt repeats consider immediately before combat and preserves the "
+        "exact-target, sole-mobile, armed-target, health, and healer-return "
+        "gates.",
+    ),
+    segment_kill_limit=1,
+)
+
+
+_SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY = replace(
+    _SOLACE_LORD_DOOM_HUNT_POLICY,
+    policy_id="solace-lord-doom-sanctuary-hunt-18-20",
+    summary=(
+        "Retry Lord Doom once with a carried purple sanctuary potion after "
+        "the unprotected hunt has been recorded as nonviable."
+    ),
+    evidence=(
+        *_SOLACE_LORD_DOOM_HUNT_POLICY.evidence,
+        "Live run 2721 reached a source-valid Lord Doom but had to flee after "
+        "the armed target disarmed Kestrel and inflicted heavy damage. The "
+        "retry therefore requires a source-verified sanctuary reserve and is "
+        "distinct from the failed unprotected hunt.",
+    ),
 )
 
 
@@ -3160,6 +3358,82 @@ _SHADOW_KEEP_SOLDIER_HUNT_POLICY = ProgressionPolicy(
 )
 
 
+_HIGHLAND_KEEPER_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="highland-keeper-probe-17-20",
+    minimum_level=17,
+    maximum_level=20,
+    status="research",
+    execution="highland-keeper-research",
+    summary=(
+        "Reach the source-isolated Highland Keeper and consider it without "
+        "initiating combat."
+    ),
+    evidence=(
+        "DD4 source revision 1b759f5: mobiles 11512, 11518, 11519, and "
+        "11520 are source-level-16 Keepers of the Tower, each resetting once "
+        "in separate Highland beacon rooms.",
+        "The Keeper is sentinel, non-aggressive, neutral, unarmed, and has no "
+        "special procedure. The source rooms also reset non-aggressive "
+        "barbarians, so the live probe requires one exact Keeper and no other "
+        "mobile before considering it viable.",
+        "The same area resets aggressive mobile 11517, a hideous bogleech, "
+        "at source level 12 with a 10-14 live range; its source wander flag "
+        "allows it to enter the bog route. At level 18 it is below-band, so "
+        "the runner may finish an unavoidable interruption without treating "
+        "it as Keeper evidence or an XP target.",
+        "The source-derived route reaches southwestern beacon room 11536 from "
+        "Midgaard recall without crossing a source aggressive reset, then uses "
+        "live GMCP exits to visit the other Keeper reset rooms 11530, 11584, and "
+        "11591. Each endpoint remains independently isolated and a crowded or "
+        "missing endpoint is skipped without converting the area into a reboot-"
+        "long rejection.",
+        "The source mobile identity parser canonicalizes the live room line to "
+        "`keeper`; TARGETMODE and all targeted combat commands use that exact "
+        "identity.",
+        "The probe records live isolation and do_consider output without "
+        "attacking. Level difference, not the HP wording in consider, controls "
+        "useful XP eligibility.",
+    ),
+    practice_skill=None,
+)
+
+
+_HIGHLAND_KEEPER_HUNT_POLICY = ProgressionPolicy(
+    policy_id="highland-keeper-hunt-17-20",
+    minimum_level=17,
+    maximum_level=20,
+    status="research",
+    execution="highland-keeper-hunt",
+    summary=(
+        "Run one bounded Highland Keeper hunt after a fresh isolated, "
+        "useful-band consideration."
+    ),
+    evidence=(
+        *_HIGHLAND_KEEPER_RESEARCH_POLICY.evidence,
+        "Combat promotion requires fresh exact isolation, at least 85% health, "
+        "a target no more than one live level above the character, and one "
+        "confirmed kill before this policy can be reused.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
+_GALAXY_SHADOW_GROVE_ROUTE_HAZARD_EVIDENCE = (
+    "DD4 source revision 1b759f5: mobile 1300, the shadow guardian, is an "
+    "aggressive source-level-9 mobile reset throughout the Shadow Grove. "
+    "The official Galaxy routes enter safe entrance room 1300 before crossing "
+    "into randomized Grove rooms where the guardian can auto-attack.",
+    "The route now issues `where shadow guardian` at room 1300 and recalls "
+    "before entering the Grove when the source-registered hazard is present. "
+    "A detected hazard is persisted as reboot-scoped nonviability evidence, "
+    "rather than being retried as if the destination target were merely absent.",
+    "Live run 2711 confirmed three guardian interruptions before the Horsehead "
+    "objective, with no objective kill or XP gain; that transcript is the live "
+    "evidence for this preflight boundary.",
+)
+
+
 _GALAXY_WHITE_DWARF_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="galaxy-white-dwarf-probe-17-20",
     minimum_level=17,
@@ -3171,6 +3445,7 @@ _GALAXY_WHITE_DWARF_RESEARCH_POLICY = ProgressionPolicy(
         "white dwarf without initiating combat."
     ),
     evidence=(
+        *_GALAXY_SHADOW_GROVE_ROUTE_HAZARD_EVIDENCE,
         "DD4 source revision cd138ae: Galaxy mobile 9306 is source level 15 "
         "with a 13-17 live range, is non-aggressive, unarmed, stay-area, and "
         "has no special procedure.",
@@ -3221,6 +3496,58 @@ _GALAXY_WHITE_DWARF_HUNT_POLICY = ProgressionPolicy(
 )
 
 
+_GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+    minimum_level=17,
+    maximum_level=20,
+    status="research",
+    execution="galaxy-white-dwarf-secondary-research",
+    summary=(
+        "Follow the independent Galaxy room-9314 route and consider its white "
+        "dwarf without initiating combat."
+    ),
+    evidence=(
+        *_GALAXY_SHADOW_GROVE_ROUTE_HAZARD_EVIDENCE,
+        "DD4 source revision 1b759f5: mobile 9306 is source level 15 with the "
+        "normal 13-17 live range, non-aggressive, stay-area, unarmed, and has "
+        "no special procedure.",
+        "The source has a separate one-mobile reset `M 0 9306 1 9314` in room "
+        "9314, At the End of the Milky Way. That room has no companion reset, "
+        "so it is independent evidence from the already-cleared room-9306 "
+        "probe and the unsafe room-9322 branch.",
+        "The route reuses the live-GMCP Shadow Grove navigation, reaches room "
+        "9308, then follows source exits east to 9312, north to 9313, and north "
+        "to 9314. The target parser binds the live room line to `tiny white "
+        "dwarf` and the source keyword `white`.",
+        "The first pass is exact-target and consider-only. A fresh live consider "
+        "with no unsafe crowd and no more than one live level above the character "
+        "is required before any hunt promotion.",
+    ),
+    practice_skill=None,
+)
+
+
+_GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY = ProgressionPolicy(
+    policy_id="galaxy-white-dwarf-secondary-hunt-17-20",
+    minimum_level=17,
+    maximum_level=20,
+    status="research",
+    execution="galaxy-white-dwarf-secondary-hunt",
+    summary=(
+        "Use fresh viable room-9314 white-dwarf evidence for one bounded fight, "
+        "then return to the Midgaard healer."
+    ),
+    evidence=(
+        *_GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY.evidence,
+        "The hunt requires at least 85% health, a fresh exact consider no more "
+        "than one level above the character, no unsafe bystander, and one "
+        "confirmed kill.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
 _GALAXY_RED_SUPERGIANT_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="galaxy-red-supergiant-probe-17-20",
     minimum_level=17,
@@ -3232,6 +3559,7 @@ _GALAXY_RED_SUPERGIANT_RESEARCH_POLICY = ProgressionPolicy(
         "supergiant without initiating combat."
     ),
     evidence=(
+        *_GALAXY_SHADOW_GROVE_ROUTE_HAZARD_EVIDENCE,
         "DD4 source revision cd138ae: Galaxy mobile 9305 is source level 15 "
         "with a 13-17 live range, is sentinel, non-aggressive, stay-area, "
         "and has no special procedure.",
@@ -3276,6 +3604,58 @@ _GALAXY_RED_SUPERGIANT_HUNT_POLICY = ProgressionPolicy(
 )
 
 
+_GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="galaxy-horsehead-nebula-probe-18-20",
+    minimum_level=18,
+    maximum_level=20,
+    status="research",
+    execution="galaxy-horsehead-nebula-research",
+    summary=(
+        "Follow the source-derived Galaxy route and consider the isolated "
+        "Horsehead Nebula without initiating combat."
+    ),
+    evidence=(
+        *_GALAXY_SHADOW_GROVE_ROUTE_HAZARD_EVIDENCE,
+        "DD4 source revision 1b759f5: mobile 9307, the Horsehead Nebula, is "
+        "level 18 with the normal 16-20 live range, sentinel, stay-area, "
+        "non-aggressive, and has no special procedure.",
+        "The source resets one Horsehead Nebula in room 9310. Its only room "
+        "companions are young nebulae (mobile 9303), which are stay-area and "
+        "non-aggressive; the runner allows that exact bystander identity but "
+        "still rejects every other observed mobile.",
+        "The route reuses the live-GMCP Shadow Grove navigation and the proven "
+        "Galaxy chain, then enters room 9310 from room 9309 by north. `where "
+        "horsehead` is a bounded area-presence preflight before the long search.",
+        "The first pass is exact-target and consider-only. At character level "
+        "18 the source-fuzz ceiling is plus two; the live consider result, "
+        "health, crowd, and combat watchdog gates remain authoritative before "
+        "any hunt promotion.",
+    ),
+    practice_skill=None,
+)
+
+
+_GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY = ProgressionPolicy(
+    policy_id="galaxy-horsehead-nebula-hunt-18-20",
+    minimum_level=18,
+    maximum_level=20,
+    status="research",
+    execution="galaxy-horsehead-nebula-hunt",
+    summary=(
+        "Use fresh viable Horsehead Nebula consideration for one bounded "
+        "fight, then return to the Midgaard healer."
+    ),
+    evidence=(
+        *_GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY.evidence,
+        "The hunt requires at least 85% health, a fresh exact consider no more "
+        "than two live levels above the character, only source-allowed young "
+        "nebula bystanders, and one confirmed kill.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
 _HIGHTOWER_JAILOR_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="hightower-jailor-probe-17-20",
     minimum_level=17,
@@ -3287,6 +3667,7 @@ _HIGHTOWER_JAILOR_RESEARCH_POLICY = ProgressionPolicy(
         "consider the Jailor without initiating combat."
     ),
     evidence=(
+        *_GALAXY_SHADOW_GROVE_ROUTE_HAZARD_EVIDENCE,
         "DD4 source revision cd138ae: mobile 1310, the Jailor, resets once "
         "in High Tower room 1328 at source level 17 with a normal 15-19 "
         "live range.",
@@ -4040,6 +4421,13 @@ _GHOST_TOWN_RETRIEVER_HUNT_POLICY = ProgressionPolicy(
 )
 
 
+_POLICY_BY_ID = {
+    policy.policy_id: policy
+    for policy in globals().values()
+    if isinstance(policy, ProgressionPolicy)
+}
+
+
 def policy_for(
     level: int | float | None,
     character_class: str,
@@ -4050,6 +4438,9 @@ def policy_for(
     needs_coin_deposit: bool = False,
     needs_capacity_relief: bool = False,
     has_food: bool = True,
+    needs_provision_funding: bool = False,
+    has_emergency_provision_sale: bool = False,
+    needs_return_home: bool = False,
     has_weapon: bool = True,
     needs_basic_gear: bool = False,
     needs_body_gear_recovery: bool = False,
@@ -4067,17 +4458,23 @@ def policy_for(
     movement_available: int = 0,
     movement_capacity: int = 0,
     has_sanctuary_potion: bool = False,
+    has_acquired_sanctuary_potion: bool = False,
     has_flight: bool = True,
     can_attempt_flight_purchase: bool = False,
     flight_purchase_failed: bool = False,
+    flight_loan_attempted: bool = False,
+    flight_funding_retry_pending: bool = False,
     boot_kill_counts: Mapping[str, int] | None = None,
     policy_xp_deltas: Mapping[str, int] | None = None,
     research_results: Mapping[str, Mapping[str, object]] | None = None,
+    research_absence_cooldowns: Mapping[str, int] | None = None,
+    research_crowd_cooldowns: Mapping[str, int] | None = None,
     excluded_policy_ids: frozenset[str] = frozenset(),
     world_boot_id: str | int | None = None,
     stalled_segments: int = 0,
     last_policy_id: str | None = None,
     last_fastwalk_abort_reason: str | None = None,
+    handoff_policy_id: str | None = None,
 ) -> ProgressionPolicy:
     context = ProgressionContext.from_values(
         level,
@@ -4088,6 +4485,9 @@ def policy_for(
         needs_coin_deposit=needs_coin_deposit,
         needs_capacity_relief=needs_capacity_relief,
         has_food=has_food,
+        needs_provision_funding=needs_provision_funding,
+        has_emergency_provision_sale=has_emergency_provision_sale,
+        needs_return_home=needs_return_home,
         has_weapon=has_weapon,
         needs_basic_gear=needs_basic_gear,
         needs_body_gear_recovery=needs_body_gear_recovery,
@@ -4109,20 +4509,55 @@ def policy_for(
         movement_available=movement_available,
         movement_capacity=movement_capacity,
         has_sanctuary_potion=has_sanctuary_potion,
+        has_acquired_sanctuary_potion=has_acquired_sanctuary_potion,
         has_flight=has_flight,
         can_attempt_flight_purchase=can_attempt_flight_purchase,
         flight_purchase_failed=flight_purchase_failed,
+        flight_loan_attempted=flight_loan_attempted,
+        flight_funding_retry_pending=flight_funding_retry_pending,
         boot_kill_counts=boot_kill_counts,
         policy_xp_deltas=policy_xp_deltas,
         research_results=research_results,
+        research_absence_cooldowns=research_absence_cooldowns,
+        research_crowd_cooldowns=research_crowd_cooldowns,
         excluded_policy_ids=excluded_policy_ids,
         world_boot_id=world_boot_id,
         stalled_segments=stalled_segments,
         last_policy_id=last_policy_id,
         last_fastwalk_abort_reason=last_fastwalk_abort_reason,
     )
+    if handoff_policy_id:
+        handoff_policy = _POLICY_BY_ID.get(handoff_policy_id)
+        if (
+            handoff_policy is not None
+            and handoff_policy.executable
+            and context.level >= handoff_policy.minimum_level
+            and (
+                handoff_policy.maximum_level is None
+                or context.level <= handoff_policy.maximum_level
+            )
+            and handoff_policy.policy_id not in context.excluded_policy_ids
+            and (context.has_flight or not handoff_policy.requires_flight)
+        ):
+            return replace(
+                handoff_policy,
+                practice_skill=context.practice_skill,
+            )
+
     selected = select_policy(context)
-    if selected.policy_id not in context.excluded_policy_ids:
+    excluded_retry_allowed = bool(
+        selected.policy_id
+        == _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
+        and _moria_sanctuary_recovery_is_incomplete(context)
+    )
+    if (
+        selected.policy_id not in context.excluded_policy_ids
+        or excluded_retry_allowed
+        or (
+            selected.policy_id == _PROVISION_FUNDING_POLICY.policy_id
+            and context.needs_provision_funding
+        )
+    ):
         return selected
     return replace(
         _UNAVAILABLE_POLICY,
@@ -4136,16 +4571,112 @@ def policy_for(
     )
 
 
+_FLIGHT_FUNDING_PREPURCHASE_EXECUTIONS = frozenset(
+    {
+        "return-home",
+        "sell-loot",
+        "bank-excess-coins",
+        "vault-spare-gear",
+        "restock",
+        "rearm-weapon",
+        "outfit-basic-gear",
+        "recover-basic-body",
+        "recover-school-wrist-float",
+        "recover-gremlin-waist",
+        "recover-daycare-ring",
+        "recover-war-dog-collar",
+        "recover-foundry-set-circlet",
+        "upgrade-piercing-weapon",
+        "provision-funding",
+    }
+)
+
+
 def select_policy(context: ProgressionContext) -> ProgressionPolicy:
+    selected = _select_policy(context)
+    if context.has_flight:
+        return selected
+    if (
+        context.flight_purchase_failed
+        and context.flight_loan_attempted
+        and context.flight_funding_retry_pending
+        and (
+            selected.requires_flight
+            or selected.execution not in _FLIGHT_FUNDING_PREPURCHASE_EXECUTIONS
+        )
+    ):
+        return _BUY_FLIGHT_POLICY
+    if not selected.requires_flight:
+        if (
+            context.flight_purchase_failed
+            and not context.flight_loan_attempted
+            and (
+                selected.policy_id in context.excluded_policy_ids
+                or not selected.executable
+            )
+        ):
+            return _BORROW_FLIGHT_POLICY
+        return selected
+    if context.flight_purchase_failed:
+        if not context.flight_loan_attempted:
+            return _BORROW_FLIGHT_POLICY
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=context.level,
+            maximum_level=context.level,
+            summary=(
+                f"{selected.policy_id} requires active fly or levitation, but "
+                "the purchase failed and its one bounded bank-loan attempt has "
+                "already been used; defer until money or reboot state changes."
+            ),
+            evidence=selected.evidence,
+            practice_skill=context.practice_skill,
+        )
+    if context.can_attempt_flight_purchase and not context.flight_purchase_failed:
+        return _BUY_FLIGHT_POLICY
+    return replace(
+        _UNAVAILABLE_POLICY,
+        minimum_level=context.level,
+        maximum_level=context.level,
+        summary=(
+            f"{selected.policy_id} requires active fly or levitation before "
+            "its Galaxy route can be entered. Flight is currently unavailable "
+            "because the latest purchase was unaffordable or failed; defer the "
+            "route instead of entering it without flight."
+        ),
+        evidence=selected.evidence,
+        practice_skill=context.practice_skill,
+    )
+
+
+def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
     normalized_level = context.level
     if normalized_level < 2:
         return _STARTER_POLICY
-    if context.has_sellable_loot:
-        return _LIQUIDATE_LOOT_POLICY
+    if context.needs_return_home:
+        return _RETURN_HOME_POLICY
     if context.needs_coin_deposit:
         return _BANK_EXCESS_COIN_POLICY
     if context.needs_capacity_relief:
         return _VAULT_SPARE_GEAR_POLICY
+    if (
+        context.needs_provision_funding
+        and context.has_emergency_provision_sale
+    ):
+        return _LIQUIDATE_LOOT_POLICY
+    if (
+        context.needs_provision_funding
+        and not context.has_food
+        and _PROVISION_FUNDING_POLICY.policy_id in context.excluded_policy_ids
+    ):
+        # A below-band funding candidate must not strand a foodless character:
+        # give the executable city restock path one bounded chance to use an
+        # existing bank balance or the source-backed loan fallback.
+        return _RESTOCK_POLICY
+    if context.needs_provision_funding:
+        return _PROVISION_FUNDING_POLICY
+    if context.has_sellable_loot:
+        return _LIQUIDATE_LOOT_POLICY
     if not context.has_food:
         return _RESTOCK_POLICY
     if not context.has_weapon:
@@ -5847,6 +6378,20 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             return _BUY_FLIGHT_POLICY
         if normalized_level >= 17 and context.character_class == "thief":
             if (
+                normalized_level >= 18
+                and context.has_sanctuary_potion
+                and context.last_policy_id
+                in {
+                    _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
+                    _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id,
+                }
+                and _lord_doom_sanctuary_retry_pending(context)
+            ):
+                return replace(
+                    _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            if (
                 context.last_policy_id
                 == _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
                 and context.has_sanctuary_potion
@@ -5881,6 +6426,34 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             ):
                 return replace(
                     _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+        if normalized_level >= 18 and context.last_policy_id in {
+            _GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY.policy_id,
+            _GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY.policy_id,
+        }:
+            horsehead_policy = _research_hunt_policy(
+                context,
+                probe=_GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY,
+                hunt=_GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY,
+            )
+            if horsehead_policy is not None:
+                return replace(
+                    horsehead_policy,
+                    practice_skill=context.practice_skill,
+                )
+        if normalized_level >= 17 and context.last_policy_id in {
+            _GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY.policy_id,
+            _GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY.policy_id,
+        }:
+            secondary_white_dwarf_policy = _research_hunt_policy(
+                context,
+                probe=_GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY,
+                hunt=_GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY,
+            )
+            if secondary_white_dwarf_policy is not None:
+                return replace(
+                    secondary_white_dwarf_policy,
                     practice_skill=context.practice_skill,
                 )
         if 19 <= normalized_level <= 20:
@@ -6015,11 +6588,39 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                         servant_policy,
                         practice_skill=context.practice_skill,
                     )
+        current_band_jailor_transition = (
+            context.last_policy_id
+            in {
+                _MIRROR_REALM_WATCHMAN_RESEARCH_POLICY.policy_id,
+                _MIRROR_REALM_WATCHMAN_HUNT_POLICY.policy_id,
+                _CRYSTALMIR_WHITE_STAG_RESEARCH_POLICY.policy_id,
+                _CRYSTALMIR_WHITE_STAG_HUNT_POLICY.policy_id,
+                _SHADOW_KEEP_SOLDIER_RESEARCH_POLICY.policy_id,
+                _SHADOW_KEEP_SOLDIER_HUNT_POLICY.policy_id,
+                _GALAXY_WHITE_DWARF_RESEARCH_POLICY.policy_id,
+                _GALAXY_WHITE_DWARF_HUNT_POLICY.policy_id,
+                _GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY.policy_id,
+                _GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY.policy_id,
+                _GALAXY_RED_SUPERGIANT_RESEARCH_POLICY.policy_id,
+                _GALAXY_RED_SUPERGIANT_HUNT_POLICY.policy_id,
+                _GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY.policy_id,
+                _GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY.policy_id,
+            }
+            and _research_result_recorded(
+                context,
+                _DWARVEN_NOBLEMAN_THIEF_LEVEL_SEVENTEEN_RESEARCH_POLICY.policy_id,
+            )
+            and _research_result_recorded(
+                context,
+                _DWARVEN_SERVANT_THIEF_RESEARCH_POLICY.policy_id,
+            )
+        )
         jailor_policy_allowed = (
             normalized_level >= 17
             and (
                 context.character_class != "thief"
                 or normalized_level > 18
+                or current_band_jailor_transition
                 or (
                     context.last_policy_id
                     == _DWARVEN_SERVANT_THIEF_HUNT_POLICY.policy_id
@@ -6057,11 +6658,16 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 _CRYSTALMIR_WHITE_STAG_HUNT_POLICY,
                 _SHADOW_KEEP_SOLDIER_HUNT_POLICY,
                 _GALAXY_WHITE_DWARF_HUNT_POLICY,
+                _GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY,
                 _GALAXY_RED_SUPERGIANT_HUNT_POLICY,
+                _GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY,
                 _HIGHTOWER_JAILOR_HUNT_POLICY,
                 _SHIRE_DWARVEN_PRINCE_THIEF_HUNT_POLICY,
                 _SHIRE_THAIN_HUNT_POLICY,
+                _SHIRE_ELVEN_WIZARD_HUNT_POLICY,
                 _PYRAMID_ALI_BABA_HUNT_POLICY,
+                _SOLACE_LORD_DOOM_HUNT_POLICY,
+                _HIGHLAND_KEEPER_HUNT_POLICY,
             ),
         )
         if productive_late_hunt is not None:
@@ -6076,6 +6682,23 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 probe=_SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY,
                 hunt=_SHIRE_DWARVEN_PRINCE_THIEF_HUNT_POLICY,
             )
+            if (
+                normalized_level >= 17
+                and prince_policy is not None
+                and context.last_policy_id
+                in {
+                    _PYRAMID_ALI_BABA_RESEARCH_POLICY.policy_id,
+                    _PYRAMID_ALI_BABA_HUNT_POLICY.policy_id,
+                }
+                and not _research_result_recorded(
+                    context,
+                    _SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY.policy_id,
+                )
+            ):
+                return replace(
+                    prince_policy,
+                    practice_skill=context.practice_skill,
+                )
             if (
                 normalized_level >= 17
                 and context.last_policy_id
@@ -6094,6 +6717,27 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 probe=_SHIRE_THAIN_RESEARCH_POLICY,
                 hunt=_SHIRE_THAIN_HUNT_POLICY,
             )
+            if (
+                normalized_level >= 17
+                and thain_policy is not None
+                and context.last_policy_id
+                in {
+                    _PYRAMID_ALI_BABA_RESEARCH_POLICY.policy_id,
+                    _PYRAMID_ALI_BABA_HUNT_POLICY.policy_id,
+                }
+                and _research_result_recorded(
+                    context,
+                    _SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY.policy_id,
+                )
+                and not _research_result_recorded(
+                    context,
+                    _SHIRE_THAIN_RESEARCH_POLICY.policy_id,
+                )
+            ):
+                return replace(
+                    thain_policy,
+                    practice_skill=context.practice_skill,
+                )
             thain_transition = (
                 context.last_policy_id
                 in {
@@ -6138,6 +6782,8 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                     practice_skill=context.practice_skill,
                 )
             if context.last_policy_id in {
+                _SHIRE_THAIN_RESEARCH_POLICY.policy_id,
+                _SHIRE_THAIN_HUNT_POLICY.policy_id,
                 _SHIRE_ELVEN_WIZARD_RESEARCH_POLICY.policy_id,
                 _SHIRE_ELVEN_WIZARD_HUNT_POLICY.policy_id,
                 _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id,
@@ -6145,11 +6791,7 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 if (
                     context.last_policy_id
                     == _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
-                    and not context.has_sanctuary_potion
-                    and not _research_result_recorded(
-                        context,
-                        _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id,
-                    )
+                    and _moria_sanctuary_recovery_is_incomplete(context)
                 ):
                     return replace(
                         _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
@@ -6227,9 +6869,17 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
             verified_bardoosh_xp = completed.get(
                 _AMBUSH_BARDOOSH_THIEF_LEVEL_SIXTEEN_HUNT_POLICY.policy_id
             )
+            aruncus_xp = completed.get(
+                _PLAINS_ARUNCUS_THIEF_LEVEL_SEVENTEEN_FALLBACK_POLICY.policy_id
+            )
             aruncus_fallback_excluded = (
                 _PLAINS_ARUNCUS_THIEF_LEVEL_SEVENTEEN_FALLBACK_POLICY.policy_id
                 in context.excluded_policy_ids
+            )
+            fallback_policies_exhausted = (
+                _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY.policy_id
+                in context.excluded_policy_ids
+                and aruncus_fallback_excluded
             )
             if (
                 normalized_level >= 17
@@ -6244,6 +6894,20 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                         _AMBUSH_BARDOOSH_THIEF_LEVEL_SEVENTEEN_HUNT_POLICY,
                         practice_skill=context.practice_skill,
                     )
+                if _research_result_recorded(
+                    context,
+                    _AMBUSH_BARDOOSH_THIEF_LEVEL_SEVENTEEN_RESEARCH_POLICY.policy_id,
+                ):
+                    jailor_policy = _research_hunt_policy(
+                        context,
+                        probe=_HIGHTOWER_JAILOR_RESEARCH_POLICY,
+                        hunt=_HIGHTOWER_JAILOR_HUNT_POLICY,
+                    )
+                    if jailor_policy is not None:
+                        return replace(
+                            jailor_policy,
+                            practice_skill=context.practice_skill,
+                        )
                 return replace(
                     _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY,
                     practice_skill=context.practice_skill,
@@ -6264,6 +6928,39 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 and toad_xp is not None
                 and toad_xp <= 0
                 and aruncus_fallback_excluded
+            ):
+                late_bardoosh_policy = _research_hunt_policy(
+                    context,
+                    probe=_AMBUSH_BARDOOSH_THIEF_LEVEL_SEVENTEEN_RESEARCH_POLICY,
+                    hunt=_AMBUSH_BARDOOSH_THIEF_LEVEL_SEVENTEEN_HUNT_POLICY,
+                )
+                if late_bardoosh_policy is not None:
+                    return replace(
+                        late_bardoosh_policy,
+                        practice_skill=context.practice_skill,
+                    )
+            if (
+                normalized_level >= 17
+                and fallback_policies_exhausted
+                and context.last_policy_id
+                in {
+                    _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY.policy_id,
+                    _PLAINS_ARUNCUS_THIEF_LEVEL_SEVENTEEN_FALLBACK_POLICY.policy_id,
+                }
+                and (
+                    (
+                        context.last_policy_id
+                        == _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY.policy_id
+                        and toad_xp is not None
+                        and toad_xp <= 0
+                    )
+                    or (
+                        context.last_policy_id
+                        == _PLAINS_ARUNCUS_THIEF_LEVEL_SEVENTEEN_FALLBACK_POLICY.policy_id
+                        and aruncus_xp is not None
+                        and aruncus_xp <= 0
+                    )
+                )
             ):
                 late_bardoosh_policy = _research_hunt_policy(
                     context,
@@ -6348,10 +7045,189 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
                     _AMBUSH_BARDOOSH_THIEF_LEVEL_SIXTEEN_RESEARCH_POLICY,
                     practice_skill=context.practice_skill,
                 )
+            if (
+                normalized_level >= 17
+                and not context.has_sanctuary_potion
+                and _moria_sanctuary_recovery_is_incomplete(context)
+                and _caster_hunt_requires_sanctuary_replenishment(context)
+            ):
+                return replace(
+                    _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
+                    summary=(
+                        "Replenish the source-verified purple sanctuary reserve "
+                        "before retrying a failed level-17-to-20 caster hunt."
+                    ),
+                    practice_skill=context.practice_skill,
+                )
+            moria_result = (context.research_results or {}).get(
+                _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
+            )
+            moria_cooldown = (context.research_absence_cooldowns or {}).get(
+                _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id,
+                0,
+            )
+            if (
+                normalized_level >= 17
+                and context.character_class == "thief"
+                and not context.has_sanctuary_potion
+                and isinstance(moria_result, Mapping)
+                and moria_result.get("absent") is True
+                and moria_result.get("boot_id") == context.world_boot_id
+                and _caster_hunt_requires_sanctuary_replenishment(context)
+            ):
+                try:
+                    moria_cooldown_active = int(moria_cooldown or 0) > 0
+                except (TypeError, ValueError):
+                    moria_cooldown_active = False
+                if moria_cooldown_active:
+                    for probe, hunt in (
+                        (
+                            _SHIRE_DWARVEN_PRINCE_THIEF_RESEARCH_POLICY,
+                            _SHIRE_DWARVEN_PRINCE_THIEF_HUNT_POLICY,
+                        ),
+                        (_SHIRE_THAIN_RESEARCH_POLICY, _SHIRE_THAIN_HUNT_POLICY),
+                    ):
+                        alternate_policy = _research_hunt_policy(
+                            context,
+                            probe=probe,
+                            hunt=hunt,
+                        )
+                        if alternate_policy is not None:
+                            return replace(
+                                alternate_policy,
+                                practice_skill=context.practice_skill,
+                            )
+            if normalized_level >= 18 and context.last_policy_id in {
+                _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id,
+                _GALAXY_RED_SUPERGIANT_RESEARCH_POLICY.policy_id,
+                _GALAXY_RED_SUPERGIANT_HUNT_POLICY.policy_id,
+                _GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY.policy_id,
+                _GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY.policy_id,
+                _GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY.policy_id,
+                _GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY.policy_id,
+            }:
+                horsehead_policy = _research_hunt_policy(
+                    context,
+                    probe=_GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY,
+                    hunt=_GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY,
+                )
+                if horsehead_policy is not None:
+                    return replace(
+                        horsehead_policy,
+                        practice_skill=context.practice_skill,
+                    )
+            if normalized_level >= 17 and context.last_policy_id in {
+                _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id,
+                _GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY.policy_id,
+                _GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY.policy_id,
+            }:
+                secondary_white_dwarf_policy = _research_hunt_policy(
+                    context,
+                    probe=_GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY,
+                    hunt=_GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY,
+                )
+                if secondary_white_dwarf_policy is not None:
+                    return replace(
+                        secondary_white_dwarf_policy,
+                        practice_skill=context.practice_skill,
+                    )
+            if normalized_level >= 18 and context.last_policy_id in {
+                _GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY.policy_id,
+                _GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY.policy_id,
+                _GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY.policy_id,
+                _GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY.policy_id,
+            }:
+                ali_baba_policy = _research_hunt_policy(
+                    context,
+                    probe=_PYRAMID_ALI_BABA_RESEARCH_POLICY,
+                    hunt=_PYRAMID_ALI_BABA_HUNT_POLICY,
+                )
+                if ali_baba_policy is not None:
+                    return replace(
+                        ali_baba_policy,
+                        practice_skill=context.practice_skill,
+                    )
+            if normalized_level >= 18:
+                lord_doom_policy = _research_hunt_policy(
+                    context,
+                    probe=_SOLACE_LORD_DOOM_RESEARCH_POLICY,
+                    hunt=_SOLACE_LORD_DOOM_HUNT_POLICY,
+                )
+                if lord_doom_policy is not None:
+                    return replace(
+                        lord_doom_policy,
+                        practice_skill=context.practice_skill,
+                    )
+            if normalized_level >= 17 and context.character_class == "thief":
+                argent_bandit_policy = _research_hunt_policy(
+                    context,
+                    probe=_ARGENT_BANDIT_LEADER_RESEARCH_POLICY,
+                    hunt=_ARGENT_BANDIT_LEADER_HUNT_POLICY,
+                )
+                if argent_bandit_policy is not None:
+                    return replace(
+                        argent_bandit_policy,
+                        practice_skill=context.practice_skill,
+                    )
+            if _highland_keeper_frontier_ready(context):
+                keeper_policy = _research_hunt_policy(
+                    context,
+                    probe=_HIGHLAND_KEEPER_RESEARCH_POLICY,
+                    hunt=_HIGHLAND_KEEPER_HUNT_POLICY,
+                )
+                if keeper_policy is not None:
+                    return replace(
+                        keeper_policy,
+                        practice_skill=context.practice_skill,
+                    )
             return replace(
                 _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY,
                 practice_skill=context.practice_skill,
             )
+        if normalized_level >= 18:
+            horsehead_policy = _research_hunt_policy(
+                context,
+                probe=_GALAXY_HORSEHEAD_NEBULA_RESEARCH_POLICY,
+                hunt=_GALAXY_HORSEHEAD_NEBULA_HUNT_POLICY,
+            )
+            if horsehead_policy is not None:
+                return replace(
+                    horsehead_policy,
+                    practice_skill=context.practice_skill,
+                )
+        if normalized_level >= 17:
+            secondary_white_dwarf_policy = _research_hunt_policy(
+                context,
+                probe=_GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY,
+                hunt=_GALAXY_WHITE_DWARF_SECONDARY_HUNT_POLICY,
+            )
+            if secondary_white_dwarf_policy is not None:
+                return replace(
+                    secondary_white_dwarf_policy,
+                    practice_skill=context.practice_skill,
+                )
+        if normalized_level >= 18:
+            lord_doom_policy = _research_hunt_policy(
+                context,
+                probe=_SOLACE_LORD_DOOM_RESEARCH_POLICY,
+                hunt=_SOLACE_LORD_DOOM_HUNT_POLICY,
+            )
+            if lord_doom_policy is not None:
+                return replace(
+                    lord_doom_policy,
+                    practice_skill=context.practice_skill,
+                )
+        if _highland_keeper_frontier_ready(context):
+            keeper_policy = _research_hunt_policy(
+                context,
+                probe=_HIGHLAND_KEEPER_RESEARCH_POLICY,
+                hunt=_HIGHLAND_KEEPER_HUNT_POLICY,
+            )
+            if keeper_policy is not None:
+                return replace(
+                    keeper_policy,
+                    practice_skill=context.practice_skill,
+                )
         return replace(
             _UNAVAILABLE_POLICY,
             minimum_level=16,
@@ -6694,6 +7570,103 @@ def _research_result_recorded(context: ProgressionContext, policy_id: str) -> bo
     )
 
 
+def _research_crowd_is_active(
+    context: ProgressionContext,
+    policy_id: str,
+) -> bool:
+    """Return whether a current-reboot crowd checkpoint still defers a route."""
+    result = (context.research_results or {}).get(policy_id)
+    if not (
+        isinstance(result, Mapping)
+        and result.get("crowded") is True
+        and result.get("boot_id") == context.world_boot_id
+    ):
+        return False
+    cooldowns = context.research_crowd_cooldowns or {}
+    try:
+        return int(cooldowns.get(policy_id, 0) or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _moria_sanctuary_recovery_is_incomplete(
+    context: ProgressionContext,
+) -> bool:
+    """Keep an unfinished below-band replacement-item recovery retryable."""
+    if context.has_sanctuary_potion:
+        return False
+    policy_id = _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
+    if not _research_result_recorded(context, policy_id):
+        return True
+    result = (context.research_results or {}).get(policy_id)
+    if not isinstance(result, Mapping):
+        return False
+    if _research_crowd_is_active(context, policy_id):
+        # A crowded room is neither absence nor hunt failure. Defer this
+        # route for productive work elsewhere, then let the cooldown expire.
+        return False
+    if result.get("absent") is True:
+        # A failed protected hunt remains a real resource requirement after
+        # maintenance moves the checkpoint away from the original hunt. The
+        # campaign runner owns the bounded reset wait before retrying it.
+        cooldowns = context.research_absence_cooldowns or {}
+        try:
+            if int(cooldowns.get(policy_id, 0) or 0) > 0:
+                return False
+        except (TypeError, ValueError):
+            pass
+        return _caster_hunt_requires_sanctuary_replenishment(context)
+    if result.get("completed_kill") is False:
+        return True
+    if result.get("objective_kill") is True:
+        return True
+    # Older checkpoints recorded the successful below-band objective kill but
+    # did not include an explicit objective_kill marker.  Historical item
+    # evidence keeps that acquisition reusable while still respecting a later
+    # explicit absent result.
+    return bool(
+        context.has_acquired_sanctuary_potion
+        and not result.get("absent")
+    )
+
+
+def _lord_doom_sanctuary_retry_pending(context: ProgressionContext) -> bool:
+    """Return whether the failed unprotected hunt still needs one retry."""
+    result = (context.research_results or {}).get(
+        _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id
+    )
+    if not (
+        isinstance(result, Mapping)
+        and result.get("boot_id") == context.world_boot_id
+        and result.get("completed_kill") is False
+    ):
+        return False
+    return not _research_result_recorded(
+        context,
+        _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY.policy_id,
+    )
+
+
+def _caster_hunt_requires_sanctuary_replenishment(
+    context: ProgressionContext,
+) -> bool:
+    """Return whether a current-reboot protected hunt failed without a kill."""
+    for policy_id in (
+        _SHIRE_ELVEN_WIZARD_HUNT_POLICY.policy_id,
+        _HIGHTOWER_JAILOR_HUNT_POLICY.policy_id,
+        _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
+        _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY.policy_id,
+    ):
+        result = (context.research_results or {}).get(policy_id)
+        if (
+            isinstance(result, Mapping)
+            and result.get("boot_id") == context.world_boot_id
+            and result.get("completed_kill") is False
+        ):
+            return True
+    return False
+
+
 def _research_result_was_observed(
     context: ProgressionContext,
     policy_id: str,
@@ -6730,6 +7703,28 @@ def _research_result_is_viable(context: ProgressionContext, policy_id: str) -> b
     )
 
 
+def _highland_keeper_frontier_ready(context: ProgressionContext) -> bool:
+    """Open the Highland fallback only after the current-band frontier is known."""
+    required = (
+        _GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY.policy_id,
+        _PYRAMID_ALI_BABA_RESEARCH_POLICY.policy_id,
+        _SOLACE_LORD_DOOM_RESEARCH_POLICY.policy_id,
+        _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
+    )
+    if not all(_research_result_recorded(context, policy_id) for policy_id in required):
+        return False
+    if (
+        context.character_class == "thief"
+        and context.level <= 18
+        and not _research_result_recorded(
+            context,
+            _ARGENT_BANDIT_LEADER_RESEARCH_POLICY.policy_id,
+        )
+    ):
+        return False
+    return True
+
+
 def _research_hunt_policy(
     context: ProgressionContext,
     *,
@@ -6737,6 +7732,14 @@ def _research_hunt_policy(
     hunt: ProgressionPolicy,
 ) -> ProgressionPolicy | None:
     """Promote a reboot-scoped viable probe into a bounded live hunt."""
+    if (
+        context.last_policy_id != hunt.policy_id
+        and _research_result_recorded(context, hunt.policy_id)
+    ):
+        # A maintenance checkpoint can preserve the probe as the last policy
+        # while the hunt result is already durable. Do not promote the same
+        # failed hunt again merely because the probe remains viable.
+        return None
     if context.last_policy_id == hunt.policy_id:
         if (
             (context.policy_xp_deltas or {}).get(hunt.policy_id, 0) > 0

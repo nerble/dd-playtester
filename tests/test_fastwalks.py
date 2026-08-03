@@ -87,6 +87,17 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     assert guards.maximum_level == 10
     assert guards.commands[-5:] == ("south", "south", "south", "west", "west")
 
+    stag = route_named("Crystalmir White Stag")
+    assert stag.route_hard_hazard_targets == ("Fewmaster Toede",)
+
+    keeper = route_named("Highland Keeper")
+    assert keeper.minimum_level == 17
+    assert keeper.maximum_level == 20
+    assert keeper.commands[-6:] == (
+        "west", "west", "west", "west", "west", "west"
+    )
+    assert keeper.recall_after_loot is True
+
     troll = route_named("Gnome Small Troll")
     assert troll.commands[-3:] == ("south", "east", "north")
     assert troll.recall_after_loot is True
@@ -177,6 +188,12 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     )
     assert white_dwarf.recall_after_loot is True
 
+    horsehead = route_named("Galaxy Horsehead Nebula")
+    assert horsehead.minimum_level == 18
+    assert horsehead.maximum_level == 20
+    assert horsehead.commands == white_dwarf.commands
+    assert horsehead.recall_after_loot is True
+
     jailor = route_named("HighTower Jailor")
     assert jailor.minimum_level == 17
     assert jailor.maximum_level == 20
@@ -249,6 +266,21 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         "east", "east",
     )
     assert thain.recall_after_loot is True
+
+    argent = route_named("Argent Bandit Leader")
+    assert argent.minimum_level == 17
+    assert argent.maximum_level == 20
+    assert argent.commands == (
+        ("south",) * 2
+        + ("east",) * 6
+        + ("south",) * 4
+        + ("east",) * 2
+        + ("south", "east", "east", "down", "east", "east")
+        + ("north",) * 5
+        + ("east",) * 5
+        + ("south",)
+    )
+    assert argent.recall_after_loot is True
 
     wizard = route_named("Shire Elven Wizard")
     assert wizard.minimum_level == 17
@@ -614,4 +646,49 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         "north",
     )
     assert retriever.recall_after_loot is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "galaxy white dwarf",
+        "galaxy red supergiant",
+        "galaxy horsehead nebula",
+        "hightower jailor",
+        "galaxy cancer",
+    ],
+)
+def test_shadow_grove_routes_declare_the_source_hazard_preflight(name: str) -> None:
+    route = route_named(name)
+
+    assert route.route_preflight_room_vnum == "1300"
+    assert route.route_preflight_command == "where shadow guardian"
+    assert route.route_preflight_target == "shadow guardian"
+
+
+def test_solace_lord_doom_route_is_source_derived_and_recall_safe() -> None:
+    route = route_named("Solace Lord Doom")
+
+    assert route.minimum_level == 18
+    assert route.maximum_level == 20
+    assert route.recall_after_loot is True
+    assert len(route.commands) == 66
+    assert route.commands[:7] == (
+        "south",
+        "south",
+        "south",
+        "south",
+        "south",
+        "south",
+        "west",
+    )
+    assert route.commands[-7:] == (
+        "north",
+        "north",
+        "east",
+        "east",
+        "east",
+        "open south",
+        "south",
+    )
 

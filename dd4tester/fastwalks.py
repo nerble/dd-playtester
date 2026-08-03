@@ -36,6 +36,11 @@ class Fastwalk:
     live_navigation_room_vnums: tuple[str, ...] = ()
     live_navigation_blocked_room_vnums: tuple[str, ...] = ()
     live_navigation_preferred_destinations: tuple[str, ...] = ()
+    route_preflight_room_vnum: str | None = None
+    route_preflight_command: str | None = None
+    route_preflight_target: str | None = None
+    route_preflight_hard_hazard: bool = False
+    route_hard_hazard_targets: tuple[str, ...] = ()
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -182,6 +187,13 @@ MAP_ROUTES = (
         recall_after_loot=True,
     ),
     Fastwalk(
+        "argent bandit leader",
+        17,
+        20,
+        "2s6e4s2es2ed2e5n5es",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
         "pyramid ali baba",
         18,
         20,
@@ -206,6 +218,13 @@ MAP_ROUTES = (
         ),
         live_navigation_blocked_room_vnums=("5028",),
         live_navigation_preferred_destinations=("5056",),
+    ),
+    Fastwalk(
+        "solace lord doom",
+        18,
+        20,
+        "6s;w;2s;w;s;w;2s;w;2s;open south;6s;2w;3s;2w;5s;w;n;w;2s;w;s;d;w;9n;open west;w;u;2w;2n;3e;open south;s",
+        recall_after_loot=True,
     ),
     Fastwalk(
         "foundry captain",
@@ -268,6 +287,7 @@ MAP_ROUTES = (
         20,
         "6sw2swsw2sw2s;open south;6s2w3s2w5swnw2swsd2w2n3w",
         recall_after_loot=True,
+        route_hard_hazard_targets=("Fewmaster Toede",),
     ),
     Fastwalk(
         "shadow keep soldier",
@@ -277,11 +297,22 @@ MAP_ROUTES = (
         recall_after_loot=True,
     ),
     Fastwalk(
+        "highland keeper",
+        17,
+        20,
+        "2s6e8ne2ne6n2dnese4n6w",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
         "galaxy white dwarf",
         17,
         20,
         "2s13ws2w2sws3wnwn",
         recall_after_loot=True,
+        route_preflight_room_vnum="1300",
+        route_preflight_command="where shadow guardian",
+        route_preflight_target="shadow guardian",
+        route_preflight_hard_hazard=True,
     ),
     Fastwalk(
         "galaxy red supergiant",
@@ -289,6 +320,21 @@ MAP_ROUTES = (
         20,
         "2s13ws2w2sws3wnwn",
         recall_after_loot=True,
+        route_preflight_room_vnum="1300",
+        route_preflight_command="where shadow guardian",
+        route_preflight_target="shadow guardian",
+        route_preflight_hard_hazard=True,
+    ),
+    Fastwalk(
+        "galaxy horsehead nebula",
+        18,
+        20,
+        "2s13ws2w2sws3wnwn",
+        recall_after_loot=True,
+        route_preflight_room_vnum="1300",
+        route_preflight_command="where shadow guardian",
+        route_preflight_target="shadow guardian",
+        route_preflight_hard_hazard=True,
     ),
     Fastwalk(
         "hightower jailor",
@@ -296,6 +342,10 @@ MAP_ROUTES = (
         20,
         "2s13ws2w2sws3wnwn",
         recall_after_loot=True,
+        route_preflight_room_vnum="1300",
+        route_preflight_command="where shadow guardian",
+        route_preflight_target="shadow guardian",
+        route_preflight_hard_hazard=True,
     ),
     Fastwalk(
         "mirror realm gardener",
@@ -331,6 +381,10 @@ MAP_ROUTES = (
         35,
         "2s13ws2w2sws3wnw3n2edne2nuw",
         recall_after_loot=True,
+        route_preflight_room_vnum="1300",
+        route_preflight_command="where shadow guardian",
+        route_preflight_target="shadow guardian",
+        route_preflight_hard_hazard=True,
     ),
     Fastwalk(
         "mirror realm jerry garcia",
