@@ -4791,7 +4791,7 @@ def test_level_nineteen_magnus_sanctuary_gate_hands_off_to_fresh_argent_research
     assert policy.status == "research"
 
 
-def test_level_nineteen_absent_moria_cooldown_waits_without_repeating_route() -> None:
+def test_level_nineteen_absent_moria_cooldown_opens_deep_recovery_probe() -> None:
     results = _level_eighteen_research_outcomes()
     results.update(
         {
@@ -4876,9 +4876,32 @@ def test_level_nineteen_absent_moria_cooldown_waits_without_repeating_route() ->
         ),
     )
 
-    assert policy.policy_id == "unregistered-10-100"
-    assert policy.executable is False
-    assert "Moria sanctuary carrier is absent" in policy.summary
+    assert policy.policy_id == "moria-deep-sanctuary-thief-probe-19-20"
+    assert policy.execution == "moria-deep-sanctuary-research"
+    assert policy.status == "research"
+
+    results["moria-deep-sanctuary-thief-probe-19-20"] = {
+        "observed": True,
+        "viable": True,
+        "boot_id": "boot-1",
+    }
+    promoted = policy_for(
+        19,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        last_policy_id="moria-deep-sanctuary-thief-probe-19-20",
+        world_boot_id="boot-1",
+        research_results=results,
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+            "argent-bandit-leader-probe-19-20": 3,
+        },
+    )
+
+    assert promoted.policy_id == "moria-deep-sanctuary-thief-hunt-19-20"
+    assert promoted.execution == "moria-deep-sanctuary-hunt"
+    assert promoted.segment_kill_limit == 1
 
 
 def test_level_nineteen_sanctuary_gate_uses_one_kill_toad_trial_after_research() -> None:
@@ -4965,6 +4988,7 @@ def test_level_nineteen_sanctuary_gate_uses_one_kill_toad_trial_after_research()
         research_absence_cooldowns={
             "moria-sanctuary-thief-17-20": 3,
             "shire-thain-probe-17-20": 3,
+            "moria-deep-sanctuary-thief-probe-19-20": 3,
         },
     )
 

@@ -131,6 +131,8 @@ from dd4tester.starter import (
     mirror_realm_storn_hunt_stops,
     mirror_realm_storn_research_stops,
     moria_level_seven_orc_hunt_stops,
+    moria_deep_sanctuary_potion_hunt_stops,
+    moria_deep_sanctuary_potion_research_stops,
     moria_sanctuary_potion_consider_stops,
     moria_sanctuary_potion_hunt_stops,
     mirror_realm_watchman_research_stops,
@@ -2691,6 +2693,50 @@ def test_moria_sanctuary_hunt_requires_high_health_and_enables_combat() -> None:
     assert stops[0].actions == ("where hobgoblin",)
     assert stops[0].required_items == ("purple potion",)
     assert stops[0].allow_below_band_for_required_loot is True
+
+
+def test_moria_deep_probe_uses_source_room_vnums_after_safe_reset() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+
+    assert len(stops) == 2
+    assert stops[0].route == moria_sanctuary_potion_consider_stops()[0].route
+    assert stops[0].abort_if_where_target_absent is True
+    assert stops[0].consider_only is True
+    assert stops[1].route == ()
+    assert stops[1].route_vnums == (
+        "4064",
+        "4063",
+        "4058",
+        "4057",
+        "4062",
+        "4065",
+        "4066",
+        "4069",
+        "4071",
+    )
+    assert stops[1].consider_only is True
+    assert stops[1].exact_target is True
+    assert stops[1].abort_after_consider_rejection is True
+    assert stops[1].trivial_bystanders == (
+        "snake",
+        "warrior",
+        "hobgoblin",
+        "orc",
+    )
+
+
+def test_moria_deep_hunt_preserves_required_loot_and_high_health_gates() -> None:
+    research = moria_deep_sanctuary_potion_research_stops()
+    hunt = moria_deep_sanctuary_potion_hunt_stops()
+
+    assert tuple(stop.route_vnums for stop in hunt) == tuple(
+        stop.route_vnums for stop in research
+    )
+    assert all(stop.consider_only is False for stop in hunt)
+    assert all(stop.minimum_health_ratio == 0.675 for stop in hunt)
+    assert all(stop.required_items == ("purple potion",) for stop in hunt)
+    assert all(stop.allow_below_band_for_required_loot for stop in hunt)
+    assert hunt[1].abort_if_where_target_absent is False
 
 
 def test_creation_policy_follows_configured_character_profile() -> None:

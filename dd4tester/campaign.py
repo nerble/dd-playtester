@@ -134,6 +134,8 @@ from .starter import (
     pit_official_research_stops,
     moria_level_eight_large_orc_hunt_stops,
     moria_level_seven_orc_hunt_stops,
+    moria_deep_sanctuary_potion_hunt_stops,
+    moria_deep_sanctuary_potion_research_stops,
     moria_sanctuary_potion_hunt_stops,
     plains_aruncus_hunt_stops,
     plains_aruncus_research_stops,
@@ -5155,6 +5157,28 @@ async def _run_policy_segment(
                 spec.character_class == "mage"
             ),
             fastwalk_kill_limit=policy.segment_kill_limit,
+            require_fastwalk_kill=False,
+            allow_safe_fastwalk_abort=True,
+            practice_types_spent=practice_types_spent,
+            rejected_practice_skills=rejected_practice_skills,
+        ).run()
+    if policy.execution in {
+        "moria-deep-sanctuary-research",
+        "moria-deep-sanctuary-hunt",
+    }:
+        deep_hunt = policy.execution == "moria-deep-sanctuary-hunt"
+        return await starter_runner(
+            objective_level=policy.maximum_level or 20,
+            fastwalk_route=route_named("moria"),
+            fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
+            fastwalk_hunt_stops=(
+                moria_deep_sanctuary_potion_hunt_stops()
+                if deep_hunt
+                else moria_deep_sanctuary_potion_research_stops()
+            ),
+            fastwalk_kill_limit=policy.segment_kill_limit,
+            fastwalk_train_before_departure=True,
+            fastwalk_require_invisibility=False,
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
             practice_types_spent=practice_types_spent,

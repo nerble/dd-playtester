@@ -1570,6 +1570,51 @@ _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY = replace(
     ),
 )
 
+_MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="moria-deep-sanctuary-thief-probe-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    status="research",
+    execution="moria-deep-sanctuary-research",
+    summary=(
+        "Probe the second source Moria sanctuary carrier through the exact "
+        "level-19+ room path after the safe reset room is empty."
+    ),
+    evidence=(
+        "The source Moria reset gives the same purple sanctuary potion to "
+        "large hobgoblin 4055 in room 4071 as well as room 4064. Both rooms "
+        "are separate source mobile-reset namespaces; a `where` result alone "
+        "does not identify either room.",
+        "Source room exits provide the bounded path 4064, 4063, 4058, 4057, "
+        "4062, 4065, 4066, 4069, 4071. The route avoids the additional orc, "
+        "snake, and warrior reset branches at 4067, 4068, and 4070, but it "
+        "must pass the source-known level-10 poisonous snake at 4058.",
+        "This identity is restricted to thief levels 19-20 because the older "
+        "level-16-18 policy must remain reset-room-only after its live maze "
+        "hazard evidence. The deep route is required-loot research, never an "
+        "XP hunt, and promotes only after a fresh exact consider.",
+    ),
+    practice_skill="backstab",
+)
+
+_MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_HUNT_POLICY = replace(
+    _MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY,
+    policy_id="moria-deep-sanctuary-thief-hunt-19-20",
+    execution="moria-deep-sanctuary-hunt",
+    summary=(
+        "Acquire one purple sanctuary potion from a fresh viable Moria "
+        "carrier, including the source-verified room-4071 branch."
+    ),
+    evidence=(
+        *_MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY.evidence,
+        "Combat promotion requires a fresh exact target, one isolated live "
+        "carrier, the existing high-health field gate, and one required-item "
+        "acquisition. A below-band consider is permitted only because the "
+        "potion is required loot; it must never become a progression XP kill.",
+    ),
+    segment_kill_limit=1,
+)
+
 _LIQUIDATE_LOOT_POLICY = ProgressionPolicy(
     policy_id="liquidate-loot",
     minimum_level=2,
@@ -8251,6 +8296,14 @@ def _moria_absent_cooldown_alternate_policy(
         )
         if alternate_policy is not None:
             return alternate_policy
+    if context.level >= 19:
+        deep_policy = _research_hunt_policy(
+            context,
+            probe=_MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY,
+            hunt=_MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_HUNT_POLICY,
+        )
+        if deep_policy is not None:
+            return deep_policy
     if (
         context.character_class == "thief"
         and context.level >= 19
@@ -8330,6 +8383,10 @@ def _historical_productive_research_hunt(
         (
             _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_RESEARCH_POLICY,
             _ARGENT_BANDIT_LEADER_LEVEL_NINETEEN_HUNT_POLICY,
+        ),
+        (
+            _MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY,
+            _MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_HUNT_POLICY,
         ),
         (_ARGENT_BANDIT_LEADER_RESEARCH_POLICY, _ARGENT_BANDIT_LEADER_HUNT_POLICY),
         (_HIGHLAND_KEEPER_RESEARCH_POLICY, _HIGHLAND_KEEPER_HUNT_POLICY),

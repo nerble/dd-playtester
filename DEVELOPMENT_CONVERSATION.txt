@@ -20688,3 +20688,63 @@ I am treating this as the requested one-off publication. I will inspect the exac
 
 [2026-08-04 8:29:49 AM NZST] CODEX COMMENTARY
 Verification is green: 1,899 pytest tests passed, compileall passed, and the code diff is clean when the append-only conversation log is excluded from whitespace checks. The pending changes are the generic level-20 trainer routes, the absent-Moria cooldown guard, their regression tests, and the logged development commentary. I am staging exactly those five files now, then I will create the one-off commit and publish main.
+
+
+[2026-08-04 8:30:43 AM NZST] CODEX COMMENTARY
+Publication is complete: commit f1ea565 was pushed directly to origin/main, so the requested remote merge is represented by main already containing the changes. The remote ref matches the local commit, the worktree was clean at verification, and the only Python process left is the expected Discord streamer PID 27976.
+
+
+[2026-08-04 8:30:52 AM NZST] CODEX FINAL
+One-off publication completed. Commit f1ea565 (Extend level-20 trainer frontier and cooldown recovery) was pushed to origin/main; main now resolves to f1ea5651018042ed7bc12e67e22ca7445bcdc8a2. The full suite passed: 1,899 tests, compileall passed, and the post-push process audit found only the expected Discord streamer PID 27976.
+
+
+[2026-08-04 8:31:26 AM NZST] CODEX COMMENTARY
+I am resuming the active HERO objective after the publication pass. The remote commit is settled; I am inspecting the now-current worktree, campaign checkpoint, and policy frontier before choosing the next concrete blocker to remove. I will keep this work unit bounded and audit any live process before I finish this pass.
+
+
+[2026-08-04 8:34:14 AM NZST] CODEX COMMENTARY
+The current checkpoint is still level 19 with no sanctuary potion. The live state shows several same-reboot hunts that have previously produced XP, but every one is currently carrying a bounded retry cooldown while the Moria carrier is absent; the scheduler therefore returns a wait policy with no executable field work. I am checking the source-backed cooldown and safety gates now so I can add one bounded recovery transition that uses existing productive evidence without replaying a known unsafe route.
+
+
+[2026-08-04 8:41:28 AM NZST] CODEX COMMENTARY
+I am checking the repository state now, then I will make the requested one-off publication pass. I will preserve any existing local work, commit only the intended source changes, push the branch, merge to main if needed, and verify the remote ref before I report back.
+
+
+[2026-08-04 8:42:16 AM NZST] CODEX COMMENTARY
+The audit found that main already contains the one-off publication commit and is byte-for-byte aligned with origin/main; the only local delta is the append-only conversation log. I am completing the requested remote verification as a no-op merge/push rather than manufacturing an unrelated source commit.
+
+
+[2026-08-04 8:42:34 AM NZST] CODEX FINAL
+The requested one-off publication pass is complete. The existing publication commit f1ea565 is already on main and origin/main; the merge was already up to date and git push reported Everything up-to-date. The only remaining local change is the append-only DEVELOPMENT_CONVERSATION.txt log, which was not folded into an unrelated source commit.
+
+
+[2026-08-04 8:42:46 AM NZST] CODEX COMMENTARY
+I am continuing the active HERO objective. I will re-audit the current source, checkpoint, tests, and live-process state first, then choose and implement the next concrete executable progression blocker beyond the current level-19 frontier. I will keep the work unit bounded, verify it offline, and use a live probe only after the policy and safety gates are explicit.
+
+
+[2026-08-04 8:48:11 AM NZST] CODEX COMMENTARY
+The audit confirms a real executable deadlock: Kestrel is level 19 at the healer, all current-reboot productive hunts are under bounded retry cooldown, and the safe Moria room 4064 carrier is absent while where locates large hobgoblins deeper in Moria. I am adding a distinct level-19+ Moria deep-recovery probe and hunt, source-routed by GMCP room VNUMs and limited to required sanctuary loot; it will leave the existing level-16-18 safe policy unchanged and will never treat the carrier as an XP target.
+
+
+[2026-08-04 8:52:01 AM NZST] CODEX COMMENTARY
+The deep Moria route is now registered as a separate level-19-20 probe/hunt and the focused progression/starter tests pass (1,213 tests). The selection test confirms the stalled checkpoint now opens the deep probe and promotes it to a one-kill required-loot hunt only after viable live consideration. I am checking the campaign dispatch and full suite next before launching the bounded live probe.
+
+
+[2026-08-04 8:53:01 AM NZST] CODEX COMMENTARY
+Offline verification is clean: all 1,901 tests pass, compileall passes, whitespace checks are clean outside the append-only conversation log, and the actual Kestrel checkpoint now selects moria-deep-sanctuary-thief-probe-19-20 with execution moria-deep-sanctuary-research. I am starting one bounded live probe now; it will use the campaign runner only, record the route outcome, and return to the healer before the segment ends.
+
+
+[2026-08-04 8:53:52 AM NZST] CODEX COMMENTARY
+The bounded live probe is still running and has not produced a terminal result yet. The outer command remains within its 180-second segment cap; I am waiting for the campaign runner to finish its authenticated connection and healer-return path rather than starting another process.
+
+
+[2026-08-04 8:54:39 AM NZST] CODEX COMMENTARY
+The live connection is still inside the same bounded segment and has not spawned a second campaign process. I am keeping the single probe under observation; if the segment cap requests a return, the runner will checkpoint the route evidence instead of leaving the character in the field.
+
+
+[2026-08-04 8:58:47 AM NZST] CODEX COMMENTARY
+I am switching to the requested one-off publication pass. I will inspect the current branch and uncommitted scope, run the relevant verification, then commit, push, and merge to the remote main branch if the repository state permits. I will report any remote or merge constraint explicitly rather than leaving the result ambiguous.
+
+
+[2026-08-04 8:59:50 AM NZST] CODEX COMMENTARY
+The current worktree is on main, with six tracked files changed and the remote still pointing at f1ea565. The full offline suite is clean (1,901 passed), compilation passes, and the code diff has no whitespace errors. I am checking the existing remote publication branch before committing so the merge does not accidentally discard or duplicate its earlier commits.

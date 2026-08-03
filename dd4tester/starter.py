@@ -16014,6 +16014,68 @@ def moria_sanctuary_potion_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def moria_deep_sanctuary_potion_research_stops() -> tuple[FieldHuntStop, ...]:
+    """Probe the second Moria carrier only after the safe reset is empty.
+
+    The route deliberately uses source room VNUMs after the first reset-room
+    stop.  This is a level-19+ research route: the intervening aggressive
+    mobiles are source-known, below-band hazards, and the probe never attacks
+    them or treats them as progression targets.
+    """
+    reset_room = moria_sanctuary_potion_consider_stops()[0]
+    return (
+        FieldHuntStop(
+            reset_room.route,
+            reset_room.target,
+            actions=reset_room.actions,
+            abort_if_where_target_absent=True,
+            consider_only=True,
+            exact_target=True,
+        ),
+        FieldHuntStop(
+            (),
+            "large hobgoblin",
+            consider_only=True,
+            exact_target=True,
+            route_vnums=(
+                "4064",
+                "4063",
+                "4058",
+                "4057",
+                "4062",
+                "4065",
+                "4066",
+                "4069",
+                "4071",
+            ),
+            trivial_bystanders=("snake", "warrior", "hobgoblin", "orc"),
+            abort_after_consider_rejection=True,
+        ),
+    )
+
+
+def moria_deep_sanctuary_potion_hunt_stops() -> tuple[FieldHuntStop, ...]:
+    """Acquire sanctuary from either source carrier with one bounded kill."""
+    research_stops = moria_deep_sanctuary_potion_research_stops()
+    return tuple(
+        FieldHuntStop(
+            stop.route,
+            stop.target,
+            actions=stop.actions,
+            abort_if_where_target_absent=stop.abort_if_where_target_absent,
+            consider_only=False,
+            exact_target=stop.exact_target,
+            trivial_bystanders=stop.trivial_bystanders,
+            abort_after_consider_rejection=stop.abort_after_consider_rejection,
+            required_items=("purple potion",),
+            minimum_health_ratio=_FIELD_HIGH_RISK_START_HEALTH_RATIO,
+            allow_below_band_for_required_loot=True,
+            route_vnums=stop.route_vnums,
+        )
+        for stop in research_stops
+    )
+
+
 async def run_ambush_research_profile(
     path: str | Path,
     *,
