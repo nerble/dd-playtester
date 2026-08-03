@@ -2261,14 +2261,20 @@ def test_shire_thain_probe_and_hunt_keep_special_risk_bounded() -> None:
     assert probe[0].maximum_level_offset == 0
     assert probe[0].abort_after_consider_rejection is True
     assert probe[0].route_vnums == ()
-    assert probe[0].where_location_routes == (
-        (
-            "delving lane",
-            (
-                "1110", "1109", "1106", "1104", "1103", "1118",
-                "1120", "1131", "1132", "1133", "1134",
-            ),
-        ),
+    routes = dict(probe[0].where_location_routes)
+    assert routes["delving lane"] == (
+        "1110", "1109", "1106", "1104", "1103", "1118",
+        "1120", "1131", "1132", "1133", "1134",
+    )
+    assert routes["gamgee residence"] == (
+        "1110", "1109", "1106", "1104", "1103", "1118",
+        "1120", "1131", "1132", "1133", "1138", "1139",
+        "1140", "1141",
+    )
+    assert routes["a grassy field"] == (
+        "1110", "1109", "1106", "1104", "1103", "1118",
+        "1120", "1122", "1126", "1128", "1126", "1122",
+        "1120", "1131", "1132", "1133", "1138",
     )
     assert probe[1].route_vnums == ("1110",)
     assert probe[-1].route_vnums == ("1120",)
@@ -2304,6 +2310,35 @@ def test_where_locator_narrows_a_wandering_target_to_source_room_group() -> None
     ) == (
         "1110", "1109", "1106", "1104", "1103", "1118",
         "1120", "1131", "1132", "1133", "1134",
+    )
+
+
+def test_where_locator_narrows_to_gamgee_residence() -> None:
+    stops = shire_thain_research_stops()
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=stops,
+    )
+    policy.fastwalk_hunt_action_index = 1
+
+    response = (
+        "You detect the presence of:\n"
+        "The Thain                    Gamgee Residence\n"
+        "\n<254/254 hits 242/242 mana 251/320 move [The Shire]>"
+    )
+    policy.observe_text(response)
+
+    assert _where_location_from_response(response, "the Thain") == (
+        "gamgee residence"
+    )
+    assert tuple(
+        stop.route_vnums[0]
+        for stop in policy.fastwalk_hunt_stops[1:]
+    ) == (
+        "1110", "1109", "1106", "1104", "1103", "1118",
+        "1120", "1131", "1132", "1133", "1138", "1139",
+        "1140", "1141",
     )
 
 

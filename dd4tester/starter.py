@@ -44,6 +44,7 @@ from .hunt_candidates import (
     ITEM_CONTAINER,
     ObjectSource,
     load_world_source,
+    parse_area_file,
 )
 from .observations import GameEvent, ObservationParser
 from .mudlet import MudletConnection
@@ -14828,6 +14829,111 @@ def shire_dwarven_prince_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+@lru_cache(maxsize=2)
+def _shire_thain_where_location_routes(
+    search_path: tuple[str, ...],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Build connected source routes for every room label in the Thain sweep."""
+    fallback = (
+        (
+            "delving lane",
+            (
+                "1110", "1109", "1106", "1104", "1103", "1118",
+                "1120", "1131", "1132", "1133", "1134",
+            ),
+        ),
+        (
+            "gamgee residence",
+            (
+                "1110", "1109", "1106", "1104", "1103", "1118",
+                "1120", "1131", "1132", "1133", "1138", "1139",
+                "1140", "1141",
+            ),
+        ),
+        (
+            "a grassy field",
+            (
+                "1110", "1109", "1106", "1104", "1103", "1118",
+                "1120", "1122", "1126", "1128", "1127", "1129",
+                "1130", "1131", "1132", "1133", "1138",
+            ),
+        ),
+    )
+    source_path = Path("runs/dd4-source/server/area/shire.are")
+    if not source_path.is_file():
+        return fallback
+    try:
+        area = parse_area_file(
+            source_path,
+            include_resets=False,
+            include_entities=False,
+            include_objects=False,
+        )
+    except (OSError, ValueError):
+        return fallback
+
+    allowed = set(search_path)
+    room_labels: dict[str, list[int]] = {}
+    for destination in search_path:
+        room = area.rooms.get(int(destination))
+        if room is None:
+            continue
+        label = " ".join(room.name.casefold().split())
+        if label and int(destination) not in room_labels.setdefault(label, []):
+            room_labels[label].append(int(destination))
+
+    routes: list[tuple[str, tuple[str, ...]]] = []
+    for label, destinations in room_labels.items():
+        current = 1111
+        route: list[str] = []
+        valid = True
+        for destination in destinations:
+            segment = _source_room_route(area.rooms, current, destination)
+            if segment is None or any(str(room) not in allowed for room in segment):
+                valid = False
+                break
+            route.extend(str(room) for room in segment)
+            current = destination
+        if valid and route:
+            routes.append((label, tuple(route)))
+    return tuple(routes) or fallback
+
+
+def _source_room_route(
+    rooms: Mapping[int, Any],
+    start: int,
+    target: int,
+) -> tuple[int, ...] | None:
+    """Return a shortest open-exit room path between source rooms."""
+    if start == target:
+        return ()
+    pending: deque[int] = deque([start])
+    previous: dict[int, int | None] = {start: None}
+    while pending:
+        current = pending.popleft()
+        room = rooms.get(current)
+        if room is None:
+            continue
+        for exit_source in room.exits.values():
+            if exit_source.closed or exit_source.locked:
+                continue
+            destination = int(exit_source.destination)
+            if destination not in rooms or destination in previous:
+                continue
+            previous[destination] = current
+            if destination == target:
+                path: list[int] = [destination]
+                while path[-1] != start:
+                    parent = previous[path[-1]]
+                    if parent is None:
+                        return None
+                    path.append(parent)
+                path.reverse()
+                return tuple(path[1:])
+            pending.append(destination)
+    return None
+
+
 def shire_thain_research_stops() -> tuple[FieldHuntStop, ...]:
     """Search Shire rooms for the wandering source-identified Thain."""
     search_path = (
@@ -14845,15 +14951,7 @@ def shire_thain_research_stops() -> tuple[FieldHuntStop, ...]:
         "1113", "1115", "1113", "1114", "1113", "1116", "1113",
         "1112", "1109", "1106", "1104", "1103", "1118", "1120",
     )
-    where_location_routes = (
-        (
-            "delving lane",
-            (
-                "1110", "1109", "1106", "1104", "1103", "1118",
-                "1120", "1131", "1132", "1133", "1134",
-            ),
-        ),
-    )
+    where_location_routes = _shire_thain_where_location_routes(search_path)
     common = {
         "command_keyword": "thain",
         "consider_only": True,

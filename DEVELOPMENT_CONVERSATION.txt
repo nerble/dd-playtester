@@ -19108,3 +19108,115 @@ The repository is on main and origin/main is still at 9d25321. There are seven t
 
 [2026-08-04 12:46:04 AM NZST] CODEX COMMENTARY
 The complete offline suite passes: 1860 tests in 25.51 seconds. I am staging the seven current files now, creating the one-off commit on main, and then pushing that commit to origin/main.
+
+
+[2026-08-04 12:46:32 AM NZST] CODEX COMMENTARY
+Commit 18aa91b was created on main with the seven intended files. The full suite is green; git diff --check only flagged the conversation log's existing blank-line whitespace. I am pushing now with a bounded 60-second command.
+
+
+[2026-08-04 12:47:06 AM NZST] CODEX COMMENTARY
+The one-off publish is verified: local main and origin/main both point to 18aa91b. The working tree has only the newly appended conversation-log lines uncommitted, and the process audit found only the expected Discord streamer PID 27976; no campaign or zombie process remains.
+
+
+[2026-08-04 12:47:12 AM NZST] CODEX FINAL
+One-off push and merge complete. Commit 18aa91b (Narrow wandering research routes from where evidence) was created directly on main and pushed to origin/main. Local main and remote main match. The full pytest suite passed 1,860 tests. Only the expected Discord streamer PID 27976 remains; no campaign or zombie process remains. The conversation log has post-commit timestamp entries pending the normal local commit cadence.
+
+
+[2026-08-04 12:47:34 AM NZST] CODEX COMMENTARY
+I am resuming the active HERO objective. I will first audit the published repository, current Kestrel checkpoint, DD4 source revision, and live processes, then implement and validate the next concrete generic progression blocker beyond the current level-18 path.
+
+
+[2026-08-04 12:48:38 AM NZST] CODEX COMMENTARY
+The audit confirms Kestrel is safely checkpointed at level 18 with 252 XP to level 19, no potion, and only the Discord streamer running. The next concrete blocker is the locator-directed Thain research fix: the prior run still consumed 293 commands, so I am inspecting its compact where-response and following decisions before changing the state machine.
+
+
+[2026-08-04 12:50:19 AM NZST] CODEX COMMENTARY
+The live response explains the unchanged route: where thain returned Gamgee Residence, not Delving Lane, so the bounded map correctly fell back to the old full sweep. Source room 1141 is the unique Gamgee Residence and its route is source-derived; I am adding that location to the reusable Thain map with a regression test before retrying live.
+
+
+[2026-08-04 12:51:02 AM NZST] CODEX COMMENTARY
+The source-backed Gamgee Residence route is implemented and its focused regressions pass. I am now launching one bounded, no-steering Thain probe through the campaign controller; the success criterion is a shorter room sweep or a safe, durable absence result, with the character returned to healer room 3054.
+
+
+[2026-08-04 12:51:54 AM NZST] CODEX COMMENTARY
+The bounded Thain probe is still the only live campaign process after roughly half a minute. I am leaving it to the configured 120-second boundary so the transcript records the actual Gamgee Residence route rather than interrupting it mid-search.
+
+
+[2026-08-04 12:52:27 AM NZST] CODEX COMMENTARY
+The live route has crossed one minute without a safety event or second campaign process. The target locator should now have reduced the search to the source path ending at room 1141; I am waiting for the bounded return and will compare commands and room updates against run 2952.
+
+
+[2026-08-04 12:53:13 AM NZST] CODEX COMMENTARY
+The probe remains within its single bounded pass and has not produced an error. I am keeping the connection intact until the runner completes its safe healer return, then I will inspect the compact segment record rather than infer success from elapsed time.
+
+
+[2026-08-04 12:54:21 AM NZST] CODEX COMMENTARY
+The outer command timed out at 184 seconds before the campaign function returned, so I am treating this as a runner/connection shutdown defect rather than a successful probe. I am auditing processes immediately and will inspect the newest run record to determine whether the child exited safely or left a live connection behind before changing the bound.
+
+
+[2026-08-04 12:57:19 AM NZST] CODEX COMMENTARY
+Run 2953 completed safely despite the outer wrapper timeout, but its locator was A grassy field, producing 265 commands and 95 room updates. Rather than adding one more name reactively, I am generalizing the Thain locator map from the checked-in shire.are room graph: it will compute connected source paths for every observed room label, including ambiguous repeated labels, with a static fallback when source files are unavailable.
+
+
+[2026-08-04 12:58:24 AM NZST] CODEX COMMENTARY
+The focused test caught an over-broad expectation, not a routing defect: source rooms 1127, 1129, and 1130 have distinct names, so the  grassy field map correctly contains only rooms 1128 and 1138. I am correcting the assertion to match the parsed source labels, then rerunning the focused checks.
+
+
+[2026-08-04 12:59:09 AM NZST] CODEX COMMENTARY
+The generic source-graph route builder and focused tests are green: 3 Thain/locator starter tests and 2 campaign dispatch tests. The campaign checkpoint remains safe at healer room 3054, level 18; the earlier Thain pass was recorded as a completed research segment without combat. I am running the full offline suite now before the next bounded live validation.
+
+
+[2026-08-04 1:01:04 AM NZST] CODEX COMMENTARY
+The complete offline suite passes: 1,861 tests. The campaign has already retired the prior Thain research segment for this reboot, so I am exercising the new source-graph route directly through the same StarterBotRunner configuration, with a 180-second wrapper bound and no steering commands.
+
+
+[2026-08-04 1:02:09 AM NZST] CODEX COMMENTARY
+The direct source-graph Thain validation is still the only live run after roughly half a minute. It is bounded at 180 seconds and has not produced an error; I am allowing the route and safe return to finish so its transcript can measure the narrowed destination set.
+
+
+[2026-08-04 1:03:12 AM NZST] CODEX COMMENTARY
+The new live validation succeeded: run 2954 returned to healer room 3054 with no combat or XP change; where thain reported Pig pen, and the source-graph map reduced the run to 81 commands and 34 room updates. I am recording that evidence against the reusable Thain policy and correcting its source revision to the pulled 1b759f5 before advancing the campaign scheduler.
+
+
+[2026-08-04 1:03:49 AM NZST] CODEX COMMENTARY
+The live locator work unit is complete and its focused progression tests pass. I am running the complete suite once more after the evidence-registry update, then I will let the campaign controller choose and execute its next safe level-18 policy in one bounded no-steering segment.
+
+
+[2026-08-04 1:04:24 AM NZST] CODEX COMMENTARY
+The full suite remains green at 1,861 tests. I am starting the next campaign segment now with the existing 120-second field bound and no reset wait; the controller will select the next executable policy from Kestrel's persisted level-18 state and checkpoint its result automatically.
+
+
+[2026-08-04 1:05:13 AM NZST] CODEX COMMENTARY
+The next campaign segment is still the only live process after roughly half a minute. I am allowing its bounded policy execution to complete so the checkpoint captures the scheduler's real choice and safe healer return.
+
+
+[2026-08-04 1:06:19 AM NZST] CODEX COMMENTARY
+The campaign now proves the integration, not just the direct runner: run 2955 used the computed source route, reported the Thain in A chicken coop, completed safely in 82 commands and 35 room updates, and persisted observed=false, bsent=true, with a three-segment same-reboot retry cooldown at healer 3054. I am adding this durable campaign evidence, then I will finish with a compact checkpoint and process audit.
+
+
+[2026-08-04 1:06:44 AM NZST] CODEX COMMENTARY
+The reusable policy evidence is now recorded in progression.py, including both direct run 2954 and campaign run 2955. I am rerunning the full offline suite after that evidence-only change, then I will ask the campaign scheduler for its next safe segment while Thain waits through its bounded area-reset cooldown.
+
+
+[2026-08-04 1:07:19 AM NZST] CODEX COMMENTARY
+The final offline suite is green at 1,861 tests. Thain's absence result is now bounded to the current reboot; I am launching one more 120-second campaign segment so the scheduler can rotate to another level-18 policy and keep the character progressing without manual target selection.
+
+
+[2026-08-04 1:07:48 AM NZST] CODEX COMMENTARY
+The scheduler did not open a new live connection: it returned immediately to the same Thain absence wait, with no alternate policy selected. This is the next concrete blocker for uninterrupted progression: at level 18 the selector must rotate to any executable policy while a wandering-target cooldown is active, and only wait when no alternate is actually available. I am enumerating the current policy graph and state gates now.
+
+
+[2026-08-04 1:08:52 AM NZST] CODEX COMMENTARY
+The policy graph audit shows the real level-18 bottleneck: current-reboot research results and cooldowns leave the selector with unregistered-10-100 rather than an executable hunt, while the campaign's stale absence branch still reports Thain. I am now ranking fresh source-backed level-18 candidates across the public area files, then I will choose the safest new research route and add it generically with live gates.
+
+
+[2026-08-04 1:10:42 AM NZST] CODEX COMMENTARY
+I am handling the one-off publication now: I will inspect the local diff, create an intentional checkpoint commit, push it to the remote, and verify that main and the remote agree before I report back.
+
+
+[2026-08-04 1:11:19 AM NZST] CODEX COMMENTARY
+The pending diff is scoped to the generic source-graph locator, its reusable Thain evidence, focused regression tests, and the required conversation log. I am running the full offline suite and a code-only whitespace check before staging; the log's blank-line whitespace is intentional from its timestamped append format.
+
+
+[2026-08-04 1:11:59 AM NZST] CODEX COMMENTARY
+The full offline suite is green at 1,861 tests and the code-only diff check is clean. I am staging the four intentional files now, then I will create the one-off main checkpoint and verify the staged summary before pushing.

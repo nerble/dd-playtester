@@ -2851,7 +2851,7 @@ _SHIRE_THAIN_RESEARCH_POLICY = ProgressionPolicy(
         "without initiating combat."
     ),
     evidence=(
-        "DD4 source revision eaaad93: mobile 1112, the Thain, resets once in "
+        "DD4 source revision 1b759f5: mobile 1112, the Thain, resets once in "
         "Shire room 1111 at source level 14 with normal 12-16 live fuzz.",
         "The Thain is stay-area and non-aggressive, has no reset companion in "
         "room 1111, and uses spec_guard; the first pass therefore uses a "
@@ -2866,6 +2866,15 @@ _SHIRE_THAIN_RESEARCH_POLICY = ProgressionPolicy(
         "the reset room. The source stay-area flag makes that a temporary "
         "wandering-state result rather than permanent route evidence; the next "
         "pass uses `where thain` and the registered Shire room sweep.",
+        "Live run 2954 returned safely to healer room 3054 after `where thain` "
+        "reported the source room label Pig pen. The source-derived locator "
+        "map narrowed the connected sweep to 81 commands and 34 room updates "
+        "without combat, XP change, or a steering command; retain the map for "
+        "all source room labels rather than assuming one fixed wander location.",
+        "Campaign run 2955 repeated the no-steering proof with the locator "
+        "reporting A chicken coop; the computed route completed in 82 commands "
+        "and 35 room updates, safely returned to room 3054, and persisted a "
+        "same-reboot absent result with a three-segment retry cooldown.",
     ),
     practice_skill="backstab",
 )
