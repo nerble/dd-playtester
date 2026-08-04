@@ -21240,3 +21240,87 @@ The focused regression suite is clean: 24 relevant starter-policy tests passed. 
 
 [2026-08-04 11:45:36 AM NZST] CODEX COMMENTARY
 The full offline suite passes: 1,919 tests in 29.15 seconds. I am doing the final publication audit now, including whitespace checks, remote/PR capability, and the exact staged file set before committing.
+
+
+[2026-08-04 11:47:13 AM NZST] CODEX COMMENTARY
+Pull request #2 is merged as 6f55a2b, and local main is fast-forwarded and clean. The automated cleanup did not remove the already-merged remote feature branch, so I am deleting that stale branch explicitly and then doing one final remote/local verification.
+
+
+[2026-08-04 11:47:41 AM NZST] CODEX COMMENTARY
+Final verification confirms origin/main and local main both point to 6f55a2b, pull request #2 is merged, and the temporary remote branch is gone. Only the append-only DEVELOPMENT_CONVERSATION.txt has new post-merge commentary entries; no source or test changes remain uncommitted.
+
+
+[2026-08-04 11:47:49 AM NZST] CODEX FINAL
+One-off publication completed. Commit d9983e9 and its conversation-log follow-up were pushed via pull request #2 and merged into main as 6f55a2b. origin/main and local main match; the temporary branch was deleted. Verification passed: focused regression tests 24 passed and full pytest 1919 passed. Only append-only DEVELOPMENT_CONVERSATION.txt has post-merge log entries in the working tree.
+
+
+[2026-08-04 11:48:17 AM NZST] CODEX COMMENTARY
+I am continuing the HERO-engine work from the merged return-home recovery fix. I will audit the current level-19 campaign checkpoint and executable policy selection first, then choose the next concrete post-level-13 blocker, implement it with focused tests, and run a bounded no-steering proof segment.
+
+
+[2026-08-04 11:48:44 AM NZST] CODEX COMMENTARY
+The campaign is still stopped at checkpoint 3313, level 19, after the now-fixed liquidation watchdog failure; the history shows no HERO proof yet. I also found this is the first source-backed work pass today, so I am refreshing the read-only DD4 source checkout with git pull --ff-only before retrying the campaign.
+
+
+[2026-08-04 11:48:57 AM NZST] CODEX COMMENTARY
+The DD4 source checkout is current at revision 1b759f5. I am starting one bounded, no-steering campaign resume now; its first job is to reconcile the failed liquidation checkpoint using the new GMCP-enemy flee path, then let the generic scheduler choose whatever level-19 policy is executable.
+
+
+[2026-08-04 11:49:42 AM NZST] CODEX COMMENTARY
+The resumed campaign completed its first bounded segment cleanly: the failed liquidation checkpoint was reconciled and the next maintenance segment, buy-flight-potion, finished at level 19 and checkpoint 3316. I am inspecting the new checkpoint and then will continue with another autonomous segment rather than treating maintenance as progression proof.
+
+
+[2026-08-04 11:49:55 AM NZST] CODEX COMMENTARY
+Checkpoint 3316 confirms Kestrel is safely maintained at level 19 with the original generic drow-thief profile; no name-specific code is involved. The next scheduler decision is ready, so I am running one more bounded segment without issuing any in-game commands or steering.
+
+
+[2026-08-04 11:50:43 AM NZST] CODEX COMMENTARY
+The second autonomous segment is still running inside its 180-second bound; no manual input has been sent. I am leaving it undisturbed and will report the exact policy result and checkpoint when the child exits.
+
+
+[2026-08-04 11:51:27 AM NZST] CODEX COMMENTARY
+The bounded segment remains active after roughly one minute and is still within the hard runtime limit. The lack of terminal output is expected for this launcher; the live transcript and SQLite run record are being written, so I am waiting for a clean completion boundary rather than interrupting it.
+
+
+[2026-08-04 11:51:58 AM NZST] CODEX COMMENTARY
+The segment completed cleanly after 110 seconds: the generic scheduler reached the Shire Thain route, verified its destination, and recorded the target absent without combat or a safety violation. Checkpoint 3319 remains at level 19 and is waiting for the area-reset controller; I am inspecting the persisted rejection and next-policy handoff before continuing.
+
+
+[2026-08-04 11:52:39 AM NZST] CODEX COMMENTARY
+The persisted state shows level 19 with 22,291 XP to next level, zero stalled segments, and a protection-recovery flag tied to the Dwarven route; the latest Shire miss has its own cooldown of 3, while the generic scheduler retains several other current-band candidates. I am allowing the next policy selection to run once so we can see whether the protection flag is being handled productively or is becoming the next concrete blocker.
+
+
+[2026-08-04 11:53:03 AM NZST] CODEX COMMENTARY
+The next invocation immediately retried the absent Shire Thain preflight and produced checkpoint 3321 in five seconds, so the protection-recovery scheduler is not selecting an alternate executable route while that temporary absence is active. I am tracing the policy-ranking and absence-cooldown code now; this is the next concrete progression blocker, not a live-world failure.
+
+
+[2026-08-04 11:59:32 AM NZST] CODEX COMMENTARY
+The scheduler reset wait is intended to be the autonomous handoff: a normal hero run waits outside depleted routes, while bounded max-runtime test mode returns immediately. I am testing one 60-second reset retry now so the live world can repopulate a current-band target; if it still has no route, I will make the no-route state explicit in code and tests rather than repeatedly probing the same absent mobile.
+
+
+[2026-08-04 12:00:22 PM NZST] CODEX COMMENTARY
+The reset-controller invocation is still in its intentional 60-second wait; no connection is active during this pause and no in-game steering has been sent. I am keeping the bounded retry alive until it either finds a target or returns the same explicit no-route state.
+
+
+[2026-08-04 12:01:16 PM NZST] CODEX COMMENTARY
+The reset wait has elapsed and the bounded continuation is still running its post-wait scheduler pass. I am waiting for the child to finish so the resulting checkpoint tells us whether the world repopulated a registered target or the engine needs a new frontier policy.
+
+
+[2026-08-04 12:02:24 PM NZST] CODEX COMMENTARY
+The post-wait live pass is now active for about a minute and remains inside the 180-second segment cap. It is producing no terminal chatter by design; the transcript is the authoritative progress record, and I am not interrupting it.
+
+
+[2026-08-04 12:04:25 PM NZST] CODEX COMMENTARY
+I am checking the current branch, worktree, and remote state first, then I will publish the existing committed source and merge it to main as this one-off request asks. I will leave the local conversation log untouched except for the required activity record.
+
+
+[2026-08-04 12:05:35 PM NZST] CODEX COMMENTARY
+The audit found local main already matches origin/main at 6f55a2b; the only unpublished change is the append-only DEVELOPMENT_CONVERSATION.txt log from the current work pass. I am treating that tracked log as the intended one-off scope, will publish it on a temporary codex branch, open a ready pull request, merge it to main, and verify the remote after cleanup.
+
+
+[2026-08-04 12:05:56 PM NZST] CODEX COMMENTARY
+GitHub CLI authentication is valid for nerble. The only diff-check warnings are the intentional blank separators used by the append-only conversation log; there are no source or test changes. I am now creating the temporary publication branch and staging only DEVELOPMENT_CONVERSATION.txt.
+
+
+[2026-08-04 12:06:21 PM NZST] CODEX COMMENTARY
+The publication branch contains exactly one commit, 753f485, adding the current append-only conversation entries and no source changes. The local commit completed immediately; I am pushing this branch now, then I will create and merge the ready pull request.
