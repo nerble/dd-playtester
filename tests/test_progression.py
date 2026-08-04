@@ -4920,6 +4920,105 @@ def test_level_nineteen_absent_moria_cooldown_opens_deep_recovery_probe() -> Non
     assert promoted.segment_kill_limit == 1
 
 
+def test_below_band_deep_probe_promotes_required_loot_hunt() -> None:
+    results = _level_eighteen_research_outcomes()
+    results.update(
+        {
+            "mirror-realm-watchman-probe-19-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-watchman-hunt-19-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "plains-aruncus-thief-probe-19-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-probe-19-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-hunt-19-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-probe-17-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shire-dwarven-prince-thief-hunt-17-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+            "solace-magnus-probe-19-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "argent-bandit-leader-probe-19-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "shire-thain-probe-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "moria-sanctuary-thief-17-20": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "moria-deep-sanctuary-thief-probe-19-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        }
+    )
+
+    policy = policy_for(
+        19,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        protection_recovery_required=True,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        research_results=results,
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+            "argent-bandit-leader-probe-19-20": 3,
+        },
+        excluded_policy_ids=frozenset(
+            {
+                "mahntor-rock-toad-thief-circuit-16-18",
+                "moria-deep-sanctuary-thief-probe-19-20",
+            }
+        ),
+    )
+
+    assert policy.policy_id == "moria-deep-sanctuary-thief-hunt-19-20"
+    assert policy.execution == "moria-deep-sanctuary-hunt"
+    assert policy.segment_kill_limit == 1
+
+
 def test_level_nineteen_sanctuary_gate_uses_one_kill_toad_trial_after_research() -> None:
     results = _level_eighteen_research_outcomes()
     results.update(

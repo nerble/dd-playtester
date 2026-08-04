@@ -9299,7 +9299,7 @@ def test_route_preflight_recalls_before_a_shadow_grove_hazard() -> None:
     )
 
 
-def test_route_preflight_keeps_hard_below_band_hazard_blocked() -> None:
+def test_route_preflight_allows_source_confirmed_below_band_hazard() -> None:
     policy = StarterPolicy(
         _spec(),
         "swordfish",
@@ -9331,17 +9331,13 @@ def test_route_preflight_keeps_hard_below_band_hazard_blocked() -> None:
 
     decision = policy._fastwalk_route_preflight_decision(state)
 
-    assert decision is not None
-    assert decision.command == "recall"
+    assert decision is None
     assert policy.fastwalk_route_preflight_complete is True
-    assert policy.fastwalk_returning is True
-    assert policy.fastwalk_abort_reason == (
-        "field route preflight found source-registered hazard "
-        "'shadow guardian' in room 1300"
-    )
+    assert policy.fastwalk_returning is False
+    assert policy.fastwalk_abort_reason is None
 
 
-def test_active_hard_route_hazard_cannot_resume_a_randomized_waypoint() -> None:
+def test_active_below_band_route_hazard_can_resume_a_randomized_waypoint() -> None:
     route = route_named("galaxy white dwarf")
     policy = StarterPolicy(
         _spec(),
@@ -9379,15 +9375,12 @@ def test_active_hard_route_hazard_cannot_resume_a_randomized_waypoint() -> None:
     )
 
     assert decision is not None
-    assert decision.command == "flee"
-    assert "source-registered route hazard" in decision.reason
+    assert decision.command == "cast 'magic missile' guardian"
     assert policy.fastwalk_resume_current_route_after_interrupt is False
     assert policy.fastwalk_resume_hunt_after_interrupt is False
-    assert policy.fastwalk_emergency_recall_pending is True
-    assert policy.fastwalk_returning is True
-    assert policy.fastwalk_abort_reason == (
-        "unexpected combat interrupted a no-combat field probe"
-    )
+    assert policy.fastwalk_emergency_recall_pending is False
+    assert policy.fastwalk_returning is False
+    assert policy.fastwalk_abort_reason is None
 
 
 def test_plains_aruncus_hunt_opens_the_hermit_hut_before_searching() -> None:
