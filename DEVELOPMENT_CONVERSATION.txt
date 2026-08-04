@@ -21324,3 +21324,167 @@ GitHub CLI authentication is valid for nerble. The only diff-check warnings are 
 
 [2026-08-04 12:06:21 PM NZST] CODEX COMMENTARY
 The publication branch contains exactly one commit, 753f485, adding the current append-only conversation entries and no source changes. The local commit completed immediately; I am pushing this branch now, then I will create and merge the ready pull request.
+
+
+[2026-08-04 12:07:57 PM NZST] CODEX FINAL
+One-off push and merge completed successfully. Commit 85b03e1 was pushed on the temporary codex/one-off-publish-20260804-log branch, pull request #3 was created and merged to main as 1e466df, and the temporary local and remote branches were removed. Local main matches origin/main at 1e466df. The published scope was the append-only DEVELOPMENT_CONVERSATION.txt log; no source or test files changed.
+
+
+[2026-08-04 12:08:20 PM NZST] CODEX COMMENTARY
+I am resuming the active HERO-engine goal from the merged publication state. I will first verify local main, the current Kestrel checkpoint, and any live child processes, then trace the level-19 policy-state mismatch before making the next concrete generic progression fix.
+
+
+[2026-08-04 12:10:51 PM NZST] CODEX COMMENTARY
+The persisted evidence confirms a real generic state defect: checkpoint 3326 records the executed Moria policy, but segment 1356's end_state still carries the stale source-ranked Dwarven policy and candidate. That can feed stale identity into the next policy decision. I will normalize campaign_last_policy on non-maintenance segment end states, preserve maintenance handoffs, and add a focused regression test before the next live retry.
+
+
+[2026-08-04 12:12:08 PM NZST] CODEX COMMENTARY
+The state fix is implemented and the focused runtime/end-state tests pass: 2 passed. The patch changes only campaign state normalization plus its regression test; maintenance policies still preserve their prior field-policy handoff. I am running the full campaign test module now, then I will rerun one bounded autonomous level-19 segment.
+
+
+[2026-08-04 12:12:40 PM NZST] CODEX COMMENTARY
+The full campaign suite is clean: 407 tests passed in 17.59 seconds. I am now running one bounded no-steering Kestrel segment with the state fix active; the launcher is capped at 180 seconds and will be allowed to checkpoint or complete without manual in-game commands.
+
+
+[2026-08-04 12:16:09 PM NZST] CODEX COMMENTARY
+The bounded live retry completed in 5.6 seconds without reconnecting: it correctly preserved the Moria absence cooldown and returned checkpoint 3329 at level 19. Source ranking now makes the frontier explicit: only Aruncus, Bardoosh, Undead Soldier, and Dwarven Nobleman are autonomous-safe at this level; the first two are below-band or excluded by live evidence, and the latter two are on current-reboot cooldown. I am inspecting source-backed level-19 candidates with their exact companions and specials so the next policy can be both executable and generic, rather than spinning on the same absent target.
+
+
+[2026-08-04 12:20:44 PM NZST] CODEX COMMENTARY
+Resuming from the level-19 frontier: the policy/state consistency fix is tested, and I am now checking the broader offline suite plus the live-policy selection logic before changing routes. I will keep the policy graph tied to actual character evidence and avoid inventing a level-19 path that has not been exercised.
+
+
+[2026-08-04 12:22:17 PM NZST] CODEX COMMENTARY
+Offline verification is green: 1920 tests passed. The current reboot has no executable route after applying recorded absence, crowd, below-band, and failed-hunt gates; I am inspecting rejected source candidates to add a generic policy rather than a Kestrel-specific exception.
+
+
+[2026-08-04 12:26:32 PM NZST] CODEX COMMENTARY
+I found a concrete frontier bug tied to the actual level-19 checkpoint: the deep Moria sanctuary probe correctly identified a below-band carrier, but the scheduler treated that evidence as an XP exclusion and discarded the required-loot follow-up. I am adding a narrow generic handoff so a source-registered replacement-item hunt can proceed once, while ordinary below-band XP routes remain terminal.
+
+
+[2026-08-04 12:29:49 PM NZST] CODEX COMMENTARY
+The regression now passes and the real campaign checkpoint selects moria-deep-sanctuary-thief-hunt-19-20 as intended. The handoff uses the existing required-loot combat gate, so it can attack only for the missing purple potion and will not promote that below-band carrier into XP progression. I am running the full suite, then I will execute one bounded live segment.
+
+
+[2026-08-04 12:30:29 PM NZST] CODEX COMMENTARY
+The full offline suite remains clean at 1921 tests. I am starting the bounded live required-loot segment now with a 240-second cap; it will return immediately if the carrier is absent, crowding or a disabling hazard appears, and it will leave the character at the healer before checkpointing.
+
+
+[2026-08-04 12:31:16 PM NZST] CODEX COMMENTARY
+The live segment is still within its explicit 240-second boundary and has not returned output yet. I am leaving the bounded runner alone while it handles the connection; I will inspect the checkpoint as soon as it exits and will not let this turn into an unbounded wait.
+
+
+[2026-08-04 12:32:02 PM NZST] CODEX COMMENTARY
+The connection is still active at roughly the one-minute mark, with the hard runtime cap intact. This Moria path is longer than a simple hunt because it verifies source-room routing and required-item state; I am continuing to the bounded completion boundary.
+
+
+[2026-08-04 12:32:40 PM NZST] CODEX COMMENTARY
+The live test completed cleanly in 104.5 seconds: the new required-loot hunt reached the verified Moria route, found both registered carriers absent, returned Kestrel to healer room 3054, and recorded a three-segment absence cooldown without changing XP or risking a below-band kill. I am using the existing bounded reset-wait controller for one 60-second retry rather than replaying the route immediately.
+
+
+[2026-08-04 12:33:29 PM NZST] CODEX COMMENTARY
+The bounded reset retry is still inside its 60-second wait/240-second segment envelope. No duplicate live hunt has been launched yet; the controller is intentionally waiting outside the depleted Moria area before its single retry.
+
+
+[2026-08-04 12:34:13 PM NZST] CODEX COMMENTARY
+The reset wait has elapsed and the bounded retry is now doing its single live recheck. I will use the resulting transcript and checkpoint to distinguish a genuine respawn from another safe absence, then rotate or defer according to the recorded reboot-scoped evidence.
+
+
+[2026-08-04 12:35:16 PM NZST] CODEX COMMENTARY
+The retry is still within the bounded live execution window after the reset wait. The route takes about 100 seconds when it reaches the Moria endpoint; I am allowing that one run to finish, with no additional retries queued.
+
+
+[2026-08-04 12:37:20 PM NZST] CODEX COMMENTARY
+The one allowed reset retry also completed safely in 188 seconds: the primary Moria carrier remained absent, no XP or potion changed, and Kestrel stayed at healer room 3054. The scheduler is now correctly ready to retry the deep required-loot branch, but repeating absent sanctuary rooms alone will not advance level 19; I am widening source-backed progression with a controlled spec_cast_mage candidate filter.
+
+
+[2026-08-04 12:38:15 PM NZST] CODEX COMMENTARY
+The next generic frontier is now identified from source data: Olympus The Jailer is a level-13 spec_cast_mage with a level-11-to-15 live range, no companion, no aggression, no positive alignment, and an estimated peak round below half of Kestrel’s current maximum HP. I am extending the source candidate record and selector to admit only this audited special as a cautious fallback; unknown specials and every other hazard remain rejected.
+
+
+[2026-08-04 12:40:56 PM NZST] CODEX COMMENTARY
+The audited special selector and checkpoint round-trip are covered, and the full suite passes at 1923 tests. The current persisted campaign still has one justified deep-Moria retry pending after the reset wait; I will run that bounded route once, then let source ranking choose the next executable XP target rather than retrying sanctuary indefinitely.
+
+
+[2026-08-04 12:41:43 PM NZST] CODEX COMMENTARY
+The single deep-Moria retry is active within the 240-second cap. It is the final source-registered sanctuary check for this turn; after it exits I will inspect the target result and route selection before any further live action.
+
+
+[2026-08-04 12:42:27 PM NZST] CODEX COMMENTARY
+The deep-Moria retry remains inside its bounded route window at about one minute. No output has been emitted by the CLI yet; the process is still the expected live campaign runner, and I have not started any parallel connection.
+
+
+[2026-08-04 12:43:29 PM NZST] CODEX COMMENTARY
+The route has passed its usual 100-second travel time but remains below the 240-second hard cap. I am waiting for the runner’s own healer-return or timeout boundary, then I will read the persisted segment instead of guessing from elapsed time.
+
+
+[2026-08-04 12:45:27 PM NZST] CODEX COMMENTARY
+The source-ranked fallback now resolves to Olympus The Jailer in the real level-19 checkpoint once all ordinary candidates are on cooldown; its selected record carries spec_cast_mage and the elevated health/level gates. The focused source-ranking tests pass, and I am running the full suite before the first live Jailer probe/hunt.
+
+
+[2026-08-04 12:46:05 PM NZST] CODEX COMMENTARY
+The full suite passes at 1924 tests. The first live source-ranked Jailer segment is now starting with a 240-second cap and one-kill limit; it will require an exact current-reboot consider, 95% departure health, no unapproved bystander, and immediate withdrawal/recovery on blindness or other disabling combat effects.
+
+
+[2026-08-04 12:47:00 PM NZST] CODEX COMMENTARY
+The live Jailer segment is still within its explicit runtime boundary and has not emitted output yet. The connection is being left to the bounded runner; no second process or parallel MUD connection has been started.
+
+
+[2026-08-04 12:48:45 PM NZST] CODEX COMMENTARY
+The audited Olympus Jailer segment completed within the 240-second cap. The route reached the verified destination, but the Jailer was absent; the campaign checkpointed at level 19 and is now waiting on the area reset rather than retrying immediately. I am inspecting the saved evidence and next-policy selection before deciding the next bounded test.
+
+
+[2026-08-04 12:50:52 PM NZST] CODEX COMMENTARY
+The live test validated the new special-candidate path end to end: the generic source-ranked scheduler selected the Olympus Jailer only after ordinary current-band candidates were unavailable, routed to its verified room, and recorded a reboot-scoped absent-target result without combat or a retry loop. The next policy is correctly unavailable for this checkpoint, so I am running the complete regression suite now rather than forcing another live segment.
+
+
+[2026-08-04 12:51:35 PM NZST] CODEX COMMENTARY
+Regression verification is clean: all 1,924 pytest tests pass in 26.83 seconds. The live checkpoint remains level 19 in the healer room, with the Jailer absence recorded for the current reboot and no autonomous next hunt available under the present evidence gates. I am doing a final diff and process check so I can report exactly what was tested and leave the local work intact.
+
+
+[2026-08-04 12:51:59 PM NZST] CODEX FINAL
+Tested the level-19 policy frontier rather than forcing an unverified high-level route. The audited source-ranked Olympus Jailer path ran live, reached its verified destination, recorded a safe current-reboot absence, and returned Kestrel to healer room 3054. The complete pytest suite passes: 1,924 tests in 26.83 seconds. Local source and test changes remain saved but uncommitted; the Discord streamer is still running as PID 27976; the read-only DD4 source checkout remains at 1b759f5.
+
+
+[2026-08-04 12:52:31 PM NZST] CODEX COMMENTARY
+I am continuing the active HERO-engine goal from Kestrel’s verified level-19 checkpoint. I will audit the current local changes, checkpoint state, source revision, and live processes first, then remove the next concrete level-19-plus progression blocker with focused tests and one bounded no-steering live run.
+
+
+[2026-08-04 12:58:00 PM NZST] CODEX COMMENTARY
+The level-19 audit found the next real blocker: the generic source-ranked Galaxy candidates are still treated as unavailable because their old route-hazard evidence blocks the same low-level shadow guardian that the current source parser places at levels 7-11. At Kestrel level 19 that mobile is five or more levels below the useful band, so it must not block the route. I am extending source-ranked candidates to carry route-preflight metadata and making only source-confirmed below-band preflight hazards soft; the official hard-hazard routes and higher-level matches will remain hard boundaries. I will also migrate the stale reboot-scoped Galaxy hazard evidence and add regressions before a live retry.
+
+
+[2026-08-04 12:59:21 PM NZST] CODEX COMMENTARY
+The candidate parser now computes route-preflight metadata from the shared source route catalog and source mobile levels. The next edit will preserve that metadata through checkpoints, feed it into the live source-ranked Fastwalk, and advance the campaign policy revision so only stale preflight results are cleared; this keeps the change generic and leaves official route definitions unchanged.
+
+
+[2026-08-04 1:00:38 PM NZST] CODEX COMMENTARY
+The route metadata is now checkpoint-safe, and the migration is deliberately narrow: it clears only Shadow Guardian preflight results when the saved character level proves the source range is below band. Unknown or ancient route identities remain hard evidence. I am adding tests for the source metadata, checkpoint round-trip, soft-versus-hard preflight behavior, and the level-gated migration before running them.
+
+
+[2026-08-04 1:02:41 PM NZST] CODEX COMMENTARY
+The offline selection check exposed one more integration point: the registered Galaxy research policy still uses the official route object with a hard-preflight flag, so candidate metadata alone would not affect that path. I am moving the below-band rule into the shared Starter route-preflight gate itself: source-known hazards at least five levels below the character will be treated as pass-through even when the route was marked hard, while unknown or useful-band hazards will still abort. I will update the two focused tests that currently encode the old behavior.
+
+
+[2026-08-04 1:03:39 PM NZST] CODEX COMMENTARY
+The focused Starter test caught exactly the intended behavior change: a live level-9 Shadow Guardian beside a level-18 character now produces the normal combat action instead of a forced flee. I am updating that regression to assert the below-band joiner can be finished, while preserving the hard-abort tests for unknown or useful-band route hazards.
+
+
+[2026-08-04 1:04:08 PM NZST] CODEX COMMENTARY
+Focused verification is green: the source metadata test, two campaign migration/round-trip tests, four Starter route-preflight tests, and compileall all pass. The live-level and source-range gates now both let a confirmed below-band route mobile be finished instead of forcing a flee, while unknown hazards still abort. I am running the full offline suite before exercising the repaired level-19 Galaxy policy live.
+
+
+[2026-08-04 1:06:32 PM NZST] CODEX COMMENTARY
+The prior test cell has already closed, so I am checking its final repository state now before publishing the verified changes.
+
+
+[2026-08-04 1:09:05 PM NZST] CODEX COMMENTARY
+The suite exposed a revision-migration test mismatch, not a runtime syntax failure: 1,895 tests pass, while 31 older assertions still assume policy revision 111. I am updating those expectations and the few current-revision fixtures to 112, then I will rerun the full suite before touching Git.
+
+
+[2026-08-04 1:11:36 PM NZST] CODEX COMMENTARY
+The campaign migration tests are now green: 411 passed. The revision update is coherent across old migrations and current-state repairs; I am running the complete offline suite next.
+
+
+[2026-08-04 1:12:17 PM NZST] CODEX COMMENTARY
+The full offline suite is green: 1,926 passed in 26.56 seconds. I am reviewing the final diff, then I will create the one-off publication commit and push it for merge to main.

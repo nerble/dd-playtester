@@ -2046,6 +2046,11 @@ _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
     evidence=(
         "The source candidate parser supplies reset-derived level ranges, "
         "route hazards, target identity, and autonomy rejection reasons.",
+        "The only special-procedure fallback admitted by the current source "
+        "policy is spec_cast_mage when it is the sole rejection and its "
+        "estimated peak round damage is at most half of the character's "
+        "current maximum HP; the combat runner still retains disabling-affect "
+        "withdrawal and healer recovery boundaries.",
         "Live consideration, isolation, health, and confirmed-kill gates "
         "remain required before this research policy is promoted.",
     ),
@@ -8336,6 +8341,8 @@ def _moria_absent_cooldown_alternate_policy(
         )
         if alternate_policy is not None:
             return alternate_policy
+    if _moria_deep_required_loot_hunt_pending(context):
+        return _MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_HUNT_POLICY
     if context.level >= 19:
         deep_policy = _research_hunt_policy(
             context,
@@ -8360,6 +8367,31 @@ def _moria_absent_cooldown_alternate_policy(
             ),
         )
     return None
+
+
+def _moria_deep_required_loot_hunt_pending(
+    context: ProgressionContext,
+) -> bool:
+    """Promote a below-band sanctuary probe to its one required-loot hunt."""
+    if (
+        context.character_class != "thief"
+        or context.level < 19
+        or context.has_sanctuary_potion
+        or not _caster_hunt_requires_sanctuary_replenishment(context)
+    ):
+        return False
+    probe_id = _MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY.policy_id
+    hunt_id = _MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_HUNT_POLICY.policy_id
+    if probe_id not in context.excluded_policy_ids:
+        return False
+    probe_result = (context.research_results or {}).get(probe_id)
+    if isinstance(probe_result, Mapping) and (
+        probe_result.get("boot_id") != context.world_boot_id
+        or probe_result.get("observed") is not True
+        or probe_result.get("viable") is not False
+    ):
+        return False
+    return not _research_result_recorded(context, hunt_id)
 
 
 def _moria_absent_cooldown_active(context: ProgressionContext) -> bool:

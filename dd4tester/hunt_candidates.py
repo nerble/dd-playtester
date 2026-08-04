@@ -8,6 +8,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
+from .fastwalks import FASTWALKS, MAP_ROUTES
+
 
 ACT_SENTINEL = 1 << 1
 ACT_AGGRESSIVE = 1 << 5
@@ -202,6 +204,13 @@ class HuntCandidate:
     estimated_base_hp_range: tuple[int, int] = (0, 0)
     estimated_peak_round_damage: int = 0
     autonomy_rejections: tuple[str, ...] = ()
+    specials: tuple[str, ...] = ()
+    route_preflight_room_vnum: str | None = None
+    route_preflight_command: str | None = None
+    route_preflight_target: str | None = None
+    route_preflight_level_range: tuple[int, int] = (0, 0)
+    route_preflight_hard_hazard: bool = False
+    route_hard_hazard_targets: tuple[str, ...] = ()
 
     @property
     def autonomous_safe(self) -> bool:
@@ -405,6 +414,18 @@ def rank_hunt_candidates(
         if path is None:
             continue
         route, path_rooms, closed_doors = path
+        (
+            route_preflight_room_vnum,
+            route_preflight_command,
+            route_preflight_target,
+            route_preflight_level_range,
+            route_preflight_hard_hazard,
+            route_hard_hazard_targets,
+        ) = _route_preflight_metadata(
+            world,
+            route,
+            character_level=character_level,
+        )
         hazards: list[str] = []
         autonomy_rejections: list[str] = []
         dangerous = False
@@ -562,6 +583,13 @@ def rank_hunt_candidates(
                 estimated_base_hp_range=hp_range,
                 estimated_peak_round_damage=peak_round_damage,
                 autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
+                specials=world.mobile_specials.get(mobile.vnum, ()),
+                route_preflight_room_vnum=route_preflight_room_vnum,
+                route_preflight_command=route_preflight_command,
+                route_preflight_target=route_preflight_target,
+                route_preflight_level_range=route_preflight_level_range,
+                route_preflight_hard_hazard=route_preflight_hard_hazard,
+                route_hard_hazard_targets=route_hard_hazard_targets,
             )
         )
 
@@ -1111,6 +1139,61 @@ def _aggregate_mob_resets(
 def _mobile_level_range(source_level: int) -> tuple[int, int]:
     """Account for source-load and runtime ``number_fuzzy`` calls."""
     return max(1, source_level - 2), source_level + 2
+
+
+def _route_preflight_metadata(
+    world: WorldSource,
+    route: tuple[str, ...],
+    *,
+    character_level: int,
+) -> tuple[
+    str | None,
+    str | None,
+    str | None,
+    tuple[int, int],
+    bool,
+    tuple[str, ...],
+]:
+    """Carry known route checks into generic source-ranked hunt records.
+
+    A route preflight remains hard when its source target can be inside the
+    useful band or its source identity is unknown. A source-confirmed target
+    at least five levels below the character is a soft transit check, matching
+    DD4's XP and below-band crowd rules.
+    """
+    for route_definition in (*FASTWALKS, *MAP_ROUTES):
+        if route_definition.commands != route:
+            continue
+        target = route_definition.route_preflight_target
+        level_range = (0, 0)
+        if target is not None:
+            normalized_target = _normalize_name(target)
+            matching_ranges = [
+                _mobile_level_range(mobile.level)
+                for mobile in world.mobiles.values()
+                if _normalize_name(mobile.short_description) == normalized_target
+            ]
+            if matching_ranges:
+                level_range = (
+                    min(low for low, _ in matching_ranges),
+                    max(high for _, high in matching_ranges),
+                )
+        hard_hazard = route_definition.route_preflight_hard_hazard
+        if (
+            hard_hazard
+            and level_range != (0, 0)
+            and level_range[1] <= character_level - 5
+        ):
+            hard_hazard = False
+        return (
+            route_definition.route_preflight_room_vnum,
+            route_definition.route_preflight_command,
+            target,
+            level_range,
+            hard_hazard,
+            route_definition.route_hard_hazard_targets,
+        )
+    return (None, None, None, (0, 0), False, ())
 
 
 def _mobile_base_hp_range(level_range: tuple[int, int]) -> tuple[int, int]:

@@ -110,6 +110,7 @@ def _source_test_candidate(
     status: str = "caution",
     boot_kills: int = 0,
     autonomy_rejections: tuple[str, ...] = (),
+    specials: tuple[str, ...] = (),
 ) -> HuntCandidate:
     return HuntCandidate(
         status=status,
@@ -133,6 +134,7 @@ def _source_test_candidate(
         estimated_base_hp_range=(10, 20),
         estimated_peak_round_damage=10,
         autonomy_rejections=autonomy_rejections,
+        specials=specials,
     )
 
 
@@ -158,9 +160,21 @@ def test_source_ranked_policy_fallback_opens_unregistered_late_levels() -> None:
 
 
 def test_source_ranked_candidate_identity_and_checkpoint_round_trip() -> None:
-    candidate = _source_test_candidate(
-        target="a white dwarf",
-        level_range=(15, 19),
+    candidate = replace(
+        _source_test_candidate(
+            target="a white dwarf",
+            level_range=(15, 19),
+            specials=("spec_cast_mage",),
+            autonomy_rejections=(
+                "target has special procedure spec_cast_mage",
+            ),
+        ),
+        route_preflight_room_vnum="1300",
+        route_preflight_command="where shadow guardian",
+        route_preflight_target="shadow guardian",
+        route_preflight_level_range=(7, 11),
+        route_preflight_hard_hazard=False,
+        route_hard_hazard_targets=("Fewmaster Toede",),
     )
     record = _source_ranked_candidate_record(
         candidate,
@@ -173,6 +187,132 @@ def test_source_ranked_candidate_identity_and_checkpoint_round_trip() -> None:
         "source-ranked-hunt-test-100-200-19"
     )
     assert restored == candidate
+
+
+def test_policy_refresh_clears_only_below_band_shadow_guardian_preflight() -> None:
+    policy_id = "galaxy-white-dwarf-probe-17-20"
+    source_ranked_id = "source-ranked-hunt-galaxy-9306-9306-19"
+    shadow_hazard = (
+        "field route preflight found source-registered hazard "
+        "'shadow guardian' in room 1300"
+    )
+    refreshed = _refresh_policy_revision(
+        {
+            "campaign_policy_revision": 111,
+            "level": 19,
+            "campaign_last_policy": policy_id,
+            "campaign_fastwalk_abort_reason": shadow_hazard,
+            "campaign_research_results": {
+                policy_id: {
+                    "observed": False,
+                    "viable": False,
+                    "route_hazard": shadow_hazard,
+                    "boot_id": "boot-1",
+                },
+                source_ranked_id: {
+                    "observed": False,
+                    "viable": False,
+                    "route_hazard": shadow_hazard,
+                    "boot_id": "boot-1",
+                },
+                "unknown-route": {
+                    "observed": False,
+                    "viable": False,
+                    "route_hazard": (
+                        "field route preflight found source-registered hazard "
+                        "'ancient void sentinel' in room 1300"
+                    ),
+                    "boot_id": "boot-1",
+                },
+            },
+            "campaign_research_absence_cooldowns": {
+                policy_id: 3,
+                source_ranked_id: 3,
+                "unknown-route": 3,
+            },
+        }
+    )
+
+    assert policy_id not in refreshed["campaign_research_results"]
+    assert source_ranked_id not in refreshed["campaign_research_results"]
+    assert refreshed["campaign_research_results"]["unknown-route"]
+    assert refreshed["campaign_research_absence_cooldowns"] == {
+        "unknown-route": 3,
+    }
+    assert "campaign_fastwalk_abort_reason" not in refreshed
+
+
+def test_source_ranked_selection_allows_only_audited_low_peak_special_fallback() -> None:
+    candidate = _source_test_candidate(
+        target="The Jailer",
+        level_range=(11, 15),
+        specials=("spec_cast_mage",),
+        autonomy_rejections=("target has special procedure spec_cast_mage",),
+    )
+
+    selected = _select_source_ranked_hunt_candidate(
+        (candidate,),
+        {"world_boot_id": "boot-1"},
+        character_level=19,
+        character_max_hp=264,
+    )
+
+    assert selected == candidate
+
+
+def test_source_ranked_special_fallback_beats_only_cooldown_safe_candidates() -> None:
+    candidate = _source_test_candidate(
+        target="The Jailer",
+        level_range=(11, 15),
+        specials=("spec_cast_mage",),
+        autonomy_rejections=("target has special procedure spec_cast_mage",),
+    )
+    safe_candidate = _source_test_candidate(
+        target="an undead soldier",
+        level_range=(13, 17),
+        mobile_vnum=101,
+        room_vnum=201,
+    )
+    safe_policy_id = _source_ranked_policy_id(
+        safe_candidate,
+        character_level=19,
+    )
+
+    selected = _select_source_ranked_hunt_candidate(
+        (safe_candidate, candidate),
+        {
+            "world_boot_id": "boot-1",
+            "campaign_research_results": {
+                safe_policy_id: {
+                    "boot_id": "boot-1",
+                    "observed": False,
+                    "viable": False,
+                    "absent": True,
+                }
+            },
+            "campaign_research_absence_cooldowns": {safe_policy_id: 3},
+        },
+        character_level=19,
+        character_max_hp=264,
+    )
+
+    assert selected == candidate
+
+
+def test_source_ranked_selection_rejects_unregistered_special_fallback() -> None:
+    candidate = _source_test_candidate(
+        target="a poisonous caster",
+        level_range=(15, 19),
+        specials=("spec_poison",),
+        autonomy_rejections=("target has special procedure spec_poison",),
+    )
+
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        {"world_boot_id": "boot-1"},
+        character_level=19,
+        character_max_hp=264,
+    ) is None
 
 
 def test_source_ranked_selection_prefers_fresh_target_over_current_reboot_failure() -> None:
@@ -2874,7 +3014,7 @@ def test_aborted_no_combat_research_segment_records_route_hazard() -> None:
 def test_policy_refresh_migrates_existing_no_combat_route_hazard() -> None:
     refreshed = _refresh_policy_revision(
         {
-            "campaign_policy_revision": 111,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
             "campaign_last_policy": "pyramid-ali-baba-probe-18-20",
             "campaign_fastwalk_abort_reason": (
                 "unexpected combat interrupted a no-combat field probe"
@@ -3014,7 +3154,7 @@ def test_policy_refresh_preserves_route_hazard_evidence() -> None:
 def test_current_policy_refresh_preserves_hard_shadow_guardian_route() -> None:
     refreshed = _refresh_policy_revision(
         {
-            "campaign_policy_revision": 111,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
             "campaign_last_policy": "galaxy-red-supergiant-probe-17-20",
             "campaign_fastwalk_abort_reason": (
                 "field route preflight found source-registered hazard "
@@ -3051,7 +3191,7 @@ def test_current_policy_refresh_clears_only_stale_galaxy_dynamic_hazard() -> Non
     policy_id = "galaxy-white-dwarf-probe-17-20"
     refreshed = _refresh_policy_revision(
         {
-            "campaign_policy_revision": 111,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
             "campaign_last_policy": policy_id,
             "campaign_fastwalk_abort_reason": (
                 "unexpected combat interrupted a no-combat field probe"
@@ -5055,7 +5195,7 @@ def test_policy_refresh_retries_stale_highland_hazard_after_maintenance() -> Non
 def test_policy_refresh_retries_stale_highland_keeper_identity_abort() -> None:
     refreshed = _refresh_policy_revision(
         {
-            "campaign_policy_revision": 111,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
             "campaign_last_policy": "highland-keeper-hunt-17-20",
             "campaign_fastwalk_abort_reason": (
                 "field combat aborted after unapproved attacker "
@@ -5086,7 +5226,7 @@ def test_policy_revision_retries_expanded_thalos_search_once() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert (
         "campaign_intermediate_piercing_weapon_upgrade_cooldown"
         not in migrated
@@ -5102,7 +5242,7 @@ def test_policy_revision_extends_active_forest_upgrade_cooldown() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_piercing_weapon_upgrade_cooldown"] == 6
 
 
@@ -5117,7 +5257,7 @@ def test_policy_revision_resets_stale_campaign_stall_count_once() -> None:
     )
 
     assert migrated["campaign_stalled_segments"] == 0
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "campaign_piercing_weapon_upgrade_attempted_boot_id" not in migrated
     assert "campaign_piercing_weapon_upgrade_cooldown" not in migrated
 
@@ -5134,7 +5274,7 @@ def test_policy_revision_retries_bear_claws_after_trivial_route_fix() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "campaign_piercing_weapon_upgrade_attempted_boot_id" not in migrated
     assert "campaign_piercing_weapon_upgrade_cooldown" not in migrated
 
@@ -5149,7 +5289,7 @@ def test_policy_revision_retires_false_trainer_cap_gear_markers() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "campaign_training_cap_gear_attempted_level" not in migrated
     assert "campaign_training_cap_gear_recovered_level" not in migrated
 
@@ -5169,7 +5309,7 @@ def test_policy_revision_retries_worker_probe_with_complete_safe_search() -> Non
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_fastwalk_abort_reason"] == (
         "policy revision bound the worker survey to its exact source room line"
     )
@@ -5204,7 +5344,7 @@ def test_policy_revision_retries_bardoosh_after_final_route_fix() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_fastwalk_abort_reason"] == (
         "policy revision corrected the Bardoosh final route from south to west"
     )
@@ -5226,7 +5366,7 @@ def test_policy_revision_retries_bardoosh_after_identity_fix() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_fastwalk_abort_reason"] == (
         "policy revision bound Bardoosh's generic live line to his source identity"
     )
@@ -5251,7 +5391,7 @@ def test_policy_revision_clears_consumed_bardoosh_retry_reason() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "campaign_fastwalk_abort_reason" not in migrated
 
 
@@ -5265,7 +5405,7 @@ def test_policy_revision_does_not_rearm_retry_after_recorded_bardoosh_attempt() 
         completed_policy_ids={policy_id},
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "campaign_fastwalk_abort_reason" not in migrated
 
 
@@ -5286,7 +5426,7 @@ def test_policy_revision_retries_nobleman_after_redundant_destination_fix() -> N
         completed_policy_ids={policy_id},
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_fastwalk_abort_reason"] == (
         "policy revision removed the redundant nobleman destination hop"
     )
@@ -5309,7 +5449,7 @@ def test_policy_revision_retries_nobleman_after_exact_identity_fix() -> None:
         completed_policy_ids={policy_id},
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_fastwalk_abort_reason"] == (
         "policy revision aligned the nobleman stop with its source identity"
     )
@@ -5338,7 +5478,7 @@ def test_policy_revision_retries_watchman_after_endpoint_route_fix() -> None:
         completed_policy_ids={policy_id},
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert policy_id not in migrated["campaign_research_results"]
     assert migrated["campaign_research_results"]["other-policy"]["viable"] is True
 
@@ -5365,7 +5505,7 @@ def test_policy_revision_retries_absent_shadow_keep_reset_target() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert policy_id not in migrated["campaign_research_results"]
     assert migrated["campaign_research_results"]["other-policy"]["observed"] is True
 
@@ -5386,7 +5526,7 @@ def test_policy_revision_retries_nonviable_watchman_after_second_stop_added() ->
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert policy_id not in migrated.get("campaign_research_results", {})
 
 
@@ -5407,7 +5547,7 @@ def test_policy_revision_delays_retry_of_existing_absent_stag() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_research_absence_cooldowns"] == {
         policy_id: 3
     }
@@ -5439,7 +5579,7 @@ def test_policy_revision_retries_pyramid_after_redundant_extended_route_stop() -
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert policy_id not in migrated["campaign_research_results"]
     assert migrated["campaign_research_results"]["other-policy"]["viable"] is True
     assert policy_id not in migrated.get("campaign_research_absence_cooldowns", {})
@@ -5477,7 +5617,7 @@ def test_policy_revision_retries_jailor_after_mixed_route_fix() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "hightower-jailor-probe-17-20" not in migrated[
         "campaign_research_results"
     ]
@@ -5552,7 +5692,7 @@ def test_replayed_research_result_clears_only_its_migration_tombstone() -> None:
 def test_current_revision_repairs_unfinished_jailor_absence_migration() -> None:
     repaired = _refresh_policy_revision(
         {
-            "campaign_policy_revision": 111,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
             "campaign_last_policy": "hightower-jailor-probe-17-20",
             "campaign_fastwalk_target_absent": True,
             "campaign_research_results": {
@@ -5573,7 +5713,7 @@ def test_current_revision_repairs_unfinished_jailor_absence_migration() -> None:
         }
     )
 
-    assert repaired["campaign_policy_revision"] == 111
+    assert repaired["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "hightower-jailor-probe-17-20" not in repaired[
         "campaign_research_results"
     ]
@@ -5591,7 +5731,7 @@ def test_current_revision_repairs_unfinished_jailor_absence_migration() -> None:
 def test_current_revision_repairs_a_failed_jailor_hunt_promotion() -> None:
     repaired = _refresh_policy_revision(
         {
-            "campaign_policy_revision": 111,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
             "campaign_last_policy": "hightower-jailor-hunt-17-20",
             "campaign_fastwalk_abort_reason": (
                 "field combat aborted for safety: health at or below 10%"
@@ -5646,7 +5786,7 @@ def test_policy_revision_retries_shire_prince_after_identity_fix() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "shire-dwarven-prince-thief-probe-17-20" not in migrated[
         "campaign_research_results"
     ]
@@ -5680,7 +5820,7 @@ def test_policy_revision_clears_crowded_shire_prince_promotion() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "shire-dwarven-prince-thief-probe-17-20" not in migrated[
         "campaign_research_results"
     ]
@@ -5702,7 +5842,7 @@ def test_policy_revision_clears_stale_mahntor_route_abort() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "campaign_fastwalk_abort_reason" not in migrated
 
 
@@ -5722,7 +5862,7 @@ def test_policy_revision_removes_anonymous_mahntor_below_band_exclusion() -> Non
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert policy_id not in migrated.get(
         "campaign_below_band_policy_exclusions", {}
     )
@@ -11331,7 +11471,7 @@ def test_policy_revision_migrates_ring_attempt_to_bounded_cooldown() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_daycare_ring_cooldown"] == 3
 
 
@@ -11371,7 +11511,7 @@ def test_policy_revision_retries_collar_after_a_preflight_defect() -> None:
         }
     )
 
-    assert migrated["campaign_policy_revision"] == 111
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert "campaign_war_dog_collar_attempted_level" not in migrated
     assert "campaign_war_dog_collar_attempted_boot_id" not in migrated
     assert "campaign_war_dog_collar_cooldown" not in migrated
@@ -13152,7 +13292,7 @@ def test_stalled_checkpoint_does_not_treat_checkpoint_id_as_segment_id(
                 "level": 1,
                 "xp": 0,
                 "campaign_stalled_segments": 1,
-                "campaign_policy_revision": 111,
+                "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
             },
         )
 
@@ -14501,6 +14641,78 @@ def test_campaign_records_a_returned_failed_segment(tmp_path) -> None:
         segment = storage.list_campaign_segments(result.campaign_id)[0]
         assert segment["status"] == "failed"
         assert segment["error"] == "starter segment returned status failed"
+
+
+def test_non_maintenance_segment_end_state_records_executed_policy(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path, target_level=20)
+    spec = load_campaign_spec(config_path)
+    policy = ProgressionPolicy(
+        policy_id="moria-sanctuary-thief-17-20",
+        minimum_level=19,
+        maximum_level=20,
+        status="research",
+        execution="moria-sanctuary-hunt",
+        summary="Probe a source-backed sanctuary carrier.",
+        evidence=(),
+        practice_skill=None,
+    )
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="source-ranked-hunt-dwarven-home-20504-20506-19",
+            reason="ready",
+            state={
+                "level": 19,
+                "xp": 181_009,
+                "world_boot_id": "boot-1",
+                "campaign_last_policy": (
+                    "source-ranked-hunt-dwarven-home-20504-20506-19"
+                ),
+            },
+        )
+
+    async def segment_runner(character, profile_path: Path) -> RunResult:
+        return _record_segment_run(
+            character.database,
+            profile_path,
+            {
+                "level": 20,
+                "xp": 0,
+                "world_boot_id": "boot-1",
+                "room_vnum": "3054",
+            },
+        )
+
+    class PolicyRunner(CampaignRunner):
+        def _policy_for_state(self, state) -> ProgressionPolicy:
+            return policy
+
+    result = asyncio.run(
+        PolicyRunner(
+            spec,
+            config_path,
+            segment_runner=segment_runner,
+        ).run()
+    )
+
+    assert result.status == "success"
+    with RunStorage(database) as storage:
+        segment = storage.list_campaign_segments(campaign_id)[0]
+        checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+    assert json.loads(segment["end_state_json"])["campaign_last_policy"] == (
+        policy.policy_id
+    )
+    assert json.loads(checkpoint["state_json"])["campaign_last_policy"] == (
+        policy.policy_id
+    )
 
 
 def test_campaign_checkpoints_configured_runtime_cap_for_resumption(tmp_path) -> None:

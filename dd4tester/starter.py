@@ -8562,7 +8562,25 @@ class StarterPolicy:
             return None
         targets: list[str] = list(route.route_hard_hazard_targets)
         if route.route_preflight_hard_hazard and route.route_preflight_target:
-            targets.append(route.route_preflight_target)
+            source_level_range = self._source_mobile_level_range(
+                route.route_preflight_target
+            )
+            hard_preflight = (
+                source_level_range is None
+                or source_level_range[1] > int(state.level) - 5
+            )
+            if (
+                hard_preflight
+                and self.active_target_level is not None
+                and _targets_match(
+                    self.active_target or "",
+                    route.route_preflight_target,
+                )
+                and self.active_target_level <= int(state.level) - 5
+            ):
+                hard_preflight = False
+            if hard_preflight:
+                targets.append(route.route_preflight_target)
         if not targets:
             return None
         candidates: list[str] = []
@@ -8602,8 +8620,6 @@ class StarterPolicy:
             if source_level_range is None:
                 source_level_range = self._source_mobile_level_range(target)
             if (
-                not route.route_preflight_hard_hazard
-                and
                 source_level_range is not None
                 and source_level_range[1] <= int(state.level) - 5
             ):

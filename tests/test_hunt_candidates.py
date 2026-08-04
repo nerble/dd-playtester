@@ -1,6 +1,7 @@
 from dataclasses import replace
 from pathlib import Path
 
+from dd4tester.fastwalks import route_named
 from dd4tester.hunt_candidates import (
     ExitSource,
     MobileSource,
@@ -8,6 +9,7 @@ from dd4tester.hunt_candidates import (
     ObjectSource,
     RoomSource,
     WorldSource,
+    _route_preflight_metadata,
     load_object_sources,
     parse_area_file,
     rank_hunt_candidates,
@@ -335,6 +337,43 @@ def test_candidate_ranking_can_expand_beyond_conservative_area_set(monkeypatch) 
         "a starter rat",
         "a later ogre",
     }
+
+
+def test_route_preflight_metadata_softens_only_below_band_source_hazards() -> None:
+    world = WorldSource(
+        mobiles={
+            1300: MobileSource(
+                1300,
+                "shadow guardian",
+                "a shadow guardian",
+                9,
+                1 << 5,
+                0,
+                "hitower.are",
+            )
+        }
+    )
+    route = route_named("galaxy white dwarf").commands
+
+    below_band = _route_preflight_metadata(
+        world,
+        route,
+        character_level=19,
+    )
+    useful_band = _route_preflight_metadata(
+        world,
+        route,
+        character_level=14,
+    )
+
+    assert below_band[:4] == (
+        "1300",
+        "where shadow guardian",
+        "shadow guardian",
+        (7, 11),
+    )
+    assert below_band[4] is False
+    assert useful_band[4] is True
 
 
 def test_candidate_ranking_can_include_below_band_loot_targets() -> None:

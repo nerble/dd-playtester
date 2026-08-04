@@ -203,7 +203,7 @@ _FLIGHT_PURCHASE_COOLDOWN_KEY = "campaign_flight_purchase_cooldown"
 _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS = 3
 _SACK_VAULT_ITEMS_KEY = "campaign_sack_vault_items"
 _SACK_VAULT_RECLAIM_LEVEL_KEY = "campaign_sack_vault_reclaim_attempted_level"
-_CAMPAIGN_POLICY_REVISION = 111
+_CAMPAIGN_POLICY_REVISION = 112
 _FIELD_CROWD_ABORT_PREFIXES = (
     "field room contained ",
     "field combat aborted after unapproved attacker ",
@@ -347,6 +347,7 @@ _PRODUCTIVE_POLICY_HISTORY_KEY = "campaign_productive_policy_history"
 _POLICY_HANDOFF_KEY = "campaign_policy_handoff"
 _SOURCE_RANKED_CANDIDATE_KEY = "campaign_source_ranked_hunt_candidate"
 _SOURCE_RANKED_POLICY_PREFIX = "source-ranked-hunt-"
+_AUDITED_SOURCE_SPECIALS = frozenset({"spec_cast_mage"})
 _PROTECTION_RECOVERY_KEY = "campaign_protection_recovery_required"
 _RESEARCH_ABSENCE_RETRY_COOLDOWNS = {
     _MIRROR_WATCHMAN_LEVEL_NINETEEN_POLICY_ID: 3,
@@ -1373,6 +1374,45 @@ def _refresh_policy_revision(
         if refreshed.get("campaign_last_policy") in cleared_route_hazards:
             refreshed.pop("campaign_fastwalk_target_absent", None)
             refreshed.pop("campaign_fastwalk_abort_reason", None)
+    if previous_revision < 112:
+        # Source-ranked Galaxy routes now carry the source-confirmed level of
+        # the Shadow Grove preflight target. Clear only old Shadow Guardian
+        # results when the checkpoint level proves that source range is below
+        # band; unknown route identities remain hard evidence.
+        research_results = dict(
+            refreshed.get("campaign_research_results") or {}
+        )
+        character_level = _level(refreshed)
+        cleared_route_hazards = {
+            policy_id
+            for policy_id, result in research_results.items()
+            if isinstance(result, dict)
+            and result.get("route_hazard")
+            and character_level >= 16
+            and "shadow guardian" in str(result["route_hazard"]).casefold()
+            and (
+                policy_id in _GALAXY_ROUTE_HAZARD_POLICY_IDS
+                or policy_id.startswith("source-ranked-hunt-galaxy-")
+            )
+        }
+        for policy_id in cleared_route_hazards:
+            research_results.pop(policy_id, None)
+        if research_results:
+            refreshed["campaign_research_results"] = research_results
+        else:
+            refreshed.pop("campaign_research_results", None)
+        absence_cooldowns = dict(
+            refreshed.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+        )
+        for policy_id in cleared_route_hazards:
+            absence_cooldowns.pop(policy_id, None)
+        if absence_cooldowns:
+            refreshed[_RESEARCH_ABSENCE_COOLDOWN_KEY] = absence_cooldowns
+        else:
+            refreshed.pop(_RESEARCH_ABSENCE_COOLDOWN_KEY, None)
+        if refreshed.get("campaign_last_policy") in cleared_route_hazards:
+            refreshed.pop("campaign_fastwalk_target_absent", None)
+            refreshed.pop("campaign_fastwalk_abort_reason", None)
     if not refreshed.get(_HIGHLAND_KEEPER_ROUTE_REPAIR_KEY):
         # Run 2794 exposed a source-confirmed below-band bogleech interruption
         # before the no-combat probe could apply its incidental-combat rule.
@@ -1950,6 +1990,11 @@ class CampaignRunner:
             candidates,
             state,
             character_level=level,
+            character_max_hp=(
+                int(max_hp)
+                if isinstance(max_hp, (int, float)) and max_hp > 0
+                else None
+            ),
         )
 
     def _policy_for_state(self, state: dict[str, Any]) -> ProgressionPolicy:
@@ -2288,6 +2333,12 @@ class CampaignRunner:
                         f"Run one bounded source-ranked hunt against "
                         f"{_source_ranked_target_identity(candidate)} in "
                         f"{candidate.area_file} room {candidate.room_vnum}."
+                        + (
+                            " This is an audited low-peak spec_cast_mage "
+                            "fallback; retain the elevated health gate."
+                            if candidate.specials
+                            else ""
+                        )
                     ),
                     evidence=(
                         *_SOURCE_RANKED_HUNT_POLICY.evidence,
@@ -2788,6 +2839,8 @@ class CampaignRunner:
                         execution=policy.execution,
                     ),
                 }
+                if policy.execution not in _MAINTENANCE_EXECUTIONS:
+                    latest_state["campaign_last_policy"] = policy.policy_id
                 if policy.execution == "borrow-flight":
                     latest_state["campaign_flight_loan_attempted"] = True
                 latest_run = _latest_new_character_run(
@@ -3059,6 +3112,8 @@ class CampaignRunner:
             result.final_state,
             execution=policy.execution,
         )
+        if policy.execution not in _MAINTENANCE_EXECUTIONS:
+            end_state["campaign_last_policy"] = policy.policy_id
         if policy.execution == "restock":
             end_state.pop(_PROVISION_FUNDING_REQUIRED_KEY, None)
         if (
@@ -3840,6 +3895,11 @@ async def _run_policy_segment(
             maximum_level=100,
             notation=_funding_route_notation(candidate.route),
             recall_after_loot=True,
+            route_preflight_room_vnum=candidate.route_preflight_room_vnum,
+            route_preflight_command=candidate.route_preflight_command,
+            route_preflight_target=candidate.route_preflight_target,
+            route_preflight_hard_hazard=candidate.route_preflight_hard_hazard,
+            route_hard_hazard_targets=candidate.route_hard_hazard_targets,
         )
         stop = FieldHuntStop(
             (),
@@ -3848,8 +3908,8 @@ async def _run_policy_segment(
             exact_target=True,
             maximum_target_count=1,
             require_isolated=True,
-            minimum_health_ratio=0.85,
-            maximum_level_offset=1,
+            minimum_health_ratio=(0.95 if candidate.specials else 0.85),
+            maximum_level_offset=(0 if candidate.specials else 1),
         )
         return await starter_runner(
             objective_level=100,
@@ -6171,6 +6231,13 @@ def _source_ranked_candidate_record(
         "estimated_base_hp_range": list(candidate.estimated_base_hp_range),
         "estimated_peak_round_damage": candidate.estimated_peak_round_damage,
         "autonomy_rejections": list(candidate.autonomy_rejections),
+        "specials": list(candidate.specials),
+        "route_preflight_room_vnum": candidate.route_preflight_room_vnum,
+        "route_preflight_command": candidate.route_preflight_command,
+        "route_preflight_target": candidate.route_preflight_target,
+        "route_preflight_level_range": list(candidate.route_preflight_level_range),
+        "route_preflight_hard_hazard": candidate.route_preflight_hard_hazard,
+        "route_hard_hazard_targets": list(candidate.route_hard_hazard_targets),
     }
 
 
@@ -6227,6 +6294,29 @@ def _source_ranked_candidate_from_record(
                 value.get("estimated_peak_round_damage") or 0
             ),
             autonomy_rejections=text_tuple("autonomy_rejections"),
+            specials=text_tuple("specials"),
+            route_preflight_room_vnum=(
+                str(value["route_preflight_room_vnum"])
+                if value.get("route_preflight_room_vnum") is not None
+                else None
+            ),
+            route_preflight_command=(
+                str(value["route_preflight_command"])
+                if value.get("route_preflight_command") is not None
+                else None
+            ),
+            route_preflight_target=(
+                str(value["route_preflight_target"])
+                if value.get("route_preflight_target") is not None
+                else None
+            ),
+            route_preflight_level_range=int_pair(
+                "route_preflight_level_range"
+            ),
+            route_preflight_hard_hazard=bool(
+                value.get("route_preflight_hard_hazard", False)
+            ),
+            route_hard_hazard_targets=text_tuple("route_hard_hazard_targets"),
         )
     except (TypeError, ValueError):
         return None
@@ -6321,24 +6411,18 @@ def _select_source_ranked_hunt_candidate(
     state: Mapping[str, Any],
     *,
     character_level: int,
+    character_max_hp: int | None = None,
 ) -> HuntCandidate | None:
     """Choose the safest fresh current-band source target for one segment."""
     if character_level < 13:
         return None
     valid: list[tuple[HuntCandidate, str]] = []
+    audited_specials: list[tuple[HuntCandidate, str]] = []
     for candidate in candidates:
-        if (
-            candidate.status == "reject"
-            or not candidate.autonomous_safe
-            or candidate.boot_kills >= 3
-            or candidate.estimated_level_range[1] <= character_level - 5
-            or candidate.estimated_level_range[1] > character_level + 1
-            or _funding_candidate_is_below_band(
-                dict(state),
-                candidate,
-                character_level=character_level,
-                boot_id=state.get("world_boot_id"),
-            )
+        if not _source_ranked_candidate_in_current_band(
+            candidate,
+            state,
+            character_level=character_level,
         ):
             continue
         status = _source_ranked_result_status(
@@ -6346,7 +6430,15 @@ def _select_source_ranked_hunt_candidate(
             state,
             character_level=character_level,
         )
-        valid.append((candidate, status))
+        if candidate.autonomous_safe:
+            valid.append((candidate, status))
+        elif _audited_source_special_candidate_allowed(
+            candidate,
+            character_max_hp=character_max_hp,
+        ):
+            audited_specials.append((candidate, status))
+    if not valid:
+        valid = audited_specials
     if not valid:
         return None
 
@@ -6382,17 +6474,58 @@ def _select_source_ranked_hunt_candidate(
             candidate.source_value,
         )
 
-    for preferred_status in ("fresh", "retryable", "productive"):
-        choices = [
-            item
-            for item in valid
-            if item[1] == preferred_status
-            and candidate_policy_id(item[0]) != last_policy_id
-        ]
+    pools = (valid, audited_specials)
+    for pool in pools:
+        for preferred_status in ("fresh", "retryable", "productive"):
+            choices = [
+                item
+                for item in pool
+                if item[1] == preferred_status
+                and candidate_policy_id(item[0]) != last_policy_id
+            ]
+            if choices:
+                return max(choices, key=rank)[0]
+        choices = [item for item in pool if item[1] != "cooldown"]
         if choices:
             return max(choices, key=rank)[0]
-    choices = [item for item in valid if item[1] != "cooldown"]
-    return max(choices, key=rank)[0] if choices else None
+    return None
+
+
+def _source_ranked_candidate_in_current_band(
+    candidate: HuntCandidate,
+    state: Mapping[str, Any],
+    *,
+    character_level: int,
+) -> bool:
+    return not (
+        candidate.status == "reject"
+        or candidate.boot_kills >= 3
+        or candidate.estimated_level_range[1] <= character_level - 5
+        or candidate.estimated_level_range[1] > character_level + 1
+        or _funding_candidate_is_below_band(
+            dict(state),
+            candidate,
+            character_level=character_level,
+            boot_id=state.get("world_boot_id"),
+        )
+    )
+
+
+def _audited_source_special_candidate_allowed(
+    candidate: HuntCandidate,
+    *,
+    character_max_hp: int | None,
+) -> bool:
+    """Allow only a source-audited, low-peak caster special as fallback."""
+    if not candidate.specials or not set(candidate.specials) <= _AUDITED_SOURCE_SPECIALS:
+        return False
+    if set(candidate.autonomy_rejections) != {
+        "target has special procedure spec_cast_mage"
+    }:
+        return False
+    if character_max_hp is None or candidate.estimated_peak_round_damage * 2 > character_max_hp:
+        return False
+    return True
 
 
 def _select_provision_funding_candidate(
