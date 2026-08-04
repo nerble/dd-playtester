@@ -585,6 +585,86 @@ def test_candidate_ranking_excludes_wanderer_behind_reset_closed_door(
     assert not any("wanderer" in hazard for hazard in candidate.hazards)
 
 
+def test_candidate_allows_source_trivial_room_companion(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 8, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "bystander",
+                "a harmless bystander",
+                3,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, ()),
+            MobReset(200, 7001, 1, ()),
+        ],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+    )[0]
+
+    assert candidate.autonomous_safe
+    assert "source-backed trivial companion: a harmless bystander" in candidate.hazards
+    assert "target room has a dangerous reset companion" not in candidate.autonomy_rejections
+
+
+def test_candidate_rejects_special_procedure_room_companion(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 8, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "bystander",
+                "a poisonous bystander",
+                3,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, ()),
+            MobReset(200, 7001, 1, ()),
+        ],
+        mobile_specials={200: ("spec_poison",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+    )[0]
+
+    assert not candidate.autonomous_safe
+    assert "target room has a dangerous reset companion" in candidate.autonomy_rejections
+
+
 def test_candidate_ranking_can_include_targets_without_known_loot(monkeypatch) -> None:
     area = parse_area_file(FIXTURE)
     monkeypatch.setattr(
@@ -666,6 +746,44 @@ def test_candidate_ranking_rejects_source_peak_round_above_character_hp(
 
     assert candidate.status == "reject"
     assert "source peak round 60 >= character max HP 50" in candidate.hazards
+
+
+def test_positive_alignment_npc_remains_an_autonomous_candidate() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "lawful target",
+                "a lawful target",
+                5,
+                0,
+                100,
+                "target.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Target room", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=7,
+        include_xp_only=True,
+        include_all_areas=True,
+    )[0]
+
+    assert candidate.autonomous_safe
+    assert candidate.status == "caution"
+    assert "positive alignment target (100)" in candidate.hazards
+    assert "target has positive alignment" not in candidate.autonomy_rejections
 
 
 def test_autonomous_filter_uses_route_aggressor_fuzzed_maximum(monkeypatch) -> None:

@@ -307,15 +307,22 @@ _DAYCARE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
     status="verified",
     execution="daycare-nanny-hunt",
     summary=(
-        "A source-backed, live-considered two-nanny circuit in Dwarven Day "
-        "Care, with explicit bystander and crowd gates."
+        "A source-backed, live-considered Dwarven Day Care nanny circuit "
+        "that searches the mobile's source-reachable rooms."
     ),
     evidence=(
-        "DD4 source revision 0482387: the recall route to rooms 6602 and 6604 has no reachable above-level aggressive reset.",
-        "DD4 source: the nannies are non-aggressive source-level-5 cleric specials whose reboot-fuzzed levels can reach 7.",
+        "DD4 source revision 1b759f5: mobile 6606, the nanny, is a "
+        "non-aggressive, non-sentinel, stay-area source-level-5 cleric "
+        "special whose reboot-fuzzed level can reach 7.",
+        "The source movement graph reaches 11 open, non-aggressive rooms from "
+        "the room-6602 reset; the executable policy uses `where nanny` and "
+        "checks that bounded source-vetted room set rather than only rooms 6602 "
+        "and 6604.",
         "DD4 source: the room-6602 nanny carries a linen robe; the other reset companions are explicitly excluded as targets.",
         "DD4 source: nanny mobile 6606 uses spec_cast_cleric, whose level-zero spell case can cast blindness; healer.c confirms the Midgaard healer can cast cure blindness.",
-        "Every nanny must pass the existing exact-description, room-crowd, full state, and live-consider gates before combat.",
+        "Every nanny must pass the existing exact-description, room-crowd, full "
+        "state, and live-consider gates before combat; the four known daycare "
+        "companions remain explicitly allowed bystanders.",
         "Live runs 706 and 707 traversed both reset rooms and returned safely to healer room 3054; both nannies were absent in that reboot window, so the campaign rotates areas instead of repeating indefinitely.",
         "Live run 712 considered a reboot-fuzzed level-4 nanny in room 6604, killed her for 149 XP, collected her robe, potion, and food drop, and recovered at healer room 3054; blindness was not selected in that fight.",
         "Live run 790: level-7 dwarf warrior Dorrik considered and killed a nanny for 192 XP. Its cleric blindness triggered recall and healer recovery; the completed save-and-quit was recorded as a successful campaign segment.",
@@ -2046,11 +2053,27 @@ _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
     evidence=(
         "The source candidate parser supplies reset-derived level ranges, "
         "route hazards, target identity, and autonomy rejection reasons.",
-        "The only special-procedure fallback admitted by the current source "
-        "policy is spec_cast_mage when it is the sole rejection and its "
-        "estimated peak round damage is at most half of the character's "
-        "current maximum HP; the combat runner still retains disabling-affect "
-        "withdrawal and healer recovery boundaries.",
+        "DD4 source revision 1b759f5 update.c moves mobiles without "
+        "ACT_SENTINEL through random open exits; ACT_STAY_AREA limits that "
+        "movement to the mobile's area rather than pinning it to its reset.",
+        "Generic source-ranked hunts therefore inspect every source reset "
+        "room for sentinel mobiles, while wandering mobiles receive a "
+        "source-reachable room set and a `where` preflight before live search.",
+        "The wandering fallback is bounded to 512 source rooms and excludes "
+        "rooms with static aggressive resets; a locator match narrows the "
+        "live GMCP route while retaining every intermediate waypoint, and an "
+        "unmapped location fails closed rather than starting a blind search.",
+        "The audited special-procedure fallbacks are spec_cast_mage below "
+        "the source energy-drain threshold and spec_breath_any when it is the "
+        "sole rejection. The latter is bounded by magic.c's unmitigated "
+        "UMAX(10, ch->hit)/4 breath damage plus the source melee peak; both "
+        "special cases retain a one-kill limit, an elevated health gate, "
+        "disabling-affect withdrawal, and healer recovery boundaries.",
+        "Live run 3087 verified the wandering locator against forest mobile "
+        "18007: `where man` placed the medicine man in River bed, a source-"
+        "excluded route with aggressive wanderers, so the bot recalled without "
+        "entering, took no damage or XP loss, and checkpointed at healer room "
+        "3054.",
         "Live consideration, isolation, health, and confirmed-kill gates "
         "remain required before this research policy is promoted.",
     ),
@@ -3231,9 +3254,9 @@ _PYRAMID_ALI_BABA_RESEARCH_POLICY = ProgressionPolicy(
         "consideration before authorizing combat."
     ),
     evidence=(
-        "DD4 source revision eaaad93: mobile 2605, Ali Baba, resets once in "
+        "DD4 source revision 1b759f5: mobile 2605, Ali Baba, resets once in "
         "Pyramid room 2643 at source level 18 with normal 16-20 live fuzz.",
-        "The reset has no companion and the mobile is sentinel/stay-area, "
+        "The reset has no companion and the mobile is non-sentinel, stay-area, "
         "with no aggressive flag; its source special is spec_thief, which "
         "steals a small percentage of carried coins rather than dealing combat "
         "damage.",
@@ -3242,6 +3265,9 @@ _PYRAMID_ALI_BABA_RESEARCH_POLICY = ProgressionPolicy(
         "at room 2600. The desert maze is randomized, so the runner follows "
         "live GMCP destination VNUMs; from room 2600 the verified continuation "
         "is `e;u;n;e;u;open down;2d;4e;n` to room 2643.",
+        "The source graph reaches 20 open rooms from room 2643. The probe uses "
+        "`where ali baba` to select the matching source-room group, then "
+        "navigates only those rooms; an unmapped live location fails closed. "
         "This first pass is consider-only. Combat promotion requires an exact "
         "target, a sole mobile, a useful-band live consider, and a bounded "
         "return path; no special-procedure assumption authorizes a kill by "
@@ -3740,13 +3766,14 @@ _GALAXY_WHITE_DWARF_RESEARCH_POLICY = ProgressionPolicy(
     ),
     evidence=(
         *_GALAXY_SHADOW_GROVE_ROUTE_HAZARD_EVIDENCE,
-        "DD4 source revision cd138ae: Galaxy mobile 9306 is source level 15 "
-        "with a 13-17 live range, is non-aggressive, unarmed, stay-area, and "
+        "DD4 source revision 1b759f5: Galaxy mobile 9306 is source level 15 "
+        "with a 13-17 live range, is non-aggressive, non-sentinel, unarmed, "
+        "stay-area, and "
         "has no special procedure.",
-        "The first mobile-9306 reset is alone in room 9306. Later same-vnum "
-        "reset commands are constrained by the one-mobile source limit, so "
-        "the reset room is the bounded first probe rather than permission to "
-        "search the area's higher-level branches.",
+        "The source movement graph reaches 39 open rooms from room 9306. The "
+        "probe issues `where white`, maps its room label to that source-vetted "
+        "set, and checks only mapped rooms; the source room is the first stop, "
+        "not the only possible location.",
         "The source graph reaches stable Shadow Grove entrance room 1300 from "
         "recall through low-level transit rooms and no closed door. The Grove "
         "randomizes direction labels, so the runner follows live GMCP exit "
@@ -3762,8 +3789,9 @@ _GALAXY_WHITE_DWARF_RESEARCH_POLICY = ProgressionPolicy(
         "Live run 2291 proved that GMCP destination navigation reaches room "
         "9306 without combat or damage. The reset target was absent there, and "
         "`where white` located a white dwarf in room 9345, whose source reset "
-        "also contains level-31 Cancer; the level-17 policy correctly refused "
-        "to pursue that unsafe locator result and returned to healer room 3054.",
+        "also contains level-31 Cancer; the level-17 policy's exact crowd gate "
+        "correctly refused that unsafe target room and returned to healer room "
+        "3054.",
     ),
     practice_skill=None,
 )
@@ -3803,12 +3831,14 @@ _GALAXY_WHITE_DWARF_SECONDARY_RESEARCH_POLICY = ProgressionPolicy(
     evidence=(
         *_GALAXY_SHADOW_GROVE_ROUTE_HAZARD_EVIDENCE,
         "DD4 source revision 1b759f5: mobile 9306 is source level 15 with the "
-        "normal 13-17 live range, non-aggressive, stay-area, unarmed, and has "
-        "no special procedure.",
+        "normal 13-17 live range, non-aggressive, non-sentinel, stay-area, "
+        "unarmed, and has no special procedure.",
         "The source has a separate one-mobile reset `M 0 9306 1 9314` in room "
         "9314, At the End of the Milky Way. That room has no companion reset, "
         "so it is independent evidence from the already-cleared room-9306 "
-        "probe and the unsafe room-9322 branch.",
+        "probe and the unsafe room-9322 branch. The source-reachable search "
+        "still covers all 39 mapped rooms from this alternate starting reset "
+        "and fails closed on an unmapped `where` location.",
         "The route reuses the live-GMCP Shadow Grove navigation, reaches room "
         "9308, then follows source exits east to 9312, north to 9313, and north "
         "to 9314. The target parser binds the live room line to `tiny white "
@@ -4043,9 +4073,9 @@ _MIRROR_REALM_GARDENER_RESEARCH_POLICY = ProgressionPolicy(
         "then return to the Midgaard healer."
     ),
     evidence=(
-        "DD4 source revision cd138ae: mobile 19036, the gardener, resets once in Mirror Realm room 19091.",
-        "The source prototype is level 25 with normal mobile-level fuzz. Its act flags are stay-area rather than aggressive; it carries clippers and has spec_thief, so the route remains no-combat research only.",
-        "The executable route tail is east from room 19108 to 19089, then north through 19090 to 19091; taking east again enters 19120 and cannot reach the target. Its only static aggressor is level-0 Fido; update.c skips aggression when the player is more than ten levels higher.",
+        "DD4 source revision 1b759f5: mobile 19036, the gardener, resets once in Mirror Realm room 19091.",
+        "The source prototype is level 25 with normal mobile-level fuzz. Its act flags are stay-area rather than sentinel or aggressive; update.c can move it through the 36 source-reachable open rooms. It carries clippers and has spec_thief, so the route remains no-combat research only.",
+        "The executable route tail reaches room 19091, but presence is located with where and then checked across the source-reachable room set; the runner does not assume the reset room is still occupied.",
         "Live run 2366 reached source room 19091, found the gardener absent, and returned through the healer without combat; this is temporary reboot-scoped absence, not a permanent route rejection.",
         "Any unexpected combat aborts the probe with flee and healer recovery; live presence, crowd state, and do_consider evidence are required before registering combat behavior.",
     ),
@@ -4202,9 +4232,9 @@ _MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY = ProgressionPolicy(
         "combat, then return to the Midgaard healer."
     ),
     evidence=(
-        "DD4 source revision d7cb330: mobile 19068, Jerry Garcia, resets once in Mirror Realm room 19170 and is level 35, sentinel, and not aggressive.",
-        "Jerry Garcia has spec_cast_adept and is a stationary healer, so the route remains no-combat research only.",
-        "The source path has only level-0 Fido as an aggressive static or reachable mobile. update.c skips aggression when a character is more than ten levels higher; this holds throughout levels 36-40.",
+        "DD4 source revision 1b759f5: mobile 19068, Jerry Garcia, resets once in Mirror Realm room 19170 and is level 35, stay-area, non-sentinel, and not aggressive.",
+        "Jerry Garcia has spec_cast_adept; where locates the wandering healer and the runner checks the source-reachable room set before returning to no-combat research.",
+        "The source movement graph contains 43 reachable rooms from the reset. The route keeps the static Fido hazard gate and does not enter a room that the source safety filter rejects.",
         "This policy records only live route completion, presence, crowd, and do_consider evidence. Any unexpected combat aborts with flee and healer recovery before a combat policy can be considered.",
     ),
     practice_skill=None,
@@ -4466,16 +4496,18 @@ _VAMPIRE_HIVE_WOUNDED_VAMPIRE_RESEARCH_POLICY = ProgressionPolicy(
         "target before enabling a bounded level-61 to 65 hunt."
     ),
     evidence=(
-        "DD4 source revision bf745c3: mobile 25652, the wounded vampire, "
+        "DD4 source revision 1b759f5: mobile 25652, the wounded vampire, "
         "resets once in Vamp Hive room 25641 at source level 59.",
-        "The source mobile is stay-area, non-aggressive, has no special "
+        "The source mobile is non-sentinel, stay-area, non-aggressive, has no special "
         "procedure, and has no source room companion; its source reset equips "
         "sharp fangs, black cloth trousers, and an elegant black cane, and "
         "loads a scrap of parchment.",
         "The source-derived route reaches room 25641 through three reset-open "
         "doors; source ranking finds only lower-band route hazards. Because "
-        "the mobile wanders, the probe issues `where vampire` before the "
-        "bounded reset-room search.",
+        "the mobile wanders, the probe issues `where vampire` and searches the "
+        "19-room source-reachable set from the reset, rather than assuming the "
+        "reset room is its live location. An unmapped locator result fails "
+        "closed.",
         "The source room line canonicalizes to `wounded vampire`; the probe "
         "records exact TARGETMODE identity, crowd state, and the do_consider "
         "level-difference result without initiating combat.",
@@ -4564,7 +4596,7 @@ _PIRATES_SEAS_RASTAFARIANS_RESEARCH_POLICY = ProgressionPolicy(
         "Rastafarians target before enabling a bounded level-71 to 75 hunt."
     ),
     evidence=(
-        "DD4 source revision bf745c3: mobile 17099, the Rastafarians, "
+        "DD4 source revision 1b759f5: mobile 17099, the Rastafarians, "
         "resets once in Pirates Seas room 17141 at source level 70 with a "
         "conservative 68-72 live range.",
         "The source mobile has no aggressive, sentinel, or stay-area flag, "
@@ -4575,10 +4607,12 @@ _PIRATES_SEAS_RASTAFARIANS_RESEARCH_POLICY = ProgressionPolicy(
         "reset-open doors and includes lower-band route hazards plus wandering "
         "mobiles. Those hazards remain hard abort conditions; they are not "
         "deliberate XP targets.",
-        "Because the target can wander, the probe issues `where rastafarians` "
-        "and searches only the registered reset room. The all-area source "
+        "Because the target can wander across the open source graph, the probe "
+        "issues `where rastafarians` and searches the source-vetted reachable "
+        "rooms, excluding static aggressive-room hazards. The all-area source "
         "index binds its TARGETMODE short line to canonical identity "
-        "`rastafarians`.",
+        "`rastafarians`; the policy does not treat the reset room as the only "
+        "possible location.",
         "The first pass records exact identity, isolation, and the live "
         "do_consider level-difference result without initiating combat. The "
         "level difference, not the target-versus-character HP wording, decides "
@@ -4909,6 +4943,17 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
     selected = _select_policy(context)
     if context.has_flight:
         return selected
+    if (
+        context.flight_funding_retry_pending
+        and context.can_attempt_flight_purchase
+        and not context.flight_purchase_failed
+        and context.has_food
+        and selected.policy_id == _PROVISION_FUNDING_POLICY.policy_id
+    ):
+        # Once provisions are secure and the character can afford the current
+        # reboot's price, retry the deferred flight purchase instead of
+        # sending the money loop back out for unnecessary loot.
+        return _BUY_FLIGHT_POLICY
     if (
         context.flight_purchase_failed
         and context.flight_loan_attempted

@@ -4130,6 +4130,23 @@ def test_completed_flight_funding_retries_purchase_after_maintenance() -> None:
     assert policy.execution == "buy-flight"
 
 
+def test_pending_flight_purchase_preempts_redundant_funding_when_stocked() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_food=True,
+        needs_provision_funding=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        flight_funding_retry_pending=True,
+        last_policy_id="source-ranked-hunt-dwarven-home-20504-20506-18",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
 def test_galaxy_policy_takes_one_bounded_loan_after_flight_purchase_failure() -> None:
     policy = policy_for(
         18,

@@ -795,6 +795,7 @@ _ARENA_RESPAWN_WAIT_SECONDS = 180
 _HEALTH_CHECK_WAIT_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
 _POST_FLEE_AUDIT_GRACE_SECONDS = 0.75
+_WHERE_RESPONSE_GRACE_SECONDS = 1.5
 _COMBAT_ACTION_COOLDOWN_SECONDS = 3.0
 # Field play is deliberately 50% more aggressive than the original safety
 # profile. These values are half of the original reserve thresholds, with a
@@ -898,6 +899,8 @@ class FieldHuntStop:
     pursuit_room_vnums: tuple[str, ...] = ()
     selective_loot_keywords: tuple[str, ...] = ()
     abort_after_consider_rejection: bool = False
+    abort_if_where_location_unknown: bool = False
+    preserve_where_route_waypoints: bool = False
 
 
 class StarterPolicy:
@@ -1171,6 +1174,7 @@ class StarterPolicy:
         self.flee_succeeded = False
         self.needs_stand = False
         self.waiting_for_heal = False
+        self.recovery_wake_command_pending = False
         self.blindness_recovery_active = False
         self.health_check_due: float | None = None
         self.resume_recovery_after_resupply = False
@@ -1361,7 +1365,13 @@ class StarterPolicy:
         self.fastwalk_pursuit_direction: str | None = None
         self.fastwalk_pursuit_steps = 0
         self.fastwalk_target_absent = False
+        self.fastwalk_crowded = False
         self.fastwalk_where_target_absent_observed = False
+        self.fastwalk_where_response_observed = False
+        self.fastwalk_where_target_present_observed = False
+        self.fastwalk_where_response_pending = False
+        self.fastwalk_where_response_deadline: float | None = None
+        self.fastwalk_where_response_buffer = ""
         self.fastwalk_where_location: str | None = None
         self.consider_target: str | None = None
         self.consider_target_selector: str | None = None
@@ -1434,28 +1444,63 @@ class StarterPolicy:
             if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
             else None
         )
-        if (
-            "you fail to find anyone by that name" in recent
-            and current_stop is not None
-            and current_stop.abort_if_where_target_absent
+        where_action_issued = bool(
+            current_stop is not None
             and any(
                 action.strip().casefold().startswith("where ")
                 for action in current_stop.actions[: self.fastwalk_hunt_action_index]
             )
+        )
+        where_response_active = bool(
+            where_action_issued
+            and (
+                self.fastwalk_where_response_pending
+                or not self.fastwalk_where_response_observed
+            )
+        )
+        where_response_text = cleaned
+        if where_response_active:
+            # Telnet reads can split the locator header from the target row.
+            # Keep only this bounded response until the prompt/deadline closes
+            # it, so a present wandering mobile cannot be mistaken for absent.
+            self.fastwalk_where_response_buffer = (
+                self.fastwalk_where_response_buffer + cleaned
+            )[-8_000:]
+            where_response_text = self.fastwalk_where_response_buffer
+        if (
+            where_response_active
+            and "you fail to find anyone by that name"
+            in where_response_text.casefold()
         ):
-            # `where` output can arrive immediately before a prompt, which
-            # otherwise overwrites last_response before the hunt planner reads it.
-            self.fastwalk_where_target_absent_observed = True
+            # A locator response can arrive in a later read chunk than the
+            # prompt that follows the command. Complete the pending query
+            # before the hunt planner evaluates its result.
+            self.fastwalk_where_response_pending = False
+            self.fastwalk_where_response_deadline = None
+            if (
+                current_stop is not None
+                and current_stop.abort_if_where_target_absent
+            ):
+                self.fastwalk_where_target_absent_observed = True
+        if (
+            where_response_active
+            and "you detect the presence of:" in where_response_text.casefold()
+        ):
+            self.fastwalk_where_response_observed = True
+            if _where_response_mentions_target(
+                where_response_text,
+                current_stop.where_target or current_stop.target,
+            ):
+                self.fastwalk_where_target_present_observed = True
+                self.fastwalk_where_response_pending = False
+                self.fastwalk_where_response_deadline = None
         if (
             current_stop is not None
             and current_stop.where_location_routes
-            and any(
-                action.strip().casefold().startswith("where ")
-                for action in current_stop.actions[: self.fastwalk_hunt_action_index]
-            )
+            and where_response_active
         ):
             where_location = _where_location_from_response(
-                cleaned,
+                where_response_text,
                 current_stop.where_target or current_stop.target,
             )
             if (
@@ -2263,6 +2308,9 @@ class StarterPolicy:
                         )
                     ):
                         self.fastwalk_hunt_stop_killed = True
+                        # A later productive target resolves an earlier
+                        # crowded stop for this bounded field segment.
+                        self.fastwalk_crowded = False
                 if defeated_target:
                     xp_gain = _TOTAL_XP_GAIN.search(cleaned)
                     self.completed_kills.append(
@@ -2755,6 +2803,13 @@ class StarterPolicy:
 
         if not self.in_world or not self.prompt_ready:
             return None
+        if self.fastwalk_where_response_pending:
+            deadline = self.fastwalk_where_response_deadline
+            if deadline is None or time.monotonic() < deadline:
+                self.prompt_ready = False
+                return None
+            self.fastwalk_where_response_pending = False
+            self.fastwalk_where_response_deadline = None
         if (
             self.class_trainer_return_pending
             and state.room_vnum == "3054"
@@ -2825,15 +2880,27 @@ class StarterPolicy:
         self.return_home = True
         self.fastwalk_resume_hunt_after_interrupt = False
         self.fastwalk_resume_current_route_after_interrupt = False
-        self.fastwalk_abort_reason = (
-            "segment runtime boundary requested a safe healer return"
-        )
+        # Keep the first concrete safety finding (for example, a live
+        # source-registered route hazard) so campaign research does not
+        # misclassify a bounded healer return as an unobserved target.
+        if self.fastwalk_abort_reason is None:
+            self.fastwalk_abort_reason = (
+                "segment runtime boundary requested a safe healer return"
+            )
         if self.fastwalk_route is not None:
             self.fastwalk_emergency_recall_pending = True
 
     def after_command(self, decision: BotDecision) -> None:
         self.prompt_ready = False
         self.last_command_at = time.monotonic() if self.in_world else None
+        if decision.command != "stand":
+            self.recovery_wake_command_pending = False
+        if decision.command.casefold().startswith("where "):
+            self.fastwalk_where_response_buffer = ""
+            self.fastwalk_where_response_pending = True
+            self.fastwalk_where_response_deadline = (
+                time.monotonic() + _WHERE_RESPONSE_GRACE_SECONDS
+            )
         if (
             decision.command == "look"
             and decision.reason
@@ -2903,6 +2970,9 @@ class StarterPolicy:
             self.sleep_gear_locked = True
         if decision.command == "stand":
             self.stand_confirmation_pending = True
+            self.recovery_wake_command_pending = (
+                decision.reason == "wake to address hunger or thirst"
+            )
         if decision.command == "flee":
             self.flee_pending = True
             self.flee_succeeded = False
@@ -2933,6 +3003,9 @@ class StarterPolicy:
         self.prompt_ready = False
         self.text = ""
         self.stand_confirmation_pending = False
+        self.fastwalk_where_response_pending = False
+        self.fastwalk_where_response_deadline = None
+        self.fastwalk_where_response_buffer = ""
         if self.in_world and self.fastwalk_route is not None:
             # A reconnect normally places the character back in Midgaard while
             # the local field cursor still points at the old remote room.
@@ -5370,6 +5443,11 @@ class StarterPolicy:
         state: CharacterState,
     ) -> BotDecision | None:
         self.fastwalk_training_started = True
+        # Training is a per-segment activity.  A distant class trainer may
+        # require a healer return after its listing has been consumed; do not
+        # route back to that trainer again before the field route begins.
+        if self.practiced:
+            return None
         if _is_sleeping(state):
             return BotDecision("stand", "wake before visiting the class trainer")
         stat = self._preferred_training_stat(state)
@@ -8802,6 +8880,7 @@ class StarterPolicy:
             # A crowded room is a retryable area-state miss, not evidence that
             # the requested mobile is absent from the area.
             self.fastwalk_target_absent = False
+            self.fastwalk_crowded = True
             if self.fastwalk_hunt_stops:
                 if len(self.fastwalk_hunt_stops) == 1:
                     self.fastwalk_abort_reason = crowd_reason
@@ -9250,6 +9329,11 @@ class StarterPolicy:
             self.fastwalk_attack_started = False
             self.fastwalk_target_absent = False
             self.fastwalk_where_target_absent_observed = False
+            self.fastwalk_where_response_observed = False
+            self.fastwalk_where_target_present_observed = False
+            self.fastwalk_where_response_pending = False
+            self.fastwalk_where_response_deadline = None
+            self.fastwalk_where_response_buffer = ""
             self.fastwalk_where_location = None
             self.consider_target = None
             self.consider_target_selector = None
@@ -9271,6 +9355,7 @@ class StarterPolicy:
             if (
                 not self.objective_kills
                 and not self.fastwalk_consider_outcomes
+                and not self.fastwalk_crowded
                 and not str(self.fastwalk_abort_reason or "").startswith(
                     "field room contained "
                 )
@@ -9394,11 +9479,16 @@ class StarterPolicy:
             stop.abort_if_where_target_absent
             and (
                 self.fastwalk_where_target_absent_observed
+                or (
+                    self.fastwalk_where_response_observed
+                    and not self.fastwalk_where_target_present_observed
+                )
                 or "you fail to find anyone by that name"
                 in self.last_response.casefold()
             )
         ):
             self.fastwalk_target_absent = True
+            self.fastwalk_where_target_absent_observed = True
             where_target = stop.where_target or stop.target
             self.fastwalk_abort_reason = (
                 f"`where` confirmed {where_target!r} absent from the current area"
@@ -9407,6 +9497,33 @@ class StarterPolicy:
             return BotDecision(
                 "recall",
                 "return after the global locator confirmed the field target absent",
+            )
+
+        if (
+            stop.abort_if_where_location_unknown
+            and stop.where_location_routes
+            and any(
+                action.strip().casefold().startswith("where ")
+                for action in stop.actions[: self.fastwalk_hunt_action_index]
+            )
+            and (
+                self.fastwalk_where_location is None
+                or self.fastwalk_where_location.casefold()
+                not in {
+                    room_name.casefold()
+                    for room_name, _route in stop.where_location_routes
+                }
+            )
+            and not self.fastwalk_where_target_absent_observed
+        ):
+            self.fastwalk_abort_reason = (
+                f"`where` did not map {stop.where_target or stop.target!r} "
+                "to a source-vetted room"
+            )
+            self.fastwalk_returning = True
+            return BotDecision(
+                "recall",
+                "return when the locator result cannot be mapped to a safe source room",
             )
 
         unsafe_where_room = next(
@@ -9487,20 +9604,34 @@ class StarterPolicy:
         destination_route = routes.get(location.casefold())
         if not destination_route:
             return
-        remaining_by_destination = {
-            stop.route_vnums[0]: stop
-            for stop in self.fastwalk_hunt_stops[
-                self.fastwalk_hunt_stop_index + 1 :
+        remaining = self.fastwalk_hunt_stops[
+            self.fastwalk_hunt_stop_index + 1 :
+        ]
+        if current_stop.preserve_where_route_waypoints:
+            destination_indexes = [
+                index
+                for index, stop in enumerate(remaining)
+                if stop.route_vnums
+                and stop.route_vnums[-1] in destination_route
             ]
-            if len(stop.route_vnums) == 1
-        }
-        narrowed = tuple(
-            remaining_by_destination[destination]
-            for destination in destination_route
-            if destination in remaining_by_destination
-        )
-        if not narrowed:
-            return
+            if not destination_indexes:
+                return
+            # Source-ranked route_vnums segments are relative to the preceding
+            # stop; dropping the intermediate stops would leave a stale path.
+            narrowed = remaining[: max(destination_indexes) + 1]
+        else:
+            remaining_by_destination = {
+                stop.route_vnums[-1]: stop
+                for stop in remaining
+                if stop.route_vnums
+            }
+            narrowed = tuple(
+                remaining_by_destination[destination]
+                for destination in destination_route
+                if destination in remaining_by_destination
+            )
+            if not narrowed:
+                return
         self.fastwalk_hunt_stops = (
             self.fastwalk_hunt_stops[: self.fastwalk_hunt_stop_index + 1]
             + narrowed
@@ -11053,6 +11184,11 @@ class StarterPolicy:
         if self.waiting_for_heal:
             self.health_check_due = None
             self.waiting_for_heal = False
+            if self.recovery_wake_command_pending:
+                self.recovery_wake_command_pending = False
+                return None
+            if _is_sleeping(state):
+                return BotDecision("stand", "resume training after sanctuary recovery")
             return BotDecision("stand", "resume training after sanctuary recovery")
         if (
             self.liquidate_loot
@@ -11701,7 +11837,11 @@ class StarterPolicy:
                 f"ask the {trainer_keyword} about training",
             )
         if self.loremaster_step == 1:
-            if at_class_trainer and "you do not see that here" in self.last_response.casefold():
+            training_response = self.text.casefold()
+            if at_class_trainer and (
+                "you do not see that here" in training_response
+                or "you fail to find anyone by that name" in training_response
+            ):
                 self.loremaster_step = 0
                 self.practiced = True
                 self.practice_exit_reason = (
@@ -12931,6 +13071,7 @@ class StarterBotRunner:
                     "fastwalk_explore_depth": self.fastwalk_explore_depth,
                     "fastwalk_attack_target": self.fastwalk_attack_target,
                     "fastwalk_target_absent": policy.fastwalk_target_absent,
+                    "fastwalk_crowded": policy.fastwalk_crowded,
                     "fastwalk_unattackable_target": (
                         policy.fastwalk_unattackable_target
                     ),
@@ -12968,6 +13109,7 @@ class StarterBotRunner:
                     policy.fastwalk_consider_outcomes
                 ),
                 "campaign_fastwalk_target_absent": policy.fastwalk_target_absent,
+                "campaign_fastwalk_crowded": policy.fastwalk_crowded,
                 "campaign_fastwalk_unattackable_target": (
                     policy.fastwalk_unattackable_target
                 ),
@@ -14096,7 +14238,7 @@ def crystalmir_white_stag_research_stops() -> tuple[FieldHuntStop, ...]:
     return (
         FieldHuntStop(
             (),
-            "beautiful white stag",
+            "white stag",
             actions=("where stag",),
             abort_if_where_target_absent=True,
             **common,
@@ -14104,7 +14246,7 @@ def crystalmir_white_stag_research_stops() -> tuple[FieldHuntStop, ...]:
         *(
             FieldHuntStop(
                 (),
-                "beautiful white stag",
+                "white stag",
                 route_vnums=(destination,),
                 **common,
             )
@@ -14244,7 +14386,7 @@ def galaxy_white_dwarf_research_stops() -> tuple[FieldHuntStop, ...]:
     return (
         FieldHuntStop(
             (),
-            "tiny white dwarf",
+            "white dwarf",
             command_keyword="white",
             actions=("where white",),
             abort_if_where_target_absent=True,
@@ -14296,7 +14438,7 @@ def galaxy_white_dwarf_secondary_research_stops() -> tuple[FieldHuntStop, ...]:
         FieldHuntStop((), route_vnums=("9303", "9308")),
         FieldHuntStop(
             (),
-            "tiny white dwarf",
+            "white dwarf",
             command_keyword="white",
             consider_only=True,
             exact_target=True,
@@ -17045,6 +17187,34 @@ def _where_location_from_response(text: str, target: str | None) -> str | None:
             if location and not location.startswith("<"):
                 return location
     return None
+
+
+def _where_response_mentions_target(text: str, target: str | None) -> bool:
+    """Return whether a completed ``where`` response names the target."""
+    if not target or "you detect the presence of:" not in text.casefold():
+        return False
+    target_words = target.casefold().split()
+    while target_words and target_words[0] in {"a", "an", "the"}:
+        target_words.pop(0)
+    if not target_words:
+        return False
+    in_locator = False
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.split())
+        if not line:
+            continue
+        if line.casefold().startswith("you detect the presence of:"):
+            in_locator = True
+            continue
+        if not in_locator:
+            continue
+        words = line.casefold().split()
+        for start in range(
+            min(2, max(0, len(words) - len(target_words) + 1))
+        ):
+            if words[start : start + len(target_words)] == target_words:
+                return True
+    return False
 
 
 def _target_keyword(target: str) -> str:

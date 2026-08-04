@@ -50,8 +50,12 @@ from dd4tester.campaign import (
     _source_ranked_candidate_from_record,
     _source_ranked_candidate_record,
     _source_ranked_fallback_needed,
+    _source_ranked_hunt_stops,
+    _source_mobile_candidate,
     _source_ranked_policy_id,
+    _source_ranked_result_status,
     _source_ranked_target_identity,
+    _SOURCE_RANKED_WANDER_SEARCH_LIMIT,
     _has_campaign_food,
     _has_campaign_sellable_loot,
     _needs_piercing_weapon_upgrade,
@@ -89,7 +93,17 @@ from dd4tester.campaign import (
     run_campaign_file,
 )
 from dd4tester.equipment import GearCatalog
-from dd4tester.hunt_candidates import HuntCandidate, ObjectSource
+from dd4tester.hunt_candidates import (
+    ExitSource,
+    HuntCandidate,
+    MobileSource,
+    MobReset,
+    ObjectSource,
+    RoomSource,
+    WorldSource,
+    load_world_source,
+    source_mobile_search_rooms,
+)
 from dd4tester.progression import (
     ProgressionPolicy,
     _SOURCE_RANKED_HUNT_POLICY,
@@ -189,6 +203,425 @@ def test_source_ranked_candidate_identity_and_checkpoint_round_trip() -> None:
     assert restored == candidate
 
 
+def test_source_ranked_matching_uses_source_keyword_alias() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="Aruncus the Druid",
+            level_range=(11, 15),
+            mobile_vnum=300,
+            room_vnum=323,
+        ),
+        target_keyword="aruncus",
+    )
+    legacy_policy_id = "plains-aruncus-thief-probe-19-20"
+    state = {
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            legacy_policy_id: {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": False,
+                "absent": True,
+            }
+        },
+        "campaign_research_absence_cooldowns": {legacy_policy_id: 3},
+    }
+
+    assert (
+        _source_ranked_result_status(
+            candidate,
+            state,
+            character_level=19,
+        )
+        == "cooldown"
+    )
+
+
+def test_source_ranked_matching_does_not_cross_match_morphologically_similar_targets() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="the dwarven nobleman",
+            level_range=(13, 15),
+            mobile_vnum=20504,
+            room_vnum=20506,
+        ),
+        target_keyword="dwarf",
+    )
+    state = {
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            "galaxy-white-dwarf-probe-17-20": {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+                "route_hazard": "field route preflight found source hazard",
+            }
+        },
+        "campaign_research_absence_cooldowns": {
+            "galaxy-white-dwarf-probe-17-20": 3
+        },
+    }
+
+    assert (
+        _source_ranked_result_status(
+            candidate,
+            state,
+            character_level=19,
+            allow_cooldown_retry=True,
+        )
+        == "fresh"
+    )
+
+
+def test_source_ranked_wanderer_uses_locator_and_source_reachable_rooms() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "wanderer",
+                "a wandering target",
+                5,
+                1 << 6,
+                0,
+                "test.are",
+            )
+        },
+        rooms={
+            200: RoomSource(
+                200,
+                "Origin Room",
+                "test.are",
+                exits={
+                    "east": ExitSource("east", 201, 0, -1),
+                },
+            ),
+            201: RoomSource(
+                201,
+                "Middle Room",
+                "test.are",
+                exits={
+                    "west": ExitSource("west", 200, 0, -1),
+                    "east": ExitSource("east", 202, 0, -1),
+                },
+            ),
+            202: RoomSource(
+                202,
+                "Far Room",
+                "test.are",
+                exits={
+                    "west": ExitSource("west", 201, 0, -1),
+                },
+            ),
+        },
+        mob_resets=[MobReset(100, 200, 1, ())],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="a wandering target",
+            level_range=(3, 5),
+            mobile_vnum=100,
+            room_vnum=200,
+        ),
+        target_keyword="wanderer",
+        sentinel=False,
+        stay_area=True,
+    )
+
+    stops = _source_ranked_hunt_stops(candidate, world)
+
+    assert stops[0].target is None
+    assert stops[0].actions == ("where wanderer",)
+    assert stops[0].abort_if_where_target_absent is True
+    assert dict(stops[0].where_location_routes)["far room"] == ("202",)
+    assert [stop.route_vnums for stop in stops[1:]] == [
+        ("200",),
+        ("201",),
+        ("202",),
+    ]
+    assert stops[0].abort_if_where_location_unknown is True
+    assert stops[0].preserve_where_route_waypoints is True
+
+
+def test_source_policy_targets_use_mobile_flags_and_reachable_rooms() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    wanderers = {
+        6606: (6602, 11),
+        2605: (2643, 20),
+        9306: (9306, 39),
+        10012: (10016, 37),
+        1112: (1111, 58),
+        25202: (25205, 4),
+        25652: (25641, 19),
+        19036: (19091, 36),
+        19068: (19170, 43),
+        17099: (17141, 125),
+    }
+    for mobile_vnum, (origin_room_vnum, minimum_rooms) in wanderers.items():
+        mobile = world.mobiles[mobile_vnum]
+        assert mobile.sentinel is False
+        assert len(
+            source_mobile_search_rooms(world, mobile_vnum)
+        ) >= minimum_rooms
+
+    assert world.mobiles[2303].sentinel is True
+
+
+def test_wander_search_bound_covers_current_source_reachable_rooms() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    maximum_reachable = max(
+        (
+            len(source_mobile_search_rooms(world, mobile.vnum))
+            for mobile in world.mobiles.values()
+            if not mobile.sentinel
+        ),
+        default=0,
+    )
+
+    assert maximum_reachable <= _SOURCE_RANKED_WANDER_SEARCH_LIMIT
+
+
+def test_source_ranked_sentinel_checks_all_reset_rooms_without_locator() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "sentinel",
+                "a sentinel target",
+                5,
+                (1 << 1) | (1 << 6),
+                0,
+                "test.are",
+            )
+        },
+        rooms={
+            200: RoomSource(
+                200,
+                "First Room",
+                "test.are",
+                exits={"east": ExitSource("east", 201, 0, -1)},
+            ),
+            201: RoomSource(
+                201,
+                "Second Room",
+                "test.are",
+                exits={"west": ExitSource("west", 200, 0, -1)},
+            ),
+        },
+        mob_resets=[
+            MobReset(100, 200, 1, ()),
+            MobReset(100, 201, 1, ()),
+        ],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="a sentinel target",
+            level_range=(3, 5),
+            mobile_vnum=100,
+            room_vnum=200,
+        ),
+        target_keyword="sentinel",
+        sentinel=True,
+        stay_area=True,
+    )
+
+    stops = _source_ranked_hunt_stops(candidate, world)
+
+    assert all(stop.target == "sentinel target" for stop in stops)
+    assert all(not stop.actions for stop in stops)
+    assert [stop.route_vnums for stop in stops] == [("200",), ("201",)]
+
+
+def test_global_wanderer_uses_source_graph_after_area_scoped_where_miss() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "wanderer",
+                "a global wanderer",
+                5,
+                0,
+                0,
+                "test.are",
+            )
+        },
+        rooms={
+            200: RoomSource(
+                200,
+                "First Area Room",
+                "test.are",
+                exits={"east": ExitSource("east", 201, 0, -1)},
+            ),
+            201: RoomSource(
+                201,
+                "Second Area Room",
+                "other.are",
+                exits={"west": ExitSource("west", 200, 0, -1)},
+            ),
+        },
+        mob_resets=[MobReset(100, 200, 1, ())],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="a global wanderer",
+            level_range=(3, 5),
+            mobile_vnum=100,
+            room_vnum=200,
+        ),
+        target_keyword="wanderer",
+        sentinel=False,
+        stay_area=False,
+    )
+
+    (locator, *search_stops) = _source_ranked_hunt_stops(candidate, world)
+
+    assert search_stops
+    assert locator.abort_if_where_target_absent is False
+    assert locator.abort_if_where_location_unknown is False
+    assert [stop.route_vnums for stop in search_stops] == [("200",), ("201",)]
+
+
+def test_source_ranked_stops_mark_source_trivial_companions() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "target",
+                "the target",
+                8,
+                1 << 1,
+                0,
+                "test.are",
+            ),
+            200: MobileSource(
+                200,
+                "bystander",
+                "a harmless bystander",
+                3,
+                0,
+                0,
+                "test.are",
+            ),
+        },
+        rooms={
+            200: RoomSource(200, "Target room", "test.are"),
+        },
+        mob_resets=[
+            MobReset(100, 200, 1, ()),
+            MobReset(200, 200, 1, ()),
+        ],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="the target",
+            level_range=(6, 10),
+            mobile_vnum=100,
+            room_vnum=200,
+        ),
+        target_keyword="target",
+        sentinel=True,
+        stay_area=True,
+    )
+
+    stops = _source_ranked_hunt_stops(candidate, world, character_level=10)
+
+    assert stops[0].trivial_bystanders == ("harmless bystander",)
+
+
+def test_source_ranked_wanderer_retains_known_but_unroutable_locations() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidate = _source_mobile_candidate(
+        world,
+        mobile_vnum=1112,
+        origin_room_vnum=1111,
+        target_keyword="thain",
+        target="the Thain",
+    )
+
+    (locator, *search_stops) = _source_ranked_hunt_stops(candidate, world)
+    routes = dict(locator.where_location_routes)
+
+    assert search_stops
+    assert routes["pig pen"] == ()
+    assert routes["a chicken coop"] == ()
+    assert "pig pen" in locator.abort_if_where_room_names
+    assert "a chicken coop" in locator.abort_if_where_room_names
+    assert locator.abort_if_where_location_unknown is True
+
+
+def test_source_ranked_reset_retry_reopens_absence_but_not_route_hazard() -> None:
+    absent_candidate = _source_test_candidate(
+        target="a white dwarf",
+        level_range=(15, 19),
+    )
+    absent_policy_id = _source_ranked_policy_id(
+        absent_candidate,
+        character_level=19,
+    )
+    absent_state = {
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            absent_policy_id: {
+                "boot_id": "boot-1",
+                "observed": False,
+                "absent": True,
+                "viable": False,
+            }
+        },
+        "campaign_research_absence_cooldowns": {absent_policy_id: 3},
+    }
+
+    assert (
+        _source_ranked_result_status(
+            absent_candidate,
+            absent_state,
+            character_level=19,
+        )
+        == "cooldown"
+    )
+    assert (
+        _source_ranked_result_status(
+            absent_candidate,
+            absent_state,
+            character_level=19,
+            allow_cooldown_retry=True,
+        )
+        == "retryable"
+    )
+
+    hazard_state = {
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            absent_policy_id: {
+                "boot_id": "boot-1",
+                "observed": False,
+                "route_hazard": "source hazard",
+                "viable": False,
+            }
+        },
+        "campaign_research_absence_cooldowns": {absent_policy_id: 3},
+    }
+    assert (
+        _source_ranked_result_status(
+            absent_candidate,
+            hazard_state,
+            character_level=19,
+            allow_cooldown_retry=True,
+        )
+        == "cooldown"
+    )
+
+
 def test_policy_refresh_clears_only_below_band_shadow_guardian_preflight() -> None:
     policy_id = "galaxy-white-dwarf-probe-17-20"
     source_ranked_id = "source-ranked-hunt-galaxy-9306-9306-19"
@@ -258,6 +691,119 @@ def test_source_ranked_selection_allows_only_audited_low_peak_special_fallback()
     )
 
     assert selected == candidate
+
+
+def test_source_ranked_special_fallback_uses_source_spell_damage_bound() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="The Fleshmonger",
+            level_range=(13, 17),
+            specials=("spec_cast_mage",),
+            autonomy_rejections=(
+                "target has special procedure spec_cast_mage",
+            ),
+        ),
+        estimated_peak_round_damage=145,
+    )
+
+    selected = _select_source_ranked_hunt_candidate(
+        (candidate,),
+        {"world_boot_id": "boot-1"},
+        character_level=19,
+        character_max_hp=264,
+    )
+
+    assert selected == candidate
+
+    too_much_melee = replace(candidate, estimated_peak_round_damage=163)
+    assert (
+        _select_source_ranked_hunt_candidate(
+            (too_much_melee,),
+            {"world_boot_id": "boot-1"},
+            character_level=19,
+            character_max_hp=264,
+        )
+        is None
+    )
+
+
+def test_source_ranked_breath_fallback_uses_source_hitpoint_damage_bound() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="a medicine man",
+            level_range=(13, 17),
+            specials=("spec_breath_any",),
+            autonomy_rejections=(
+                "target has special procedure spec_breath_any",
+            ),
+        ),
+        estimated_base_hp_range=(146, 425),
+        estimated_peak_round_damage=145,
+    )
+
+    selected = _select_source_ranked_hunt_candidate(
+        (candidate,),
+        {"world_boot_id": "boot-1"},
+        character_level=19,
+        character_max_hp=264,
+    )
+
+    assert selected == candidate
+
+    assert (
+        _select_source_ranked_hunt_candidate(
+            (candidate,),
+            {"world_boot_id": "boot-1"},
+            character_level=19,
+            character_max_hp=250,
+        )
+        is None
+    )
+
+
+def test_source_ranked_breath_fallback_rejects_other_breath_procedures() -> None:
+    candidate = _source_test_candidate(
+        target="a fire-breathing mobile",
+        level_range=(13, 17),
+        specials=("spec_breath_fire",),
+        autonomy_rejections=(
+            "target has special procedure spec_breath_fire",
+        ),
+    )
+
+    assert (
+        _select_source_ranked_hunt_candidate(
+            (candidate,),
+            {"world_boot_id": "boot-1"},
+            character_level=19,
+            character_max_hp=264,
+        )
+        is None
+    )
+
+
+def test_source_ranked_special_fallback_rejects_energy_drain_level() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="a level twenty-five mage",
+            level_range=(23, 27),
+            specials=("spec_cast_mage",),
+            autonomy_rejections=(
+                "target has special procedure spec_cast_mage",
+            ),
+        ),
+        estimated_peak_round_damage=10,
+    )
+
+    assert (
+        _select_source_ranked_hunt_candidate(
+            (candidate,),
+            {"world_boot_id": "boot-1"},
+            character_level=27,
+            character_max_hp=500,
+        )
+        is None
+    )
 
 
 def test_source_ranked_special_fallback_beats_only_cooldown_safe_candidates() -> None:
@@ -433,6 +979,115 @@ def test_source_ranked_selection_honors_crowd_cooldown() -> None:
         state,
         character_level=19,
     ) is None
+
+
+def test_source_ranked_selection_rotates_after_exhausted_crowd() -> None:
+    crowded_candidate = _source_test_candidate(
+        target="the crowded target",
+        level_range=(17, 19),
+        mobile_vnum=100,
+        room_vnum=200,
+        score=200,
+    )
+    fresh_candidate = _source_test_candidate(
+        target="the fresh target",
+        level_range=(17, 19),
+        mobile_vnum=101,
+        room_vnum=201,
+        score=100,
+    )
+    crowded_policy_id = "source-ranked-hunt-test-100-200-19"
+    state = {
+        "level": 19,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            crowded_policy_id: {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+                "crowd_exhausted": True,
+            }
+        },
+        "campaign_research_crowd_cooldowns": {crowded_policy_id: 3},
+    }
+
+    selected = _select_source_ranked_hunt_candidate(
+        (crowded_candidate, fresh_candidate),
+        state,
+        character_level=19,
+        allow_cooldown_retry=True,
+    )
+
+    assert selected == fresh_candidate
+
+
+def test_source_ranked_crowd_attempts_exhaust_after_two_same_boot_passes() -> None:
+    policy = replace(
+        _SOURCE_RANKED_HUNT_POLICY,
+        policy_id="source-ranked-hunt-test-100-200-19",
+        minimum_level=19,
+        maximum_level=19,
+    )
+    first = _merge_campaign_research_result(
+        {"world_boot_id": "boot-1"},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_last_policy": policy.policy_id,
+            "campaign_fastwalk_crowded": True,
+        },
+        policy=policy,
+    )
+    assert "crowd_exhausted" not in first["campaign_research_results"][
+        policy.policy_id
+    ]
+    assert first["campaign_source_ranked_crowd_attempts"][policy.policy_id][
+        "count"
+    ] == 1
+
+    second = _merge_campaign_research_result(
+        first,
+        {
+            "world_boot_id": "boot-1",
+            "campaign_last_policy": policy.policy_id,
+            "campaign_fastwalk_crowded": True,
+        },
+        policy=policy,
+    )
+
+    assert second["campaign_research_results"][policy.policy_id][
+        "crowd_exhausted"
+    ] is True
+    assert second["campaign_source_ranked_crowd_attempts"][policy.policy_id][
+        "count"
+    ] == 2
+
+
+def test_exhausted_source_ranked_crowd_keeps_evidence_during_retry_rotation() -> None:
+    policy_id = "source-ranked-hunt-test-100-200-19"
+    state = {
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": policy_id,
+        "campaign_fastwalk_crowded": True,
+        "campaign_research_results": {
+            policy_id: {
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+                "crowd_exhausted": True,
+                "boot_id": "boot-1",
+            }
+        },
+        "campaign_research_crowd_cooldowns": {policy_id: 3},
+    }
+
+    retried = _retry_current_crowded_research_policy(state)
+
+    assert retried["campaign_research_results"][policy_id][
+        "crowd_exhausted"
+    ] is True
+    assert retried["campaign_research_crowd_cooldowns"] == {policy_id: 3}
+    assert retried["campaign_fastwalk_crowded"] is False
 
 
 def test_source_ranked_blocked_route_is_persisted_with_retry_cooldown() -> None:
@@ -1059,6 +1714,101 @@ def test_provision_funding_dispatches_one_exact_source_target(
     assert captured.get("fastwalk_origin_actions", ()) == ()
     assert captured["fastwalk_defer_provision_resupply"] is True
     assert captured["require_fastwalk_kill"] is False
+
+
+def test_provision_funding_dispatch_uses_source_wander_locator(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    candidate = HuntCandidate(
+        status="promising",
+        score=20,
+        area_file="test.are",
+        mobile_vnum=123,
+        target="a Safe Soldier",
+        target_keyword="soldier",
+        level=15,
+        room_vnum=456,
+        room_name="Origin Room",
+        route=("south",),
+        source_spawn_limit=1,
+        room_spawn_count=1,
+        boot_kills=0,
+        loot=("a saleable sword",),
+        source_value=10,
+        contained_coins=0,
+        hazards=(),
+        estimated_level_range=(13, 17),
+        estimated_base_hp_range=(10, 20),
+        estimated_peak_round_damage=10,
+        autonomy_rejections=(),
+        sentinel=False,
+        stay_area=True,
+    )
+    world = WorldSource(
+        mobiles={
+            123: MobileSource(
+                123,
+                "soldier",
+                "a Safe Soldier",
+                15,
+                1 << 6,
+                0,
+                "test.are",
+            )
+        },
+        rooms={
+            456: RoomSource(
+                456,
+                "Origin Room",
+                "test.are",
+                exits={"east": ExitSource("east", 457, 0, -1)},
+            ),
+            457: RoomSource(
+                457,
+                "Far Room",
+                "test.are",
+                exits={"west": ExitSource("west", 456, 0, -1)},
+            ),
+        },
+        mob_resets=[MobReset(123, 456, 1, ())],
+    )
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, spec.character_profile, {"level": 18})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    monkeypatch.setattr("dd4tester.campaign.load_world_source", lambda *args, **kwargs: world)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(
+                18,
+                "mage",
+                has_food=False,
+                needs_provision_funding=True,
+            ),
+            provision_funding_candidate=candidate,
+        )
+    )
+
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert stops[0].target is None
+    assert stops[0].actions == ("where soldier",)
+    target_stops = tuple(stop for stop in stops if stop.target is not None)
+    assert len(target_stops) == 2
+    assert all(stop.required_items == ("a saleable sword",) for stop in target_stops)
+    assert all(stop.allow_below_band_for_required_loot for stop in target_stops)
+    assert all(stop.minimum_health_ratio == 0.27 for stop in target_stops)
 
 
 def test_provision_funding_history_survives_metadata_repair(tmp_path) -> None:
@@ -1937,6 +2687,42 @@ def test_multi_stop_research_records_a_visible_endpoint_no_match() -> None:
     }
 
 
+def test_multi_stop_crowd_metadata_is_not_recorded_as_absence() -> None:
+    policy = ProgressionPolicy(
+        policy_id="source-ranked-hunt-shadow-16601-16615-19",
+        minimum_level=19,
+        maximum_level=19,
+        status="research",
+        execution="source-ranked-hunt",
+        summary="hunt",
+        evidence=(),
+        practice_skill="backstab",
+    )
+
+    merged = _merge_campaign_research_result(
+        {},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_target_absent": False,
+            "campaign_fastwalk_crowded": True,
+            "campaign_fastwalk_consider_outcomes": {},
+            "campaign_objective_kills": [],
+        },
+        policy=policy,
+    )
+
+    assert merged["campaign_research_results"][policy.policy_id] == {
+        "observed": False,
+        "viable": False,
+        "crowded": True,
+        "boot_id": "boot-1",
+    }
+    assert merged["campaign_research_crowd_cooldowns"] == {
+        policy.policy_id: 3,
+    }
+    assert "campaign_research_absence_cooldowns" not in merged
+
+
 def test_deep_moria_absence_gets_a_shared_reset_cooldown() -> None:
     policy = ProgressionPolicy(
         policy_id="moria-deep-sanctuary-thief-probe-19-20",
@@ -2214,6 +3000,66 @@ def test_previously_productive_research_hunt_gets_retryable_failure_cooldown() -
     }
     assert merged["campaign_research_absence_cooldowns"] == {
         policy.policy_id: 3
+    }
+
+
+def test_observed_unproductive_research_hunt_gets_rotation_cooldown() -> None:
+    policy = ProgressionPolicy(
+        policy_id="source-ranked-hunt-test-100-200-19",
+        minimum_level=19,
+        maximum_level=19,
+        status="research",
+        execution="source-ranked-hunt",
+        summary="hunt",
+        evidence=(),
+        practice_skill=None,
+    )
+
+    merged = _merge_campaign_research_result(
+        {"world_boot_id": "boot-1"},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_consider_outcomes": {"target": True},
+            "campaign_objective_kills": [],
+        },
+        policy=policy,
+    )
+
+    assert merged["campaign_research_results"][policy.policy_id] == {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "retryable_failure": True,
+        "boot_id": "boot-1",
+    }
+    assert merged["campaign_research_absence_cooldowns"] == {
+        policy.policy_id: 3
+    }
+
+
+def test_policy_revision_migrates_present_unfinished_source_hunt() -> None:
+    policy_id = "source-ranked-hunt-fleshmonger-9413-9419-19"
+    migrated = _refresh_policy_revision(
+        {
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION - 1,
+            "world_boot_id": "boot-1",
+            "campaign_research_results": {
+                policy_id: {
+                    "observed": True,
+                    "viable": False,
+                    "completed_kill": False,
+                    "boot_id": "boot-1",
+                }
+            },
+        }
+    )
+
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert migrated["campaign_research_results"][policy_id][
+        "retryable_failure"
+    ] is True
+    assert migrated["campaign_research_absence_cooldowns"] == {
+        policy_id: 3
     }
 
 
@@ -3122,6 +3968,100 @@ def test_policy_refresh_restores_dynamic_hazard_cooldown() -> None:
     assert refreshed["campaign_research_absence_cooldowns"] == {
         policy_id: 3
     }
+
+
+def test_source_ranked_locator_hazard_keeps_reset_retry_cooldown() -> None:
+    policy_id = "source-ranked-hunt-test-100-200-19"
+    policy = replace(
+        _SOURCE_RANKED_HUNT_POLICY,
+        policy_id=policy_id,
+        minimum_level=19,
+        maximum_level=19,
+    )
+    locator_hazard = (
+        "`where` located None in excluded room 'river bed'"
+    )
+    merged = _merge_campaign_research_result(
+        {},
+        {
+            "world_boot_id": "boot-1",
+            "campaign_fastwalk_abort_reason": locator_hazard,
+            "campaign_fastwalk_consider_outcomes": {},
+            "campaign_objective_kills": [],
+        },
+        policy=policy,
+    )
+
+    assert merged["campaign_research_absence_cooldowns"] == {
+        policy_id: 3
+    }
+    repaired = _repair_research_absence_cooldowns(merged)
+    assert repaired["campaign_research_absence_cooldowns"] == {
+        policy_id: 3
+    }
+    candidate = _source_test_candidate(
+        target="a medicine man",
+        level_range=(15, 19),
+    )
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        {
+            **repaired,
+            "level": 19,
+            "campaign_last_policy": policy_id,
+        },
+        character_level=19,
+    ) is None
+
+
+def test_policy_refresh_restores_source_ranked_locator_hazard_cooldown() -> None:
+    policy_id = "source-ranked-hunt-test-100-200-19"
+    locator_hazard = (
+        "`where` located None in excluded room 'river bed'"
+    )
+    refreshed = _refresh_policy_revision(
+        {
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION - 1,
+            "level": 19,
+            "world_boot_id": "boot-1",
+            "campaign_research_results": {
+                policy_id: {
+                    "observed": False,
+                    "viable": False,
+                    "route_hazard": locator_hazard,
+                    "boot_id": "boot-1",
+                }
+            },
+        }
+    )
+
+    assert refreshed["campaign_research_absence_cooldowns"] == {
+        policy_id: 3
+    }
+
+
+def test_policy_refresh_migrates_lost_galaxy_preflight_hazard() -> None:
+    policy_id = "galaxy-white-dwarf-probe-17-20"
+    refreshed = _refresh_policy_revision(
+        {
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION - 1,
+            "level": 19,
+            "world_boot_id": "boot-1",
+            "campaign_last_policy": policy_id,
+            "campaign_fastwalk_route_preflight_hazard_observed": True,
+            "campaign_fastwalk_abort_reason": (
+                "segment runtime boundary requested a safe healer return"
+            ),
+        }
+    )
+
+    expected = (
+        "field route preflight found source-registered hazard "
+        "'shadow guardian' in room 1300"
+    )
+    assert refreshed["campaign_research_results"][policy_id]["route_hazard"] == expected
+    assert refreshed["campaign_research_absence_cooldowns"] == {policy_id: 3}
+    assert refreshed["campaign_fastwalk_abort_reason"] == expected
 
 
 def test_policy_refresh_preserves_route_hazard_evidence() -> None:
@@ -7231,10 +8171,13 @@ def test_level_seven_campaign_starts_with_the_daycare_route(
     )
 
     assert captured["fastwalk_route"].name == "dwarven-daycare"
-    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
-        "old wrinkled nanny",
-        "old wrinkled nanny",
-    ]
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert stops[0].target is None
+    assert stops[0].actions == ("where nanny",)
+    assert stops[0].abort_if_where_location_unknown is True
+    assert len(stops) >= 12
+    assert all(stop.target == "old wrinkled nanny" for stop in stops[1:])
+    assert stops[1].route_vnums == ("6602",)
     assert captured["fastwalk_kill_limit"] == 2
 
 
@@ -7264,10 +8207,12 @@ def test_level_seven_mage_campaign_uses_the_same_daycare_route(
     )
 
     assert captured["fastwalk_route"].name == "dwarven-daycare"
-    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
-        "old wrinkled nanny",
-        "old wrinkled nanny",
-    ]
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert stops[0].target is None
+    assert stops[0].actions == ("where nanny",)
+    assert stops[0].abort_if_where_location_unknown is True
+    assert len(stops) >= 12
+    assert all(stop.target == "old wrinkled nanny" for stop in stops[1:])
     assert captured["fastwalk_kill_limit"] == 2
 
 
@@ -7345,9 +8290,12 @@ def test_level_seven_daycare_fallback_runs_toward_level_eight(
     )
 
     assert captured["objective_level"] == 8
-    assert [
-        stop.target for stop in captured["fastwalk_hunt_stops"]
-    ] == ["old wrinkled nanny", "old wrinkled nanny"]
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert stops[0].target is None
+    assert stops[0].actions == ("where nanny",)
+    assert stops[0].abort_if_where_location_unknown is True
+    assert len(stops) >= 12
+    assert all(stop.target == "old wrinkled nanny" for stop in stops[1:])
     assert captured["fastwalk_kill_limit"] == 2
 
 
@@ -7758,19 +8706,19 @@ def test_plains_aruncus_research_dispatch_never_initiates_combat(
     assert captured["fastwalk_route"].name == "plains aruncus"
     assert captured["fastwalk_route"].recall_after_loot is True
     stops = captured["fastwalk_hunt_stops"]
-    assert [stop.target for stop in stops] == ["Aruncus the Druid"] * 85
-    assert [stop.route_vnums for stop in stops[1:]][:10] == [
-        ("330",), (), (), ("319",), ("318",),
-        ("316",), ("300",), ("301",), ("302",), ("303",),
-    ]
-    assert stops[2].route == ("open west", "west")
-    assert stops[3].route == ("open east", "east")
-    assert [stop.route_vnums for stop in stops[1:]][-4:] == [
-        ("341",), ("340",), ("342",), ("343",),
-    ]
+    assert len(stops) == 43
+    assert stops[0].target is None
+    assert all(
+        stop.target is None
+        or stop.target.casefold() == "aruncus the druid"
+        for stop in stops
+    )
     assert stops[0].actions == ("where aruncus",)
     assert all(stop.command_keyword == "aruncus" for stop in stops)
     assert all(stop.consider_only for stop in stops)
+    assert all(stop.exact_target for stop in stops)
+    assert all(stop.abort_if_where_location_unknown for stop in stops[:1])
+    assert all(stop.preserve_where_route_waypoints for stop in stops[:1])
     assert captured["require_fastwalk_kill"] is False
 
 
@@ -8051,8 +8999,9 @@ def test_shire_thain_dispatch_keeps_probe_and_hunt_bounded(
     assert route.recall_after_loot is True
     assert captured["fastwalk_kill_limit"] == kill_limit
     stops = captured["fastwalk_hunt_stops"]
-    assert len(stops) == 92
-    assert stops[0].target == "the Thain"
+    assert len(stops) == 53
+    assert stops[0].target is None
+    assert stops[0].where_target == "thain"
     assert stops[0].actions == ("where thain",)
     assert stops[0].abort_if_where_target_absent is True
     assert stops[0].consider_only is consider_only
@@ -8113,7 +9062,8 @@ def test_argent_bandit_leader_dispatch_keeps_companion_gate_bounded(
     assert route.recall_after_loot is True
     stops = captured["fastwalk_hunt_stops"]
     assert len(stops) == 5
-    assert stops[0].target == "bandit leader"
+    assert stops[0].target is None
+    assert stops[0].where_target == "bandit leader"
     assert stops[0].command_keyword == "leader"
     assert stops[0].actions == ("where leader",)
     assert stops[0].allowed_bystanders == ("bandit",)
@@ -8121,10 +9071,10 @@ def test_argent_bandit_leader_dispatch_keeps_companion_gate_bounded(
     assert all(stop.require_isolated is True for stop in stops)
     assert all(stop.maximum_level_offset == 1 for stop in stops)
     assert tuple(stop.route_vnums for stop in stops[1:]) == (
-        ("25203", "25202"),
-        ("25203",),
-        ("25202", "25204"),
         ("25205",),
+        ("25203",),
+        ("25202",),
+        ("25204",),
     )
     assert captured["fastwalk_kill_limit"] == kill_limit
     assert captured["require_fastwalk_kill"] is False
@@ -8269,10 +9219,15 @@ def test_pyramid_ali_baba_dispatches_research_and_bounded_hunt(
 
         route = captured["fastwalk_route"]
         assert route.name == "pyramid ali baba"
-        stops = captured["fastwalk_hunt_stops"]
-        assert len(stops) == 8
-        for stop in stops:
-            assert stop.target == "Ali Baba"
+        stops = tuple(captured["fastwalk_hunt_stops"])
+        assert len(stops) > 8
+        assert stops[0].target is None
+        assert stops[0].actions == ("where ali baba",)
+        assert stops[0].abort_if_where_location_unknown is True
+        target_stops = stops[1:]
+        assert target_stops[0].route_vnums == ("2643",)
+        for stop in target_stops:
+            assert stop.target == "ali baba"
             assert stop.command_keyword == "ali baba"
             assert stop.consider_only is consider_only
             assert stop.exact_target is True
@@ -8635,12 +9590,16 @@ def test_crystalmir_white_stag_dispatches_source_safe_search(
     assert captured["fastwalk_kill_limit"] == kill_limit
     assert captured["fastwalk_required_move"] == 246
     stops = captured["fastwalk_hunt_stops"]
-    assert len(stops) == 67
+    assert len(stops) == 35
     assert all(
         stop.consider_only is expected_consider_only for stop in stops
     )
-    assert stops[0].target == "beautiful white stag"
+    assert stops[0].target is None
+    assert stops[0].where_target == "white stag"
     assert stops[0].command_keyword == "stag"
+    assert all(stop.exact_target for stop in stops)
+    assert stops[0].abort_if_where_location_unknown is True
+    assert stops[0].preserve_where_route_waypoints is True
     assert captured["require_fastwalk_kill"] is False
 
 
@@ -8837,12 +9796,19 @@ def test_mirror_realm_gardener_research_dispatch_never_initiates_combat(
 
     assert captured["fastwalk_route"].name == "mirror realm gardener"
     assert captured["fastwalk_route"].recall_after_loot is True
-    (stop,) = captured["fastwalk_hunt_stops"]
-    assert stop.target == "the gardener"
-    assert stop.command_keyword == "gardener"
-    assert stop.consider_only is True
-    assert stop.exact_target is True
-    assert stop.route_vnums == ("19091",)
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    locator = stops[0]
+    target_stop = next(stop for stop in stops if stop.target == "gardener")
+    assert locator.target is None
+    assert locator.actions == ("where gardener",)
+    assert locator.abort_if_where_target_absent is True
+    assert locator.abort_if_where_location_unknown is True
+    assert locator.preserve_where_route_waypoints is True
+    assert target_stop.command_keyword == "gardener"
+    assert target_stop.consider_only is True
+    assert target_stop.exact_target is True
+    assert target_stop.route_vnums == ("19091",)
+    assert len(stops) > 2
     assert captured["require_fastwalk_kill"] is False
 
 
@@ -8884,14 +9850,19 @@ def test_mirror_realm_gardener_hunt_dispatches_one_reconsidered_kill(
 
     assert captured["fastwalk_route"].name == "mirror realm gardener"
     assert captured["fastwalk_kill_limit"] == 1
-    (stop,) = captured["fastwalk_hunt_stops"]
-    assert stop.target == "the gardener"
-    assert stop.command_keyword == "gardener"
-    assert stop.consider_only is False
-    assert stop.minimum_health_ratio == 0.85
-    assert stop.maximum_level_offset == 1
-    assert stop.exact_target is True
-    assert stop.route_vnums == ("19091",)
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    locator = stops[0]
+    target_stop = next(stop for stop in stops if stop.target == "gardener")
+    assert locator.actions == ("where gardener",)
+    assert locator.abort_if_where_location_unknown is True
+    assert locator.preserve_where_route_waypoints is True
+    assert target_stop.command_keyword == "gardener"
+    assert target_stop.consider_only is False
+    assert target_stop.minimum_health_ratio == 0.85
+    assert target_stop.maximum_level_offset == 1
+    assert target_stop.exact_target is True
+    assert target_stop.route_vnums == ("19091",)
+    assert len(stops) > 2
     assert captured["require_fastwalk_kill"] is False
 
 
@@ -9034,15 +10005,22 @@ def test_galaxy_white_dwarf_dispatch_preserves_probe_and_hunt_modes(
     expected_target = (
         "red supergiant"
         if execution.startswith("galaxy-red-supergiant")
-        else "tiny white dwarf"
+        else "white dwarf"
     )
     assert captured["fastwalk_route"].name == expected_route
     assert captured["fastwalk_route"].recall_after_loot is True
     stops = captured["fastwalk_hunt_stops"]
     assert stops
-    assert all(stop.target == expected_target for stop in stops)
-    assert all(stop.consider_only is consider_only for stop in stops)
-    assert all(stop.exact_target is True for stop in stops)
+    target_stops = stops
+    if expected_target == "white dwarf":
+        assert stops[0].target is None
+        assert stops[0].actions == ("where white",)
+        assert stops[0].abort_if_where_location_unknown is True
+        target_stops = stops[1:]
+        assert target_stops[0].route_vnums == ("9306",)
+    assert all(stop.target == expected_target for stop in target_stops)
+    assert all(stop.consider_only is consider_only for stop in target_stops)
+    assert all(stop.exact_target is True for stop in target_stops)
     assert captured["fastwalk_kill_limit"] == 1
     assert captured["require_fastwalk_kill"] is False
 
@@ -9150,11 +10128,15 @@ def test_secondary_galaxy_white_dwarf_dispatch_uses_independent_room_route(
 
     assert captured["fastwalk_route"].name == "galaxy white dwarf"
     assert captured["fastwalk_route"].recall_after_loot is True
-    stops = captured["fastwalk_hunt_stops"]
-    assert stops[-1].target == "tiny white dwarf"
-    assert stops[-1].route_vnums == ("9312", "9313", "9314")
-    assert stops[-1].consider_only is consider_only
-    assert stops[-1].exact_target is True
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert stops[0].target is None
+    assert stops[0].actions == ("where white",)
+    assert stops[0].abort_if_where_location_unknown is True
+    target_stop = next(stop for stop in stops if stop.target == "white dwarf")
+    assert target_stop.route_vnums == ("9314",)
+    assert target_stop.consider_only is consider_only
+    assert target_stop.exact_target is True
+    assert len(stops) > 2
     assert captured["fastwalk_kill_limit"] == 1
     assert captured["require_fastwalk_kill"] is False
 
@@ -9253,12 +10235,19 @@ def test_mirror_realm_jerry_garcia_research_dispatch_never_initiates_combat(
 
     assert captured["fastwalk_route"].name == "mirror realm jerry garcia"
     assert captured["fastwalk_route"].recall_after_loot is True
-    (stop,) = captured["fastwalk_hunt_stops"]
-    assert stop.target == "Jerry Garcia"
-    assert stop.command_keyword == "jerry"
-    assert stop.consider_only is True
-    assert stop.exact_target is True
-    assert stop.route_vnums == ("19170",)
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    locator = stops[0]
+    target_stop = next(stop for stop in stops if stop.target == "jerry garcia")
+    assert locator.target is None
+    assert locator.actions == ("where jerry",)
+    assert locator.abort_if_where_target_absent is True
+    assert locator.abort_if_where_location_unknown is True
+    assert locator.preserve_where_route_waypoints is True
+    assert target_stop.command_keyword == "jerry"
+    assert target_stop.consider_only is True
+    assert target_stop.exact_target is True
+    assert target_stop.route_vnums == ("19170",)
+    assert len(stops) > 2
     assert captured["require_fastwalk_kill"] is False
 
 
@@ -9498,11 +10487,15 @@ def test_level_61_dispatch_preserves_vampire_probe_and_hunt_modes(
 
     assert captured["fastwalk_route"].name == "vampire hive wounded vampire"
     assert captured["fastwalk_route"].recall_after_loot is True
-    (stop,) = captured["fastwalk_hunt_stops"]
-    assert stop.target == "wounded vampire"
-    assert stop.actions == ("where vampire",)
-    assert stop.consider_only is consider_only
-    assert stop.exact_target is True
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert stops[0].target is None
+    assert stops[0].actions == ("where vampire",)
+    assert stops[0].abort_if_where_location_unknown is True
+    target_stop = next(stop for stop in stops if stop.target == "wounded vampire")
+    assert target_stop.consider_only is consider_only
+    assert target_stop.exact_target is True
+    assert target_stop.route_vnums == ("25641",)
+    assert len(stops) > 2
     assert captured["fastwalk_kill_limit"] == 1
     assert captured["require_fastwalk_kill"] is False
 
@@ -9609,11 +10602,19 @@ def test_level_71_dispatch_preserves_rastafarians_probe_and_hunt_modes(
 
     assert captured["fastwalk_route"].name == "pirates seas rastafarians"
     assert captured["fastwalk_route"].recall_after_loot is True
-    (stop,) = captured["fastwalk_hunt_stops"]
-    assert stop.target == "rastafarians"
-    assert stop.actions == ("where rastafarians",)
-    assert stop.consider_only is consider_only
-    assert stop.exact_target is True
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    locator = stops[0]
+    target_stop = next(stop for stop in stops if stop.target == "rastafarians")
+    assert locator.target is None
+    assert locator.actions == ("where rastafarians",)
+    # `where` is area-scoped, and this source mobile can leave Pirates Seas.
+    assert locator.abort_if_where_target_absent is False
+    assert locator.abort_if_where_location_unknown is False
+    assert locator.preserve_where_route_waypoints is True
+    assert target_stop.consider_only is consider_only
+    assert target_stop.exact_target is True
+    assert target_stop.route_vnums == ("17141",)
+    assert len(stops) > 2
     assert captured["fastwalk_kill_limit"] == 1
     assert captured["require_fastwalk_kill"] is False
 
@@ -10448,10 +11449,12 @@ def test_depleted_level_seven_foundry_tries_daycare_before_moria(
         "south",
         "south",
     )
-    assert [stop.target for stop in captured["fastwalk_hunt_stops"]] == [
-        "old wrinkled nanny",
-        "old wrinkled nanny",
-    ]
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert stops[0].target is None
+    assert stops[0].actions == ("where nanny",)
+    assert stops[0].abort_if_where_location_unknown is True
+    assert len(stops) >= 12
+    assert all(stop.target == "old wrinkled nanny" for stop in stops[1:])
     assert captured["fastwalk_kill_limit"] == 2
 
 

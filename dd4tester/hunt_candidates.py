@@ -211,6 +211,8 @@ class HuntCandidate:
     route_preflight_level_range: tuple[int, int] = (0, 0)
     route_preflight_hard_hazard: bool = False
     route_hard_hazard_targets: tuple[str, ...] = ()
+    sentinel: bool = False
+    stay_area: bool = False
 
     @property
     def autonomous_safe(self) -> bool:
@@ -453,14 +455,39 @@ def rank_hunt_candidates(
             companion = world.mobiles.get(room_reset.mobile_vnum)
             if companion is None:
                 continue
+            companion_level_range = _mobile_level_range(companion.level)
+            companion_specials = world.mobile_specials.get(
+                companion.vnum,
+                (),
+            )
             hazards.append(
                 "room companion: "
                 f"{companion.short_description} L{companion.level} "
                 f"(up to {room_reset.maximum_count})"
             )
-            if companion.aggressive or companion.level > character_level:
+            companion_is_below_band = (
+                companion_level_range[1] <= character_level - 5
+            )
+            companion_is_trivial = not companion_specials and (
+                companion_is_below_band
+                or (
+                    not companion.aggressive
+                    and companion_level_range[1] <= character_level
+                )
+            )
+            if companion_is_trivial:
+                hazards.append(
+                    "source-backed trivial companion: "
+                    f"{companion.short_description}"
+                )
+                continue
+            if (
+                companion.aggressive
+                or companion_level_range[1] > character_level
+                or companion_specials
+            ):
                 dangerous = True
-            autonomy_rejections.append("target room has a reset companion")
+                autonomy_rejections.append("target room has a dangerous reset companion")
 
         for path_room in path_rooms[:-1]:
             for path_reset in resets_by_room.get(path_room, ()):
@@ -511,7 +538,9 @@ def rank_hunt_candidates(
             hazards.append(f"{closed_doors} closed door(s) on route")
         if mobile.alignment > 0:
             hazards.append(f"positive alignment target ({mobile.alignment})")
-            autonomy_rejections.append("target has positive alignment")
+            # DD4's `is_safe` permits NPC combat regardless of alignment.
+            # Preserve the alignment cost as a ranking hazard, but do not
+            # make lawful NPCs impossible autonomous XP targets.
         if mobile.aggressive:
             hazards.append("target is aggressive")
             dangerous = True
@@ -590,6 +619,8 @@ def rank_hunt_candidates(
                 route_preflight_level_range=route_preflight_level_range,
                 route_preflight_hard_hazard=route_preflight_hard_hazard,
                 route_hard_hazard_targets=route_hard_hazard_targets,
+                sentinel=mobile.sentinel,
+                stay_area=mobile.stay_area,
             )
         )
 
@@ -1030,6 +1061,8 @@ def _shortest_path(
 def _shortest_paths_from(
     rooms: Mapping[int, RoomSource],
     origin: int,
+    *,
+    blocked_rooms: set[int] | frozenset[int] = frozenset(),
 ) -> dict[int, tuple[tuple[str, ...], tuple[int, ...], int]]:
     if origin not in rooms:
         return {}
@@ -1045,7 +1078,11 @@ def _shortest_paths_from(
         paths[room_vnum] = (commands, visited_rooms, closed_doors)
         room = rooms[room_vnum]
         for direction, exit_source in sorted(room.exits.items()):
-            if exit_source.destination not in rooms or exit_source.locked:
+            if (
+                exit_source.destination not in rooms
+                or exit_source.destination in blocked_rooms
+                or exit_source.locked
+            ):
                 continue
             door_cost = 1 if exit_source.closed else 0
             random_cost = 20 if room.random_exits else 0
@@ -1230,6 +1267,84 @@ def _wandering_aggressors(
         if (mobile := world.mobiles.get(reset.mobile_vnum)) is not None
         and mobile.aggressive
         and not mobile.sentinel
+    )
+
+
+def source_mobile_search_rooms(
+    world: WorldSource,
+    mobile_vnum: int,
+    *,
+    maximum_rooms: int | None = None,
+    blocked_rooms: set[int] | frozenset[int] = frozenset(),
+) -> tuple[int, ...]:
+    """Return rooms a source mobile can occupy from its reset locations.
+
+    DD4's ``update.c`` chooses a random open exit for every non-sentinel
+    mobile.  ``ACT_STAY_AREA`` limits that movement to the mobile's area; it
+    does not make the reset room a fixed location.  This graph is therefore
+    the source-backed search boundary for live target discovery.
+    """
+    mobile = world.mobiles.get(mobile_vnum)
+    if mobile is None:
+        return ()
+    reset_rooms = tuple(
+        sorted(
+            {
+                reset.room_vnum
+                for reset in world.mob_resets
+                if reset.mobile_vnum == mobile_vnum
+                and reset.room_vnum in world.rooms
+            }
+        )
+    )
+    if mobile.sentinel:
+        return reset_rooms
+    if not reset_rooms:
+        return ()
+
+    origin_areas = {
+        world.rooms[room_vnum].area_file
+        for room_vnum in reset_rooms
+    }
+    pending: list[tuple[int, int]] = [(0, room_vnum) for room_vnum in reset_rooms]
+    heapq.heapify(pending)
+    distances: dict[int, int] = {}
+    while pending:
+        distance, room_vnum = heapq.heappop(pending)
+        if room_vnum in distances:
+            continue
+        room = world.rooms.get(room_vnum)
+        if room is None:
+            continue
+        distances[room_vnum] = distance
+        if maximum_rooms is not None and len(distances) >= maximum_rooms:
+            break
+        for direction, exit_source in sorted(room.exits.items()):
+            del direction
+            destination = world.rooms.get(exit_source.destination)
+            if (
+                destination is None
+                or destination.vnum in distances
+                or destination.vnum in blocked_rooms
+                or exit_source.closed
+                or exit_source.locked
+                or destination.no_mob
+                or (
+                    mobile.stay_area
+                    and destination.area_file not in origin_areas
+                )
+            ):
+                continue
+            heapq.heappush(
+                pending,
+                (distance + 1, destination.vnum),
+            )
+    return tuple(
+        room_vnum
+        for room_vnum, _distance in sorted(
+            distances.items(),
+            key=lambda item: (item[1], item[0]),
+        )
     )
 
 

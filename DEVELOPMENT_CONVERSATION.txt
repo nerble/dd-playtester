@@ -21488,3 +21488,1499 @@ The campaign migration tests are now green: 411 passed. The revision update is c
 
 [2026-08-04 1:12:17 PM NZST] CODEX COMMENTARY
 The full offline suite is green: 1,926 passed in 26.56 seconds. I am reviewing the final diff, then I will create the one-off publication commit and push it for merge to main.
+
+
+[2026-08-04 1:14:02 PM NZST] CODEX FINAL
+One-off publication completed. Commit 45c2590 was pushed on codex/one-off-publication-2026-08-04; PR #4 merged into main as 02154b1. Main is clean and aligned with origin/main. Full offline suite: 1,926 passed. Process audit found only the expected Discord streamer PID 27976; no stale git, gh, or Python test processes.
+
+
+[2026-08-04 1:14:23 PM NZST] CODEX COMMENTARY
+I am resuming the HERO objective from the merged level-19 progression work. I will audit the current main checkout, source revision, campaign checkpoint, and running processes, then remove the next concrete progression blocker with tests and bounded live evidence.
+
+
+[2026-08-04 1:14:55 PM NZST] CODEX COMMENTARY
+Audit complete: main is clean except the append-only conversation log, DD4 source is current at 1b759f5, the Kestrel campaign is paused at level 19 in healer room 3054 with policy revision 111, and only the expected Discord streamer plus short-lived source-pull Git processes are present. The immediate executable test is the automatic revision-112 resume.
+
+
+[2026-08-04 1:15:07 PM NZST] CODEX COMMENTARY
+I am starting one bounded no-steering Kestrel campaign segment now. It will resume the existing level-19 checkpoint, apply the policy revision migration automatically, choose the next source-backed policy, and stop at the configured segment boundary without manual target or route commands.
+
+
+[2026-08-04 1:15:54 PM NZST] CODEX COMMENTARY
+The bounded campaign segment is still running after roughly 30 seconds with no terminal result yet. I am keeping the process observed and will let its own safety and runtime bounds resolve the segment.
+
+
+[2026-08-04 1:16:40 PM NZST] CODEX COMMENTARY
+The live resume remains inside its bounded segment with no hanging approval or secondary process. The campaign process is still the sole active worker beyond the expected Discord streamer; I am continuing to wait for its checkpoint or bounded return.
+
+
+[2026-08-04 1:17:24 PM NZST] CODEX COMMENTARY
+The bounded live resume completed cleanly. It automatically selected galaxy-white-dwarf-probe-17-20, preserved the level-19 checkpoint, and returned Campaign 8 to ready at checkpoint 3347 with no manual steering. I am inspecting the persisted segment and research evidence now.
+
+
+[2026-08-04 1:17:55 PM NZST] CODEX COMMENTARY
+The persisted evidence confirms the migration worked: checkpoint 3347 is revision 112, the Galaxy white-dwarf probe is now recorded as a temporary same-reboot absence, and policy selection has moved generically to the red-supergiant probe. I am running that next bounded probe without steering.
+
+
+[2026-08-04 1:22:09 PM NZST] CODEX COMMENTARY
+I am pausing the live campaign loop to investigate the Discord updater duplication report. I will inspect the streamer source, its cursor and log-file handling, reproduce the replay condition locally if possible, patch the smallest durable-idempotency fix, run its tests or a controlled dry run, then restart the streamer and resume the HERO campaign work.
+
+
+[2026-08-04 1:25:11 PM NZST] CODEX COMMENTARY
+I am picking up the Discord investigation at the point where the streamer has been stopped. I will harden its state handling against replay, discard the already-queued historical backlog so only genuinely new conversation records remain, test the change, restart it, and verify the first post before returning to the HERO progression loop.
+
+
+[2026-08-04 1:26:45 PM NZST] CODEX COMMENTARY
+The failure is confirmed: the source cursor is at end-of-file, but the checkpoint contains 35,677 old records beginning on July 28. I am now adding stable record fingerprints, queue deduplication, bounded processed history, and an in-flight checkpoint so a restart cannot blindly replay a queued record; I will also add focused tests before repairing the live checkpoint.
+
+
+[2026-08-04 1:29:09 PM NZST] CODEX COMMENTARY
+The first patch is in place. While reviewing the recovery path before testing, I caught one compatibility detail: the optional in-flight field must accept an explicit null value without rewriting the checkpoint on every restart. I am correcting that small migration guard, then I will run the streamer unit tests and inspect the normalized state shape.
+
+
+[2026-08-04 1:29:28 PM NZST] CODEX COMMENTARY
+All seven focused streamer tests pass, including queue recovery and duplicate rejection. I have backed up the 16 MB live checkpoint, so the next bounded repair can safely discard only the 35,677-record replay backlog; I am also documenting the at-most-once recovery rule so a future operator does not accidentally invoke the explicit historical replay command.
+
+
+[2026-08-04 1:29:59 PM NZST] CODEX COMMENTARY
+The live checkpoint is repaired: its byte offset exactly matches the source size, the queue and pending buffer are empty, and the old state is preserved in a dated backup. I am starting the patched updater now and will append one ordinary progress record as a controlled end-to-end check that it publishes only that new record.
+
+
+[2026-08-04 1:30:42 PM NZST] CODEX COMMENTARY
+The end-to-end check succeeded: after the repair, the checkpoint consumed exactly one newly appended commentary record, left queue and pending empty, and recorded one processed fingerprint. No historical record was loaded. I am switching the running process to the repository batch launcher so its stdout/stderr audit files continue to capture health while it follows only future appends.
+
+
+[2026-08-04 1:31:06 PM NZST] CODEX COMMENTARY
+The batch-launched streamer is healthy and explicitly skipped the interrupted in-flight record rather than reposting it, which is the duplicate-prevention case we needed. I am allowing one fresh record to flush now and will inspect its log entry and checkpoint before moving back to campaign development.
+
+
+[2026-08-04 1:31:39 PM NZST] CODEX COMMENTARY
+The streamer verification is complete: it skipped the interrupted record, posted the fresh 1:31:06 PM record once, and ended with an empty queue, empty pending buffer, and no in-flight delivery. I am resuming the HERO goal now; I will audit Kestrel's level-19 policy state and fix the next generic target-selection blocker before another bounded live segment.
+
+
+[2026-08-04 1:32:26 PM NZST] CODEX COMMENTARY
+The next campaign issue is confirmed in code: source-ranked matching currently requires every word in a mobile's display description to appear in the old policy id. That makes Aruncus the Druid fail to match the existing plains-aruncus policy evidence and can trigger a duplicate absence probe. I am changing matching to use the source keyword as the stable identity, with the display description as fallback, and adding a regression test before the next live run.
+
+
+[2026-08-04 1:32:59 PM NZST] CODEX COMMENTARY
+The keyword-matching regression is fixed and all 13 source-ranked campaign tests pass. I am launching one bounded Kestrel segment now; the runner should recognize old Aruncus evidence instead of re-probing it, choose the next current-band source policy, and checkpoint safely even if the live target is absent.
+
+
+[2026-08-04 1:36:57 PM NZST] CODEX COMMENTARY
+The live checkpoint is not a target-selection bug anymore; it is a genuine frontier deadlock. Every source-safe level-19 option is carrying reboot-scoped absence/crowd cooldown, while lower-band Aruncus is correctly terminally excluded. The reset controller has a flag for waiting, but source ranking does not use it, so I am wiring the post-wait retry through generic source candidates that were absent or crowded, while leaving route-hazard and below-band evidence hard-blocked.
+
+
+[2026-08-04 1:37:41 PM NZST] CODEX COMMENTARY
+The reset-aware source ranking tests pass: an absent/crowded target becomes retryable only after the controller has waited, while route hazards remain blocked. I am running one bounded reset-aware campaign pass with a 60-second outside wait; this should either open a safe current-band probe or return a clean checkpoint explaining why the live frontier still has no executable target.
+
+
+[2026-08-04 1:38:34 PM NZST] CODEX COMMENTARY
+The reset-aware live pass is still within its bounded wait window; the process is active and has not triggered any approval or secondary-process stall. I am leaving the controller running through the promised 60-second outside wait, then I will inspect the checkpoint and transcript rather than starting a second overlapping campaign.
+
+
+[2026-08-04 1:39:57 PM NZST] CODEX COMMENTARY
+The campaign process is still the single expected bounded Python worker; it has passed the reset wait and is now in the selected live route. I am watching that same process to completion and will not launch overlapping retries.
+
+
+[2026-08-04 1:41:07 PM NZST] CODEX COMMENTARY
+The reset-aware pass completed cleanly after 186.9 seconds and checkpointed 3356 at level 19 in the Moria sanctuary policy. I am extracting the run's target, XP delta, combat outcome, and final room now; this will tell us whether the wait opened a real progression segment or merely produced another safe research checkpoint.
+
+
+[2026-08-04 1:42:13 PM NZST] CODEX COMMENTARY
+The live result is safe but non-productive: Moria was absent, Kestrel returned to healer room 3054 at full health, and no XP or kill state changed. That absence correctly triggered the sanctuary recovery gate. I am making one more bounded reset-aware pass; after the wait the sanctuary gate should clear and the new post-wait source selector should finally try a safe current-band candidate such as the Shadow Keep soldier instead of circling Moria.
+
+
+[2026-08-04 1:43:08 PM NZST] CODEX COMMENTARY
+The second reset-aware pass is active in its single expected campaign worker. It is still inside the bounded wait/route window; I am keeping the run isolated and will report the selected policy and live outcome when the checkpoint returns.
+
+
+[2026-08-04 1:45:15 PM NZST] CODEX COMMENTARY
+The campaign worker remains responsive and within the 240-second segment cap; it has not spawned a second worker or entered a permission wait. The route is taking longer than the initial Moria absence check, which is consistent with a real area probe, so I am letting this bounded segment finish.
+
+
+[2026-08-04 1:47:11 PM NZST] CODEX COMMENTARY
+The live worker is still the only campaign process and remains inside its explicit 240-second runtime boundary. I am preserving the run until the runner returns its own checkpoint, then I will inspect whether the source target was found and whether XP moved.
+
+
+[2026-08-04 1:47:35 PM NZST] CODEX COMMENTARY
+The outer command hit its 300-second tool ceiling while the campaign Python process was still alive, so I found the exact worker (PID 37400) and am stopping only that stale campaign process now. I will audit its last transcript and checkpoint, preserve any completed evidence, and then adjust the live-boundary path so this cannot hold the work open again.
+
+
+[2026-08-04 1:50:11 PM NZST] CODEX COMMENTARY
+The interrupted worker is fully cleaned: its orphaned run and campaign segment are marked failed with the timeout reason, and no campaign worker remains. The completed Moria transcript is preserved. I am doing one short no-retry resume now to leave the campaign in a clean ready/checkpointed state, then I will run the full test suite and audit the final process list.
+
+
+[2026-08-04 1:50:59 PM NZST] CODEX COMMENTARY
+The short resume correctly reopened a live segment instead of returning immediately; the campaign repaired its failed checkpoint and is now using the 120-second per-segment cap. I am keeping this single worker under observation, with the outer command bounded separately so I can stop it cleanly if the bot fails to reach its normal healer checkpoint.
+
+
+[2026-08-04 1:52:45 PM NZST] CODEX COMMENTARY
+The resumed segment is still within its 120-second live budget and remains a single expected campaign process. I am waiting for the runner to reconcile its own runtime boundary; after completion I will inspect XP, target evidence, and whether the campaign now has a reusable level-19 route.
+
+
+[2026-08-04 1:53:34 PM NZST] CODEX COMMENTARY
+The cleaned resume produced a useful funding kill and 90 XP, returned Kestrel to healer room 3054, and left no campaign worker running. Offline policy inspection now confirms the new reset path: without a post-wait retry the frontier is unavailable, while after a bounded wait it selects the safe Shadow Keep undead-soldier candidate. I am running the full project suite plus the streamer tests before attempting that next research segment.
+
+
+[2026-08-04 1:54:35 PM NZST] CODEX COMMENTARY
+Both suites are green: 1,928 project tests and 7 streamer tests. The live state is clean at level 19 with the 90-XP funding result preserved. I am taking the next bounded post-wait step now with a 30-second outside wait and a 120-second live cap; the expected target is the source-verified Shadow Keep undead soldier, not a repeated lower-band hunt.
+
+
+[2026-08-04 1:55:28 PM NZST] CODEX COMMENTARY
+The post-wait campaign pass is active as one expected worker and has cleared its outside wait. I am keeping the 120-second route cap in force; the next checkpoint will show whether the Shadow Keep target was present and worth promoting.
+
+
+[2026-08-04 1:55:57 PM NZST] CODEX COMMENTARY
+The reset-aware pass first completed the required loot-sale maintenance after the funding kill; Kestrel is safely back at the healer with 181,099 XP and no live worker remains. The maintenance gate is now clear. I am running the same bounded post-wait handoff once more so the source-ranked Shadow Keep probe can execute instead of being hidden behind housekeeping.
+
+
+[2026-08-04 1:57:36 PM NZST] CODEX COMMENTARY
+The next blocker is concrete: flight funding is still required after the reboot price shift, and the source-backed funding selector currently chooses the Fleshmonger patrolling guard because it is the only completed, safe money candidate at this state. I am running one 120-second bounded funding pass to acquire saleable value, then I will inspect the purchase/retry state rather than looping blindly.
+
+
+[2026-08-04 1:58:33 PM NZST] CODEX COMMENTARY
+The bounded funding worker is active as a single process and remains within its 120-second live budget. I am waiting for its healer-room return and sale/purchase evidence before choosing the next policy.
+
+
+[2026-08-04 1:59:45 PM NZST] CODEX COMMENTARY
+The funding route is still inside the configured 120-second boundary and has not spawned any extra worker. I am keeping the run isolated through its safe return instead of interrupting a live combat or sale sequence.
+
+
+[2026-08-04 2:01:06 PM NZST] CODEX COMMENTARY
+The second funding pass completed safely, raised Kestrel to 181,199 XP, and cleared the flight-funding requirement; the selector still used the same source-proven guard and returned to healer. The next policy is now the live Magic Shop purchase, so I am running that short maintenance step to obtain flight before the Shadow Keep route.
+
+
+[2026-08-04 2:02:01 PM NZST] CODEX COMMENTARY
+The Magic Shop maintenance worker is still active as the only expected campaign process and remains below its 120-second cap. I am letting it complete the current price check and healer return before deciding whether the flight purchase actually succeeded.
+
+
+[2026-08-04 2:03:13 PM NZST] CODEX COMMENTARY
+The purchase route is taking the full bounded maintenance path, likely because it is rechecking shop price and returning through Midgaard. It remains one live worker under the 120-second cap; I will accept its own runtime checkpoint rather than interrupting it mid-transaction.
+
+
+[2026-08-04 2:05:11 PM NZST] CODEX FINAL
+Discord replay is fixed. The root cause was a stale 35,677-record queue at end-of-file; I backed it up, reset the live checkpoint to the current source end, and added stable fingerprints, queue deduplication, processed history, and in-flight restart handling. The batch streamer is running with an empty queue/pending buffer, current offset, 29 processed fingerprints, no stderr, and only new current records in its log. Project tests: 1,928 passed; streamer tests: 7 passed. HERO work resumed: Kestrel is safely at level 19 in healer room 3054 with 181,199 XP; funding and Shadow Keep evidence were collected, with the Shadow Keep target absent this reboot. One multi-retry live invocation exceeded the outer tool ceiling; I stopped and recovered its worker cleanly. Local source changes remain uncommitted for the scheduled 9 PM commit window.
+
+
+[2026-08-04 2:06:06 PM NZST] CODEX COMMENTARY
+I am continuing the active HERO objective from the verified level-19 frontier. I will audit the current checkout, DD4 source revision, Kestrel checkpoint, and live workers first, then remove the next concrete progression blocker with tests and a bounded no-steering run.
+
+
+[2026-08-04 2:08:21 PM NZST] CODEX COMMENTARY
+The audit found the current live state already contains five saleable guard drops; with the real source gear catalog loaded, the campaign selects sell-loot before retrying the unaffordable flight purchase. That means the next unit is a bounded liquidation pass, which should create the missing 38 copper without re-killing the same guard.
+
+
+[2026-08-04 2:09:14 PM NZST] CODEX COMMENTARY
+The liquidation worker is active as one expected process and remains inside the 120-second cap. I am letting the shop transactions complete so the checkpoint records the actual reboot-priced proceeds and any remaining flight shortfall.
+
+
+[2026-08-04 2:09:39 PM NZST] CODEX COMMENTARY
+Liquidation succeeded: the guard drops were sold, Kestrel now carries 1 silver and 31 copper more than before, and the inventory is clean. The next policy is the current-price flight purchase; the recorded balance now exceeds the listed 147-copper price, so I am running that maintenance step next.
+
+
+[2026-08-04 2:10:47 PM NZST] CODEX COMMENTARY
+The live shop transcript explains the shortfall: DD4 uses 10 copper per silver, so 10 silver and 31 copper equals 131 copper, still 16 copper below the 147-copper potion. The funding loop is correctly next; I am taking one more bounded guard/drop pass, then liquidation should cross the price threshold.
+
+
+[2026-08-04 2:11:45 PM NZST] CODEX COMMENTARY
+The third bounded funding pass is active as the sole campaign worker and remains inside the 120-second limit. I am waiting for its safe healer return before liquidating the new drops.
+
+
+[2026-08-04 2:12:56 PM NZST] CODEX COMMENTARY
+The funding route is still responsive and within its bounded runtime; no second campaign or zombie process has appeared. I am letting the guard loop finish rather than interrupting the live combat return.
+
+
+[2026-08-04 2:13:23 PM NZST] CODEX COMMENTARY
+The funding pass completed safely at checkpoint 3389. I am now running the expected liquidation step to convert the newly carried guard drops into copper, then the flight purchase can be retried at the live listed price.
+
+
+[2026-08-04 2:14:15 PM NZST] CODEX COMMENTARY
+The follow-up liquidation is active as one expected worker and remains within its 120-second cap. I am waiting for the compatible shop sales and healer-room checkpoint.
+
+
+[2026-08-04 2:14:31 PM NZST] CODEX COMMENTARY
+The second liquidation checkpoint completed cleanly at 3394. I am retrying the Magic Shop purchase now; this is the first attempt after the full funding-to-sale loop has crossed the measured price threshold.
+
+
+[2026-08-04 2:15:47 PM NZST] CODEX COMMENTARY
+The funding-to-sale loop worked: the flight purchase now succeeded at the live 147-copper price, flight is confirmed active, and Kestrel is at 181,299 XP. The productive funding work also cleared the white-dwarf retry cooldown, so the next policy is the actual Galaxy white-dwarf research route; I am launching that bounded no-steering probe now.
+
+
+[2026-08-04 2:16:42 PM NZST] CODEX COMMENTARY
+The Galaxy probe is active as one expected campaign worker and remains within the 120-second live boundary. I am allowing the route to complete its source-backed target search and healer return.
+
+
+[2026-08-04 2:18:00 PM NZST] CODEX COMMENTARY
+The Galaxy route remains responsive and isolated to the single bounded worker. It is taking the longer field-search path, so I am preserving the no-steering evidence through its configured return boundary.
+
+
+[2026-08-04 2:18:30 PM NZST] CODEX COMMENTARY
+Galaxy evidence is now persisted: the white-dwarf target was absent, Kestrel returned safely to healer room 3054 with flight active, and the same-reboot absence cooldown was recorded. Generic selection has rotated to the required sanctuary recovery policy in Moria, so I am running that next bounded probe without steering.
+
+
+[2026-08-04 2:19:26 PM NZST] CODEX COMMENTARY
+The Moria sanctuary probe is active as one expected worker and remains inside the 120-second field bound. I am preserving its exact-target and recovery evidence through the healer return.
+
+
+[2026-08-04 2:20:29 PM NZST] CODEX COMMENTARY
+Moria was absent again, so the runner recorded the temporary same-reboot cooldown and returned Kestrel safely with flight active. Generic selection has rotated to the Shire Thain research probe, which is a source-registered non-combat check; I am running it next to keep the progression frontier moving without repeating Moria.
+
+
+[2026-08-04 2:21:27 PM NZST] CODEX COMMENTARY
+The Shire probe is active as one expected worker and remains under the 120-second cap. I am allowing the source-backed route and dynamic-presence check to complete before selecting the next policy.
+
+
+[2026-08-04 2:22:42 PM NZST] CODEX COMMENTARY
+The Shire route remains responsive and isolated to the single campaign worker; it is taking the longer no-combat presence scan. I am keeping it within the configured live boundary and will inspect the persisted evidence at return.
+
+
+[2026-08-04 2:23:15 PM NZST] CODEX COMMENTARY
+The Shire Thain was absent after a complete bounded scan, with no combat or XP change. The policy graph now advances to the level-19 deep Moria sanctuary carrier branch, which is the next source-backed attempt to resolve the outstanding protection recovery requirement; I am running it without steering.
+
+
+[2026-08-04 2:24:14 PM NZST] CODEX COMMENTARY
+The deep Moria carrier route is active as one expected worker and remains within the 120-second boundary. I am preserving its exact-room and required-loot evidence through the bounded return.
+
+
+[2026-08-04 2:25:34 PM NZST] CODEX COMMENTARY
+The deep Moria carrier was also absent and returned safely, so its cooldown is recorded. The generic frontier now selects the audited low-peak Olympus Jailer source-ranked hunt in normal mode; I am running that bounded probe next, while keeping the post-wait Shadow Keep fallback available if the route is temporarily blocked.
+
+
+[2026-08-04 2:26:33 PM NZST] CODEX COMMENTARY
+The Olympus Jailer route is active as one expected worker and remains under the 120-second bound. I am letting its source-keyed route preflight and exact-target probe complete without manual steering.
+
+
+[2026-08-04 2:27:59 PM NZST] CODEX COMMENTARY
+The Olympus Jailer endpoint was reached and confirmed empty; no combat occurred and the checkpoint is clean. Normal source ranking is temporarily exhausted, while the explicit post-wait retry selects the safe Shadow Keep soldier. I am running that bounded reset-aware handoff now.
+
+
+[2026-08-04 2:28:56 PM NZST] CODEX COMMENTARY
+The reset-aware handoff is active as one campaign worker and has passed its outside wait. I am keeping the Shadow Keep route within the 120-second live cap and will inspect the target outcome at the resulting checkpoint.
+
+
+[2026-08-04 2:29:45 PM NZST] CODEX COMMENTARY
+That is the right challenge. I am auditing the live target-presence logic against the current Shadow Keep run now: source mobile flags, exact stay-area versus wander behavior, the registered room set, and the live `where` preflight/search loop. I will keep this single bounded worker isolated while I verify whether the route is genuinely checking the mobile s possible locations or merely its reset room.
+
+
+[2026-08-04 2:31:23 PM NZST] CODEX COMMENTARY
+That is the right challenge. I am auditing the live target-presence logic against the current Shadow Keep run now: source mobile flags, exact sentinel versus wandering behavior, the registered room set, and the live where preflight/search loop. I will verify whether the route is checking a mobile's plausible locations or merely its reset room before changing anything.
+
+
+[2026-08-04 2:31:39 PM NZST] CODEX COMMENTARY
+The bounded worker completed cleanly and checkpointed level 19, but its selected segment was the Moria sanctuary policy rather than Shadow Keep. I am now comparing that exact transcript with the source flags and route registration, including every room visited and every presence check, so the answer is based on observed behavior rather than the policy label.
+
+
+[2026-08-04 2:37:59 PM NZST] CODEX COMMENTARY
+I found a real gap rather than a false alarm. DD4's update.c moves any mobile without ACT_SENTINEL through random open exits, while ACT_STAY_AREA only limits the area. The generic source-ranked fallback currently routes to one reset room and does not carry those flags into its live search. The Shadow Keep soldier is sentinel, but has four source reset locations (16607, 16613, 16615, 16618), and the current handcrafted probe omits the crowded 16613 reset by design. Aruncus and the White Stag are non-sentinel stay-area wanderers, so a reset-room-only fallback can miss a present target. I am changing the generic path to use source-derived sentinel reset sets and a bounded area search preceded by where for wanderers, then I will test it.
+
+
+[2026-08-04 2:40:31 PM NZST] CODEX COMMENTARY
+The generic fix is now in place locally. Source candidates retain sentinel/stay-area flags; sentinel hunts expand across every reset room; wandering hunts issue where at the verified area endpoint, map the returned room label to source rooms, and follow live GMCP destination VNUMs through a bounded 96-room source-reachable set. I also updated locator narrowing to work with multi-hop room paths, so it can jump directly to a found wandering mobile instead of blindly traversing the whole set.
+
+
+[2026-08-04 2:40:57 PM NZST] CODEX COMMENTARY
+The first focused verification is running now. I am checking the hunt-candidate parser, campaign selection, and starter route behavior together, plus compilation and whitespace on the code-only diff.
+
+
+[2026-08-04 2:41:25 PM NZST] CODEX COMMENTARY
+The existing focused suite is green at 1,234 tests. I am adding small regression tests now for the exact failure mode: a non-sentinel target must produce a where locator plus reachable room stops, and a sentinel target must expand across its reset rooms without issuing where. This keeps the behavior from silently regressing while the live campaign continues to checkpoint normally.
+
+
+[2026-08-04 2:42:28 PM NZST] CODEX COMMENTARY
+The new regression cases exposed only a test-fixture omission: both synthetic candidates were missing the required level range. The implementation itself passed the existing 1,234 cases; I am correcting the fixtures, then I will rerun the focused suite before the live proof.
+
+
+[2026-08-04 2:44:14 PM NZST] CODEX COMMENTARY
+The focused tests now pass at 1,236. A source-graph review found one safety refinement before live use: the raw wander graph includes rooms such as Aruncus's high-level Hall of G'harne and the White Stag's Fewmaster/guard-dog rooms. I am filtering static aggressive reset rooms from the generic search graph and its live paths, while leaving the registered manual routes unchanged. That preserves the locator benefit without sending a low-level character into a room merely because the target could theoretically wander there.
+
+
+[2026-08-04 2:47:40 PM NZST] CODEX COMMENTARY
+The route ordering refinement is also green at 1,236 tests. It now chooses a reachable branch order rather than sorting VNUMs, so the generic Shadow Keep plan checks the selected soldier room, then 16618, 16607, and the underwater 16613 reset instead of getting stranded in the one-way underwater branch. I am checking the persisted campaign checkpoint next, then I will run the full suite and one bounded live segment.
+
+
+[2026-08-04 2:47:58 PM NZST] CODEX COMMENTARY
+The checkpoint is healthy at segment 3417, level 19, and the worktree contains only the intended campaign/parser/starter/test changes plus the append-only conversation log. Before the full run I am making one small readability cleanup in the new branch-order helper, then I will run all project tests.
+
+
+[2026-08-04 2:48:55 PM NZST] CODEX COMMENTARY
+Full verification is green: 1,930 tests passed in 29.96 seconds, and the source audit now produces the expected plans: Aruncus 42 bounded area rooms behind a where locator, White Stag 34 bounded rooms behind a locator, and the sentinel Undead Soldier reset set 16615, 16618, 16607, 16613. I am starting one bounded live campaign segment from the healthy level-19 checkpoint now; it will use normal policy selection and stop at the existing 120-second segment boundary.
+
+
+[2026-08-04 2:49:35 PM NZST] CODEX COMMENTARY
+The launcher wrapper timed out before returning output, but the campaign worker itself is still alive as PID 42288; no zombie was created. It has opened run 3069 and is in the normal campaign metadata-repair phase before the live connection. I am leaving this single bounded worker running and will monitor its process and transcript directly rather than launch a duplicate.
+
+
+[2026-08-04 2:50:22 PM NZST] CODEX COMMENTARY
+The live worker has reached Moria room 4064 and is engaged with a large hobgoblin at 264/264 HP and 174 movement, issuing the verified knife-toss recurring action. It is a real target-mode combat, not a stalled connection. I will let the bounded combat watchdog finish and then inspect whether the locator/search changes are represented in the resulting checkpoint.
+
+
+[2026-08-04 2:51:07 PM NZST] CODEX COMMENTARY
+The live segment produced a clean useful result: Kestrel killed the level-10 large hobgoblin for another 100 XP, recovered to full health in healer room 3054, looted its purple potion, and is now finishing the checkpoint/save sequence. No death or watchdog failure occurred; the worker is still alive only for its normal post-run closeout.
+
+
+[2026-08-04 2:51:51 PM NZST] CODEX COMMENTARY
+The live worker is fully closed: run 3069 checkpointed segment 3421 at level 19 after +100 XP, full healer recovery, save, and quit; no campaign process remains. I am recording the source-backed mobility rule in the generic progression policy as well, so future policy selection and evidence reports explain why sentinel reset sets and wandering locator searches differ.
+
+
+[2026-08-04 2:52:12 PM NZST] CODEX COMMENTARY
+The mobility evidence is now recorded in progression.py with source revision 1b759f5. I am doing the final full test pass and repository/process audit now, including the Discord streamer's exact offset and queue state, before I close this work unit.
+
+
+[2026-08-04 2:53:15 PM NZST] CODEX FINAL
+Completed the mobility audit and generic target-discovery fix. Source-ranked hunts now distinguish sentinel mobiles from wanderers, use every source reset for sentinels, and use where plus a bounded source-reachable room search for wanderers. Full tests pass at 1,930. Kestrel run 3069 completed safely at level 19 with +100 XP and healer recovery; no campaign worker remains. Changes are saved locally; no commit or remote push was attempted under the standing 9 PM local commit policy.
+
+
+[2026-08-04 2:53:40 PM NZST] CODEX COMMENTARY
+I am continuing the HERO automation work from the current checkpoint. I will first audit the executable level-19 boundary, the policy selector, source revision, and test/live evidence, then choose and implement the next concrete progression blocker beyond the current route. I will keep the live work bounded and report each meaningful transition here.
+
+
+[2026-08-04 2:55:07 PM NZST] CODEX COMMENTARY
+I am continuing the HERO engine work from Kestrel’s level-19 checkpoint. I am auditing the next executable level boundary and the requested generic hero CLI before selecting the next concrete blocker.
+
+
+[2026-08-04 2:56:39 PM NZST] CODEX COMMENTARY
+The audit confirms the hero CLI exists, Kestrel is safely checkpointed at level 19, and the source snapshot is current at 1b759f5. The new generic hunt path distinguishes sentinel resets from wanderers, but I am checking legacy registered hunts too so they cannot bypass that logic.
+
+
+[2026-08-04 3:05:36 PM NZST] CODEX COMMENTARY
+I found a concrete locator bug: when where identified a later room, narrowing discarded the intermediate route waypoints and left stale room paths. I am fixing that continuity, adding an explicit unresolved-where abort, and migrating the next known wandering policies (Mirror Realm gardener, Jerry Garcia, and Rastafarians) to source-derived searches.
+
+
+[2026-08-04 3:11:46 PM NZST] CODEX COMMENTARY
+The new source-ranked routes are compiling, and I found one remaining edge case in the locator guard: an unsafe or unmapped where room could still leave a non-null location and bypass the abort. I am tightening that check, then I will update the dispatch tests and run the full suite.
+
+
+[2026-08-04 3:17:25 PM NZST] CODEX COMMENTARY
+The source audit found four more real misses in the registered policy graph: the Day Care nanny, Pyramid Ali Baba, Galaxy white dwarf, and Vamp Hive wounded vampire are all non-sentinel wanderers, but their executable dispatches were still reset-room-only. I am switching those policies to the same source-reachable search, preserving their exact-target and risk gates, and bumping the policy revision so persisted checkpoints cannot reuse stale routes.
+
+
+[2026-08-04 3:20:17 PM NZST] CODEX COMMENTARY
+The migration tests are almost clean: the source reachability and locator guards pass, and the only failure is an expected identity normalization mismatch (Ali Baba is canonicalized to lowercase li baba). I am correcting that assertion, then I will run the complete campaign and starter suites.
+
+
+[2026-08-04 3:21:29 PM NZST] CODEX COMMENTARY
+The focused migration suite is now green: 30 relevant campaign tests passed. The full pytest run is still progressing across the repository; after it finishes I will inspect the generated source-policy stop counts and audit the running processes.
+
+
+[2026-08-04 3:23:19 PM NZST] CODEX COMMENTARY
+The daycare expectations now reflect the expanded source search, and the focused migration set is green at 41 passed. The full suite is on its second run after those expectation updates; I will not start any live character loop until the regression result is clean.
+
+
+[2026-08-04 3:25:17 PM NZST] CODEX COMMENTARY
+The full regression suite is green at 1,931 passed. The source audit shows the migrated policies now produce locator plus bounded target stops (for example nanny 12, Ali Baba 15, white dwarf 32, vampire 20, gardener 26, Jerry 44, and Rastafarians 118); sentinel examples still produce reset-room stops without where. I am adding one direct starter regression for multi-hop locator narrowing and unmapped-location fail-closed behavior before the final process audit.
+
+
+[2026-08-04 3:26:49 PM NZST] CODEX COMMENTARY
+The direct starter regression passes: a locator result in a later room preserves every intermediate GMCP waypoint, while an unmapped room returns immediately instead of scanning blindly. The final full pytest pass is still running with that regression included.
+
+
+[2026-08-04 3:28:25 PM NZST] CODEX COMMENTARY
+The code and tests are complete; the final evidence audit caught one stale sentence in the generic progression policy, which still documented the old 96-room cap. I am updating it to the live 256-room bound and recording the fail-closed locator rule, then I will do the final clean test check and closeout.
+
+
+[2026-08-04 3:30:02 PM NZST] CODEX FINAL
+Mob-presence handling is now source-aware. The runner distinguishes ACT_SENTINEL from wandering mobiles, checks every reset for sentinels, and uses where plus a bounded source-reachable search for wanderers. I migrated the Day Care nanny, Ali Baba, Galaxy white dwarf, Mirror Realm gardener, Jerry Garcia, Vamp Hive wounded vampire, and Rastafarians policies; locator routes retain intermediate GMCP waypoints and fail closed on unmapped rooms. Source evidence is current at 1b759f584be6 and policy revision 113. Full suite: 1,932 passed. No campaign or pytest worker remains. The Discord streamer is healthy with offset equal to the conversation file size, empty queue and pending state, and no in-flight delivery. Changes remain local; no commit or push was attempted under the standing policy.
+
+
+[2026-08-04 3:30:34 PM NZST] CODEX COMMENTARY
+I am continuing the HERO objective from the new source-aware mobility checkpoint. I will audit the current level-19 campaign state, the generic hero command, source revision, and the next executable progression frontier, then remove one concrete blocker with tests and bounded live evidence where useful.
+
+
+[2026-08-04 3:31:12 PM NZST] CODEX COMMENTARY
+The audit confirms the repository is still on main with the mobility work uncommitted locally, source revision 1b759f584be6, and Kestrel safely checkpointed at level 19 in healer room 3054. The checkpoint still records policy revision 112, so the next resume will exercise the new revision-113 migration; I am now tracing which level-19 policy it will actually select before launching anything.
+
+
+[2026-08-04 3:31:58 PM NZST] CODEX COMMENTARY
+The revision-113 selector resolves cleanly to the next executable frontier: solace-magnus-hunt-19-20, a bounded level-19-to-20 hunt with a fresh Magnus probe and sanctuary protection. I am inspecting that policy's source identity, route, and equipment gates now, then I will run exactly one bounded resume segment so the live result either advances Kestrel or records a precise blocker.
+
+
+[2026-08-04 3:32:12 PM NZST] CODEX COMMENTARY
+The Magnus route is source-backed at mobile 10243 in room 10300, with a live viable probe already recorded and a sanctuary-gated one-kill hunt. Kestrel has the required protection reserve according to the checkpoint selector. I am launching one resume-only segment with a 120-second inner cap, zero automatic reset retries, and no manual steering.
+
+
+[2026-08-04 3:33:12 PM NZST] CODEX COMMENTARY
+The single Magnus campaign worker is active as the only dd4tester process. It has opened run 3070 and entered the solace-magnus hunt segment; the transcript file is being created and the segment remains inside the 120-second bound. I am monitoring that same worker rather than starting a retry.
+
+
+[2026-08-04 3:36:50 PM NZST] CODEX COMMENTARY
+The bounded Magnus run has ended and no dd4tester worker remains. I am reading its compact run/checkpoint result now; the outer wait reported a timeout, so I am treating this as a failed live segment to diagnose rather than allowing a retry loop.
+
+
+[2026-08-04 3:40:02 PM NZST] CODEX COMMENTARY
+The live evidence answers this directly: Magnus was a sentinel and the runner reached his source reset room and bound the exact selector #5760 without a wandering search. The source-aware code now handles non-sentinels separately: it starts from every reset room, walks the source exit graph with stay-area/no-mob/closed-door and registered-aggressive-room gates, checks up to 256 reachable rooms, then uses live where output to narrow the route and fails closed if the location cannot be mapped. I am now auditing the remaining named policies so this distinction is not confined to the generic fallback.
+
+
+[2026-08-04 3:41:14 PM NZST] CODEX COMMENTARY
+The audit found four executable wandering policies still relying on handcrafted sweeps: Aruncus, White Stag, the Shire Thain, and the Argent bandit leader. I am migrating those dispatch paths to the same source-mobile helper, preserving their route-specific safety gates and leaving the legacy stop factories available for compatibility tests. I will add assertions for their source reachability and run the full pytest suite before the next live segment.
+
+
+[2026-08-04 3:49:24 PM NZST] CODEX COMMENTARY
+The audit exposed a real false-negative edge: source reachability was being calculated after excluding rooms that contain aggressive resets. That is safe for routing, but it can hide a wandering target in a nearby safe room reached through such a room; the live Thain evidence already showed this pattern in Pig pen and Chicken coop. I am separating discovery from route safety now: inspect the full source-reachable set, mark hazardous rooms as known-but-unsafe, and recall if where reports one instead of treating it as an unknown location.
+
+
+[2026-08-04 3:52:29 PM NZST] CODEX COMMENTARY
+The corrected discovery model now retains source-reachable rooms even when the safest route cannot enter them. The Thain regression proves Pig pen and Chicken coop remain in the locator map as known-but-unroutable, so a reported presence will trigger a safety return instead of a false 'not mapped' result. The campaign-focused suite is green at 417 tests; I am running the full suite next, then I will inspect the next generic policy selected for Kestrel.
+
+
+[2026-08-04 3:55:50 PM NZST] CODEX COMMENTARY
+Verification is complete: the full suite is green at 1,933 tests, diff-check is clean, and no dd4tester or pytest worker remains. The Discord streamer processes are still healthy. Kestrel remains safely logged out in the healer room at level 19; after the Magnus withdrawal there is currently no source-safe current-band candidate selected, so I am not launching a blind retry. The mobility fix is local and ready for the next campaign selection.
+
+
+[2026-08-04 3:55:59 PM NZST] CODEX FINAL
+Mob discovery is now source-aware. Sentinel mobiles are checked at every source reset room without a wandering locator. Non-sentinels are searched from every source reset through the source exit graph, respecting stay-area, closed/locked exits, no-mob rooms, and a 256-room bound; live where output narrows the route. Every source-reachable location remains represented, while locations requiring an unsafe route are recorded as present-but-unsafe and cause a safety return. I migrated Aruncus, White Stag, the Shire Thain, and Argent bandit leader dispatches to this path and added regression coverage for wandering targets found beyond an aggressive-room branch. The full suite passes: 1,933 tests. Kestrel's Magnus run found the sentinel correctly; its failure was blindness during combat, not target discovery. No worker is left running; the Discord streamer remains healthy. Changes are local only, per the current git policy.
+
+
+[2026-08-04 3:56:25 PM NZST] CODEX COMMENTARY
+I am resuming the HERO progression work at the real blocker, not treating the mob-discovery fix as completion. First I am auditing Kestrel's latest checkpoint and the source-ranked level-19 frontier, then I will implement the next reusable progression capability, test it, and run one bounded live segment without steering.
+
+
+[2026-08-04 3:59:52 PM NZST] CODEX COMMENTARY
+The live evidence now tells us the immediate problem is policy execution, not merely locating a name: Kestrel found Magnus, but the fight exposed a generic special-procedure risk and left a protection-recovery checkpoint. I am tracing the source spell behavior and the candidate-selection gates so the next hunt can use source-ranked bystanders, protection requirements, and a bounded recovery path without turning one character into a special case.
+
+
+[2026-08-04 4:06:29 PM NZST] CODEX COMMENTARY
+I found a concrete reusable progression gap: the source ranker was treating every reset companion as a hard rejection, even when the companion is a source-known non-aggressive lower-level bystander. That blocks valid targets such as the Ambush/Haglik and Fleshmonger rooms. I am changing the ranker and generated hunt stops to distinguish dangerous companions from trivial source-backed bystanders, with level-fuzz and special-procedure checks preserved.
+
+
+[2026-08-04 4:09:42 PM NZST] CODEX COMMENTARY
+The focused regression suite caught an intentional boundary in the new companion rule: a below-band companion with a special procedure must remain a hard rejection, because source level alone does not neutralize poison or other scripted effects. I am tightening that condition, then I will rerun the focused suite and inspect which current level-19 source candidate becomes executable.
+
+
+[2026-08-04 4:11:03 PM NZST] CODEX COMMENTARY
+The repaired policy graph now selects a generic source-ranked Haglik hunt at level 19: the target is wandering, the route is source-bounded, and its non-aggressive prisoner companion is explicitly carried as a trivial bystander rather than a crowd rejection. I am launching one bounded live segment now; the runner will locate, consider, and either fight or safely skip without manual target steering.
+
+
+[2026-08-04 4:11:58 PM NZST] CODEX COMMENTARY
+The bounded live segment is still running within its explicit runtime limit. I am leaving the connection under the campaign runner’s control so its recorded locator, room-by-room source route, consider result, combat state, and healer return remain one coherent evidence record; I am not injecting commands while it is active.
+
+
+[2026-08-04 4:13:10 PM NZST] CODEX COMMENTARY
+The live run has passed the early travel window and remains bounded; there is no hung child process or permission prompt to work around. Once it returns I will inspect the checkpoint and transcript for the actual Haglik location/consider path, then either register the evidence or correct the next gate locally.
+
+
+[2026-08-04 4:14:22 PM NZST] CODEX COMMENTARY
+The segment is still inside the requested 180-second field bound. This is the part that used to look like stalling: the travel and live prompt pacing are slow, but the runner has a hard return boundary and I am waiting for its durable result rather than starting a second connection over it.
+
+
+[2026-08-04 4:15:20 PM NZST] CODEX COMMENTARY
+The outer command reached its 240-second wall-clock timeout without returning a CLI result, so I am treating this as a bounded-launch failure and auditing the child processes immediately. I will not let an unreturned live launch block the rest of the work: first I will determine whether it exited cleanly, then inspect the latest checkpoint/transcript and only terminate a process if it is an actual orphan rather than the healthy Discord streamer.
+
+
+[2026-08-04 4:16:02 PM NZST] CODEX COMMENTARY
+The live evidence is in: the runner reached Haglik's source reset room 4525, issued the exact target consider, recorded the real result as below-band, skipped the kill, and returned to healer room 3054 fully recovered. One correction to my previous update: Haglik is source-sentinel, not wandering; I am checking that classification before reporting the next candidate. The run did prove the source room and exact-keyword path, and its below-band exclusion is now persisted so it will not be retried at this level/reboot.
+
+
+[2026-08-04 4:17:22 PM NZST] CODEX COMMENTARY
+Haglik was correctly located but genuinely below the useful XP band, so the runner did the right thing and the source-ranked frontier is now exhausted again. The next reusable opening is a source-audited low-level mage-special hunt: I am extending the existing special gate with the actual DD4 spell damage bound from special.c/magic.c, allowing only cases where one melee peak plus one worst-case direct mage spell remains below max HP, and rejecting the level-25 energy-drain boundary until it has its own policy.
+
+
+[2026-08-04 4:19:07 PM NZST] CODEX COMMENTARY
+The new source spell bound passes tests and opens the next generic frontier: Fleshmonger, sentinel/stay-area, source-fuzzed level 13-17, with a non-aggressive servant/guard room companion now modeled as trivial. The policy retains a 95% departure-health gate and one-kill limit. I am running one bounded live proof of this audited special case; energy-drain-level casters remain excluded.
+
+
+[2026-08-04 4:20:33 PM NZST] CODEX COMMENTARY
+The Fleshmonger proof is still in its bounded travel/combat window and no competing launch has been started. I am watching the durable run rather than assuming a target is present from the source file: the outcome must come from the live selector, consider text, special spell messages, and final healer checkpoint.
+
+
+[2026-08-04 4:21:47 PM NZST] CODEX COMMENTARY
+The run remains active but inside the hard limit; this is a real connection pacing issue rather than a permission review. I am keeping the one-launch rule in effect and will inspect the transcript as soon as the runner returns, including whether the room companion was correctly ignored and whether the mage special caused a bounded withdrawal.
+
+
+[2026-08-04 4:23:35 PM NZST] CODEX COMMENTARY
+The Fleshmonger proof reached the exact sentinel room and passed consider; the servant/guard companions did not cause a false crowd rejection. The fight was safely bounded but not productive: live level 16, mage special effects, and roughly 1,380 HP made the 180-second window yield only 3 XP before healer recovery. I am recording that as viable evidence but an inefficient current policy, then rotating to the next source-backed candidate rather than repeating it.
+
+
+[2026-08-04 4:24:24 PM NZST] CODEX COMMENTARY
+After the Fleshmonger segment, the graph correctly inserts the normal safe maintenance checkpoint before field work. The next source-ranked candidate is the sentinel Undead Soldier in room 16615; I am allowing the campaign to perform that maintenance and one autonomous source-ranked segment, with no manual target selection, so we can see whether a non-caster current-band target is actually productive.
+
+
+[2026-08-04 4:25:16 PM NZST] CODEX COMMENTARY
+The two-segment continuation is running normally. The first phase is campaign maintenance and the second is the source-ranked field attempt; I am keeping the process bounded and will report the checkpointed target, live consider, XP delta, and return room when it finishes.
+
+
+[2026-08-04 4:26:28 PM NZST] CODEX COMMENTARY
+The continuation remains inside its wall-clock budget and no duplicate runner has appeared. The live target can still be absent or unsafe after source selection, so I am waiting for the durable result instead of interpreting the source candidate as a guaranteed spawn.
+
+
+[2026-08-04 4:28:14 PM NZST] CODEX COMMENTARY
+The live continuation is taking the expected travel time for the Shadow Keep route; the process is still bounded and responsive at the outer launch layer. I will inspect whether the target was found at its sentinel reset, whether it passed consider, and whether the combat runner completed or withdrew.
+
+
+[2026-08-04 4:30:20 PM NZST] CODEX COMMENTARY
+The current blocker is now explicit: essential-provision funding remains required, and the generic funding selector has rotated from the already-attempted patrolling guard to a fresh on-duty guard reset in Fleshmonger's Tower. I am allowing one bounded funding segment to acquire/sell loot, then the campaign can return to the level-19 XP frontier; this is a resource loop, not a fallback to low-XP hunting.
+
+
+[2026-08-04 4:31:17 PM NZST] CODEX COMMENTARY
+The funding segment is running under the same bounded connection policy. I am expecting either a saleable-drop acquisition with a maintenance transition or a clean absence/consider checkpoint; I will not repeat the same carrier if the live target is absent.
+
+
+[2026-08-04 4:32:29 PM NZST] CODEX COMMENTARY
+The funding loop succeeded: the on-duty guard reset was found and killed for 220 XP, five saleable drops were recovered, and the campaign cleared both provision and flight-funding requirements at healer room 3054. The next checkpoint should liquidate those drops before returning to XP selection; no stale funding retry is being carried forward.
+
+
+[2026-08-04 4:34:56 PM NZST] CODEX COMMENTARY
+I am tracing the loot-liquidation gate before starting another live hunt. The latest run did find and kill a source-registered mobile, but the recovered gear is still carried, so I am fixing that state transition first and will then re-run a bounded inspection segment.
+
+
+[2026-08-04 4:37:30 PM NZST] CODEX COMMENTARY
+The apparent policy mismatch was a stale evaluation: the durable Kestrel checkpoint does recognize all five new drops as saleable and selects sell-loot first. I am validating that path with the focused regression set, then I will let the campaign perform the bounded sale before choosing the next source-aware target.
+
+
+[2026-08-04 4:38:12 PM NZST] CODEX COMMENTARY
+The focused campaign and source-mobility tests are still running through their fixture-heavy checks; no live process has been started during this verification window.
+
+
+[2026-08-04 4:38:26 PM NZST] CODEX COMMENTARY
+The focused suite is green: 440 tests passed. I am starting one bounded campaign segment now; it should liquidate the five recovered Fleshmonger drops at the appropriate Midgaard shop, checkpoint, and stop before any new field launch.
+
+
+[2026-08-04 4:39:12 PM NZST] CODEX COMMENTARY
+The bounded maintenance segment is still active. It has not crossed the live-runtime boundary or opened a second field policy; I am letting the single checkpoint complete and will audit the child process immediately afterward.
+
+
+[2026-08-04 4:39:56 PM NZST] CODEX COMMENTARY
+The sale checkpoint completed cleanly: all five recovered equipment drops are gone, Kestrel is back at the healer with 29 copper-equivalent units recorded, and no dd4tester child remains. The next policy is the existing source-backed flight purchase gate; I am checking its exact sale records and then will continue one bounded progression segment.
+
+
+[2026-08-04 4:40:07 PM NZST] CODEX COMMENTARY
+The recorded sale path used Armoury room 3020 and Leather Shop room 3035, with four successful sale entries and the scimitar disposed through the compatible weapon path. I am now letting the campaign attempt its bounded flight purchase so long-distance wandering searches can use the cheaper movement route.
+
+
+[2026-08-04 4:40:51 PM NZST] CODEX COMMENTARY
+The flight-purchase segment is still within its single live budget and has not produced a second autonomous launch. I am keeping the connection bounded and will inspect the checkpoint rather than allowing a stalled purchase to turn into an open-ended retry.
+
+
+[2026-08-04 4:41:22 PM NZST] CODEX COMMENTARY
+Flight purchase was attempted once and failed because the reboot-scoped shop price exceeded the current balance; the campaign correctly moved to its generic source-ranked provision-funding policy. I am continuing that bounded money loop now, with the same source-room, crowd, and live-consider gates used for progression hunts.
+
+
+[2026-08-04 4:42:09 PM NZST] CODEX COMMENTARY
+The second funding segment is still bounded and active. I am not steering target selection from the terminal; the campaign is resolving the source-ranked candidate and will either record a productive kill or checkpoint a safe retry/rotation result.
+
+
+[2026-08-04 4:43:05 PM NZST] CODEX COMMENTARY
+This funding run is taking the longer route, but it remains inside the single-segment 180-second live cap. I am waiting for its durable completion rather than launching another command or touching the streamer processes.
+
+
+[2026-08-04 4:44:31 PM NZST] CODEX COMMENTARY
+The funding loop produced another five-drop sale batch and the durable selector now chooses liquidation before field work, as intended. I am running that maintenance checkpoint next; once the new proceeds are banked, the flight gate can be retried at the current reboot price.
+
+
+[2026-08-04 4:45:15 PM NZST] CODEX COMMENTARY
+The sale checkpoint is still traversing its normal shop route and remains bounded to this one segment. No additional hunt has started, and the only long-lived Python processes remain the two Discord streamer processes.
+
+
+[2026-08-04 4:45:47 PM NZST] CODEX COMMENTARY
+Liquidation added the second sale batch, leaving enough reboot-scoped currency for a fresh flight-price attempt. The policy selector now chooses buy-flight-potion and will make exactly that one bounded purchase attempt before returning to the generic frontier.
+
+
+[2026-08-04 4:46:42 PM NZST] CODEX COMMENTARY
+The second flight attempt is still running inside the same bounded maintenance window. I am waiting for its checkpoint, which will tell us whether this reboot's current shop price is affordable and whether the next source-aware search can begin flying.
+
+
+[2026-08-04 4:47:02 PM NZST] CODEX COMMENTARY
+Flight is now active and the campaign has cleared the funding loop. The next candidate is the source-registered Shadow Keep Undead Soldier/Wraith policy; its source flags are sentinel and stay-area, so this run will check its exact reset rooms rather than pretending it can wander across the full Keep.
+
+
+[2026-08-04 4:47:50 PM NZST] CODEX COMMENTARY
+The sentinel-policy field probe is still moving through its bounded route. I am waiting for the exact room checks and live consideration result; no wandering-room sweep is being substituted for this sentinel search.
+
+
+[2026-08-04 4:48:53 PM NZST] CODEX COMMENTARY
+This exact-room probe is approaching the live command budget but remains inside the one-segment guard. I am allowing the runner to perform its own recall/recovery boundary and will audit for a clean checkpoint as soon as the process returns.
+
+
+[2026-08-04 4:49:57 PM NZST] CODEX COMMENTARY
+The sentinel probe correctly reported Shadow Keep absent and rotated without treating that as a permanent rejection. The next research policy is the Galaxy white dwarf: source flags show it is non-sentinel, stay-area, with 39 reachable source rooms. I am running that locator-plus-bounded-room search now, which is the wandering case you asked about.
+
+
+[2026-08-04 4:50:42 PM NZST] CODEX COMMENTARY
+The Galaxy wandering search is still inside its single bounded segment. The runner has a source-derived location map and is using live where white resolution before traversing only mapped rooms; I am waiting for the recorded locator result.
+
+
+[2026-08-04 4:54:50 PM NZST] CODEX COMMENTARY
+The live wandering probe exposed a real locator defect: where white returned other white mobiles, and the runner treated the missing dwarf as an unmapped location instead of an absent target. I am tightening the parser to distinguish present-but-unmapped from a completed locator response with no matching mobile, and I am removing stale display-line aliases so source identities drive both where and room matching.
+
+
+[2026-08-04 4:56:10 PM NZST] CODEX COMMENTARY
+The parser behavior is correct; the targeted failures are the expected assertions for the old 	iny white dwarf and eautiful white stag display aliases. I am updating those tests to the source-canonical identities, then I will add the missing-locator regression before the full suite.
+
+
+[2026-08-04 4:57:12 PM NZST] CODEX COMMENTARY
+The new regression reached the intended parser latch, but its fixture accidentally included the outbound Galaxy route on the locator stop, so the planner quite reasonably tried to move before applying the locator decision. I am narrowing that test to a locator-only stop, then I will rerun both targeted suites.
+
+
+[2026-08-04 4:58:06 PM NZST] CODEX COMMENTARY
+The locator regressions now pass: 13 focused starter tests and 8 campaign dispatch tests are green. The source-canonical identity change also makes the live Galaxy policy use white dwarf consistently with the area parser. I am running the complete offline suite before the next bounded live continuation.
+
+
+[2026-08-04 4:58:54 PM NZST] CODEX COMMENTARY
+The complete suite is still running through the longer campaign fixtures. No live MUD process is active during this check; I am waiting for the final count before deciding whether the corrected locator is ready for another live proof.
+
+
+[2026-08-04 4:59:32 PM NZST] CODEX COMMENTARY
+The full suite is green: 1,939 tests passed. The durable campaign will retry the same Galaxy probe once because its prior unmapped result was a repairable locator failure; this is the right live proof for the fix. I am running exactly one bounded segment and will verify that a missing dwarf becomes explicit absence rather than an unmapped-target error.
+
+
+[2026-08-04 5:00:18 PM NZST] CODEX COMMENTARY
+The corrected Galaxy retry is still in its bounded travel window. It is the same single worker and no overlapping campaign or streamer restart has been started; I am waiting for the locator response and final checkpoint.
+
+
+[2026-08-04 5:01:03 PM NZST] CODEX COMMENTARY
+The corrected probe is still active but remains under the one-segment 180-second live cap. I am keeping the process through its own recall/checkpoint boundary; the result will be read from the transcript rather than inferred from elapsed time.
+
+
+[2026-08-04 5:02:10 PM NZST] CODEX COMMENTARY
+The corrected live retry did exactly what we wanted: where white now produced explicit absence, not an unmapped-target stall, and the campaign rotated onward. The next source-ranked candidate is Olympus Jailer, which the source marks sentinel at reset room 918 with spec_cast_mage; I am allowing one bounded audited probe with its existing spell-damage ceiling.
+
+
+[2026-08-04 5:03:01 PM NZST] CODEX COMMENTARY
+The Olympus sentinel probe is still within the single live segment. Its route has one source reset room, so there is no wandering sweep to wait through; I am waiting for live consider and special-combat evidence before promoting or rejecting it.
+
+
+[2026-08-04 5:04:00 PM NZST] CODEX COMMENTARY
+The same Olympus worker remains active and bounded; there is no second process or permission review in the path. I am keeping the field run intact until the runner performs its own healer return and records the Jailer result.
+
+
+[2026-08-04 5:05:34 PM NZST] CODEX COMMENTARY
+The live proof is clean and the final process audit shows only the two healthy Discord streamer processes. One small parser hardening remains before I close this pass: target recognition should inspect the name columns of a where row, not arbitrary words in the room label, so a room called something like White Dwarf cannot create a false presence.
+
+
+[2026-08-04 5:05:55 PM NZST] CODEX COMMENTARY
+The final locator-column regression passes (7 where tests). I am doing one last full offline run so the final count covers the complete patch, including this false-positive guard.
+
+
+[2026-08-04 5:06:41 PM NZST] CODEX COMMENTARY
+The final full suite is still running; there is no live MUD worker during it. I will report the exact completed count and then close with the live locator evidence and current Kestrel checkpoint.
+
+
+[2026-08-04 5:07:17 PM NZST] CODEX FINAL
+Implemented and verified source-aware mob discovery. Sentinel mobiles use exact source reset rooms; wandering mobiles use live where, a source-derived reachable-room map capped at 256 rooms, safe-route filtering, and exact target matching. Completed locator responses with other matching mobiles now record the target as absent instead of stalling as unmapped. Stale white dwarf/stag aliases were replaced with source-canonical identities. Tests: 1,939 passed. Live proof: Galaxy white dwarf run 3083 correctly returned explicit absence; Olympus Jailer run 3084 correctly used its single sentinel reset. Kestrel remains level 19 in healer room 3054. No dd4tester worker remains; only the two healthy Discord streamer processes are running. Changes are local and uncommitted.
+
+
+[2026-08-04 5:07:48 PM NZST] CODEX COMMENTARY
+I am resuming the active HERO objective from Kestrel's level-19 checkpoint. I will audit the current frontier, source revision, executable policy path, and worktree, then remove the next concrete blocker beyond level 19 with offline coverage and a bounded no-steering live proof.
+
+
+[2026-08-04 5:10:00 PM NZST] CODEX COMMENTARY
+I am auditing the live-target locator and source mobility rules now. I will verify the sentinel versus wandering split, the number and safety of searched rooms, and the exact absence/presence evidence before changing the next progression step.
+
+
+[2026-08-04 5:11:45 PM NZST] CODEX COMMENTARY
+The audit confirms the mobility split is active: sentinel targets use exact reset rooms; non-sentinels are expanded from every source reset through open, mob-legal exits, with a 256-room cap and stay-area enforcement. The current level-19 frontier is more revealing: only one target survives the current safety gates, so I am inspecting the rejected and wandering candidates to distinguish a real locator defect from an overly restrictive progression gate.
+
+
+[2026-08-04 5:13:18 PM NZST] CODEX COMMENTARY
+I found one concrete locator weakness: the source graph currently truncates wandering searches at 256 rooms, while the current DD4 source contains a few reachable wanderers with 274 legal rooms. That can omit real where destinations. I am widening the bounded search to 512 rooms, updating the policy evidence, and adding a regression so the bound remains explicit.
+
+
+[2026-08-04 5:16:05 PM NZST] CODEX COMMENTARY
+The same audit exposed a second loop: a present target that was considered viable but not killed was recorded as a plain failure, so the selector could immediately choose it again. I am adding a three-productive-segment retry cooldown for observed no-kill research hunts, plus a revision migration for Kestrel’s existing Fleshmonger result, so presence checks rotate instead of looping.
+
+
+[2026-08-04 5:19:33 PM NZST] CODEX COMMENTARY
+The targeted mobility and retry regressions pass. The full offline suite is still running; once it completes I will inspect the migrated Kestrel checkpoint and perform a bounded live verification rather than assuming the source graph alone is sufficient.
+
+
+[2026-08-04 5:20:15 PM NZST] CODEX COMMENTARY
+The full suite found two compatibility failures in older registered-hunt expectations: those policies intentionally remain plain no-kill evidence until their own frontier rules decide what to do. I am narrowing the new immediate-repeat repair to generic source-ranked hunts, which fixes Fleshmonger without changing established registered policy semantics.
+
+
+[2026-08-04 5:21:59 PM NZST] CODEX COMMENTARY
+The offline migration now makes Kestrel’s next policy an explicit unavailable checkpoint instead of replaying Fleshmonger. I am running one bounded, no-combat live probe against a source-known wandering bandit leader: it will issue where leader, map the reported room to the source-reachable route set, consider only an exact target, and return without attacking.
+
+
+[2026-08-04 5:22:46 PM NZST] CODEX COMMENTARY
+The bounded live wandering-target probe is still in progress and has its own 90-second runner limit plus a 110-second outer timeout. I am letting the connection finish or close cleanly; no combat is authorized in this pass.
+
+
+[2026-08-04 5:25:20 PM NZST] CODEX COMMENTARY
+The live probe reproduced the real defect: the bandit leader was present in Olive Grove, but the bot decided ecall 0.26 seconds after sending where leader, before the locator response arrived in the next read chunk. I am adding an explicit short locator-response wait so a prompt cannot be mistaken for a completed where response; the wait remains bounded and falls through to the existing fail-closed behavior.
+
+
+[2026-08-04 5:28:43 PM NZST] CODEX COMMENTARY
+I am checking the delayed locator path and its regression coverage now, then I will rerun the bounded live probe to verify wandering targets are actually followed instead of being discarded after a prompt.
+
+
+[2026-08-04 5:30:05 PM NZST] CODEX COMMENTARY
+The live failure is now pinned down: DD4 sent the where result a fraction of a second after the prompt, while the planner had already failed closed. I am adding a regression that holds the hunt cursor briefly for that delayed locator response, then I will verify the full suite.
+
+
+[2026-08-04 5:31:31 PM NZST] CODEX COMMENTARY
+The delayed-locator regression passes. The full offline suite is still running now; once it completes I will repeat the live Olive Grove probe and inspect its transcript for the expected where, look, and consider sequence.
+
+
+[2026-08-04 5:32:44 PM NZST] CODEX COMMENTARY
+All 1,943 offline tests pass. I am running the same bounded no-combat wandering-target probe again, this time with the source-ranked locator that covers all 274 reachable current-source rooms; the important evidence is whether the delayed Olive Grove response leads to the target stop instead of an immediate recall.
+
+
+[2026-08-04 5:33:57 PM NZST] CODEX COMMENTARY
+The live probe is still active and has not hit its outer timeout. I am letting the bounded runner finish its own healer-return/checkpoint path, then I will inspect the structured transcript rather than infer success from the process exit alone.
+
+
+[2026-08-04 5:34:54 PM NZST] CODEX COMMENTARY
+The runner is still within the intentionally bounded live window. No extra process has been launched; I am waiting on this one connection and will terminate only through its configured runtime/command boundary if the server does not complete the safe return.
+
+
+[2026-08-04 5:35:06 PM NZST] CODEX COMMENTARY
+The second live probe hit the outer 110-second guard before the runner checkpointed, so I am treating it as an incomplete proof rather than success. I am auditing the newest transcript and process list now; this will show whether the locator advanced and where the remaining stall occurred.
+
+
+[2026-08-04 5:36:01 PM NZST] CODEX COMMENTARY
+The transcript confirms the fix: run 3086 received where leader, got the delayed Olive Grove result, stayed on the wandering-target route, and completed the source-ranked four-room sweep before recalling. The outer probe guard interrupted the later healer checkpoint, so I am closing that orphaned run record as failed and then I will capture the exact evidence and inspect the final diff.
+
+
+[2026-08-04 5:37:22 PM NZST] CODEX FINAL
+Yes. The bot now distinguishes sentinel mobiles from wandering mobiles using source flags. Sentinels are checked at exact reset rooms; wandering mobiles are located with where, mapped to source-reachable legal rooms, and searched through the bounded route set. Run 3086 proved the delayed Olive Grove result was preserved and the four-room bandit-leader sweep continued instead of recalling. Added a bounded locator-response wait and regression. Full offline suite: 1,943 passed. The outer live probe timeout interrupted only the final healer checkpoint, so run 3086 is explicitly marked failed; no dd4tester worker remains, only the two healthy Discord streamer processes. Changes remain local and uncommitted.
+
+
+[2026-08-04 5:37:42 PM NZST] CODEX COMMENTARY
+I am continuing the HERO objective from Kestrel’s level-19 checkpoint. I will first audit the current campaign frontier, source revision, live run records, and worktree, then remove the next concrete progression blocker with tests and one bounded no-steering proof.
+
+
+[2026-08-04 5:39:48 PM NZST] CODEX COMMENTARY
+The frontier audit is useful: Kestrel remains level 19 at 181,725 XP, and revision 114 now correctly prevents immediate repetition, but no source-safe target is executable because the remaining fresh candidates carry un-audited specials or route hazards. I am source-auditing the least risky current-band special next, starting with the Thain’s guard procedure and the medicine man’s breath procedure, before promoting either to a bounded generic policy.
+
+
+[2026-08-04 5:44:52 PM NZST] CODEX COMMENTARY
+I confirmed the locator now distinguishes sentinel resets from wandering source-reachable rooms. I am tightening the next frontier step by auditing the forest medicine man’s spec_breath_any from source, then I will add damage-bound regressions and run a bounded live proof.
+
+
+[2026-08-04 5:46:33 PM NZST] CODEX COMMENTARY
+The source audit is now encoded: spec_breath_any is allowed only as a sole, bounded special, using the unmitigated source maximum of one-quarter of the mobile's hit points plus melee peak. The focused campaign test run is still executing; I am waiting on it before touching the live connection.
+
+
+[2026-08-04 5:48:13 PM NZST] CODEX COMMENTARY
+The focused campaign suite passes: 425 tests. The live candidate report now shows the medicine man as the strongest fresh current-band option after the previously exhausted safe routes; its source range is level 13-17, estimated HP 146-425, melee peak 145, wandering within 55 source-reachable rooms, and spec_breath_any is the only autonomy rejection. I am moving to the full offline suite before a bounded live segment.
+
+
+[2026-08-04 5:49:01 PM NZST] CODEX COMMENTARY
+The full offline suite is still running after the focused 425-test pass. No live worker has been started; this is the final regression gate for the sentinel/wandering locator and audited special-policy changes.
+
+
+[2026-08-04 5:49:32 PM NZST] CODEX COMMENTARY
+The full suite passes: 1,945 tests in 59.25 seconds. I am launching one no-steering Kestrel campaign segment with a 180-second per-segment cap and zero reset retries; it should select the audited medicine-man policy, use where man, search the source-reachable wandering locations, and return to the healer checkpoint whether the target is present or absent.
+
+
+[2026-08-04 5:50:28 PM NZST] CODEX COMMENTARY
+The live worker is active as one bounded campaign process (PID 6460); no duplicate campaign worker or approval wait exists. Its transcript has not finalized yet, so I am keeping this same run under observation rather than starting a retry.
+
+
+[2026-08-04 5:51:07 PM NZST] CODEX COMMENTARY
+The corrected selector is now proven in the live run: transcript fastwalk-source-ranked-hunt-man-18042-Kestrel-3087 opened, which means the campaign selected forest mobile 18007 and did not fall back to the old fixed-room logic. The file is still being written by the same bounded worker; I am waiting for the locator response and healer checkpoint.
+
+
+[2026-08-04 5:51:45 PM NZST] CODEX COMMENTARY
+The live bot reached the correct healer room 3054 at full 264/264 HP after the trainer/approach phase, with no death or damage. I am waiting for the campaign process to close and reconcile the segment; the transcript has already demonstrated the source-ranked route is executable, but I will inspect whether the where man locator completed before calling this proof complete.
+
+
+[2026-08-04 5:53:05 PM NZST] CODEX COMMENTARY
+The source-ranked route reached the forest and returned to healer room 3054 at 5:52:37 PM, still at 264/264 HP and with no XP loss. This confirms the bot can execute the bounded wandering-target expedition without a fixed-room assumption; the remaining process time is only campaign reconciliation/save-and-quit, which I am letting finish within the explicit cap.
+
+
+[2026-08-04 5:54:12 PM NZST] CODEX COMMENTARY
+The live evidence is stronger than a simple target-present result: where man located the medicine man in River bed, and the runner recognized River bed as an excluded source route with dangerous wanderers, refused to enter, recalled, and finished at the healer. I am recording that exact safety outcome in the generic policy evidence and adding a regression for the source damage audit's live boundary.
+
+
+[2026-08-04 5:55:28 PM NZST] CODEX COMMENTARY
+The generic policy now records run 3087 as evidence: a wandering mobile found in a source-excluded dangerous room is rejected and the character returns safely. The post-live campaign tests are still running; no live worker is active now.
+
+
+[2026-08-04 5:55:51 PM NZST] CODEX COMMENTARY
+The post-live campaign suite passes again: 425 tests. I am doing the final full-suite and process audit now, then I will leave the campaign checkpoint at healer room 3054 and report exactly how sentinel and wandering discovery behaved in the live run.
+
+
+[2026-08-04 5:56:38 PM NZST] CODEX COMMENTARY
+The final full suite is still running and the live campaign worker remains absent. This is only the last verification pass after recording the run-3087 evidence; the source and live databases are untouched by the tests.
+
+
+[2026-08-04 5:57:26 PM NZST] CODEX FINAL
+Yes. The live code now uses the source mobility flags: sentinel mobs are checked at every exact source reset room; wandering mobs are located with delayed where output, mapped against all source-reachable legal rooms up to the explicit 512-room bound, and searched only through safe mapped routes. Full suite: 1,945 passed. Live run 3087 selected the wandering medicine man, issued where man, received River bed, recognized that room as excluded because of dangerous wanderers, refused to enter, recalled, and checkpointed safely at healer room 3054 with 264/264 HP and unchanged 181,725 XP. The route was not promoted to combat because the target was unsafe in this reboot. Source revision is 1b759f5; only the two healthy Discord streamer processes remain. Changes are local and uncommitted per the standing git policy.
+
+
+[2026-08-04 5:57:50 PM NZST] CODEX COMMENTARY
+I am continuing the active HERO objective from Kestrel's level-19 checkpoint. I will audit the current worktree, DD4 source revision, live processes, and next executable policy, then remove the next concrete progression blocker with tests and a bounded no-steering live proof.
+
+
+[2026-08-04 6:00:10 PM NZST] CODEX COMMENTARY
+The audit found the real level-19 blocker: Aruncus and Haglik are permanently below-band for this level/reboot, while every other safe or audited target is either absent, crowded, or on a bounded retry cooldown. I am using the existing reset-aware controller for one 60-second outside-area wait and retry, so it can reopen a repopulated safe target instead of inventing a new unsafe route.
+
+
+[2026-08-04 6:01:04 PM NZST] CODEX COMMENTARY
+The reset-aware run is active as one campaign worker. Before the field retry it selected the generic provision-funding maintenance pass, opening transcript 3088; that is expected checkpoint hygiene, and I am letting it finish rather than starting an overlapping hunt.
+
+
+[2026-08-04 6:01:58 PM NZST] CODEX COMMENTARY
+The single worker remains responsive inside the bounded funding pass; no second campaign or stale process exists. I am continuing to observe the same checkpointed run until maintenance returns home and the controller can perform its one reset retry.
+
+
+[2026-08-04 6:02:36 PM NZST] CODEX COMMENTARY
+The funding maintenance completed safely and productively: Kestrel killed the source-funded on-duty guard for 100 XP, recovered at healer room 3054, and the new XP is 181,825. The controller is still running its same reset-aware invocation; I am waiting to see which repopulated progression policy it opens next.
+
+
+[2026-08-04 6:05:43 PM NZST] CODEX COMMENTARY
+I have isolated a concrete replay bug in the live-discovery path: a source-ranked wandering mob found in an explicitly excluded room is recorded as unsafe, but its retry cooldown is being discarded at the next checkpoint. I am tracing the retry and repair paths now, then I will add a regression test before the next bounded live segment.
+
+
+[2026-08-04 6:07:20 PM NZST] CODEX COMMENTARY
+The source walk itself is doing the right mobility work: sentinel candidates use their reset rooms, while wandering candidates build a source-reachable room map, remove rooms with static aggressive resets, and cap the sweep at 512 rooms. The defect is narrower: the dynamic where exclusion result needs its own reboot-scoped cooldown and repair path. I am patching that distinction and covering both fresh recording and checkpoint recovery.
+
+
+[2026-08-04 6:10:01 PM NZST] CODEX COMMENTARY
+The fix is now in place: source-ranked locator hazards such as where finding a medicine man in River bed retain the three-segment cooldown through metadata repair and policy refresh, while static source-preflight hazards remain hard route blocks. I added a regression that proves the candidate is not immediately selected again after the unsafe discovery.
+
+
+[2026-08-04 6:10:18 PM NZST] CODEX COMMENTARY
+The focused regression set passes: 7 mobility, route-hazard, cooldown, and source-ranked selection tests are green. I am running the complete offline suite now, then I will inspect the repaired checkpoint and make one bounded live invocation to confirm the unsafe wandering location is not replayed immediately.
+
+
+[2026-08-04 6:11:30 PM NZST] CODEX COMMENTARY
+The full suite exposed one expected migration assertion from bumping the campaign policy revision, which I will update so the existing unfinished-source-hunt migration still applies to the immediately previous revision. One unrelated silent-connection timeout test also exceeded its tiny 20-command budget under the full-suite timing load; I am rerunning it separately after the migration fix to distinguish a real regression from test timing noise.
+
+
+[2026-08-04 6:12:14 PM NZST] CODEX COMMENTARY
+The migration fix is green, and the silent-connection test passes when run alone; its failure occurred only during the full-suite run and again under a concurrent campaign test, so I am treating it as an existing timing-sensitive test rather than changing unrelated starter behavior. The mobility/cooldown tests remain green. Next I am checking the live campaign checkpoint before a bounded verification run.
+
+
+[2026-08-04 6:13:17 PM NZST] CODEX COMMENTARY
+The live checkpoint is still Kestrel level 19 at healer room 3054, full at 264/264 HP, with the same current DD boot. The medicine-man result is present as a route hazard but lacks its old cooldown in the stored checkpoint; the new refresh migration will restore that cooldown on reopen before policy selection. I am doing one serial full-suite rerun to avoid the timing interference seen in the first run.
+
+
+[2026-08-04 6:14:08 PM NZST] CODEX COMMENTARY
+The serial full suite is still running and has not produced an error so far. The live worker is not running during verification; only the known Discord streamer processes remain. I will wait for the result rather than starting a connection while tests hold the environment busy.
+
+
+[2026-08-04 6:14:35 PM NZST] CODEX COMMENTARY
+The serial offline suite is clean: 1,947 tests passed in 63.58 seconds. The earlier timeout failure was timing-only and did not recur serially. I am moving to the live proof now with one segment, no reset wait, and the existing campaign runtime bound; the purpose is to verify checkpoint repair prevents an immediate repeat of the River-bed route.
+
+
+[2026-08-04 6:15:25 PM NZST] CODEX COMMENTARY
+The bounded live proof is active and still responsive. It is operating without steering input; I am waiting for its single segment to checkpoint so I can verify the selected policy, transcript, and repaired medicine-man cooldown rather than inferring from process liveness.
+
+
+[2026-08-04 6:15:57 PM NZST] CODEX COMMENTARY
+The live verification completed cleanly. After reopen, the campaign restored the medicine-man locator hazard cooldown to 3, did not launch another forest search, and instead checkpointed a safe liquidation maintenance segment at healer room 3054 with Kestrel still level 19 and 264/264 HP. The stored checkpoint now carries policy revision 115 and the preserved River-bed hazard. No campaign worker remains running.
+
+
+[2026-08-04 6:16:57 PM NZST] CODEX FINAL
+Yes. The discovery logic now checks sentinel mobs at every exact source reset room and wandering mobs across a source-reachable, safe-room map capped at 512 rooms, using delayed where output before routing. I fixed a replay bug where an unsafe wandering locator result lost its reboot-scoped cooldown during checkpoint repair. Focused tests and the serial full suite pass: 1,947 tests. Live verification restored the medicine-man River-bed hazard cooldown to 3 and did not repeat that route; Kestrel remains level 19, full health, safely checkpointed at healer room 3054. The campaign worker is stopped; only the two healthy Discord streamer processes remain. Changes are local and uncommitted under the standing git policy.
+
+
+[2026-08-04 6:17:21 PM NZST] CODEX COMMENTARY
+I am continuing the HERO objective from the repaired level-19 checkpoint. I will first re-audit the current worktree, source revision, campaign state, and live processes, then select the next concrete generic blocker that prevents progression beyond level 19 and carry it through implementation, tests, and bounded live evidence.
+
+
+[2026-08-04 6:18:58 PM NZST] CODEX COMMENTARY
+The refreshed selector now identifies the next executable generic target: the source-ranked Undead Soldier in Shadow Keep. It is sentinel, so the runner will use its exact reset room 16615 rather than a wandering locator; source level fuzz is 13-17, it has no special procedure, and its source peak round damage is 215 against Kestrel's 264 maximum HP. I am running one no-steering bounded segment against this target now.
+
+
+[2026-08-04 6:19:50 PM NZST] CODEX COMMENTARY
+The Shadow Keep segment is still active as one bounded campaign worker and has not requested steering or spawned a duplicate process. I am keeping the same live run under observation through its healer checkpoint so the result includes real consider, combat, XP, and return evidence if the sentinel is present.
+
+
+[2026-08-04 6:20:36 PM NZST] CODEX COMMENTARY
+The live route is taking longer than the prior 37-second maintenance pass, which is consistent with a real Shadow Keep expedition rather than an immediate checkpoint shortcut. The worker remains inside the explicit 180-second segment bound; I am waiting on its own completion.
+
+
+[2026-08-04 6:21:26 PM NZST] CODEX COMMENTARY
+The same campaign worker is still responsive after the route approach and remains the only live campaign process. I am preserving the bounded run so any combat withdrawal, target absence, or successful kill is reconciled into the durable policy evidence instead of terminating it mid-route.
+
+
+[2026-08-04 6:21:53 PM NZST] CODEX COMMENTARY
+The segment completed safely, but the campaign selected provision-funding maintenance instead of the Shadow Keep hunt. That means a higher-priority generic supply condition is still blocking field progression; I am inspecting the persisted state and transcript now to identify exactly which provision gate caused the detour, then I will address that gate rather than repeatedly launching a hunt the policy scheduler cannot yet reach.
+
+
+[2026-08-04 6:24:16 PM NZST] CODEX COMMENTARY
+The second funding pass did what its policy requires: it produced another current-reboot gear drop, raised XP to 181,945, and cleared the one-shot flight-funding-required marker. With the source gear catalog loaded, the next scheduler decision is now confirmed as sell-loot maintenance, followed by the Shadow Keep source-ranked hunt. I am running those two bounded segments together so the maintenance transition cannot obscure the actual progression attempt.
+
+
+[2026-08-04 6:25:04 PM NZST] CODEX COMMENTARY
+The two-segment live continuation is active as one worker. It is inside the planned maintenance-to-hunt sequence; I am waiting for the same process to finish both checkpoints so I can distinguish a sale transition from the actual Shadow Keep combat result.
+
+
+[2026-08-04 6:25:52 PM NZST] CODEX COMMENTARY
+The no-hunt result is now explained: with reset retries set to zero, the scheduler correctly refuses every candidate still on a reboot-scoped cooldown and returns unavailable; the direct diagnostic used retry mode and therefore showed Shadow Keep. The liquidation checkpoint is clean, so I am now using the intended one bounded reset retry with a 60-second outside wait to reopen the current-band sentinel candidate rather than bypassing its evidence gate.
+
+
+[2026-08-04 6:26:48 PM NZST] CODEX COMMENTARY
+The reset-aware retry is active as one campaign worker. It is within the promised outside-area wait and has not spawned a duplicate or entered an approval stall; I am keeping the run intact until the controller either reopens a sentinel route or records a clean reset checkpoint.
+
+
+[2026-08-04 6:27:46 PM NZST] CODEX COMMENTARY
+The reset-aware invocation spent its single segment on the flight-funding prerequisite again: the earlier liquidation left only a few coins, so the bounded flight reserve was legitimately rearmed before field travel. It completed safely and raised XP to the current funding total; I am now carrying the next invocation across both the required sell-loot transition and the reopened Shadow Keep hunt instead of stopping after maintenance.
+
+
+[2026-08-04 6:28:35 PM NZST] CODEX COMMENTARY
+The multi-segment continuation is active and remains a single bounded worker. It is handling the funding-to-liquidation transition first; after that checkpoint the same process should retain reset-retry eligibility for the source-ranked sentinel hunt.
+
+
+[2026-08-04 6:29:26 PM NZST] CODEX COMMENTARY
+The same process is still responsive after the first maintenance phase and has not hit its segment cap. I am continuing to wait for the second policy result rather than launching an overlapping campaign, so any source-ranked target discovery remains attributable to this no-steering run.
+
+
+[2026-08-04 6:30:15 PM NZST] CODEX COMMENTARY
+The second segment is taking the full route window, which is expected for a remote Shadow Keep trip with the explicit 180-second boundary. The worker is still live and bounded; I am letting it finish or return through its own safety boundary.
+
+
+[2026-08-04 6:31:05 PM NZST] CODEX COMMENTARY
+The Shadow Keep continuation remains within its bounded live window and is still the sole campaign worker. I am keeping it intact through the return checkpoint; the next message will report whether the sentinel was absent, safely rejected by consider, or produced a confirmed XP kill.
+
+
+[2026-08-04 6:31:55 PM NZST] CODEX COMMENTARY
+The live worker has crossed the ordinary route duration but remains responsive and inside the configured per-segment safety boundary. I am not treating elapsed time alone as a hang; the runner is still sending bounded commands and will reconcile its checkpoint at the explicit limit.
+
+
+[2026-08-04 6:35:19 PM NZST] CODEX COMMENTARY
+The live run did not reach the Shadow Keep hunt: the campaign is spending its segment budget in the flight-funding loop. I am inspecting the exact funding failure messages now, then I will tighten the generic fallback so an optional flight purchase cannot stall ordinary source-backed progression.
+
+
+[2026-08-04 6:38:50 PM NZST] CODEX COMMENTARY
+I found a concrete locator gap: ordinary source-ranked hunts use sentinel-aware reset rooms and a where-then-wander search, but the provision-funding runner still walked only to the reset room and used a static target stop. That explains several apparent misses. I am changing funding hunts to use the same source mobility plan, while preserving the funding-only loot and low-health rules.
+
+
+[2026-08-04 6:40:13 PM NZST] CODEX COMMENTARY
+The focused tests pass: the new funding dispatch now builds a locator plus source-reachable target stops for a wandering mobile, and preserves the required drop, funding-only below-band allowance, and 27% entry gate. I am running the broader offline regression suite before trying the repaired live path.
+
+
+[2026-08-04 6:41:55 PM NZST] CODEX COMMENTARY
+The full offline suite is clean: 1,948 tests passed. The next live run will resume Kestrel from the existing checkpoint with one bounded 180-second segment and one 60-second reset retry allowance; I am watching for the new where-based funding behavior and will stop cleanly at the checkpoint.
+
+
+[2026-08-04 6:42:51 PM NZST] CODEX COMMENTARY
+The bounded live process is still active and responsive. It has not produced a terminal result yet; I am letting the runner finish its own route and healer-return boundary rather than interrupting it mid-connection.
+
+
+[2026-08-04 6:43:29 PM NZST] CODEX COMMENTARY
+The live run remains within the explicit cap and the worker has not stalled. The important proof point is whether the funding candidate is now located through its mobility plan; I will inspect the saved transcript and checkpoint immediately when this bounded segment returns.
+
+
+[2026-08-04 6:44:08 PM NZST] CODEX COMMENTARY
+Still active, with no approval prompt or dead process involved. This is the final portion of the 180-second window; after it closes I will distinguish a real target absence from route exhaustion or a combat outcome using the checkpoint fields.
+
+
+[2026-08-04 6:45:07 PM NZST] CODEX COMMENTARY
+The live proof succeeded. The repaired funding segment reached the source reset, found the exact goblin archer, considered it, killed it for 100 XP, recovered three saleable drops, and returned to healer room 3054; the checkpoint recorded the funding attempt as completed. This target is sentinel per source, so I am preserving the broader wandering test path for a wandering candidate rather than claiming more than this evidence proves.
+
+
+[2026-08-04 6:46:12 PM NZST] CODEX COMMENTARY
+Kestrel is now in the post-funding maintenance chain. The three-segment bounded run is active, beginning with coin-weight relief before liquidation and the next progression choice; I am keeping the live loop bounded and will inspect the next policy handoff rather than letting maintenance repeat indefinitely.
+
+
+[2026-08-04 6:46:50 PM NZST] CODEX COMMENTARY
+The maintenance run is still responsive and within its per-segment bounds. No permission review or detached worker is involved; the campaign process is progressing through its durable checkpoint logic.
+
+
+[2026-08-04 6:47:29 PM NZST] CODEX COMMENTARY
+The first maintenance segment has not returned to the shell yet, but it remains inside the planned 180-second cap. I will let it reach its healer checkpoint and then use the saved state to decide whether the next segment is liquidation, flight purchase, or a source-backed hunt.
+
+
+[2026-08-04 6:48:07 PM NZST] CODEX COMMENTARY
+The process is still alive past the first minute and has not emitted an error. I am continuing the bounded wait; the runner’s watchdog and outer runtime boundary are the stopping mechanisms here.
+
+
+[2026-08-04 6:48:52 PM NZST] CODEX COMMENTARY
+I checked the process table: the campaign worker is alive as PID 18636 and the Discord streamer remains the two expected healthy processes. This is a slow live route, not a zombie; I am leaving it under the explicit runtime cap.
+
+
+[2026-08-04 6:49:29 PM NZST] CODEX COMMENTARY
+The three-segment chain completed cleanly: it ran Shadow Keep, then coin banking, then loot liquidation, and left Kestrel safely at healer room 3054. The next policy is the bounded flight purchase, after which source-ranked wandering routes can be selected without the funding gate masking them.
+
+
+[2026-08-04 6:50:28 PM NZST] CODEX COMMENTARY
+Flight is now active, and the next policy is the Galaxy white-dwarf research route. That target is source-marked wandering rather than sentinel, so this is the live proof of the behavior you asked about: the runner should issue where white, map the reported room to source-reachable locations, and inspect only the bounded matching route.
+
+
+[2026-08-04 6:51:27 PM NZST] CODEX COMMENTARY
+The wandering-target proof is active and responsive. It has not returned yet; I am allowing the source route and healer return to finish so the transcript records the actual locator output, not just a unit-test claim.
+
+
+[2026-08-04 6:52:17 PM NZST] CODEX COMMENTARY
+The source-aware wandering route is still within its 180-second boundary. I am watching for three distinct outcomes: a mapped live location, a legitimate absent-target response, or a route/safety rejection; those must not be collapsed into one generic not-found result.
+
+
+[2026-08-04 6:52:56 PM NZST] CODEX COMMENTARY
+The live worker remains active and no process cleanup is needed. This route is deliberately slower than a sentinel check because it performs the long approach, a global locator, and live-exit validation before deciding whether to inspect the target room.
+
+
+[2026-08-04 6:53:36 PM NZST] CODEX COMMENTARY
+The locator run is approaching its bounded return window without a shell result yet. I am keeping the connection alive until the runner either records the target location or executes its safe recall path; I will inspect the transcript immediately afterward.
+
+
+[2026-08-04 6:56:44 PM NZST] CODEX COMMENTARY
+The live wandering-route run produced an important distinction: it found a source-registered Shadow Guardian hazard before reaching the white dwarf, then returned safely. The runtime boundary overwrote that hazard reason in the checkpoint, which could make the scheduler retry the same route. I am preserving the first safety reason so route hazards and target absence remain auditable and do not look like a locator failure.
+
+
+[2026-08-04 6:57:15 PM NZST] CODEX COMMENTARY
+The safety-reason preservation patch is in place, and its focused route-hazard and runtime-boundary tests pass (13 tests). I am rerunning the full offline suite, then I will resume the campaign from the clean checkpoint with the repeated-hazard route now expected to be excluded.
+
+
+[2026-08-04 6:59:31 PM NZST] CODEX COMMENTARY
+The full suite is clean at 1,949 tests. I am adding a one-time checkpoint migration for the already-recorded preflight observation, so Kestrel will not spend another live segment repeating the Galaxy route solely because the older checkpoint lost the hazard text.
+
+
+[2026-08-04 7:00:41 PM NZST] CODEX COMMENTARY
+The migration works in a fresh policy-selection check: it converts the stale checkpoint into a reboot-scoped Shadow Guardian route hazard and selects the next source-ranked candidate, Olympus, instead of repeating Galaxy. I am running the full suite once more, then continuing from that rotated checkpoint.
+
+
+[2026-08-04 7:01:04 PM NZST] CODEX COMMENTARY
+The regression suite caught one migration-threshold mismatch caused by the revision bump: the existing unfinished-source-hunt migration still treated revision 115 as current. I am extending that migration through the new 116 boundary, then I will rerun the suite from the failure point.
+
+
+[2026-08-04 7:02:23 PM NZST] CODEX COMMENTARY
+The corrected full suite is green: 1,950 tests passed. The live campaign is ready to resume; on open it will apply revision 116, rotate away from the stale Galaxy hazard, and select the next source-ranked hunt under the same no-steering bounds.
+
+
+[2026-08-04 7:03:21 PM NZST] CODEX COMMENTARY
+The resumed campaign is active and responsive after the revision migration. I am waiting for the next source-ranked segment to checkpoint so I can verify both the selected policy and the live route result.
+
+
+[2026-08-04 7:04:00 PM NZST] CODEX COMMENTARY
+The new segment remains within its explicit boundary and there is no approval or process issue. The campaign has moved past the stale Galaxy selection; I will inspect the transcript for the actual source candidate and any locator response when it returns.
+
+
+[2026-08-04 7:05:33 PM NZST] CODEX COMMENTARY
+The rotated live segment behaved correctly: Olympus Jailer is source-marked sentinel, its reset room was checked directly, the target was absent, and the run returned to healer room 3054 without guessing or sweeping blindly. The campaign now has a durable absent-target cooldown and is waiting for another executable field policy/reset; I am doing the final diff and process audit.
+
+
+[2026-08-04 7:06:16 PM NZST] CODEX FINAL
+Yes, and you were right to challenge it. The source-aware locator now distinguishes sentinel mobiles from wanderers, uses where plus source-reachable room search for wanderers, and records route hazards separately from genuine absence. The funding path now uses the same planner. Full suite: 1,950 passed. Live evidence covered the medicine man locator, the Galaxy route hazard, the sentinel Jailer absence, and a successful funding kill. Kestrel is safely checkpointed at level 19 in healer room 3054; only the healthy Discord streamer processes remain.
+
+
+[2026-08-04 7:06:39 PM NZST] CODEX COMMENTARY
+I am continuing the HERO objective from the level-19 checkpoint. I will audit the current source revision, worktree, campaign state, and executable policy frontier, then remove the next concrete progression blocker with tests and bounded live evidence.
+
+
+[2026-08-04 7:10:56 PM NZST] CODEX COMMENTARY
+The checkpoint is genuinely waiting on a reset, but the retry path is executable: after the bounded wait it clears the next expired absence and re-ranks the whole source catalog, including wandering candidates. The next retry currently selects Shadow Keep's source-registered undead soldier route, so I am moving into that bounded live proof rather than blindly repeating Olympus.
+
+
+[2026-08-04 7:12:13 PM NZST] CODEX COMMENTARY
+The bounded retry process is still inside its explicit live window; there is no unbounded permission or process wait. It has already passed the reset wait and is now running the source-ranked field segment with the same 240-second segment cap.
+
+
+[2026-08-04 7:13:17 PM NZST] CODEX COMMENTARY
+The live retry remains bounded and active. I am letting the runner finish its route or return through the healer recovery boundary so the transcript records whether the source location was absent, wandered into an excluded room, or produced a real level-19 kill.
+
+
+[2026-08-04 7:15:47 PM NZST] CODEX COMMENTARY
+The live evidence is more precise than the raw checkpoint: the white dwarf is marked wandering, and the source graph gives 39 reachable rooms. In run 3102, where white returned three other white mobiles but no white dwarf, so that absence call was correct. I did find one real weakness in the locator: if the Telnet server splits the where header and target line across reads, the parser can miss a present mobile. I am hardening that boundary and adding a split-response regression test.
+
+
+[2026-08-04 7:18:31 PM NZST] CODEX COMMENTARY
+The locator hardening is in place and the focused where tests pass (5/5). It now buffers one bounded locator response across Telnet reads, recognizes a target when its row arrives later, and still preserves the existing absent and delayed-prompt behavior. I am running the full suite next, then I will resume the campaign with this fix in the live path.
+
+
+[2026-08-04 7:19:26 PM NZST] CODEX COMMENTARY
+The full pytest run is still active and bounded by the test command timeout; no live MUD process is involved in this phase. The focused locator regression is green, and I am waiting for the complete campaign/starter suite before touching the live campaign again.
+
+
+[2026-08-04 7:19:56 PM NZST] CODEX COMMENTARY
+The full suite is green: 1,951 tests passed. The campaign checkpoint is safe at healer room 3054, and the next ordinary policy is a bounded provision-maintenance pass before field selection. I am resuming for two checkpoint segments so maintenance can complete and the source-ranked locator can immediately attempt the next current-band target.
+
+
+[2026-08-04 7:20:47 PM NZST] CODEX COMMENTARY
+The resumed two-segment campaign is active inside the bounded live window. It is currently handling the healer-side maintenance checkpoint; after that the runner will make a fresh source-ranked choice and apply the sentinel/wander locator rules before any combat.
+
+
+[2026-08-04 7:21:35 PM NZST] CODEX COMMENTARY
+The live process is still making bounded progress through the current segment and has not entered an unbounded retry. I am keeping the connection alive until it reaches its normal checkpoint so the run evidence includes the actual locator result, rather than stopping at a partial socket transcript.
+
+
+[2026-08-04 7:22:36 PM NZST] CODEX COMMENTARY
+The field run is still inside its explicit 240-second segment cap. No new process has been spawned outside the campaign command, and I am waiting for the runner's healer-return/checkpoint path to finish before inspecting the new transcript.
+
+
+[2026-08-04 7:26:23 PM NZST] CODEX COMMENTARY
+The latest live transcript exposed the second real issue: Shadow Keep was not empty. The sentinel target was visible at multiple reset rooms, but each room had three matching Undead Soldiers, so the isolation gate correctly skipped them. The multi-stop runner then discarded that crowd marker and encoded the segment as bsent, which is misleading and can distort retries. I am fixing the evidence path so present-but-crowded mobs remain distinguishable from globally absent wanderers.
+
+
+[2026-08-04 7:32:35 PM NZST] CODEX COMMENTARY
+The crowd fix is passing its focused tests (33/33). The runner now records a separate campaign_fastwalk_crowded signal, clears it if a later stop produces a real kill, and the campaign converts it into a crowd cooldown instead of an absence cooldown. I also added a generic migration that recognizes the old durable decision text, so Kestrel's latest Shadow Keep checkpoint can be repaired without character-specific logic.
+
+
+[2026-08-04 7:33:25 PM NZST] CODEX COMMENTARY
+The full suite is running again after the crowd-state change. This verification includes the campaign retry/migration tests and the complete starter parser suite; I am keeping the live campaign paused until it is green.
+
+
+[2026-08-04 7:34:14 PM NZST] CODEX COMMENTARY
+The first full run found two migration assertions tied to the revision bump, not behavior failures. I corrected the migration boundary so checkpoints from revision 116 still receive the existing 116 repairs; the two affected tests now pass. I am rerunning the full suite once more before applying the fix to Kestrel's live checkpoint.
+
+
+[2026-08-04 7:35:04 PM NZST] CODEX COMMENTARY
+The corrected full suite is still running within the normal bounded test window. The migration-specific checks are already green; I am waiting for the remaining tests to complete before touching the live database checkpoint.
+
+
+[2026-08-04 7:36:30 PM NZST] CODEX COMMENTARY
+The full suite is green at 1,953 tests after the crowd migration, and the current Kestrel checkpoint has been repaired in SQLite: Shadow Keep is now recorded as crowded: true with a crowd cooldown, not bsent: true. I also corrected the reset retry helper so a multi-stop crowd retries its own route after the wait instead of being accidentally displaced by an unrelated absence.
+
+
+[2026-08-04 7:37:26 PM NZST] CODEX COMMENTARY
+The final full verification pass is still running inside the bounded test timeout. No campaign process is active during it; after this completes I will run one reset-bounded live segment to confirm the corrected present-but-crowded classification in a fresh transcript.
+
+
+[2026-08-04 7:37:56 PM NZST] CODEX COMMENTARY
+The final offline pass is green: 1,953 tests passed. I am now running one explicit reset-bounded live segment. It will wait 60 seconds outside the depleted area, retry the same source-registered sentinel route, and record whether the soldiers remain present-but-crowded or become an isolated viable target.
+
+
+[2026-08-04 7:38:46 PM NZST] CODEX COMMENTARY
+The reset-bounded live invocation is active. The first pass is waiting at the campaign checkpoint as designed; the retry window will then open the sentinel route and use the live room snapshots to distinguish a present crowd from an empty reset.
+
+
+[2026-08-04 7:39:52 PM NZST] CODEX COMMENTARY
+The process is still within its explicit reset wait and live segment bounds; it has not spawned a second campaign process or entered an approval review. I am keeping this run intact so the new crowd marker is captured in the SQLite checkpoint and transcript.
+
+
+[2026-08-04 7:40:54 PM NZST] CODEX COMMENTARY
+The live retry has passed the initial wait and is still running inside the 240-second route cap. Once it returns, I will inspect the exact room snapshots and the persisted crowd/absence fields rather than infer the result from the CLI status alone.
+
+
+[2026-08-04 7:45:16 PM NZST] CODEX COMMENTARY
+The live transcript confirms the distinction: Kestrel reached two Shadow Keep rooms where the sentinel's exact source identity was present three times, and the runner skipped those rooms as crowded. I'm checking the route's room coverage and candidate ranking now, because present but crowded should lead to a deliberate alternate choice or a bounded retry, never to a false absent conclusion.
+
+
+[2026-08-04 7:49:04 PM NZST] CODEX COMMENTARY
+The source audit is now consistent with the live result: sentinel targets are checked at every source reset room; wandering targets use where plus a bounded source-reachable room search. I've preserved the campaign at the healer with a crowd marker, and I'm doing the final verification pass now so the next retry cannot misclassify this kind of result as absence.
+
+
+[2026-08-04 7:49:26 PM NZST] CODEX FINAL
+Discovery audit complete. Source flags are authoritative: sentinel mobiles are checked at every source reset room; non-sentinel mobiles are located with where, then searched across source-reachable rooms, bounded at 512 and area-limited for stay-area mobiles. Live Kestrel run 3105 checked Shadow Keep reset rooms 16615, 16618, 16607, and 16613; it found three Undead Soldiers in both 16607 and 16613, skipped those crowded rooms, and recorded crowded evidence rather than absence. Fixed split where-response buffering and migrated the old false-absence checkpoint. Full suite: 1953 passed. Campaign remains level 19, XP 181789, healer room 3054, crowd cooldown 3. No campaign worker is left running; Discord streamer remains healthy.
+
+
+[2026-08-04 7:49:49 PM NZST] CODEX COMMENTARY
+Resuming the HERO engine goal. I am auditing the current checkpoint, source revision, worktree, and live process state first, then I will take the next concrete level-19-to-20 blocker through implementation, tests, and a bounded no-steering live proof.
+
+
+[2026-08-04 7:52:18 PM NZST] CODEX COMMENTARY
+The next real blocker is now explicit: Kestrel's registered level-19 frontier has exhausted every currently autonomous-safe candidate, and the remaining live-safe target is the Shadow Keep sentinel. I'm reopening that route through the bounded reset controller now; the run will either find an isolated target or persist another crowd/absence result without steering.
+
+
+[2026-08-04 7:53:12 PM NZST] CODEX COMMENTARY
+The bounded reset-controller run is still active and has not requested steering. I am keeping the process under the explicit segment runtime and reset-wait limits while it checks the source-registered sentinel rooms.
+
+
+[2026-08-04 7:54:31 PM NZST] CODEX COMMENTARY
+Live run 3106 is active as the only campaign worker; the Discord streamer remains separate and healthy. The character is still in the bounded source-ranked hunt, with no manual command injection.
+
+
+[2026-08-04 7:55:04 PM NZST] CODEX COMMENTARY
+Run 3106 completed without steering and again returned safely: it found a crowded Shadow Keep field room, checkpointed at 3550, and left Kestrel at level 19. I'm extracting the exact room and selector evidence now, then I'll use that repeated result to remove the next generic stall rather than simply queueing another identical retry.
+
+
+[2026-08-04 7:58:36 PM NZST] CODEX COMMENTARY
+The repeated run exposed a second generic defect in policy orchestration: after two valid crowd observations, the source-ranked fallback still reselects the same candidate and the registered policy graph falls through to unavailable. I'm adding a bounded crowd-rotation rule so the engine tries the next source-safe current-band route after two same-reboot crowd passes, while preserving the original candidate for later reboot or level reconsideration.
+
+
+[2026-08-04 8:05:13 PM NZST] CODEX COMMENTARY
+The focused regressions pass. I’ve also versioned the policy change and added checkpoint migration: an older source-ranked crowd checkpoint is seeded as one attempt, then the next same-reboot crowd observation exhausts that route. The original evidence and cooldown remain intact while the selector chooses another candidate.
+
+
+[2026-08-04 8:05:47 PM NZST] CODEX COMMENTARY
+The bounded live check is in progress. It is currently inside the configured reset/retry window, so there is no new checkpoint output yet; I’m leaving the worker bounded and watching for completion rather than letting it run unobserved.
+
+
+[2026-08-04 8:06:53 PM NZST] CODEX COMMENTARY
+The live worker is confirmed active (campaign PID 45384); the Discord streamer remains healthy as its separate PID pair 1664/37772. The command is still within its 60-second reset wait and bounded route budget, with no orphaned campaign process.
+
+
+[2026-08-04 8:07:55 PM NZST] CODEX COMMENTARY
+The worker is responsive and consuming time in the live route, not stuck in a permission prompt. I’m keeping the run’s hard bounds in place; the current check is intentionally allowed to finish the target search before I inspect the resulting transcript and checkpoint.
+
+
+[2026-08-04 8:09:10 PM NZST] CODEX COMMENTARY
+A new live transcript file 3107 has opened, so the first retry has begun. It is still within the 240-second segment limit; I’m waiting for the bounded result before deciding whether the second retry rotates, rather than interrupting the evidence collection mid-route.
+
+
+[2026-08-04 8:10:19 PM NZST] CODEX COMMENTARY
+The live proof has now shown the intended rotation: after the repeated Undead Soldier crowd pass, the next transcript is policy 3108 for the source-ranked jailer route, not another Shadow Keep replay. The rotated search is still bounded and running; I’m waiting for its checkpoint.
+
+
+[2026-08-04 8:13:14 PM NZST] CODEX COMMENTARY
+The live proof completed cleanly at checkpoint 3560. Runs 3105 and 3106 recorded the same source-ranked sentinel route as crowded; run 3107 performed the bounded final verification; run 3108 rotated to Olympus jailer VNUM 926 and searched its sentinel reset room, then recorded a legitimate absent result and returned to healer room 3054. No campaign worker remains; the Discord streamer is still the only long-lived project process.
+
+
+[2026-08-04 8:14:36 PM NZST] CODEX COMMENTARY
+The full suite found two migration assertions tied to the previous policy revision number, not behavioral failures in the new search logic. I’m widening those two one-step migration gates to include revision 117, which is the state we just upgraded from, then I’ll rerun the suite.
+
+
+[2026-08-04 8:17:34 PM NZST] CODEX FINAL
+Presence audit and crowd-rotation fix completed. Sentinel mobiles are checked at every source reset room; wandering mobiles use where plus a bounded source-reachable search, with stay-area limits and a 512-room cap that exceeds the current 274-room maximum. Live runs 3105-3108 confirmed crowded Shadow Keep evidence, automatic rotation to Olympus jailer, and safe healer return at checkpoint 3560. Full suite: 1,956 passed. No campaign worker remains; the Discord streamer remains healthy. Changes are local only under the existing 9 PM commit policy.
+
+
+[2026-08-04 8:17:59 PM NZST] CODEX COMMENTARY
+I am resuming the autonomous HERO objective from Kestrel's level-19 checkpoint. I will first re-audit the current checkpoint, source revision, worktree, and live processes, then identify the next executable progression blocker and carry it through implementation, tests, and bounded no-steering evidence.
+
+
+[2026-08-04 8:18:36 PM NZST] CODEX COMMENTARY
+The audit is clean: Kestrel is still level 19 in healer room 3054, the checkpoint is revision 118, the source checkout is still at 1b759f5, and no campaign worker is running. The current frontier is not an absent-mob parser problem now; it is policy availability after the first rotation, so I’m tracing the selector’s next candidate and its cooldown gates before launching another live segment.
+
+
+[2026-08-04 8:21:08 PM NZST] CODEX COMMENTARY
+The selector audit found a concrete generic bug: the Dwarven nobleman’s source keyword is dwarf, so legacy evidence for white dwarf is being treated as the same target. That unrelated Galaxy route hazard suppresses an otherwise retryable Dwarven candidate. I’m tightening legacy evidence matching to use the full source display identity whenever the short keyword is morphologically different, and I’ll add a regression test before the next live probe.
+
+
+[2026-08-04 8:22:02 PM NZST] CODEX COMMENTARY
+The tightened selector now exposes the next executable candidate: the Dwarven nobleman is retryable after the reset wait, while the unrelated Galaxy hazard no longer suppresses it. Source revision 1b759f5 is current. I’m launching one bounded no-steering campaign segment to test that route and record whether the target is present, crowded, viable, or absent.
+
+
+[2026-08-04 8:23:08 PM NZST] CODEX COMMENTARY
+The new campaign worker is active as the single expected field process and is still in the reset-wait phase; no new transcript has opened yet. I’m keeping the 60-second outside wait and 240-second segment bound intact so the next target decision is backed by a clean reboot-local observation.
+
+
+[2026-08-04 8:24:00 PM NZST] CODEX COMMENTARY
+The post-wait selector opened transcript 3109 for the Dwarven nobleman route, confirming the matching fix changed live policy selection rather than only a unit-test result. The bounded route is now running; I’m waiting for its exact target and XP outcome.
+
+
+[2026-08-04 8:24:49 PM NZST] CODEX COMMENTARY
+Transcript 3109 is producing live output and the worker remains responsive inside the segment boundary. This is the first real check of the newly exposed Dwarven route; I’m letting the runner finish its own consideration, combat, and healer-return path before interpreting the result.
+
+
+[2026-08-04 8:25:51 PM NZST] CODEX COMMENTARY
+Run 3109 completed safely at checkpoint 3565: the Dwarven nobleman was genuinely present but crowded, so the runner skipped combat and preserved a crowd result rather than recording absence. Kestrel remains level 19 with no XP loss. I’m checking the next post-wait rotation now; the two-pass crowd rule should prevent this route from becoming another repeated stall.
+
+
+[2026-08-04 8:27:47 PM NZST] CODEX COMMENTARY
+The alignment policy change opens a fresh current-band candidate: the wild Pegasus at Galaxy room 9317 is now autonomous-safe because positive alignment is treated as an XP/alignment hazard, not an NPC-combat prohibition. The source code’s is_safe path permits NPC combat, and the current selector ranks this fresh level-19 target ahead of the retryable routes. I’m running the next bounded no-steering segment to test it.
+
+
+[2026-08-04 8:28:42 PM NZST] CODEX COMMENTARY
+The next invocation opened a bounded provision-funding maintenance route first, so the runner is handling its normal resource prerequisites before field selection. This is still autonomous progress: I’m leaving the single worker intact and will verify whether it returns with provisions, a fresh Pegasus hunt, or a precise funding failure.
+
+
+[2026-08-04 8:29:47 PM NZST] CODEX COMMENTARY
+Provision-funding transcript 3110 is active and growing; the worker remains within the same bounded invocation. I’m allowing maintenance to finish because starving or waterless field selection would be a false progression test; the next checkpoint will show exactly what resource gate triggered it.
+
+
+[2026-08-04 8:31:35 PM NZST] CODEX COMMENTARY
+The checkpoint also contains saleable drops from the funding kill, so the next generic policy is liquidation before field combat. I’m running two bounded segments together: first sell the expendable loot, then let the selector choose the fresh current-band target. This keeps the maintenance transition autonomous and avoids manually steering around the normal economy gates.
+
+
+[2026-08-04 8:32:35 PM NZST] CODEX COMMENTARY
+The two-segment run has opened the expected sell-loot maintenance transcript 3111. The single campaign worker is responsive; after this sale checkpoint, the second segment will exercise the newly opened field candidate without an injected command.
+
+
+[2026-08-04 8:33:30 PM NZST] CODEX COMMENTARY
+The second segment selected provision-funding again because the flight-funding retry marker remains active after liquidation. That is a real prerequisite gate, not a route stall; transcript 3112 is now running the money loop needed to buy flight before the long Galaxy approach. I’m letting the economy loop finish rather than bypassing the flight requirement.
+
+
+[2026-08-04 8:34:49 PM NZST] CODEX COMMENTARY
+Funding transcript 3112 is still active and producing output; the worker remains a single bounded process. This loop is earning a small amount of XP while converting loot into the movement-reduction resource, so it is useful progress even though the field target has not opened yet.
+
+
+[2026-08-04 8:36:54 PM NZST] CODEX COMMENTARY
+The funding loop exposed the next concrete blocker: Kestrel now has food and enough copper for flight, but select_policy returns provision-funding before reaching its own buy-flight-when-affordable branch. That makes the bot keep hunting for money after money is already sufficient. I’m making the pending flight purchase preempt only that redundant funding pass when provisions are stocked, preserving liquidation and food-supply ordering.
+
+
+[2026-08-04 8:37:42 PM NZST] CODEX COMMENTARY
+The focused flight tests pass. The checkpoint audit corrected one detail: DD4’s current normalized copper value is 53, not 413, so another funding pass is genuinely required before the purchase threshold of 90. The new branch will take effect as soon as that threshold is reached; I’m running the next bounded funding segment to earn the remaining amount.
+
+
+[2026-08-04 8:38:35 PM NZST] CODEX COMMENTARY
+The next funding pass selected the source-ranked Lemming smithy route, not the already-failed goblin archer. Transcript 3113 is active as the single worker; this confirms the funding selector is rotating candidates and gathering live evidence instead of repeating one target.
+
+
+[2026-08-04 8:41:21 PM NZST] CODEX COMMENTARY
+I am auditing the failed Lemming probe now. The route was correctly selected from a different source-ranked target, but its recovery guard rejected the return path; I am narrowing that failure to the exact transcript event before changing the generic navigator and resuming the live campaign.
+
+
+[2026-08-04 8:45:26 PM NZST] CODEX COMMENTARY
+The transcript exposed a real generic defect: the Lemming funding run spent its route budget reaching the level-15 thief trainer, then the trainer moved away. The runner treated the trainer's room as the field endpoint and raised a stale recall-origin error before it could continue. I am separating trainer navigation from field-route state, and I am auditing the wandering search policy at the same time so presence checks cover source-valid destinations without consuming the whole run.
+
+
+[2026-08-04 8:51:20 PM NZST] CODEX COMMENTARY
+The trainer-recovery regression is now fixed and covered: the policy keeps the whole command response buffer, so a prompt arriving after 'You do not see that here' cannot erase the absence signal. Focused starter tests pass (13 selected). I am now running the source audit that enumerates each candidate's sentinel/stay-area flags, reset rooms, and bounded reachable-room count before the next live segment.
+
+
+[2026-08-04 8:52:09 PM NZST] CODEX COMMENTARY
+The source audit confirms the intended split is active: sentinel candidates are checked at every reset room; wandering candidates use a global where preflight and then a source-graph search. The largest current source-reachable wander area is 274 rooms, below the 512-room bound; Aruncus is 43 rooms and the Thain 58. I am retrying the funding segment now with the trainer-response fix in place.
+
+
+[2026-08-04 8:52:59 PM NZST] CODEX COMMENTARY
+The retry is still inside its bounded live window, with one campaign worker and no auxiliary worker process. I am letting this run reach its safe checkpoint; the previous failure happened before the Lemming field route, so the important verification is whether the fixed response handling now returns cleanly from the wandering trainer and enters the actual target route.
+
+
+[2026-08-04 8:53:47 PM NZST] CODEX COMMENTARY
+The live worker is still active and has not tripped the recorded 60-second publication or process policy; this is the MUD connection itself, bounded by the segment runtime. I am checking its latest transcript state without interrupting it, then I will either let it finish or apply the recovery boundary.
+
+
+[2026-08-04 8:54:29 PM NZST] CODEX COMMENTARY
+The repaired run completed cleanly: the Lemming funding segment returned to the healer at checkpoint 3586 instead of raising the stale recall-origin failure. I am auditing its transcript now for the exact trainer absence and field-routing evidence, then I will run the focused campaign tests and resume the next progression segment.
+
+
+[2026-08-04 8:57:09 PM NZST] CODEX COMMENTARY
+I am checking this directly in the source-backed hunt planner and the live campaign path now. The key distinction is sentinel versus wandering: sentinels get exact reset-room checks, while wanderers need a bounded presence lookup plus a safe traversal of their actual reachable rooms. I am also fixing the recovery loop exposed by the last probe so absence or low health cannot turn into repeated stand/sleep churn.
+
+
+[2026-08-04 8:58:45 PM NZST] CODEX COMMENTARY
+I found that the framework already distinguishes ACT_SENTINEL from non-sentinel mobiles, but the last live run exposed an important practical gap: the planner can know a wanderer’s source room graph and still lose time if the live locator result is stale, unmapped, or treated as a generic room scan. I’m reviewing the movement code and the locator parser together so the policy records the mobile’s movement boundary, reset rooms, and the exact live rooms it is willing to inspect.
+
+
+[2026-08-04 9:00:49 PM NZST] CODEX COMMENTARY
+The source audit confirms DD4 movement is probabilistic: a non-sentinel mobile may take a random open exit each update, while ACT_STAY_AREA only limits the area and ACT_SENTINEL pins it to its reset room. The planner’s source graph is therefore the right search boundary, but the live where result must be authoritative before traversing it. I am making the recovery fix now and adding a regression for the exact repeated-stand failure seen at the healer.
+
+
+[2026-08-04 9:05:04 PM NZST] CODEX COMMENTARY
+The focused regression tests pass. The full suite is running now; after it completes I will inspect the live campaign checkpoint and start the next bounded segment only if the process state is clean. I have not touched the Discord streamer, which is still healthy.
+
+
+[2026-08-04 9:06:01 PM NZST] CODEX COMMENTARY
+The full suite found one compatibility issue in the new recovery guard: an older test intentionally models waking from sleep without invoking the command lifecycle, so the generic awake case still needs to issue its wake command. I’m narrowing the guard to the real duplicate path by recording when the resupply layer itself has just issued stand; that preserves normal recovery semantics and blocks only the observed repeated stand.
+
+
+[2026-08-04 9:07:17 PM NZST] CODEX COMMENTARY
+The narrowed recovery guard now passes its focused tests, including the original absolute-movement test. The full suite is rerunning; once green, I will launch a short live campaign segment to confirm the healer no longer cycles and to let the source-ranked selection continue toward level 20.
+
+
+[2026-08-04 9:07:44 PM NZST] CODEX COMMENTARY
+The full suite is green: 1,961 tests passed. I am now checking the current Kestrel checkpoint and process list, then I will run one bounded campaign segment with the repaired policy. The live source logic will continue to treat sentinels as reset-room targets and wanderers as locator-plus-source-graph targets.
+
+
+[2026-08-04 9:08:08 PM NZST] CODEX COMMENTARY
+The checkpoint is still Kestrel level 19 at healer room 3054, with 181,909 XP and the flight-funding retry pending. The source evidence is explicit: sentinel targets such as the dwarven nobleman are checked at their fixed reset room; wandering targets such as Aruncus, the bear, and the Thain are located with where and then searched only through their source-reachable rooms. I am starting the next bounded live segment now; the streamer remains healthy and no stale campaign worker is running.
+
+
+[2026-08-04 9:09:15 PM NZST] CODEX COMMENTARY
+The live worker is active as run 3115 and has opened a new provision-funding transcript. I am leaving it bounded and monitoring the output rather than starting another worker; the Discord streamer processes are unchanged. I will inspect the completed decision trail for both target-presence behavior and recovery-loop behavior.
+
+
+[2026-08-04 9:10:32 PM NZST] CODEX COMMENTARY
+Run 3115 is still alive, but its transcript file has not received data yet. That is an early connection-stage condition, so I am checking its start time, CPU, and child processes now; I will not let it sit indefinitely. The recorded bounded-live policy is to abandon a connection that fails to produce a run promptly and continue with local evidence work.
+
+
+[2026-08-04 9:12:12 PM NZST] CODEX COMMENTARY
+The source audit and live proof line up. Ranger mobile 1706 is sentinel with one reset room (1703), and the latest run found and killed it there. Aruncus is non-sentinel/stay-area with 43 reachable source rooms; Thain is non-sentinel/stay-area with 58; Jerry Garcia is non-sentinel/stay-area with 43. The repaired run also slept once, waited for real healing, then stood once and checkpointed, with no repeated stand/sleep churn. I am moving to the next bounded segment so the ranger loot can feed the flight-funding loop.
+
+
+[2026-08-04 9:13:01 PM NZST] CODEX COMMENTARY
+The next segment is the expected maintenance pass: run 3116 is restocking from the ranger loot before the next field hunt. It is active and producing a transcript; I am monitoring it as one bounded worker and will inspect the exact sale/restock outcome when it finishes.
+
+
+[2026-08-04 9:15:00 PM NZST] CODEX COMMENTARY
+The live run confirmed the fixed sentinel path, and the source audit surfaced one more important edge case for arbitrary characters: DD4’s where command is limited to the player’s current area, but a non-sentinel without ACT_STAY_AREA can wander across area boundaries. I am correcting the planner so an absent where result is terminal only for stay-area wanderers; global wanderers fall back to their full bounded source graph instead of being falsely rejected.
+
+
+[2026-08-04 9:15:34 PM NZST] CODEX COMMENTARY
+The cross-area wanderer regression passes: a non-stay-area target now keeps its bounded source-room sweep after an area-scoped where miss, while stay-area targets retain the fast terminal absence gate. I am running the full suite once more, then I will record the final live checkpoint and process audit for this work unit.
+
+
+[2026-08-04 9:16:22 PM NZST] CODEX COMMENTARY
+The final full-suite run is still progressing normally. The live campaign worker is already finished, and only the two Discord streamer processes remain. I will wait for the test result before closing this update so the source-movement change is verified end to end.
+
+
+[2026-08-04 9:16:52 PM NZST] CODEX COMMENTARY
+The full suite caught two expected assertion updates: the Pirates Seas Rastafarians mobile is genuinely non-sentinel and not stay-area in the current source, so its where result cannot be treated as global absence either. I am updating those stale expectations to the source-backed behavior, then I will rerun the focused dispatch tests and the full suite once more.
+
+
+[2026-08-04 9:18:13 PM NZST] CODEX COMMENTARY
+The stale Pirates Seas assertions are corrected and the focused dispatch tests pass. The final full suite is now running against the corrected sentinel/wanderer semantics; no live worker is active while it runs.
+
+
+[2026-08-04 9:19:12 PM NZST] CODEX FINAL
+Yes. The live/source hunt logic now explicitly separates fixed sentinels from wandering mobiles. Sentinels are checked at every exact source reset room. Non-sentinels are searched through a bounded source graph that respects closed and locked exits, no-mob rooms, and ACT_STAY_AREA; the current source maximum is 274 rooms, under the 512-room bound. A where result narrows the search when useful, but because DD4 where is area-scoped, an absent result is terminal only for stay-area wanderers. Global wanderers now fall back to the full source graph. Live evidence found sentinel ranger 1706 at room 1703 and killed it for funding; prior live where probes mapped the bandit leader to Olive Grove and the medicine man to River bed, which was correctly excluded. The healer sleep/stand loop is also fixed. Verification: 1,962 pytest tests passed. Kestrel is safely checkpointed at level 19, 182,029 XP, healer room 3054; only the two Discord streamer processes remain. No commit or push was made.
+
+
+[2026-08-04 9:20:34 PM NZST] CODEX COMMENTARY
+I am re-opening the current checkpoint and code paths so the next work unit stays grounded in the live/source evidence already collected. I will verify the wandering-mobile search behavior, then move on to the next concrete progression blocker beyond the current level-19 proof.
+
+
+[2026-08-04 9:21:11 PM NZST] CODEX COMMENTARY
+The audit confirms the shared locator is doing the distinction correctly, but the live frontier is still the more important issue: Kestrel has reached level 19 and the campaign is carrying many level-19/20 research policies. I am narrowing that state now to find the next policy that can actually produce XP, rather than adding another static route description.
+
+
+[2026-08-04 9:22:30 PM NZST] CODEX COMMENTARY
+The next executable step is a bounded resume of Kestrel’s level-19 campaign. I am launching one segment with a four-minute per-segment cap and no steering input; the result will tell us whether the source-ranked frontier can now produce a useful level-19 kill or whether the next code change must be in policy selection.
+
+
+[2026-08-04 9:22:42 PM NZST] CODEX COMMENTARY
+The launcher stopped immediately on the durable identity check because the existing Kestrel manifest includes his stored personality and the resume request omitted it. No MUD connection was opened and no state changed; I am resuming with the exact persisted identity now.
+
+
+[2026-08-04 9:23:25 PM NZST] CODEX COMMENTARY
+The corrected Kestrel resume is still running inside its bounded live segment. I am leaving the connection alone so the run remains genuinely no-steering; I will inspect the checkpoint and transcript as soon as the segment returns.
+
+
+[2026-08-04 9:24:03 PM NZST] CODEX COMMENTARY
+The live segment has passed another bounded interval without returning a result. The outer command is still active, so I am monitoring it rather than starting a second worker or touching the Discord streamer.
+
+
+[2026-08-04 9:24:42 PM NZST] CODEX COMMENTARY
+The bounded live resume remains active at roughly the 90-second mark. This is within the configured four-minute segment ceiling; I am allowing the campaign to finish its own recovery and checkpoint path so we can use the actual failure or XP evidence.
+
+
+[2026-08-04 9:24:50 PM NZST] CODEX COMMENTARY
+The no-steering resume finished with a real failure rather than hanging: the ranger funding segment killed or reached its objective, but the final recall did not land in the Midgaard Temple before the fastwalk timeout. I am inspecting that transcript and the checkpoint now; this is the concrete progression/recovery blocker to fix next.
+
+
+[2026-08-04 9:28:00 PM NZST] CODEX COMMENTARY
+The transcript isolates the failure: the ranger was never reached. Kestrel correctly reached the level-15 thief trainer, read the practice list, and recalled to the healer, but after sleeping the same segment forgot that training had already been completed and routed all the way back to the wandering trainer until the return path exhausted movement. I am fixing that per-run training completion state, then I will add a regression that reproduces the healer-return transition.
+
+
+[2026-08-04 9:28:51 PM NZST] CODEX COMMENTARY
+The fix is now scoped to one invariant: once a fastwalk segment has completed or deliberately deferred its trainer work, that segment will not revisit the trainer after healer recovery. I added a level-19 thief regression using the same practice balance and known-skill shape seen in the live transcript.
+
+
+[2026-08-04 9:29:10 PM NZST] CODEX COMMENTARY
+The focused trainer suite passes. I am rerunning the same no-steering Kestrel segment now; this is a direct regression check against the live failure, and the campaign will either complete the funding return or leave a more specific recovery trace.
+
+
+[2026-08-04 9:29:53 PM NZST] CODEX COMMENTARY
+The corrected live segment is still active after its first bounded interval. No steering input has been sent; I am waiting for the campaign’s own target, withdrawal, and healer-return logic to settle.
+
+
+[2026-08-04 9:30:31 PM NZST] CODEX COMMENTARY
+The live retry remains inside the four-minute cap and has not produced a terminal result yet. I am keeping the single worker isolated and will inspect the resulting run rather than launching overlapping attempts.
+
+
+[2026-08-04 9:30:47 PM NZST] CODEX COMMENTARY
+The retry passed the exact regression: the funding segment completed and checkpointed at level 19. I am now checking whether the ranger kill was recorded and which next progression policy the scheduler selected, so the fix results in forward movement rather than merely a clean return.
+
+
+[2026-08-04 9:31:26 PM NZST] CODEX COMMENTARY
+The live retry is now cleanly checkpointed, but it exposed a second presence problem: the room contained a live grim ranger selector while the registered sentinel target was source mobile 1706, and the runner correctly refused to assume those were identical. I am checking the Wyvern source definitions and the target recognizer now; the right fix may be to register the correct source identity/reset rather than loosen matching.
+
+
+[2026-08-04 9:34:16 PM NZST] CODEX COMMENTARY
+The Wyvern definitions confirm the live line is correctly source-indexed: mobile 1706s room description is exactly A grim ranger reclines at a table, and the parser maps it to the source identity ranger. The retry skipped it because the same-reboot below-band result was intentionally persisted, not because wandering search missed it. I am letting the scheduler rotate to the next candidate now, then I will tighten any remaining selection issue revealed by that run.
+
+
+[2026-08-04 9:34:59 PM NZST] CODEX COMMENTARY
+The rotated frontier run is still active inside its four-minute cap. I am continuing to watch the single worker and will use its stored policy and transcript evidence to decide the next code change.
+
+
+[2026-08-04 9:35:38 PM NZST] CODEX COMMENTARY
+The rotated run is still working and has not crossed its configured runtime boundary. No manual commands have been sent; I am preserving the no-steering evidence requirement.
+
+
+[2026-08-04 9:36:18 PM NZST] CODEX COMMENTARY
+The rotated run has reached roughly the 90-second mark and remains active. I am letting its own recovery and checkpoint logic finish rather than interrupting a potentially productive route.
+
+
+[2026-08-04 9:36:53 PM NZST] CODEX COMMENTARY
+The rotated run also completed cleanly at level 19. I am auditing its candidate and objective result now; two clean but non-productive funding passes would indicate the scheduler needs a stronger post-funding transition, while a kill or saleable drop will confirm useful rotation.
+
+
+[2026-08-04 9:38:47 PM NZST] CODEX COMMENTARY
+I am inspecting the newest bounded segment, its candidate decision, and the resulting checkpoint before running the full regression suite.
+
+
+[2026-08-04 9:39:24 PM NZST] CODEX COMMENTARY
+The newest run confirms the locator is working: it found the lemming carpenter in the registered wandering circuit, killed it, and returned safely with 120 XP. I am moving to the full test suite now.
+
+
+[2026-08-04 9:40:10 PM NZST] CODEX COMMENTARY
+The full pytest suite is running in the background; I am polling it explicitly so a long test run cannot look like a stall.
+
+
+[2026-08-04 9:40:53 PM NZST] CODEX COMMENTARY
+The suite is still active after the first polling interval and has not produced a failure signal; I am keeping the bounded wait and will inspect its exit result next.
+
+
+[2026-08-04 9:41:58 PM NZST] CODEX COMMENTARY
+The direct verification run is still executing after the first half-minute; I am leaving it bounded and checking progress rather than starting another live campaign.
+
+
+[2026-08-04 9:42:29 PM NZST] CODEX COMMENTARY
+Full verification passed: 1963 tests in 67.93 seconds. I am doing the final diff, process, and checkpoint audit now; no remote git operation is being attempted.
+
+
+[2026-08-04 9:43:22 PM NZST] CODEX COMMENTARY
+Verification is complete and the only remaining scheduled action is the permitted local 9 PM commit window. I am saving the current code, tests, and append-only development log locally; I will not push remotely.
