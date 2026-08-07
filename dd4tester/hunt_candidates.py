@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import heapq
 import re
+from collections import Counter
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -14,15 +16,44 @@ from .fastwalks import FASTWALKS, MAP_ROUTES
 ACT_SENTINEL = 1 << 1
 ACT_AGGRESSIVE = 1 << 5
 ACT_STAY_AREA = 1 << 6
+ACT_DIE_IF_MASTER_GONE = 1 << 21
 ACT_NO_EXPERIENCE = 1 << 24
 
 ROOM_NO_MOB = 1 << 2
+EX_WALL = 128
+SECT_WATER_SWIM = 6
+SECT_WATER_NOSWIM = 7
+SECT_UNDERWATER = 8
+SECT_AIR = 9
+SECT_UNDERWATER_GROUND = 12
+
+# These are the sectors for which DD4's movement code makes ordinary land
+# travel conditional on flight, swimming, a boat, or a race-specific ability.
+# The campaign currently uses flight as its generic, source-backed fallback.
+_FLIGHT_OR_WATER_SECTORS = frozenset(
+    {
+        SECT_WATER_SWIM,
+        SECT_WATER_NOSWIM,
+        SECT_UNDERWATER,
+        SECT_UNDERWATER_GROUND,
+    }
+)
+
+# ``affected_by`` uses the same bit numbering as the core's ``BIT_*``
+# constants.  Confusion is a special case in ``update.c``: it moves a mobile
+# even when the prototype is sentinel or stay-area.
+AFF_CONFUSION = 1 << 36
 
 ITEM_TREASURE = 8
 ITEM_WEAPON = 5
 ITEM_ARMOR = 9
 ITEM_CONTAINER = 15
 ITEM_MONEY = 20
+
+# ITEM_MONEY stores copper, silver, gold, and platinum in value[0:4].  Keep
+# this conversion close to source parsing so candidate ranking cannot mistake
+# a multi-denomination stash for a small copper-only drop.
+MONEY_DENOMINATION_VALUES = (1, 10, 100, 1000)
 
 RECALL_VNUM = 3001
 WEAR_WIELD = 16
@@ -70,6 +101,11 @@ _DIRECTIONS = {
 }
 _TILDE_VALUE = re.compile(r"(-?\d+)")
 
+# This mirrors ``movement_loss`` in DD4's ``server/src/act_move.c``.  Keep
+# source route cost separate from command count: terrain, not the direction
+# name, determines whether a live route can be completed.
+_MOVEMENT_LOSS = (1, 2, 2, 3, 4, 5, 4, 1, 3, 10, 6, 4)
+
 
 @dataclass(frozen=True)
 class MobileSource:
@@ -81,6 +117,7 @@ class MobileSource:
     alignment: int
     area_file: str
     room_description: str = ""
+    affected_flags: int = 0
 
     @property
     def aggressive(self) -> bool:
@@ -93,6 +130,21 @@ class MobileSource:
     @property
     def stay_area(self) -> bool:
         return bool(self.act_flags & ACT_STAY_AREA)
+
+    @property
+    def confused(self) -> bool:
+        return bool(self.affected_flags & AFF_CONFUSION)
+
+    @property
+    def dies_if_master_gone(self) -> bool:
+        return bool(self.act_flags & ACT_DIE_IF_MASTER_GONE)
+
+    @property
+    def wanders(self) -> bool:
+        """Mirror the two mobile movement paths in ``update.c``."""
+        return self.confused or (
+            not self.sentinel and not self.dies_if_master_gone
+        )
 
 
 @dataclass(frozen=True)
@@ -159,6 +211,15 @@ class MobReset:
     equipment: tuple[tuple[int, int], ...] = ()
 
 
+@dataclass(frozen=True)
+class RoomObjectReset:
+    """A source ``O`` or ``I`` reset that places an object on the ground."""
+
+    object_vnum: int
+    room_vnum: int
+    maximum_count: int = 1
+
+
 @dataclass
 class AreaSource:
     path: Path
@@ -166,8 +227,10 @@ class AreaSource:
     objects: dict[int, ObjectSource]
     rooms: dict[int, RoomSource]
     mob_resets: list[MobReset]
+    room_object_resets: list[RoomObjectReset]
     container_contents: dict[int, list[int]]
     mobile_specials: dict[int, tuple[str, ...]]
+    shopkeepers: frozenset[int] = frozenset()
 
 
 @dataclass
@@ -176,8 +239,10 @@ class WorldSource:
     objects: dict[int, ObjectSource] = field(default_factory=dict)
     rooms: dict[int, RoomSource] = field(default_factory=dict)
     mob_resets: list[MobReset] = field(default_factory=list)
+    room_object_resets: list[RoomObjectReset] = field(default_factory=list)
     container_contents: dict[int, list[int]] = field(default_factory=dict)
     mobile_specials: dict[int, tuple[str, ...]] = field(default_factory=dict)
+    shopkeepers: set[int] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -199,10 +264,12 @@ class HuntCandidate:
     source_value: int
     contained_coins: int
     hazards: tuple[str, ...]
+    target_identity: str = ""
     equipped_weapons: tuple[str, ...] = ()
     estimated_level_range: tuple[int, int] = (0, 0)
     estimated_base_hp_range: tuple[int, int] = (0, 0)
     estimated_peak_round_damage: int = 0
+    estimated_min_peak_round_damage: int = 0
     autonomy_rejections: tuple[str, ...] = ()
     specials: tuple[str, ...] = ()
     route_preflight_room_vnum: str | None = None
@@ -213,6 +280,11 @@ class HuntCandidate:
     route_hard_hazard_targets: tuple[str, ...] = ()
     sentinel: bool = False
     stay_area: bool = False
+    estimated_move_cost: int = 0
+    estimated_flying_move_cost: int = 0
+    requires_flight: bool = False
+    ground_loot_keywords: tuple[str, ...] = ()
+    is_coin_stash: bool = False
 
     @property
     def autonomous_safe(self) -> bool:
@@ -220,6 +292,15 @@ class HuntCandidate:
         return not self.autonomy_rejections
 
 
+def money_value(values: Iterable[int]) -> int:
+    """Return the copper-equivalent value of a DD4 money object."""
+    return sum(
+        max(0, int(amount)) * multiplier
+        for amount, multiplier in zip(values, MONEY_DENOMINATION_VALUES)
+    )
+
+
+@lru_cache(maxsize=4)
 def load_world_source(
     area_directory: Path,
     *,
@@ -247,7 +328,9 @@ def load_world_source(
         world.objects.update(parsed.objects)
         world.rooms.update(parsed.rooms)
         world.mob_resets.extend(parsed.mob_resets)
+        world.room_object_resets.extend(parsed.room_object_resets)
         world.mobile_specials.update(parsed.mobile_specials)
+        world.shopkeepers.update(parsed.shopkeepers)
         for container, contents in parsed.container_contents.items():
             world.container_contents.setdefault(container, []).extend(contents)
     return world
@@ -293,10 +376,20 @@ def parse_area_file(
     )
     rooms = _parse_rooms(lines, sections.get("#ROOMS"), path.name)
     mob_resets: list[MobReset] = []
+    room_object_resets: list[RoomObjectReset] = []
     container_contents: dict[int, list[int]] = {}
     mobile_specials: dict[int, tuple[str, ...]] = {}
+    shopkeepers = _parse_shopkeepers(
+        lines,
+        sections.get("#SHOPS"),
+    )
     if include_resets:
-        mob_resets, container_contents, object_load_levels = _parse_resets(
+        (
+            mob_resets,
+            room_object_resets,
+            container_contents,
+            object_load_levels,
+        ) = _parse_resets(
             lines,
             sections.get("#RESETS"),
             rooms,
@@ -307,10 +400,7 @@ def parse_area_file(
                 sections.get("#AREA_SPECIAL"),
                 "school",
             ),
-            shopkeepers=_parse_shopkeepers(
-                lines,
-                sections.get("#SHOPS"),
-            ),
+            shopkeepers=shopkeepers,
         )
         objects = _annotate_object_load_levels(objects, object_load_levels)
         mobile_specials = _parse_mobile_specials(
@@ -323,8 +413,10 @@ def parse_area_file(
         objects,
         rooms,
         mob_resets,
+        room_object_resets,
         container_contents,
         mobile_specials,
+        frozenset(shopkeepers),
     )
 
 
@@ -333,15 +425,21 @@ def rank_hunt_candidates(
     *,
     character_level: int,
     boot_kill_counts: Mapping[str, int] | None = None,
+    boot_kill_counts_by_mobile_vnum: Mapping[int, int] | None = None,
     include_xp_only: bool = False,
     include_below_band: bool = False,
     character_max_hp: int | None = None,
+    include_level_ceiling_candidates: bool = False,
     include_all_areas: bool = False,
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
     kill_counts = {
         _normalize_name(name): count for name, count in (boot_kill_counts or {}).items()
+    }
+    mobile_kill_counts = {
+        int(vnum): int(count)
+        for vnum, count in (boot_kill_counts_by_mobile_vnum or {}).items()
     }
     resets_by_room = _resets_by_room(world)
     candidate_area_files = None if include_all_areas else set(LOW_LEVEL_AREA_FILES)
@@ -355,6 +453,7 @@ def rank_hunt_candidates(
         )
         for mobile, reset in wandering_aggressors
     }
+    source_keyword_counts = _source_keyword_counts(world)
     ranked: list[HuntCandidate] = []
 
     for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
@@ -369,7 +468,16 @@ def rank_hunt_candidates(
             )
         ):
             continue
-        if mobile.level > character_level or mobile.act_flags & ACT_NO_EXPERIENCE:
+        level_ceiling_candidate = (
+            include_level_ceiling_candidates
+            and character_max_hp is not None
+            and character_max_hp > 0
+            and mobile.level == character_level + 1
+        )
+        if (
+            (mobile.level > character_level and not level_ceiling_candidate)
+            or mobile.act_flags & ACT_NO_EXPERIENCE
+        ):
             continue
         level_range = _mobile_level_range(mobile.level)
         # DD4's do_consider treats a target five or more levels below the
@@ -399,13 +507,24 @@ def rank_hunt_candidates(
                 for wear_location, _ in equipped_weapon_slots
             ),
         )
+        minimum_peak_round_damage = _mobile_peak_round_damage(
+            level_range[0],
+            wielding=any(
+                wear_location == WEAR_WIELD
+                for wear_location, _ in equipped_weapon_slots
+            ),
+            dual_wielding=any(
+                wear_location == WEAR_DUAL
+                for wear_location, _ in equipped_weapon_slots
+            ),
+        )
         sellable = [
             item
             for item in loot_objects
             if item.item_type in {ITEM_WEAPON, ITEM_ARMOR, ITEM_TREASURE}
         ]
         contained_coins = sum(
-            item.values[0] if item.values else 0
+            money_value(item.values)
             for item in loot_objects
             if item.item_type == ITEM_MONEY
         )
@@ -416,6 +535,16 @@ def rank_hunt_candidates(
         if path is None:
             continue
         route, path_rooms, closed_doors = path
+        estimated_move_cost = source_route_movement_cost(
+            world,
+            path_rooms,
+        )
+        estimated_flying_move_cost = source_route_movement_cost(
+            world,
+            path_rooms,
+            flying=True,
+        )
+        requires_flight = source_route_requires_flight(world, path_rooms)
         (
             route_preflight_room_vnum,
             route_preflight_command,
@@ -432,7 +561,11 @@ def rank_hunt_candidates(
         autonomy_rejections: list[str] = []
         dangerous = False
         normalized_target = _normalize_name(mobile.short_description)
-        boot_kills = kill_counts.get(normalized_target, 0)
+        boot_kills = (
+            mobile_kill_counts.get(mobile.vnum, 0)
+            if boot_kill_counts_by_mobile_vnum is not None
+            else kill_counts.get(normalized_target, 0)
+        )
 
         matching_target_capacity = sum(
             room_reset.maximum_count
@@ -468,9 +601,13 @@ def rank_hunt_candidates(
             companion_is_below_band = (
                 companion_level_range[1] <= character_level - 5
             )
-            companion_is_trivial = not companion_specials and (
-                companion_is_below_band
-                or (
+            # A source-proven below-band mobile cannot make this useful-band
+            # target an unsafe crowd.  This remains true when its special is
+            # capable of a bounded nuisance effect; the field runner must
+            # finish an unavoidable trivial interruption rather than flee.
+            companion_is_trivial = companion_is_below_band or (
+                not companion_specials
+                and (
                     not companion.aggressive
                     and companion_level_range[1] <= character_level
                 )
@@ -541,6 +678,10 @@ def rank_hunt_candidates(
             # DD4's `is_safe` permits NPC combat regardless of alignment.
             # Preserve the alignment cost as a ranking hazard, but do not
             # make lawful NPCs impossible autonomous XP targets.
+        if mobile.vnum in world.shopkeepers:
+            hazards.append("source mobile is a shopkeeper")
+            dangerous = True
+            autonomy_rejections.append("source mobile is a shopkeeper")
         if mobile.aggressive:
             hazards.append("target is aggressive")
             dangerous = True
@@ -581,9 +722,7 @@ def rank_hunt_candidates(
             - len(equipped_weapons) * 24
         )
         status = "reject" if dangerous else "caution" if hazards else "promising"
-        if mobile.alignment >= 500:
-            status = "reject"
-        elif mobile.alignment > 0 and status == "promising":
+        if mobile.alignment > 0 and status == "promising":
             status = "caution"
 
         ranked.append(
@@ -593,7 +732,11 @@ def rank_hunt_candidates(
                 area_file=mobile.area_file,
                 mobile_vnum=mobile.vnum,
                 target=mobile.short_description,
-                target_keyword=mobile.keywords.split()[0],
+                target_keyword=_least_ambiguous_source_keyword(
+                    world,
+                    mobile,
+                    keyword_counts=source_keyword_counts,
+                ),
                 level=mobile.level,
                 room_vnum=room.vnum,
                 room_name=room.name,
@@ -605,12 +748,18 @@ def rank_hunt_candidates(
                 source_value=source_value,
                 contained_coins=contained_coins,
                 hazards=tuple(dict.fromkeys(hazards)),
+                target_identity=source_mobile_identities(
+                    mobile.room_description,
+                    mobile.short_description,
+                    mobile.keywords,
+                )[0],
                 equipped_weapons=tuple(
                     item.short_description for item in equipped_weapons
                 ),
                 estimated_level_range=level_range,
                 estimated_base_hp_range=hp_range,
                 estimated_peak_round_damage=peak_round_damage,
+                estimated_min_peak_round_damage=minimum_peak_round_damage,
                 autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
                 specials=world.mobile_specials.get(mobile.vnum, ()),
                 route_preflight_room_vnum=route_preflight_room_vnum,
@@ -621,6 +770,9 @@ def rank_hunt_candidates(
                 route_hard_hazard_targets=route_hard_hazard_targets,
                 sentinel=mobile.sentinel,
                 stay_area=mobile.stay_area,
+                estimated_move_cost=estimated_move_cost,
+                estimated_flying_move_cost=estimated_flying_move_cost,
+                requires_flight=requires_flight,
             )
         )
 
@@ -696,6 +848,7 @@ def _parse_mobiles(
             alignment=int(flag_parts[2]),
             area_file=area_file,
             room_description=_clean_text(room_description),
+            affected_flags=_parse_bits(flag_parts[1]),
         )
         index = _next_vnum_marker(lines, index, end)
     return mobiles
@@ -852,16 +1005,18 @@ def _parse_resets(
     shopkeepers: set[int],
 ) -> tuple[
     list[MobReset],
+    list[RoomObjectReset],
     dict[int, list[int]],
     dict[int, list[tuple[int, int]]],
 ]:
     if bounds is None:
-        return [], {}, {}
+        return [], [], {}, {}
     index, end = bounds
     pending: list[dict[str, object]] = []
     current: dict[str, object] | None = None
     current_mobile_vnum: int | None = None
     current_level_range: tuple[int, int] | None = None
+    room_object_resets: list[RoomObjectReset] = []
     container_contents: dict[int, list[int]] = {}
     object_load_levels: dict[int, list[tuple[int, int]]] = {}
 
@@ -907,11 +1062,25 @@ def _parse_resets(
                         loaded_range
                     )
         elif command == "O" and len(parts) >= 5 and _all_ints(parts[1:5]):
+            room_object_resets.append(
+                RoomObjectReset(
+                    object_vnum=int(parts[2]),
+                    room_vnum=int(parts[4]),
+                    maximum_count=max(1, int(parts[1])),
+                )
+            )
             if current_level_range is not None:
                 object_load_levels.setdefault(int(parts[2]), []).append(
                     _fuzzy_level_range(current_level_range)
                 )
         elif command == "I" and len(parts) >= 5 and _all_ints(parts[1:5]):
+            room_object_resets.append(
+                RoomObjectReset(
+                    object_vnum=int(parts[1]),
+                    room_vnum=int(parts[3]),
+                    maximum_count=max(1, int(parts[4])),
+                )
+            )
             object_load_levels.setdefault(int(parts[1]), []).append(
                 _fuzzy_level_range((int(parts[2]), int(parts[2])))
             )
@@ -957,7 +1126,7 @@ def _parse_resets(
         )
         for item in pending
     ]
-    return resets, container_contents, object_load_levels
+    return resets, room_object_resets, container_contents, object_load_levels
 
 
 def _mobile_reset_level_range(source_level: int) -> tuple[int, int]:
@@ -1081,7 +1250,10 @@ def _shortest_paths_from(
             if (
                 exit_source.destination not in rooms
                 or exit_source.destination in blocked_rooms
-                or exit_source.locked
+                # An open exit may retain EX_LOCKED in DD4's source. Players
+                # and mobiles can traverse it; only a closed-and-locked door
+                # is inaccessible to the route planner.
+                or (exit_source.closed and exit_source.locked)
             ):
                 continue
             door_cost = 1 if exit_source.closed else 0
@@ -1105,6 +1277,76 @@ def _shortest_paths_from(
                 ),
             )
     return paths
+
+
+def source_route_movement_cost(
+    world: WorldSource,
+    path_rooms: Iterable[int],
+    *,
+    flying: bool = False,
+) -> int:
+    """Estimate DD4 movement consumed by a source-backed room path.
+
+    ``path_rooms`` includes the origin room.  The calculation follows the
+    core's per-edge terrain loss and its one-third flying reduction; door-open
+    commands do not consume movement.  A missing room is ignored so old or
+    partial test worlds remain usable, while parsed source paths are complete.
+    """
+    rooms = tuple(path_rooms)
+    total = 0
+    for origin_vnum, destination_vnum in zip(rooms, rooms[1:]):
+        origin = world.rooms.get(int(origin_vnum))
+        destination = world.rooms.get(int(destination_vnum))
+        if origin is None or destination is None:
+            continue
+        origin_sector = min(
+            max(int(origin.sector_type), 0),
+            len(_MOVEMENT_LOSS) - 1,
+        )
+        destination_sector = min(
+            max(int(destination.sector_type), 0),
+            len(_MOVEMENT_LOSS) - 1,
+        )
+        move = _MOVEMENT_LOSS[origin_sector] + _MOVEMENT_LOSS[destination_sector]
+        if flying:
+            move = max(1, move // 3)
+        total += move
+    return total
+
+
+def source_route_requires_flight(
+    world: WorldSource,
+    path_rooms: Iterable[int],
+) -> bool:
+    """Return whether a source route needs a generic movement capability.
+
+    DD4's movement gate is based on the destination sector and EX_WALL flag,
+    not on the command spelling.  A route can therefore require flight even
+    when it reaches an air or water room via north, east, or another ordinary
+    exit.  Water routes also accept swimming, a boat, or race-specific native
+    movement in the core; the campaign represents flight as the generic
+    capability it can acquire and verify for arbitrary characters.
+    """
+    rooms = tuple(path_rooms)
+    for origin_vnum, destination_vnum in zip(rooms, rooms[1:]):
+        origin = world.rooms.get(int(origin_vnum))
+        destination = world.rooms.get(int(destination_vnum))
+        if destination is None:
+            continue
+        if (
+            destination.sector_type == SECT_AIR
+            or destination.sector_type in _FLIGHT_OR_WATER_SECTORS
+        ):
+            return True
+        if origin is None:
+            continue
+        if any(
+            exit_source.destination == destination_vnum
+            and bool(exit_source.flags & EX_WALL)
+            for exit_source in origin.exits.values()
+        ):
+            return True
+    return False
 
 
 def _loot_objects(
@@ -1266,7 +1508,172 @@ def _wandering_aggressors(
         for reset in world.mob_resets
         if (mobile := world.mobiles.get(reset.mobile_vnum)) is not None
         and mobile.aggressive
-        and not mobile.sentinel
+        and mobile.wanders
+    )
+
+
+def _money_object_keyword(item: ObjectSource) -> str:
+    """Choose a source-listed keyword that addresses a money object."""
+    words = item.keywords.casefold().split()
+    for preferred in ("coins", "gold", "silver", "copper", "platinum"):
+        if preferred in words:
+            return preferred
+    return words[0] if words else "coins"
+
+
+def rank_coin_stashes(
+    world: WorldSource,
+    *,
+    character_level: int,
+    include_all_areas: bool = False,
+) -> list[HuntCandidate]:
+    """Rank directly reset ground coin piles reachable from recall.
+
+    These are intentionally non-combat candidates.  Room containers are left
+    for a later source-backed extraction pass; this first path only promotes
+    money objects that the reset places directly on the ground.
+    """
+    if character_level < 1:
+        raise ValueError("character_level must be at least 1")
+    allowed_areas = (
+        None
+        if include_all_areas
+        else set(LOW_LEVEL_AREA_FILES)
+    )
+    paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
+    resets_by_room = _resets_by_room(world)
+    grouped: dict[int, list[RoomObjectReset]] = {}
+    for reset in world.room_object_resets:
+        room = world.rooms.get(reset.room_vnum)
+        if room is None or (
+            allowed_areas is not None and room.area_file not in allowed_areas
+        ):
+            continue
+        item = world.objects.get(reset.object_vnum)
+        if item is None or item.item_type != ITEM_MONEY:
+            continue
+        grouped.setdefault(reset.room_vnum, []).append(reset)
+
+    ranked: list[HuntCandidate] = []
+    for room_vnum, resets in grouped.items():
+        path = paths.get(room_vnum)
+        room = world.rooms.get(room_vnum)
+        if path is None or room is None:
+            continue
+        route, path_rooms, closed_doors = path
+        path_room_set = set(path_rooms)
+        object_vnums = tuple(dict.fromkeys(reset.object_vnum for reset in resets))
+        money_objects = [
+            world.objects[object_vnum]
+            for object_vnum in object_vnums
+            if object_vnum in world.objects
+        ]
+        copper_value = sum(money_value(item.values) for item in money_objects)
+        if copper_value <= 0:
+            continue
+
+        hazards: list[str] = []
+        rejections: list[str] = []
+        for path_room_vnum in path_rooms:
+            for reset in resets_by_room.get(path_room_vnum, ()):
+                mobile = world.mobiles.get(reset.mobile_vnum)
+                if mobile is None or not mobile.aggressive:
+                    continue
+                hazards.append(
+                    f"route: {mobile.short_description} L{mobile.level} "
+                    f"in {path_room_vnum}"
+                )
+                hazard_level_max = _mobile_level_range(mobile.level)[1]
+                if hazard_level_max > character_level:
+                    rejections.append("route crosses a higher-level aggressive reset")
+                elif hazard_level_max > character_level - 5:
+                    rejections.append(
+                        "route crosses an aggressive reset inside the useful XP band"
+                    )
+        # A wandering aggressor can enter a path room even when its reset
+        # room is elsewhere. Keep below-band transit hazards as cautionary
+        # evidence: the runner can finish an unavoidable source-proven trivial
+        # interruption without treating it as an XP target.
+        for mobile_vnum, mobile in world.mobiles.items():
+            if not mobile.aggressive or not mobile.wanders:
+                continue
+            reachable = set(source_mobile_search_rooms(world, mobile_vnum))
+            if path_room_set.isdisjoint(reachable):
+                continue
+            hazards.append(
+                f"reachable wanderer: {mobile.short_description} L{mobile.level}"
+            )
+            hazard_level_max = _mobile_level_range(mobile.level)[1]
+            if hazard_level_max > character_level:
+                rejections.append(
+                    "a higher-level aggressive wanderer can reach the route"
+                )
+            elif hazard_level_max > character_level - 5:
+                rejections.append(
+                    "an aggressive wanderer inside the useful XP band can reach the route"
+                )
+        for reset in resets_by_room.get(room_vnum, ()):
+            mobile = world.mobiles.get(reset.mobile_vnum)
+            if mobile is None or not mobile.aggressive:
+                continue
+            hazards.append(
+                f"stash room has aggressive reset: {mobile.short_description}"
+            )
+            rejections.append("stash room has an aggressive reset")
+
+        keywords = tuple(
+            dict.fromkeys(_money_object_keyword(item) for item in money_objects)
+        )
+        if closed_doors:
+            hazards.append(f"{closed_doors} closed door(s) on route")
+        route_cost = source_route_movement_cost(world, path_rooms)
+        flying_route_cost = source_route_movement_cost(
+            world,
+            path_rooms,
+            flying=True,
+        )
+        requires_flight = source_route_requires_flight(world, path_rooms)
+        if requires_flight:
+            hazards.append("route requires flight or another movement capability")
+        status = "reject" if rejections else "caution" if hazards else "promising"
+        score = copper_value / max(route_cost, len(route), 1)
+        ranked.append(
+            HuntCandidate(
+                status=status,
+                score=round(score, 1),
+                area_file=room.area_file,
+                mobile_vnum=0,
+                target="coin stash",
+                target_keyword=keywords[0],
+                level=0,
+                room_vnum=room_vnum,
+                room_name=room.name,
+                route=route,
+                source_spawn_limit=max(reset.maximum_count for reset in resets),
+                room_spawn_count=len(resets),
+                boot_kills=0,
+                loot=(),
+                source_value=0,
+                contained_coins=copper_value,
+                hazards=tuple(dict.fromkeys(hazards)),
+                estimated_move_cost=route_cost,
+                estimated_flying_move_cost=flying_route_cost,
+                requires_flight=requires_flight,
+                ground_loot_keywords=keywords,
+                is_coin_stash=True,
+                autonomy_rejections=tuple(dict.fromkeys(rejections)),
+            )
+        )
+
+    status_order = {"promising": 0, "caution": 1, "reject": 2}
+    return sorted(
+        ranked,
+        key=lambda candidate: (
+            status_order[candidate.status],
+            -candidate.score,
+            candidate.area_file,
+            candidate.room_vnum,
+        ),
     )
 
 
@@ -1279,10 +1686,13 @@ def source_mobile_search_rooms(
 ) -> tuple[int, ...]:
     """Return rooms a source mobile can occupy from its reset locations.
 
-    DD4's ``update.c`` chooses a random open exit for every non-sentinel
-    mobile.  ``ACT_STAY_AREA`` limits that movement to the mobile's area; it
-    does not make the reset room a fixed location.  This graph is therefore
-    the source-backed search boundary for live target discovery.
+    DD4's ``update.c`` chooses a random open exit for ordinary non-sentinel
+    mobiles.  ``ACT_STAY_AREA`` limits that movement to the mobile's area; it
+    does not make the reset room a fixed location.  ``ACT_DIE_IF_MASTER_GONE``
+    makes a reset mobile effectively fixed until a master is present, while
+    ``AFF_CONFUSION`` uses a separate movement path that overrides sentinel,
+    stay-area, and no-mob restrictions.  This graph is therefore the
+    source-backed search boundary for live target discovery.
     """
     mobile = world.mobiles.get(mobile_vnum)
     if mobile is None:
@@ -1297,7 +1707,7 @@ def source_mobile_search_rooms(
             }
         )
     )
-    if mobile.sentinel:
+    if not mobile.wanders:
         return reset_rooms
     if not reset_rooms:
         return ()
@@ -1326,11 +1736,16 @@ def source_mobile_search_rooms(
                 destination is None
                 or destination.vnum in distances
                 or destination.vnum in blocked_rooms
+                # update.c checks EX_CLOSED, not EX_LOCKED, for wandering
+                # mobiles. An open-but-locked exit is therefore reachable.
                 or exit_source.closed
-                or exit_source.locked
-                or destination.no_mob
                 or (
-                    mobile.stay_area
+                    not mobile.confused
+                    and destination.no_mob
+                )
+                or (
+                    not mobile.confused
+                    and mobile.stay_area
                     and destination.area_file not in origin_areas
                 )
             ):
@@ -1379,11 +1794,15 @@ def _wanderer_reachable_rooms(
             if (
                 destination is None
                 or destination.vnum in visited
+                # Keep this condition identical to update.c's wander check.
                 or exit_source.closed
-                or exit_source.locked
-                or destination.no_mob
                 or (
-                    mobile.stay_area
+                    not mobile.confused
+                    and destination.no_mob
+                )
+                or (
+                    not mobile.confused
+                    and mobile.stay_area
                     and destination.area_file != origin_room.area_file
                 )
             ):
@@ -1445,3 +1864,229 @@ def _normalize_name(value: str) -> str:
     while words and words[0] in {"a", "an", "the"}:
         words.pop(0)
     return " ".join(words)
+
+
+def _source_mobile_identity(
+    room_description: str,
+    short_description: str,
+    keywords: str = "",
+) -> str:
+    """Return a source identity when a generic short name has collisions.
+
+    DD4 can give several prototypes the same short description (for example,
+    male and female centaurs are both ``a centaur``).  Their room lines and
+    source keywords still identify the prototype that a TARGETMODE selector
+    represents.  Use that phrase only when it appears in the source room
+    line, preserving the existing short-name identity for ordinary mobiles.
+    """
+    short_identity = _normalize_name(short_description)
+    keyword_identity = _normalize_name(keywords)
+    room_text = _normalize_name(room_description)
+    if (
+        keyword_identity
+        and keyword_identity != short_identity
+        and len(keyword_identity.split()) > len(short_identity.split())
+        and keyword_identity in room_text
+    ):
+        return keyword_identity
+    return short_identity or keyword_identity
+
+
+_SOURCE_MOBILE_VERBS = (
+    r"(?:is|are|sits?|circles?|stands?|waits?|prepares?|paces?|runs?|"
+    r"greets?|growls?|prowls?|hisses?|snarls?|slithers?|cowers?|lies?|looks?|"
+    r"watches?|spits?|barks?|glares?|grunts?|screams?|cries?|crawls?|"
+    r"lunges?|shuffles?|crouches?|yells?|cringes?|tries?|makes?|"
+    r"mumbles?|mutters?|poses?|monitors?)"
+)
+_SOURCE_MOBILE_DISPLAY_PATTERNS = (
+    re.compile(
+        r"(?:^|\n)\s*(?:\([^)]*\)\s*)*"
+        r"(?P<target>[A-Z][A-Za-z'-]*"
+        r"(?:\s+[A-Z][A-Za-z'-]*){0,2}),\s+"
+        r"(?:the\s+)?[A-Z][A-Za-z' -]{1,60},\s+"
+        rf"(?:[A-Za-z]+ly\s+)?{_SOURCE_MOBILE_VERBS}\b",
+    ),
+    re.compile(
+        r"(?:^|\n)\s*(?:\([^)]*\)\s*)*(?:A|An|The|This)\s+"
+        r"(?P<target>[A-Za-z][A-Za-z'-]*"
+        r"(?:\s+[A-Za-z][A-Za-z'-]*){0,3}?)\s+"
+        rf"(?:[A-Za-z]+ly\s+)?{_SOURCE_MOBILE_VERBS}\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:^|\n)\s*(?:\([^)]*\)\s*)*"
+        r"(?!(?:A|An|The|This)\s)"
+        r"(?P<target>[A-Z][A-Za-z'-]*"
+        r"(?:\s+[A-Za-z][A-Za-z'-]*){0,3}?)\s+"
+        rf"(?:[A-Za-z]+ly\s+)?{_SOURCE_MOBILE_VERBS}\b",
+    ),
+)
+_SOURCE_MOBILE_IGNORED_WORDS = {
+    "autoloot",
+    "board",
+    "chairs",
+    "ceiling",
+    "cleric",
+    "corpse",
+    "door",
+    "floor",
+    "gate",
+    "heart",
+    "imp",
+    "it",
+    "officer",
+    "place",
+    "portal",
+    "recruit",
+    "recruits",
+    "room",
+    "soldier",
+    "soldiers",
+    "staircase",
+    "there",
+    "tunnel",
+    "wall",
+    "yard",
+    "you",
+    "your",
+}
+
+
+def _source_display_targets(text: str) -> tuple[str, ...]:
+    """Extract canonical mobile identities from source room descriptions."""
+    targets: Counter[str] = Counter()
+    for pattern in _SOURCE_MOBILE_DISPLAY_PATTERNS:
+        for match in pattern.finditer(text):
+            target = " ".join(match.group("target").casefold().split())
+            line_end = text.find("\n", match.end())
+            if line_end < 0:
+                line_end = len(text)
+            activity = text[match.start():line_end].casefold()
+            if target == "goblin" and "looting the dead" in activity:
+                target = "goblin looter"
+            words = set(target.replace("'s", "").split())
+            if (
+                words.isdisjoint(_SOURCE_MOBILE_IGNORED_WORDS)
+                and not target.startswith("imp ")
+            ):
+                targets[target] += 1
+    return tuple(targets)
+
+
+def _source_targets_match(observed: str, requested: str) -> bool:
+    """Match source display parsing's short-name equivalence rules."""
+    observed_words = observed.split()
+    requested_words = requested.split()
+    proper_name_prefix = (
+        len(observed_words) == 1
+        and len(requested_words) > 1
+        and observed_words[0][:1].isupper()
+        and observed_words[0].casefold() == requested_words[0].casefold()
+    ) or (
+        len(requested_words) == 1
+        and len(observed_words) > 1
+        and requested_words[0][:1].isupper()
+        and requested_words[0].casefold() == observed_words[0].casefold()
+    )
+    return (
+        observed.casefold() == requested.casefold()
+        or observed.rsplit(maxsplit=1)[-1].casefold()
+        == requested.rsplit(maxsplit=1)[-1].casefold()
+        or proper_name_prefix
+    )
+
+
+def source_mobile_identities(
+    room_description: str,
+    short_description: str,
+    keywords: str = "",
+) -> tuple[str, ...]:
+    """Return the identities used by live room parsing and TARGETMODE.
+
+    Source room descriptions are more precise than a prototype short name in
+    cases such as ``Secretary`` versus ``The Sergeant at Arm's Secretary``.
+    Keep candidate ranking, registered routes, and live room recognition on
+    the same source-derived identity.
+    """
+    parsed = _source_display_targets(room_description)
+    normalized_short = _normalize_name(short_description)
+    normalized_keywords = _normalize_name(keywords)
+    source_identity = _source_mobile_identity(
+        room_description,
+        short_description,
+        keywords,
+    )
+    if source_identity and source_identity != normalized_short:
+        return (source_identity,)
+    short_tokens = normalized_short.split()
+    keyword_tokens = normalized_keywords.split()
+    keyword_in_short = bool(
+        keyword_tokens
+        and any(
+            short_tokens[index : index + len(keyword_tokens)] == keyword_tokens
+            for index in range(len(short_tokens) - len(keyword_tokens) + 1)
+        )
+    )
+    display_words = short_description.split()
+    if display_words and display_words[0].casefold() in {"a", "an", "the"}:
+        display_words = display_words[1:]
+    has_explicit_name = bool(
+        display_words
+        and display_words[0][:1].isupper()
+    )
+    has_title_case_tail = any(
+        word[:1].isupper() for word in display_words[1:]
+    )
+    has_proper_name_shape = len(display_words) == 1 or has_title_case_tail
+    if has_explicit_name and has_proper_name_shape and not any(
+        _source_targets_match(normalized_short, target) for target in parsed
+    ):
+        return (normalized_short,)
+    if keyword_in_short and (len(keyword_tokens) > 1 or has_explicit_name):
+        return (normalized_keywords,)
+    return parsed or (normalized_short or normalized_keywords,)
+
+
+def _source_keyword_counts(world: WorldSource) -> dict[str, int]:
+    """Count each distinct source keyword once per mobile prototype."""
+    keyword_counts: dict[str, int] = {}
+    for other in world.mobiles.values():
+        other_tokens = {
+            token.casefold()
+            for token in re.findall(r"[A-Za-z0-9]+", other.keywords)
+        }
+        for token in other_tokens:
+            keyword_counts[token] = keyword_counts.get(token, 0) + 1
+    return keyword_counts
+
+
+def _least_ambiguous_source_keyword(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    keyword_counts: Mapping[str, int] | None = None,
+) -> str:
+    """Choose a source keyword that minimizes live ``where`` collisions."""
+    tokens = tuple(
+        dict.fromkeys(
+            token.casefold()
+            for token in re.findall(r"[A-Za-z0-9]+", mobile.keywords)
+            if token.casefold() not in {"a", "an", "the"}
+        )
+    )
+    if not tokens:
+        fallback = mobile.keywords.split()
+        return fallback[0].casefold() if fallback else mobile.short_description.casefold()
+
+    if keyword_counts is None:
+        keyword_counts = _source_keyword_counts(world)
+
+    return min(
+        tokens,
+        key=lambda token: (
+            keyword_counts.get(token, 0),
+            -len(token),
+            tokens.index(token),
+        ),
+    )

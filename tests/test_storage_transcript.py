@@ -88,6 +88,137 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert run_sales[0]["id"] == sale_id
 
 
+def test_storage_replays_missing_transcript_suffix_idempotently(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    storage = RunStorage(database, event_commit_interval=100)
+    run_id = storage.create_run(
+        scenario_name="fastwalk:Kestrel",
+        scenario_path=Path("character.yaml"),
+    )
+    recorder = TranscriptRecorder.create(
+        tmp_path / "transcripts",
+        scenario_name="fastwalk",
+        run_id=run_id,
+    )
+    storage.set_transcript_path(run_id, recorder.path)
+
+    first = recorder.record("command", {"command": "look"})
+    storage.record_event(
+        run_id,
+        kind=first.kind,
+        payload=first.payload,
+        timestamp=first.timestamp,
+    )
+    game_event = recorder.record(
+        "game_event",
+        {
+            "type": "room_entered",
+            "source": "text",
+            "data": {"room_vnum": "3054"},
+        },
+    )
+    recorder.record(
+        "state_snapshot",
+        {
+            "reason": "room_entered",
+            "source": "text",
+            "state": {"name": "Kestrel", "level": 19, "room_vnum": "3054"},
+        },
+    )
+
+    imported = storage.repair_run_events_from_transcript(run_id)
+    assert imported == 2
+    assert storage.repair_run_events_from_transcript(run_id) == 0
+    assert len(storage.list_events(run_id)) == 3
+    snapshot = storage.get_latest_state_snapshot(run_id)
+    recorder.close()
+    storage.close()
+
+    assert snapshot is not None
+    assert snapshot["source_event_id"] == 2
+    assert json.loads(snapshot["state_json"])["room_vnum"] == "3054"
+
+
+def test_storage_binds_unique_interrupted_campaign_run(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="Kestrel to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="source-ranked-hunt",
+        start_state={"name": "Kestrel", "level": 19},
+    )
+    run_id = storage.create_run(
+        scenario_name="fastwalk-source-ranked-hunt:Kestrel",
+        scenario_path=tmp_path / "character.yaml",
+    )
+
+    assert storage.bind_unlinked_campaign_runs() == 1
+    segment = storage.list_campaign_segments(campaign_id)[0]
+    storage.close()
+
+    assert segment["id"] == segment_id
+    assert segment["run_id"] == run_id
+
+
+def test_storage_filters_campaign_game_events_by_level_and_skill(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="campaign",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="training",
+        start_state={"level": 19},
+    )
+    run_id = storage.create_run(
+        scenario_name="starter:Kestrel",
+        scenario_path=tmp_path / "character.yaml",
+    )
+    storage.connection.execute(
+        "UPDATE campaign_segments SET run_id = ? WHERE id = ?",
+        (run_id, segment_id),
+    )
+    storage.connection.commit()
+    storage.record_event(
+        run_id,
+        kind="game_event",
+        payload={
+            "type": "training_completed",
+            "data": {"practice_type": "physical", "skill": "counterbalance"},
+        },
+    )
+    storage.record_event(
+        run_id,
+        kind="game_event",
+        payload={
+            "type": "training_rejected",
+            "data": {"skill": "backstab", "reason": "trainer level requirement"},
+        },
+    )
+    storage.finish_run(run_id, status="success")
+
+    events = storage.list_campaign_game_events(campaign_id, level=19)
+    counterbalance = storage.list_campaign_game_events(
+        campaign_id,
+        skill="COUNTERBALANCE",
+    )
+
+    assert len(events) == 2
+    assert len(counterbalance) == 1
+    assert json.loads(counterbalance[0]["payload_json"])["type"] == (
+        "training_completed"
+    )
+    storage.close()
+
+
 def test_character_snapshot_lookups_are_indexed_and_case_insensitive(tmp_path) -> None:
     database = tmp_path / "runs.sqlite3"
     storage = RunStorage(database)
@@ -161,6 +292,42 @@ def test_storage_marks_interrupted_runs_as_failed(tmp_path) -> None:
     assert run is not None
     assert run["status"] == "failed"
     assert run["error"] == "test interruption"
+
+
+def test_storage_timeout_closes_unbound_campaign_run(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="Kestrel to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="shadow-keep-hunt",
+        start_state={"name": "Kestrel", "level": 19},
+    )
+    run_id = storage.create_run(
+        scenario_name="fastwalk-shadow-keep:Kestrel",
+        scenario_path=tmp_path / "character.yaml",
+    )
+
+    closed_segments = storage.fail_campaign_after_timeout(
+        campaign_id,
+        reason="bounded runner timeout",
+        character_name="Kestrel",
+    )
+    run = storage.get_run(run_id)
+    segment = storage.list_campaign_segments(campaign_id)[0]
+    storage.close()
+
+    assert closed_segments == 1
+    assert run is not None
+    assert run["status"] == "failed"
+    assert run["error"] == "bounded runner timeout"
+    assert segment["id"] == segment_id
+    assert segment["run_id"] == run_id
+    assert segment["status"] == "failed"
 
 
 def test_storage_remembers_exact_commands_for_each_character(tmp_path) -> None:

@@ -3,20 +3,287 @@ from pathlib import Path
 
 from dd4tester.fastwalks import route_named
 from dd4tester.hunt_candidates import (
+    ACT_AGGRESSIVE,
+    ACT_DIE_IF_MASTER_GONE,
+    AFF_CONFUSION,
+    ITEM_MONEY,
     ExitSource,
     MobileSource,
     MobReset,
     ObjectSource,
     RoomSource,
+    RoomObjectReset,
     WorldSource,
+    money_value,
     _route_preflight_metadata,
     load_object_sources,
+    load_world_source,
     parse_area_file,
     rank_hunt_candidates,
+    rank_coin_stashes,
+    _source_mobile_identity,
+    source_mobile_identities,
+    source_mobile_search_rooms,
+    source_route_movement_cost,
+    source_route_requires_flight,
 )
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "hunt_area.are"
+
+
+def test_source_route_movement_cost_follows_core_terrain_and_flight_rules() -> None:
+    world = WorldSource(
+        rooms={
+            1: RoomSource(1, "inside", "test.are", sector_type=0),
+            2: RoomSource(2, "forest", "test.are", sector_type=3),
+            3: RoomSource(3, "swamp", "test.are", sector_type=9),
+        }
+    )
+
+    assert source_route_movement_cost(world, (1, 2, 3)) == 17
+    assert source_route_movement_cost(world, (1, 2, 3), flying=True) == 5
+
+
+def test_source_route_requires_flight_uses_destination_sector_not_direction() -> None:
+    world = WorldSource(
+        rooms={
+            1: RoomSource(
+                1,
+                "origin",
+                "test.are",
+                exits={"north": ExitSource("north", 2, 0, -1)},
+            ),
+            2: RoomSource(2, "air room", "test.are", sector_type=9),
+        }
+    )
+
+    assert source_route_requires_flight(world, (1, 2)) is True
+
+
+def test_source_route_requires_flight_detects_water_capability_gate() -> None:
+    world = WorldSource(
+        rooms={
+            1: RoomSource(
+                1,
+                "shore",
+                "test.are",
+                exits={"east": ExitSource("east", 2, 0, -1)},
+            ),
+            2: RoomSource(2, "swimming water", "test.are", sector_type=6),
+        }
+    )
+
+    assert source_route_requires_flight(world, (1, 2)) is True
+
+
+def test_source_route_requires_flight_detects_ex_wall_exit() -> None:
+    world = WorldSource(
+        rooms={
+            1: RoomSource(
+                1,
+                "origin",
+                "test.are",
+                exits={"east": ExitSource("east", 2, 128, -1)},
+            ),
+            2: RoomSource(2, "walled room", "test.are"),
+        }
+    )
+
+    assert source_route_requires_flight(world, (1, 2)) is True
+
+
+def test_candidate_uses_least_ambiguous_source_keyword() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "druid Aruncus",
+                "Aruncus the Druid",
+                3,
+                1 << 1,
+                0,
+                "ambush.are",
+            ),
+            101: MobileSource(
+                101,
+                "druid hedge",
+                "a hedge druid",
+                3,
+                1 << 1,
+                0,
+                "ambush.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "ambush.are",
+                exits={"east": ExitSource("east", 3002, 0, -1)},
+            ),
+            3002: RoomSource(3002, "Field", "ambush.are"),
+        },
+        mob_resets=[MobReset(100, 3002, 1, ())],
+    )
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=5,
+        include_xp_only=True,
+    )
+
+    assert candidates[0].target_keyword == "aruncus"
+
+
+def test_source_identity_distinguishes_same_short_name_mobile_prototypes() -> None:
+    area_directory = Path("runs/dd4-source/server/area")
+    world = load_world_source(area_directory, include_all_areas=True)
+
+    male = world.mobiles[1710]
+    female = world.mobiles[1711]
+    assert _source_mobile_identity(
+        male.room_description,
+        male.short_description,
+        male.keywords,
+    ) == "male centaur"
+    assert _source_mobile_identity(
+        female.room_description,
+        female.short_description,
+        female.keywords,
+    ) == "female centaur"
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=19,
+        include_below_band=True,
+        include_all_areas=True,
+    )
+    male_candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate.mobile_vnum == 1710 and candidate.room_vnum == 1704
+    )
+    assert male_candidate.target == "a centaur"
+    assert male_candidate.target_identity == "male centaur"
+
+
+def test_ranked_identity_matches_source_room_line_for_composite_keyword_mobile() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    secretary = world.mobiles[10249]
+
+    assert source_mobile_identities(
+        secretary.room_description,
+        secretary.short_description,
+        secretary.keywords,
+    ) == ("sergeant at arm's secretary",)
+
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=19,
+            include_xp_only=True,
+            include_all_areas=True,
+        )
+        if candidate.mobile_vnum == 10249 and candidate.room_vnum == 10273
+    )
+    assert candidate.target_identity == "sergeant at arm's secretary"
+
+
+def test_wander_search_follows_open_locked_exits_but_not_closed_locked_doors() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "wanderer",
+                "a wandering target",
+                5,
+                0,
+                0,
+                "test.are",
+            )
+        },
+        rooms={
+            1: RoomSource(
+                1,
+                "Origin",
+                "test.are",
+                exits={
+                    "east": ExitSource("east", 2, 4, -1),
+                },
+            ),
+            2: RoomSource(
+                2,
+                "Open Locked Room",
+                "test.are",
+                exits={
+                    "west": ExitSource("west", 1, 4, -1),
+                    "east": ExitSource("east", 3, 6, -1),
+                },
+            ),
+            3: RoomSource(
+                3,
+                "Closed Locked Room",
+                "test.are",
+            ),
+        },
+        mob_resets=[MobReset(100, 1, 1, ())],
+    )
+
+    assert source_mobile_search_rooms(world, 100) == (1, 2)
+
+
+def test_source_search_models_master_bound_and_confused_mobiles() -> None:
+    rooms = {
+        1: RoomSource(
+            1,
+            "Origin",
+            "first.are",
+            exits={"east": ExitSource("east", 2, 0, -1)},
+        ),
+        2: RoomSource(
+            2,
+            "Confused destination",
+            "second.are",
+            room_flags=1 << 2,
+        ),
+    }
+    resets = [
+        MobReset(100, 1, 1, ()),
+        MobReset(101, 1, 1, ()),
+    ]
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "pet",
+                "a master-bound pet",
+                5,
+                ACT_DIE_IF_MASTER_GONE,
+                0,
+                "first.are",
+            ),
+            101: MobileSource(
+                101,
+                "confused",
+                "a confused sentinel",
+                5,
+                (1 << 1) | (1 << 6),
+                0,
+                "first.are",
+                affected_flags=AFF_CONFUSION,
+            ),
+        },
+        rooms=rooms,
+        mob_resets=resets,
+    )
+
+    assert source_mobile_search_rooms(world, 100) == (1,)
+    assert source_mobile_search_rooms(world, 101) == (1, 2)
 
 
 def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
@@ -39,6 +306,187 @@ def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
         1,
         4,
     )
+
+
+def test_money_value_converts_all_coin_denominations() -> None:
+    assert money_value((50, 45, 6, 0)) == 1_100
+
+
+def test_area_parser_records_direct_coin_stash_resets(tmp_path: Path) -> None:
+    area_file = tmp_path / "stash.are"
+    area_file.write_text(
+        """#OBJECTS
+#100
+coins~
+a pile of coins~
+A pile of coins is here.~
+~
+20 0 1
+50~ 45~ 6~ 0~
+1 0 0
+#0
+#ROOMS
+#3001
+Recall~
+The recall room.~
+0 0 0
+D0
+~
+~
+0 -1 3002
+S
+#3002
+Treasury~
+The treasury.~
+0 8 0
+S
+#0
+#RESETS
+O 1 100 10 3002
+S
+""",
+        encoding="latin-1",
+    )
+
+    area = parse_area_file(area_file)
+
+    assert area.room_object_resets == [RoomObjectReset(100, 3002, 1)]
+
+
+def test_rank_coin_stashes_promotes_direct_ground_money() -> None:
+    world = WorldSource(
+        objects={
+            100: ObjectSource(
+                100,
+                "coins",
+                "a pile of coins",
+                ITEM_MONEY,
+                (50, 45, 6, 0),
+                0,
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 3002, 0, -1)},
+            ),
+            3002: RoomSource(3002, "Treasury", "gnome.are"),
+        },
+        room_object_resets=[RoomObjectReset(100, 3002)],
+    )
+
+    candidates = rank_coin_stashes(
+        world,
+        character_level=19,
+        include_all_areas=True,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].is_coin_stash is True
+    assert candidates[0].contained_coins == 1_100
+    assert candidates[0].ground_loot_keywords == ("coins",)
+
+
+def test_rank_coin_stashes_rejects_a_reachable_aggressive_wanderer() -> None:
+    world = WorldSource(
+        mobiles={
+            200: MobileSource(
+                200,
+                "grass carnivorous",
+                "the carnivorous grass",
+                16,
+                ACT_AGGRESSIVE,
+                0,
+                "plains.are",
+                room_description="A tall clump of grass growls at you and attacks!?",
+            )
+        },
+        objects={
+            100: ObjectSource(
+                100,
+                "coins",
+                "a pile of coins",
+                ITEM_MONEY,
+                (50, 45, 6, 0),
+                0,
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 3002, 0, -1)},
+            ),
+            3002: RoomSource(
+                3002,
+                "Treasury",
+                "gnome.are",
+                exits={"east": ExitSource("east", 3003, 0, -1)},
+            ),
+            3003: RoomSource(
+                3003,
+                "Grass reset",
+                "plains.are",
+                exits={"west": ExitSource("west", 3002, 0, -1)},
+            ),
+        },
+        mob_resets=[MobReset(200, 3003, 1, ())],
+        room_object_resets=[RoomObjectReset(100, 3002)],
+    )
+
+    candidates = rank_coin_stashes(
+        world,
+        character_level=20,
+        include_all_areas=True,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].status == "reject"
+    assert "reachable wanderer: the carnivorous grass L16" in candidates[0].hazards
+    assert "an aggressive wanderer inside the useful XP band can reach the route" in (
+        candidates[0].autonomy_rejections
+    )
+
+
+def test_candidate_ranking_values_mixed_denominations_on_mobile_loot() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "treasurer",
+                "a treasurer",
+                5,
+                0,
+                0,
+                "gnome.are",
+            )
+        },
+        objects={
+            200: ObjectSource(
+                200,
+                "coins",
+                "a pile of coins",
+                ITEM_MONEY,
+                (50, 45, 6, 0),
+                0,
+            )
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            3002: RoomSource(3002, "Treasury", "gnome.are"),
+        },
+        mob_resets=[MobReset(100, 3002, 1, (200,))],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 3002, 0, -1)
+
+    candidates = rank_hunt_candidates(world, character_level=10)
+
+    assert len(candidates) == 1
+    assert candidates[0].target == "a treasurer"
+    assert candidates[0].contained_coins == 1_100
 
 
 def test_object_levels_follow_school_and_daycare_mobile_resets(
@@ -337,6 +785,145 @@ def test_candidate_ranking_can_expand_beyond_conservative_area_set(monkeypatch) 
         "a starter rat",
         "a later ogre",
     }
+
+
+def test_candidate_ranking_can_include_explicit_safe_level_ceiling_probe() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "frontier target",
+                "a frontier target",
+                6,
+                0,
+                0,
+                "frontier.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Frontier room", "frontier.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+
+    ordinary = rank_hunt_candidates(
+        world,
+        character_level=5,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+    probe = rank_hunt_candidates(
+        world,
+        character_level=5,
+        include_xp_only=True,
+        character_max_hp=100,
+        include_level_ceiling_candidates=True,
+        include_all_areas=True,
+    )
+
+    assert ordinary == []
+    assert len(probe) == 1
+    assert probe[0].estimated_level_range == (4, 8)
+    assert probe[0].estimated_peak_round_damage < 100
+
+
+def test_candidate_ranking_marks_source_shopkeepers_as_non_xp_targets() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "trader",
+                "a trader",
+                6,
+                0,
+                0,
+                "frontier.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Frontier room", "frontier.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+        shopkeepers={100},
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=6,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+
+    assert candidate.status == "reject"
+    assert candidate.autonomous_safe is False
+    assert "source mobile is a shopkeeper" in candidate.autonomy_rejections
+
+
+def test_source_mobile_coin_carrier_is_ranked_for_funding() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=19,
+            include_below_band=True,
+            include_all_areas=True,
+        )
+        if candidate.mobile_vnum == 18007 and candidate.room_vnum == 18042
+    )
+
+    assert candidate.contained_coins == 20_000
+    assert candidate.is_coin_stash is False
+    assert "target has special procedure spec_breath_any" in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_source_mobile_kill_caps_are_scoped_by_mobile_vnum() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=19,
+        boot_kill_counts={"Secretary": 12},
+        boot_kill_counts_by_mobile_vnum={10249: 12},
+        include_xp_only=True,
+        include_level_ceiling_candidates=True,
+        character_max_hp=264,
+        include_all_areas=True,
+    )
+
+    untouched = next(
+        candidate
+        for candidate in candidates
+        if candidate.mobile_vnum == 10248 and candidate.room_vnum == 10295
+    )
+    exhausted = next(
+        candidate
+        for candidate in candidates
+        if candidate.mobile_vnum == 10249 and candidate.room_vnum == 10273
+    )
+
+    assert untouched.boot_kills == 0
+    assert exhausted.boot_kills == 12
 
 
 def test_route_preflight_metadata_softens_only_below_band_source_hazards() -> None:
@@ -657,12 +1244,53 @@ def test_candidate_rejects_special_procedure_room_companion(monkeypatch) -> None
 
     candidate = rank_hunt_candidates(
         world,
-        character_level=10,
+        character_level=7,
         include_xp_only=True,
     )[0]
 
     assert not candidate.autonomous_safe
     assert "target room has a dangerous reset companion" in candidate.autonomy_rejections
+
+
+def test_candidate_allows_source_below_band_special_room_companion(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 8, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "bystander",
+                "a poisonous bystander",
+                3,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, ()),
+            MobReset(200, 7001, 1, ()),
+        ],
+        mobile_specials={200: ("spec_poison",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+    )[0]
+
+    assert candidate.autonomous_safe
+    assert "source-backed trivial companion: a poisonous bystander" in candidate.hazards
+    assert "target room has a dangerous reset companion" not in candidate.autonomy_rejections
 
 
 def test_candidate_ranking_can_include_targets_without_known_loot(monkeypatch) -> None:
@@ -784,6 +1412,43 @@ def test_positive_alignment_npc_remains_an_autonomous_candidate() -> None:
     assert candidate.status == "caution"
     assert "positive alignment target (100)" in candidate.hazards
     assert "target has positive alignment" not in candidate.autonomy_rejections
+
+
+def test_high_positive_alignment_npc_is_ranked_cautiously_not_rejected() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "lawful target",
+                "a lawful target",
+                18,
+                0,
+                1000,
+                "target.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Target room", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=19,
+        include_xp_only=True,
+        include_all_areas=True,
+    )[0]
+
+    assert candidate.autonomous_safe
+    assert candidate.status == "caution"
+    assert "positive alignment target (1000)" in candidate.hazards
 
 
 def test_autonomous_filter_uses_route_aggressor_fuzzed_maximum(monkeypatch) -> None:

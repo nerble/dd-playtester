@@ -5,11 +5,15 @@ import json
 import os
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterator
 
-from .campaign import CampaignResult, run_campaign_file
+from .campaign import (
+    DEFAULT_RESET_WAIT_SECONDS,
+    CampaignResult,
+    run_campaign_file,
+)
 from .character import (
     CLASSES,
     GENDERS,
@@ -144,17 +148,31 @@ def prepare_hero_request(
     resumed = manifest_path.exists()
     if resumed:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest.get("request") != request_mapping:
+        stored_request = manifest.get("request")
+        if not _resume_request_matches(stored_request, request_mapping):
             raise ValueError(
                 f"hero workspace {directory} belongs to a different request"
             )
+        resumed_request = replace(
+            canonical_request,
+            subclass=(
+                canonical_request.subclass
+                if canonical_request.subclass is not None
+                else stored_request.get("subclass")
+            ),
+            personality=(
+                canonical_request.personality
+                if canonical_request.personality is not None
+                else stored_request.get("personality")
+            ),
+        )
         if not profile_path.is_file() or not campaign_path.is_file():
             raise ValueError(f"hero workspace is incomplete: {directory}")
         _update_campaign_target(campaign_path, target_level)
         character = load_character_spec(profile_path)
-        _initialize_mudlet_bridge(canonical_request)
+        _initialize_mudlet_bridge(resumed_request)
         return HeroPreparation(
-            canonical_request,
+            resumed_request,
             character,
             directory,
             manifest_path,
@@ -253,6 +271,54 @@ def validate_runtime_catalog(catalog: CharacterCatalog) -> None:
         raise ValueError(f"runtime character catalog drift: {detail}")
 
 
+def load_existing_hero_request(
+    name: str,
+    *,
+    workspace: Path = DEFAULT_HERO_WORKSPACE,
+) -> HeroRequest:
+    """Load the non-secret request identity for an existing hero workspace."""
+    clean_name = name.strip()
+    if not clean_name:
+        raise ValueError("an existing hero name is required")
+    manifest_path = (workspace / clean_name.casefold() / "hero.json").resolve()
+    if not manifest_path.is_file():
+        raise ValueError(
+            f"no stored hero workspace exists for {clean_name!r}; provide "
+            "--race and --class to create it"
+        )
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"could not read hero manifest {manifest_path}") from exc
+    stored = manifest.get("request")
+    if not isinstance(stored, dict):
+        raise ValueError(f"hero manifest has no valid request: {manifest_path}")
+    required = ("name", "race", "sex", "class")
+    if any(not str(stored.get(key, "")).strip() for key in required):
+        raise ValueError(f"hero manifest request is incomplete: {manifest_path}")
+    mudlet_directory = stored.get("mudlet_directory")
+    return HeroRequest(
+        name=str(stored["name"]),
+        race=str(stored["race"]),
+        sex=str(stored["sex"]),
+        character_class=str(stored["class"]),
+        subclass=(
+            str(stored["subclass"])
+            if stored.get("subclass") is not None
+            else None
+        ),
+        personality=(
+            str(stored["personality"])
+            if stored.get("personality") is not None
+            else None
+        ),
+        transport=str(stored.get("transport", "telnet")),
+        mudlet_directory=Path(str(mudlet_directory))
+        if mudlet_directory
+        else None,
+    )
+
+
 async def run_hero_request(
     request: HeroRequest,
     *,
@@ -261,7 +327,7 @@ async def run_hero_request(
     force_new: bool = False,
     segments: int = 10000,
     reset_retries: int | None = None,
-    reset_wait: float = 300.0,
+    reset_wait: float = DEFAULT_RESET_WAIT_SECONDS,
     max_segment_runtime: float | None = None,
     target_level: int = 100,
     password: str | None = None,
@@ -371,6 +437,26 @@ def _request_mapping(request: HeroRequest) -> dict[str, Any]:
         mapping["transport"] = request.transport
         mapping["mudlet_directory"] = str(request.mudlet_directory)
     return mapping
+
+
+def _resume_request_matches(
+    stored: object,
+    requested: dict[str, Any],
+) -> bool:
+    """Match an existing workspace while inheriting omitted optional fields."""
+    if not isinstance(stored, dict):
+        return False
+    for key in ("name", "race", "sex", "class"):
+        if stored.get(key) != requested.get(key):
+            return False
+    for key in ("subclass", "personality"):
+        requested_value = requested.get(key)
+        if requested_value is not None and stored.get(key) != requested_value:
+            return False
+    for key in ("transport", "mudlet_directory"):
+        if key in requested and stored.get(key) != requested.get(key):
+            return False
+    return True
 
 
 def _generated_name(

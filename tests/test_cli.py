@@ -164,6 +164,82 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
     assert "command-line-secret" not in captured.out
 
 
+def test_hero_command_infers_existing_identity_for_level_goal(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "heroes"
+    hero_directory = workspace / "valora"
+    hero_directory.mkdir(parents=True)
+    (hero_directory / "hero.json").write_text(
+        json.dumps(
+            {
+                "request": {
+                    "name": "Valora",
+                    "race": "human",
+                    "sex": "female",
+                    "class": "mage",
+                    "subclass": "warlock",
+                    "personality": "patient and dryly funny",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured_request: dict[str, object] = {}
+
+    async def fake_hero(request, **kwargs):
+        captured_request["request"] = request
+        captured_request["options"] = kwargs
+        prepared = type(
+            "Prepared",
+            (),
+            {
+                "character": type(
+                    "Character",
+                    (),
+                    {"name": "Valora", "race": "human", "character_class": "mage"},
+                )(),
+                "manifest_path": hero_directory / "hero.json",
+                "profile_path": hero_directory / "character.yaml",
+                "campaign_path": hero_directory / "campaign.yaml",
+                "resumed": True,
+            },
+        )()
+        return prepared, CampaignResult(8, "ready", 11, "checkpoint", {"level": 15})
+
+    monkeypatch.setattr(dd4tester.cli, "run_hero_request", fake_hero)
+
+    exit_code = main(
+        [
+            "hero",
+            "--name",
+            "Valora",
+            "--password",
+            "command-line-secret",
+            "--target-level",
+            "30",
+            "--workspace",
+            str(workspace),
+        ]
+    )
+
+    assert exit_code == 0
+    request = captured_request["request"]
+    assert request.name == "Valora"
+    assert (request.race, request.sex, request.character_class) == (
+        "human",
+        "female",
+        "mage",
+    )
+    assert request.subclass == "warlock"
+    assert request.personality == "patient and dryly funny"
+    assert captured_request["options"]["target_level"] == 30
+    assert captured_request["options"]["password"] == "command-line-secret"
+    assert "command-line-secret" not in capsys.readouterr().out
+
+
 def test_hero_command_rejects_conflicting_name_and_username(capsys) -> None:
     exit_code = main(
         [
@@ -401,6 +477,22 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
     assert "Campaign 4 blocked" in captured.out
     assert "Checkpoint: 9" in captured.out
     assert "Level: 2" in captured.out
+
+
+def test_campaign_command_uses_short_default_reset_wait(
+    tmp_path, monkeypatch
+) -> None:
+    config = tmp_path / "campaign.yaml"
+    captured_options: dict[str, object] = {}
+
+    async def fake_campaign(path: Path, **kwargs) -> CampaignResult:
+        captured_options.update(kwargs)
+        return CampaignResult(4, "ready", 9, "checkpointed", {"level": 2})
+
+    monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
+
+    assert main(["campaign", str(config)]) == 0
+    assert captured_options["reset_wait"] == 30.0
 
 
 def test_campaign_command_passes_per_segment_runtime_cap(tmp_path, capsys, monkeypatch) -> None:
@@ -1180,6 +1272,7 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert "Current reboot: unknown" in captured.out
     assert "Character max HP: unknown" in captured.out
     assert "fuzzed_levels\tbase_hp\tpeak_round\troom" in captured.out
+    assert "mobility\tsearch_rooms\tsource_level" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
     assert "autonomy_rejections" in captured.out
     assert "reject\t" in captured.out

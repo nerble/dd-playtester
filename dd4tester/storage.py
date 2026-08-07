@@ -8,7 +8,7 @@ from typing import Any
 
 
 class RunStorage:
-    def __init__(self, path: Path, *, event_commit_interval: int = 100) -> None:
+    def __init__(self, path: Path, *, event_commit_interval: int = 25) -> None:
         if event_commit_interval < 1:
             raise ValueError("event_commit_interval must be at least 1")
         self.path = path
@@ -291,6 +291,93 @@ class RunStorage:
         self.connection.commit()
         return int(segments.rowcount), int(campaigns.rowcount)
 
+    def fail_campaign_after_timeout(
+        self,
+        campaign_id: int,
+        *,
+        reason: str,
+        character_name: str | None = None,
+    ) -> int:
+        """Close one campaign's running records after its bounded runner expires."""
+        running_segments = list(
+            self.connection.execute(
+                """
+                SELECT id, run_id, started_at
+                FROM campaign_segments
+                WHERE campaign_id = ? AND status = 'running'
+                ORDER BY id
+                """,
+                (campaign_id,),
+            )
+        )
+        run_ids = {
+            int(row["run_id"])
+            for row in running_segments
+            if row["run_id"] is not None
+        }
+        if character_name and running_segments:
+            character_suffixes = (
+                f":{character_name.casefold()}",
+                f"-{character_name.casefold()}",
+            )
+            segment_started_at = min(
+                str(row["started_at"]) for row in running_segments
+            )
+            for row in self.connection.execute(
+                """
+                SELECT id, scenario_name, started_at
+                FROM runs
+                WHERE status = 'running' AND started_at >= ?
+                """,
+                (segment_started_at,),
+            ):
+                scenario_name = str(row["scenario_name"]).casefold()
+                if scenario_name.endswith(character_suffixes):
+                    run_ids.add(int(row["id"]))
+        timestamp = _now()
+        if run_ids:
+            placeholders = ", ".join("?" for _ in run_ids)
+            self.connection.execute(
+                f"""
+                UPDATE runs
+                SET finished_at = ?, status = 'failed', error = ?
+                WHERE id IN ({placeholders})
+                """,
+                (timestamp, reason, *run_ids),
+            )
+            unbound_segments = [
+                row for row in running_segments if row["run_id"] is None
+            ]
+            if len(run_ids) == 1:
+                run_id = next(iter(run_ids))
+                for segment in unbound_segments:
+                    self.connection.execute(
+                        """
+                        UPDATE campaign_segments
+                        SET run_id = ?
+                        WHERE id = ? AND status = 'running'
+                        """,
+                        (run_id, int(segment["id"])),
+                    )
+        segment_cursor = self.connection.execute(
+            """
+            UPDATE campaign_segments
+            SET finished_at = ?, status = 'failed', error = ?
+            WHERE campaign_id = ? AND status = 'running'
+            """,
+            (timestamp, reason, campaign_id),
+        )
+        self.connection.execute(
+            """
+            UPDATE campaigns
+            SET status = 'failed', error = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (reason, timestamp, campaign_id),
+        )
+        self.connection.commit()
+        return int(segment_cursor.rowcount)
+
     def list_runs(self, *, limit: int = 20) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """
@@ -339,6 +426,211 @@ class RunStorage:
             ORDER BY id
             """,
             (run_id,),
+        )
+        return list(cursor.fetchall())
+
+    def repair_run_events_from_transcript(self, run_id: int) -> int:
+        """Replay a transcript suffix that was not committed before a stop.
+
+        Transcripts flush each JSONL record immediately, while event rows are
+        batched for performance.  A stopped process can therefore leave a
+        durable transcript suffix missing from SQLite.  Only an exact stored
+        prefix is repaired so a malformed or unrelated transcript cannot
+        duplicate or reorder evidence.
+        """
+        run = self.get_run(run_id)
+        if run is None or not run["transcript_path"]:
+            return 0
+        raw_path = Path(str(run["transcript_path"]))
+        candidates = (raw_path, self.path.parent / raw_path, self.path.parent.parent / raw_path)
+        transcript_path = next(
+            (candidate for candidate in candidates if candidate.exists()),
+            None,
+        )
+        if transcript_path is None:
+            return 0
+        transcript_events: list[dict[str, Any]] = []
+        try:
+            lines = transcript_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return 0
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if (
+                not isinstance(event, dict)
+                or int(event.get("run_id", run_id)) != run_id
+                or not isinstance(event.get("kind"), str)
+                or not isinstance(event.get("payload"), dict)
+                or not isinstance(event.get("timestamp"), str)
+            ):
+                continue
+            transcript_events.append(event)
+
+        stored_events = self.list_events(run_id)
+        if len(stored_events) > len(transcript_events):
+            return 0
+        for index, stored in enumerate(stored_events):
+            try:
+                stored_payload = json.loads(stored["payload_json"])
+            except (TypeError, json.JSONDecodeError):
+                return 0
+            transcript = transcript_events[index]
+            if (
+                stored["kind"] != transcript["kind"]
+                or stored["timestamp"] != transcript["timestamp"]
+                or stored_payload != transcript["payload"]
+            ):
+                return 0
+
+        last_game_event_id = next(
+            (
+                int(event["id"])
+                for event in reversed(stored_events)
+                if event["kind"] == "game_event"
+            ),
+            None,
+        )
+        imported = 0
+        for transcript in transcript_events[len(stored_events) :]:
+            event_id = self.record_event(
+                run_id,
+                kind=transcript["kind"],
+                payload=transcript["payload"],
+                timestamp=transcript["timestamp"],
+            )
+            imported += 1
+            if transcript["kind"] == "game_event":
+                last_game_event_id = event_id
+            elif transcript["kind"] == "state_snapshot":
+                payload = transcript["payload"]
+                state = payload.get("state")
+                if isinstance(state, dict):
+                    self.record_state_snapshot(
+                        run_id,
+                        source_event_id=last_game_event_id,
+                        reason=str(payload.get("reason") or "transcript_replay"),
+                        state=state,
+                        timestamp=transcript["timestamp"],
+                    )
+        if imported:
+            self.connection.commit()
+            self._events_since_commit = 0
+        return imported
+
+    def repair_transcript_events(
+        self,
+        *,
+        statuses: tuple[str, ...] = ("running",),
+    ) -> tuple[int, int]:
+        """Replay missing transcript suffixes for selected recorded runs."""
+        if not statuses:
+            return 0, 0
+        repaired_runs = 0
+        repaired_events = 0
+        placeholders = ", ".join("?" for _ in statuses)
+        run_ids = [
+            int(row["id"])
+            for row in self.connection.execute(
+                """
+                SELECT id
+                FROM runs
+                WHERE transcript_path IS NOT NULL
+                  AND status IN (%s)
+                ORDER BY id
+                """ % placeholders,
+                statuses,
+            )
+        ]
+        for run_id in run_ids:
+            imported = self.repair_run_events_from_transcript(run_id)
+            if imported:
+                repaired_runs += 1
+                repaired_events += imported
+        return repaired_runs, repaired_events
+
+    def bind_unlinked_campaign_runs(self) -> int:
+        """Bind a uniquely matching run to an interrupted campaign segment."""
+        segments = list(
+            self.connection.execute(
+                """
+                SELECT id, started_at, finished_at
+                FROM campaign_segments
+                WHERE run_id IS NULL AND status IN ('running', 'failed')
+                ORDER BY id
+                """
+            )
+        )
+        runs = list(
+            self.connection.execute(
+                """
+                SELECT id, started_at
+                FROM runs
+                WHERE status IN ('running', 'failed')
+                ORDER BY id
+                """
+            )
+        )
+        bound = 0
+        for segment in segments:
+            matching_runs = [
+                run
+                for run in runs
+                if str(run["started_at"]) >= str(segment["started_at"])
+                and (
+                    segment["finished_at"] is None
+                    or str(run["started_at"]) <= str(segment["finished_at"])
+                )
+            ]
+            if len(matching_runs) != 1:
+                continue
+            cursor = self.connection.execute(
+                """
+                UPDATE campaign_segments
+                SET run_id = ?
+                WHERE id = ? AND run_id IS NULL
+                """,
+                (int(matching_runs[0]["id"]), int(segment["id"])),
+            )
+            bound += int(cursor.rowcount)
+        if bound:
+            self.connection.commit()
+        return bound
+
+    def list_campaign_game_events(
+        self,
+        campaign_id: int,
+        *,
+        level: int | None = None,
+        skill: str | None = None,
+    ) -> list[sqlite3.Row]:
+        """Return filtered game events for a campaign in one indexed join."""
+        clauses = [
+            "s.campaign_id = ?",
+            "e.kind = 'game_event'",
+        ]
+        parameters: list[Any] = [campaign_id]
+        if level is not None:
+            clauses.append(
+                "CAST(json_extract(s.start_state_json, '$.level') AS INTEGER) = ?"
+            )
+            parameters.append(level)
+        if skill is not None:
+            clauses.append(
+                "lower(json_extract(e.payload_json, '$.data.skill')) = ?"
+            )
+            parameters.append(skill.casefold())
+        cursor = self.connection.execute(
+            f"""
+            SELECT e.id, e.run_id, e.timestamp, e.kind, e.payload_json
+            FROM events AS e
+            JOIN campaign_segments AS s ON s.run_id = e.run_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY e.id
+            """,
+            parameters,
         )
         return list(cursor.fetchall())
 

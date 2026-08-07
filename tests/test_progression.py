@@ -43,6 +43,19 @@ def test_policy_for_honors_a_productive_hunt_handoff() -> None:
     assert policy.execution == "highland-keeper-hunt"
 
 
+def test_required_funding_preempts_a_productive_hunt_handoff() -> None:
+    policy = policy_for(
+        19,
+        "thief",
+        has_food=True,
+        needs_provision_funding=True,
+        handoff_policy_id="highland-keeper-hunt-17-20",
+    )
+
+    assert policy.policy_id == "provision-funding"
+    assert policy.execution == "provision-funding"
+
+
 def test_empty_basic_slots_select_midgaard_outfit_maintenance() -> None:
     policy = policy_for(8, "mage", needs_basic_gear=True)
 
@@ -457,6 +470,115 @@ def test_protection_recovery_flag_applies_to_any_failed_thief_hunt() -> None:
     assert _caster_hunt_requires_sanctuary_replenishment(context) is True
 
 
+def test_generic_protection_recovery_reopens_sanctuary_acquisition() -> None:
+    policy = policy_for(
+        20,
+        "thief",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
+def test_protection_recovery_uses_alternate_probe_during_moria_cooldown() -> None:
+    policy = policy_for(
+        20,
+        "thief",
+        world_boot_id="boot-1",
+        has_flight=True,
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+        research_results={
+            "moria-sanctuary-thief-17-20": {
+                "absent": True,
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+        },
+    )
+
+    assert policy.policy_id == "argent-bandit-leader-probe-19-20"
+    assert policy.execution == "argent-bandit-leader-research"
+
+
+def test_protection_recovery_rotates_after_failed_moria_hunt() -> None:
+    policy = policy_for(
+        20,
+        "thief",
+        world_boot_id="boot-1",
+        has_flight=True,
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+        research_results={
+            "moria-sanctuary-thief-17-20": {
+                "completed_kill": False,
+                "retryable_failure": True,
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+        },
+    )
+
+    assert policy.policy_id == "argent-bandit-leader-probe-19-20"
+    assert policy.execution == "argent-bandit-leader-research"
+
+
+def test_protection_recovery_waits_when_all_sanctuary_routes_are_deferred() -> None:
+    failed = {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+    policy = policy_for(
+        20,
+        "thief",
+        world_boot_id="boot-1",
+        has_flight=True,
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+        last_policy_id="mahntor-rock-toad-thief-circuit-16-18",
+        research_results={
+            "moria-sanctuary-thief-17-20": {
+                "absent": True,
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "argent-bandit-leader-probe-19-20": failed,
+            "argent-bandit-leader-hunt-19-20": failed,
+            "shire-dwarven-prince-thief-probe-17-20": failed,
+            "shire-dwarven-prince-thief-hunt-17-20": failed,
+            "shire-thain-probe-17-20": failed,
+            "shire-thain-hunt-17-20": failed,
+            "moria-deep-sanctuary-thief-hunt-19-20": failed,
+        },
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+        },
+        excluded_policy_ids=frozenset(
+            {
+                "moria-deep-sanctuary-thief-probe-19-20",
+                "mahntor-rock-toad-thief-circuit-16-18",
+            }
+        ),
+    )
+
+    assert policy.executable is False
+    assert "Moria sanctuary" in policy.summary
+
+
 def test_emergency_provision_sale_precedes_field_funding() -> None:
     policy = policy_for(
         18,
@@ -482,6 +604,24 @@ def test_interrupted_mud_school_funding_run_returns_home_first() -> None:
     assert policy.policy_id == "return-home"
     assert policy.execution == "return-home"
     assert policy.executable is True
+
+
+def test_healer_recovery_precedes_thief_sanctuary_wait() -> None:
+    policy = policy_for(
+        20,
+        "thief",
+        world_boot_id="boot-1",
+        needs_return_home=True,
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+        last_policy_id="source-ranked-hunt-mahntor-2301-2314-20",
+        research_absence_cooldowns={
+            "moria-sanctuary-thief-17-20": 3,
+        },
+    )
+
+    assert policy.policy_id == "return-home"
+    assert policy.execution == "return-home"
 
 
 def test_body_slot_recovery_selects_registered_required_loot_policy() -> None:
@@ -1688,6 +1828,22 @@ def test_missing_primary_weapon_selects_rearm_without_actionable_loot() -> None:
         "thief",
         has_sellable_loot=False,
         has_weapon=False,
+    )
+
+    assert policy.policy_id == "rearm-primary-weapon"
+    assert policy.execution == "rearm-weapon"
+
+
+def test_missing_primary_weapon_preempts_unaffordable_flight_funding() -> None:
+    policy = policy_for(
+        19,
+        "thief",
+        has_food=True,
+        has_weapon=False,
+        has_flight=False,
+        can_attempt_flight_purchase=False,
+        flight_funding_retry_pending=True,
+        needs_provision_funding=True,
     )
 
     assert policy.policy_id == "rearm-primary-weapon"
@@ -3850,6 +4006,41 @@ def test_viable_shadow_probe_repromotes_hunt_after_outside_progress() -> None:
     assert policy.execution == "shadow-keep-undead-soldier-hunt"
 
 
+def test_fresh_viable_shadow_probe_overrides_prior_failed_hunt() -> None:
+    policy = policy_for(
+        17,
+        "thief",
+        last_policy_id="shadow-keep-undead-soldier-probe-16-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-hunt-16-20": {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "shadow-keep-undead-soldier-hunt-16-20"
+    assert policy.execution == "shadow-keep-undead-soldier-hunt"
+
+
 def test_level_seventeen_uses_galaxy_probe_after_earlier_targets_reject() -> None:
     policy = policy_for(
         17,
@@ -4097,6 +4288,25 @@ def test_failed_flight_purchase_uses_source_funding_after_loan_is_used() -> None
     assert policy.execution == "provision-funding"
 
 
+def test_saleable_loot_precedes_another_flight_funding_hunt() -> None:
+    policy = policy_for(
+        19,
+        "thief",
+        has_food=True,
+        has_sellable_loot=True,
+        needs_provision_funding=True,
+        has_flight=False,
+        flight_purchase_failed=True,
+        flight_loan_attempted=True,
+        flight_funding_retry_pending=True,
+        last_policy_id="source-ranked-hunt-dwarven-home-20504-20506-19",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
+
+
 def test_completed_flight_funding_allows_loot_liquidation_before_retry() -> None:
     policy = policy_for(
         18,
@@ -4119,6 +4329,7 @@ def test_completed_flight_funding_retries_purchase_after_maintenance() -> None:
         18,
         "thief",
         has_flight=False,
+        can_attempt_flight_purchase=True,
         flight_purchase_failed=True,
         flight_loan_attempted=True,
         flight_funding_retry_pending=True,
@@ -4128,6 +4339,22 @@ def test_completed_flight_funding_retries_purchase_after_maintenance() -> None:
 
     assert policy.policy_id == "buy-flight-potion"
     assert policy.execution == "buy-flight"
+
+
+def test_completed_flight_funding_waits_when_price_is_unaffordable() -> None:
+    policy = policy_for(
+        18,
+        "thief",
+        has_flight=False,
+        can_attempt_flight_purchase=False,
+        flight_purchase_failed=True,
+        flight_loan_attempted=True,
+        flight_funding_retry_pending=True,
+        last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.execution != "buy-flight"
 
 
 def test_pending_flight_purchase_preempts_redundant_funding_when_stocked() -> None:
@@ -4140,6 +4367,38 @@ def test_pending_flight_purchase_preempts_redundant_funding_when_stocked() -> No
         can_attempt_flight_purchase=True,
         flight_funding_retry_pending=True,
         last_policy_id="source-ranked-hunt-dwarven-home-20504-20506-18",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+def test_cash_sufficient_flight_preempts_funding_after_movement_abort() -> None:
+    policy = policy_for(
+        19,
+        "thief",
+        has_food=True,
+        needs_provision_funding=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        last_policy_id="galaxy-white-dwarf-probe-17-20",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+def test_pending_flight_purchase_preempts_rearm_when_cash_is_ready() -> None:
+    policy = policy_for(
+        19,
+        "thief",
+        has_food=True,
+        has_weapon=False,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        flight_funding_retry_pending=True,
         world_boot_id="boot-1",
     )
 
@@ -5973,6 +6232,34 @@ def test_crowded_research_probe_rotates_before_immediate_retry() -> None:
 
     assert policy.policy_id == "shire-thain-probe-17-20"
     assert policy.execution == "shire-thain-research"
+
+
+def test_watchman_probe_and_hunt_share_current_reboot_crowd_cooldown() -> None:
+    policy = policy_for(
+        20,
+        "thief",
+        last_policy_id="mirror-realm-watchman-hunt-19-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-19-20": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-watchman-hunt-19-20": {
+                "observed": True,
+                "viable": False,
+                "crowded": True,
+                "boot_id": "boot-1",
+            },
+        },
+        research_crowd_cooldowns={
+            "mirror-realm-watchman-hunt-19-20": 3,
+        },
+    )
+
+    assert policy.policy_id != "mirror-realm-watchman-probe-16-20"
+    assert policy.policy_id != "mirror-realm-watchman-hunt-16-20"
 
 
 def test_viable_shire_thain_probe_promotes_bounded_hunt() -> None:

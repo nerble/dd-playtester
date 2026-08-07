@@ -1,3 +1,8 @@
+import asyncio
+
+import pytest
+
+from dd4tester.connection import TelnetConnection
 from dd4tester.telnet import (
     DO,
     GMCP,
@@ -8,6 +13,34 @@ from dd4tester.telnet import (
     TelnetNegotiator,
     gmcp_subnegotiation,
 )
+
+
+class _SlowWriter:
+    def __init__(self) -> None:
+        self.written: list[bytes] = []
+
+    def write(self, data: bytes) -> None:
+        self.written.append(data)
+
+    async def drain(self) -> None:
+        await asyncio.sleep(1)
+
+    def close(self) -> None:
+        return None
+
+    async def wait_closed(self) -> None:
+        return None
+
+
+def test_telnet_command_send_has_a_transport_timeout() -> None:
+    connection = TelnetConnection("mud", 8888, timeout=0.01)
+    writer = _SlowWriter()
+    connection.writer = writer
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(connection.send_command("west"))
+
+    assert writer.written == [b"west\n"]
 
 
 def test_telnet_negotiates_gmcp_and_captures_payload() -> None:

@@ -235,6 +235,23 @@ def test_prepare_hero_request_writes_resumable_secret_free_configuration(
     assert resumed.directory == prepared.directory
     assert resumed.character.description == prepared.character.description
 
+    resumed_without_optional_identity = prepare_hero_request(
+        HeroRequest(
+            name="Valora",
+            race="human",
+            sex="female",
+            character_class="mage",
+        ),
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+    )
+    assert resumed_without_optional_identity.resumed
+    assert resumed_without_optional_identity.request.subclass == "warlock"
+    assert (
+        resumed_without_optional_identity.request.personality
+        == request.personality
+    )
+
 
 def test_prepare_hero_request_updates_resumed_level_goal(tmp_path: Path) -> None:
     catalog = parse_character_catalog(SOURCE, source="fixture")

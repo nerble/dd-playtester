@@ -40,6 +40,7 @@ class ProgressionPolicy:
     practice_skill: str | None
     segment_kill_limit: int | None = None
     allow_partial_below_band: bool = False
+    requires_flight_override: bool | None = None
 
     @property
     def executable(self) -> bool:
@@ -47,7 +48,9 @@ class ProgressionPolicy:
 
     @property
     def requires_flight(self) -> bool:
-        """Return whether the registered route uses Galaxy's flight gate."""
+        """Return whether the policy's route needs an active flight effect."""
+        if self.requires_flight_override is not None:
+            return self.requires_flight_override
         return bool(self.execution and self.execution.startswith("galaxy-"))
 
     def blocks_message(self, character_class: str) -> str:
@@ -1623,6 +1626,27 @@ _MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_HUNT_POLICY = replace(
     segment_kill_limit=1,
 )
 
+_SOURCE_RANKED_SANCTUARY_RESERVE_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-sanctuary-reserve-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    status="research",
+    execution="moria-deep-sanctuary-hunt",
+    summary=(
+        "Acquire one source-identified sanctuary potion before entering a "
+        "source-ranked mobile whose special procedure requires protection."
+    ),
+    evidence=(
+        "The source-ranked candidate gate models the target special procedure "
+        "before opening combat and requires a carried sanctuary reserve.",
+        "The existing bounded Moria deep-carrier route can recover one purple "
+        "sanctuary potion without turning its below-band carrier into an XP "
+        "policy.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
 _LIQUIDATE_LOOT_POLICY = ProgressionPolicy(
     policy_id="liquidate-loot",
     minimum_level=2,
@@ -2063,12 +2087,23 @@ _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
         "rooms with static aggressive resets; a locator match narrows the "
         "live GMCP route while retaining every intermediate waypoint, and an "
         "unmapped location fails closed rather than starting a blind search.",
-        "The audited special-procedure fallbacks are spec_cast_mage below "
-        "the source energy-drain threshold and spec_breath_any when it is the "
-        "sole rejection. The latter is bounded by magic.c's unmitigated "
-        "UMAX(10, ch->hit)/4 breath damage plus the source melee peak; both "
-        "special cases retain a one-kill limit, an elevated health gate, "
-        "disabling-affect withdrawal, and healer recovery boundaries.",
+        "DD4 source revision 1b759f5 classifies mobile specials in db.c with "
+        "+0, +5, +10, +15, or +20 additive XP modifiers; xp_compute applies "
+        "that modifier to the ordinary kill reward. special.c then supplies "
+        "the behavioral risk: fido, janitor, repairman, adept, hooker, and "
+        "orb are non-attacking; thief is economic-only while standing; poison "
+        "specials add a withdrawal-triggering affect; and weak guard, "
+        "bloodsucker, and judge procedures have bounded extra-hit or direct "
+        "damage effects.",
+        "The source-ranked selector therefore permits only those explicitly "
+        "audited harmless/economic/weak cases when the special is the sole "
+        "rejection and its source damage bound fits current max HP. Conditional "
+        "crime specials and moderate, strong, boss, breath, and caster tiers "
+        "remain research-gated. Every permitted special retains exact-target, "
+        "single-mobile, live-consider, elevated-health, one-kill, disabling-"
+        "affect withdrawal, and healer-recovery boundaries. Existing source-"
+        "bounded mage, cleric, breath, and guard paths remain explicit; other "
+        "moderate, strong, and boss tiers remain research-gated.",
         "Live run 3087 verified the wandering locator against forest mobile "
         "18007: `where man` placed the medicine man in River bed, a source-"
         "excluded route with aggressive wanderers, so the bot recalled without "
@@ -3068,6 +3103,11 @@ _SHIRE_THAIN_RESEARCH_POLICY = ProgressionPolicy(
         "Live run 3014 repeated the bounded Shire search without steering; it "
         "spent 226 seconds checking the registered route, found the Thain absent, "
         "returned safely, and persisted the same three-segment absence cooldown.",
+        "Live run 3301 corrected the earlier exact-identity mismatch between "
+        "the registered `the Thain` label and the parsed source identity `thain`: "
+        "`where thain` located Northern end of grassy field, the bounded scan "
+        "matched TARGETMODE selector #659, issued `consider #659`, and recorded "
+        "positive presence without combat or damage.",
     ),
     practice_skill="backstab",
 )
@@ -4859,6 +4899,41 @@ def policy_for(
         last_policy_id=last_policy_id,
         last_fastwalk_abort_reason=last_fastwalk_abort_reason,
     )
+    # A research retry may carry a productive-hunt handoff, but that handoff
+    # must not bypass required maintenance such as funding, food, equipment,
+    # or flight recovery.
+    selected = select_policy(context)
+    if context.needs_return_home:
+        # Recovery is always the first executable transition. In particular,
+        # do not let sanctuary or research handoffs replace a safe healer
+        # return after an interrupted field segment.
+        return selected
+    if (
+        context.character_class == "thief"
+        and context.level >= 17
+        and context.protection_recovery_required
+        and not context.has_sanctuary_potion
+        and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
+    ):
+        # A failed current-band hunt creates a real protection requirement.
+        # Run the existing sanctuary recovery frontier before ordinary
+        # research ordering can select a different unprotected hunt.
+        alternate_policy = _moria_absent_cooldown_alternate_policy(context)
+        if alternate_policy is not None:
+            return replace(
+                alternate_policy,
+                practice_skill=context.practice_skill,
+            )
+        if _moria_sanctuary_recovery_is_incomplete(context):
+            return replace(
+                _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
+                summary=(
+                    "Acquire a source-verified purple sanctuary potion "
+                    "before retrying the failed current-band hunt."
+                ),
+                practice_skill=context.practice_skill,
+            )
+        return _moria_sanctuary_wait_policy(context)
     if handoff_policy_id:
         handoff_policy = _POLICY_BY_ID.get(handoff_policy_id)
         if (
@@ -4871,13 +4946,13 @@ def policy_for(
             )
             and handoff_policy.policy_id not in context.excluded_policy_ids
             and (context.has_flight or not handoff_policy.requires_flight)
+            and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
         ):
             return replace(
                 handoff_policy,
                 practice_skill=context.practice_skill,
             )
 
-    selected = select_policy(context)
     if (
         source_ranked_fallback
         and context.level >= _SOURCE_RANKED_HUNT_POLICY.minimum_level
@@ -4938,26 +5013,59 @@ _FLIGHT_FUNDING_PREPURCHASE_EXECUTIONS = frozenset(
     }
 )
 
+_HANDOFF_BLOCKING_EXECUTIONS = frozenset(
+    {
+        "bank-excess-coins",
+        "restock",
+        "sell-loot",
+        "vault-spare-gear",
+        "rearm-weapon",
+        "outfit-basic-gear",
+        "recover-basic-body",
+        "recover-school-wrist-float",
+        "recover-gremlin-waist",
+        "recover-daycare-ring",
+        "recover-war-dog-collar",
+        "recover-foundry-set-circlet",
+        "upgrade-piercing-weapon",
+        "buy-flight",
+        "borrow-flight",
+        "provision-funding",
+    }
+)
+
 
 def select_policy(context: ProgressionContext) -> ProgressionPolicy:
     selected = _select_policy(context)
     if context.has_flight:
         return selected
     if (
-        context.flight_funding_retry_pending
-        and context.can_attempt_flight_purchase
+        context.can_attempt_flight_purchase
+        and not context.flight_purchase_failed
+        and context.flight_funding_retry_pending
+        and not context.needs_return_home
+        and context.has_food
+        and selected.execution in _FLIGHT_FUNDING_PREPURCHASE_EXECUTIONS
+    ):
+        # Do not spend newly secured flight money on optional maintenance such
+        # as rearming or outfit recovery.  Finish the pending flight purchase
+        # first, then return to those maintenance policies with active flight.
+        return _BUY_FLIGHT_POLICY
+    if (
+        context.can_attempt_flight_purchase
         and not context.flight_purchase_failed
         and context.has_food
         and selected.policy_id == _PROVISION_FUNDING_POLICY.policy_id
     ):
         # Once provisions are secure and the character can afford the current
-        # reboot's price, retry the deferred flight purchase instead of
-        # sending the money loop back out for unnecessary loot.
+        # reboot's price, purchase flight before another long funding walk.
+        # The retry marker may be absent after a movement-aborted field pass.
         return _BUY_FLIGHT_POLICY
     if (
         context.flight_purchase_failed
         and context.flight_loan_attempted
         and context.flight_funding_retry_pending
+        and context.can_attempt_flight_purchase
         and (
             selected.requires_flight
             or selected.execution not in _FLIGHT_FUNDING_PREPURCHASE_EXECUTIONS
@@ -5017,10 +5125,24 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _BANK_EXCESS_COIN_POLICY
     if context.needs_capacity_relief:
         return _VAULT_SPARE_GEAR_POLICY
+    # A character without a wielded weapon cannot safely turn a funding trip
+    # into combat. Repair the primary slot before spending another segment on
+    # provisions or flight money. ``select_policy`` can still promote a
+    # pending flight purchase when the newly available cash is sufficient.
+    if not context.has_weapon:
+        return _REARM_WEAPON_POLICY
+    if context.needs_piercing_weapon or context.needs_pounding_weapon:
+        return _REARM_WEAPON_POLICY
     if (
         context.needs_provision_funding
         and context.has_emergency_provision_sale
     ):
+        return _LIQUIDATE_LOOT_POLICY
+    if context.needs_provision_funding and context.has_sellable_loot:
+        # Convert carried drops before launching another field funding hunt.
+        # This is especially important after an unaffordable flight purchase:
+        # the character may already have enough value in retained loot, while
+        # another hunt only increases encumbrance and delays the retry.
         return _LIQUIDATE_LOOT_POLICY
     if (
         context.needs_provision_funding
@@ -5037,12 +5159,6 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _LIQUIDATE_LOOT_POLICY
     if not context.has_food:
         return _RESTOCK_POLICY
-    if not context.has_weapon:
-        return _REARM_WEAPON_POLICY
-    if context.needs_piercing_weapon:
-        return _REARM_WEAPON_POLICY
-    if context.needs_pounding_weapon:
-        return _REARM_WEAPON_POLICY
     if context.needs_basic_gear:
         return _OUTFIT_BASIC_GEAR_POLICY
     if context.needs_body_gear_recovery:
@@ -6736,6 +6852,19 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             return _BUY_FLIGHT_POLICY
         if normalized_level >= 17 and context.character_class == "thief":
             if (
+                not context.has_sanctuary_potion
+                and context.protection_recovery_required
+                and _moria_sanctuary_recovery_is_incomplete(context)
+            ):
+                return replace(
+                    _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY,
+                    summary=(
+                        "Acquire a source-verified purple sanctuary potion "
+                        "before retrying the failed current-band hunt."
+                    ),
+                    practice_skill=context.practice_skill,
+                )
+            if (
                 normalized_level >= 18
                 and context.has_sanctuary_potion
                 and context.last_policy_id
@@ -8112,18 +8241,40 @@ def _research_crowd_is_active(
     policy_id: str,
 ) -> bool:
     """Return whether a current-reboot crowd checkpoint still defers a route."""
-    result = (context.research_results or {}).get(policy_id)
-    if not (
-        isinstance(result, Mapping)
-        and result.get("crowded") is True
-        and result.get("boot_id") == context.world_boot_id
-    ):
-        return False
     cooldowns = context.research_crowd_cooldowns or {}
-    try:
-        return int(cooldowns.get(policy_id, 0) or 0) > 0
-    except (TypeError, ValueError):
-        return False
+    for candidate_id in _research_crowd_policy_group(policy_id):
+        result = (context.research_results or {}).get(candidate_id)
+        if not (
+            isinstance(result, Mapping)
+            and result.get("crowded") is True
+            and result.get("boot_id") == context.world_boot_id
+        ):
+            continue
+        try:
+            if int(cooldowns.get(candidate_id, 0) or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def _research_crowd_policy_group(policy_id: str) -> frozenset[str]:
+    """Group policy ids that inspect the same reboot-local field reset."""
+    if policy_id in {
+        "mirror-realm-watchman-probe-16-20",
+        "mirror-realm-watchman-hunt-16-20",
+        "mirror-realm-watchman-probe-19-20",
+        "mirror-realm-watchman-hunt-19-20",
+    }:
+        return frozenset(
+            {
+                "mirror-realm-watchman-probe-16-20",
+                "mirror-realm-watchman-hunt-16-20",
+                "mirror-realm-watchman-probe-19-20",
+                "mirror-realm-watchman-hunt-19-20",
+            }
+        )
+    return frozenset({policy_id})
 
 
 def _moria_sanctuary_recovery_is_incomplete(
@@ -8142,6 +8293,10 @@ def _moria_sanctuary_recovery_is_incomplete(
         # A crowded room is neither absence nor hunt failure. Defer this
         # route for productive work elsewhere, then let the cooldown expire.
         return False
+    if result.get("retryable_failure") is True:
+        # A present carrier that survived a bounded required-loot attempt is
+        # still a temporary field result; rotate before trying the same room.
+        return not _research_absence_cooldown_active(context, policy_id)
     if result.get("absent") is True:
         # A failed protected hunt remains a real resource requirement after
         # maintenance moves the checkpoint away from the original hunt. The
@@ -8287,6 +8442,13 @@ def _research_hunt_policy(
     hunt: ProgressionPolicy,
 ) -> ProgressionPolicy | None:
     """Promote a reboot-scoped viable probe into a bounded live hunt."""
+    if _research_crowd_is_active(context, probe.policy_id) or _research_crowd_is_active(
+        context, hunt.policy_id
+    ):
+        # Probe and hunt ids can be different names for the same reset family.
+        # A current-reboot crowd must defer both names until productive work
+        # consumes the shared cooldown.
+        return None
     if (
         _research_absence_cooldown_active(
             context,
@@ -8306,6 +8468,14 @@ def _research_hunt_policy(
         context.last_policy_id != hunt.policy_id
         and _research_result_recorded(context, hunt.policy_id)
     ):
+        if (
+            context.last_policy_id == probe.policy_id
+            and _research_result_is_viable(context, probe.policy_id)
+        ):
+            # A new live probe supersedes an older failed hunt record.  The
+            # probe may have found a reset target after the previous hunt was
+            # crowded, absent, or otherwise interrupted.
+            return hunt
         # A maintenance checkpoint can preserve the probe as the last policy
         # while the hunt result is already durable. Do not promote the same
         # failed hunt again merely because the probe remains viable.
@@ -8359,8 +8529,11 @@ def _moria_absent_cooldown_alternate_policy(
     result = (context.research_results or {}).get(moria_policy_id)
     if not (
         isinstance(result, Mapping)
-        and result.get("absent") is True
         and result.get("boot_id") == context.world_boot_id
+        and (
+            result.get("absent") is True
+            or result.get("retryable_failure") is True
+        )
         and _research_absence_cooldown_active(context, moria_policy_id)
     ):
         return None

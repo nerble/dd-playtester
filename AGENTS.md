@@ -21,6 +21,11 @@ Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
 Treat VNUMs as separate namespaces: room, mobile, object, and object-set VNUMs
 are unique within their category, but the same number may appear across them.
+Scope reboot-local source hunt kill caps by mobile prototype VNUM, not by the
+mobile's display name: distinct mobile VNUMs can share a short description
+(for example, two different `Secretary` prototypes). Derive source-ranked kill
+counts from the selected candidate recorded in campaign segments; retain the
+name-based counter only for legacy generic policies.
 Do not treat an object prototype's trailing numeric level as the live level of
 ordinary field loot. Follow `db.c` reset order: `G`, `E`, and ordinary `O`
 loads derive from the active preceding mobile reset with mobile and object
@@ -31,6 +36,11 @@ or sale decisions with live `identify` evidence when available.
 For randomized mazes, use live GMCP exit destination room VNUMs to follow a
 source-backed room path; never assume the area-file direction labels remain
 stable after reset.
+Before selecting a source-ranked target whose route crosses a randomized room
+set, preflight source-graph reachability after excluding source-proven
+aggressive or special-procedure hazard rooms. Skip a candidate whose only
+source-connected path is blocked; do not spend a live connection discovering
+that the maze cannot reach its target.
 The Shadow Grove (rooms 1300-1309) is a randomized `no_recall` maze. For
 return-home and fastwalk recovery, navigate by live GMCP exits to room 1300,
 then follow the source-backed reverse route through Haon Dor rooms 6137,
@@ -103,15 +113,126 @@ prices, kill repetition, applicable object instance limits, and observed spawn
 counts to the `DD was started at ...` reboot identity; never carry them across
 reboots. Instance limiting applies only to the few objects whose source
 definitions use it, not to mobiles.
+Persist each observed reboot-specific shop price; once the current price is
+known, do not treat a generic cash threshold as sufficient. Re-enter the
+source-backed money loop until the character can afford that price and its
+required travel and food reserve.
+Parse `ITEM_MONEY` values as copper, silver, gold, and platinum and convert
+them at 1, 10, 100, and 1,000 copper respectively. Include direct `O`/`I`
+room coin resets as non-combat funding candidates when their source route has
+no useful-band aggressive hazard; collect them by source keyword and verify
+the currency delta before clearing the funding requirement. Treat nested
+containers and unverified hoards as research-only until their extraction and
+lock/key requirements are source-backed.
+Include money objects loaded onto mobiles through `G`/`E` resets, including
+money nested in source-linked containers, in the ordinary loot-value ranking.
+These are combat funding opportunities, not permission to attack: retain the
+mobile's level-band, special, crowd, route, and live `consider` gates, and use
+the total copper-equivalent value when comparing a carrier with other targets.
 Before a live area launch, parse each registered mobile's exact area-file room
 description through the target recognizer; use live output to confirm presence
 and dynamic reset state, not to discover static mobile display lines.
+If a current-band source candidate is rejected only because one reset permits
+two matching mobiles, it may enter research rotation: live TARGETMODE output
+must prove exactly one source-matched target before consider or combat. Never
+relax this exception for special procedures, aggression, companions, route
+hazards, or larger reset capacities.
+When a current-reboot hunt withdraws with negative XP before a kill, persist
+that policy as protection-recovery evidence and do not immediately reselect the
+same source route. Recover or acquire the required protection first, or choose
+another current-band route; a later retry is allowed only after the recovery
+gate clears.
+For the Moria sanctuary required-loot hunt, a carrier located by `where` but
+outside its source reset room is not an authorization to pursue. Record the
+bounded attempt as a retryable failure with the normal three-segment cooldown,
+then use the registered Argent, Shire, or deep-Moria alternate frontier before
+reopening the carrier route.
+Read `special.c` together with `db.c::load_specials` before classifying a
+special mobile. DD4 adds +0, +5, +10, +15, or +20 to a mobile's XP modifier;
+use that tier as a danger signal, not as permission by itself. The source
+implementation makes `spec_fido`, `spec_janitor`, `spec_repairman`,
+`spec_cast_adept`, `spec_cast_hooker`, and `spec_cast_orb` non-attacking for a
+normal player, so a sole-special candidate may be audited under the ordinary
+exact-target, isolated-room, live-`consider`, elevated-health, one-kill, and
+healer-return gates. Do not blanket-reject every special, but keep
+`spec_celestial_repairman` and crime-conditional `spec_bounty`,
+`spec_clan_guard`, and `spec_executioner` research-gated until their movement
+or player-status preconditions are proven.
+Source `spec_thief` returns before its theft branch while fighting and can take
+at most 20% of carried coins while standing. Bound the possible loss to 250
+copper-equivalent (so carried currency may be as high as 1,250 copper), with
+the normal source level, route, crowd, live `consider`, and HP gates still
+enforced. A `spec_thief`-only source-ranked probe may retain the ordinary +1
+live-level fuzz allowance because the special does not add combat damage;
+keep the separate coin-loss bound and do not extend this allowance to other
+special procedures. The weak `spec_poison` and `spec_kungfu_poison` paths may
+be audited as debuff-only targets only when the runner recalls and waits for
+the healer while poison remains active. Bound weak `spec_guard`,
+`spec_sahuagin_guard`, and `spec_bloodsucker` as one additional ordinary hit,
+and `spec_cast_judge` as its source `6 * level` high-explosive ceiling. Keep
+all other weak, moderate, strong, boss, breath, and caster specials blocked
+unless a matching source damage/effect policy and live evidence are added.
+If a source peak-damage rejection is caused only by the maximum fuzzy mobile
+level, allow it only as an explicit reset-retry probe when the minimum source
+peak is below current max HP. Require exact live `consider` level (no positive
+level offset), at least 95% health, and no other source rejection; record the
+probe separately and never treat its conservative maximum as ordinary combat
+permission.
+When the ordinary current-band frontier is exhausted, a source mobile exactly
+one base level above the character may enter a separate ceiling-probe pool only
+when its full fuzzy peak-round bound is strictly below current max HP, it has
+no source rejection or coin-stash role, and its lower fuzzy range remains
+useful. Require live `consider` to return the perfect-match branch, retain the
+normal +1 live-level stop ceiling, and never generalize this exception to
+special, aggressive, crowded, or route-hazard targets.
+Also permit a source mobile whose nominal base level equals the character's
+current level when only one additional fuzzy level exceeds the ordinary upper
+band, provided it is autonomous-safe, special-free, rejection-free, single-
+spawn, and its estimated peak round damage is strictly below max HP. Treat it
+as the same bounded live-consider probe; do not relax the +1 live-level combat
+ceiling or the normal route and crowd gates.
+Live run 3613 validated this gate against the Old Treant in Mahn-Tor: Kestrel
+earned 1,644 XP and returned to healer room 3054 at 236/283 HP. Live run 3618
+then validated the independent Solace secretary reset for 1,198 XP without
+player damage. Preserve both as reusable level-20 source-ranked evidence.
+When comparing an exact registered target with a parsed live identity, strip
+only leading grammatical articles (`a`, `an`, `the`) on both sides; preserve
+the remaining source identity and selector distinctions.
+For source-backed discovery, treat fixed `ACT_SENTINEL` mobiles and
+`ACT_DIE_IF_MASTER_GONE` mobiles as reset-room-only. For ordinary mobiles,
+search every bounded source-reachable room from every reset, blocking
+`EX_CLOSED`, `ROOM_NO_MOB`, and stay-area boundaries. An open exit is
+mobile-reachable even if its lock flag remains set. `AFF_CONFUSION` is a
+separate source movement path that overrides sentinel, stay-area, and no-mob
+restrictions, so search its full bounded open-exit graph. If `where` confirms a
+target but its room label is unmapped, retain that positive evidence and run
+the full bounded source search instead of abandoning the target.
+`where` may list several same-named mobiles from unrelated areas; retain every
+matching row, prefer source-vetted safe locations, and never let the first row
+hide a later mapped location. Treat an excluded location as fatal only when no
+safe source-vetted match remains.
+Normalize flattened GMCP room descriptions with the same sentence boundaries
+used by live room output before applying crowd gates; furniture or other static
+room prose must not become a phantom mobile. Ignore companions only when their
+source identity is explicitly trivial for the current character level.
+Keep source-ranked evidence keyed by area, mobile VNUM, reset-room VNUM, and
+character level. Do not let a crowd or absence result from one reset room
+suppress an independent reset room for the same mobile; only a legacy,
+explicitly multi-room policy may aggregate those locations.
+The requested mobile's own reset rooms are valid endpoints even when that
+mobile is aggressive; block other aggressive reset rooms as route hazards and
+let the live crowd/isolation gate decide. A visible room target or positive
+`where` row remains presence evidence even when `consider` rejects it as
+below-band or too dangerous; never serialize that case as target absence.
 Never attack for XP when `consider` returns a `do_consider` result from the
 `diff <= -5` or `diff <= -10` branches; those targets are too low to be useful.
 Use the source level-difference branch as the level-band decision: the separate
 hitpoint comparison text is descriptive combat-risk context, not a substitute
 for level difference and not an automatic rejection of an otherwise viable
 level-band target.
+For source-ranked hunts, persist a negative live `consider` separately from a
+failed combat attempt; a short retry cooldown must not reopen a target already
+reported as materially stronger than the character.
 Persist that below-band result against the selected policy for the current
 character level and reboot. Do not revisit the same surviving mobile until the
 level or reboot identity changes.
@@ -168,6 +289,16 @@ class profile's current primary stat and wear all legal stat-improving gear.
 Before any hunt fastwalk from recall, refill the carried water skin in room
 3005, drink there, and return north; never rely on a stale in-memory thirst
 flag for a long route.
+Before any source-ranked, funding, or coin-stash fastwalk departs from healer
+room 3054, sleep until its movement threshold is ready; apply this even when
+the route has no combat hunt stops.
+Deferred funding routes must honor that initial healer movement gate before
+starting class-trainer travel; the funding policy may defer normal resupply,
+but it must not bypass the first safe recovery checkpoint.
+When a bounded segment reaches its runtime limit, force the existing healer
+save-and-quit path to become command-ready even if the latest server prompt
+has not yet been observed; cleanup must not expire while a character is
+sleeping safely at room 3054.
 Tune autonomous field play 50% more aggressively than the original baseline:
 tolerate recoverable damage, use 360-second bounded fights, continue circuits
 at 22.5% health with 7.5% mana and 5% movement, leave the healer at 37.5%
@@ -203,6 +334,12 @@ source identity in policy/evidence with an ephemeral selector.
 When a registered wandering target appears in any source-vetted room while its
 circuit is active, stop before the next route step and run the normal crowd,
 health, level-ceiling, and `consider` gates against that live selector.
+When different mobile prototypes share a short description, preserve the
+source-distinct identity from the room line and keyword list (for example,
+male versus female `a centaur`). Use the generic short name only for the
+area-scoped `where` preflight; for source-ranked stops also require the
+candidate's exact normalized source room display line before considering or
+attacking a live selector.
 Persisted GMCP inventory descriptions may still contain an ephemeral
 `[#number]` prefix from the connection that recorded them. Strip that prefix
 before source-catalog matching, sale planning, equipment comparison, and
@@ -210,12 +347,26 @@ liquidation signatures; never treat it as part of an object's identity. Live
 run 2047 validated that this recognizes Aruncus's no-drop strange amulet,
 triggers `heal curse`, destroys it, and disposes of the remaining unsellable
 loot safely.
-For exact stay-area wanderers, issue a source-keyword `where` preflight at the
-area endpoint. If DD4 returns `You fail to find anyone by that name.`, mark the
-target absent and recall rather than enumerating the full area; if `where`
-reports a presence, retain the bounded source-room search. Live run 2048 spent
-about 290 seconds searching for a globally absent Kodiak and motivated this
-gate.
+For source-ranked wandering targets, first follow the source-backed path from
+any fastwalk staging room into the target area's source endpoint, then issue a
+source-keyword `where` preflight. Require an exact source identity in the
+response: related names such as `Farmers guarddog` do not locate `The Farmer`.
+A miss from a staging room or another area is not presence evidence and must
+not mark the target absent. Once inside the target area, if DD4 returns `You
+fail to find anyone by that name.`, or lists no exact target, mark it absent
+from the current area and recall rather than enumerating the full area. For a
+global wanderer this is current-area evidence, not a reboot-wide absence claim;
+rotate to another candidate and retry later. If `where` reports a presence,
+retain the bounded source-room search. Treat the reported room as a snapshot,
+not a guarantee: check its mapped source-room group first, then continue
+through the remaining source-reachable rooms if the wanderer has moved before
+arrival. Live run 2048 spent about 290 seconds searching for a globally absent
+Kodiak and motivated this gate.
+If a live field step reports that swimming, flying, a boat, or an accessible
+door is required, roll back that waypoint and record the route hazard. Skip
+only the blocked registered stop and continue the bounded circuit when a later
+source reset remains; if it was the final stop, return immediately. Never wait
+for the inactivity watchdog before trying the next safe location or policy.
 Treat profession-visible empty `eq all` slots as equipment debt. Prefer usable
 mob drops, then inexpensive class-legal Midgaard basics; after major gear loss,
 revisit Mud School first and repeat its course to recover free starter drops.
@@ -407,6 +558,68 @@ below-band policy exclusion is terminal for selection, not merely advisory;
 never return that policy until level or reboot changes. Runs 2146 through 2149
 exposed both gaps: an unnecessary expanded Toad pass followed by two checks of
 the same below-band Moria carrier.
+Provision-funding routes may deliberately use a below-band carrier only for a
+source-registered coin or saleable-drop requirement, never for XP. A current
+level/current-reboot below-band sighting normally excludes that carrier from
+funding rotation, but an explicit flight or provision shortfall may use one
+source-safe mobile coin carrier after the normal route, crowd, special, and
+live-consider gates remain valid. Keep the emergency choice bounded to the
+carrier's observed copper-equivalent value and record it as funding-only.
+Prefer fresh coin carriers over ordinary gear carriers, then use observed
+proceeds, current cash, and rotated completed routes to accumulate the shortfall;
+prototype object cost is not realized sale value. Do not route back to a mobile
+whose live gate will only produce another skipped segment. Rotate to another
+source candidate or surface an explicit funding-unavailable state. When a
+flight shortfall remains after fresh carriers have been exhausted, a previously
+successful direct ground coin stash may be re-probed once through its source
+route; verify the live currency delta and never treat the non-combat collection
+as XP progress.
+Mandatory maintenance, including funding, food, liquidation, equipment, and
+flight recovery, takes precedence over a productive-hunt handoff created by a
+temporary research miss. A handoff may resume ordinary field progression only
+after those resource and equipment gates are clear.
+If emergency loot liquidation meets an unexpected mobile, flee and return to
+healer room 3054, preserve the failed run and transcript, and checkpoint the
+current liquidation signature as ready. Do not fail the whole campaign or
+immediately repeat that unchanged sale pass; resume it only after new loot
+changes the signature.
+Treat any forced combat during liquidation or other maintenance as transcript
+evidence only. It must not become a campaign objective kill, promote a hunt,
+consume a source-mobile kill cap, or count as progression XP policy evidence;
+the provision-funding exception is explicitly funding-only.
+After a failed flight purchase, a stocked character must select source-ranked
+no-flight XP work while its retry cooldown remains, even if current cash is
+still below the observed same-reboot price. Decrement that cooldown only after
+positive-XP field work, then retry or resume funding; do not repeat a funding
+route merely to wait.
+If the source-ranked frontier has no eligible no-flight target during that
+cooldown, return a bounded unavailable checkpoint. Never recursively reselect
+the same flight-required candidate; that is a preflight stall, not progress.
+If the current reboot-priced flight potion is already affordable and no
+no-flight target is reachable, bypass the cooldown and buy it rather than
+launching another funding walk solely to wait.
+When all current-band source routes are temporarily unavailable because of
+reboot-scoped absence, crowd, or route cooldowns, keep the campaign `ready`
+and expose the reset wait; never convert that resumable state to `blocked`.
+An explicit bounded retry may reopen the route after waiting outside the area.
+If a source fastwalk returns without observing its endpoint, quarantine that
+candidate as a route hazard, checkpoint `ready`, and rotate to the next source
+route. Migrate an already-recorded failed endpoint checkpoint on resume; never
+replay the same broken route indefinitely.
+Funding routes are waypoint missions: never adopt an unknown or useful-band
+aggressive mobile encountered in transit. Preserve any candidate route-hazard
+metadata on the generated fastwalk so registered hazards remain active for
+funding as well as XP hunts. When an unavoidable transit attacker is
+source-proven below the useful band, finish it as incidental combat, then
+resume the route; do not count that kill as the funding objective.
+Reject funding candidates whose source route crosses a direct or reachable
+wandering aggressive reset inside the useful or higher level band. Preserve
+below-band route hazards as caution evidence; the runner must finish an
+unavoidable source-proven trivial interruption without treating it as an XP
+target, so funding cannot dead-end on ordinary Midgaard transit. On a
+no-combat funding route, any unexpected useful-band or higher attacker is
+terminal for that route: return to healer room 3054 and let campaign rotation
+choose the next policy rather than resuming an intermediate waypoint.
 At thief level 15, use the Olive Grove bandit leader after the level-10
 guildmaster cap blocks further progression. The leader wanders among source
 rooms 25202 through 25205, so the reset room alone is not presence evidence:
@@ -433,6 +646,14 @@ next instead of letting consumable acquisition block productive XP. Run 2105
 proved the absent-carrier return path from room 4064. Run 2106 then retained
 65 partial XP against a level-15 Rock Toad and withdrew safely, exposing
 repeatable damage rather than sanctuary as the immediate throughput blocker.
+When consumed sanctuary expires during a generic field fight, do not flee solely
+because the affect disappeared. Re-evaluate the live player and opponent HP:
+honor the ordinary finish threshold for a target at or below half HP, and
+withdraw only at the normal health floor or when the opponent remains materially
+healthier than the character; when both sides are low, compare current HP as
+well as percentages, while allowing a nearly dead opponent to be finished.
+Keep special-policy `require_sanctuary` gates separate from this generic
+matchup rule.
 For thieves, learn a functional backstab opener, then take the shortest
 source-backed recurring-damage path: raise thievery skills to 40% and practise
 knife toss toward 45%. `do_knife_toss` is legal while fighting, waits eight
@@ -443,6 +664,10 @@ Treat a live segment runtime limit as a soft return boundary, never permission
 to close a socket during field combat. Request recall immediately, retry until
 combat ends, recover at healer room 3054, and only then save, quit, and finish
 the segment. Persist the boundary request and objective-kill evidence.
+While a live campaign segment is running, its `campaign_segments.run_id` may
+remain null until the segment returns. Monitor the newest matching character
+run and its event stream before diagnosing a preflight stall or stopping the
+worker; a null segment run id is not evidence that no connection opened.
 The Mirror Realm watchman route enters room 19005 after two north steps from
 room 19003, opens the reset-closed north door, moves north three times to room
 19008, then west into isolated watchtower room 19009. The gardener route
@@ -465,6 +690,9 @@ proved the expanded route and both exact selectors; both watchmen returned the
 same `Do you feel lucky, punk?` and `much healthier than you` rejection. The
 run entered no combat, lost no HP or XP, and safely checkpointed at healer room
 3054, so preserve the expanded policy's nonviable result for this reboot.
+Treat the level-16/20 and level-19/20 watchman probe/hunt policies as one
+reboot-local reset family: a crowd in either room sets a shared cooldown, so do
+not re-enter the other policy name until productive work consumes that wait.
 After a nonviable watchman result, probe the Crystalmir White Stag before
 Shadow Keep. Source mobile 10012 is level 17 with 15-19 fuzz, evil, unarmed,
 non-aggressive, stay-area, and has no special. Require flight for the long
@@ -487,6 +715,11 @@ crowd, and reduced the Stag cooldown from three to two without revisiting
 Crystalmir. After three productive outside-area segments, live run 2211
 performed the authorized retry; `where stag` still reported absence, so it
 returned without combat and reset the cooldown to three.
+Treat the dynamic no-combat interruption used by older named research policies
+as temporary route evidence when it aliases a newer source-ranked candidate;
+respect its persisted absence cooldown, then allow the generic source route to
+reopen after that cooldown expires. Static source hazards, capability blocks,
+and live negative `consider` evidence remain hard exclusions.
 The first level-16 fallback is the non-aggressive Shadow Keep Undead Soldier
 in room 16615. Its source level is 15 with 13-17 fuzz and it wields a Rusty
 Sword, so require a fresh exact-target `consider`, at least 85% health, a
@@ -624,6 +857,10 @@ snake and deeper Moria circuit out of this fallback.
 When that research target is absent, persist the reboot-scoped absence and let
 the campaign's bounded outside-area reset controller sleep and retry; a new
 process invocation must resume that controller rather than launch immediately.
+Reset retries are always finite. The CLI and library default to a 30-second
+outside-area wait; any longer wait must be passed explicitly with
+`--reset-wait`. A retry command must return a checkpoint after its retry budget
+is exhausted, and a stale tester process must never be left behind.
 When the bounded wait expires, reopen that current research policy before
 selecting any reboot-scoped below-band exclusion; an expired absence must never
 turn into a hard campaign block or an unrelated target selection.
@@ -690,6 +927,11 @@ already active. Omitted campaign `--reset-retries` now uses the `--segments`
 budget so dynamic area depletion waits outside the area and retries instead of
 silently converting an autonomous run into a blocked campaign; pass
 `--reset-retries 0` only when an operator explicitly wants no reset wait.
+When every fresh current-band source-ranked target is exhausted, the selector
+may reuse a same-reboot route only if its evidence records a completed kill
+and its policy XP delta is at least 50; this exception does not permit trivial
+or crowded routes to loop, and ordinary absent/crowded cooldowns still defer
+to the bounded reset controller.
 
 ## Operational Fail-Fast Policy
 
@@ -708,7 +950,13 @@ its process state, never by the JSONL file's observed size alone. A temporarily
 stale or zero-length file is not sufficient evidence of a stalled connection.
 When launching a bounded foreground segment, give the outer command timeout
 more time than the segment's own runtime cap so the runner can recall, save,
-and quit cleanly.
+and quit cleanly. The StarterBot deadline is a safe-return boundary: request it
+once, trust either the local combat flag or a live GMCP enemy list, recall or
+flee until combat is gone, recover at healer room 3054, then stand, save, and
+quit. Cold source-catalog loading happens before the outer live-session timer;
+the StarterBot clock itself starts at the beginning of the run and includes
+local setup, and the cleanup phase has a 25-second hard limit. It must produce
+a controlled checkpoint rather than leave a socket or process hanging.
 
 For levels 71-75, the registered source-backed fallback is the Pirates Seas
 Rastafarians probe/hunt. Source revision `bf745c3` identifies mobile 17099 in
@@ -746,6 +994,10 @@ parses these append-only headers, so timestamp casing is a delivery contract.
 Treat the file as append-only development history; do not rewrite or remove
 earlier entries. Write an entry before or as the corresponding response is
 sent so a stalled task cannot leave the visible discussion unrecorded.
+The streamer configuration must include `USER`; after any logging repair,
+confirm the source contains the user record, `streamer.stdout.log` contains
+both `Publishing USER record` and a successful delivery with no matching
+error, and the checkpoint offset equals the source length with an empty queue.
 Use `python tools/conversation_log.py append --speaker "CODEX COMMENTARY"
 --body "..."` or `--body-file <UTF-8 text file>` for new entries whenever possible;
 the helper emits the exact header and appends UTF-8 bytes without rewriting

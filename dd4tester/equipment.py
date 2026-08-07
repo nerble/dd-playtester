@@ -22,9 +22,13 @@ ITEM_LIGHT = 1
 ITEM_WEAPON = 5
 ITEM_PAINT = 28
 ITEM_FOOD = 19
+ITEM_NODROP = 1 << 7
+ITEM_NOREMOVE = 1 << 12
+ITEM_INVENTORY = 1 << 13
 ITEM_BODY_PART = 1 << 26
 ITEM_LANCE = 1 << 27
 ITEM_BOW = 1 << 30
+ITEM_CURSED = 1 << 61
 PIERCING_DAMAGE_TYPES = frozenset({2, 11})
 BLUNT_DAMAGE_TYPES = frozenset({6, 7, 8})
 
@@ -338,6 +342,18 @@ def protects_from_sale(item: ObjectSource) -> bool:
         location in protected and modifier > 0
         for location, modifier in item.affects
     )
+
+
+def is_releasable_funding_item(item: ObjectSource) -> bool:
+    """Return whether a source loot object can safely become sale proceeds."""
+    blocked_flags = (
+        ITEM_NODROP
+        | ITEM_NOREMOVE
+        | ITEM_INVENTORY
+        | ITEM_BODY_PART
+        | ITEM_CURSED
+    )
+    return not bool(item.extra_flags & blocked_flags)
 
 
 def is_disposable_food(item: ObjectSource) -> bool:

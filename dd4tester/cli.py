@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .campaign import run_campaign_file
+from .campaign import DEFAULT_RESET_WAIT_SECONDS, run_campaign_file
 from .character import load_character_spec
 from .credentials import (
     DEFAULT_LOGIN_CREDENTIAL,
@@ -18,8 +18,17 @@ from .credentials import (
 from .evidence import collect_run_evidence, render_evidence_json
 from .fastwalks import FASTWALKS, routes_for_level
 from .dd4_catalog import load_character_catalog
-from .hero import HeroRequest, prepare_hero_request, run_hero_request
-from .hunt_candidates import load_world_source, rank_hunt_candidates
+from .hero import (
+    HeroRequest,
+    load_existing_hero_request,
+    prepare_hero_request,
+    run_hero_request,
+)
+from .hunt_candidates import (
+    load_world_source,
+    rank_hunt_candidates,
+    source_mobile_search_rooms,
+)
 from .matrix import (
     live_matrix_coverage,
     matrix_coverage,
@@ -450,30 +459,46 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_parser.add_argument(
         "--reset-wait",
         type=float,
-        default=300.0,
-        help="seconds to wait outside a depleted area before each retry, default: 300",
+        default=DEFAULT_RESET_WAIT_SECONDS,
+        help=(
+            "seconds to wait outside a depleted area before each retry, "
+            f"default: {DEFAULT_RESET_WAIT_SECONDS:g}; longer waits are opt-in"
+        ),
     )
     campaign_parser.add_argument(
         "--max-segment-runtime",
         type=float,
         help="cap each live segment in seconds so the process exits cleanly before an outer launcher timeout",
     )
+    campaign_parser.add_argument(
+        "--retry-stalled",
+        action="store_true",
+        help="retry a watchdog-stalled segment instead of honoring its stall budget",
+    )
 
     hero_parser = subcommands.add_parser(
         "hero",
         help="create or resume an autonomous character campaign to level 100",
     )
-    hero_parser.add_argument("--race", required=True, help="DD4 race name")
+    hero_parser.add_argument(
+        "--race",
+        help="DD4 race name; inferred from an existing named hero workspace",
+    )
     hero_parser.add_argument(
         "--sex",
-        default="neuter",
-        help="cosmetic DD4 sex: male, female, or neuter; default: neuter",
+        default=None,
+        help=(
+            "cosmetic DD4 sex: male, female, or neuter; inferred for an "
+            "existing named hero and otherwise defaults to neuter"
+        ),
     )
     hero_parser.add_argument(
         "--class",
         dest="character_class",
-        required=True,
-        help="DD4 base class name",
+        help=(
+            "DD4 base class name; inferred from an existing named hero "
+            "workspace"
+        ),
     )
     hero_parser.add_argument(
         "--subclass",
@@ -507,8 +532,8 @@ def build_parser() -> argparse.ArgumentParser:
     hero_parser.add_argument(
         "--transport",
         choices=("telnet", "mudlet"),
-        default="telnet",
-        help="execution transport, default: telnet",
+        default=None,
+        help="execution transport; inherited for an existing hero, otherwise telnet",
     )
     hero_parser.add_argument(
         "--mudlet-directory",
@@ -548,8 +573,11 @@ def build_parser() -> argparse.ArgumentParser:
     hero_parser.add_argument(
         "--reset-wait",
         type=float,
-        default=300.0,
-        help="seconds to wait outside a depleted area before each retry, default: 300",
+        default=DEFAULT_RESET_WAIT_SECONDS,
+        help=(
+            "seconds to wait outside a depleted area before each retry, "
+            f"default: {DEFAULT_RESET_WAIT_SECONDS:g}; longer waits are opt-in"
+        ),
     )
     hero_parser.add_argument(
         "--max-segment-runtime",
@@ -1125,6 +1153,7 @@ def main(argv: list[str] | None = None) -> int:
                     reset_retries=args.reset_retries,
                     reset_wait=args.reset_wait,
                     max_segment_runtime=args.max_segment_runtime,
+                    retry_stalled=args.retry_stalled,
                 )
             )
         except Exception as exc:
@@ -1152,17 +1181,48 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
             character_name = args.username
-        request = HeroRequest(
-            name=character_name,
-            race=args.race,
-            sex=args.sex,
-            character_class=args.character_class,
-            subclass=args.subclass,
-            personality=args.personality,
-            transport=args.transport,
-            mudlet_directory=args.mudlet_directory,
-        )
         try:
+            stored_request = None
+            if not args.race or not args.character_class:
+                if not character_name:
+                    raise ValueError(
+                        "--race and --class are required when creating a new hero"
+                    )
+                stored_request = load_existing_hero_request(
+                    character_name,
+                    workspace=args.workspace,
+                )
+            request = HeroRequest(
+                name=character_name,
+                race=args.race or stored_request.race,
+                sex=(
+                    args.sex
+                    or (stored_request.sex if stored_request is not None else "neuter")
+                ),
+                character_class=(
+                    args.character_class
+                    or stored_request.character_class
+                ),
+                subclass=(
+                    args.subclass
+                    if args.subclass is not None
+                    else (stored_request.subclass if stored_request else None)
+                ),
+                personality=(
+                    args.personality
+                    if args.personality is not None
+                    else (stored_request.personality if stored_request else None)
+                ),
+                transport=(
+                    args.transport
+                    or (stored_request.transport if stored_request else "telnet")
+                ),
+                mudlet_directory=(
+                    args.mudlet_directory
+                    if args.mudlet_directory is not None
+                    else (stored_request.mudlet_directory if stored_request else None)
+                ),
+            )
             if args.prepare_only:
                 preparation = prepare_hero_request(
                     request,
@@ -1414,9 +1474,16 @@ def recover_runs(database: Path, *, reason: str) -> int:
         print(f"No run database found at {database.resolve()}", file=sys.stderr)
         return 1
     with RunStorage(database) as storage:
+        repaired_runs, repaired_events = storage.repair_transcript_events()
+        bound_segments = storage.bind_unlinked_campaign_runs()
         recovered = storage.fail_interrupted_runs(reason=reason)
         segments, campaigns = storage.fail_interrupted_campaign_segments(reason=reason)
     print(f"Database: {database.resolve()}")
+    print(
+        f"Replayed {repaired_events} transcript event(s) across "
+        f"{repaired_runs} run(s)."
+    )
+    print(f"Bound {bound_segments} interrupted campaign segment(s) to a run.")
     print(f"Marked {recovered} interrupted run(s) as failed.")
     print(
         f"Marked {segments} interrupted campaign segment(s) "
@@ -1525,11 +1592,56 @@ def show_hunt_candidates(
     print(f"Character max HP: {character_max_hp or 'unknown'}")
     print(f"Current reboot: {boot_id or 'unknown'}")
     print(
-        "status\tscore\tarea\ttarget\tsource_level\tfuzzed_levels\t"
+        "status\tscore\tarea\ttarget\tmobility\tsearch_rooms\t"
+        "source_level\tfuzzed_levels\t"
         "base_hp\tpeak_round\troom\troute\troom_spawns\tspawn_limit\t"
         "boot_kills\tloot\thazards\tautonomy_rejections"
     )
     for candidate in candidates[:limit]:
+        mobile = world.mobiles.get(candidate.mobile_vnum)
+        if mobile is None:
+            mobility = "unknown"
+            search_room_count = 0
+        elif mobile.confused:
+            mobility = "confused-wanderer"
+            search_room_count = len(
+                source_mobile_search_rooms(
+                    world,
+                    candidate.mobile_vnum,
+                    maximum_rooms=512,
+                )
+            )
+        elif not mobile.wanders:
+            mobility = (
+                "fixed-sentinel"
+                if mobile.sentinel
+                else "fixed-master-bound"
+            )
+            search_room_count = len(
+                source_mobile_search_rooms(
+                    world,
+                    candidate.mobile_vnum,
+                    maximum_rooms=512,
+                )
+            )
+        elif mobile.stay_area:
+            mobility = "stay-area-wanderer"
+            search_room_count = len(
+                source_mobile_search_rooms(
+                    world,
+                    candidate.mobile_vnum,
+                    maximum_rooms=512,
+                )
+            )
+        else:
+            mobility = "global-wanderer"
+            search_room_count = len(
+                source_mobile_search_rooms(
+                    world,
+                    candidate.mobile_vnum,
+                    maximum_rooms=512,
+                )
+            )
         loot = "; ".join(candidate.loot)
         if candidate.contained_coins:
             loot = "; ".join(
@@ -1544,6 +1656,8 @@ def show_hunt_candidates(
                     f"{candidate.score:g}",
                     candidate.area_file,
                     candidate.target,
+                    mobility,
+                    str(search_room_count),
                     str(candidate.level),
                     f"{candidate.estimated_level_range[0]}-"
                     f"{candidate.estimated_level_range[1]}",

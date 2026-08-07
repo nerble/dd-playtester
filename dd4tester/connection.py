@@ -70,7 +70,7 @@ class TelnetConnection:
         if self.writer is None:
             raise RuntimeError("Telnet connection is not open")
         self.writer.write((command + "\n").encode(self.encoding))
-        await self.writer.drain()
+        await asyncio.wait_for(self.writer.drain(), timeout=self.timeout)
 
     async def read_available(self, timeout: float = 0.25) -> ReadResult:
         if self.reader is None or self.writer is None or self.closed:
@@ -88,7 +88,7 @@ class TelnetConnection:
         for response in chunk.responses:
             self.writer.write(response)
         if chunk.responses:
-            await self.writer.drain()
+            await asyncio.wait_for(self.writer.drain(), timeout=self.timeout)
 
         return ReadResult(
             text=chunk.data.decode(self.encoding, errors="replace"),
@@ -119,6 +119,6 @@ class TelnetConnection:
             return
         self.writer.close()
         try:
-            await self.writer.wait_closed()
-        except ConnectionError:
+            await asyncio.wait_for(self.writer.wait_closed(), timeout=self.timeout)
+        except (ConnectionError, TimeoutError):
             pass
