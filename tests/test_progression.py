@@ -3,7 +3,9 @@ import pytest
 from dd4tester.progression import (
     CLASS_PRACTICE_SKILLS,
     ProgressionContext,
+    ProgressionPolicy,
     _caster_hunt_requires_sanctuary_replenishment,
+    _research_hunt_policy,
     policy_for,
     select_policy,
 )
@@ -15,6 +17,32 @@ def test_starter_policy_is_executable_before_level_two() -> None:
     assert policy.policy_id == "starter-0-2"
     assert policy.executable is True
     assert policy.execution == "starter"
+
+
+def test_research_hunt_selector_rejects_an_expired_level_band() -> None:
+    context = ProgressionContext.from_values(22, "thief")
+    probe = ProgressionPolicy(
+        policy_id="old-probe",
+        minimum_level=16,
+        maximum_level=20,
+        status="research",
+        execution="old-probe",
+        summary="Probe an expired level band.",
+        evidence=(),
+        practice_skill=None,
+    )
+    hunt = ProgressionPolicy(
+        policy_id="old-hunt",
+        minimum_level=16,
+        maximum_level=20,
+        status="verified",
+        execution="old-hunt",
+        summary="Hunt an expired level band.",
+        evidence=(),
+        practice_skill=None,
+    )
+
+    assert _research_hunt_policy(context, probe=probe, hunt=hunt) is None
 
 
 def test_policy_for_honors_a_productive_hunt_handoff() -> None:
@@ -8983,3 +9011,47 @@ def test_psionicist_alias_uses_the_level_ten_shared_scout() -> None:
 def test_unknown_class_is_rejected() -> None:
     with pytest.raises(ValueError, match="unknown class"):
         policy_for(2, "illusionist")
+
+
+def test_requested_subclass_does_not_activate_before_live_selection() -> None:
+    context = ProgressionContext.from_values(
+        30,
+        "thief",
+        target_subclass="ninja",
+    )
+
+    assert context.subclass is None
+    assert context.needs_subclass_selection is True
+    assert "ninjutsu" not in context.capabilities
+
+    policy = policy_for(
+        30,
+        "thief",
+        target_subclass="ninja",
+        has_food=True,
+        has_weapon=True,
+    )
+
+    assert policy.policy_id == "choose-subclass-30"
+    assert policy.execution == "choose-subclass"
+
+
+def test_live_subclass_state_releases_the_level_thirty_selection_gate() -> None:
+    context = ProgressionContext.from_values(
+        30,
+        "thief",
+        subclass="ninja",
+        target_subclass="ninja",
+    )
+    policy = policy_for(
+        30,
+        "thief",
+        subclass="ninja",
+        target_subclass="ninja",
+        has_food=True,
+        has_weapon=True,
+    )
+
+    assert context.needs_subclass_selection is False
+    assert "ninjutsu" in context.capabilities
+    assert policy.policy_id != "choose-subclass-30"

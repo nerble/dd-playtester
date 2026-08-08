@@ -79,12 +79,19 @@ actions, and stop after success or live confirmation that the target is
 unarmed.
 Maintain a source-backed leveling-value analysis for every base class and
 level-30 subclass, not only active test characters. Apply subclass priorities
-only after live state confirms the character has subclassed. Practice order
+only after live state confirms the character has subclassed. At exactly level
+30, use the source short `who_name` keyword with `change` at the Kerofk class
+teacher, then wait for live `Char.Base` subclass state before checkpointing or
+activating subclass policies; never treat success text alone as confirmation.
+Practice order
 must account for prerequisite
 gateways, current trainer listings and caps, separate physical/intellectual
 budgets, direct damage, mitigation, sustain, mobility, and whether the combat
 runner can actually use the result. Mark unsupported rotations analysis-only
 rather than spending practices on unusable skills.
+Persist a trainer's `no immediately useful listed skill` result by practice
+type for the current character level so later field segments do not repeat the
+same long trainer journey. Re-evaluate both practice types after a level gain.
 Keep representative characters from different base classes in active rotation.
 Use their live evidence to improve shared class-aware policy, and never let
 progress on one character become a name-specific substitute for generic
@@ -132,6 +139,10 @@ the total copper-equivalent value when comparing a carrier with other targets.
 Before a live area launch, parse each registered mobile's exact area-file room
 description through the target recognizer; use live output to confirm presence
 and dynamic reset state, not to discover static mobile display lines.
+During outbound official fastwalk travel, inspect each fresh room response for
+source-catalogued ground items required by the active hunt. Collect a matching
+item before advancing the route index, then resume the same route step; never
+use an unverified display noun or pick up a required item while in combat.
 If a current-band source candidate is rejected only because one reset permits
 two matching mobiles, it may enter research rotation: live TARGETMODE output
 must prove exactly one source-matched target before consider or combat. Never
@@ -142,6 +153,9 @@ that policy as protection-recovery evidence and do not immediately reselect the
 same source route. Recover or acquire the required protection first, or choose
 another current-band route; a later retry is allowed only after the recovery
 gate clears.
+An absent or cooldown-protected Moria carrier must not suppress generic
+source ranking. Continue with a different current-band candidate while the
+exact XP-losing route remains blocked by its protection marker.
 For the Moria sanctuary required-loot hunt, a carrier located by `where` but
 outside its source reset room is not an authorization to pursue. Record the
 bounded attempt as a retryable failure with the normal three-segment cooldown,
@@ -172,6 +186,11 @@ the healer while poison remains active. Bound weak `spec_guard`,
 and `spec_cast_judge` as its source `6 * level` high-explosive ceiling. Keep
 all other weak, moderate, strong, boss, breath, and caster specials blocked
 unless a matching source damage/effect policy and live evidence are added.
+Any explicitly audited `spec_cast_mage` hunt must mark sanctuary as required,
+quaff its carried purple potion before the opener, and confirm the sanctuary
+affect before attacking. Live run 4217 exposed the unsafe gap between merely
+carrying a reserve and consuming it: unprotected fireball and colour spray
+forced a withdrawal from the Shire dwarven prince.
 If a source peak-damage rejection is caused only by the maximum fuzzy mobile
 level, allow it only as an explicit reset-retry probe when the minimum source
 peak is below current max HP. Require exact live `consider` level (no positive
@@ -236,6 +255,10 @@ reported as materially stronger than the character.
 Persist that below-band result against the selected policy for the current
 character level and reboot. Do not revisit the same surviving mobile until the
 level or reboot identity changes.
+Every shared probe-to-hunt promotion and fallback must enforce both the
+policy's minimum and maximum character level. Live run 4223 proved that an
+expired level-18 Rock Toad policy is below-band and wasteful at level 22; a
+cooldown or protection-recovery path must not revive it outside its band.
 The next registered high-level extension is the 46-50 Dwarven Home chess-room
 dwarf (mobile 20514, room 20530), followed by the Mirror Realm Storn fallback
 (mobile 19034, room 19114), both source-registered from revision `bf745c3` as
@@ -280,6 +303,12 @@ movement removes it; do not use it as travel concealment.
 Before a mage field fastwalk, establish known invisibility at recall so
 wandering Midgaard greet-program mobiles cannot replace a productive target
 with a trivial forced fight.
+Before a Magic Shop trip, use known invisibility when available. Otherwise
+issue `where drunk` from healer room 3054 and defer the trip when mobile 3064
+is in a source-route room. Its `greet_prog` calls `mpkill`, while
+`mprog_greet_trigger` requires the mobile to see the entering player. Treat a
+blocked route as a bounded retry after productive work, not as an
+unaffordable-purchase result.
 For verified hunts, continue until a meaningful discomfort threshold: low
 health without vetted local recovery, an uncured disabling affect, unusable
 food or water when needed, insufficient movement, encumbrance, or exhausted
@@ -295,6 +324,12 @@ the route has no combat hunt stops.
 Deferred funding routes must honor that initial healer movement gate before
 starting class-trainer travel; the funding policy may defer normal resupply,
 but it must not bypass the first safe recovery checkpoint.
+Any live checkpoint outside Midgaard must select `return-home` before restock,
+liquidation, banking, training, or other city maintenance, even when current
+HP and movement are otherwise sufficient. Exclude death handling and the
+explicit Mud School accessory rooms from this location gate. Live run 4238
+showed why: restock correctly refused to invent a Midgaard shop route from
+Solace room 10295, but return-home needed to own that transition first.
 When a bounded segment reaches its runtime limit, force the existing healer
 save-and-quit path to become command-ready even if the latest server prompt
 has not yet been observed; cleanup must not expire while a character is
@@ -307,6 +342,16 @@ lower-level half-dead opponent down to 10%. Retain a 67.5% departure floor
 for high-risk and aggressive targets. Keep death traps, unknown high-level
 enemies, unsafe crowds, disabling affects, and unsupplied hunger or thirst as
 hard withdrawal boundaries.
+Do not let the generic non-fastwalk 25% emergency-resupply floor override a
+field fight's 15% withdrawal or 10% finisher threshold.
+For a return-home checkpoint at the healer, use the same 90% movement floor
+both when deciding to sleep and when deciding to wake. A lower generic wake
+floor creates a no-progress sleep/stand command loop.
+For bounded live HERO invocations that can enter progression combat, set
+`--max-segment-runtime` to at least 420 seconds so the 360-second combat bound
+still has travel and healer-cleanup time. Live run 4211 proved that 240 seconds
+can preempt a healthy near-finished fight and force an unnecessary XP-losing
+recall.
 Do not count source-proven or live-level-confirmed below-band mobiles as an
 unsafe crowd. They must not block selection of a useful-band target or trigger
 a flee when they join its combat. Never select them deliberately for XP, but
@@ -334,6 +379,39 @@ source identity in policy/evidence with an ephemeral selector.
 When a registered wandering target appears in any source-vetted room while its
 circuit is active, stop before the next route step and run the normal crowd,
 health, level-ceiling, and `consider` gates against that live selector.
+Apply this interception during destination-guided field circuits as well as the
+official outbound fastwalk, but only when the current room VNUM belongs to the
+active stop's registered route graph. Live runs 4227 and 4235 exposed Old
+Thalos lamias walking through those safe transit rooms while endpoint-only
+searches missed them; source confirms every mobile-5201 lamia reset equips the
+required long slim dagger.
+Do not apply the reset-endpoint VNUM restriction to that bounded circuit
+interception: the source mobile VNUM identifies the registered prototype, while
+an ordinary non-sentinel mobile may have wandered to another room in the same
+safe route graph. Still require its exact source display line and fresh
+TARGETMODE selector. Live run 4253 saw mobile 5201's lamia twice in Thalos room
+5212 and exposed the obsolete endpoint-only guard before the corrected worker
+was loaded.
+Use the source parser's canonical `strange lamia` identity for this exact
+target while retaining `lamia` as the explicit `where_target` and command
+keyword. Live run 4273 exposed the combat mismatch: the circuit saw many valid
+selectors but a policy targeted only as exact `lamia` rejected all of them.
+Live run 4293 then exposed the inverse locator mismatch: `where lamia` reports
+rows as `The lamia`, so parsing them as exact `strange lamia` waited until the
+watchdog. Live run 4304 proved both identity fixes, then exposed a movement
+race: selector `#3416` appeared in room 5239, but the lamia left south in the
+same response before `consider` arrived. Remove that stale selector, follow
+the observed direction once through the registered route graph, and require a
+fresh exact line and selector before considering or attacking. Live run 4307
+then found two exact lamias together in room 5239. Treat that duplicate
+same-prototype room as a skipped stop and continue to later registered circuit
+rooms; do not turn the local assist risk into an immediate circuit-wide
+recall. Live run 4309 validated the complete recovery: the circuit found an
+isolated lamia at selector `#3398`, disarmed and killed it for the intentionally
+below-band 80 XP, looted object 5252, verified the long slim dagger in the
+primary weapon slot, and returned at full health to healer room 3054. Apply the same canonical contract to the Forest `kodiak bear` and
+Moria `garter snake`; their longer room prose is not the parsed mobile
+identity.
 When different mobile prototypes share a short description, preserve the
 source-distinct identity from the room line and keyword list (for example,
 male versus female `a centaur`). Use the generic short name only for the
@@ -362,6 +440,10 @@ not a guarantee: check its mapped source-room group first, then continue
 through the remaining source-reachable rooms if the wanderer has moved before
 arrival. Live run 2048 spent about 290 seconds searching for a globally absent
 Kodiak and motivated this gate.
+Treat source-program messages that forcibly relocate the character as hard
+route hazards. Record the relocation, stop the stale route immediately, and
+recall even if GMCP omits the post-transfer room snapshot; never retry doors
+or route steps from the pre-transfer location.
 If a live field step reports that swimming, flying, a boat, or an accessible
 door is required, roll back that waypoint and record the route hazard. Skip
 only the blocked registered stop and continue the bounded circuit when a later
@@ -555,7 +637,9 @@ the cleared Toad circuit and then checking the recently cleared Moria carrier.
 Apply the same rotation after a productive one-kill Toad policy whenever the
 expanded circuit already has live evidence. A current level-and-reboot
 below-band policy exclusion is terminal for selection, not merely advisory;
-never return that policy until level or reboot changes. Runs 2146 through 2149
+persist the source mobile VNUM for source-ranked exclusions so sibling reset
+rooms for the same mobile are excluded too; never return that mobile or policy
+until level or reboot changes. Runs 2146 through 2149
 exposed both gaps: an unnecessary expanded Toad pass followed by two checks of
 the same below-band Moria carrier.
 Provision-funding routes may deliberately use a below-band carrier only for a
@@ -598,6 +682,17 @@ the same flight-required candidate; that is a preflight stall, not progress.
 If the current reboot-priced flight potion is already affordable and no
 no-flight target is reachable, bypass the cooldown and buy it rather than
 launching another funding walk solely to wait.
+Also buy optional flight before a source-ranked ground route when the source
+estimate is at least 100 movement and flight saves at least 60 movement. A
+failed optional purchase must cool down and fall back to the safe ground
+frontier without creating a funding requirement. Live run 4187 bought the
+reboot-priced potion for 90 copper and confirmed a duration-34 `fly` affect;
+run 4188 then reached Kerofk mobile 30248 with 260 movement, killed it for
+1,168 XP, and had 348/360 movement before recall.
+Never quaff a replacement fly potion while `fly` or `levitation` remains
+active: source `spell_fly` returns immediately when `AFF_FLYING` is already
+set, so the potion is consumed without refreshing duration. Sleep in healer
+room 3054 until the old effect expires, then buy and quaff one replacement.
 When all current-band source routes are temporarily unavailable because of
 reboot-scoped absence, crowd, or route cooldowns, keep the campaign `ready`
 and expose the reset wait; never convert that resumable state to `blocked`.
@@ -606,6 +701,15 @@ If a source fastwalk returns without observing its endpoint, quarantine that
 candidate as a route hazard, checkpoint `ready`, and rotate to the next source
 route. Migrate an already-recorded failed endpoint checkpoint on resume; never
 replay the same broken route indefinitely.
+If a source fastwalk progress watchdog repeats a movement cycle without state
+progress, treat it as a current-reboot route hazard: preserve the failed run
+and transcript, quarantine the candidate, checkpoint `ready`, and rotate after
+the bounded productive-work cooldown. Do not rerun the same stalled route in
+the next invocation.
+The same rule applies to optional maintenance fastwalks such as Forest or
+Thalos piercing-weapon upgrades: preserve the failed evidence, apply their
+existing retry cooldown, checkpoint `ready`, and continue the generic campaign
+instead of turning an upgrade-route watchdog into a campaign failure.
 Funding routes are waypoint missions: never adopt an unknown or useful-band
 aggressive mobile encountered in transit. Preserve any candidate route-hazard
 metadata on the generated fastwalk so registered hazards remain active for
@@ -652,8 +756,11 @@ honor the ordinary finish threshold for a target at or below half HP, and
 withdraw only at the normal health floor or when the opponent remains materially
 healthier than the character; when both sides are low, compare current HP as
 well as percentages, while allowing a nearly dead opponent to be finished.
-Keep special-policy `require_sanctuary` gates separate from this generic
-matchup rule.
+Special-policy `require_sanctuary` fights use the same health-aware matchup gate
+after sanctuary loss: continue a favorable one-on-one fight with a usable live
+HP snapshot, withdraw when the matchup is unsafe, and fall back to the normal
+character health floor while opponent HP is temporarily unavailable; missing
+evidence is not an automatic flee trigger.
 For thieves, learn a functional backstab opener, then take the shortest
 source-backed recurring-damage path: raise thievery skills to 40% and practise
 knife toss toward 45%. `do_knife_toss` is legal while fighting, waits eight
@@ -873,10 +980,12 @@ is found; if `look leader` fails, defer training without issuing a blind
 practice command. His teacher base is 15 and his Thievery, Armed Combat, and
 Stealth group caps are 75%, allowing progression beyond the Midgaard
 guildmaster's effective cap.
-Persist trainer-cap and trainer-level practice rejections for the current
-character level so later segments choose another eligible priority. Clear that
-exclusion after levelling; do not persist prerequisite rejections because
-another skill learned at the same level may unlock them.
+Persist trainer-level practice rejections only for the current character
+level. Persist a trainer-proficiency cap across every level that uses the same
+source trainer tier because increasing the character's skill cannot make that
+teacher stronger; clear it only when the character graduates to a different
+trainer. Do not persist prerequisite rejections because another skill learned
+at the same level may unlock them.
 Treat an `eq all` line containing `[weapon] -` as an empty slot, never as proof
 of a wielded weapon. A dedicated rearm run must buy, wield, and verify an
 occupied weapon line before succeeding. If the source-backed dagger is
@@ -927,11 +1036,19 @@ already active. Omitted campaign `--reset-retries` now uses the `--segments`
 budget so dynamic area depletion waits outside the area and retries instead of
 silently converting an autonomous run into a blocked campaign; pass
 `--reset-retries 0` only when an operator explicitly wants no reset wait.
+On Windows, launch detached Python workers with `pythonw.exe` or an explicit
+`CREATE_NO_WINDOW` creation flag, and redirect stdout and stderr to `runs/`.
+Calling console `python.exe` directly can create a visible `conhost.exe` window
+even when the worker is intended to run unattended.
 When every fresh current-band source-ranked target is exhausted, the selector
 may reuse a same-reboot route only if its evidence records a completed kill
 and its policy XP delta is at least 50; this exception does not permit trivial
 or crowded routes to loop, and ordinary absent/crowded cooldowns still defer
 to the bounded reset controller.
+Within that selector, fully source-safe current-band routes have priority over
+special-procedure research; among safe routes, productive same-reboot evidence
+comes first, then fresh routes, then retryable routes. Research remains
+available after the safe progress pool is exhausted.
 
 ## Operational Fail-Fast Policy
 

@@ -515,8 +515,17 @@ def build_parser() -> argparse.ArgumentParser:
     hero_parser.add_argument(
         "--password",
         help=(
-            "plaintext DD4 character password for this process only; it is not "
-            "written to generated files or transcripts"
+            "plaintext DD4 character password for this process only unless "
+            "--remember-password is supplied; it is never written to generated "
+            "files or transcripts"
+        ),
+    )
+    hero_parser.add_argument(
+        "--remember-password",
+        action="store_true",
+        help=(
+            "store --password in Windows Credential Manager for later "
+            "checkpoint resumption"
         ),
     )
     hero_parser.add_argument(
@@ -1244,6 +1253,7 @@ def main(argv: list[str] | None = None) -> int:
                         max_segment_runtime=args.max_segment_runtime,
                         target_level=args.target_level,
                         password=args.password,
+                        remember_password=args.remember_password,
                     )
                 )
         except Exception as exc:

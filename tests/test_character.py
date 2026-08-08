@@ -144,16 +144,18 @@ def test_profile_rejects_subclass_and_base_class_mismatch() -> None:
         )
 
 
-def test_profile_rejects_unimplemented_subclass() -> None:
-    with pytest.raises(ValueError, match="not implemented"):
-        CharacterSpec.from_mapping(
-            {
-                "name": "Builder",
-                "race": "dwarf",
-                "gender": "neuter",
-                "subclass": "engineer",
-            }
-        )
+def test_profile_accepts_source_legal_research_subclass() -> None:
+    spec = CharacterSpec.from_mapping(
+        {
+            "name": "Builder",
+            "race": "dwarf",
+            "gender": "neuter",
+            "subclass": "engineer",
+        }
+    )
+
+    assert spec.character_class == "smithy"
+    assert spec.subclass == "engineer"
 
 
 def test_load_character_spec_from_yaml(tmp_path: Path) -> None:

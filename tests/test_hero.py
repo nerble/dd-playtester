@@ -193,6 +193,61 @@ def test_hero_uses_plaintext_password_only_for_campaign_process(
     assert os.environ["DD4_VALORA_PASSWORD"] == "previous-secret"
 
 
+def test_hero_can_remember_plaintext_password_for_checkpoint_resume(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (object,),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "character": type(
+                "Character",
+                (object,),
+                {
+                    "password_env": "DD4_VALORA_PASSWORD",
+                    "credential_name": "character:valora",
+                },
+            )(),
+        },
+    )()
+
+    def fake_prepare(request, **options):
+        return prepared
+
+    async def fake_campaign(path, **options):
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 2})
+
+    def fake_save(credential_name: str, password: str) -> None:
+        captured["credential_name"] = credential_name
+        captured["password"] = password
+
+    monkeypatch.setattr("dd4tester.hero.prepare_hero_request", fake_prepare)
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+    monkeypatch.setattr("dd4tester.hero.save_character_password", fake_save)
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            password="command-line-secret",
+            remember_password=True,
+        )
+    )
+
+    assert captured == {
+        "credential_name": "character:valora",
+        "password": "command-line-secret",
+    }
+
+
 def test_prepare_hero_request_writes_resumable_secret_free_configuration(
     tmp_path: Path,
 ) -> None:
@@ -415,7 +470,7 @@ def test_prepare_hero_request_rejects_source_options_missing_from_runtime(
     assert not (tmp_path / "heroes").exists()
 
 
-def test_prepare_hero_request_names_unautomated_source_subclass(
+def test_prepare_hero_request_accepts_source_legal_research_subclass(
     tmp_path: Path,
 ) -> None:
     base_catalog = parse_character_catalog(SOURCE)
@@ -428,20 +483,17 @@ def test_prepare_hero_request_names_unautomated_source_subclass(
         ),
     )
 
-    with pytest.raises(
-        ValueError,
-        match="subclass 'engineer' is source-legal but has no autonomous HERO policy yet",
-    ):
-        prepare_hero_request(
-            HeroRequest(
-                name="Valora",
-                race="human",
-                sex="female",
-                character_class="smithy",
-                subclass="engineer",
-            ),
-            catalog=catalog,
-            workspace=tmp_path / "heroes",
-        )
+    prepared = prepare_hero_request(
+        HeroRequest(
+            name="Valora",
+            race="human",
+            sex="female",
+            character_class="smithy",
+            subclass="engineer",
+        ),
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+    )
 
-    assert not (tmp_path / "heroes").exists()
+    assert prepared.character.character_class == "smithy"
+    assert prepared.character.subclass == "engineer"

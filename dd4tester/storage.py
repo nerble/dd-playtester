@@ -291,6 +291,65 @@ class RunStorage:
         self.connection.commit()
         return int(segments.rowcount), int(campaigns.rowcount)
 
+    def recover_interrupted_campaign_segments(
+        self,
+        campaign_id: int,
+        *,
+        reason: str,
+    ) -> int:
+        """Close orphaned work for one campaign before it is resumed."""
+        running_segments = list(
+            self.connection.execute(
+                """
+                SELECT id, run_id
+                FROM campaign_segments
+                WHERE campaign_id = ? AND status = 'running'
+                ORDER BY id
+                """,
+                (campaign_id,),
+            )
+        )
+        if not running_segments:
+            return 0
+
+        timestamp = _now()
+        run_ids = {
+            int(row["run_id"])
+            for row in running_segments
+            if row["run_id"] is not None
+        }
+        if run_ids:
+            placeholders = ", ".join("?" for _ in run_ids)
+            self.connection.execute(
+                f"""
+                UPDATE runs
+                SET finished_at = ?, status = 'failed', error = ?
+                WHERE status = 'running' AND id IN ({placeholders})
+                """,
+                (timestamp, reason, *run_ids),
+            )
+
+        segment_ids = [int(row["id"]) for row in running_segments]
+        placeholders = ", ".join("?" for _ in segment_ids)
+        cursor = self.connection.execute(
+            f"""
+            UPDATE campaign_segments
+            SET finished_at = ?, status = 'failed', error = ?
+            WHERE status = 'running' AND id IN ({placeholders})
+            """,
+            (timestamp, reason, *segment_ids),
+        )
+        self.connection.execute(
+            """
+            UPDATE campaigns
+            SET status = 'failed', error = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (reason, timestamp, campaign_id),
+        )
+        self.connection.commit()
+        return int(cursor.rowcount)
+
     def fail_campaign_after_timeout(
         self,
         campaign_id: int,
@@ -624,7 +683,9 @@ class RunStorage:
             parameters.append(skill.casefold())
         cursor = self.connection.execute(
             f"""
-            SELECT e.id, e.run_id, e.timestamp, e.kind, e.payload_json
+            SELECT e.id, e.run_id, e.timestamp, e.kind, e.payload_json,
+                   CAST(json_extract(s.start_state_json, '$.level') AS INTEGER)
+                       AS character_level
             FROM events AS e
             JOIN campaign_segments AS s ON s.run_id = e.run_id
             WHERE {' AND '.join(clauses)}

@@ -39,8 +39,10 @@ def test_parse_character_catalog_uses_dd4_table_order_and_relationships() -> Non
     ]
     assert [option.name for option in catalog.classes] == ["mage", "thief"]
     assert catalog.subclass_option("warlock").base_class == "mage"
+    assert catalog.subclass_option("warlock").change_keyword == "Wlk"
     assert catalog.subclass_option("bounty hunter").base_class == "thief"
     assert catalog.subclass_option("B. Hunter").name == "bounty hunter"
+    assert catalog.subclass_change_keyword("ninja") == "Nin"
     assert catalog.source == "fixture const.c"
 
 

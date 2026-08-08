@@ -75,6 +75,7 @@ class ProgressionContext:
     progression_track: str
     practice_skill: str
     capabilities: frozenset[str]
+    target_subclass: str | None = None
     has_large_sack: bool = False
     has_sellable_loot: bool = False
     needs_coin_deposit: bool = False
@@ -126,12 +127,13 @@ class ProgressionContext:
         character_class: str,
         *,
         subclass: str | None = None,
+        target_subclass: str | None = None,
         **state: object,
     ) -> "ProgressionContext":
         class_profile = _ARCHETYPES.class_profile(character_class)
         capabilities = set(class_profile.capabilities)
         canonical_subclass = None
-        if subclass is not None:
+        if subclass is not None and str(subclass).casefold() not in {"", "none"}:
             subclass_profile = _ARCHETYPES.subclass_profile(subclass)
             if subclass_profile.base_class != class_profile.name:
                 raise ValueError(
@@ -140,6 +142,18 @@ class ProgressionContext:
                 )
             canonical_subclass = subclass_profile.name
             capabilities.update(subclass_profile.capabilities)
+        canonical_target_subclass = None
+        if target_subclass is not None and str(target_subclass).casefold() not in {
+            "",
+            "none",
+        }:
+            target_profile = _ARCHETYPES.subclass_profile(target_subclass)
+            if target_profile.base_class != class_profile.name:
+                raise ValueError(
+                    f"subclass {target_profile.name!r} requires base class "
+                    f"{class_profile.name!r}"
+                )
+            canonical_target_subclass = target_profile.name
         return cls(
             level=int(level or 0),
             character_class=class_profile.name,
@@ -147,7 +161,16 @@ class ProgressionContext:
             progression_track=class_profile.progression_track,
             practice_skill=class_profile.practice_skill,
             capabilities=frozenset(capabilities),
+            target_subclass=canonical_target_subclass,
             **state,
+        )
+
+    @property
+    def needs_subclass_selection(self) -> bool:
+        return (
+            self.level >= 30
+            and self.target_subclass is not None
+            and self.subclass is None
         )
 
 
@@ -1755,6 +1778,26 @@ _RETURN_HOME_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_CHOOSE_SUBCLASS_POLICY = ProgressionPolicy(
+    policy_id="choose-subclass-30",
+    minimum_level=30,
+    maximum_level=None,
+    status="research",
+    execution="choose-subclass",
+    summary=(
+        "At level 30, travel to the source-backed Kerofk class teacher and "
+        "issue DD4's exact subclass change command before continuing HERO play."
+    ),
+    evidence=(
+        "DD4 do_change accepts subclass who_name keywords only at exactly level 30.",
+        "The level-20 Kerofk trainer routes are source-registered and already "
+        "used for class-aware practice training.",
+        "The campaign waits for live Char.Base subclass state before enabling "
+        "subclass-specific capabilities or policies.",
+    ),
+    practice_skill=None,
+)
+
 _REARM_WEAPON_POLICY = ProgressionPolicy(
     policy_id="rearm-primary-weapon",
     minimum_level=2,
@@ -2005,6 +2048,12 @@ _THALOS_LONG_DAGGER_UPGRADE_POLICY = ProgressionPolicy(
         "points. The preceding three plain-dagger kills took 104.1, 92.1, and "
         "90.0 seconds; treat these two upgraded samples as encouraging "
         "throughput evidence, not a stable causal speedup.",
+        "Live run 4309 revalidated the replacement loop at level 22 after "
+        "earlier gear loss. The circuit skipped two co-located lamias, found "
+        "isolated selector #3398, disarmed it, and completed the explicit "
+        "required-loot kill for 80 below-band XP without taking damage. It "
+        "looted and wielded object 5252, verified the long slim dagger in the "
+        "weapon slot, and returned to healer room 3054.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -4801,6 +4850,7 @@ def policy_for(
     character_class: str,
     *,
     subclass: str | None = None,
+    target_subclass: str | None = None,
     has_large_sack: bool = False,
     has_sellable_loot: bool = False,
     needs_coin_deposit: bool = False,
@@ -4851,6 +4901,7 @@ def policy_for(
         level,
         character_class,
         subclass=subclass,
+        target_subclass=target_subclass,
         has_large_sack=has_large_sack,
         has_sellable_loot=has_sellable_loot,
         needs_coin_deposit=needs_coin_deposit,
@@ -5031,6 +5082,7 @@ _HANDOFF_BLOCKING_EXECUTIONS = frozenset(
         "buy-flight",
         "borrow-flight",
         "provision-funding",
+        "choose-subclass",
     }
 )
 
@@ -5159,6 +5211,11 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _LIQUIDATE_LOOT_POLICY
     if not context.has_food:
         return _RESTOCK_POLICY
+    if context.needs_subclass_selection:
+        return replace(
+            _CHOOSE_SUBCLASS_POLICY,
+            practice_skill=context.practice_skill,
+        )
     if context.needs_basic_gear:
         return _OUTFIT_BASIC_GEAR_POLICY
     if context.needs_body_gear_recovery:
@@ -8442,6 +8499,12 @@ def _research_hunt_policy(
     hunt: ProgressionPolicy,
 ) -> ProgressionPolicy | None:
     """Promote a reboot-scoped viable probe into a bounded live hunt."""
+    for policy in (probe, hunt):
+        if context.level < policy.minimum_level or (
+            policy.maximum_level is not None
+            and context.level > policy.maximum_level
+        ):
+            return None
     if _research_crowd_is_active(context, probe.policy_id) or _research_crowd_is_active(
         context, hunt.policy_id
     ):

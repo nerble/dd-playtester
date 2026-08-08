@@ -41,6 +41,7 @@ class SubclassOption:
     display_name: str
     base_class: str
     aliases: tuple[str, ...] = ()
+    change_keyword: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,14 @@ class CharacterCatalog:
             "subclass", value, (option.name for option in self.subclasses)
         )
 
+    def subclass_change_keyword(self, value: str) -> str:
+        option = self.subclass_option(value)
+        if not option.change_keyword:
+            raise ValueError(
+                f"subclass {option.name!r} has no source-backed change keyword"
+            )
+        return option.change_keyword
+
     def sex_name(self, value: str) -> str:
         normalized = normalize_option(value)
         if normalized not in self.sexes:
@@ -111,6 +120,7 @@ class CharacterCatalog:
                     "display_name": option.display_name,
                     "base_class": option.base_class,
                     "aliases": list(option.aliases),
+                    "change_keyword": option.change_keyword,
                 }
                 for option in self.subclasses
             ],
@@ -127,6 +137,7 @@ class CharacterCatalog:
                     display_name=item["display_name"],
                     base_class=item["base_class"],
                     aliases=tuple(item.get("aliases", ())),
+                    change_keyword=item.get("change_keyword"),
                 )
                 for item in data["subclasses"]
             ),
@@ -217,6 +228,7 @@ def parse_character_catalog(
                 strings[1].strip(),
                 base_class,
                 aliases=aliases,
+                change_keyword=str(strings[0]).strip(),
             )
         )
 

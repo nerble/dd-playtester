@@ -42,9 +42,6 @@ CLASSES = dict(_ARCHETYPES.class_aliases)
 SUBCLASS_BASE_CLASSES = {
     name: profile.base_class for name, profile in _ARCHETYPES.subclasses.items()
 }
-UNAVAILABLE_SUBCLASSES = {
-    name for name, profile in _ARCHETYPES.subclasses.items() if not profile.available
-}
 
 GENDERS = {
     "male": "m",
@@ -236,9 +233,6 @@ class CharacterSpec:
             SUBCLASS_BASE_CLASSES,
             "subclass",
         )
-        if subclass in UNAVAILABLE_SUBCLASSES:
-            raise ValueError(f"DD4 reports subclass {subclass!r} as not implemented")
-
         requested_class = data.get("class", data.get("character_class"))
         if requested_class is None and subclass is None:
             raise ValueError("class or subclass must be provided")

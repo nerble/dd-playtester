@@ -142,6 +142,7 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
             "Valora",
             "--password",
             "command-line-secret",
+            "--remember-password",
             "--target-level",
             "30",
         ]
@@ -159,6 +160,7 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
     assert captured_request["options"]["reset_retries"] is None
     assert captured_request["options"]["target_level"] == 30
     assert captured_request["options"]["password"] == "command-line-secret"
+    assert captured_request["options"]["remember_password"] is True
     captured = capsys.readouterr()
     assert "awaiting the Mud School area reset" in captured.out
     assert "command-line-secret" not in captured.out

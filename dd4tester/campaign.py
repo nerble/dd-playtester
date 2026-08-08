@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import subprocess
 from collections import Counter
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Collection, Mapping
 
 from .character import CharacterSpec, load_character_spec
+from .dd4_catalog import load_character_catalog
 from .equipment import (
     GearCatalog,
     character_can_use_item,
@@ -220,9 +222,15 @@ _MAINTENANCE_EXECUTIONS = {
     "recover-foundry-set-circlet",
     "upgrade-piercing-weapon",
     "buy-flight",
+    "buy-optional-flight",
     "borrow-flight",
     "provision-funding",
+    "choose-subclass",
 }
+_MAINTENANCE_ROUTE_WATCHDOG_EXECUTIONS = frozenset(
+    {"upgrade-piercing-weapon"}
+)
+_MAINTENANCE_ROUTE_HAZARDS_KEY = "campaign_maintenance_route_hazards"
 _NON_OBJECTIVE_MAINTENANCE_PHASES = frozenset({"liquidate-loot"})
 _LIQUIDATION_BASELINE_KEY = "campaign_liquidation_baseline"
 _PROVISION_FUNDING_REQUIRED_KEY = "campaign_provision_funding_required"
@@ -237,11 +245,14 @@ _FLIGHT_FUNDING_RETRY_KEY = "campaign_flight_funding_retry_pending"
 _FLIGHT_PURCHASE_COOLDOWN_KEY = "campaign_flight_purchase_cooldown"
 _MAGIC_SHOP_FLIGHT_PRICE_KEY = "campaign_magic_shop_flight_price"
 _MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY = "campaign_magic_shop_flight_price_boot_id"
+_MAGIC_SHOP_ROUTE_BLOCKED_KEY = "magic_shop_route_blocked_by_drunk"
 _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS = 3
+_OPTIONAL_FLIGHT_MINIMUM_GROUND_COST = 100
+_OPTIONAL_FLIGHT_MINIMUM_SAVINGS = 60
 # Give a bounded campaign runner enough time to finish its safe healer return
-# after the StarterBot deadline, while still covering setup or connection work
-# that otherwise could leave a running campaign segment indefinitely.
-_CAMPAIGN_RUNNER_TIMEOUT_GRACE_SECONDS = 30.0
+# after the StarterBot deadline, including synchronous source-frontier setup
+# that happens before the live segment clock starts.
+_CAMPAIGN_RUNNER_TIMEOUT_GRACE_SECONDS = 45.0
 # Keep an explicit reset retry short enough that a command-line invocation
 # cannot look stalled in an outer launcher. Longer waits remain opt-in.
 DEFAULT_RESET_WAIT_SECONDS = 30.0
@@ -268,8 +279,10 @@ _DYNAMIC_FIELD_ROUTE_HAZARD_ABORT_REASON = (
 )
 _FIELD_ROUTE_HAZARD_ABORT_PREFIXES = (
     "field route preflight found source-registered hazard ",
+    "field route forced relocation:",
     "field route movement blocked:",
     "field route endpoint not observed:",
+    "field route watchdog stopped:",
     _DYNAMIC_FIELD_ROUTE_HAZARD_ABORT_REASON,
 )
 _FLIGHT_ROUTE_ABORT_PREFIXES = (
@@ -283,6 +296,9 @@ _FLIGHT_ROUTE_ABORT_PREFIXES = (
 # wandering target in a source-excluded room. That is temporary reboot-scoped
 # evidence, unlike a static route-preflight hazard.
 _SOURCE_RANKED_LOCATOR_ROUTE_HAZARD_PREFIX = "`where` located "
+_SOURCE_RANKED_RUNTIME_BOUNDARY_ROUTE_HAZARD = (
+    "segment runtime boundary requested a safe healer return"
+)
 _BARDOOSH_POLICY_ID = "ambush-bardoosh-thief-kill-research-13"
 _NOBLEMAN_POLICY_ID = "dwarven-nobleman-thief-probe-13-15"
 _NOBLEMAN_LEVEL_SEVENTEEN_PROBE_POLICY_ID = (
@@ -542,7 +558,13 @@ def _is_retryable_source_ranked_route_hazard(
     return bool(
         policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX)
         and isinstance(route_hazard, str)
-        and route_hazard.startswith(_SOURCE_RANKED_LOCATOR_ROUTE_HAZARD_PREFIX)
+        and route_hazard.startswith(
+            (
+                _SOURCE_RANKED_LOCATOR_ROUTE_HAZARD_PREFIX,
+                "field route watchdog stopped:",
+                _SOURCE_RANKED_RUNTIME_BOUNDARY_ROUTE_HAZARD,
+            )
+        )
     )
 
 
@@ -670,6 +692,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     "campaign_worn_equipment",
     "campaign_primary_weapon",
     "campaign_empty_equipment_categories",
+    _MAINTENANCE_ROUTE_HAZARDS_KEY,
     "campaign_liquidation_baseline",
     "campaign_flight_loan_attempted",
     "campaign_flight_funding_repair_applied",
@@ -871,10 +894,11 @@ class CampaignResult:
 
     @property
     def ready_for_next_segment(self) -> bool:
+        message = (self.message or "").casefold()
         return bool(
             self.status == "ready"
-            and self.message
-            and "checkpointed for the next verified segment." in self.message
+            and "checkpointed for the next verified segment" in message
+            and not self.awaiting_area_reset
         )
 
     @property
@@ -2880,7 +2904,7 @@ class CampaignRunner:
             state,
             gear_catalog=self._gear_catalog,
             character_class=self.spec.character.character_class,
-            subclass=self.spec.character.subclass,
+            subclass=_live_subclass(state),
             predicate=is_piercing_weapon,
             worn_only=True,
         ):
@@ -2894,7 +2918,7 @@ class CampaignRunner:
     def _needs_pounding_weapon(self, state: dict[str, Any]) -> bool:
         """Require the source-backed stun weapon for a class that exposes stun."""
         character_class = self.spec.character.character_class.casefold()
-        subclass = (self.spec.character.subclass or "").casefold()
+        subclass = (_live_subclass(state) or "").casefold()
         source_stun_user = character_class == "warrior" or subclass == "bounty hunter"
         if not source_stun_user or _level(state) < 30:
             return False
@@ -2913,7 +2937,7 @@ class CampaignRunner:
             state,
             gear_catalog=self._gear_catalog,
             character_class=self.spec.character.character_class,
-            subclass=self.spec.character.subclass,
+            subclass=_live_subclass(state),
             predicate=is_blunt_weapon,
         )
 
@@ -3134,6 +3158,7 @@ class CampaignRunner:
             and not has_food
         )
         needs_healer_recovery = _campaign_needs_healer_recovery(state)
+        needs_location_recovery = _campaign_checkpoint_needs_return_home(state)
         flight_abort_requires_refresh = any(
             str(state.get("campaign_fastwalk_abort_reason") or "").startswith(
                 prefix
@@ -3195,7 +3220,8 @@ class CampaignRunner:
         selected = policy_for(
             _level(state),
             self.spec.character.character_class,
-            subclass=self.spec.character.subclass,
+            subclass=_live_subclass(state),
+            target_subclass=self.spec.character.subclass,
             has_large_sack=(
                 self._historical_large_sack
                 or _state_has_item(state.get("inventory"), "large sack")
@@ -3234,6 +3260,7 @@ class CampaignRunner:
             has_food=has_food,
             needs_return_home=bool(
                 needs_healer_recovery
+                or needs_location_recovery
                 or (
                     school_exit_required
                     and state.get(_PROVISION_FUNDING_REQUIRED_KEY)
@@ -3332,14 +3359,14 @@ class CampaignRunner:
                 state,
                 gear_catalog=self._gear_catalog,
                 character_class=self.spec.character.character_class,
-                subclass=self.spec.character.subclass,
+                subclass=_live_subclass(state),
             ),
             needs_intermediate_piercing_weapon_upgrade=(
                 _needs_piercing_weapon_upgrade(
                     state,
                     gear_catalog=self._gear_catalog,
                     character_class=self.spec.character.character_class,
-                    subclass=self.spec.character.subclass,
+                    subclass=_live_subclass(state),
                     target_vnum=_INTERMEDIATE_PIERCING_WEAPON_UPGRADE_VNUM,
                 )
             ),
@@ -3415,15 +3442,6 @@ class CampaignRunner:
             handoff_policy_id=handoff_policy_id,
         )
         if (
-            not selected.executable
-            and _moria_sanctuary_wait_is_active(state)
-        ):
-            # An absent sanctuary carrier is a hard recovery requirement after
-            # a failed protected hunt. Do not replace its explicit reset wait
-            # with generic source ranking, which could reopen unprotected work.
-            state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
-            return selected
-        if (
             selected.execution == "source-ranked-hunt"
             and _source_ranked_policy_needs_rotation(
                 state,
@@ -3459,6 +3477,16 @@ class CampaignRunner:
         if source_candidate_mismatch or _source_ranked_fallback_needed(state, selected):
             candidate = self._select_source_ranked_candidate(state)
             if candidate is not None:
+                if _source_ranked_candidate_needs_flight_refresh(
+                    candidate,
+                    state,
+                ):
+                    # An active flight affect at duration zero is still
+                    # observable, but it is less than one hour from expiry.
+                    # Do not launch a source route that needs flight on that
+                    # reserve; let the existing funding/purchase loop refresh
+                    # it before departure.
+                    has_flight = False
                 if candidate.requires_flight and not has_flight:
                     if flight_retry_cooldown_active:
                         # A stocked character must keep progressing without
@@ -3474,6 +3502,7 @@ class CampaignRunner:
                         if candidate is None:
                             if (
                                 can_attempt_flight_purchase
+                                and not state.get(_MAGIC_SHOP_ROUTE_BLOCKED_KEY)
                                 and (
                                     state.get("magic_shop_purchase_failed")
                                     or state.get(_FLIGHT_FUNDING_REQUIRED_KEY)
@@ -3524,7 +3553,72 @@ class CampaignRunner:
                     else:
                         state[_FLIGHT_FUNDING_REQUIRED_KEY] = True
                         state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
-                        return self._policy_for_state(state)
+                        # ``has_flight`` above describes the current affect
+                        # snapshot, while this candidate also needs a reserve
+                        # long enough to finish its route.  Re-entering
+                        # ``_policy_for_state`` here would see the same short
+                        # affect as active and select this route again forever.
+                        # Return the funding transition directly instead.
+                        can_buy_refreshed_flight = (
+                            has_food
+                            and can_attempt_flight_purchase
+                            and (
+                                not bool(
+                                    state.get("magic_shop_purchase_failed")
+                                )
+                                or (
+                                    bool(
+                                        state.get(
+                                            "campaign_flight_loan_attempted"
+                                        )
+                                    )
+                                    and bool(
+                                        state.get(_FLIGHT_FUNDING_RETRY_KEY)
+                                    )
+                                )
+                            )
+                        )
+                        if can_buy_refreshed_flight:
+                            return replace(
+                                _BUY_FLIGHT_POLICY,
+                                minimum_level=_level(state),
+                                maximum_level=_level(state),
+                                practice_skill=selected.practice_skill,
+                            )
+                        return replace(
+                            _PROVISION_FUNDING_POLICY,
+                            minimum_level=_level(state),
+                            maximum_level=_level(state),
+                            summary=(
+                                "Refresh flight before launching the selected "
+                                "source-ranked route; use the current source-"
+                                "backed funding loop until its reboot-local "
+                                "price is affordable."
+                            ),
+                            practice_skill=selected.practice_skill,
+                        )
+                if (
+                    not has_flight
+                    and has_food
+                    and can_attempt_flight_purchase
+                    and not flight_retry_cooldown_active
+                    and not state.get("magic_shop_purchase_failed")
+                    and _source_ranked_candidate_benefits_from_flight(candidate)
+                ):
+                    state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+                    return replace(
+                        _BUY_FLIGHT_POLICY,
+                        minimum_level=_level(state),
+                        maximum_level=_level(state),
+                        execution="buy-optional-flight",
+                        summary=(
+                            "Buy an affordable flight potion before the "
+                            "selected movement-heavy source route; if the "
+                            "reboot-local price is unaffordable, retain the "
+                            "safe ground route after a bounded cooldown."
+                        ),
+                        practice_skill=selected.practice_skill,
+                    )
                 level = _level(state)
                 if (
                     _source_ranked_candidate_requires_sanctuary(candidate)
@@ -3549,7 +3643,6 @@ class CampaignRunner:
                             ),
                             practice_skill=selected.practice_skill,
                         )
-                if candidate is None:
                     state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
                     return replace(
                         _SOURCE_RANKED_HUNT_POLICY,
@@ -3608,6 +3701,30 @@ class CampaignRunner:
                     practice_skill=selected.practice_skill,
                     requires_flight_override=candidate.requires_flight,
                 )
+            if (
+                not has_flight
+                and can_attempt_flight_purchase
+                and state.get(_FLIGHT_FUNDING_RETRY_KEY)
+                and not flight_retry_cooldown_active
+            ):
+                # The current safe frontier can be temporarily empty because
+                # its ground candidates are on reboot-local cooldowns or
+                # below-band exclusions.  A pending, affordable flight
+                # reserve is still actionable; do not let an unrelated
+                # absence wait hide the purchase.
+                state[_FLIGHT_FUNDING_REQUIRED_KEY] = True
+                return replace(
+                    _BUY_FLIGHT_POLICY,
+                    minimum_level=_level(state),
+                    maximum_level=_level(state),
+                    summary=(
+                        "The current source-safe ground frontier is "
+                        "temporarily exhausted; purchase the affordable "
+                        "pending flight reserve before reopening aerial "
+                        "routes."
+                    ),
+                    practice_skill=selected.practice_skill,
+                )
             state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
             return replace(
                 _SOURCE_RANKED_HUNT_POLICY,
@@ -3649,6 +3766,23 @@ class CampaignRunner:
         checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
         campaign_segments = storage.list_campaign_segments(campaign_id)
         latest_segment = campaign_segments[-1] if campaign_segments else None
+        running_segments = [
+            segment
+            for segment in campaign_segments
+            if segment["status"] == "running"
+        ]
+        if running_segments:
+            storage.recover_interrupted_campaign_segments(
+                campaign_id,
+                reason=(
+                    "previous campaign worker was interrupted before the "
+                    "next invocation"
+                ),
+            )
+            campaign = storage.get_campaign(campaign_id) or campaign
+            checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+            campaign_segments = storage.list_campaign_segments(campaign_id)
+            latest_segment = campaign_segments[-1] if campaign_segments else None
         if (
             latest_segment is not None
             and latest_segment["status"] == "failed"
@@ -3671,6 +3805,20 @@ class CampaignRunner:
             and checkpoint["run_id"] is None
         ):
             if _reconcile_failed_segment_progress(
+                storage,
+                campaign_id,
+                checkpoint,
+                character_name=self.spec.character.name,
+            ):
+                checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+            if _reconcile_failed_source_ranked_watchdog(
+                storage,
+                campaign_id,
+                checkpoint,
+                character_name=self.spec.character.name,
+            ):
+                checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+            if _reconcile_failed_maintenance_route_watchdog(
                 storage,
                 campaign_id,
                 checkpoint,
@@ -4167,6 +4315,7 @@ class CampaignRunner:
                     storage,
                     campaign_id,
                     level=_level(state),
+                    character_class=self.spec.character.character_class,
                 )
                 result = await _run_policy_segment(
                     adjusted_character,
@@ -4495,6 +4644,21 @@ class CampaignRunner:
                 self.spec.character.name,
                 prior_run_ids,
             )
+            if latest_run is None:
+                current_segment = next(
+                    (
+                        row
+                        for row in storage.list_campaign_segments(campaign_id)
+                        if int(row["id"]) == int(segment_id)
+                    ),
+                    None,
+                )
+                if current_segment is not None:
+                    latest_run = _run_for_failed_segment(
+                        storage,
+                        current_segment,
+                        character_name=self.spec.character.name,
+                    )
             run_id = int(latest_run["id"]) if latest_run is not None else None
             objective_kills = (
                 _objective_kills_for_execution(
@@ -4505,6 +4669,135 @@ class CampaignRunner:
                 if run_id is not None
                 else None
             )
+            if (
+                policy.execution == "source-ranked-hunt"
+                and _is_source_ranked_watchdog_failure(str(exc))
+                and not (
+                    isinstance(objective_kills, list) and objective_kills
+                )
+            ):
+                run_state = (
+                    _run_latest_state(storage, run_id)
+                    if run_id is not None
+                    else None
+                )
+                latest_state = _campaign_segment_end_state(
+                    state,
+                    run_state or state,
+                    execution=policy.execution,
+                )
+                latest_state = _source_ranked_watchdog_failure_state(
+                    latest_state,
+                    policy_id=policy.policy_id,
+                    error=str(exc),
+                )
+                self._policy_xp_deltas[policy.policy_id] = 0
+                storage.finish_campaign_segment(
+                    segment_id,
+                    status="ready",
+                    run_id=run_id,
+                    end_state=latest_state,
+                    command_count=(
+                        storage.count_events(run_id, kind="command")
+                        if run_id is not None
+                        else None
+                    ),
+                    duration_seconds=(
+                        _run_duration(latest_run)
+                        if latest_run is not None
+                        else None
+                    ),
+                    error=str(exc),
+                )
+                checkpoint_id = self._checkpoint(
+                    storage,
+                    campaign_id,
+                    segment_id,
+                    phase=policy.policy_id,
+                    reason="segment_route_watchdog",
+                    state=latest_state,
+                    run_id=run_id,
+                )
+                message = (
+                    f"{policy.policy_id} route watchdog quarantined the "
+                    "candidate after a repeated movement cycle; campaign "
+                    "rotation will continue from the next source-ranked "
+                    "route."
+                )
+                storage.finish_campaign(campaign_id, status="ready", error=message)
+                return CampaignResult(
+                    campaign_id,
+                    "ready",
+                    checkpoint_id,
+                    message,
+                    latest_state,
+                )
+            if (
+                policy.execution in _MAINTENANCE_ROUTE_WATCHDOG_EXECUTIONS
+                and _is_source_ranked_watchdog_failure(str(exc))
+                and not (
+                    isinstance(objective_kills, list) and objective_kills
+                )
+            ):
+                run_state = (
+                    _run_latest_state(storage, run_id)
+                    if run_id is not None
+                    else None
+                )
+                latest_state = _campaign_segment_end_state(
+                    state,
+                    run_state or state,
+                    execution=policy.execution,
+                )
+                latest_state = _maintenance_route_watchdog_failure_state(
+                    latest_state,
+                    policy_id=policy.policy_id,
+                    execution=policy.execution,
+                    boot_id=(
+                        latest_state.get("world_boot_id")
+                        or self._boot_id
+                    ),
+                    error=str(exc),
+                )
+                self._policy_xp_deltas[policy.policy_id] = 0
+                storage.finish_campaign_segment(
+                    segment_id,
+                    status="ready",
+                    run_id=run_id,
+                    end_state=latest_state,
+                    command_count=(
+                        storage.count_events(run_id, kind="command")
+                        if run_id is not None
+                        else None
+                    ),
+                    duration_seconds=(
+                        _run_duration(latest_run)
+                        if latest_run is not None
+                        else None
+                    ),
+                    error=str(exc),
+                )
+                checkpoint_id = self._checkpoint(
+                    storage,
+                    campaign_id,
+                    segment_id,
+                    phase=policy.policy_id,
+                    reason="segment_route_watchdog",
+                    state=latest_state,
+                    run_id=run_id,
+                )
+                message = (
+                    f"{policy.policy_id} optional route watchdog quarantined "
+                    "the maintenance route; campaign rotation will continue."
+                )
+                storage.finish_campaign(campaign_id, status="ready", error=message)
+                return CampaignResult(
+                    campaign_id,
+                    "ready",
+                    checkpoint_id,
+                    message,
+                    latest_state,
+                )
             funding_target_observed = bool(objective_kills)
             if (
                 policy.execution == "provision-funding"
@@ -4613,7 +4906,16 @@ class CampaignRunner:
             )
             if policy.execution == "borrow-flight":
                 failed_state["campaign_flight_loan_attempted"] = True
-            if policy.execution == "upgrade-piercing-weapon":
+            failed_command_count = (
+                storage.count_events(run_id, kind="command")
+                if run_id is not None
+                else None
+            )
+            policy_attempted = bool(failed_command_count)
+            if (
+                policy.execution == "upgrade-piercing-weapon"
+                and policy_attempted
+            ):
                 failed_state[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = (
                     _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS
                 )
@@ -4633,10 +4935,14 @@ class CampaignRunner:
             storage.finish_campaign_segment(
                 segment_id,
                 status="failed",
-                run_id=None,
+                run_id=run_id,
                 end_state=failed_state,
-                command_count=None,
-                duration_seconds=None,
+                command_count=failed_command_count,
+                duration_seconds=(
+                    _run_duration(latest_run)
+                    if latest_run is not None
+                    else None
+                ),
                 error=message,
             )
             checkpoint_id = self._checkpoint(
@@ -4646,6 +4952,7 @@ class CampaignRunner:
                 phase=policy.policy_id,
                 reason="segment_failed",
                 state=failed_state,
+                run_id=run_id,
             )
             storage.finish_campaign(campaign_id, status="failed", error=message)
             return CampaignResult(
@@ -4901,7 +5208,7 @@ class CampaignRunner:
                 end_state,
                 gear_catalog=self._gear_catalog,
                 character_class=self.spec.character.character_class,
-                subclass=self.spec.character.subclass,
+                subclass=_live_subclass(end_state),
             ):
                 end_state[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = (
                     _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS
@@ -4919,7 +5226,7 @@ class CampaignRunner:
                 end_state,
                 gear_catalog=self._gear_catalog,
                 character_class=self.spec.character.character_class,
-                subclass=self.spec.character.subclass,
+                subclass=_live_subclass(end_state),
                 target_vnum=_INTERMEDIATE_PIERCING_WEAPON_UPGRADE_VNUM,
             ):
                 end_state[
@@ -4948,7 +5255,11 @@ class CampaignRunner:
                 execution=policy.execution,
                 xp_delta=xp_delta,
             )
-        if policy.execution not in {"buy-flight", "buy-flight-potion"}:
+        if policy.execution not in {
+            "buy-flight",
+            "buy-flight-potion",
+            "buy-optional-flight",
+        }:
             end_state = _advance_flight_purchase_cooldown(
                 end_state,
                 execution=policy.execution,
@@ -5398,9 +5709,16 @@ def _campaign_practice_types_spent(
     spent: set[str] = set()
     for event in storage.list_campaign_game_events(campaign_id, level=level):
         payload = json.loads(event["payload_json"])
-        if payload.get("type") != "training_completed":
+        event_type = payload.get("type")
+        data = payload.get("data", {})
+        permanently_deferred = (
+            event_type == "training_deferred"
+            and data.get("reason")
+            == "no immediately useful listed skill for this practice type"
+        )
+        if event_type != "training_completed" and not permanently_deferred:
             continue
-        practice_type = str(payload.get("data", {}).get("practice_type", ""))
+        practice_type = str(data.get("practice_type", ""))
         if practice_type in {"physical", "intellectual"}:
             spent.add(practice_type)
     return frozenset(spent)
@@ -5411,23 +5729,55 @@ def _campaign_rejected_practice_skills(
     campaign_id: int,
     *,
     level: int,
+    character_class: str | None = None,
 ) -> frozenset[str]:
     rejected: set[str] = set()
-    permanent_trainer_reasons = {
-        "trainer level requirement",
-        "trainer proficiency cap",
-    }
-    for event in storage.list_campaign_game_events(campaign_id, level=level):
+    events = storage.list_campaign_game_events(
+        campaign_id,
+        level=level if character_class is None else None,
+    )
+    current_trainer_tier = _campaign_trainer_tier(
+        character_class,
+        level,
+    )
+    for event in events:
         payload = json.loads(event["payload_json"])
         if payload.get("type") != "training_rejected":
             continue
         data = payload.get("data", {})
-        if data.get("reason") not in permanent_trainer_reasons:
+        reason = data.get("reason")
+        event_level = int(event["character_level"] or 0)
+        if reason == "trainer level requirement" and event_level != level:
+            continue
+        if reason == "trainer proficiency cap" and (
+            character_class is not None
+            and _campaign_trainer_tier(character_class, event_level)
+            != current_trainer_tier
+        ):
+            continue
+        if reason not in {
+            "trainer level requirement",
+            "trainer proficiency cap",
+        }:
             continue
         skill = str(data.get("skill", "")).strip().casefold()
         if skill:
             rejected.add(skill)
     return frozenset(rejected)
+
+
+def _campaign_trainer_tier(
+    character_class: str | None,
+    level: int,
+) -> int:
+    """Return the source trainer band used by the starter policy."""
+    if level < 10:
+        return 0
+    if level >= 20:
+        return 20
+    if str(character_class or "").casefold() == "thief" and level >= 15:
+        return 15
+    return 10
 
 
 def _campaign_counterbalance_preparation_required(
@@ -5489,6 +5839,20 @@ def _repair_observed_flight_price_state(
     state: dict[str, Any],
 ) -> dict[str, Any]:
     """Recover a price lost by a legacy or null-valued campaign checkpoint."""
+    current_boot = state.get("world_boot_id")
+    price_boot = state.get(_MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY)
+    if (
+        state.get(_MAGIC_SHOP_FLIGHT_PRICE_KEY) is not None
+        and current_boot
+        and price_boot
+        and price_boot != current_boot
+    ):
+        # A quoted price is reboot-local. Discard an older quote on resume so
+        # the next purchase segment must list the shop again.
+        repaired = dict(state)
+        repaired.pop(_MAGIC_SHOP_FLIGHT_PRICE_KEY, None)
+        repaired.pop(_MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY, None)
+        return repaired
     if state.get(_MAGIC_SHOP_FLIGHT_PRICE_KEY) is not None:
         return state
     observed = _latest_flight_purchase_state(storage, campaign_id)
@@ -5577,6 +5941,18 @@ async def _run_policy_segment(
         return await starter_runner(
             return_home=True,
             emergency_provision_sale=emergency_provision_sale,
+        ).run()
+    if policy.execution == "choose-subclass":
+        if not spec.subclass:
+            raise RuntimeError(
+                "choose-subclass policy requires a requested subclass"
+            )
+        change_keyword = load_character_catalog().subclass_change_keyword(
+            spec.subclass
+        )
+        return await starter_runner(
+            subclass_selection=True,
+            subclass_change_keyword=change_keyword,
         ).run()
     if policy.execution == "source-ranked-hunt":
         if source_ranked_hunt_candidate is None:
@@ -7043,7 +7419,7 @@ async def _run_policy_segment(
             practice_types_spent=practice_types_spent,
             rejected_practice_skills=rejected_practice_skills,
         ).run()
-    if policy.execution == "buy-flight":
+    if policy.execution in {"buy-flight", "buy-optional-flight"}:
         return await starter_runner(
             magic_shop_research=True,
             magic_shop_buy_fly=True,
@@ -7534,6 +7910,175 @@ def _reconcile_failed_segment_progress(
         error=(
             f"{segment['phase']} progress reconciled from failed run "
             f"{run_id} after {len(objective_kills)} objective kill(s)."
+        ),
+    )
+    return True
+
+
+def _reconcile_failed_source_ranked_watchdog(
+    storage: RunStorage,
+    campaign_id: int,
+    checkpoint: Any,
+    *,
+    character_name: str,
+) -> bool:
+    """Convert a legacy source-route watchdog failure into a rotation checkpoint."""
+    segment_id = checkpoint["segment_id"]
+    if segment_id is None:
+        return False
+    segment = next(
+        (
+            row
+            for row in storage.list_campaign_segments(campaign_id)
+            if int(row["id"]) == int(segment_id)
+        ),
+        None,
+    )
+    if not (
+        segment is not None
+        and segment["status"] == "failed"
+        and str(segment["phase"]).startswith(_SOURCE_RANKED_POLICY_PREFIX)
+        and _is_source_ranked_watchdog_failure(segment["error"])
+    ):
+        return False
+    run = _run_for_failed_segment(
+        storage,
+        segment,
+        character_name=character_name,
+    )
+    if run is None:
+        return False
+    objective_kills = _objective_kills_for_execution(
+        storage,
+        int(run["id"]),
+        execution=str(segment["phase"]),
+    )
+    if isinstance(objective_kills, list) and objective_kills:
+        # The ordinary failed-progress reconciliation must retain a confirmed
+        # kill before this route-specific repair is considered.
+        return False
+    start_state = json.loads(segment["start_state_json"] or "{}")
+    current_state = _run_latest_state(storage, int(run["id"])) or start_state
+    end_state = _campaign_segment_end_state(
+        start_state,
+        current_state,
+        execution=str(segment["phase"]),
+    )
+    end_state = _source_ranked_watchdog_failure_state(
+        end_state,
+        policy_id=str(segment["phase"]),
+        error=str(segment["error"] or ""),
+    )
+    run_id = int(run["id"])
+    storage.finish_campaign_segment(
+        int(segment["id"]),
+        status="ready",
+        run_id=run_id,
+        end_state=end_state,
+        command_count=storage.count_events(run_id, kind="command"),
+        duration_seconds=_run_duration(run),
+        error=segment["error"],
+    )
+    storage.record_campaign_checkpoint(
+        campaign_id,
+        segment_id=int(segment["id"]),
+        run_id=run_id,
+        phase=str(segment["phase"]),
+        reason="segment_route_watchdog",
+        state=end_state,
+    )
+    storage.finish_campaign(
+        campaign_id,
+        status="ready",
+        error=(
+            f"{segment['phase']} route watchdog quarantined from failed "
+            f"run {run_id}; campaign rotation resumed."
+        ),
+    )
+    return True
+
+
+def _reconcile_failed_maintenance_route_watchdog(
+    storage: RunStorage,
+    campaign_id: int,
+    checkpoint: Any,
+    *,
+    character_name: str,
+) -> bool:
+    """Repair a failed optional route before the next campaign invocation."""
+    segment_id = checkpoint["segment_id"]
+    if segment_id is None:
+        return False
+    segment = next(
+        (
+            row
+            for row in storage.list_campaign_segments(campaign_id)
+            if int(row["id"]) == int(segment_id)
+        ),
+        None,
+    )
+    if not (
+        segment is not None
+        and segment["status"] == "failed"
+        and str(segment["phase"]) in {
+            "forest-bear-claws-upgrade-10-29",
+            "thalos-long-dagger-upgrade-10-29",
+        }
+        and _is_source_ranked_watchdog_failure(segment["error"])
+    ):
+        return False
+    run = _run_for_failed_segment(
+        storage,
+        segment,
+        character_name=character_name,
+    )
+    if run is None:
+        return False
+    objective_kills = _objective_kills_for_execution(
+        storage,
+        int(run["id"]),
+        execution="upgrade-piercing-weapon",
+    )
+    if isinstance(objective_kills, list) and objective_kills:
+        return False
+    start_state = json.loads(segment["start_state_json"] or "{}")
+    current_state = _run_latest_state(storage, int(run["id"])) or start_state
+    end_state = _campaign_segment_end_state(
+        start_state,
+        current_state,
+        execution="upgrade-piercing-weapon",
+    )
+    end_state = _maintenance_route_watchdog_failure_state(
+        end_state,
+        policy_id=str(segment["phase"]),
+        execution="upgrade-piercing-weapon",
+        boot_id=end_state.get("world_boot_id") or run["boot_id"],
+        error=str(segment["error"] or ""),
+    )
+    run_id = int(run["id"])
+    storage.finish_campaign_segment(
+        int(segment["id"]),
+        status="ready",
+        run_id=run_id,
+        end_state=end_state,
+        command_count=storage.count_events(run_id, kind="command"),
+        duration_seconds=_run_duration(run),
+        error=segment["error"],
+    )
+    storage.record_campaign_checkpoint(
+        campaign_id,
+        segment_id=int(segment["id"]),
+        run_id=run_id,
+        phase=str(segment["phase"]),
+        reason="segment_route_watchdog",
+        state=end_state,
+    )
+    storage.finish_campaign(
+        campaign_id,
+        status="ready",
+        error=(
+            f"{segment['phase']} optional route watchdog quarantined from "
+            f"failed run {run_id}; campaign rotation resumed."
         ),
     )
     return True
@@ -8222,6 +8767,14 @@ def _level(state: dict[str, Any]) -> int:
     return int(level) if isinstance(level, (int, float)) else 0
 
 
+def _live_subclass(state: Mapping[str, Any]) -> str | None:
+    value = state.get("subclass")
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized if normalized.casefold() not in {"", "none"} else None
+
+
 def _campaign_needs_healer_recovery(state: Mapping[str, Any]) -> bool:
     """Keep an under-resourced checkpoint out of the field-policy selector."""
     if state.get("dead") or _numeric_progress(dict(state), "hp") <= 0:
@@ -8255,6 +8808,17 @@ def _campaign_needs_healer_recovery(state: Mapping[str, Any]) -> bool:
             ),
         )
     )
+
+
+def _campaign_checkpoint_needs_return_home(state: Mapping[str, Any]) -> bool:
+    """Route an out-of-town checkpoint home before city maintenance."""
+    if state.get("dead") or _numeric_progress(dict(state), "hp") <= 0:
+        return False
+    room_vnum = str(state.get("room_vnum") or "")
+    if not room_vnum or room_vnum in _MUD_SCHOOL_ACCESSORY_ROOMS:
+        return False
+    area = str(state.get("area") or "").strip().casefold()
+    return bool(area and area != "midgaard")
 
 
 _FUNDING_ROUTE_DIRECTIONS = {
@@ -8968,6 +9532,29 @@ def _source_ranked_hunt_stops(
                 if not route
             )
         )
+        relocation_routes: list[tuple[str, str, tuple[str, ...]]] = []
+        if ordered_destinations:
+            relocation_origin = ordered_destinations[-1]
+            relocation_paths = _shortest_paths_from(
+                world.rooms,
+                relocation_origin,
+                blocked_rooms=blocked_rooms,
+            )
+            for destination in ordered_destinations:
+                room = world.rooms.get(destination)
+                path = relocation_paths.get(destination)
+                if room is None or path is None or path[2]:
+                    continue
+                label = _source_room_label(room.name)
+                if not label:
+                    continue
+                relocation_routes.append(
+                    (
+                        str(relocation_origin),
+                        label,
+                        tuple(str(room_vnum) for room_vnum in path[1][1:]),
+                    )
+                )
         locator_stop = FieldHuntStop(
             (),
             None,
@@ -8980,6 +9567,8 @@ def _source_ranked_hunt_stops(
                 (label, tuple(room_vnums))
                 for label, room_vnums in sorted(location_routes.items())
             ),
+            where_relocation_routes=tuple(relocation_routes),
+            maximum_where_relocations=1,
             abort_if_where_target_absent=(
                 mobile.stay_area and not mobile.confused
             ),
@@ -9803,6 +10392,14 @@ def _select_source_ranked_hunt_candidate(
     audited_specials: list[tuple[HuntCandidate, str]] = []
     sanctuary_recovery: list[tuple[HuntCandidate, str]] = []
     for candidate in candidates:
+        if _source_ranked_candidate_excluded_by_below_band_evidence(
+            candidate,
+            state,
+            character_level=character_level,
+        ):
+            # A live below-band consider applies to the source mobile, not
+            # only to the reset room used for that particular segment.
+            continue
         candidate_policy_id = _source_ranked_policy_id(
             candidate,
             character_level=character_level,
@@ -9972,12 +10569,12 @@ def _select_source_ranked_hunt_candidate(
         audited_specials,
         sanctuary_recovery,
     )
-    # Rotate by evidence status before falling back from a fully safe target
-    # to an audited special. This prevents a productive last stop from
-    # starving a fresh, bounded candidate simply because it is in the second
-    # safety pool.
-    for preferred_status in ("fresh", "retryable", "productive"):
-        for pool in pools:
+    # Exhaust the fully source-safe current-band progress pool before opening
+    # fresh special-procedure research. A fresh research record is useful, but
+    # it must not displace a verified route that can actually earn XP.
+    safe_progress_pools = (valid,)
+    for preferred_status in ("productive", "fresh", "retryable"):
+        for pool in safe_progress_pools:
             choices = [
                 item
                 for item in pool
@@ -9986,8 +10583,15 @@ def _select_source_ranked_hunt_candidate(
             ]
             if choices:
                 return max(choices, key=rank)[0]
+    research_pools = (
+        capacity_research,
+        level_ceiling_probes,
+        bounded_peak_probes,
+        audited_specials,
+        sanctuary_recovery,
+    )
     for preferred_status in ("fresh", "retryable", "productive"):
-        for pool in pools:
+        for pool in research_pools:
             choices = [
                 item
                 for item in pool
@@ -10144,6 +10748,48 @@ def _source_ranked_candidate_in_current_band(
             character_level=character_level,
             boot_id=state.get("world_boot_id"),
         )
+    )
+
+
+def _source_ranked_candidate_needs_flight_refresh(
+    candidate: HuntCandidate,
+    state: Mapping[str, Any],
+) -> bool:
+    """Require enough affect time to complete a source-backed aerial route."""
+    if not candidate.requires_flight:
+        return False
+    if candidate.estimated_flying_move_cost <= 0:
+        return False
+    if state.get("affects") is None:
+        # An unknown affect snapshot is deliberately kept compatible with the
+        # existing optimistic route behavior; the live fastwalk gate remains
+        # the final authority.
+        return False
+    route_steps = max(1, len(candidate.route))
+    # DD4 decrements affects once per 30-second PULSE_TICK. The source
+    # ``get_move_ws`` returns one pulse for ordinary flying movement and
+    # ``PULSE_PER_SECOND`` is four, so count a quarter-second per route step
+    # and keep one extra tick as a latency/combat reserve. Open-door commands
+    # are included in ``route_steps`` conservatively.
+    required_duration = max(
+        2,
+        math.ceil(route_steps * 0.25 / 30.0) + 1,
+    )
+    duration = _state_flight_duration(state.get("affects"))
+    return duration is None or duration < required_duration
+
+
+def _source_ranked_candidate_benefits_from_flight(
+    candidate: HuntCandidate,
+) -> bool:
+    """Return whether optional flight materially shortens a safe ground route."""
+    ground_cost = candidate.estimated_move_cost
+    flying_cost = candidate.estimated_flying_move_cost
+    return bool(
+        not candidate.requires_flight
+        and ground_cost >= _OPTIONAL_FLIGHT_MINIMUM_GROUND_COST
+        and flying_cost > 0
+        and ground_cost - flying_cost >= _OPTIONAL_FLIGHT_MINIMUM_SAVINGS
     )
 
 
@@ -11671,9 +12317,117 @@ def _source_ranked_endpoint_failure_state(
     return updated
 
 
+def _source_ranked_watchdog_failure_state(
+    state: Mapping[str, Any],
+    *,
+    policy_id: str,
+    error: str,
+) -> dict[str, Any]:
+    """Quarantine a source route that repeated a movement cycle without progress."""
+    updated = dict(state)
+    updated.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+    route_hazard = f"field route watchdog stopped: {error}"
+    updated.update(
+        {
+            "campaign_fastwalk_abort_reason": route_hazard,
+            "campaign_fastwalk_target_absent": False,
+            "campaign_fastwalk_target_present_observed": False,
+            "campaign_fastwalk_crowded": False,
+            "campaign_fastwalk_consider_outcomes": {},
+            "campaign_objective_kills": [],
+            "campaign_completed_kills": [],
+            "campaign_last_policy": policy_id,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
+        }
+    )
+    results = _campaign_research_results(state)
+    results[policy_id] = {
+        "observed": False,
+        "viable": False,
+        "route_hazard": route_hazard,
+        "retryable_failure": True,
+        "boot_id": updated.get("world_boot_id"),
+    }
+    updated["campaign_research_results"] = results
+    retry_cooldown = _research_absence_retry_cooldown(
+        policy_id,
+        default=_DEFAULT_RESEARCH_CROWD_COOLDOWN,
+    )
+    if retry_cooldown is not None:
+        absence_cooldowns = dict(
+            state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+        )
+        absence_cooldowns[policy_id] = retry_cooldown
+        updated[_RESEARCH_ABSENCE_COOLDOWN_KEY] = absence_cooldowns
+    return updated
+
+
+def _maintenance_route_watchdog_failure_state(
+    state: Mapping[str, Any],
+    *,
+    policy_id: str,
+    execution: str,
+    boot_id: str | int | None,
+    error: str,
+) -> dict[str, Any]:
+    """Quarantine an optional maintenance route without failing the campaign."""
+    updated = _maintenance_failure_state(
+        dict(state),
+        execution=execution,
+        boot_id=boot_id,
+        error=error,
+    )
+    route_hazard = f"field route watchdog stopped: {error}"
+    updated.update(
+        {
+            "campaign_fastwalk_abort_reason": route_hazard,
+            "campaign_fastwalk_target_absent": False,
+            "campaign_fastwalk_target_present_observed": False,
+            "campaign_fastwalk_crowded": False,
+            "campaign_fastwalk_consider_outcomes": {},
+            "campaign_objective_kills": [],
+            "campaign_completed_kills": [],
+        }
+    )
+    hazards = dict(updated.get(_MAINTENANCE_ROUTE_HAZARDS_KEY) or {})
+    hazards[policy_id] = {
+        "boot_id": updated.get("world_boot_id") or boot_id,
+        "route_hazard": route_hazard,
+        "retryable_failure": True,
+    }
+    updated[_MAINTENANCE_ROUTE_HAZARDS_KEY] = hazards
+    if execution == "upgrade-piercing-weapon":
+        updated[_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = max(
+            int(updated.get(_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY) or 0),
+            _PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS,
+        )
+        if boot_id is not None:
+            updated[_PIERCING_WEAPON_UPGRADE_BOOT_KEY] = boot_id
+        if policy_id == "thalos-long-dagger-upgrade-10-29":
+            updated[_INTERMEDIATE_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = max(
+                int(
+                    updated.get(
+                        _INTERMEDIATE_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY
+                    )
+                    or 0
+                ),
+                _INTERMEDIATE_PIERCING_WEAPON_UPGRADE_COOLDOWN_SEGMENTS,
+            )
+    return updated
+
+
 def _is_source_ranked_endpoint_failure(error: Any) -> bool:
     """Recognize the fastwalk boundary that must rotate instead of failing."""
     return "returned without observing its endpoint" in str(error or "")
+
+
+def _is_source_ranked_watchdog_failure(error: Any) -> bool:
+    """Recognize a source-route progress watchdog that must rotate safely."""
+    text = str(error or "")
+    return (
+        "progress watchdog stopped after repeating" in text
+        and ("route cycle" in text or "no policy decision" in text)
+    )
 
 
 def _run_terminal_state(
@@ -11820,27 +12574,34 @@ def _campaign_segment_end_state(
         # partial, non-productive retry keeps its one-attempt guard so the
         # campaign cannot spin on the same reboot-local target.
         merged.pop(_SOURCE_RANKED_FRONTIER_RETRY_KEY, None)
-    for key in (
-        _MAGIC_SHOP_FLIGHT_PRICE_KEY,
-        _MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY,
-    ):
-        if merged.get(key) is None and previous.get(key) is not None:
-            merged[key] = previous[key]
-    if (
-        merged.get(_MAGIC_SHOP_FLIGHT_PRICE_KEY) is not None
-        and not merged.get(_MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY)
-        and merged.get("world_boot_id")
-    ):
-        # A standalone shop run may not issue `time`; bind its observed price
-        # to the campaign's already-known reboot before retaining it.
-        merged[_MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY] = merged["world_boot_id"]
+    current_flight_price = current.get(_MAGIC_SHOP_FLIGHT_PRICE_KEY)
+    if current_flight_price is None:
+        for key in (
+            _MAGIC_SHOP_FLIGHT_PRICE_KEY,
+            _MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY,
+        ):
+            if merged.get(key) is None and previous.get(key) is not None:
+                merged[key] = previous[key]
+    else:
+        # A standalone shop run can observe the list price before it issues
+        # `time`, leaving the policy's price boot unset. Bind that fresh quote
+        # to the campaign's known current reboot instead of retaining a stale
+        # prior-reboot stamp.
+        current_price_boot = current.get(_MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY)
+        if current_price_boot:
+            merged[_MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY] = current_price_boot
+        elif merged.get("world_boot_id"):
+            merged[_MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY] = merged["world_boot_id"]
+        else:
+            merged.pop(_MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY, None)
     if (
         "combat_pouch_potions" not in current
         and "combat_pouch_potions" in previous
     ):
         merged["combat_pouch_potions"] = previous["combat_pouch_potions"]
     if (
-        execution not in {"buy-flight", "buy-flight-potion"}
+        execution
+        not in {"buy-flight", "buy-flight-potion", "buy-optional-flight"}
         and previous.get("magic_shop_purchase_failed")
     ):
         merged["magic_shop_purchase_failed"] = True
@@ -11901,7 +12662,25 @@ def _apply_flight_funding_state_transition(
             transitioned.pop(_FLIGHT_FUNDING_REQUIRED_KEY, None)
             transitioned[_FLIGHT_FUNDING_RETRY_KEY] = True
         return transitioned
-    if execution not in {"buy-flight", "buy-flight-potion"}:
+    if execution not in {
+        "buy-flight",
+        "buy-flight-potion",
+        "buy-optional-flight",
+    }:
+        return transitioned
+
+    if transitioned.get(_MAGIC_SHOP_ROUTE_BLOCKED_KEY):
+        # The shop was not reached, so this is neither a successful purchase
+        # nor evidence that more money is needed. Preserve the existing funding
+        # objective and rotate through productive work before another live
+        # preflight of mobile 3064's current location.
+        for key in (_FLIGHT_FUNDING_REQUIRED_KEY, _FLIGHT_FUNDING_RETRY_KEY):
+            if previous.get(key) and key not in transitioned:
+                transitioned[key] = previous[key]
+        transitioned["magic_shop_purchase_failed"] = False
+        transitioned[_FLIGHT_PURCHASE_COOLDOWN_KEY] = (
+            _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS
+        )
         return transitioned
 
     active_flight = any(
@@ -11916,11 +12695,14 @@ def _apply_flight_funding_state_transition(
         if active_flight:
             transitioned = _clear_flight_blocked_research_evidence(transitioned)
     elif transitioned.get("magic_shop_purchase_failed") is True:
-        transitioned[_FLIGHT_FUNDING_REQUIRED_KEY] = True
         transitioned.pop(_FLIGHT_FUNDING_RETRY_KEY, None)
         transitioned[_FLIGHT_PURCHASE_COOLDOWN_KEY] = (
             _FLIGHT_PURCHASE_COOLDOWN_SEGMENTS
         )
+        if execution == "buy-optional-flight":
+            transitioned.pop(_FLIGHT_FUNDING_REQUIRED_KEY, None)
+        else:
+            transitioned[_FLIGHT_FUNDING_REQUIRED_KEY] = True
     return transitioned
 
 
@@ -12083,37 +12865,99 @@ def _repair_protection_recovery_metadata(
     boot_id = updated.get("world_boot_id")
     if boot_id is None:
         return updated
-    existing = updated.get(_PROTECTION_RECOVERY_KEY)
-    if (
-        isinstance(existing, Mapping)
-        and existing.get("boot_id") == boot_id
-    ):
-        return updated
-    for segment in reversed(segments):
-        if segment["status"] not in {"success", "ready"}:
-            continue
-        phase = str(segment["phase"])
+
+    def hunt_evidence(segment: Mapping[str, Any]) -> tuple[
+        str, Mapping[str, Any], list[Any] | None, int
+    ] | None:
+        if segment.get("status") not in {"success", "ready"}:
+            return None
+        phase = str(segment.get("phase") or "")
         if "-hunt-" not in phase:
-            continue
+            return None
         try:
-            start = json.loads(segment["start_state_json"] or "{}")
-            end = json.loads(segment["end_state_json"] or "{}")
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
         except (TypeError, json.JSONDecodeError):
-            continue
+            return None
+        if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+            return None
         if not end or end.get("world_boot_id") != boot_id:
-            continue
+            return None
         outcomes = end.get("campaign_fastwalk_consider_outcomes")
         if not (
             isinstance(outcomes, Mapping)
             and any(value is True for value in outcomes.values())
         ):
+            return None
+        return (
+            phase,
+            end,
+            _segment_objective_kills(storage, segment),
+            _xp_delta(start, end),
+        )
+
+    def is_positive_kill(
+        evidence: tuple[str, Mapping[str, Any], list[Any] | None, int] | None,
+    ) -> bool:
+        if evidence is None:
+            return False
+        _phase, _end, objective_kills, xp_delta = evidence
+        return (
+            isinstance(objective_kills, (list, tuple))
+            and bool(objective_kills)
+            and xp_delta > 0
+        )
+
+    normalized_segments: list[Mapping[str, Any]] = []
+    for segment in segments:
+        if isinstance(segment, Mapping):
+            normalized_segments.append(segment)
             continue
-        objective_kills = _segment_objective_kills(storage, segment)
-        if not isinstance(objective_kills, list) or objective_kills:
+        try:
+            normalized_segments.append(
+                {key: segment[key] for key in segment.keys()}
+            )
+        except (AttributeError, KeyError, TypeError):
             continue
-        xp_delta = _xp_delta(start, end)
-        if xp_delta >= 0:
+    evidence = [hunt_evidence(segment) for segment in normalized_segments]
+    existing = updated.get(_PROTECTION_RECOVERY_KEY)
+    if (
+        isinstance(existing, Mapping)
+        and existing.get("boot_id") == boot_id
+    ):
+        # A checkpoint can predate the positive kill that cleared this gate.
+        # Repair that persisted state before the marker can steer a new run.
+        policy_id = str(existing.get("policy_id") or "")
+        failure_indexes = [
+            index
+            for index, item in enumerate(evidence)
+            if (
+                item is not None
+                and item[0] == policy_id
+                and not is_positive_kill(item)
+                and item[3] < 0
+            )
+        ]
+        if failure_indexes:
+            failure_index = failure_indexes[-1]
+            if any(
+                is_positive_kill(item)
+                for item in evidence[failure_index + 1 :]
+            ):
+                updated.pop(_PROTECTION_RECOVERY_KEY, None)
+        return updated
+    for index in range(len(evidence) - 1, -1, -1):
+        item = evidence[index]
+        if item is None:
             continue
+        phase, end, objective_kills, xp_delta = item
+        if (
+            isinstance(objective_kills, (list, tuple))
+            and objective_kills
+        ) or xp_delta >= 0:
+            continue
+        if any(is_positive_kill(later) for later in evidence[index + 1 :]):
+            return updated
         updated[_PROTECTION_RECOVERY_KEY] = {
             "boot_id": boot_id,
             "level": _level(end),
@@ -12354,6 +13198,75 @@ def _campaign_below_band_policy_ids(
     )
 
 
+def _source_mobile_key(value: Any) -> str | None:
+    """Return the stable mobile-namespace identity for a candidate record."""
+    if isinstance(value, HuntCandidate):
+        mobile_vnum = value.mobile_vnum
+    elif isinstance(value, Mapping):
+        mobile_vnum = value.get("mobile_vnum")
+    else:
+        return None
+    try:
+        mobile_vnum = int(mobile_vnum or 0)
+    except (TypeError, ValueError):
+        return None
+    if mobile_vnum <= 0:
+        return None
+    return f"mobile:{mobile_vnum}"
+
+
+def _campaign_below_band_source_mobile_keys(
+    state: Mapping[str, Any],
+    *,
+    level: int,
+    boot_id: str | int | None,
+) -> frozenset[str]:
+    """Return source mobile identities rejected by live consider."""
+    raw = state.get(_BELOW_BAND_POLICY_EXCLUSIONS_KEY)
+    if not isinstance(raw, Mapping):
+        return frozenset()
+    keys: set[str] = set()
+    for policy_id, record in raw.items():
+        if (
+            not isinstance(record, Mapping)
+            or record.get("level") != level
+            or record.get("boot_id") != boot_id
+        ):
+            continue
+        source_keys = record.get("source_mobile_keys")
+        if isinstance(source_keys, (list, tuple, set, frozenset)):
+            keys.update(str(key) for key in source_keys if str(key))
+        if not source_keys and str(policy_id).startswith(
+            _SOURCE_RANKED_POLICY_PREFIX
+        ):
+            # Older checkpoints keyed source exclusions by reset policy only.
+            # The source-ranked policy format ends with mobile, room, level;
+            # recover the mobile VNUM so those checkpoints cannot replay a
+            # sibling reset before the next level or reboot.
+            match = re.search(r"-(\d+)-\d+-\d+$", str(policy_id))
+            if match:
+                keys.add(f"mobile:{match.group(1)}")
+    return frozenset(keys)
+
+
+def _source_ranked_candidate_excluded_by_below_band_evidence(
+    candidate: HuntCandidate,
+    state: Mapping[str, Any],
+    *,
+    character_level: int,
+) -> bool:
+    key = _source_mobile_key(candidate)
+    return bool(
+        key
+        and key
+        in _campaign_below_band_source_mobile_keys(
+            state,
+            level=character_level,
+            boot_id=state.get("world_boot_id"),
+        )
+    )
+
+
 def _below_band_sighting_pairs(value: Any) -> set[tuple[str, str]]:
     if not isinstance(value, (list, tuple, set)):
         return set()
@@ -12425,6 +13338,9 @@ def _merge_campaign_below_band_policy_exclusions(
     current_sightings = _below_band_sighting_pairs(
         current.get("campaign_fastwalk_below_band_sightings")
     )
+    current_source_mobile_key = _source_mobile_key(
+        current.get(_SOURCE_RANKED_CANDIDATE_KEY)
+    )
     if current_sightings:
         sightings_by_policy.setdefault(policy.policy_id, set()).update(
             current_sightings
@@ -12443,21 +13359,38 @@ def _merge_campaign_below_band_policy_exclusions(
         if below_band_evidence and not has_viable_stop:
             # A multi-stop hunt may tolerate one below-band mobile only when
             # another stop remains inside the useful XP band.
-            exclusions[policy.policy_id] = {
+            record = dict(exclusions.get(policy.policy_id) or {})
+            record.update({
                 "level": level,
                 "boot_id": boot_id,
                 "targets": sorted(
                     {str(target).casefold() for target in below_band_evidence}
                 ),
-            }
+            })
+            if current_source_mobile_key:
+                source_keys = {
+                    str(key)
+                    for key in record.get("source_mobile_keys") or ()
+                }
+                source_keys.add(current_source_mobile_key)
+                record["source_mobile_keys"] = sorted(source_keys)
+            exclusions[policy.policy_id] = record
         else:
             exclusions.pop(policy.policy_id, None)
     elif isinstance(targets, (list, tuple, set)) and targets:
-        exclusions[policy.policy_id] = {
+        record = dict(exclusions.get(policy.policy_id) or {})
+        record.update({
             "level": level,
             "boot_id": boot_id,
             "targets": sorted({str(target).casefold() for target in targets}),
-        }
+        })
+        if current_source_mobile_key:
+            source_keys = {
+                str(key) for key in record.get("source_mobile_keys") or ()
+            }
+            source_keys.add(current_source_mobile_key)
+            record["source_mobile_keys"] = sorted(source_keys)
+        exclusions[policy.policy_id] = record
     if exclusions:
         merged[_BELOW_BAND_POLICY_EXCLUSIONS_KEY] = exclusions
     else:
@@ -12485,9 +13418,20 @@ def _merge_protection_recovery_metadata(
     policy: ProgressionPolicy,
     xp_delta: int,
 ) -> dict[str, Any]:
-    """Remember a costly failed hunt until a protection reserve is restored."""
+    """Remember a costly failed hunt until progress restores its gate."""
     updated = dict(current)
     if _state_has_sanctuary_reserve(updated):
+        updated.pop(_PROTECTION_RECOVERY_KEY, None)
+        return updated
+    # A later authoritative objective kill is also successful protection
+    # recovery.  The reserve is a fallback after a costly withdrawal, not a
+    # permanent prerequisite once the campaign has proved a safe hunt.
+    objective_kills = updated.get("campaign_objective_kills")
+    if (
+        xp_delta > 0
+        and isinstance(objective_kills, (list, tuple))
+        and objective_kills
+    ):
         updated.pop(_PROTECTION_RECOVERY_KEY, None)
         return updated
     execution = str(policy.execution or "")
@@ -12932,28 +13876,6 @@ def _run_has_crowded_field_decision(
         ):
             return True
     return False
-
-
-def _moria_sanctuary_wait_is_active(state: Mapping[str, Any]) -> bool:
-    """Keep an absent Moria reserve wait ahead of generic hunt fallback."""
-    if not _protection_recovery_required(state):
-        return False
-    policy_id = _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY_ID
-    result = _campaign_research_results(state).get(policy_id)
-    if not (
-        isinstance(result, Mapping)
-        and (
-            result.get("absent") is True
-            or result.get("retryable_failure") is True
-        )
-        and result.get("boot_id") == state.get("world_boot_id")
-    ):
-        return False
-    cooldowns = state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
-    try:
-        return int(cooldowns.get(policy_id) or 0) > 0
-    except (TypeError, ValueError):
-        return False
 
 
 def _repair_crowded_field_metadata(
@@ -14347,6 +15269,39 @@ def _state_has_active_affect(value: Any, affect_name: str) -> bool:
     if isinstance(value, (list, tuple)):
         return any(_state_has_active_affect(item, affect_name) for item in value)
     return False
+
+
+def _state_flight_duration(value: Any) -> int | None:
+    """Return the longest observed duration for fly or levitation."""
+    durations: list[int] = []
+
+    def collect(item: Any) -> None:
+        if isinstance(item, str):
+            try:
+                decoded = json.loads(_ANSI_ESCAPE.sub("", item))
+            except json.JSONDecodeError:
+                return
+            collect(decoded)
+            return
+        if isinstance(item, dict):
+            name = item.get("name")
+            if isinstance(name, str) and name.casefold() in {
+                "fly",
+                "levitation",
+            }:
+                try:
+                    durations.append(int(item.get("duration")))
+                except (TypeError, ValueError):
+                    pass
+            for nested in item.values():
+                collect(nested)
+            return
+        if isinstance(item, (list, tuple)):
+            for nested in item:
+                collect(nested)
+
+    collect(value)
+    return max(durations) if durations else None
 
 
 def _state_copper_value(state: dict[str, Any]) -> int:

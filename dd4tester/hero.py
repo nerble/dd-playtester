@@ -19,11 +19,11 @@ from .character import (
     GENDERS,
     RACES,
     SUBCLASS_BASE_CLASSES,
-    UNAVAILABLE_SUBCLASSES,
     CharacterSpec,
     load_character_spec,
 )
 from .dd4_catalog import CharacterCatalog, load_character_catalog
+from .credentials import save_character_password
 from .mudlet import MudletBridge
 from .scenario import load_yaml_mapping
 
@@ -104,12 +104,6 @@ def prepare_hero_request(
                 f"{subclass_option.base_class!r}"
             )
         subclass = subclass_option.name
-        if subclass in UNAVAILABLE_SUBCLASSES:
-            raise ValueError(
-                f"subclass {subclass!r} is source-legal but has no autonomous "
-                "HERO policy yet"
-            )
-
     personality = _optional_identity_text(request.personality, "personality", 180)
     transport = request.transport.strip().casefold()
     if transport not in {"telnet", "mudlet"}:
@@ -331,6 +325,7 @@ async def run_hero_request(
     max_segment_runtime: float | None = None,
     target_level: int = 100,
     password: str | None = None,
+    remember_password: bool = False,
 ) -> tuple[HeroPreparation, CampaignResult]:
     preparation = prepare_hero_request(
         request,
@@ -338,6 +333,10 @@ async def run_hero_request(
         workspace=workspace,
         target_level=target_level,
     )
+    if remember_password:
+        if password is None:
+            raise ValueError("remember_password requires a plaintext password")
+        save_character_password(preparation.character.credential_name, password)
     with _temporary_character_password(
         preparation.character.password_env,
         password,
