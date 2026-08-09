@@ -193,6 +193,19 @@ def test_gmcp_equipment_snapshot_is_preserved() -> None:
     assert events[0].data["equipment"]["head"]["id"] == 3706
 
 
+def test_gmcp_worn_snapshot_is_preserved_as_equipment() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_gmcp(
+        'Char.Worn [{"slot":"wield","wear_loc":16,'
+        '"vnum":3020,"name":"a dagger"}]'
+    )
+
+    assert [event.type for event in events] == ["equipment_changed"]
+    assert events[0].data["package"] == "Char.Worn"
+    assert events[0].data["value"][0]["vnum"] == 3020
+
+
 def test_gmcp_targetmode_inventory_descriptions_preserve_exact_instance_id() -> None:
     parser = ObservationParser()
 

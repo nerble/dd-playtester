@@ -179,7 +179,16 @@ class CharacterState:
             self.max_mana = _number(data.get("max_mana"), self.max_mana)
             self.move = _number(data.get("move"), self.move)
             self.max_move = _number(data.get("max_move"), self.max_move)
+            previous_area = self.area
             self.area = _text(data.get("area"), self.area)
+            if (
+                self.dead
+                and previous_area is not None
+                and previous_area.casefold() == "purgatory"
+                and self.area is not None
+                and self.area.casefold() != "purgatory"
+            ):
+                self.dead = False
             return
 
         if event.type == "inventory_changed":

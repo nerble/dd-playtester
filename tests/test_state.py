@@ -142,3 +142,26 @@ def test_leaving_purgatory_clears_persisted_death_state() -> None:
 
     assert state.dead is False
     assert state.room_vnum == "3054"
+
+
+def test_midgaard_prompt_clears_death_before_gmcp_room_update() -> None:
+    state = CharacterState(area="Purgatory", room_vnum="427", dead=True)
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "text",
+            {"name": "By the Temple Altar", "exits": ["east", "south", "up"]},
+        )
+    )
+    assert state.dead is True
+    assert state.apply(
+        GameEvent(
+            "prompt_seen",
+            "text",
+            {"area": "Midgaard", "hits": 1, "max_hits": 334},
+        )
+    )
+
+    assert state.dead is False
+    assert state.area == "Midgaard"

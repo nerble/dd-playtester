@@ -41123,3 +41123,2063 @@ Kestrel won the close fight. The teller died at 9:00:34 PM for 527 XP, moving hi
 
 [2026-08-08 9:02:29 PM NZST] CODEX COMMENTARY
 The scheduled local-commit window is due: the previous commit was yesterday at 9:00:37 PM, just over 24 hours ago. I am staging the current tested source, tests, AGENTS policy, launcher, and conversation record for one local commit now; I will enforce the 60-second limit, make no remote push, and make no second attempt today if it fails.
+
+
+[2026-08-08 9:05:58 PM NZST] CODEX COMMENTARY
+The scheduled local commit completed in 1.7 seconds as 4176047 (Advance source-backed autonomous progression). The source and test files passed the staged whitespace check; the archived conversation file retains its established CRLF append format, which git reports separately. No remote push was attempted, and there will be no second commit attempt before tomorrow's 9 PM window. I am returning immediately to the active progression worker.
+
+
+[2026-08-08 9:07:38 PM NZST] CODEX COMMENTARY
+While the commit completed, the live worker made useful progress. Run 4328 killed the level-20 Old Treant for 787 XP, taking Kestrel to 287,966 XP with 4,184 remaining to level 23. He returned to healer room 3054, recovered to 305/305 HP and 360/360 movement, restored the long slim dagger to the wield slot, saved, and quit cleanly. The hidden worker remains healthy and is selecting the next segment.
+
+
+[2026-08-08 9:09:59 PM NZST] CODEX COMMENTARY
+Run 4329 replenished Kestrel with six big pot pies for 1 silver 16 copper, leaving 6 gold 24 silver 5 copper and a safe food reserve; he returned north to the healer. Run 4330 is now on the source-backed Solace lieutenant route at full health, currently crossing the Forest with 168 movement and no combat or route error.
+
+
+[2026-08-08 9:11:10 PM NZST] CODEX COMMENTARY
+Run 4330 has reached Solace room 10295 and is fighting the source-matched level-21 Lieutenant Commander's Secretary, mobile 10248. Kestrel is at 268/305 HP while the secretary is down to 107/412; the target has taken roughly four times Kestrel's damage, so the live exchange is favorable and remains well above every withdrawal threshold.
+
+
+[2026-08-08 9:12:35 PM NZST] CODEX COMMENTARY
+Secretary kill complete for 1,027 XP. Kestrel finished the favorable fight at 260 HP, received one silver, recalled, fully recovered to 305 HP and 360 movement in the healer room, restored combat stance, saved, and quit cleanly. He is now at 288,993 XP with 3,157 remaining to level 23; the batch still has further segments available.
+
+
+[2026-08-08 9:14:22 PM NZST] CODEX COMMENTARY
+Run 4331 found the drunk clear of the Magic Shop route, bought and immediately used one light blue potion at the current reboot price of 151 copper, and confirmed the fly affect. Kestrel returned to the healer at full health with 6 gold 10 silver 4 copper. Run 4332 is now using that mobility on a fresh Sentinel sprite reset check; two segments remain in this batch.
+
+
+[2026-08-08 9:15:41 PM NZST] CODEX COMMENTARY
+The Sentinel sprite was still absent at its exact registered endpoint. Run 4332 completed the full source route, recorded the current-reboot absence, and returned Kestrel to healer room 3054 at full health with the fly affect still active. The batch's final segment, run 4333, is now checking the independent Galaxy Horsehead reset before the worker exits naturally.
+
+
+[2026-08-08 9:17:22 PM NZST] CODEX COMMENTARY
+Run 4333 found the Galaxy Horsehead absent, returned Kestrel safely to healer room 3054 at 305 HP, and the 12-segment worker then exited naturally with no surviving cmd or pythonw process. I am using this clean boundary to fix the repeated-negative-consider defect exposed by diamond-golem runs 4299 and 4325: a same-level, same-reboot live rejection must remain terminal even when the result also carries a generic retryable-failure flag. I will add a direct cooldown-clearing regression, update the policy evidence, and verify before relaunching.
+
+
+[2026-08-08 9:19:37 PM NZST] CODEX COMMENTARY
+The negative-consider persistence patch is in and its four focused regressions pass. The clear-after-productive-work path now checks same-reboot `consider_viable: false` before generic retry handling, retains that terminal evidence, and removes the meaningless short cooldown; ordinary unfinished viable hunts still age out exactly as before. I am running the complete campaign suite next, then the full repository suite before loading the corrected code into a new worker.
+
+
+[2026-08-08 9:20:35 PM NZST] CODEX COMMENTARY
+The complete campaign regression suite is still running and has emitted no failure output. The live worker remains stopped at the clean healer checkpoint, so this verification has no competing database writer and no character is unattended in the MUD.
+
+
+[2026-08-08 9:21:39 PM NZST] CODEX COMMENTARY
+All 617 campaign tests pass, including the new repeated-golem regression and the existing retry-expiration behavior. The full repository suite is now running; it has produced no failure output so far. After it finishes I will inspect the diff, preserve today's no-second-commit rule, and resume Kestrel from 3,157 XP short of level 23.
+
+
+[2026-08-08 9:22:13 PM NZST] CODEX COMMENTARY
+Full verification is green: 2,280 tests passed, and the product diff has no whitespace errors. The only uncommitted files are the narrowly scoped campaign fix, its regression, the AGENTS evidence, and conversation entries created after today's successful commit; they will remain local and uncommitted until tomorrow's 9 PM window. I am launching a fresh 12-segment worker now so the corrected scheduler cannot reopen the rejected diamond golem while it closes Kestrel's remaining 3,157-XP gap.
+
+
+[2026-08-08 9:23:26 PM NZST] CODEX COMMENTARY
+The corrected worker is healthy under hidden cmd PID 46180 and pythonw PID 34068. Run 4334 is its expected first checkpoint: Kestrel logged in at the healer with only 164 movement after the empty Horsehead route, so the scheduler is restoring the 90% movement floor before attempting another source-ranked hunt. There is no startup, permission, or connection stall.
+
+
+[2026-08-08 9:24:12 PM NZST] CODEX COMMENTARY
+Run 4334 restored Kestrel to full movement and completed cleanly. The first post-fix field choice is run 4335 for the Crystalmir white stag, not the rejected Hightower diamond golem; this is the expected scheduler behavior after loading the preserved same-reboot consider evidence. The stag route is active at full health with flight still available.
+
+
+[2026-08-08 9:25:38 PM NZST] CODEX COMMENTARY
+Crystalmir returned an authoritative area absence for `where stag`, so the runner recalled immediately instead of wasting time on room enumeration. Kestrel is sleeping beside the Midgaard healer at full HP and mana while movement rises from the recall loss; the segment is active for recovery, not stalled, and XP remains 288,993.
+
+
+[2026-08-08 9:27:03 PM NZST] CODEX COMMENTARY
+Run 4336 selected the level-22 Abyss copepod and has entered the no-recall randomized room set at full health. The navigator is following live GMCP destination VNUMs rather than static direction labels: it has mapped room 7535's current down exit to 7540 and is advancing toward registered room 7544. I am watching this route closely because return-home must use the mapped maze exit rather than `recall`.
+
+
+[2026-08-08 9:28:32 PM NZST] CODEX COMMENTARY
+The Abyss navigator exited safely, but it did not reach copepod room 7544: run 4336 correctly aborted when the long route consumed its movement reserve, escaped the no-recall maze, returned to healer room 3054, slept from 43 to 181 movement, saved, and quit. No combat or XP loss occurred. The route hazard is now persisted so the scheduler will rotate; I am also flagging its underestimated 105-movement departure requirement for source-policy correction after this batch.
+
+
+[2026-08-08 9:30:35 PM NZST] CODEX COMMENTARY
+Run 4337 completed the mandatory healer recovery at the 90% movement floor. The scheduler has now selected a distinct Abyss copepod reset, room 7548, rather than replaying the failed room-7544 policy; this preserves per-reset evidence, but both share the same suspiciously low departure estimate. I am allowing this independent route to prove whether the shortfall is endpoint-specific or a generic Abyss costing defect before changing the shared policy.
+
+
+[2026-08-08 9:31:33 PM NZST] CODEX COMMENTARY
+The second Abyss probe exposed a real safety defect and the worker has stopped: run 4338 consumed movement to 5 in no-recall room 7531, the generic route-cycle watchdog issued repeated `recall`, DD4 correctly refused with `God has forsaken you`, and cleanup failed rather than reaching Midgaard. Kestrel is alive at full HP but disconnected in the Abyss. I am treating recovery as the only priority now: no more progression launch until I establish a source/GMCP route out, reconnect him, and confirm healer room 3054.
+
+
+[2026-08-08 9:32:36 PM NZST] USER
+There are several recallable rooms in the Abyss, though many are no-recall
+
+
+[2026-08-08 9:32:44 PM NZST] CODEX COMMENTARY
+Yes, and that is the recovery path I am taking. The last live GMCP snapshot puts Kestrel in room 7531 with current destinations north 7534, east 7532, south 7535, west 7536, up 7533, and down 7530. I am identifying the nearest source-confirmed recallable Abyss room, then I will reconnect, sleep in place long enough to regain movement, follow destination VNUMs to that room, and recall from there. The defect was the cleanup policy assuming the entire area shared one recall state.
+
+
+[2026-08-08 9:36:14 PM NZST] CODEX COMMENTARY
+The nearest escape is now exact and only two moves away. On this reboot, room 7531's north exit reaches 7534; room 7534's west exit reaches source-confirmed recallable/no-mob room 7538 (up also reaches recallable 7539). I am adding this as a generic Abyss return-home policy: recover a small movement reserve while sleeping if necessary, navigate by live destination VNUM to 7538, then recall and finish at the healer. I am adding the live 7531/7534 mapping as a regression before reconnecting Kestrel.
+
+
+[2026-08-08 9:43:13 PM NZST] CODEX COMMENTARY
+The focused recovery regressions pass: exact Abyss movement recovery, live 7531-to-7534-to-7538 navigation, recall from 7538, and the existing Pyramid and Shadow Grove no-recall routes. I am launching one dedicated `return-home` worker now, with no progression objective. It will reconnect Kestrel, sleep only until 30 movement if the saved value is still 5, take north then the live destination for 7538, recall, and stop only after healer room 3054 is confirmed.
+
+
+[2026-08-08 9:47:18 PM NZST] CODEX COMMENTARY
+The dedicated Abyss recovery was interrupted by a mobile before Kestrel reached the recallable room, and Kestrel died. Run 4339 is still connected in Purgatory room 401 and has switched to corpse recovery; I am keeping that process alive and will not let it quit or log off in Purgatory. The only priority now is finding and looting the corpse, entering the portal, and confirming recovery at the Midgaard healer.
+
+
+[2026-08-08 9:50:00 PM NZST] CODEX COMMENTARY
+I found the immediate stall: the death transition correctly enabled Purgatory recovery, but an emergency-recall flag from the Abyss survived the transition. The worker then issued ecall in Purgatory, recorded room 401 as the pending recall origin, and has been waiting forever for that impossible room change while Kestrel regenerates. I am clearing all pre-death command state atomically on death, adding a regression for this exact sequence, then replacing the live worker immediately so corpse recovery can move.
+
+
+[2026-08-08 9:55:03 PM NZST] CODEX COMMENTARY
+Kestrel is safe. Before I terminated the old connection, it had resumed, followed the randomized Purgatory destination graph, reached Judgement room 427, looted the complete corpse, entered the portal, and reached healer room 3054. Replacement verification run 4340 then found him at the healer with full 305/305 HP, 263/263 mana, 360/360 movement, five pies, both pink ice rings, and the recovered equipment; it audited gear, saved, and quit there. I am now fixing the Abyss entry/recovery policy that caused the death, and I will leave the Abyss hunts blocked until that route is proven with a safe movement reserve.
+
+
+[2026-08-08 10:21:47 PM NZST] CODEX COMMENTARY
+The source audit confirms your correction precisely: the Abyss has twelve recallable rooms, not two. They are 7505, 7536-7539, 7548, 7551-7552, 7554-7555, and 7557-7558; every one is also a no-mob air room. I have replaced the fixed target with a source-distance policy over all rooms 7500-7559, so live GMCP exits always choose a destination closer to the nearest legal recall point. The fatal room 7531 was only one step from recallable room 7536.
+
+
+[2026-08-08 10:30:47 PM NZST] CODEX COMMENTARY
+The combined starter and campaign suite reached 1,522 passes with one intentional-policy conflict: an older Foundry regression expects emergency recall from ordinary trapped combat, while my first fix made every return-home combat flee. I am narrowing the new flee-first rule to the Abyss, where recall can be illegal and the live run proved repeated combat recall unsafe; ordinary recallable areas will retain their established behavior.
+
+
+[2026-08-08 10:32:45 PM NZST] CODEX COMMENTARY
+The scoped regression is green, including the captured room-7531 escape, all twelve recall points, no-flight forced-fall handling, the 36-movement field reserve, Purgatory death-state cleanup, and ordinary Foundry emergency recall. The full 1,523-test starter-plus-campaign run is now in its final third with no new failure output.
+
+
+[2026-08-08 10:36:42 PM NZST] CODEX COMMENTARY
+The combined starter and campaign regression is now fully green at 1,523 tests. The stale recovery run is reconciled and there are no remaining pythonw workers; I am checking the complete Abyss return handoff now, then I will run the full repository suite before resuming live progression.
+
+
+[2026-08-08 10:38:27 PM NZST] CODEX COMMENTARY
+The end-to-end handoff is sound: once an Abyss field segment enters return-home mode, that path takes priority over the original fastwalk until recall and healer arrival are complete. The full repository suite is still running quietly, with no failure output so far.
+
+
+[2026-08-08 10:39:52 PM NZST] CODEX COMMENTARY
+The complete repository suite passes: 2,286 tests in 60.93 seconds, and the edited product files pass the whitespace check. The Abyss policy now knows all twelve recallable rooms, preserves a 36-movement escape reserve, and treats loss of flight as a forced-fall recovery instead of sleeping in hostile air; I am moving back to a bounded live Kestrel segment now.
+
+
+[2026-08-08 10:43:51 PM NZST] CODEX COMMENTARY
+Live progression is active again in hidden worker process 19368. The campaign reopened its failed checkpoint correctly and selected rearm-primary-weapon as the first safety gate, so Kestrel is restoring a verified piercing weapon before returning to productive level-22 combat.
+
+
+[2026-08-08 10:46:13 PM NZST] CODEX COMMENTARY
+Rearm completed safely: Kestrel bought and persisted a piercing dagger, returning to the healer with full health. A short healer-return checkpoint also completed, and the worker is now obtaining the fresh flight reserve required before any aerial source route; Kestrel remains level 22 at 17,833 XP to level 23.
+
+
+[2026-08-08 10:49:10 PM NZST] CODEX COMMENTARY
+The first field candidate was a useful live probe rather than a fight: the level-difference text for the diamond golem was too strong, so Kestrel rejected it at full health and returned safely. The campaign immediately rotated instead of stalling and is now outbound to the previously productive Old Treant at Mahn-Tor.
+
+
+[2026-08-08 10:50:31 PM NZST] CODEX COMMENTARY
+Kestrel has engaged the Old Treant cleanly after a live useful-band consider. The opener used backstab, then disarm and repeated between-round knife attacks; the Treant is down to 112 of 452 HP while Kestrel is still at 296 of 305, so this is exactly the more assertive high-throughput fight we want.
+
+
+[2026-08-08 10:51:38 PM NZST] CODEX COMMENTARY
+The Treant is down. Kestrel earned 841 XP, finished at 284 of 305 HP, sacrificed the empty corpse for one silver, and recalled only after the bounded kill was complete. He is now sleeping at the Midgaard healer with no injury or status problem.
+
+
+[2026-08-08 10:53:14 PM NZST] CODEX COMMENTARY
+The Treant segment checkpointed successfully with Kestrel now 16,992 XP from level 23. The next rotation is the Solace lieutenant; Kestrel is healthy and moving through the source route now, with 162 movement remaining and no combat or disabling affect.
+
+
+[2026-08-08 10:54:41 PM NZST] CODEX COMMENTARY
+The Solace target also converted cleanly: live consider showed an easy kill with Kestrel slightly healthier, then backstab, disarm, and knife rotation earned 721 XP. Kestrel recalled at 300 of 305 HP and is now 16,271 XP from level 23; two productive fights have cost only 26 HP total.
+
+
+[2026-08-08 10:56:40 PM NZST] CODEX COMMENTARY
+The reset supplied another Old Treant, so the selector reused the strongest same-reboot evidence instead of wasting time on weak mobs. The second fight has started at full health with the same backstab-disarm-knife sequence; the route also passed a source-known ethereal knight without misclassifying or attacking it.
+
+
+[2026-08-08 10:58:43 PM NZST] CODEX COMMENTARY
+Second Treant kill complete for another 691 XP. Kestrel ended fully healed at the checkpoint and is now 15,580 XP from level 23; the next maintenance segment is replenishing the consumed flight reserve before continuing the rotation.
+
+
+[2026-08-08 11:01:00 PM NZST] CODEX COMMENTARY
+Flight replenishment succeeded and the next progression route has reached the Sentinel sprite endpoint. The long route completed without movement trouble or an unexpected fight; the worker is now applying the exact-target and live-consider gates before deciding whether to engage.
+
+
+[2026-08-08 11:02:38 PM NZST] CODEX COMMENTARY
+The Sentinel sprite was absent at its verified reset, so the worker recorded that reboot-local result, recovered movement at the healer, and rotated promptly. Kestrel is now on the Galaxy horsehead route; this is segment ten of the current twelve-segment live batch.
+
+
+[2026-08-08 11:04:35 PM NZST] CODEX COMMENTARY
+The Galaxy horsehead was also absent, and that segment returned safely without burning the active fly affect. Segment eleven is now the Crystal Caverns stag, another current-band target with prior productive evidence; Kestrel remains full-health and has four pies plus 480 copper-equivalent on hand.
+
+
+[2026-08-08 11:06:49 PM NZST] CODEX COMMENTARY
+The Crystal stag was absent, and the twelfth segment is now deliberately revalidating the repaired Abyss path. Kestrel entered with full health and movement, 25 visible flight ticks, and is currently safe in room 7541 with 219 movement; the target room 7548 is itself one of the twelve source-confirmed recall points.
+
+
+[2026-08-08 11:08:20 PM NZST] CODEX COMMENTARY
+Live Abyss recovery is proven. The randomized search consumed movement down to 35 before reaching the copepod, the new 36-point reserve fired immediately, Kestrel followed a live GMCP exit into a source-confirmed recall room, recalled successfully, reached healer room 3054, and slept there at full health. No no-recall loop and no exposed sleep in the Abyss.
+
+
+[2026-08-08 11:10:41 PM NZST] CODEX COMMENTARY
+All twelve live segments finished cleanly, stderr is empty, and the campaign is ready rather than failed. I am recording run 4352 as the live proof for the new Abyss reserve-and-recall policy, then I will start another bounded progression batch rather than leaving Kestrel at this checkpoint.
+
+
+[2026-08-08 11:13:12 PM NZST] CODEX COMMENTARY
+The next hidden worker is active as process 50876. Its first target is the Arikashar Palace maid rather than another Abyss retry, confirming the cooldown and route rotation are working; Kestrel is again progressing from a safe level-22 checkpoint.
+
+
+[2026-08-08 11:14:52 PM NZST] CODEX COMMENTARY
+The maid proved to be an aggressive endpoint target and attacked on entry, so there was no backstab window. Kestrel switched directly to disarm and recurring knife attacks, won for 1,064 XP, collected six saleable or reusable drops, and recalled at 182 of 305 HP. He is safe at the healer and now 14,516 XP from level 23.
+
+
+[2026-08-08 11:17:00 PM NZST] CODEX COMMENTARY
+Loot liquidation is working as the intended money loop: the maid drops raised Kestrel from 490 to 1,010 copper-equivalent while preserving his combat and recovery gear. He is back at the healer full on health and movement, with four pies and enough cash for several more flight reserves.
+
+
+[2026-08-08 11:19:40 PM NZST] CODEX COMMENTARY
+The nearby Arikashar fat target was unavailable, and the reset has already supplied another maid. Kestrel is fighting it now at full health; this one loaded with 439 HP, so it is a longer specimen, but the worker has retained 233 movement and the normal low-health withdrawal gate while sustaining the knife rotation.
+
+
+[2026-08-08 11:21:37 PM NZST] CODEX COMMENTARY
+The tougher maid is dead for 1,407 XP. Kestrel stayed in through the finisher and ended at 74 of 305 HP, still above the 15 percent withdrawal floor, then immediately recalled with all six drops and reached the healer to sleep. That was aggressive but bounded play, and he is now 13,109 XP from level 23.
+
+
+[2026-08-08 11:23:26 PM NZST] CODEX COMMENTARY
+Recovery is progressing normally rather than stalled: healer-room sleep has brought Kestrel from 74 to 209 HP and restored movement to 360. The segment is correctly waiting for the high-health checkpoint before saving, quitting, and exposing the recovered loot to the next liquidation pass.
+
+
+[2026-08-08 11:25:43 PM NZST] CODEX COMMENTARY
+DD4 rebooted at 11:16:59 PM, and the campaign correctly adopted the new reboot identity instead of carrying old spawn or kill-count evidence forward. The second maid loot sold for another 543 copper-equivalent, bringing Kestrel to 1,553; the current return-home checkpoint is a short post-maintenance reconciliation at the healer.
+
+
+[2026-08-08 11:27:39 PM NZST] CODEX COMMENTARY
+Primary weapon recovery is complete. Kestrel killed a lamia without taking damage, replaced the emergency shop dagger with the source-backed long slim piercing dagger, verified it in the weapon slot, ate the severed heart, sacrificed the corpse, and saved at the healer. Backstab now has the proper weapon again.
+
+
+[2026-08-08 11:30:18 PM NZST] CODEX COMMENTARY
+The post-upgrade audit confirmed the long slim dagger survives logout in the primary weapon slot. Kestrel recovered to full movement, saved, and the campaign is now selling the obsolete emergency dagger rather than carrying redundant weight; this is segment nine of the current batch.
+
+
+[2026-08-08 11:33:04 PM NZST] CODEX COMMENTARY
+The Mirror Realm watchman probe found two same-named watchmen together. Kestrel considered the exact source-matched selector, observed the target was slightly healthier, and returned without turning a crowded research room into a fight. That evidence is now reboot-scoped; one final segment remains in this batch.
+
+
+[2026-08-08 11:35:35 PM NZST] CODEX COMMENTARY
+The second twelve-segment batch is complete with no stderr, no orphaned worker, and every segment checkpointed successfully. Net progress in that batch was 2,551 XP plus the restored long slim dagger and 1,553 copper-equivalent; I am starting the next bounded batch from the full-health healer checkpoint.
+
+
+[2026-08-08 11:38:45 PM NZST] CODEX COMMENTARY
+The third worker is healthy as process 4216. It replenished flight in 23 seconds and selected the Old Treant under the new reboot identity, where its kill count is reset and XP should be stronger; Kestrel is outbound with the upgraded long slim dagger.
+
+
+[2026-08-08 11:40:14 PM NZST] CODEX COMMENTARY
+The fresh-reboot Treant is nearly finished at 38 of 441 HP while Kestrel remains at 297 of 305. The upgraded dagger and recurring knife loop are keeping this fight almost damage-free despite the larger target health roll.
+
+
+[2026-08-08 11:42:01 PM NZST] CODEX COMMENTARY
+Treant kill confirmed for 1,236 XP, with Kestrel finishing at 297 HP, consuming the severed arm, and returning full. He is now 11,783 XP from level 23, and the selector has moved straight to the New Ofcol sluggish-humanoid route.
+
+
+[2026-08-08 11:44:00 PM NZST] CODEX COMMENTARY
+New Ofcol was not empty, but the sluggish-humanoid room failed the isolation gate, so Kestrel skipped it without wasting health or time on an unsafe crowd. The next segment is already back in Mahn-Tor for another useful-band treant rather than stalling on that route.
+
+
+[2026-08-08 11:44:48 PM NZST] CODEX COMMENTARY
+The second treant is down for 1,292 XP. Kestrel took only 13 damage, returned directly to the healer, and is now 10,491 XP from level 23; this is the productive, repeated-kill pace we want.
+
+
+[2026-08-08 11:46:50 PM NZST] CODEX COMMENTARY
+Kestrel has completed the full healer reset at 305/305 HP and 360/360 movement. The campaign is now probing the two source-distinct Mirror Realm watchmen again; it will only fight if the exact target and isolation evidence are clean.
+
+
+[2026-08-08 11:48:29 PM NZST] CODEX COMMENTARY
+The Mirror Realm check again found two same-named watchmen in the room. The exact candidate considered as an easy kill, but the duplicate-prototype assist risk and research-only status correctly prevented combat; Kestrel recalled untouched and is restoring movement before the next useful target.
+
+
+[2026-08-08 11:49:36 PM NZST] CODEX COMMENTARY
+Movement is full again and a third treant hunt is already underway. The current reboot reset the diminishing kill count, so this remains the best demonstrated XP route while the selector continues testing alternates between repetitions.
+
+
+[2026-08-08 11:50:49 PM NZST] CODEX COMMENTARY
+The third treant loaded with 416 HP and is now in combat; Kestrel opened cleanly and remains at full health while the target is already down to 262. The live loop is issuing the thief recurring attack rather than waiting passively between rounds.
+
+
+[2026-08-08 11:52:06 PM NZST] CODEX COMMENTARY
+Third treant kill confirmed for 1,327 XP. Kestrel returned with 283 HP after taking just 22 damage and now needs 9,164 XP for level 23; the repeated route is actually improving in XP on this reboot rather than collapsing into low-value farming.
+
+
+[2026-08-08 11:54:13 PM NZST] CODEX COMMENTARY
+Flight renewal was deliberately deferred because the source-program drunk is currently on a Magic Shop approach room. The preflight avoided a trivial forced fight, then immediately moved Kestrel to the Solace lieutenant route instead of waiting on the obstruction.
+
+
+[2026-08-08 11:55:29 PM NZST] CODEX COMMENTARY
+Kestrel reached Solace safely despite the deferred flight purchase and has engaged the source-distinct Lieutenant Secretary at full health. The live target is level 19 with 371 HP, inside the useful band for level 22, and is already taking damage.
+
+
+[2026-08-08 11:56:35 PM NZST] CODEX COMMENTARY
+Solace Secretary kill complete for 1,034 XP with no damage taken. Kestrel recalled to the healer with 72 movement remaining and now needs 8,130 XP for level 23, so the no-flight fallback remained both productive and recoverable.
+
+
+[2026-08-08 11:57:44 PM NZST] CODEX COMMENTARY
+The next treant route did not leave on the 72-movement post-recall state. Kestrel first slept at the healer to 350 movement, then began the mandatory water refill and outbound preparation; that recovery gate is working as intended even when campaign selection skips a separate return-home segment.
+
+
+[2026-08-08 11:59:07 PM NZST] CODEX COMMENTARY
+The fourth treant check found the reset room empty, so the runner did not pretend a target existed or waste time searching static data it already knows. It recovered to full movement and has switched to the Dwarven Home servant candidate for the final segment of this batch.
+
+
+[2026-08-09 12:01:29 AM NZST] CODEX COMMENTARY
+That 12-segment batch finished cleanly: four useful kills for 4,889 XP, no deaths, all segments successful, empty stderr, and no leftover pythonw process. The Dwarven servant was correctly rejected as below-band by the no-match consider result; I am rolling directly into another bounded progression batch with Kestrel 8,130 XP from level 23.
+
+
+[2026-08-09 12:03:15 AM NZST] CODEX COMMENTARY
+The new hidden worker is healthy and the first segment is another Solace Secretary attempt. Kestrel entered this batch safely at the healer; there was no console window, no stale worker, and the run is now producing fresh SQLite events.
+
+
+[2026-08-09 12:04:51 AM NZST] CODEX COMMENTARY
+Correction from the fresh combat events: the Solace Secretary was present and is now at 32 of 448 HP. Kestrel remains comfortable at 282 HP and is finishing the useful-band fight instead of recalling early.
+
+
+[2026-08-09 12:05:35 AM NZST] CODEX COMMENTARY
+Secretary kill confirmed for 893 XP. Kestrel consumed the severed heart, returned to the healer, and is already full on HP, mana, and movement; 7,237 XP remain to level 23.
+
+
+[2026-08-09 12:07:51 AM NZST] CODEX COMMENTARY
+The Highland keeper was present, but live consider returned no match for you, which is the prohibited below-band branch. Kestrel skipped the 10-XP-style target, recalled safely, and is sleeping at the healer while the selector retires that evidence for this level and reboot.
+
+
+[2026-08-09 12:10:04 AM NZST] CODEX COMMENTARY
+Solace reset while Kestrel was out of the area, so the Secretary is available again. This one loaded at level 19 with 479 HP; combat is active, Kestrel is at 285 HP, and the target is at 400 after the opener.
+
+
+[2026-08-09 12:11:24 AM NZST] CODEX COMMENTARY
+Second Secretary kill in this batch yielded 1,018 XP. Kestrel consumed the severed arm, returned beside the healer at 301 HP, and now needs 6,219 XP for level 23.
+
+
+[2026-08-09 12:13:07 AM NZST] CODEX COMMENTARY
+The Magic Shop preflight is still blocked: the greet-program drunk is now at the General Store, Common Square, and tavern. The runner bounded the check and quit safely rather than entering a forced low-value fight; it will retry after more productive field work.
+
+
+[2026-08-09 12:15:05 AM NZST] CODEX COMMENTARY
+The second Highland keeper is also below-band by live consider, so both tower prototypes are now ruled out at level 22 without sacrificing XP efficiency. Kestrel is back at the healer recovering the expensive no-flight travel movement, with no health loss.
+
+
+[2026-08-09 12:16:26 AM NZST] CODEX COMMENTARY
+The Dwarven Kingdom giant is a useful live target: level 18 against Kestrel 22, not the rejected level-difference branch. The wandering interception found it in source-reachable room 6507, combat is active, and Kestrel is at 275 HP versus the giant at 267 of 449.
+
+
+[2026-08-09 12:17:31 AM NZST] CODEX COMMENTARY
+Dwarven giant kill complete for 951 XP. Kestrel won at 265 HP, recalled without a retreat scare, and now needs 5,268 XP for level 23; this is a useful new route in the active level band.
+
+
+[2026-08-09 12:19:33 AM NZST] CODEX COMMENTARY
+Kestrel has completed the post-giant healer cycle at 305 HP and 360 movement. The batch still has five bounded segments remaining, so I am continuing through the live target rotation rather than stopping at this checkpoint.
+
+
+[2026-08-09 12:21:15 AM NZST] CODEX COMMENTARY
+Another treant has reset and is now nearly finished: level 20, down to 138 of 490 HP, while Kestrel remains at 272. This should close another substantial part of the remaining 5,268-XP gap.
+
+
+[2026-08-09 12:22:15 AM NZST] CODEX COMMENTARY
+Treant kill confirmed for 1,094 XP. Kestrel returned at 280 HP and is sleeping beside the healer; only 4,174 XP remain to level 23.
+
+
+[2026-08-09 12:24:47 AM NZST] CODEX COMMENTARY
+The Dwarven Homestead host passed the bounded ceiling probe at live level 23, one level above Kestrel. Combat is going well: Kestrel has 289 HP and the host is down to 257 of 353, so the runner is using a stronger target without crossing the source risk gates.
+
+
+[2026-08-09 12:25:45 AM NZST] CODEX COMMENTARY
+Excellent result: the level-23 host yielded 1,641 XP, Kestrel consumed the severed leg, and returned completely full. Only 2,533 XP remain to level 23, and this validates the one-level ceiling probe as a high-value route under the existing gates.
+
+
+[2026-08-09 12:27:28 AM NZST] CODEX COMMENTARY
+The drunk still blocks the shop approach, now from the General Store and Market Square, so flight renewal was deferred again. Because Kestrel is close to leveling, the runner applied the stat-focused pre-level stance before moving directly to the High Tower candidate.
+
+
+[2026-08-09 12:29:35 AM NZST] CODEX COMMENTARY
+The diamond golem is proving much tougher than the host: Kestrel is at 74 HP and the golem at 197. He remains above the 15-percent withdrawal floor with ample movement and a recallable exit, so I am watching the autonomous retreat gate closely rather than intervening manually.
+
+
+[2026-08-09 12:31:34 AM NZST] CODEX COMMENTARY
+The retreat gate fired correctly after a hard hit took Kestrel from 49 to 19 HP. He fled, earned 578 partial-combat XP against a 323-XP flee cost for a net gain of 255, recalled, and is sleeping safely at the healer; the golem was ruinously damaged, but survival correctly took priority.
+
+
+[2026-08-09 12:33:34 AM NZST] CODEX COMMENTARY
+Kestrel is fully recovered from the golem at 305 HP and 360 movement. The final segment of this batch is the bounded Moria sanctuary-reserve route, seeking the purple potion carrier under its exact source and crowd gates.
+
+
+[2026-08-09 12:34:35 AM NZST] CODEX COMMENTARY
+Moria objective succeeded: Kestrel killed the large hobgoblin, recovered its purple sanctuary potion, gained 90 XP, and returned completely full. The reserve is now available for an explicitly protected caster hunt, and 2,188 XP remain to level 23.
+
+
+[2026-08-09 12:35:35 AM NZST] CODEX COMMENTARY
+The second 12-segment batch is clean: 5,942 net XP, five full kills plus the Moria carrier, one successful emergency withdrawal, no death, all segments successful, empty stderr, and no worker leak. I am starting the next bounded batch now with level 23 only 2,188 XP away.
+
+
+[2026-08-09 12:37:31 AM NZST] CODEX COMMENTARY
+The new worker is healthy and its first target is the Tower of Sorcery jailor. Kestrel is moving through the source-backed Haon Dor approach at full health with 324 movement; fresh bless and armor effects are active.
+
+
+[2026-08-09 12:39:10 AM NZST] CODEX COMMENTARY
+The jailor route traversed the randomized Shadow Grove correctly by live GMCP destinations, reached room 1328, and found the exact target. Live consider said no match for you, so Kestrel skipped it, recalled from the legal Tower room, and recovered without incident.
+
+
+[2026-08-09 12:41:26 AM NZST] CODEX COMMENTARY
+The Dwarven Kingdom giant had not reset, so that segment returned without combat. Kestrel is now en route to the higher-value Dwarven Homestead host at full health; he has 206 movement remaining on the approach and 2,188 XP to level.
+
+
+[2026-08-09 12:42:39 AM NZST] CODEX COMMENTARY
+The host reset with 545 HP, and Kestrel used the newly acquired sanctuary reserve before this ceiling fight. The protection is active, Kestrel is at 285 HP, and the host is already down to 90; this is exactly the protected aggression loop the potion policy was built for.
+
+
+[2026-08-09 12:44:07 AM NZST] CODEX COMMENTARY
+Protected host kill complete for 1,577 XP. Kestrel returned full at 305 HP and needs just 611 XP for level 23; sanctuary turned the same ceiling target into a comfortable fight.
+
+
+[2026-08-09 12:46:13 AM NZST] CODEX COMMENTARY
+The drunk finally cleared the route, so Kestrel bought and quaffed a light blue potion at the current 133-copper price; flight has 31 visible ticks. He is now fighting the level-19 Kerofk gravedigger at 279 HP, with only 611 XP needed to level.
+
+
+[2026-08-09 12:48:02 AM NZST] CODEX COMMENTARY
+Kestrel reached level 23. The gravedigger yielded 809 XP; the level awarded 15 hit points, 10 mana, 10 movement, 3 physical practices, and 2 intellectual practices. He is alive at the Midgaard healer with flight still active and a new 35,202-XP level band ahead.
+
+
+[2026-08-09 12:50:16 AM NZST] CODEX COMMENTARY
+The campaign stopped exactly because its current live proof target was level 23, not because the worker stalled. I am advancing the generated Kestrel campaign target to level 24 now, one tested band at a time, then I will resume so policy evidence keeps pace with the actual character.
+
+
+[2026-08-09 12:52:53 AM NZST] CODEX COMMENTARY
+Level-24 pursuit is active. The resumed campaign has opened with a return-home checkpoint so it can reconcile the level gain, equipment stance, and fresh practice budgets before selecting level-23 targets; the hidden worker is healthy and emitting new run data.
+
+
+[2026-08-09 12:55:51 AM NZST] CODEX COMMENTARY
+On the host fastwalk, a level-13 carnivorous grass forced a trivial fight in the Plains. Kestrel is full health and flying, has already gained 140 XP from unavoidable route combat, and is finishing the below-band attacker so it cannot stall the productive hunt.
+
+
+[2026-08-09 12:57:07 AM NZST] CODEX COMMENTARY
+The grass is dead and the route resumed, but a level-14 rolling rock has now aggroed farther along the same Plains fastwalk. Kestrel remains completely untouched at 320 HP; the runner is clearing this second unavoidable nuisance and will continue toward the host.
+
+
+[2026-08-09 12:58:08 AM NZST] CODEX COMMENTARY
+A third aggressive transit mob, a level-16 crazed rabbit, has joined farther south. The prior rock died for 140 XP and dropped saleable loot; Kestrel is still untouched and full, so these forced fights are delay rather than danger, and the route cursor continues after each kill.
+
+
+[2026-08-09 12:59:41 AM NZST] CODEX COMMENTARY
+The rabbit is dead for 160 XP, its severed head was consumed, and the host route has resumed into Kerofk. Kestrel is still healthy at 297 of 320 with 342 movement and 18 flight ticks; the three forced Plains fights are now behind him.
+
+
+[2026-08-09 1:02:16 AM NZST] CODEX COMMENTARY
+The host was present but sharing the room with a source-distinct guest, so the assist-crowd gate skipped that attempt. Kestrel returned and sold the rolling-rock drop for 56 copper, preserving the travel nuisance as useful funding rather than carrying dead weight.
+
+
+[2026-08-09 1:05:15 AM NZST] CODEX COMMENTARY
+The level-23 golem repeated the earlier result: Kestrel withdrew automatically at 26 HP, escaped into safe room 1313, and gained a net 240 partial XP. He is alive with 369 movement and about to recall; two near-critical withdrawals now make sanctuary a clear prerequisite before another golem attempt.
+
+
+[2026-08-09 1:12:03 AM NZST] CODEX COMMENTARY
+I am resuming with Kestrel at level 23. First I am checking the live gravedigger segment and will stop the worker only after it has safely returned and quit, then I will patch the protection gate exposed by the two near-critical diamond-golem withdrawals before continuing toward level 24.
+
+
+[2026-08-09 1:12:48 AM NZST] CODEX COMMENTARY
+The gravedigger segment completed safely for 771 XP. The worker advanced before I could catch its short idle gap and is now fighting the level-20 Dragonhoard teller in New Ofcol; Kestrel is healthy at 275/320 HP, so I am letting this bounded fight finish before stopping the process.
+
+
+[2026-08-09 1:13:39 AM NZST] CODEX COMMENTARY
+The New Ofcol fight is progressing steadily: the teller is down from 542 to 287 HP while Kestrel remains at 261/320. While it runs, I am tracing the campaign metadata and its regression tests so the hard-health withdrawal fix stays narrow and preserves existing recovery behavior.
+
+
+[2026-08-09 1:15:17 AM NZST] CODEX COMMENTARY
+The teller is now at 118/542 HP and Kestrel is still comfortable at 234/320, so this should finish shortly. The code path confirms the missing distinction: a net-positive partial fight is currently treated as harmless even when the explicit abort says the hard health floor was reached.
+
+
+[2026-08-09 1:17:26 AM NZST] CODEX COMMENTARY
+Kestrel killed the teller for 1,459 XP and returned to the Midgaard healer at 191/320 HP. A short return-home checkpoint has already begun; I will let that finish its safe save-and-quit sequence, stop the worker in the next idle gap, and then make the tested protection-policy change.
+
+
+[2026-08-09 1:21:25 AM NZST] CODEX COMMENTARY
+Kestrel is safely logged out at healer room 3054 and the live worker is stopped. I am now editing campaign.py and its tests so a hard-health withdrawal creates a policy-specific sanctuary requirement even when partial combat yielded XP; unrelated easy kills will no longer erase that stronger warning.
+
+
+[2026-08-09 1:24:03 AM NZST] CODEX COMMENTARY
+The focused regression set now passes, including reconstruction from the real run 4397 shape and preservation across the later New Ofcol kill. I am recording this as a permanent autonomy rule in AGENTS.md, then I will run the broader campaign and full test suites before relaunching Kestrel.
+
+
+[2026-08-09 1:25:46 AM NZST] CODEX COMMENTARY
+The combined campaign and live-runner suite is clean: 1,527 tests passed. I am running the full repository suite now; after that I will verify the repaired checkpoint contains the exact High Tower marker and restart the hidden worker on alternate productive routes.
+
+
+[2026-08-09 1:27:12 AM NZST] CODEX COMMENTARY
+The full suite is clean at 2,290 passed. I am relaunching Kestrel now with the updated worker: startup will repair the interrupted empty maintenance segment, recover the run-4397 hard-health evidence, obtain sanctuary before any exact golem retry, and keep leveling through the other level-23 candidates meanwhile.
+
+
+[2026-08-09 1:30:30 AM NZST] CODEX COMMENTARY
+The repaired campaign selected the Moria sanctuary route immediately, which is the intended live proof that the High Tower marker survived the later easy kills. Kestrel also bought a fresh flight potion for 133 copper and is now traveling from recall toward the purple-potion carrier; the obsolete interrupted maintenance segment was marked failed rather than retried blindly.
+
+
+[2026-08-09 1:33:19 AM NZST] CODEX COMMENTARY
+I caught and stopped a real no-progress loop before it could burn the segment: recovery stance kept trying to wear blue boots in the unavailable Kestrel feet slot, then rechecking equipment indefinitely. Kestrel was standing safely at recall with full HP when stopped; I am adding a remembered rejection for this server response, then I will recover the interrupted records and return him to the healer before resuming.
+
+
+[2026-08-09 1:40:12 AM NZST] CODEX COMMENTARY
+Source inspection found the precise cause: wear blue selected the light blue potion before the blue snakeskin boots, so act_obj.c returned the generic cannot-wear response. I am changing stance commands to choose a source keyword unique across every carried object, including non-gear, and making that generic rejection terminate and blacklist the failed selector as a second line of defense.
+
+
+[2026-08-09 1:42:30 AM NZST] CODEX COMMENTARY
+The selector-collision regressions pass: the same inventory now produces wear snakeskin, and the generic rejection cannot leave a pending stance loop. I am recording the all-inventory keyword rule in AGENTS.md, then I will rerun the full suite and perform a one-segment healer recovery before restarting progression.
+
+
+[2026-08-09 1:44:26 AM NZST] CODEX COMMENTARY
+The full suite is still running cleanly past its midpoint. The live connection remains stopped during verification, so there is no character activity or hidden combat while I validate this fix.
+
+
+[2026-08-09 1:46:46 AM NZST] CODEX COMMENTARY
+All 2,292 tests pass. The recovery command replayed the two interrupted transcripts, bound them to their campaign segments, and marked both runs failed with an explicit reason; no run is left falsely active. I am now running one bounded segment to move Kestrel from recall to the healer and save cleanly.
+
+
+[2026-08-09 1:50:36 AM NZST] CODEX COMMENTARY
+The recovery segment completed at healer room 3054 with full HP, mana, and movement, and saved cleanly. It also filled the visible feet-slot debt with basic hard leather boots, so Kestrel is no longer relying on either ambiguous blue-boots selector; I am restarting the hidden 12-segment progression worker now.
+
+
+[2026-08-09 1:53:37 AM NZST] CODEX COMMENTARY
+Live verification of the selector fix passed: the stance equipped black stiletto boots with wear black, completed its equipment audit, and quit cleanly with no loop. The Moria pass did not acquire a purple potion this time, so the campaign has rotated into a short loot-liquidation segment while the exact High Tower hunt remains blocked.
+
+
+[2026-08-09 2:00:39 AM NZST] CODEX COMMENTARY
+The worker exposed a second scheduler defect: after the absent Moria carrier, a fallback helper admitted the Rock Toad policy at level 23 even though that policy ends at level 20. Live consider prevented a bad kill and Kestrel recovered; he has since bought flight, completed a gravedigger pass, and is on the productive level-23 Dwarven Home host route while I add the missing upper-bound check.
+
+
+[2026-08-09 2:07:07 AM NZST] CODEX COMMENTARY
+The progression regression now passes, and all 432 scheduler tests remain green. The fix checks both policy bounds inside the Moria alternate helper itself; I am adding run 4408 as permanent evidence in AGENTS.md while the current host fight continues safely at full Kestrel health.
+
+
+[2026-08-09 2:08:37 AM NZST] CODEX COMMENTARY
+The current host is down to 213/688 HP while Kestrel remains strong at 285/320, so I am letting the fight finish. This batch has already added 1,453 XP from its previous host kill, and the new upper-bound code will load when the batch exits after its final segment.
+
+
+[2026-08-09 2:11:19 AM NZST] CODEX COMMENTARY
+The batch ended cleanly at the healer. The second host kill earned 1,796 XP, bringing this batch to 3,249 XP from the two productive host fights and Kestrel to 298,797 XP with 28,753 remaining for level 24. I am running the full suite once more with the fallback-bound fix before launching the updated worker.
+
+
+[2026-08-09 2:12:58 AM NZST] CODEX COMMENTARY
+The full verification run remains clean and is nearing completion. No Python worker or Telnet session is active during this test pass; Kestrel remains saved in healer room 3054.
+
+
+[2026-08-09 2:13:51 AM NZST] CODEX COMMENTARY
+All 2,293 tests pass with both new live regressions covered. I am starting the updated hidden worker now; the level-23 protection path can rotate among current-band hunts or wait for sanctuary, but it can no longer spend a segment on the expired Rock Toad fallback.
+
+
+[2026-08-09 2:17:10 AM NZST] CODEX COMMENTARY
+The updated worker began with sensible maintenance: Kestrel bought six pies, returned to healer room 3054 at full health, and still has a flight potion plus 9 gold 4 silver 7 copper. This clears the food boundary for longer current-band circuits instead of forcing single-kill returns.
+
+
+[2026-08-09 2:20:22 AM NZST] CODEX COMMENTARY
+The reboot-scoped golem route was safely re-evaluated once: live consider returned the stronger Do you feel lucky branch, so the bot recalled without attacking or losing XP. It then chose the level-22 Dwarven Home host, now at 207/511 HP while Kestrel remains untouched at 320/320.
+
+
+[2026-08-09 2:22:49 AM NZST] CODEX COMMENTARY
+The host died for 1,352 XP without landing a hit; Kestrel disposed of the severed head, returned to the healer, and now has 27,401 XP remaining. The next segment is the current-band Kerofk gravedigger route, so the patched scheduler is rotating productively rather than reviving Rock Toads.
+
+
+[2026-08-09 2:23:55 AM NZST] CODEX COMMENTARY
+The gravedigger added another 840 XP and returned Kestrel to the healer at 304/320 HP. Level 24 is now 26,561 XP away, with the current batch producing 2,192 XP so far and no unsafe withdrawal.
+
+
+[2026-08-09 2:25:32 AM NZST] CODEX COMMENTARY
+Kestrel completed the healer checkpoint and is safely logged out. The worker is responsive and currently doing the source-ranked next-policy calculation between connections; no live run or character session is hanging.
+
+
+[2026-08-09 2:26:47 AM NZST] CODEX COMMENTARY
+The next-policy calculation selected the Old Treant, not the expired Toad circuit. The level-19 treant is still within the useful consider band at level 23 and is down to 283/501 HP while Kestrel remains at full health.
+
+
+[2026-08-09 2:28:39 AM NZST] CODEX COMMENTARY
+Yes. I will treat recallability as a room-level property in the Abyss, route to a known recallable room when that is safer than retracing, and avoid generalizing ROOM_NO_RECALL across the whole area. I am checking the active Kestrel run now and will keep that distinction in the shared recovery policy.
+
+
+[2026-08-09 2:29:08 AM NZST] CODEX COMMENTARY
+That distinction is already represented explicitly: source rooms 7505, 7536 through 7539, 7548, 7551 through 7552, 7554 through 7555, and 7557 through 7558 are recallable, while the surrounding Abyss rooms are handled as no-recall. Kestrel has also finished the Old Treant cleanly for 1,337 XP and returned to the Midgaard healer at full health; the active batch is continuing.
+
+
+[2026-08-09 2:30:24 AM NZST] CODEX COMMENTARY
+The post-treant recovery checkpoint is complete in healer room 3054 with Kestrel fully restored. The worker is responsive and is now ranking the next level-23 source-backed target; the Abyss room-level recall map remains available for any candidate whose route enters that area.
+
+
+[2026-08-09 2:31:17 AM NZST] CODEX COMMENTARY
+Kestrel has refreshed flight at the Magic Shop and returned to the healer with one reserve potion, six pies, full health, and 344 movement. This matters for the Abyss distinction too: flight lowers travel cost, while the room-specific recovery map prevents a failed recall from stranding the character in one of its no-recall rooms.
+
+
+[2026-08-09 2:32:40 AM NZST] CODEX COMMENTARY
+The next productive segment is underway at the Kerofk graveyard. Kestrel arrived with full health, active sanctuary and flight, and more than 300 movement; the bot is now applying the live target and consider gates to the gravedigger rather than spending the segment on low-value travel.
+
+
+[2026-08-09 2:34:07 AM NZST] CODEX COMMENTARY
+The gravedigger fight is progressing well: the target is at 221 of 594 HP while Kestrel remains at 289 of 320. The recurring knife action is firing between automatic rounds, sanctuary remains active, and there is no withdrawal condition; I am letting the bot finish the kill.
+
+
+[2026-08-09 2:34:48 AM NZST] CODEX COMMENTARY
+The gravedigger is dead for 1,560 XP. Kestrel finished at 275 of 320 HP, recalled with flight still active, and is moving one north into the healer for cleanup; total XP is now 303,886 with 23,664 remaining to level 24.
+
+
+[2026-08-09 2:36:42 AM NZST] CODEX COMMENTARY
+The twelve-segment batch has ended cleanly: no stderr, no lingering worker, and Kestrel saved and quit from healer room 3054 at full health, mana, and movement. It gained 5,089 XP overall, including the live proof that the corrected policy selector chose the useful Old Treant instead of the expired Rock Toad fallback. I am starting the next bounded batch toward level 24 now.
+
+
+[2026-08-09 2:38:01 AM NZST] CODEX COMMENTARY
+The new worker is running normally and selected the Old Treant again for its first segment. That is an appropriate repeatable level-19 target at Kestrels current level 23, still above the prohibited minus-five consider boundary; I am monitoring the live fight and return path.
+
+
+[2026-08-09 2:39:06 AM NZST] CODEX COMMENTARY
+This Treant respawn rolled below the useful band: live consider returned no match for you, so the bot correctly refused combat and recalled. That result is now persisted for this level and reboot, preventing another wasteful Treant trip until Kestrels level or the reboot identity changes; the previous Treant was a higher live roll and remained eligible.
+
+
+[2026-08-09 2:41:20 AM NZST] CODEX COMMENTARY
+The below-band Treant result did not stall progression. The selector rotated directly to a fresh level-22 gravedigger, and Kestrel has opened combat at full health with 288 movement. This is the intended behavior: preserve the live level gate, then keep hunting another worthwhile target.
+
+
+[2026-08-09 2:43:07 AM NZST] CODEX COMMENTARY
+Sanctuary has now worn off, but the bot correctly stayed in the fight because actual combat health is excellent: Kestrel is at 316 of 320 and the gravedigger is down to 189 of 529. This is direct live confirmation that sanctuary expiry is contextual rather than an automatic flee trigger.
+
+
+[2026-08-09 2:44:00 AM NZST] CODEX COMMENTARY
+The second gravedigger is down for 1,256 XP. Kestrel completed the unsanctuaried portion safely at 284 of 320 HP and has already recalled; XP is 305,142 with 22,408 left to level 24. The worker will heal, then continue rotating through the remaining current-band policies.
+
+
+[2026-08-09 2:46:50 AM NZST] CODEX COMMENTARY
+The next rotation reached the New Ofcol bank and found a live level-20 sluggish teller. The consider and isolation gates passed; Kestrel opened at full health and has already reduced it from 384 to 356 HP without taking damage. This gives us a third productive current-band route rather than relying on one respawn.
+
+
+[2026-08-09 2:48:57 AM NZST] CODEX COMMENTARY
+The Ofcol attempt became unsafe when a wandering cityguard entered the bank and joined the fight. The bot recognized the unapproved attacker, fled immediately without taking damage, recalled, and recovered at the healer; the flee cost 354 XP and partial damage credit returned 105, for a net loss of 249. I am treating the route as a retryable crowd failure so it will rotate elsewhere rather than immediately repeat.
+
+
+[2026-08-09 2:51:30 AM NZST] CODEX COMMENTARY
+The Moria sanctuary-carrier check also stayed bounded. Where reported large hobgoblins in End of tunnel and The maze, outside the authorized source reset room, so Kestrel did not chase them; it recalled at full health and checkpointed the retry. Policy selection is continuing with both the Ofcol crowd failure and Moria displacement cooling down.
+
+
+[2026-08-09 2:53:37 AM NZST] CODEX COMMENTARY
+The next rotation produced a clean kill against source mobile 19051 for 1,280 XP. Kestrel returned to the healer at 307 of 320 HP with no disabling effects; total XP is now 306,173 and the earlier 249-XP Ofcol loss has already been more than recovered.
+
+
+[2026-08-09 2:56:22 AM NZST] CODEX COMMENTARY
+Kestrel has reached Solace room 10295 and engaged the source-distinct level-21 Secretary, mobile 10248. The exact room line and TARGETMODE identity matched before combat; Kestrel is at 304 of 320 HP and the Secretary at 305 of 320, so the fight remains comfortably inside the continuation thresholds.
+
+
+[2026-08-09 2:57:59 AM NZST] CODEX COMMENTARY
+The Solace Secretary is dead for 1,116 XP. Kestrel finished at 300 of 320 HP, collected the severed leg for the existing eat-or-sacrifice disposal path, and returned safely to healer room 3054. XP is now 307,289, leaving 20,261 to level 24.
+
+
+[2026-08-09 3:00:40 AM NZST] CODEX COMMENTARY
+The second twelve-segment batch has ended cleanly with no stderr or lingering worker. Net progress was 3,403 XP despite the Ofcol crowd withdrawal; Kestrel saved and quit from the healer at full health, mana, and movement. I am launching another bounded batch, with the Treant, Ofcol teller, and displaced Moria carrier observations now shaping target rotation.
+
+
+[2026-08-09 3:03:12 AM NZST] CODEX COMMENTARY
+The new batch is active. Its first segment refreshed Kestrels flight supply and returned him safely to the healer, so the next long route starts with reduced movement cost and a reserve potion instead of gambling on the last few ticks of the previous spell.
+
+
+[2026-08-09 3:04:38 AM NZST] CODEX COMMENTARY
+The refreshed-flight run completed another clean mobile-19051 kill for 828 XP and returned Kestrel to the healer at full health. The lower reward reflects reboot-local repetition, so the scheduler will continue comparing it against other available policies rather than assuming every repeat has the original value.
+
+
+[2026-08-09 3:07:35 AM NZST] CODEX COMMENTARY
+A newly reset Solace Secretary rolled live level 19, exactly four below Kestrel and therefore still on the useful side of the consider cutoff. Combat is healthy: Kestrel remains at 320 of 320 while the target is down to 262 of 369. The live fuzz is being checked each time rather than inferred from the prior spawn.
+
+
+[2026-08-09 3:09:05 AM NZST] CODEX COMMENTARY
+The level-19 Secretary is down for 888 XP, and Kestrel returned without losing a single hit point. Reboot-local repetition is reducing the reward, but it remains worthwhile at this band; XP is 309,005 with 18,545 remaining to level 24.
+
+
+[2026-08-09 3:11:14 AM NZST] CODEX COMMENTARY
+The next mobile-19051 visit found the source room empty, so the bot recorded target absence and recalled without wasting time on a broad search. That target now cools down independently while the worker moves on to another policy.
+
+
+[2026-08-09 3:21:43 AM NZST] CODEX COMMENTARY
+Yes. The Abyss policy already records the source-confirmed recallable rooms and routes withdrawals to the nearest one instead of treating the whole area as no-recall. I am continuing the live Kestrel batch now, then I will fix the overly conservative crowd classification exposed by the wandering low-level Ofcol citizen.
+
+
+[2026-08-09 3:23:30 AM NZST] CODEX COMMENTARY
+The batch finished cleanly at the Midgaard healer with no stderr and no death. Kestrel killed the Solace lieutenant for 853 XP, then found the final sprite absent; he is level 23 at 309858 XP, with 17692 remaining. I am now changing the crowd classifier so source-proven low-level wanderers can be ignored without weakening the guard against genuinely dangerous companions.
+
+
+[2026-08-09 3:29:41 AM NZST] CODEX COMMENTARY
+The focused tests pass. The revised source check now proves that the level-5 New Ofcol citizen can wander into room 800, while refusing to ignore a same-named dangerous prototype if its own movement graph can reach that room. Against the real DD4 source it also identifies the other harmless New Ofcol wanderers that may drift into the bank.
+
+
+[2026-08-09 3:31:19 AM NZST] CODEX COMMENTARY
+The complete campaign suite is running now and has emitted no failure output. Kestrel remains safely logged out at healer room 3054 while verification runs, so there is no unattended live session or competing database writer.
+
+
+[2026-08-09 3:33:11 AM NZST] CODEX COMMENTARY
+All 624 campaign tests pass, including both new wandering-bystander regressions. The full 2295-test repository suite is now running and remains quiet; after it passes I will load the corrected code into a fresh bounded worker and seek a live New Ofcol retry.
+
+
+[2026-08-09 3:34:06 AM NZST] CODEX COMMENTARY
+Full verification is green: 2295 tests passed. I am recording the new source-identity rule in AGENTS, then I will start a bounded live batch; the next Ofcol visit should ignore only source-proven trivial wanderers such as citizens, while a cityguard or other dangerous arrival must still abort or flee.
+
+
+[2026-08-09 3:37:17 AM NZST] CODEX COMMENTARY
+The first hidden launch hit a PowerShell compatibility error because this host lacks ProcessStartInfo.ArgumentList; it exited immediately and did not connect to the MUD. I switched to the compatible Arguments property within seconds. The real worker is now healthy as Python PID 44588, consuming CPU in policy planning with empty stderr and no visible console window.
+
+
+[2026-08-09 3:38:50 AM NZST] CODEX COMMENTARY
+Run 4453 reached Lord Doom and used the live consider gate before combat. This spawn was below band, so Kestrel declined the zero-value fight, recalled, restored his equipment stances, saved, and quit from the healer unharmed. That exact target is now suppressed for level 23 on this reboot while the worker rotates onward.
+
+
+[2026-08-09 3:40:57 AM NZST] CODEX COMMENTARY
+The healer checkpoint restored Kestrel from 166 to full movement and completed normally. Run 4455 is now checking the independent Galaxy Horsehead reset at full health; this is productive rotation behavior after Doom was rejected, not a repeat of the same failed target.
+
+
+[2026-08-09 3:41:52 AM NZST] CODEX COMMENTARY
+The Horsehead was absent from its exact registered room, so run 4455 recorded the reboot-scoped miss and returned without a broad search. Kestrel is back in the healer recovery checkpoint now; no XP or health was lost, and the worker will choose a different current-band policy next.
+
+
+[2026-08-09 3:44:33 AM NZST] CODEX COMMENTARY
+Run 4457 waited at the healer for the old one-tick fly affect to expire, verified the greet-program drunk was clear of the shop route, bought and used a fresh light blue potion, and returned safely. With flight renewed, run 4458 is now checking the independent Galaxy Andromeda reset.
+
+
+[2026-08-09 3:46:04 AM NZST] CODEX COMMENTARY
+Andromeda was present, but the live spawn rolled below the useful XP band. The bot considered it, refused combat, and returned safely; that exact policy is now suppressed for this level and reboot. The new crowd fix has not yet had an Ofcol opportunity because its crowd cooldown requires productive field work, so I am continuing the rotation rather than forcing an immediate retry.
+
+
+[2026-08-09 3:47:50 AM NZST] CODEX COMMENTARY
+Recovery reached the full movement floor and completed. The scheduler has now selected Dwarven Home mobile 20508, a fresh source-ranked servant policy, and run 4460 is traveling there at full health with active flight. This is the first plausible productive target since the two live below-band rolls.
+
+
+[2026-08-09 3:49:08 AM NZST] CODEX COMMENTARY
+The Dwarven servant was present but also rolled into the prohibited minus-five consider branch, so Kestrel correctly declined it and returned at full health. Three newly checked policies are now ruled out for this level and reboot; that pruning is useful, but the lack of XP means the next development question is whether the remaining ranker frontier is broad enough to find higher nominal-level targets quickly.
+
+
+[2026-08-09 3:51:21 AM NZST] CODEX COMMENTARY
+Run 4461 completed the healer recovery, and the worker is responsive but has spent about a minute at full CPU ranking the next policy. That is longer than I want. I am letting this bounded batch reach its clean stop, then I will profile the new source reachability work and cache it more tightly if it is responsible; live safety is intact because Kestrel is logged out during planning.
+
+
+[2026-08-09 3:54:55 AM NZST] CODEX COMMENTARY
+The stag preflight returned an authoritative area absence and recalled safely. More importantly, selecting this wandering policy took about three and a half CPU-bound minutes, confirming that my first crowd fix recomputes too much source reachability for large search graphs. I will replace the per-room scan with one inverted per-candidate reachability index as soon as this batch reaches its clean healer stop.
+
+
+[2026-08-09 4:03:13 AM NZST] CODEX COMMENTARY
+The optimization is in and the focused regressions pass. Instead of rescanning every DD4 mobile for every room in a wandering circuit, the builder now computes each relevant mobile graph once and inverts the results by destination. The real White Stag circuit now builds 38 hunt stops in 0.84 seconds, compared with the roughly three-and-a-half-minute live planning delay that exposed the defect.
+
+
+[2026-08-09 4:06:39 AM NZST] CODEX COMMENTARY
+Verification is fully green again: all 624 campaign tests pass in 38.6 seconds and all 2295 repository tests pass in 52.6 seconds. The campaign suite itself fell from 94 seconds to 39 seconds after the indexing change, which confirms the CPU regression is gone. I am recording the once-per-circuit constraint and relaunching from Kestrels clean healer checkpoint.
+
+
+[2026-08-09 4:08:45 AM NZST] CODEX COMMENTARY
+The corrected worker is healthy as PID 30948 with empty stderr. Its first policy selection completed in about one minute rather than three and a half, and run 4464 is now checking the independent Galaxy Pegasus reset. That remaining minute is the pre-existing all-source ranking cost; the new per-room regression is no longer multiplying it.
+
+
+[2026-08-09 4:10:29 AM NZST] CODEX COMMENTARY
+Pegasus was present but became the fourth fresh policy to roll exactly into the prohibited low-XP consider branch. The route and recovery were clean, yet this confirms another efficiency problem: nominal level-20 targets have too much live-fuzz downside for a level-23 character when higher nominal candidates exist. I am preserving the hard consider boundary and will adjust ranking preference after this bounded batch rather than gaining 10 XP from bad kills.
+
+
+[2026-08-09 4:14:14 AM NZST] CODEX COMMENTARY
+I stopped the worker while Kestrel was safely logged out at healer room 3054, before it could spend another segment on the same depleted frontier. The current safe list confirms why: the useful level-21 to level-23 routes are either reboot-capped, absent, crowded, or live-rejected, leaving mostly nominal level-17 and level-18 probes. I am auditing the rejected level-21 to level-24 source candidates now to promote the next defensible combat frontier.
+
+
+[2026-08-09 4:34:47 AM NZST] CODEX COMMENTARY
+The audit found the practical fix: Kestrel still has three source-safe routes with meaningful recent XP, but a hard three-kill gate hides them until every fresh candidate is exhausted. I am making that fallback adaptive. When a fresh prototype has less than a fifty-percent chance of fuzzing into the useful consider band, the scheduler will prefer a previously productive same-reboot route whose latest reward remains meaningful; high-confidence fresh targets will still take precedence.
+
+
+[2026-08-09 4:37:19 AM NZST] CODEX COMMENTARY
+That is an important distinction. I will keep Abyss recall safety room-specific from source flags and live room evidence, so a recallable staging room can support recovery without treating the whole area as recallable. I am first checking the interrupted scheduler patch, then I will test it and resume Kestrel from the healer.
+
+
+[2026-08-09 4:37:36 AM NZST] CODEX COMMENTARY
+The interrupted patch is present, and the review caught one incomplete variable assignment in the repeat-selection branch before it reached a live run. I am correcting that small defect now, then the new low-fuzz versus productive-repeat behavior gets focused and regression tests.
+
+
+[2026-08-09 4:40:36 AM NZST] CODEX COMMENTARY
+The production branch now behaves correctly in isolation. The first test exposed that its synthetic state was being deliberately invalidated by the real DD4 source revision check, so the test lost the productive evidence before selection. I am pinning that test to its synthetic source context, which preserves the same revision invalidation behavior in production.
+
+
+[2026-08-09 4:41:23 AM NZST] CODEX COMMENTARY
+The focused scheduler checks are green: three new cases and ten repeat and fuzz regressions pass. I am running the full campaign suite now; after that I will run the entire repository suite before putting the policy against the live character.
+
+
+[2026-08-09 4:42:34 AM NZST] CODEX COMMENTARY
+The campaign suite is still running normally and has not reported a failure. This is the broad state-machine pass, so I am letting it finish before any live connection starts.
+
+
+[2026-08-09 4:43:22 AM NZST] CODEX COMMENTARY
+One campaign regression failed for a versioning-test reason: it encoded the old parser migration as current revision minus one, but this scheduler change advances the current revision independently. I am making that fixture name the actual pre-parser revision, 124, so revision 125 checkpoints are not incorrectly remigrated.
+
+
+[2026-08-09 4:45:31 AM NZST] CODEX COMMENTARY
+The corrected migration fixture and all focused cases pass. The full campaign suite is in its second pass now and remains clean so far.
+
+
+[2026-08-09 4:46:45 AM NZST] CODEX COMMENTARY
+All 627 campaign tests now pass. The full repository suite is underway; once it is green I will launch a bounded live batch and watch which level-23 route the adaptive scheduler actually selects.
+
+
+[2026-08-09 4:47:22 AM NZST] CODEX COMMENTARY
+The entire suite is green: 2298 tests passed in 58.93 seconds. Before reconnecting Kestrel I am checking the source mirror revision, campaign checkpoint, and active Python processes so the live batch starts from a known safe state with no duplicate worker.
+
+
+[2026-08-09 9:14:04 AM NZST] CODEX COMMENTARY
+The source pull completed to revision 0949fec, but the app held the escalated launch in permission review for several hours before releasing it. That delay is unacceptable for this workflow. I am recording this as direct evidence that live development must never wait on escalated Git work again; future source refreshes will get one short ordinary attempt and then be deferred while local and live work continues.
+
+
+[2026-08-09 9:15:38 AM NZST] CODEX COMMENTARY
+Your Abyss distinction is already represented precisely: rooms 7505, 7536 through 7539, 7548, 7551 through 7552, 7554 through 7555, and 7557 through 7558 are modeled as recall points, with every other Abyss room routed toward the nearest one by live GMCP exits. The refreshed source does not alter abyss.are. I am rerunning the suite against revision 0949fec because source-backed fixtures may change when the mirror advances.
+
+
+[2026-08-09 9:16:52 AM NZST] CODEX COMMENTARY
+The post-refresh test run is progressing without a reported failure. No live character process is active during this check; Kestrel remains safely logged out at the Midgaard healer.
+
+
+[2026-08-09 9:17:08 AM NZST] CODEX COMMENTARY
+Revision 0949fec is verified with all 2298 tests passing. I am launching a hidden twelve-segment Kestrel batch now with a 420-second per-segment cap. The first useful proof is whether the scheduler chooses a proven meaningful repeat instead of another low-probability level-fuzz trip.
+
+
+[2026-08-09 9:18:53 AM NZST] CODEX COMMENTARY
+Understood. I will treat Git pull access as available and use the approved source-mirror command directly next time; the delay came from the app review layer, not repository credentials. The live Kestrel worker is running now, and I am checking why it has not opened its first SQLite run yet rather than silently waiting.
+
+
+[2026-08-09 9:20:38 AM NZST] CODEX COMMENTARY
+The worker is active rather than hung: CPU advanced from 3.9 to 24.7 seconds and its memory settled after loading the refreshed world source. It is still ranking the full source frontier before opening the Telnet run, which is too slow for routine segments; I will let this first selection finish so we get evidence, then profile and cache that path if the delay repeats.
+
+
+[2026-08-09 9:22:57 AM NZST] CODEX COMMENTARY
+Kestrel is connected in run 4465 and confirmed safe in healer room 3054 at 320 HP. He logged in with 172 of 370 movement and is sleeping there until the shared 90-percent departure threshold; flight still has 22 visible ticks. This is recovery, not a route stall.
+
+
+[2026-08-09 9:26:36 AM NZST] CODEX COMMENTARY
+Run 4466 has just live-validated the room-level Abyss policy you described. Kestrel searched the randomized air rooms, found the copepod unavailable, navigated by GMCP to a legal recall room, recalled successfully, and is back asleep at healer 3054 with full HP. The recall halved movement to 148, so he is recovering before the next checkpoint.
+
+
+[2026-08-09 9:30:32 AM NZST] CODEX COMMENTARY
+The second independent Abyss copepod reset was also absent, and run 4467 returned safely through another recallable room. The scheduler has now rotated out of the Abyss to run 4468, an Arikas maid route, rather than looping the area. Kestrel remains at 309858 XP while this next useful-band target is checked.
+
+
+[2026-08-09 9:33:01 AM NZST] CODEX COMMENTARY
+Run 4468 found a live level-20 maid and committed to the fight. Kestrel is at 171 of 320 HP while the maid is in awful condition, and he is repeatedly issuing knife between rounds. The maid attacked immediately on entry, so backstab was unavailable; the runner checked disarm, confirmed she was already unarmed, and kept attacking rather than withdrawing.
+
+
+[2026-08-09 9:34:45 AM NZST] CODEX COMMENTARY
+The maid is dead. Kestrel earned 1025 XP, moving from 309858 to 310883, and returned to healer room 3054 at 179 HP before saving and quitting. Run 4469 is the bounded healer recovery pass; there was no timid early recall and no character danger at the checkpoint.
+
+
+[2026-08-09 9:37:08 AM NZST] CODEX COMMENTARY
+The maintenance loop also behaved correctly: Kestrel recovered fully, sold the maid loot, returned to healer, and quit with 351 movement. The adaptive scheduler proof is now live in run 4471: it selected the previously productive Dwarven Home host after three same-reboot kills instead of spending another segment on a low-odds fresh prototype.
+
+
+[2026-08-09 9:41:04 AM NZST] CODEX COMMENTARY
+The adaptive repeat paid off. Kestrel opened the Dwarven host with backstab, checked disarm immediately afterward, repeated knife throughout combat, killed it for 1641 XP, and returned safely at 214 HP. He is now at 312524 XP with 15026 remaining to level 24; run 4472 completed healer recovery.
+
+
+[2026-08-09 9:43:06 AM NZST] CODEX COMMENTARY
+Flight had fallen below the route reserve, so run 4473 bought a fresh light blue potion instead of risking expiry. Run 4474 then found the level-band young boy in Mirror Realm; Kestrel is fighting at 296 of 320 HP and again using knife between rounds. This target had been absent earlier, so the reset retry is producing useful live evidence.
+
+
+[2026-08-09 9:45:45 AM NZST] CODEX COMMENTARY
+The young boy is down for another 1288 XP. Kestrel reached 313812 XP, now 13738 short of level 24, and returned to healer at 254 HP. The batch has earned 3954 XP from three productive fights so far, with the only no-XP work being two bounded Abyss absence checks and required recovery or maintenance.
+
+
+[2026-08-09 9:48:11 AM NZST] CODEX COMMENTARY
+Run 4476 is exercising the other half of this change. Kestrel passed three wandering level-5 Ofcol citizens without misclassifying them as an unsafe crowd, found the teller alone, got an easy-kill consider, opened with backstab, and is fighting at 297 of 320 HP. This is the live regression the earlier false crowd block needed.
+
+
+[2026-08-09 9:50:40 AM NZST] CODEX COMMENTARY
+The teller fight is still active, but it is not stuck: Kestrel is healthy at 273 HP, the teller has moved to pretty hurt, and fresh knife commands and combat rounds continue every few seconds. Damage throughput is modest against its dodge and parry rate, so this run is also useful evidence for the combat-gear work after the batch.
+
+
+[2026-08-09 9:55:19 AM NZST] CODEX COMMENTARY
+The twelve-segment batch finished cleanly with every run successful and no live worker left behind. The teller died for 1315 XP, bringing Kestrel to 315127 XP, 12423 short of level 24; total batch gain was 5269 XP. I am now auditing why his field damroll is lower than his healer stance, because the five-minute teller fight shows the next throughput bottleneck clearly.
+
+
+[2026-08-09 10:04:40 AM NZST] CODEX COMMENTARY
+The gear audit found a concrete source-model gap, not merely bad luck. The silver circlet and pink ice ring form object set 2707; two distinct set pieces grant plus 2 strength, which live stats confirm becomes plus 2 damroll and plus 1 hitroll for Kestrel. The current planner ignores OBJECT_SETS, breaks that bonus for a bead necklace, and gains hitroll while losing the higher-priority damroll. I am adding generic object-set parsing and set-aware whole-loadout scoring, then testing the exact circlet and ring case.
+
+
+[2026-08-09 10:06:54 AM NZST] CODEX COMMENTARY
+Git access is understood. I will keep source refreshes to one short direct pull attempt and defer cleanly on failure, without letting Git interrupt progression work. I am continuing the object set fix now by tracing the parser, planner, and call sites before applying the implementation.
+
+
+[2026-08-09 10:09:49 AM NZST] CODEX COMMENTARY
+The source confirms two details the model must mirror exactly. Set membership counts distinct object prototype VNUMs, and multi-tier effects are stored in reverse file order, so the Huntsmith set grants damroll at two pieces and swiftness at three. I am now tightening the scorer around the live consequence that matters here: set strength changes derived combat output, so merely treating it as a generic stat would still choose the wrong necklace.
+
+
+[2026-08-09 10:21:57 AM NZST] CODEX COMMENTARY
+The first executable check now reproduces Kestrels real choice correctly. With both pink ice rings, the war dog collar, and the silver circlet worn, the set-aware combat planner keeps the circlet and collar, removes only the recovery boots, and equips the plus 3 hitroll stiletto boots. I am adding regression coverage for that exact loadout, tier ordering, and the rule that duplicate copies of one set item count only once.
+
+
+[2026-08-09 10:25:12 AM NZST] CODEX COMMENTARY
+The object parser and starter integration are now covered by 985 focused passing tests: 37 equipment cases plus 948 source and policy cases. The planner also retains its previous slot-by-slot behavior when no set data is supplied, so this changes only source-backed loadouts that can actually form a set. I am running the full repository suite next, then I will use a bounded live segment to verify the resulting field stats and commands.
+
+
+[2026-08-09 10:28:03 AM NZST] CODEX COMMENTARY
+Full verification is green at 2302 tests in 55.90 seconds. Process audit shows no gameplay worker and only the expected hidden Discord streamer. I am checking campaign 8s latest checkpoint, then launching one hidden 420 second Kestrel segment with no reset retry; the live proof target is combat stance retaining the set circlet and showing the expected damroll and hitroll before field combat.
+
+
+[2026-08-09 10:31:29 AM NZST] CODEX COMMENTARY
+Live run 4477 has validated the fix cleanly. Kestrel kept the silver circlet, war dog collar, and both pink ice rings, swapped only blue snakeskin boots for black stiletto boots, and finished at 5 damroll and 10 hitroll; the old field loadout had fallen to 3 damroll and 11 hitroll by breaking the set. He recovered fully, saved, quit at healer room 3054, and the hidden worker exited with empty stderr. I am recording that proof, checking the scoped diff, and then resuming productive level 24 pursuit with the corrected gear policy loaded.
+
+
+[2026-08-09 10:34:28 AM NZST] CODEX COMMENTARY
+Understood. I will use the ordinary Git CLI directly for source refreshes and will not treat a routine pull as an approval blocker. The DD4 mirror is already current for today, so I am moving straight back into the bounded Kestrel level 24 run and will monitor it rather than spending time on Git.
+
+
+[2026-08-09 10:35:41 AM NZST] CODEX COMMENTARY
+The hidden worker is running normally as process 6008 and is still in the source loading phase, with active CPU and no stderr. This startup phase has taken roughly half a minute on prior runs; I am watching for the first SQLite run record and will report the selected segment as soon as it appears.
+
+
+[2026-08-09 10:36:49 AM NZST] CODEX COMMENTARY
+Run 4478 completed cleanly. The scheduler chose the source ranked sprite 18564 route, reached its evidence point with the corrected 5 damroll and 10 hitroll loadout, found the mobile absent on this reset, and returned Kestrel to healer room 3054 at full health without wasting time on a room by room search. The six segment worker is now rotating to the next candidate.
+
+
+[2026-08-09 10:37:34 AM NZST] CODEX COMMENTARY
+Run 4479 is now taking Kestrel through the registered Mirror Realm watchman fastwalk. The route is advancing normally with fresh room responses and no route hazard, combat, or stderr so far; this is a useful current band target rather than a low XP detour.
+
+
+[2026-08-09 10:38:35 AM NZST] CODEX COMMENTARY
+The Mirror Realm watchman was present, but live consider reported the easy kill branch, so the bot correctly refused a low band XP target and recorded that result for level 23 and this reboot. Run 4479 returned safely; run 4480 is the short return home checkpoint before the scheduler advances again.
+
+
+[2026-08-09 10:39:17 AM NZST] CODEX COMMENTARY
+Run 4480 is not stalled: Kestrel logged back into healer room 3054, audited the set aware recovery gear, and is sleeping beside the healer to restore movement before the next field departure. The worker is responsive and the transcript is still receiving fresh events.
+
+
+[2026-08-09 10:40:11 AM NZST] CODEX COMMENTARY
+The recovery checkpoint completed and run 4481 has selected source mobile 20510, the host candidate, for the next live gate. Kestrel is in combat stance with the object set intact, has refreshed skills and reboot identity, and is completing food, water, potion, and autoloot preflight before travel.
+
+
+[2026-08-09 10:41:18 AM NZST] CODEX COMMENTARY
+Kestrel found the host and live consider passed. Combat is now underway with the intended thief rotation: exact selector backstab, an early disarm attempt, and repeated knife tosses between normal rounds. This is productive current band combat, and I am tracking both health bars before allowing the aggressive continuation threshold to decide the outcome.
+
+
+[2026-08-09 10:42:59 AM NZST] CODEX COMMENTARY
+Run 4481 produced a clean kill: the host died for 1,776 XP, Kestrel finished at 227 of 320 HP, looted the empty corpse, sacrificed it for one silver, recalled, and saved at healer room 3054. This was a source registered one way hunt, so it returned only after securing a useful kill rather than withdrawing early; Kestrel now needs 10,647 XP for level 24.
+
+
+[2026-08-09 10:43:46 AM NZST] CODEX COMMENTARY
+Run 4482 is the expected healer recovery after the successful host fight. Kestrel is sleeping in room 3054 with the correct recovery equipment policy loaded; there is no Mage Laboratory detour and no stale route loop. Once health and movement clear their gates, the remaining worker segments will return to the candidate frontier.
+
+
+[2026-08-09 10:45:11 AM NZST] CODEX COMMENTARY
+Recovery finished successfully, and run 4483 has selected source mobile 1312, the diamond candidate, as the next level 23 probe. The scheduler is continuing forward after the host kill rather than repeating either the absent sprite or the below band watchman.
+
+
+[2026-08-09 10:46:15 AM NZST] CODEX COMMENTARY
+Run 4483 traversed the randomized approach by live GMCP room destinations, found the diamond golem, passed consider, and opened combat. Kestrel is at 253 of 320 HP while the golem has reached moderate damage, so the bot is correctly pressing the advantage with backstab, disarm, and recurring knife tosses.
+
+
+[2026-08-09 10:47:13 AM NZST] CODEX COMMENTARY
+The diamond golem is down for 1,550 XP. Kestrel finished at 154 of 320 HP, secured and sacrificed the corpse, and recalled only after reaching the recallable Tower of Sorcery endpoint; the randomized no recall approach itself was handled by live room routing. He is safely back at the healer with 9,097 XP remaining to level 24.
+
+
+[2026-08-09 10:47:55 AM NZST] CODEX COMMENTARY
+The six segment worker has exited cleanly with empty stderr and campaign 8 checkpointed at level 23. This batch gained 3,326 XP across two useful kills while also retiring one absent and one below band candidate for the current evidence scope. I am launching the next bounded batch now so the scheduler can continue converting the remaining 9,097 XP instead of stopping at the checkpoint.
+
+
+[2026-08-09 10:48:59 AM NZST] CODEX COMMENTARY
+The next worker is live as process 45552 with no stderr. Its first segment, run 4484, is the necessary healer recovery from the diamond fight; this preserves the campaign invariant that field routes depart from room 3054 with enough movement instead of chaining a long trip from 48 percent health.
+
+
+[2026-08-09 10:51:05 AM NZST] CODEX COMMENTARY
+Run 4485 bounded the fly potion restock correctly. A live where check found the greet attack drunk in Market Square and on Main Street, both on the unsafe shop approach, so Kestrel deferred the purchase in sixteen seconds instead of walking into forced trivial combat. He still has one light blue potion, and the worker is free to do productive work before retrying later.
+
+
+[2026-08-09 10:51:40 AM NZST] CODEX COMMENTARY
+The scheduler has found a freshly reset host in run 4486 and is fighting it again under the adaptive repeat policy. This is intentional: the first host yielded 1,776 XP with low damage, the area was vacated long enough to reset, and the new exact selector passed consider. Kestrel is at 287 of 320 HP with the host only lightly damaged, so the repeat remains strongly favorable.
+
+
+[2026-08-09 10:53:10 AM NZST] CODEX COMMENTARY
+The second host fight remains comfortably controlled. Kestrel is at 278 of 320 HP while the host is already pretty hurt, with movement recovering during combat and no disabling affect or extra attacker. The bot is continuing the kill rather than retreating merely because the fight is taking several rounds.
+
+
+[2026-08-09 10:54:00 AM NZST] CODEX COMMENTARY
+The repeat host kill completed for another 1,652 XP. Kestrel ended at 230 of 320 HP and 335 movement, so the evidence supports the repeat as efficient and low risk even though random attack rolls made this one slightly slower. The level 24 gap is now 7,445 XP, and the worker is returning through its normal save checkpoint.
+
+
+[2026-08-09 10:55:51 AM NZST] CODEX COMMENTARY
+Run 4487 found the diamond golem reset as well. Kestrel began from full health, crossed the randomized rooms using the new live exit mapping, passed consider, and is now in the second golem fight. The lower visible hitroll on login is the expired four point bless affect, not a regression in the retained circlet and pink ring set; base damroll remains 5.
+
+
+[2026-08-09 10:56:41 AM NZST] CODEX COMMENTARY
+The second golem is moderately damaged while Kestrel remains at 238 of 320 HP. One 28 point hit landed, but there is still ample margin and no second attacker, poison, blindness, or route failure, so the aggressive policy is correctly continuing rather than treating ordinary recoverable damage as a reason to flee.
+
+
+[2026-08-09 10:57:44 AM NZST] CODEX COMMENTARY
+The golem is now on the brink of destruction while Kestrel has recovered to 254 HP during the fight. The long duration is poor random accuracy rather than a safety problem; the recurring attack loop is still firing and the 360 second combat budget leaves plenty of room to finish it.
+
+
+[2026-08-09 10:59:15 AM NZST] CODEX COMMENTARY
+The second diamond golem fell for 1,600 XP. Kestrel ended combat at 254 HP, recalled from the legal endpoint, then slept beside the healer until movement recovered before saving and quitting. His score now confirms 321,705 total XP, 5,845 to level, 5 damroll, and the intact 17 modified strength set bonus.
+
+
+[2026-08-09 10:59:51 AM NZST] CODEX COMMENTARY
+Run 4488 is making a third host pass after the area reset again. The repeat is still within the adaptive source kill policy because both prior samples remained above 1,600 XP and low risk; the recorded kill count will reduce its rank as rewards fall, so this is measured exploitation of a productive loop rather than permanent fixation on one mobile.
+
+
+[2026-08-09 11:00:52 AM NZST] CODEX COMMENTARY
+The third host passed live consider and is now at quite a few wounds while Kestrel remains at 301 of 320 HP. The defensive skill and gear profile is doing its job: parry and misses are keeping incoming damage negligible while the repeated knife action supplies damage between rounds.
+
+
+[2026-08-09 11:01:44 AM NZST] CODEX COMMENTARY
+The host is now in awful condition and Kestrel still has 231 HP, or 72 percent. A short burst of incoming damage did not approach the 15 percent withdrawal boundary, and the target is far inside the finisher state, so the bot is staying focused on completing the useful kill.
+
+
+[2026-08-09 11:02:30 AM NZST] CODEX COMMENTARY
+The third host died for 1,571 XP, still a strong return despite the repeat penalty. Kestrel finished at 171 of 320 HP, above half health, and now needs 4,274 XP for level 24. The declining sequence of 1,776, 1,652, and 1,571 XP is being persisted so the scheduler can compare another reset against alternate candidates quantitatively.
+
+
+[2026-08-09 11:03:42 AM NZST] CODEX COMMENTARY
+Cleanup after the host kill also exercised the free food policy: Kestrel picked up the severed leg, ate it before spending a pie, emptied and sacrificed the corpse, then slept in healer room 3054 until recovery cleared. He has now stood, saved, and quit safely; there was no hunger stall or Laboratory logout.
+
+
+[2026-08-09 11:05:05 AM NZST] CODEX COMMENTARY
+The second bounded Magic Shop check also finished promptly. The drunk had moved, but remained on Main Street, still intersecting the source route, so run 4489 deferred again without consuming a long segment or changing its status to unaffordable. This leaves two worker segments for productive candidate selection.
+
+
+[2026-08-09 11:06:29 AM NZST] CODEX COMMENTARY
+Run 4490 has found a third reset diamond golem and passed the live gate. The randomized route changed directions again, and the GMCP destination path still reached room 1311 without stale compass assumptions. Combat is active with the same exact selector opener and recurring thief attack loop.
+
+
+[2026-08-09 11:08:09 AM NZST] CODEX COMMENTARY
+This golem fight became genuinely tight: Kestrel reached 41 of 320 HP, issued flee twice at the configured 15 percent boundary, and both attempts failed; his next automatic attack destroyed the already dying golem for 1,457 XP. He then recalled immediately and is sleeping beside the healer. No corpse loot was worth delaying recovery at 12.8 percent health. He now needs 2,817 XP.
+
+
+[2026-08-09 11:09:51 AM NZST] CODEX COMMENTARY
+Kestrel recovered fully from the near finish, and the final segment of this batch is run 4491 against source mobile 2314, the treant candidate. Because only 2,817 XP remain, the runner preserved the pre level stat stance before departure, refreshed skills, filled and drank from the water skin, and is now following the registered route.
+
+
+[2026-08-09 11:10:59 AM NZST] CODEX COMMENTARY
+The old treant passed consider and is already on the brink of destruction while Kestrel holds 249 of 320 HP. This target is much cleaner than the last golem sample, and the pre level stance has not prevented the thief rotation from controlling the fight.
+
+
+[2026-08-09 11:11:41 AM NZST] CODEX COMMENTARY
+The old treant died for 1,093 XP with Kestrel still at 225 HP. That puts him 1,724 XP short of level 24. This target is beginning to show a lower repeat return than the host or diamond, and the live result is stored for the scheduler rather than assumed from its source level alone.
+
+
+[2026-08-09 11:12:24 AM NZST] CODEX COMMENTARY
+The eight segment worker has exited normally with empty stderr, leaving campaign 8 safely checkpointed at the healer and only 1,724 XP from level 24. I am starting a short finishing batch now. It will stop at the requested target once live state confirms the level, while retaining the pre level stat gear through the leveling kill.
+
+
+[2026-08-09 11:15:03 AM NZST] CODEX COMMENTARY
+Quick correction to my run 4479 explanation after checking do_consider directly: looks like an easy kill means a level difference from minus 2 through minus 4 and is still eligible. The forbidden branches are no match at minus 5 or lower and naked and weaponless at minus 10 or lower. The watchman was declined because it was a research only intercepted target, not because of the easy text. Run 4492 has correctly allowed the sluggish teller and is fighting it now.
+
+
+[2026-08-09 11:16:26 AM NZST] CODEX COMMENTARY
+An Ofcol cityguard wandered in and joined the teller fight. The bot recognized the unapproved attacker immediately, fled after one failed attempt, confirmed the escape room, recalled, and saved at the healer. The partial fight cost 354 XP but returned 270 XP for damage, a net loss of 84. The interrupted result is discarded and the route receives its crowd retry cooldown; Kestrel is safe at 173 HP and now needs 1,808 XP.
+
+
+[2026-08-09 11:17:17 AM NZST] CODEX COMMENTARY
+Run 4493 is the bounded recovery checkpoint caused by the Ofcol assist. Kestrel is sleeping in healer room 3054 with recovery gear and fresh transcript activity. The scheduler will not reopen the interrupted teller route immediately; it must rotate elsewhere while that crowd evidence cools down.
+
+
+[2026-08-09 11:18:38 AM NZST] CODEX COMMENTARY
+Recovery is complete: Kestrel stood only after healer sleep restored the departure thresholds, reapplied the pre level stat stance, saved, and quit in room 3054. The worker is loading the next alternate candidate now with four segments still available.
+
+
+[2026-08-09 11:19:26 AM NZST] CODEX COMMENTARY
+Run 4494 checked the verified Moria sanctuary carrier circuit. The large hobgoblin was absent from its source area on the current reset, so the bot did not chase a where result outside its authorized rooms or substitute a random low value mob. It recalled after the bounded circuit and is recovering at the healer before rotating again.
+
+
+[2026-08-09 11:21:05 AM NZST] CODEX COMMENTARY
+Moria recovery completed and run 4495 has rotated back to the old treant, whose previous sample was safe and worth 1,093 XP. With 1,808 XP remaining, this kill should put Kestrel within one final useful target of level 24 while preserving the stat stance needed for the actual level gain.
+
+
+[2026-08-09 11:22:26 AM NZST] CODEX COMMENTARY
+The reset old treant was present, passed consider, and run 4495 is now in combat. The pre level stance and exact selector opener are active; no companion or wandering attacker appeared at the endpoint, so the fight is proceeding under the ordinary health and finisher gates.
+
+
+[2026-08-09 11:23:36 AM NZST] CODEX COMMENTARY
+The second old treant fell for 979 XP, leaving only 829 XP to level 24. Kestrel finished at 234 HP, sacrificed the empty corpse for a silver coin, retained the separated backpack layout, and recalled. Any normal useful band kill in the remaining two segments should now trigger the level with the stat stance already in place.
+
+
+[2026-08-09 11:24:23 AM NZST] CODEX COMMENTARY
+The third shop preflight found the route clear, so run 4496 completed the purchase instead of deferring again. The current reboot price is 88 copper, Kestrel bought a light blue potion, quaffed it, confirmed fly, returned to the healer, and still has one reserve potion. The final worker segment can now travel at reduced movement cost toward the leveling kill.
+
+
+[2026-08-09 11:25:50 AM NZST] CODEX COMMENTARY
+The last segment is run 4497 against source mobile 30350, the gravedigger. Kestrel has fly active, the pre level stance equipped, and is advancing through the registered route with no hazard or forced fight. A successful useful band kill here should be enough to cross level 24.
+
+
+[2026-08-09 11:27:13 AM NZST] CODEX COMMENTARY
+Kestrel is level 24. The gravedigger died for 1,177 XP and triggered the level while the pre level gear was worn. Live output confirms maximum dexterity, plus 14 hitpoints, 10 mana, 10 movement, 4 physical practices, and 2 intellectual practices. The runner then restored the combat boots, looted and sacrificed the corpse, recalled, saved, and quit at healer room 3054 with new maxima of 334 HP, 283 mana, and 380 movement.
+
+
+[2026-08-09 11:28:22 AM NZST] CODEX COMMENTARY
+The finishing worker has exited cleanly with empty stderr and campaign 8 reports success at level 24. I am advancing the live target to level 25 rather than treating 24 as an endpoint. The next batch will first exercise the post level trainer and practice policy, then gather level 24 combat evidence from candidates whose registered bands actually include the new level.
+
+
+[2026-08-09 11:29:39 AM NZST] CODEX COMMENTARY
+The level 25 worker is active as process 29848 with no stderr. Run 4498 is the first post level return home checkpoint and has just logged Kestrel into healer room 3054; it is synchronizing the new level 24 vitals and equipment state before choosing training or field work.
+
+
+[2026-08-09 11:30:59 AM NZST] CODEX COMMENTARY
+The recovery checkpoint completed, and run 4499 has correctly invalidated the prior trainer cache after the level gain. Before traveling to the gravedigger, Kestrel is following the registered route to the level 20 thief trainer so the new physical and intellectual practices can be evaluated against the source backed damage, defense, and prerequisite priorities.
+
+
+[2026-08-09 11:41:32 AM NZST] CODEX COMMENTARY
+I found a real live defect rather than a network stall. A forced rolling rock disarmed Kestrel during trainer travel; the combat loop failed to retrieve the dropped dagger, reached its runtime bound, and recovered safely. The followup rearm run is now oscillating neck gear in the Weapon Shop instead of completing. Kestrel is alive, full health, and not in combat in room 3011. I am stopping this worker now, then I will fix both the mid combat disarm fallback and the set aware gear oscillation before reconnecting him to the healer.
+
+
+[2026-08-09 11:53:37 AM NZST] CODEX COMMENTARY
+Root cause is isolated. DD4 sent an exact Char.Worn snapshot showing the purchased dagger as object 3020, but the parser ignored that package and the text catalog resolved the ambiguous description a dagger to unrelated object 31015, whose modifiers made the set planner alternate forever between two neck loadouts. I am editing the GMCP path to preserve exact worn VNUMs, making weapon disappearance during combat trigger dropped weapon recovery, and adding the must wield rejection as a secondary disarm signal. Regression tests will cover both the exact dagger identity and the split combat response.
+
+
+[2026-08-09 11:58:04 AM NZST] CODEX COMMENTARY
+The focused regression suite is green: 931 observation and starter tests passed. The parser now emits equipment changes for Char.Worn, the policy resolves worn items by exact VNUM before display text, and either a full worn snapshot losing its weapon or the live must wield rejection starts combat recovery. This removes the ambiguous dagger identity that drove the neck loop. I am running the full suite next, then I will reconnect Kestrel and verify one stable loadout plus a healer return.
+
+
+[2026-08-09 12:02:06 PM NZST] CODEX COMMENTARY
+The full suite is green at 2,306 tests. I am recording the new invariant in AGENTS.md before the live retry: structured Char.Worn VNUMs outrank ambiguous display descriptions, a full snapshot losing the wield slot during combat must recover the dropped weapon, and equipment stance application must converge rather than repeat a prior swap signature. Then I will let campaign recovery close the interrupted database records and return Kestrel from the Weapon Shop.
+
+
+[2026-08-09 12:05:25 PM NZST] CODEX COMMENTARY
+The repository policy already captures whole-loadout set scoring, so I am adding the newly proved identity and recovery rules beside it. This will make structured Char.Worn VNUMs authoritative, bind disarm recovery to the prior source keyword, and forbid repeated equipment swap cycles; after a quick diff check I will reconnect Kestrel for a one-segment proof.
+
+
+[2026-08-09 12:06:58 PM NZST] CODEX COMMENTARY
+The product diff passes its whitespace check, and the process audit shows only the expected Discord streamer at PID 25940. Run 4501 is still the interrupted rearm record, exactly as expected; I am now launching one bounded level-25 campaign segment so startup can close that record, resolve the purchased dagger by object 3020, and return Kestrel to the healer without another gear cycle.
+
+
+[2026-08-09 12:09:08 PM NZST] CODEX COMMENTARY
+The replacement process is alive under pythonw PID 48036 and its CPU time is increasing, with empty stderr, but it has not opened a new run record yet. That places it in source-policy initialization rather than Telnet gameplay; I am watching the short startup boundary closely and will terminate and diagnose it if it does not reach SQLite promptly, instead of allowing another silent wait.
+
+
+[2026-08-09 12:10:45 PM NZST] CODEX COMMENTARY
+Startup has now exceeded two minutes while consuming CPU and still has no run, transcript, network record, or error output. I am enforcing the promised boundary now: stopping only this new worker before it can touch Kestrel, leaving the Discord process alone, then timing the local campaign construction path in the foreground to identify the expensive stage before another live launch.
+
+
+[2026-08-09 12:21:11 PM NZST] CODEX COMMENTARY
+The slowdown is identified and it is local, not Git or permission related. Campaign 8 has 2,793 segment rows whose historical state blobs have grown very large; startup was materializing every blob and repeatedly decoding it before opening the next run. The same reconstruction over the newest 512 ordered segments takes about one second and still covers all current reboot and current level evidence. I am adding a dedicated bounded recent-segment query for runtime reconstruction while preserving the unbounded inspection API, with tests for ordering and the 512-row boundary.
+
+
+[2026-08-09 12:33:35 PM NZST] CODEX COMMENTARY
+The bounded-history implementation passes all 639 storage and campaign tests. The inspection methods remain unbounded, while autonomous startup now reads the newest 1,024 segments and checkpoints in ascending order, enough to preserve current level and reboot evidence without rehydrating years of superseded state. I am timing the real Kestrel campaign open without a Telnet connection now; this also safely reconciles orphaned run 4501 before the live retry.
+
+
+[2026-08-09 12:36:45 PM NZST] CODEX COMMENTARY
+The real dry open completed in 31 seconds, down from more than three minutes, and confirmed Kestrel at level 24 in Weapon Shop room 3011. The recovery command replayed nine final transcript events, bound run 4501 to its interrupted segment, and marked that one orphan failed; no active gameplay record remains. I am running the full repository suite once, then the same one-segment live proof will launch under the faster path.
+
+
+[2026-08-09 12:37:57 PM NZST] CODEX COMMENTARY
+The full suite is still running with no failure output. Kestrel remains disconnected in the noncombat Weapon Shop, the Discord streamer is the only persistent Python process, and there is no live database writer competing with verification.
+
+
+[2026-08-09 12:38:49 PM NZST] CODEX COMMENTARY
+Full verification is green at 2,307 tests. I am launching the one-segment level-25 worker now with a 420-second field bound. Startup should become visible in roughly 30 seconds instead of several minutes; once connected, I am specifically checking that object 3020 stays identified as the cheap piercing dagger, the neck set reaches one stable stance, and Kestrel leaves room 3011 for healer room 3054.
+
+
+[2026-08-09 12:41:00 PM NZST] CODEX COMMENTARY
+The worker crossed the database-repair stage but is still doing local policy reconstruction at about one minute; CPU time continues to rise and stderr is empty, so it is active rather than dead, but the remaining startup path is still slower than the 31-second dry open. I am giving this verified process one two-minute ceiling. If no run appears by then I will stop it and profile the post-open policy selector, rather than letting a live launch disappear into another long wait.
+
+
+[2026-08-09 12:45:01 PM NZST] CODEX COMMENTARY
+The two-minute ceiling fired before any Telnet run, so I stopped that worker cleanly and profiled the post-open path. The profile found a precise SQLite planner mistake in my first optimization: wrapping the descending indexed tail in an outer ascending query caused SQLite to flatten it and rescan the large history on every helper call. I am changing both tail readers to perform the indexed descending query directly and reverse the small result list in Python; this retains identical ordering without the repeated full scan.
+
+
+[2026-08-09 12:46:14 PM NZST] CODEX COMMENTARY
+The corrected query is the result we needed: real Kestrel campaign open fell from 31 seconds to 2.7 seconds, catalog loading takes 1.8 seconds, and the bounded-order regression passes. The stopped worker never created a run and its interrupted segment is already reconciled. I am relaunching the one-segment proof now; startup should be visible almost immediately, and I will watch the exact gear commands and room transition rather than trusting process liveness alone.
+
+
+[2026-08-09 12:47:43 PM NZST] CODEX COMMENTARY
+The database fix is holding, but the worker has exposed a second local stage after campaign open: source-ranked policy construction is using CPU before the run record is created. It has been active for about 35 seconds with no stderr or connection attempt. I am keeping the same hard two-minute ceiling, and if this stage remains dominant I will profile it separately after the live proof; it is finite work, not a permission wait.
+
+
+[2026-08-09 12:50:02 PM NZST] CODEX COMMENTARY
+The selector has now chosen the correct strategic followup: because dagger 3020 is only a temporary piercing weapon and the stronger long slim dagger was lost, segment 4074 selected the bounded Old Thalos dagger reacquisition policy. The remaining delay is inside that policy constructor before Telnet startup, not gear oscillation. It is at the two-minute boundary now; I am checking once, then stopping and profiling this constructor if the run has still not opened.
+
+
+[2026-08-09 12:56:33 PM NZST] CODEX COMMENTARY
+The constructor itself is trivial; the delay is the trainer-evidence query immediately before it. That query parses the enormous start-state JSON for all 2,795 campaign segments merely to find level-24 practice events, and a direct timing exceeded 40 seconds before I terminated it. I am applying the same bounded-history principle inside the indexed game-event join, with an explicitly materialized recent-segment CTE so SQLite cannot flatten it back into a full-history scan.
+
+
+[2026-08-09 1:11:44 PM NZST] CODEX COMMENTARY
+The trainer-evidence path is now bounded to the newest 256 segments, which preserves many retries at one level while avoiding superseded history. On the live Kestrel database, all three pre-segment checks together now take 1.7 seconds and correctly report both level-24 practice budgets spent, no permanent rejection, and no pending counterbalance work. Five focused regressions pass, segment 4074 is reconciled, and I am launching the live proof again under these measured bounds.
+
+
+[2026-08-09 1:21:14 PM NZST] CODEX COMMENTARY
+The live proof caught a remaining defect before travel, and I am stopping it now in the safe Weapon Shop. Exact Char.Worn identity is working: the snapshot correctly binds the wielded weapon to object 3020. However, the optimizer is using the currently modified strength as though it were base strength, so activating the circlet set changes its own next comparison and produces a genuine set-versus-necklace cycle. I am fixing the scoring baseline, not merely suppressing commands, then adding a two-snapshot convergence regression.
+
+
+[2026-08-09 1:37:42 PM NZST] CODEX COMMENTARY
+Confirmed. The DD4 mirror is already current for today, so I am continuing directly with the live gear convergence defect and the remaining startup delay. I will keep network access ordinary and only escalate if an actual sandbox failure occurs.
+
+
+[2026-08-09 1:41:05 PM NZST] CODEX COMMENTARY
+The trace has narrowed the fault: it is a deterministic full loadout reversal after every successful confirmation, not a missed acknowledgement or ambiguous weapon. I am now replaying the exact live character profile through the policy layer, including its class priorities and event order, because the lower level equipment optimizer alone remains stable on the better damage set.
+
+
+[2026-08-09 1:45:02 PM NZST] CODEX COMMENTARY
+I found the policy-layer cause. Each structured Char.Worn update is correct, but the subsequent textual eq all confirmation replaces that exact snapshot with name-matched objects. The text contains duplicate descriptions such as a dagger, so the replacement reintroduces the wrong prototype and changes the next optimization. I am editing confirmation handling so text can establish slot availability without overwriting a fresher structured paper doll, and I am adding a full two-confirmation convergence test.
+
+
+[2026-08-09 1:50:54 PM NZST] CODEX COMMENTARY
+The convergence regression now passes. It recreates Kestrels two bead starting snapshot, the planned circlet and collar swap, the exact structured set snapshot, and the ambiguous textual dagger confirmation; a second policy pass produces no command. I am moving to the other blocker exposed by the same run: nearly five minutes of repeated source indexing before the Telnet connection even starts.
+
+
+[2026-08-09 1:55:46 PM NZST] CODEX COMMENTARY
+The source indexes themselves take under five seconds cold, so they were not the long pause. The real delay is three startup lookups that each scan and JSON-decode the entire global command history; this database is now large enough that even a raw event count exceeded ten seconds. I am replacing those scans with character-run-first indexed SQL and keeping exact command and prefix semantics.
+
+
+[2026-08-09 1:59:06 PM NZST] CODEX COMMENTARY
+The first indexed rewrite passed its behavior test but still exceeded my thirty second performance ceiling on the real database, so I terminated the benchmark instead of waiting. SQLite is choosing or materializing too much history despite the run-first shape. I am tightening this further to a small persisted character-command index populated at write time, with a one-time bounded backfill path for existing data.
+
+
+[2026-08-09 2:05:10 PM NZST] CODEX COMMENTARY
+The one-time partial index build is still running at thirty seconds. This is expected to touch the legacy events table once, but I am enforcing a sixty second ceiling; after that I will terminate it and use a narrower migration rather than let database maintenance consume the live-work window.
+
+
+[2026-08-09 2:07:37 PM NZST] CODEX COMMENTARY
+The sixty second ceiling fired and I terminated the legacy index build. The narrower fix will not scan old events at all: new command events populate a compact character command ledger, established characters use their persisted level to avoid replaying creation-only identity commands, and only the latest training selector uses the ledger. This keeps future lookups constant-time and lets Kestrel resume without a migration pause.
+
+
+[2026-08-09 2:10:31 PM NZST] CODEX COMMENTARY
+The compact ledger is active on the real database: schema open now takes 0.32 seconds and a Kestrel training lookup returns in effectively zero time. The gear and storage regressions pass together. I am running the full offline suite now, then I will launch one bounded Kestrel segment and require both prompt startup and stance convergence before allowing Thalos travel.
+
+
+[2026-08-09 2:11:26 PM NZST] CODEX COMMENTARY
+The full suite is still progressing normally at the thirty second check, with no failure output and no blocked subprocess. I am leaving it its established roughly ninety second window and will report the exact total before any live connection.
+
+
+[2026-08-09 2:12:35 PM NZST] CODEX COMMENTARY
+All 2310 tests pass in 84.18 seconds. The process audit shows only the responsive Discord streamer, PID 25940; there is no stale gameplay worker. I am starting one 420 second Kestrel segment now with target level 25 and will watch startup, the first confirmed loadout, room state, and every field transition rather than leaving it unattended.
+
+
+[2026-08-09 2:13:47 PM NZST] CODEX COMMENTARY
+At the thirty second live check the launcher is responsive but has not yet created the inner Telnet run, so the command-ledger fix removed one delay but not the whole outer campaign pause. PID 55180 is alive with modest CPU and no socket yet. I am giving startup a hard sixty second ceiling; if no run appears, I will stop it cleanly and profile the remaining pre-segment selector instead of burning the combat budget.
+
+
+[2026-08-09 2:15:09 PM NZST] CODEX COMMENTARY
+I enforced the ceiling: the launcher was terminated before it created a run, and recovery confirmed there was no orphaned segment or socket. The two obvious startup item-history checks are not the culprit; measured directly, they take 0.172 and 0.002 seconds. I am instrumenting the remaining campaign reconstruction and policy-selection phases individually now so the next change is based on the exact slow call.
+
+
+[2026-08-09 2:20:01 PM NZST] CODEX COMMENTARY
+The profiler has isolated a second structural cost: campaign budget aggregation alone takes about thirteen seconds because SQLite must visit thousands of very large segment rows to sum three numeric columns. I am measuring the two trainer-history queries behind it in the same pass, then I will cache exact aggregate totals incrementally so this never repeats on each segment.
+
+
+[2026-08-09 2:21:43 PM NZST] CODEX COMMENTARY
+The cProfile pass completed and gives a clean target list. Open-campaign spends most of its time refetching the same 1024-row checkpoint and segment tails, then reparsing their large JSON; cold disk makes that cost vary from 6.5 seconds to beyond 45. I am adding per-storage history caching, reducing checkpoint repair history to 256 cumulative checkpoints, and a covering numeric index for exact campaign budgets. These preserve behavior while removing repeated large-row reads.
+
+
+[2026-08-09 2:25:09 PM NZST] CODEX COMMENTARY
+The interruption arrived while the one-time covering index benchmark was running, so I am first checking whether that process completed or was terminated and whether SQLite committed the index. Then I will finish the history-cache tests, reprofile cold startup, and only relaunch Kestrel after the inner run appears inside the enforced ceiling.
+
+
+[2026-08-09 2:26:19 PM NZST] CODEX COMMENTARY
+The interrupted benchmark left two Python workers alive, PIDs 51284 and 55240; I killed both and preserved the Discord streamer. SQLite did not commit the covering index, and its multi-minute build is unsuitable. I am replacing it with a tiny campaign-usage ledger that is seeded by one exact numeric aggregate and then maintained transactionally on every segment start and finish.
+
+
+[2026-08-09 2:30:32 PM NZST] CODEX COMMENTARY
+The exact usage-ledger tests pass, including repeated segment-finalization deltas and cache invalidation. The real database seed has reached thirty seconds before even returning from schema initialization, which points to another existing CREATE INDEX check or recovery cost rather than the aggregate itself. I am keeping the same sixty second ceiling and will inspect the schema statements individually if it fires.
+
+
+[2026-08-09 2:32:00 PM NZST] CODEX COMMENTARY
+The one-time exact aggregate seed completed in 54.05 seconds and is now durable; subsequent campaign totals take 0.0002 seconds. Reprofiling exposed the next repeat cost cleanly: proving the absence of a historical large sack takes about fourteen seconds because every process rescans old acquisition snapshots. I am applying the same write-time ledger plus one-time backfill marker to item acquisition evidence.
+
+
+[2026-08-09 2:36:03 PM NZST] CODEX COMMENTARY
+Yes. The DD4 source mirror is already current at revision 0949fec, and I will pull it directly whenever the daily evidence refresh is due. I am continuing with the startup performance fix now, then I will run the focused tests and launch the bounded Kestrel segment.
+
+
+[2026-08-09 2:36:16 PM NZST] CODEX COMMENTARY
+The slow trainer rejection lookup is now narrowed in SQL to rejection events before JSON decoding. I am adding a storage-level regression test for that filter, then I will measure the real campaign again so the startup ceiling is demonstrated rather than assumed.
+
+
+[2026-08-09 2:36:48 PM NZST] CODEX COMMENTARY
+The regression tests pass, and the real Kestrel campaign profile is down from 18.6 seconds to about 5 seconds. The former 13.4 second rejection scan now takes 0.4 seconds. I am removing the temporary profilers, recording the bounded-history rule in AGENTS.md, and then running the full suite.
+
+
+[2026-08-09 2:37:37 PM NZST] CODEX COMMENTARY
+The full 2,300-test regression suite is running now. The profilers are gone and the performance policy is recorded; while the suite runs I am keeping the live launcher stopped so database writes cannot contaminate the result.
+
+
+[2026-08-09 2:38:26 PM NZST] CODEX COMMENTARY
+The suite is still advancing without output, which is normal under quiet pytest mode; it remains inside its two-minute hard ceiling. No gameplay or profiler worker is running alongside it.
+
+
+[2026-08-09 2:38:59 PM NZST] CODEX COMMENTARY
+All 2,311 tests pass in 93.88 seconds. I am auditing the process table and current Kestrel checkpoint now; then I will start the single 420-second bounded segment and watch the first thirty seconds closely for both prompt creation and equipment convergence.
+
+
+[2026-08-09 2:40:17 PM NZST] CODEX COMMENTARY
+The elevated process audit is clean: the only Python worker is Discord streamer PID 25940. There are no stale gameplay, test, index, or profiler processes. I am checking the database checkpoint and diff integrity next, then the live segment starts.
+
+
+[2026-08-09 2:41:26 PM NZST] CODEX COMMENTARY
+Run 4503 was created within seconds, so the startup stall is fixed in the actual HERO launcher as well as the profiler. Kestrel is in the bounded rearm segment now; I am reading the fresh transcript for structured worn snapshots, exact dagger identity, and any repeated swap signature.
+
+
+[2026-08-09 2:41:51 PM NZST] CODEX COMMENTARY
+Run 4503 completed cleanly in twenty seconds with no equipment oscillation: the structured paper doll retained both pink ice rings, the collar plus circlet set, and exact dagger VNUM 3020. It also exposed an urgent live state: Kestrel reached the healer at 2 of 334 HP while starving and dehydrated. I am invoking the next bounded segment immediately so emergency food, water, and healer recovery take precedence.
+
+
+[2026-08-09 2:42:28 PM NZST] CODEX COMMENTARY
+Kestrel is safe. The return-home runner ate one carried pie before the next starvation tick, drank from the buffalo skin, rose from 2 to 41 HP under the healer, and went back to sleep in room 3054. I am leaving the bounded process in place until its normal recovery floor and save-and-quit checkpoint complete.
+
+
+[2026-08-09 2:43:18 PM NZST] CODEX COMMENTARY
+Recovery is progressing normally: Kestrel is at 162 of 334 HP, full mana and movement, fed, hydrated, blessed, and sleeping at the healer. The structured equipment snapshot remains unchanged, so the text-audit oscillation has not returned.
+
+
+[2026-08-09 2:44:27 PM NZST] CODEX COMMENTARY
+Run 4504 completed after 128.6 seconds. Kestrel logged out safely at the Midgaard healer with 326 of 334 HP, full mana and movement, hunger 27, thirst 45, and the verified gear set intact. I am moving to the next bounded campaign decision now; the priority is productive restock or an XP-bearing hunt, not another maintenance loop.
+
+
+[2026-08-09 2:45:08 PM NZST] CODEX COMMENTARY
+Run 4505 selected the Old Thalos long-dagger route, a useful upgrade hunt rather than idle maintenance. Kestrel is first following the source-backed route to the level-20 thief trainer so his four precious practices can be evaluated against the current class-aware plan before field combat.
+
+
+[2026-08-09 2:45:56 PM NZST] CODEX COMMENTARY
+Kestrel has traversed the registered trainer route and paused in its source-vetted safe recovery room because movement fell below the route gate. This is the once-per-level trainer evaluation path backed by the new ledger, so a no-useful-skill result will be persisted and will not trigger this journey again at level 24.
+
+
+[2026-08-09 2:47:31 PM NZST] CODEX COMMENTARY
+The route hit an unavoidable pair of level-17 rolling rocks in Plains room 18428. They are below band but aggressive, so Kestrel is correctly finishing the forced fight rather than selecting them for XP. One disarmed his dagger; the new structured snapshot detected the empty wield slot, but weapon recovery did not preempt the recurring knife action. I am keeping the safe fight under observation and will fix that newly exposed ordering bug after cleanup.
+
+
+[2026-08-09 2:48:14 PM NZST] CODEX COMMENTARY
+The first rolling rock is down and the second is at roughly 145 of 366 HP; Kestrel remains healthy at 306 of 334. The fight is making steady progress despite the dropped dagger, and the selector correctly switched from the first rock to the surviving one. I will let cleanup finish, then patch weapon recovery ahead of recurring attacks.
+
+
+[2026-08-09 2:49:08 PM NZST] CODEX COMMENTARY
+The second rock is finished. A level-14 crazed rabbit then auto-attacked on the same trainer route and is already at 4 of 226 HP; Kestrel is finishing that trivial forced combat as policy requires. These encounters reinforce that this expensive route must remain ledger-suppressed after its single level-24 evaluation.
+
+
+[2026-08-09 2:50:08 PM NZST] CODEX COMMENTARY
+The trainer visit paid off: Kestrel spent a physical practice on backstab toward mastery, then received a source-classified proficiency-cap rejection for armed combat knowledge, which is now persisted for this trainer tier. He returned to Midgaard at full health, refilled and drank from the skin in room 3005, and has begun the official Old Thalos dagger route.
+
+
+[2026-08-09 2:50:56 PM NZST] CODEX COMMENTARY
+Run 4505 succeeded. Kestrel killed both forced rocks, the forced rabbit, and the target lamia for 570 total XP; acquired and equipped exact long slim dagger VNUM 5252; improved field stats from 4 damroll and 9 hitroll to 5 and 10; and quit safely at healer room 3054 with full HP and mana. I am now fixing the one defect the run exposed: a fresh empty-wield snapshot must recover the audited weapon before another knife or other recurring attack is issued.
+
+
+[2026-08-09 2:52:28 PM NZST] CODEX COMMENTARY
+The code path is clear. Normal target combat already checks the disarm recovery state before recurring attacks, but three trivial-attacker fast paths call the recurring-action method directly and bypass that guard. I am moving the bounded get, capacity relief, and wield state machine into the shared between-round entry point and adding a regression test that recreates the level-24 rolling-rock interruption.
+
+
+[2026-08-09 2:53:57 PM NZST] CODEX COMMENTARY
+The shared recovery implementation is in place. Six related tests pass; the new regression test itself failed before exercising the code because the common fixture defaults to mage subclass warlock while I overrode only the base class to thief. I am correcting the fixture to the legal thief subclass ninja and rerunning the focused set.
+
+
+[2026-08-09 2:54:39 PM NZST] CODEX COMMENTARY
+All seven focused disarm and between-round tests now pass. I am tightening the new regression one step further to trigger from the same complete GMCP Char.Worn snapshot seen in run 4505, without relying on the textual DISARMS line, so the exact live failure mode stays covered.
+
+
+[2026-08-09 2:55:10 PM NZST] CODEX COMMENTARY
+The exact GMCP regression also passes. I am recording run 4505 as permanent policy evidence in AGENTS.md: all combat-continuation branches must pass through dropped-weapon recovery before recurring actions. Then I will run the full suite once more and audit the final local state.
+
+
+[2026-08-09 2:56:07 PM NZST] CODEX COMMENTARY
+The final full regression run is underway under the two-minute ceiling. The live gameplay worker has exited, run 4505 is reconciled as successful, and no MUD connection is active while the suite exercises the shared combat path.
+
+
+[2026-08-09 2:56:42 PM NZST] CODEX COMMENTARY
+The final suite passes: 2,312 tests in 59.83 seconds. I am doing the closing process, diff, and run-status audits now; no commit will be attempted because the recorded local-only commit window is 9:00 PM.
+
+
+[2026-08-09 3:32:29 PM NZST] CODEX COMMENTARY
+The app permission layer stalled for thirty-five minutes while asking to inspect the parent of two unrelated image-batch workers, despite elevated access. That was not acceptable. The parent had exited by the time approval cleared, so I did not touch those unrelated processes. I am using the already approved audit command now, with no further escalation, and will finish immediately.
+
+
+[2026-08-09 3:33:10 PM NZST] CODEX FINAL
+Completed this pass end to end. Cold campaign startup is about five seconds, compact command, item, and campaign-usage ledgers replace repeated history scans, and bounded history caches are recorded in AGENTS.md. Live run 4505 succeeded: Kestrel practiced backstab, acquired and equipped long slim dagger VNUM 5252, gained 570 XP, reached 5 damroll and 10 hitroll, and quit at healer room 3054 with full HP and mana. The rolling-rock disarm exposed a bypass in trivial-attacker combat; recovery now runs through the shared between-round entry before any recurring attack, with an exact GMCP regression test. All 2,312 tests pass, diff checks are clean, and only Discord streamer PID 25940 remains. Changes are local and uncommitted because the recorded commit window is 9:00 PM; no remote push was attempted. The DD4 source mirror remains current at revision 0949fec.
+
+
+[2026-08-09 3:33:32 PM NZST] CODEX COMMENTARY
+I am continuing from the verified level-24 checkpoint. This work unit will push the executable path toward level 25: audit the current process and campaign state, run bounded Kestrel segments through recovery into an XP-bearing policy, and turn any new live failure into a generic fix plus regression coverage.
+
+
+[2026-08-09 3:34:26 PM NZST] CODEX COMMENTARY
+Run 4506 started promptly and selected return-home because the successful Thalos trip ended with 166 of 380 movement. Kestrel is already at healer room 3054, so this segment should only sleep to the shared 90 percent movement floor, preserve the new dagger, save, and quit before the productive hunt selection.
+
+
+[2026-08-09 3:35:29 PM NZST] CODEX COMMENTARY
+Run 4506 completed in 78.7 seconds with the exact long slim dagger still present in the structured wield slot. Kestrel recovered at the healer and checkpointed normally. I am launching the next segment now; this one should select the level-24 combat frontier unless another concrete supply or protection gate is genuinely due.
+
+
+[2026-08-09 3:36:24 PM NZST] CODEX COMMENTARY
+Run 4507 completed in 33 seconds and converted the three forced-combat rocks into 109 copper at the weapon shop, with the expected same-item price decay of 65, 29, and 15. The long dagger was protected from sale. I am continuing immediately to the next decision so maintenance does not consume the work unit.
+
+
+[2026-08-09 3:37:14 PM NZST] CODEX COMMENTARY
+Run 4508 took 28.4 seconds to return from the weapon shop to healer room 3054 and checkpoint safely. To stop these small city transitions from fragmenting progress, I am allowing the next invocation two independently bounded segments. Each still has the 420-second hard ceiling and normal healer cleanup, but the campaign can move directly from any final preparation into combat.
+
+
+[2026-08-09 3:38:05 PM NZST] CODEX COMMENTARY
+The two-segment invocation worked as intended. Run 4509 bounded the Magic Shop attempt after where drunk found greet-program hazards in three route-sensitive Midgaard shops; it did not waste time or money. Run 4510 then started the source-ranked sluggish-800 hunt at full health and movement, with exact target mode, autoloot, the long dagger, and current combat skills confirmed.
+
+
+[2026-08-09 3:40:02 PM NZST] CODEX COMMENTARY
+Kestrel is actively fighting a level 20 sluggish Dragonhoard teller. The target is down to 207 of 391 HP while Kestrel remains at full health and movement, and the runner is repeatedly using the source verified knife attack between rounds rather than retreating after one exchange.
+
+
+[2026-08-09 3:41:26 PM NZST] CODEX COMMENTARY
+The teller is now in the final quarter of its health, while Kestrel is at 330 of 334 HP. It regenerates small amounts between exchanges, but Kestrel is still making net progress and remains nowhere near a withdrawal threshold, so I am letting the bounded fight finish.
+
+
+[2026-08-09 3:42:01 PM NZST] CODEX COMMENTARY
+Run 4510 completed cleanly. Kestrel killed the level 20 teller for 1194 XP, raising total XP from 328533 to 329727, looted its severed leg, recalled, reached healer room 3054 at 309 of 334 HP, saved, and quit with the long dagger still equipped. I am auditing the process state now, then I will inspect the next campaign choice and the remaining command interface gap.
+
+
+[2026-08-09 3:42:53 PM NZST] CODEX COMMENTARY
+The command interface audit found that the required surface is already implemented and tested: hero accepts username or name, plaintext password, optional secure remember password storage, race, cosmetic sex, class, subclass, and target level. The live DD4Tester process exited cleanly; the audit shows only the Discord streamer plus an unrelated image batch started by another process, which I am leaving alone. I am launching the next two bounded Kestrel segments now.
+
+
+[2026-08-09 3:43:55 PM NZST] CODEX COMMENTARY
+Run 4511 is a deliberate healer recovery checkpoint after the recall movement penalty. Kestrel is already back to full health and mana and has recovered movement from 188 to 338 of 380; the policy is sleeping to its shared 90 percent return home threshold before the second segment begins.
+
+
+[2026-08-09 3:45:13 PM NZST] CODEX COMMENTARY
+Run 4511 reached full recovery and exited successfully. Run 4512 has already completed the long route, found the exact Old Treant, passed live consider at level 21, opened with backstab using the long dagger, and immediately attempted disarm. Kestrel entered combat at full health; the treant is at 328 of 368 HP after the opener.
+
+
+[2026-08-09 3:46:22 PM NZST] CODEX COMMENTARY
+The Old Treant is dead. Kestrel earned 907 XP, increasing total XP to 330634, took only 19 damage during the fight, and recalled successfully to healer room 3054. He is now back at full health and is sleeping off the recall movement cost before the segment saves and exits.
+
+
+[2026-08-09 3:47:18 PM NZST] CODEX FINAL
+Completed this continuation cleanly. Run 4510 killed the level 20 Dragonhoard teller for 1194 XP, and run 4512 killed the level 21 Old Treant for 907 XP. Kestrel now has 330634 XP, needs 35466 for level 25, and is safely saved and logged out at healer room 3054 with the long dagger equipped. The HERO CLI already supports the required one command identity, plaintext password, race, cosmetic sex, class, subclass, and target level inputs, so no patch was needed. The last full suite remains 2312 passed, the DD4 source mirror was already updated today, and no DD4Tester gameplay process remains. The master HERO goal remains active for the next continuation.
+
+
+[2026-08-09 3:47:43 PM NZST] CODEX COMMENTARY
+I am resuming from the clean level 24 checkpoint. The next concrete blocker I am tackling is source ranked hunt throughput: the engine currently spends a long route and recall cycle on a single safe kill, which makes uninterrupted HERO progression needlessly slow. I will trace the policy lifecycle, add a bounded way to continue productive nearby combat when evidence permits, cover it with tests, and then prove the change live.
+
+
+[2026-08-09 3:49:57 PM NZST] CODEX COMMENTARY
+I found the exact throughput brake: dynamic source ranked hunts hard code a one kill segment limit even though the field runner already supports several source derived stops, local recovery, capacity withdrawal, disabling affect gates, and an explicit bounded kill limit. I am now separating first contact research from already proven productive policies so a fresh target stays a one kill probe while reusable evidence can authorize a short multi kill circuit.
+
+
+[2026-08-09 3:54:33 PM NZST] CODEX COMMENTARY
+The level 24 source audit changed the implementation target: every currently eligible high ranking mobile has a single source spawn, so merely raising the old kill limit would not improve Kestrel and would weaken first contact discipline. I am building the useful version instead: a bounded area circuit that can visit several independently source safe candidates, retains one live consider and at most one kill per candidate, and tags each kill with its own policy and mobile VNUM so evidence and reboot kill counts remain accurate.
+
+
+[2026-08-09 4:03:15 PM NZST] USER
+Multikill is generally the way to go. If a character can kill only one in-band mobile before needing recovery, treat that as evidence that equipment is inadequate or that an important combat spell or skill has not been trained or used.
+
+
+[2026-08-09 4:03:39 PM NZST] CODEX COMMENTARY
+Agreed. I am treating recovery need, not the first kill, as the normal stopping condition. The circuit will continue through up to three independently vetted in-band targets while health, mana, movement, provisions, affects, crowd, and capacity gates remain comfortable. I will also preserve whether a one-kill withdrawal was recovery limited, because that should drive equipment or training remediation instead of being accepted as normal throughput.
+
+
+[2026-08-09 4:06:47 PM NZST] CODEX COMMENTARY
+I am picking up the multi-kill implementation now. The first pass has added per-target source identity and safe same-area circuit construction; I am checking the interrupted patch, then I will finish dispatch, evidence accounting, recovery-limited diagnostics, and focused tests before taking it live.
+
+
+[2026-08-09 4:07:34 PM NZST] CODEX COMMENTARY
+I have confirmed the interrupted checkpoint parser landed cleanly. The remaining gap is exactly where expected: the selected circuit is not yet passed into the live runner, and kill evidence is still charged to only the first mobile. I am wiring those two pieces together before adding the throughput diagnosis.
+
+
+[2026-08-09 4:16:21 PM NZST] CODEX COMMENTARY
+The circuit is now executable rather than merely planned: checkpointed secondary targets reach the runner, each kill carries its own mobile and policy identity, and the kill cap expands to the number of independently vetted targets. I have also added a structured one-kill recovery marker so low throughput is preserved as combat-readiness evidence instead of being normalized as a successful circuit.
+
+
+[2026-08-09 4:18:52 PM NZST] CODEX COMMENTARY
+Focused regressions are green: 124 source-ranking tests and 13 combat-action tests pass, including hazard-blocked links, checkpoint round trips, per-VNUM kill accounting, unarmed-target disarm suppression, and the recovery-limit marker. One test caught that the base source policy still imposed its old one-kill cap; that is corrected, and incidental fights no longer consume the vetted circuit kill budget.
+
+
+[2026-08-09 4:20:30 PM NZST] CODEX COMMENTARY
+The two large modules reached 1,544 passing tests and exposed four legacy-fixture failures in the new objective-only kill budget. Those fixtures used the older target field rather than mob_name; I made objective matching backward compatible, and all four now pass. This preserves the important behavior: an incidental forced fight cannot steal a slot from the planned multi-kill circuit.
+
+
+[2026-08-09 4:24:42 PM NZST] CODEX COMMENTARY
+The real level-24 source catalog shows why circuit support also needs selection pressure. The current top teller has no safe partner, while Dwarven Home has a source-safe host-to-singer pair five rooms apart. I am adjusting ranking to prefer a vetted multi-target opportunity within the high-ranked frontier, so the new machinery is used instead of repeatedly choosing a slightly higher-ranked singleton.
+
+
+[2026-08-09 4:29:39 PM NZST] CODEX COMMENTARY
+The real checkpoint now selects a two-target Dwarven Home circuit: the host followed by the singer, with the generated route and both source identities persisted. Selection takes about two seconds after caching the area hazard mask, down from an initial fifteen-second prototype. I also extended the throughput marker to catch a withdrawal caused by the next targets elevated health floor, not only the generic emergency floor.
+
+
+[2026-08-09 4:30:31 PM NZST] CODEX COMMENTARY
+The full suite is still running and has not reported an early failure. After it finishes I will inspect the exact diff, then launch one bounded live Kestrel segment with enough runtime for both fights and verify the transcript, XP records, healer logout, and process cleanup.
+
+
+[2026-08-09 4:31:31 PM NZST] CODEX COMMENTARY
+Full verification is green at 2,321 tests, and the product diff has no whitespace errors. I am starting one 600-second bounded Kestrel segment now. The checkpoint planner resolves it to the Dwarven Home host and singer circuit, while each live consider, crowd, health, equipment, affect, and movement gate remains authoritative.
+
+
+[2026-08-09 4:34:06 PM NZST] CODEX COMMENTARY
+The full runner has selected a two target Solace secretary circuit based on the real reboot history, rather than the earlier dry run Dwarven Home pair. I am checking each live consider, kill, and recovery decision now; a one kill retreat will be recorded as a readiness defect, not accepted as a successful circuit.
+
+
+[2026-08-09 4:35:25 PM NZST] CODEX COMMENTARY
+Kestrel has killed the first Solace secretary and is looting the corpse. He finished that fight at 195 of 334 hit points with full mana and 325 movement, so the ordinary circuit thresholds permit continued hunting; I am watching whether the second target health gate exposes the equipment or training limitation we now want to preserve as evidence.
+
+
+[2026-08-09 4:36:07 PM NZST] CODEX COMMENTARY
+The live proof found a real continuation bug: after the first kill, the legacy one way stop flag forced an immediate recall even though a second circuit stop remained. I am letting Kestrel finish the healer cleanup, then I will make that recall conditional on the circuit actually being exhausted and add a regression test before rerunning the pair.
+
+
+[2026-08-09 4:36:28 PM NZST] CODEX COMMENTARY
+Cleanup completed safely, and the run exposed a second integration defect while reconciling the tagged kill: the SQLite storage method does not yet accept the new source mobile metadata. I am fixing both defects together now: preserve a pending circuit after a one way first stop, and persist each kill source identity through the storage boundary.
+
+
+[2026-08-09 4:39:17 PM NZST] CODEX COMMENTARY
+The deeper trace refines that diagnosis: the recall was not truly unconditional. Kestrel was at 58 percent health and the second source target requires a 67.5 percent departure floor, but the old decision text misleadingly called every such return a one way hunt. I am retaining that safety gate, recording this exact one kill health limit as readiness evidence, correcting the reason, and extending SQLite for the tagged kill.
+
+
+[2026-08-09 4:41:49 PM NZST] CODEX COMMENTARY
+The focused regressions now pass. The storage schema migrates existing databases and preserves source mobile VNUM plus policy ID, while the live post loot path now records health as the limiting resource before it recalls; this turns the failed multikill into actionable campaign evidence instead of a generic successful hunt.
+
+
+[2026-08-09 4:43:03 PM NZST] CODEX COMMENTARY
+The full regression suite is still running cleanly so far. Once it completes, I will rerun one bounded live segment to prove that the source tagged kill reaches SQLite and that a one kill health limited circuit survives campaign reconciliation without being mislabeled or lost.
+
+
+[2026-08-09 4:43:19 PM NZST] CODEX COMMENTARY
+All 2,322 tests pass. I am starting the bounded live rerun now with the repaired schema and decision evidence; the campaign may rotate away from the secretary already killed in run 4513, which is correct because that objective was reconciled despite the storage exception.
+
+
+[2026-08-09 4:44:32 PM NZST] CODEX COMMENTARY
+Run 4514 rotated to a fresh source ranked target rather than replaying the secretary. Its live consider failed the target gate, so Kestrel correctly skipped combat and returned to the healer; this segment validates safe rotation but cannot yet prove the repaired kill write, so I will let cleanup finish and launch the next bounded candidate rather than manufacturing evidence.
+
+
+[2026-08-09 4:45:15 PM NZST] CODEX COMMENTARY
+Run 4514 completed cleanly at the healer and checkpointed the below band consider. I am launching the next candidate now; Kestrel remains level 24, fully healed, and the planner will exclude that rejected mobile for this level and reboot.
+
+
+[2026-08-09 4:46:08 PM NZST] CODEX COMMENTARY
+Run 4515 has selected the proven Solace secretary circuit again after the fresh target rejection. That is the intended ranking rule: a meaningful same reboot kill outranks a fresh prototype with poor useful level fuzz. Kestrel is on the outbound route now, and this should exercise both the repaired kill persistence and the one kill readiness marker if his first fight again consumes too much health.
+
+
+[2026-08-09 4:47:02 PM NZST] CODEX COMMENTARY
+The secretary respawn in run 4515 landed outside the useful live consider band, so Kestrel did not attack it. This is expected from DD4 mobile level fuzz: the earlier instance was worth 1,934 XP, while the new instance is not automatically equivalent. The result will now become a level and reboot scoped negative consider so the planner stops revisiting this surviving spawn.
+
+
+[2026-08-09 4:47:25 PM NZST] CODEX COMMENTARY
+Run 4515 is safely complete at the healer. I am continuing to the next source candidate now; both rejected spawns are checkpointed, so this invocation must advance the frontier rather than repeat either live consider.
+
+
+[2026-08-09 4:48:15 PM NZST] CODEX COMMENTARY
+Run 4516 has advanced to Mirror Realm mobile 19051, a source ranked kid target, and Kestrel is travelling there now. The campaign is no longer cycling on the rejected Solace and Moria instances; I am monitoring the live room identity, crowd, consider, and then the full circuit if combat is authorized.
+
+
+[2026-08-09 4:49:28 PM NZST] CODEX COMMENTARY
+Mirror Realm was live-crowded, so run 4516 also returned without risking an assist fight and completed cleanly. I am continuing the frontier search; the useful result so far is that three independent failure modes now rotate correctly, while the next authorized kill will verify the repaired SQLite path.
+
+
+[2026-08-09 4:50:26 PM NZST] CODEX COMMENTARY
+Run 4517 has independently selected the second Solace circuit prototype, mobile 10248 in room 10295, using its source keyword lieutenant. This is a useful identity check because both prototypes display as Secretary live; the policy is preserving their separate VNUMs and reset rooms while Kestrel travels to the second one.
+
+
+[2026-08-09 4:51:30 PM NZST] CODEX COMMENTARY
+Combat is authorized in run 4517. Kestrel opened with the piercing weapon and backstab, then has been reissuing knife between rounds; the latest structured snapshot shows the lieutenant commander secretary at 159 of 376 hit points while Kestrel still reports 334 of 334. This is the strongest live chance yet to prove the tagged kill write and continue into the circuit.
+
+
+[2026-08-09 4:52:22 PM NZST] CODEX COMMENTARY
+Kestrel killed mobile 10248 for 1,114 XP and returned to healer room 3054 at full health. This candidate had no additional vetted same area stop after the earlier prototype became live consider blocked, so the one kill segment ended from circuit exhaustion rather than recovery pressure; it should not create a false readiness defect. I am waiting for save and quit, then I will inspect the exact SQLite row.
+
+
+[2026-08-09 4:53:18 PM NZST] CODEX COMMENTARY
+The repaired path is now live-proven. SQLite contains run 4517 as Secretary, 1,114 XP, source mobile 10248, and policy source-ranked-hunt-solace-10248-10295-24. The campaign checkpoint retains the same tagged objective kill at healer room 3054 with 334 hit points and correctly has no throughput-limit marker because the circuit exhausted its vetted targets rather than forcing recovery.
+
+
+[2026-08-09 4:53:56 PM NZST] CODEX FINAL
+Implemented and live-proved the multikill slice. Source-ranked hunts can now chain up to three safe same-area targets, tag each kill by mobile VNUM and policy, and distinguish circuit exhaustion from a one-kill health, mana, or movement limitation. A recovery-limited single kill is checkpointed as combat-readiness evidence for equipment, training, and rotation review.
+
+Live run 4517 killed Solace mobile 10248 for 1,114 XP. SQLite stores the exact VNUM and generated policy ID, and Kestrel saved and quit at healer room 3054 on full 334 HP.
+
+Verification: 2,322 tests passed; the product diff check is clean; no DD4Tester process remains. The Discord streamer and unrelated image batch were left running. No commit or push was attempted because the 9 PM local-only commit window has not arrived.
+
+
+[2026-08-09 4:54:21 PM NZST] CODEX COMMENTARY
+I am moving directly into the next executable progression slice: advance Kestrel from level 24 toward 25, observe the first concrete blocker in the current frontier, and fix it generically rather than adding more speculative high-level coverage. I will keep each live segment bounded, preserve healer cleanup, and use the resulting evidence to choose the next implementation change.
+
+
+[2026-08-09 4:55:08 PM NZST] CODEX COMMENTARY
+The first invocation selected required maintenance rather than combat: run 4518 restocked Kestrel and completed safely in 16 seconds. That removes provisions as a confounding variable, so I am immediately launching the next segment to reach the actual level-24 frontier.
+
+
+[2026-08-09 4:55:50 PM NZST] CODEX COMMENTARY
+Run 4519 bought the planned flight potion and completed safely. The campaign has now satisfied both provisions and mobility preparation, so the next invocation should either launch a movement-heavy source target or reveal a remaining funding or readiness gate; I am continuing without pausing.
+
+
+[2026-08-09 4:56:49 PM NZST] CODEX COMMENTARY
+Run 4520 is now on the prepared flight route to source mobile 30350, the gravedigger. Kestrel is moving normally with the potion reserve in place; I am watching whether the target is present and useful-band, then whether this area yields a genuine multi-target continuation or a new bounded blocker.
+
+
+[2026-08-09 4:58:24 PM NZST] CODEX COMMENTARY
+Run 4520 killed the gravedigger for 1,074 XP and returned with 326 of 334 hit points, full mana, and ample movement. This is exactly the inefficiency behind your multikill point: recovery was not needed, yet the generated circuit contained only one vetted stop. I am treating safe circuit exhaustion at high reserves as the next blocker and tracing why nearby source candidates were not chained.
+
+
+[2026-08-09 5:02:24 PM NZST] CODEX COMMENTARY
+The source trace found the exact overconstraint. Mirror Realm has two adjacent fixed watchmen that form a natural two-kill circuit, but the wandering level-25 gardener carries spec_thief, so the circuit hazard mask currently marks every room he can reach as blocked. Source special.c proves that procedure does not add combat damage and Kestrel is below the existing 250-copper maximum theft exposure, so I am refining transit safety for audited noncombat and bounded economic specials while keeping live target-room crowd gates intact.
+
+
+[2026-08-09 5:03:52 PM NZST] CODEX COMMENTARY
+The fix is in and the focused tests pass. Replaying the real level-24 checkpoint through the selector now chooses Mirror Realm mobile 19009 followed by adjacent mobile 19010, instead of the one-stop gravedigger route. The same path remains blocked when carried coin exposure exceeds the source-backed spec_thief bound, and attacking specials remain unchanged.
+
+
+[2026-08-09 5:04:53 PM NZST] CODEX COMMENTARY
+The full regression suite is running now and has not reported a failure. After it completes I will launch the real watchman pair; the live proof must still pass both independent considers and the target-room crowd gates, so two kills are the goal but a source-justified skip will remain valid evidence rather than a forced attack.
+
+
+[2026-08-09 5:05:10 PM NZST] CODEX COMMENTARY
+All 2,323 tests pass. I am starting the live watchman circuit now from the current Kestrel checkpoint; the generated plan is explicitly mobile 19009 in room 19009, then two eastward source steps to mobile 19010 in room 19010, with a two-kill budget.
+
+
+[2026-08-09 5:06:13 PM NZST] CODEX COMMENTARY
+The invocation inserted one legitimate recovery checkpoint before the watchman trip: Kestrel was already at room 3054 but had only 189 of 380 movement after Kerofk. Run 4521 slept him back to 334 health and 380 movement, saved, and quit. I am relaunching now with the departure reserve fully satisfied.
+
+
+[2026-08-09 5:07:33 PM NZST] CODEX COMMENTARY
+Run 4522 reached the first watchman, passed live consider, opened with backstab, and is alternating disarm with repeated knife attacks. The latest target snapshot is 373 of 507 hit points; the second watchman remains queued two rooms east and has not been collapsed into the first prototype.
+
+
+[2026-08-09 5:08:41 PM NZST] CODEX COMMENTARY
+The live multikill continuation is working. Kestrel killed mobile 19009 for 1,178 XP, looted and sacrificed the corpse, followed the two live-GMCP east steps, passed a separate consider for mobile 19010, and is now fighting it. The second watchman is at 346 of 390 hit points, and no recall or recovery occurred between kills.
+
+
+[2026-08-09 5:09:45 PM NZST] CODEX COMMENTARY
+Kestrel completed the second kill for 1,266 XP, making 2,444 XP across the circuit. He also attempted to eat the severed head before looting, then recalled only after the two-kill budget was exhausted. He is back in healer room 3054 at 284 of 334 hit points, full mana, and 189 movement; I am waiting for the normal recovery, save, and quit before auditing both tagged SQLite rows.
+
+
+[2026-08-09 5:10:27 PM NZST] CODEX COMMENTARY
+The persistence audit is exact: run 4522 has separate SQLite rows for mobile 19009 at 1,178 XP and mobile 19010 at 1,266 XP, and the checkpoint keeps both generated policy IDs with no false throughput-limit marker. Kestrel is safely logged out at healer room 3054 with 28,900 XP remaining to level 25. I am continuing into the next bounded segment rather than stopping at the proof.
+
+
+[2026-08-09 5:11:29 PM NZST] CODEX COMMENTARY
+Run 4523 completed the expected post-circuit healer recovery and restored the departure reserves. That maintenance is proportional to two productive kills rather than one, which is the efficiency gain we wanted. I am launching the next hunt selection now.
+
+
+[2026-08-09 5:12:39 PM NZST] CODEX COMMENTARY
+Run 4524 is liquidating the two-kill loot rather than carrying it into the next expedition. It has valued and sold a watchman robe through the verified compatible shop and is returning safely; this is productive money-loop work created by the circuit, not a stalled hunt.
+
+
+[2026-08-09 5:12:50 PM NZST] CODEX COMMENTARY
+Loot liquidation completed cleanly in run 4524. Kestrel remains level 24 with the 2,444 XP circuit gain preserved and the sale proceeds available for provisions and flight. I am continuing to the next policy selection now.
+
+
+[2026-08-09 5:13:51 PM NZST] CODEX COMMENTARY
+Run 4525 has selected the productive watchman pair again after Kestrel spent several minutes outside Mirror Realm recovering and selling loot, which also gives the area its faster empty-area reset opportunity. I am checking the live rooms now; if the pair has not reset, the absence evidence should rotate the planner rather than attack anything unsuitable.
+
+
+[2026-08-09 5:14:24 PM NZST] CODEX COMMENTARY
+Run 4525 exposed the next concrete circuit bug. The first watchman had reset but its new fuzzy level failed live consider; instead of advancing to the independent second watchman, the outbound interception path recalled immediately. I am tracing that interception return now and will make a rejected first stop advance through the remaining vetted circuit without weakening any consider gate.
+
+
+[2026-08-09 5:16:40 PM NZST] CODEX COMMENTARY
+The interception regression now passes. A failed nonterminal generated stop clears only ephemeral selector state, leaves its policy-specific consider evidence intact, and advances the route cursor; explicit abort-after-rejection stops and final-stop failures still recall. The live first watchman remains correctly excluded for this level and reboot, so the next campaign invocation should now prioritize the independent second prototype or another valid circuit.
+
+
+[2026-08-09 5:17:42 PM NZST] CODEX COMMENTARY
+The full suite is still running without a reported failure. I will use the next live segment to confirm that current-reboot evidence keeps mobile 19009 excluded while mobile 19010 remains independently eligible; that is the campaign-level counterpart to the interception regression.
+
+
+[2026-08-09 5:17:55 PM NZST] CODEX COMMENTARY
+All 2,324 tests pass. I am launching the next bounded segment now; Kestrel is safe at the healer, and no policy gate has been relaxed for the rejected watchman.
+
+
+[2026-08-09 5:18:38 PM NZST] CODEX COMMENTARY
+Run 4526 performed the expected movement recovery after the failed Mirror Realm trip and is complete. Kestrel is again fully ready at room 3054; I am launching the actual post-evidence hunt selection now.
+
+
+[2026-08-09 5:19:43 PM NZST] CODEX COMMENTARY
+The current ranking selected the proven gravedigger rather than the remaining watchman, because the two-target pair is no longer eligible once mobile 19009 has terminal live consider evidence and the productive-repeat ranking prefers the latest viable policy. Kestrel is on the Kerofk route now; this still advances XP if the reset is live, while mobile 19010 remains independently recorded rather than being suppressed by the first result.
+
+
+[2026-08-09 5:21:09 PM NZST] CODEX COMMENTARY
+The gravedigger reset is live and combat is progressing normally. This instance loaded much tougher at 580 maximum hit points; it is now at 388 while Kestrel is at 308 of 334, so the fight remains comfortably inside the current safety and finisher thresholds.
+
+
+[2026-08-09 5:22:31 PM NZST] CODEX COMMENTARY
+Run 4527 completed the harder gravedigger for 1,263 XP and returned safely at 283 of 334 hit points, bringing Kestrel to 27,637 XP from level 25. This was a justified singleton because Kerofk has no second source-safe useful-band fixed target, not a recovery failure. I am checking why the independently viable second watchman ranked behind this repeat before deciding the next optimization.
+
+
+[2026-08-09 5:23:13 PM NZST] CODEX COMMENTARY
+The ranking audit confirms mobile 19010 is still independently productive and selectable; mobile 19009 alone is on cooldown. The gravedigger won this pass because its current useful-level fuzz probability is 80 percent versus 40 percent for the watchman, matching the existing preference for reliable XP. I am continuing through recovery and the next selection rather than forcing the lower-confidence spawn.
+
+
+[2026-08-09 5:24:24 PM NZST] CODEX COMMENTARY
+Run 4528 completed recovery, and run 4529 has selected the independently productive Solace lieutenant secretary rather than replaying a blocked target. Kestrel is outbound now; this mobile previously paid useful XP and remains separately keyed from the captain secretary despite their shared live display name.
+
+
+[2026-08-09 5:26:02 PM NZST] CODEX COMMENTARY
+Run 4529 killed the lieutenant secretary for 999 XP and returned at full health, leaving 26,638 XP to level 25. Its singleton end was again target-supply exhaustion, because the other Solace prototype has its own terminal live consider result; no readiness marker was created. I have now removed two concrete sources of wasted circuits in this work unit and am doing the final process and diff audit.
+
+
+[2026-08-09 5:27:12 PM NZST] CODEX COMMENTARY
+I am finishing the work unit with a compact process and diff audit now. I will verify that no live DD4Tester process was left behind, keep the Discord streamer and unrelated image jobs intact, and confirm the code changes have no whitespace errors.
+
+
+[2026-08-09 6:04:58 PM NZST] CODEX COMMENTARY
+The elevated read only process audit was delayed by the permission handoff, but it has now completed: only Discord PID 25940 and the two unrelated image jobs are present, with no DD4Tester process. I am running the remaining repository checks directly and will close this work unit without another permission wait.
+
+
+[2026-08-09 6:05:24 PM NZST] CODEX COMMENTARY
+Understood. I will treat the workspace and project operations as authorized, avoid optional commands that trigger permission prompts, and immediately skip any nonessential audit that cannot run directly instead of waiting on a handoff. I am recording that operational rule now.
+
+
+[2026-08-09 6:06:01 PM NZST] CODEX FINAL
+Understood. I recorded the rule in AGENTS.md: routine project operations are preauthorized, optional audits must not trigger permission handoffs, and blocked audits are skipped immediately so development continues.
+
+
+[2026-08-09 6:06:16 PM NZST] CODEX COMMENTARY
+I am continuing from the multikill evidence. The next concrete blocker is turning repeated one target recovery cycles into an actionable readiness gate: the engine must distinguish target exhaustion from inadequate equipment or missing class tools, then repair the latter before wasting another hunt circuit. I am tracing the current marker, training, and equipment paths now.
+
+
+[2026-08-09 6:06:49 PM NZST] CODEX COMMENTARY
+I found the readiness marker already being persisted correctly after a one kill withdrawal, but it is informational only: policy selection never consumes it. That means the campaign can know combat throughput is inadequate and still choose another field hunt. I am mapping the existing equipment audit and trainer policies so the marker can force a bounded repair pass without creating character specific logic.
+
+
+[2026-08-09 6:08:57 PM NZST] CODEX COMMENTARY
+The normal source ranked segment already visits the class trainer and applies the best carried combat stance, so simply adding another generic audit would be theatre. I am checking whether the source and gear catalogs can identify a concrete obtainable upgrade; the readiness gate should either acquire or train something, or deliberately rotate to a lower risk multikill circuit, rather than repeat the same weak setup.
+
+
+[2026-08-09 6:12:01 PM NZST] CODEX COMMENTARY
+I have the implementation shape. A same level throughput marker will temporarily exclude the exact policy that exhausted the character, force one fresh class trainer audit despite earlier per level completion, and rank viable circuits by target count and lower source peak damage before XP score. The marker will clear only after two objective kills or a level gain, so a no change audit cannot pretend the problem is fixed.
+
+
+[2026-08-09 6:16:05 PM NZST] CODEX COMMENTARY
+The focused regressions pass. The campaign now excludes the exact throughput limiting policy, chooses the largest lower damage viable circuit, and schedules one fresh trainer audit; completed training and gear audits are written back into the marker, but do not clear it. I am tightening serialization coverage and then I will run the full suite before a live campaign segment.
+
+
+[2026-08-09 6:17:45 PM NZST] CODEX COMMENTARY
+All 636 campaign tests pass, including the new throughput selection and repair cases. The key invariant is intact: a successful trainer and gear audit annotates the problem but does not erase it. I am running the complete test suite now, then I will use the current Kestrel checkpoint for a bounded progression segment and inspect whether the live selector forms a circuit or has genuine target supply limits.
+
+
+[2026-08-09 6:19:51 PM NZST] CODEX COMMENTARY
+Full verification is green at 2327 tests. Campaign 8 is safely checkpointed after run 4529 with Kestrel at level 24 and 26638 XP remaining. I am launching one 420 second bounded segment now; training occurs before travel, combat may run for 360 seconds, and the outer process has cleanup time to return to the healer and quit.
+
+
+[2026-08-09 6:20:42 PM NZST] CODEX COMMENTARY
+The campaign correctly opened run 4530 as return home rather than inventing a new field route from an incomplete recovery checkpoint. Kestrel is at the healer recovery stage; this segment is maintenance only, so after it closes cleanly I will immediately launch the next bounded segment for the actual hunt selection.
+
+
+[2026-08-09 6:21:49 PM NZST] CODEX COMMENTARY
+Run 4531 selected the Kerofk gravedigger, a known productive but genuinely singleton reset, and has completed the source backed outbound route through the Forest with full health and flight active. This run will not exercise the new low throughput marker unless combat itself forces recovery; I am letting the kill and safe return complete rather than manufacturing evidence.
+
+
+[2026-08-09 6:24:07 PM NZST] CODEX COMMENTARY
+Run 4531 completed cleanly: the gravedigger paid 967 XP, Kestrel returned to healer room 3054 at 318 of 334 HP, and 25671 XP remains to level 25. No throughput marker was created, correctly, because this was target supply exhaustion rather than reserves forcing withdrawal while another vetted target remained. The worktree diff check is clean and the live evidence did not contradict the new gate.
+
+
+[2026-08-09 6:24:47 PM NZST] CODEX COMMENTARY
+The live run also exposed the next concrete efficiency blocker: the selector accepted a third reboot local gravedigger kill despite an 81 step outbound route, no loot, and only one reset. That is defensible under the old useful fuzz rule but poor multikill economics. I am auditing the complete level 24 source frontier now to determine whether a safe circuit exists outside the current scan or whether the engine needs a stronger singleton travel penalty.
+
+
+[2026-08-09 6:26:23 PM NZST] CODEX COMMENTARY
+The complete audit found 300 navigation safe source candidates but zero currently executable circuits under the strict fixed single prototype rule, so the scan limit is not the problem. I am now checking a safe expansion the engine currently rejects wholesale: sentinel prototypes reset once in each of several separate rooms. Those are fixed targets with independent room gates even though their prototype has more than one world reset.
+
+
+[2026-08-09 6:28:01 PM NZST] CODEX COMMENTARY
+The frontier audit found a concrete missed multikill: the productive Solace lieutenant secretary and fresh Alex are 18 source safe steps apart. The old inter target cap is 12, so the engine rejects that two kill circuit and instead travels 81 steps for one gravedigger. I am raising the bounded same area link to 20 steps, retaining the complete hazard mask and every live crowd, consider, health, and exact target gate.
+
+
+[2026-08-09 6:29:01 PM NZST] CODEX COMMENTARY
+The 18 step regression passes and the 21 step boundary remains rejected. This change is narrow: it only admits fixed same area targets connected by the already computed source hazard free path. Kestrel needs one healer recovery segment after run 4531; I am completing that now, then the next live selection should reveal whether the newly admitted Solace pair wins.
+
+
+[2026-08-09 6:30:49 PM NZST] CODEX COMMENTARY
+The repaired selector did exactly what the audit predicted: after healer recovery, run 4533 chose the Solace lieutenant instead of another gravedigger singleton. Kestrel is outbound with full reserves. I am watching for the post kill 18 step continuation to Alex; the live crowd and consider gates can still reject that second stop independently.
+
+
+[2026-08-09 6:32:22 PM NZST] CODEX COMMENTARY
+Kestrel is fighting the lieutenant at 281 of 334 HP and full mana, with the target already at big nasty wounds. This is comfortably above the next stop health floor, so the circuit should continue if the remaining fight does not consume another large reserve. Knife toss is being reissued between rounds as intended.
+
+
+[2026-08-09 6:34:23 PM NZST] CODEX COMMENTARY
+Run 4533 proved the new route end to end: it killed the lieutenant for 963 XP, followed all 18 live GMCP steps to Alex, and arrived at 290 of 334 HP. Alex was present, but a wandering level 15 townguard made the room look crowded. That patrol is below band at level 24; I am tracing why its exact source line was not recognized as a trivial bystander before changing the crowd gate.
+
+
+[2026-08-09 6:36:45 PM NZST] CODEX COMMENTARY
+The townguard was recognized correctly. The actual false crowd was static room prose: the parser turned the sentence Metal and wooden objects are everywhere into a third mobile because it matched the generic are pattern. With the complete source catalog and TARGETMODE active, unmatched live mobiles have numbered selector lines; I am restricting the fallback parser to those lines so room furniture cannot block combat.
+
+
+[2026-08-09 6:39:10 PM NZST] CODEX COMMENTARY
+The parser audit found one more edge case before the edit: TARGETMODE numbers objects as well as mobiles, so accepting every unmatched numbered line could turn a sword or potion into a hostile crowd. I am using the stricter source-backed rule already required by the project: when the complete mobile catalog is loaded, only catalog-matched mobile descriptions count. The generic prose parser remains available when no source catalog exists.
+
+
+[2026-08-09 6:39:49 PM NZST] CODEX COMMENTARY
+The focused parser tests pass. I am recording the run 4533 lesson beside the existing TARGETMODE rules, then I will run the complete suite before launching another bounded progression segment.
+
+
+[2026-08-09 6:40:57 PM NZST] CODEX COMMENTARY
+The full suite is still running and has not reported a failure. While it finishes, the live plan is unchanged: preserve the legitimate below-band townguard, stop treating static Solace room text as a crowd, and let the campaign earn another productive kill rather than forcing the same target immediately.
+
+
+[2026-08-09 6:41:38 PM NZST] CODEX COMMENTARY
+The complete suite found one stale fixture, not a runtime regression. Its Town Clerk sentence says waiting to pay taxes, while the current pulled DD4 source says waiting for you to pay taxes. The old generic fallback had accidentally hidden that mismatch. I am aligning the fixture with the current source, then rerunning the focused case and the full suite.
+
+
+[2026-08-09 6:42:39 PM NZST] CODEX COMMENTARY
+The corrected fixture and all focused parser cases pass. The second full-suite run is progressing normally; once it is green I will inspect the saved Kestrel checkpoint and start the next bounded campaign segment from that evidence.
+
+
+[2026-08-09 6:43:52 PM NZST] CODEX COMMENTARY
+All 2329 tests pass. Kestrel is safely saved in healer room 3054 at level 24 with 334 health, 283 mana, 380 movement, six pies, a full legal equipment paper doll, and 24708 XP remaining. I am starting one 420 second bounded campaign segment now; the selector will choose from current reboot evidence rather than manually forcing Alex through its cooldown.
+
+
+[2026-08-09 6:44:33 PM NZST] CODEX COMMENTARY
+The first invocation completed quickly as planned maintenance: run 4534 bought the required flight potion and checkpointed cleanly. No gameplay stall occurred. I am immediately invoking the next segment so the now-supplied character can return to progression combat.
+
+
+[2026-08-09 6:45:30 PM NZST] CODEX COMMENTARY
+Run 4535 is active and has selected the Mahn Tor Old Treant route, a previously productive level 24 source-ranked target. This is a combat segment rather than maintenance; I am watching fresh SQLite state while it travels and fights.
+
+
+[2026-08-09 6:46:34 PM NZST] CODEX COMMENTARY
+Kestrel opened correctly with the piercing weapon and is repeatedly issuing knife between rounds. The Old Treant is down from 437 to 199 health while Kestrel remains untouched at 334 of 334; this is exactly the sustained, non-timid combat throughput the campaign needs.
+
+
+[2026-08-09 6:47:37 PM NZST] CODEX COMMENTARY
+Run 4535 completed successfully: the Old Treant died for 1044 XP, Kestrel took zero damage, and the bot returned to healer room 3054 at full health and movement. That productive kill advances reboot cooldowns without faking evidence. I am continuing with another bounded segment so the repaired Solace circuit can naturally re-enter selection and provide the multi-target proof.
+
+
+[2026-08-09 6:48:39 PM NZST] CODEX COMMENTARY
+Run 4536 was the normal post-field return-home checkpoint and completed safely; it did not consume a hunt opportunity. The campaign is ready again, so I am advancing directly to the next selected progression segment.
+
+
+[2026-08-09 6:49:33 PM NZST] CODEX COMMENTARY
+Run 4537 is now traveling to the Mirror Realm watchman, another current-band source-ranked target. Solace remains under its legitimate short crowd cooldown, so the selector is using productive alternatives rather than idling or prematurely retrying the same room.
+
+
+[2026-08-09 6:50:17 PM NZST] CODEX COMMENTARY
+Run 4537 reached the watchman and used live consider correctly, but the current spawn landed in the diff minus five below-band branch, so Kestrel did not waste time killing it for poor XP. That policy is now terminally recorded for this level and reboot. I am clearing the normal return-home checkpoint and continuing to the next viable target.
+
+
+[2026-08-09 6:51:12 PM NZST] CODEX COMMENTARY
+Run 4538 is active against the separate Mirror Realm kid policy in room 19051. The campaign skipped redundant maintenance this time and moved directly from the safe checkpoint into another current-band live-consider probe.
+
+
+[2026-08-09 6:52:27 PM NZST] CODEX COMMENTARY
+Run 4538 likewise reached its exact young boy target, then rejected the live spawn in the diff minus five branch. Two weak Mirror Realm spawns are now excluded for this level and reboot, which narrows future selection toward meaningful XP. I am continuing; the next useful result is either another productive kill or the repaired two-stop Solace circuit.
+
+
+[2026-08-09 6:53:22 PM NZST] CODEX COMMENTARY
+Run 4539 is probing the Mirror Realm commoner in room 19050. This is the third independent prototype in that area, not a retry of either below-band mobile; exact VNUM and live consider gates remain intact.
+
+
+[2026-08-09 6:54:35 PM NZST] CODEX COMMENTARY
+The commoner is wandering, and run 4539 is actively checking its bounded source-reachable Mirror Realm circuit rather than declaring it absent after one room. The latest event is fresh at 6:54 PM, with Kestrel at full health and 222 movement; this is live search, not a stall.
+
+
+[2026-08-09 6:56:03 PM NZST] CODEX COMMENTARY
+The bounded commoner circuit finished its live room scan without finding the wanderer. Kestrel has recalled to healer room 3054 and is sleeping there to restore the route movement reserve before save and quit; the process is still emitting fresh recovery state.
+
+
+[2026-08-09 6:56:20 PM NZST] CODEX COMMENTARY
+Run 4539 completed safely with the commoner absent across the full bounded search graph. The Solace crowd cooldown has now had several independent segments to age naturally, so the next selector invocation is the important one: it should either reopen that circuit or show precisely which higher-ranked policy still precedes it.
+
+
+[2026-08-09 6:57:17 PM NZST] CODEX COMMENTARY
+Run 4540 has returned to Solace, selecting mobile 10244 in room 10301 rather than the lieutenant and Alex pair. This is useful same-area evidence: the selector is no longer suppressing Solace globally, and I am watching its exact target, crowd, and consider checks now.
+
+
+[2026-08-09 6:58:28 PM NZST] CODEX COMMENTARY
+Lord Doom was present and isolated, but live consider returned no match for you, the prohibited below-band result. Kestrel recalled immediately and is recovering at the healer. The source catalog fix did not invent any phantom Solace crowd in this room, and this exact mobile is now excluded for level 24.
+
+
+[2026-08-09 6:59:39 PM NZST] CODEX COMMENTARY
+The next ready invocation is run 4541, targeting Mirror Realm mobile 19022 in room 19069. I am letting the generic frontier exhaust fresh viable prototypes because each live result becomes reusable policy evidence; known below-band targets are not being revisited.
+
+
+[2026-08-09 7:01:16 PM NZST] CODEX COMMENTARY
+Run 4541 safely searched 64 Mirror Realm route steps, but the objective stop was crowded and produced no XP. The broader pattern is now clear: after the 1044 XP treant kill, four fresh probes consumed substantial travel for zero progress. I am pausing live launches to add a generic no-progress recovery rule that prefers a same-reboot target with a recent meaningful reward after repeated zero-XP source probes, while preserving hard safety and consider gates.
+
+
+[2026-08-09 7:05:45 PM NZST] CODEX COMMENTARY
+I found the concrete scheduler defect. The treant kill correctly reduced the Solace crowd cooldown from three to two at checkpoint 11383, but reconnect metadata repair then restored historical positive kill evidence and reset that same cooldown to three at checkpoint 11385. It could therefore never expire. I am fixing the repair to preserve an already-aged cooldown and adding the exact positive-kill-plus-later-crowd regression.
+
+
+[2026-08-09 7:06:51 PM NZST] CODEX COMMENTARY
+The cooldown repair regression now passes with the related crowd and productive-work tests. I am recording the invariant in AGENTS: reconnect repair may recover historical positive evidence, but it must preserve the current countdown when the latest durable segment is still a crowd. Then I will run the full campaign suite and all tests.
+
+
+[2026-08-09 7:07:56 PM NZST] CODEX COMMENTARY
+The 637-test campaign suite is still running without a reported failure. The key regression reproduces the exact live lifecycle, including a successful source-ranked kill, a later crowd segment, a countdown already reduced to two, and reconnect metadata reconstruction.
+
+
+[2026-08-09 7:08:57 PM NZST] CODEX COMMENTARY
+All 637 campaign tests pass. The complete repository suite is now running; after it passes, I will invoke the live campaign once so startup repair processes the current checkpoint without restoring expired work, then inspect the actual persisted Solace countdown before any further hunt.
+
+
+[2026-08-09 7:11:55 PM NZST] CODEX COMMENTARY
+All 2329 tests pass after the cooldown fix. One more generic throughput guard is warranted by the same live evidence: the campaign has five consecutive current-boot source probes with zero XP after its last kill. I am deriving that streak from durable segment history and, after two zero-XP probes, allowing a proven meaningful repeat even when a fresh candidate has nominally good fuzz odds. This supplies real XP and advances temporary cooldowns instead of spending every launch on reconnaissance.
+
+
+[2026-08-09 7:12:55 PM NZST] CODEX COMMENTARY
+The focused no-progress tests pass, and replaying the real campaign history computes the expected streak of five. The next live selector will therefore choose a proven meaningful repeat rather than a sixth fresh zero-XP probe. I am recording this bounded two-probe rule, then rerunning campaign and full verification before live use.
+
+
+[2026-08-09 7:14:06 PM NZST] CODEX COMMENTARY
+The complete campaign suite is still running cleanly. The new rule does not bypass cooldowns, hard safety exclusions, live consider, specials, routes, or the meaningful-XP floor; it only opens the existing repeatable-policy pool after the durable zero-progress threshold.
+
+
+[2026-08-09 7:15:03 PM NZST] CODEX COMMENTARY
+All 639 campaign tests pass, including the three selection cases: low-odds fresh yields to a repeat, high-odds fresh wins normally, and high-odds fresh yields after the two-run zero-progress threshold. The full repository suite is in its final pass now.
+
+
+[2026-08-09 7:15:30 PM NZST] CODEX COMMENTARY
+All 2331 tests pass. I am launching the live campaign now with the real five-run streak; expected behavior is a proven meaningful repeat, not another fresh probe. I will verify the selected policy, XP result, and whether the Solace cooldown ages without being reset during the next startup repair.
+
+
+[2026-08-09 7:16:26 PM NZST] CODEX COMMENTARY
+Live selection is correct: run 4542 chose the proven Old Treant repeat despite its normal three-kill cap, rather than launching a sixth reconnaissance route. That validates the scheduler branch. I am now watching the fight and subsequent checkpoint repair for the XP and cooldown assertions.
+
+
+[2026-08-09 7:17:12 PM NZST] CODEX COMMENTARY
+The repeat paid off: Kestrel killed the Old Treant for 643 XP and is at 319 of 334 health. The reward is lower than run 4535 but still far above the meaningful-XP floor, so the repeat remains useful. The bot is completing its healer return now.
+
+
+[2026-08-09 7:18:16 PM NZST] CODEX COMMENTARY
+Run 4542 completed safely and checkpoint 11419 shows the Solace crowd cooldown correctly aged from three to two. I am starting the next invocation specifically to exercise reconnect metadata repair; as soon as startup selects the next segment I will read the new checkpoint and confirm that two remains two.
+
+
+[2026-08-09 7:20:05 PM NZST] CODEX COMMENTARY
+Run 4543 completed safely at level 24. It selected the Ultima smithy policy and checkpointed at 11424; I am now isolating the startup checkpoint that changed the Solace crowd cooldown so I can repair the remaining persistence path before the next live run.
+
+
+[2026-08-09 7:21:15 PM NZST] CODEX COMMENTARY
+I found the exact reset path. The same Solace segment both killed the first target and encountered the later crowded room; reconnect repair treated the kill as if it erased the crowd evidence, removed the aged cooldown, then rebuilt it at three. I am correcting that combined kill plus crowd case and adding a regression test before another live invocation.
+
+
+[2026-08-09 7:23:02 PM NZST] CODEX COMMENTARY
+The combined kill plus crowd regression now passes, and replaying checkpoint 11419 through the repaired migration leaves the cooldown at two with no state mutation. All 640 campaign tests are green; I am running the full suite now, then I will use a real reconnect to prove the database remains at two.
+
+
+[2026-08-09 7:24:54 PM NZST] CODEX COMMENTARY
+The full suite is green at 2332 tests. Run 4543 produced no XP after its live consider gate, so I have started the next bounded segment; the durable no-progress breaker will reopen a proven productive target after one more empty source probe if needed, which will also give us the productive checkpoint needed for the cooldown reconnect proof.
+
+
+[2026-08-09 7:26:33 PM NZST] CODEX COMMENTARY
+Run 4544 found a live level 24 Weeping Willow in Mahn-Tor and committed after the consider gate. Kestrel is at 287 of 334 health while the target is at 349 of 442, so this is a healthy productive fight rather than another empty probe; I am monitoring it through the kill and healer cleanup.
+
+
+[2026-08-09 7:28:24 PM NZST] CODEX COMMENTARY
+The fight exposed a throughput limit rather than a routing failure. Kestrel withdrew at 13 health after taking the Weeping Willow to roughly half health, gained 56 partial-combat XP, and reached Midgaard recall alive; the cleanup path is moving him to the healer now. I will use this segment to verify cooldown aging, while keeping the absence of an objective kill distinct from a successful hunt.
+
+
+[2026-08-09 7:30:35 PM NZST] CODEX COMMENTARY
+Live reconnect proof succeeded: checkpoints 11430 through 11433 all preserve the Solace cooldown at two, so the reset-to-three bug is closed in the real campaign database. Run 4545 has selected the Moria sanctuary acquisition segment; I am letting that bounded policy complete and will inspect whether it acquires the purple protection potion or records a clean retry.
+
+
+[2026-08-09 7:32:23 PM NZST] CODEX COMMENTARY
+Run 4545 completed safely at full health. The sanctuary carrier was not obtained, so the policy recorded a retryable failure and left the Solace cooldown unchanged at two. I am recording the exact combined kill plus crowd reconnect invariant in the repository guide, then I will resume source-ranked progression rather than spending another immediate segment on the absent carrier.
+
+
+[2026-08-09 7:33:36 PM NZST] CODEX COMMENTARY
+The guide now records the live reconnect invariant. Run 4546 completed the bounded Magic Shop maintenance and returned safely with one light blue flight potion still available; it did not consume another progression segment on Moria. I am continuing into the next current-band hunt so the work stays centered on XP and level advancement.
+
+
+[2026-08-09 7:34:44 PM NZST] CODEX COMMENTARY
+Run 4547 reached the Thalos mayor and passed live consider. The target loaded at level 21, inside the useful band for level 24, and combat has begun with Kestrel at 312 of 334 health and the mayor at 486 of 524. This is another real XP attempt, and I am watching both throughput and the normal health withdrawal boundary.
+
+
+[2026-08-09 7:36:43 PM NZST] CODEX COMMENTARY
+Run 4547 delivered the clean result we wanted: Kestrel killed the level 21 Thalos mayor for 1320 XP, finished at full health, and returned to healer room 3054. Total XP is now 344455, 21645 short of level 25, and the Solace multi-target cooldown has aged from two to one. I am continuing with the next productive rotation.
+
+
+[2026-08-09 7:38:43 PM NZST] CODEX COMMENTARY
+Run 4548 was only a bounded return-home normalization: Kestrel had already reached healer room 3054 but needed to restore movement before the next departure. Run 4549 is now en route to the current-band Sprite policy at room 18564; navigation is progressing normally, and I am waiting for the live room and consider gates before evaluating combat.
+
+
+[2026-08-09 7:40:41 PM NZST] CODEX COMMENTARY
+Run 4549 completed without combat because the Sprite reset was absent; it returned safely and left the Solace cooldown at one. Run 4550 has now selected the Kerofk gravedigger policy and opened its live connection. The initial source preflight took several seconds but completed normally, so there is no stalled process.
+
+
+[2026-08-09 7:42:37 PM NZST] CODEX COMMENTARY
+Run 4550 converted the Kerofk probe into another productive result. Kestrel killed the level 21 gravedigger for 962 XP, returned directly to healer room 3054 with 277 health, and is completing the normal recovery checkpoint. This should consume the final Solace cooldown count and reopen the proven two-target circuit on the following selection.
+
+
+[2026-08-09 7:44:01 PM NZST] CODEX COMMENTARY
+The gravedigger checkpoint removed the final Solace cooldown and marked that route eligible for a fresh retry; reconnect preserved that cleared state. Run 4551 only normalized movement at the healer. Run 4552 has chosen the already proven Thalos mayor again, which is acceptable progression priority while Solace remains available for a later rotation.
+
+
+[2026-08-09 7:46:00 PM NZST] CODEX COMMENTARY
+The repeat mayor loaded outside the useful live consider band, so run 4552 correctly refused combat and persisted that result for level 24 and this reboot. After a short healer normalization in run 4553, run 4554 has selected the proven Kerofk gravedigger repeat. This is the intended no-progress fallback behavior: one failed fresh target does not trigger timid wandering through the whole frontier.
+
+
+[2026-08-09 7:48:32 PM NZST] CODEX COMMENTARY
+Run 4554 found the gravedigger at level 22, passed consider, and completed the kill for 1078 XP. Kestrel returned to the healer with 228 of 334 health and no disabling condition; XP is now 346495, leaving 19605 to level 25. The repeat policy is producing reliable gains across normal mobile level fuzz.
+
+
+[2026-08-09 7:50:43 PM NZST] CODEX COMMENTARY
+Run 4555 completed the expected healer recovery after the gravedigger kill. The selector has now reopened the Moria sanctuary acquisition in run 4556 because its three productive-segment retry interval has genuinely elapsed. This is a bounded protection upgrade attempt; if the carrier is still absent, the campaign will rotate back to XP work without looping on it.
+
+
+[2026-08-09 7:52:58 PM NZST] CODEX COMMENTARY
+The Moria retry found a crowded carrier room rather than an isolated acquisition opportunity, so run 4556 declined it and set the normal cooldown. Run 4557 restored movement at the healer, and run 4558 has returned to the productive Kerofk gravedigger. The protection attempt is now out of the way and XP work is active again.
+
+
+[2026-08-09 7:55:06 PM NZST] CODEX COMMENTARY
+Run 4558 killed another level 22 gravedigger for 871 XP and returned safely, bringing Kestrel to 347366 XP. The reward is still meaningful but is decaying with same-reboot repetition. I am pausing the next connection briefly to inspect why the cleared Solace two-target circuit is not outranking this single-target repeat; that selection issue directly controls multikill throughput.
+
+
+[2026-08-09 7:58:59 PM NZST] CODEX COMMENTARY
+The selection audit is conclusive: among 300 navigation-safe level 24 source candidates, there is currently no two-target circuit whose members all pass durable live evidence. Solace is not being overlooked. Its second target returned the source diff plus two-to-five consider branch, so attacking it at level 24 is correctly blocked; that evidence is level-scoped and will reopen at level 25. I am resuming XP progression now.
+
+
+[2026-08-09 8:01:37 PM NZST] CODEX COMMENTARY
+Run 4560 rechecked the Sprite reset after its cooldown and found it absent again, then returned safely. I am switching the next invocation to three bounded campaign segments so healer recovery and the following hunt can proceed under one supervised command. The same 420-second per-segment safety bound remains in force, and I will report each run as it appears.
+
+
+[2026-08-09 8:03:01 PM NZST] CODEX COMMENTARY
+The three-segment invocation is behaving as intended. Run 4561 completed the short flight-potion maintenance, and run 4562 immediately moved into the proven Mahn-Tor Old Treant route without waiting for another command launch. It is still on the outbound fastwalk, with no navigation error or combat interruption so far.
+
+
+[2026-08-09 8:04:52 PM NZST] CODEX COMMENTARY
+Run 4562 killed the level 20 Old Treant for 923 XP and returned to the healer at 284 of 334 health. Kestrel is now at 348289 XP, 17811 short of level 25. The third segment, run 4563, is already handling healer movement recovery, so the batched invocation removed the manual launch gap exactly as intended.
+
+
+[2026-08-09 8:06:22 PM NZST] CODEX COMMENTARY
+The next batched invocation has now selected the cleared Solace lieutenant route in run 4564, confirming that the repaired cooldown and cleared-policy state do reopen the route in autonomous ranking. It is on the outbound fastwalk now. The second Solace target remains level-24 consider-blocked, so this pass will only attack it if fresh live evidence satisfies the normal gate.
+
+
+[2026-08-09 8:08:59 PM NZST] CODEX COMMENTARY
+Run 4564 has achieved the key circuit transition. Kestrel killed the level 21 lieutenant secretary for 856 XP, continued through the source-safe inter-target route, found Alex at level 25, passed the independent consider gate, and is now fighting the second target in room 10318. Kestrel is at 223 of 334 health while Alex is at 152 of 559, so the first genuine level-24 multikill circuit is close to completion.
+
+
+[2026-08-09 8:10:41 PM NZST] CODEX COMMENTARY
+Important adverse evidence: Kestrel completed both objective kills, but two level 13 Townguard entries joined immediately afterward. The policy treated them as harmless below-band combat and stayed too long; Kestrel died, traversed Purgatory correctly, recovered and looted the corpse, entered the portal, rewore gear, and is now sleeping safely at healer room 3054. XP fell to 339381. I will let recovery finish, then repair the duplicate below-band joiner rule before another hunt.
+
+
+[2026-08-09 8:18:16 PM NZST] CODEX COMMENTARY
+The detailed transcript narrows this to one patrol Townguard, not two independent mobiles: GMCP duplicated the same record, and the existing enemy parser already deduplicates it. Source mobile 10215 has spec_guard, which repeatedly used headbutt and kick for burst damage. I am making two focused edits now: flee immediately from any unplanned post-objective attacker, even when below-band, and clear the sticky death flag when the first Midgaard prompt arrives before GMCP room data after the Purgatory portal.
+
+
+[2026-08-09 8:21:46 PM NZST] CODEX COMMENTARY
+Both repairs pass 927 state and starter tests. Replaying all 4564 game events through the corrected reducer now ends with dead false, full health, Midgaard room 3054, and the recovered XP value, matching the live outcome. The new combat regression preserves ordinary below-band joiner behavior during an unfinished fight but forces an immediate flee once the planned kill budget is complete. I am running the full suite next.
+
+
+[2026-08-09 8:23:56 PM NZST] CODEX COMMENTARY
+The full suite is green at 2334 tests, and the repository guide now records both run 4564 lessons. Because checkpoint 11531 was written by the old reducer, it still contains a stale dead flag even though Kestrel is fully recovered. I am starting one bounded recovery invocation now; it should observe the live healer state, replace that stale checkpoint metadata, save, and quit without entering a hunt.
+
+
+[2026-08-09 8:25:16 PM NZST] CODEX COMMENTARY
+The stale death repair is live-verified: checkpoint 11535 now records dead false, full health, and healer room 3054. The recovery segment then exposed the next concrete blocker. The Midgaard weaponsmith quoted daggers normally but refused to serve Kestrel because of reputation, so no weapon was bought and the audit failed. I am tracing the refusal rule and source-backed alternative piercing weapons now; I will make rearm fall back autonomously instead of treating one hostile shopkeeper as fatal.
+
+
+[2026-08-09 8:28:52 PM NZST] CODEX COMMENTARY
+Understood. Routine repository, test, live MUD, source refresh, and local process work is already preauthorized here. I will stop asking for optional permission, skip any nonessential review that blocks, and keep moving. I am now fixing the negative-reputation rearm path so Kestrel can recover a piercing weapon without relying on a shopkeeper who refuses service.
+
+
+[2026-08-09 8:29:20 PM NZST] CODEX COMMENTARY
+I am tracing the exact state transitions now. The refusal is global DD4 shop behavior for negative fame, not a weaponsmith quirk, so the right repair is to persist that condition, return safely from the failed shop trip, and route the campaign to a source-backed field weapon acquisition.
+
+
+[2026-08-09 8:32:21 PM NZST] CODEX COMMENTARY
+I have enough context and am editing four narrow surfaces: refusal detection and safe return in the starter runner, a durable campaign marker backed by live GMCP fame, policy selection that sends an unarmed thief to the existing Old Thalos dagger recovery route, and regression tests for both transitions. The ordinary shop rearm path remains unchanged for characters whose fame permits trade.
+
+
+[2026-08-09 8:33:58 PM NZST] CODEX COMMENTARY
+The focused regressions pass. The new path now distinguishes two cases cleanly: fame zero or better still buys a dagger in Midgaard; negative fame bypasses the impossible shop transaction and selects the existing bounded lamia carrier route. I am checking the persisted Kestrel checkpoint and the follow-on fame mechanics before I launch it, because restoring the weapon alone would still leave every shop unavailable.
+
+
+[2026-08-09 8:39:01 PM NZST] CODEX COMMENTARY
+The source audit found the deeper cause: Alex carries ACT_LOSE_FAME, but the source ranker did not reject that flag. I am closing that hole now so autonomous XP selection can never choose a fame-loss mobile again. DD4 also forbids leveling while fame is negative, so after weapon recovery I will use a separate source-bounded fame repair rather than letting ordinary maintenance or leveling spin.
+
+
+[2026-08-09 8:46:54 PM NZST] CODEX COMMENTARY
+Understood. I will treat routine repository work, tests, local process management, source refreshes, and live DD4 runs as already authorized. I am continuing from the safe Kestrel checkpoint now, finishing the negative-fame recovery path and then validating it before the next live run.
+
+
+[2026-08-09 8:47:28 PM NZST] CODEX COMMENTARY
+The partial implementation is intact, including the source-level rejection of fame-loss mobiles and the field dagger fallback when shops refuse Kestrel. The missing link is campaign orchestration: I am wiring negative fame ahead of ordinary maintenance, requiring a sanctuary reserve, dispatching the bounded Mirror Realm recovery circuit, and clearing the reputation marker only when live fame reaches zero.
+
+
+[2026-08-09 8:51:35 PM NZST] CODEX COMMENTARY
+The orchestration patch is now in place, and the first focused regression pass is green at 44 tests. I am adding explicit tests for the unusual consider branch, armed negative-fame policy selection, live fame marker clearing, and the new route dispatch before running the broader suite.
+
+
+[2026-08-09 8:53:51 PM NZST] CODEX COMMENTARY
+All six new behavioral tests pass. The recovery sequence is now explicit: return to Midgaard, recover the Kestrel piercing weapon in the field because shops reject negative fame, obtain a purple sanctuary potion, then kill exactly one isolated level-30 Mirror Realm animal only when live consider proves the six-to-nine-level fame band; repeat after healing until fame is nonnegative.
+
+
+[2026-08-09 8:55:43 PM NZST] CODEX COMMENTARY
+The broader campaign, starter, progression, and source-ranking test set is running now. It is the slow portion of the suite; there is no live DD4 process active and Kestrel remains safely checkpointed at the healer while verification runs.
+
+
+[2026-08-09 8:57:29 PM NZST] CODEX COMMENTARY
+The 2,043-test subsystem pass is fully green. The complete repository suite is now in its final stretch; once it clears, I will make the scheduled 9:00 PM local commit within the 60-second limit, then resume the live campaign from the safe checkpoint.
+
+
+[2026-08-09 8:58:11 PM NZST] CODEX COMMENTARY
+Full verification is green: 2,342 tests passed. The branch is main, the only running project service is the Discord streamer, and the tracked changes contain no live credential values. I am waiting for the exact 9:00 PM window now; the only whitespace report is the conversation archive CRLF format already documented by the prior commit.
+
+
+[2026-08-09 9:00:23 PM NZST] CODEX COMMENTARY
+It is now the scheduled 9:00 PM local window. I am staging the verified tracked changes and making the single allowed local commit now; the commit command has a hard 60-second timeout, and no remote push will be attempted.

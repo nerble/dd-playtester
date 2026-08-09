@@ -5224,6 +5224,33 @@ def test_level_nineteen_absent_moria_cooldown_opens_deep_recovery_probe() -> Non
     assert promoted.segment_kill_limit == 1
 
 
+def test_level_twenty_three_protection_fallback_rejects_expired_rock_toads() -> None:
+    moria_policy_id = "moria-sanctuary-thief-17-20"
+    policy = policy_for(
+        23,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        protection_recovery_required=True,
+        last_policy_id=moria_policy_id,
+        world_boot_id="boot-1",
+        research_results={
+            moria_policy_id: {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            }
+        },
+        research_absence_cooldowns={moria_policy_id: 3},
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.execution is None
+    assert policy.executable is False
+    assert "mahntor-rock-toad" not in policy.summary.casefold()
+
+
 def test_below_band_deep_probe_promotes_required_loot_hunt() -> None:
     results = _level_eighteen_research_outcomes()
     results.update(

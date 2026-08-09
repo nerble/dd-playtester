@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
+from itertools import combinations
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Sequence
 
-from .hunt_candidates import ObjectSource, load_object_sources
+from .hunt_candidates import (
+    ObjectSetSource,
+    ObjectSource,
+    load_object_set_sources,
+    load_object_sources,
+)
 
 
 APPLY_STATS = frozenset({1, 2, 3, 4, 5})
@@ -31,6 +38,42 @@ ITEM_BOW = 1 << 30
 ITEM_CURSED = 1 << 61
 PIERCING_DAMAGE_TYPES = frozenset({2, 11})
 BLUNT_DAMAGE_TYPES = frozenset({6, 7, 8})
+
+# ``str_app`` from DD4 const.c. Values are (to-hit, to-damage).
+_STR_APP = (
+    (-5, -4),
+    (-5, -4),
+    (-3, -2),
+    (-3, -1),
+    (-2, -1),
+    (-2, -1),
+    (-1, 0),
+    (-1, 0),
+    (0, 0),
+    (0, 0),
+    (0, 0),
+    (0, 0),
+    (0, 0),
+    (0, 0),
+    (0, 1),
+    (1, 1),
+    (1, 2),
+    (2, 3),
+    (2, 4),
+    (3, 5),
+    (3, 6),
+    (4, 7),
+    (5, 7),
+    (6, 8),
+    (8, 10),
+    (10, 12),
+    (12, 13),
+    (13, 14),
+    (16, 16),
+    (18, 18),
+    (20, 20),
+    (22, 22),
+)
 
 STANCE_COMBAT = "combat"
 STANCE_PRE_LEVEL = "pre_level"
@@ -72,8 +115,13 @@ class GearChoice:
 
 
 class GearCatalog:
-    def __init__(self, objects: Mapping[int, ObjectSource]) -> None:
+    def __init__(
+        self,
+        objects: Mapping[int, ObjectSource],
+        object_sets: Mapping[int, ObjectSetSource] | None = None,
+    ) -> None:
         self.objects = dict(objects)
+        self.object_sets = dict(object_sets or {})
         by_name: dict[str, list[ObjectSource]] = {}
         for item in self.objects.values():
             short_name = normalize_item_name(item.short_description)
@@ -87,7 +135,10 @@ class GearCatalog:
 
     @classmethod
     def from_area_directory(cls, area_directory: Path) -> "GearCatalog":
-        return cls(load_object_sources(area_directory))
+        return cls(
+            load_object_sources(area_directory),
+            load_object_set_sources(area_directory),
+        )
 
     def match(self, description: str) -> ObjectSource | None:
         candidates = self.candidates(description)
@@ -237,6 +288,24 @@ def stance_score(
     level_gain_priorities: tuple[str, ...] = (),
 ) -> tuple[int, ...]:
     bonuses = _bonus_totals(item)
+    return _stance_score_from_totals(
+        bonuses,
+        stance,
+        level_gain_priorities=level_gain_priorities,
+        armor=item.values[0] if item.item_type == 9 and item.values else 0,
+        weapon=weapon_damage_score(item),
+    )
+
+
+def _stance_score_from_totals(
+    bonuses: Mapping[int, int],
+    stance: str,
+    *,
+    level_gain_priorities: tuple[str, ...],
+    armor: int = 0,
+    weapon: int = 0,
+    aggregate_combat: bool = False,
+) -> tuple[int, ...]:
     stats = sum(max(0, bonuses.get(location, 0)) for location in APPLY_STATS)
     damroll = max(0, bonuses.get(APPLY_DAMROLL, 0))
     hitroll = max(0, bonuses.get(APPLY_HITROLL, 0))
@@ -245,8 +314,6 @@ def stance_score(
     hitpoints = max(0, bonuses.get(APPLY_HIT, 0))
     mana = max(0, bonuses.get(APPLY_MANA, 0))
     recovery = hitpoints + mana
-    armor = item.values[0] if item.item_type == 9 and item.values else 0
-    weapon = weapon_damage_score(item)
     if stance == STANCE_PRE_LEVEL:
         if level_gain_priorities:
             level_metrics = {
@@ -308,7 +375,11 @@ def stance_score(
         )
     if stance != STANCE_COMBAT:
         raise ValueError(f"Unknown equipment stance: {stance}")
-    direct_damage = weapon + 2 * damroll if weapon else damroll
+    direct_damage = (
+        weapon + 2 * damroll
+        if aggregate_combat or weapon
+        else damroll
+    )
     return (
         direct_damage,
         hitroll,
@@ -440,35 +511,23 @@ def _stance_rank(
     )
 
 
-def plan_stance(
-    carried: Iterable[ObjectSource],
-    worn: Iterable[ObjectSource],
+def _independent_loadout(
+    carried: Sequence[ObjectSource],
+    worn: Sequence[ObjectSource],
     stance: str,
     *,
-    character_level: int | None = None,
-    level_gain_priorities: tuple[str, ...] = (),
-    weapon_preference: str | None = None,
-) -> list[GearChoice]:
-    """Return carried items that should replace or fill the current gear set."""
-    carried_items = list(carried)
-    worn_items = list(worn)
+    level_gain_priorities: tuple[str, ...],
+    weapon_preference: str | None,
+) -> dict[str, tuple[ObjectSource, ...]]:
     categories = {
         category
-        for item in carried_items + worn_items
+        for item in (*carried, *worn)
         if (category := item_category(item)) is not None
     }
-    choices: list[GearChoice] = []
+    loadout: dict[str, tuple[ObjectSource, ...]] = {}
     for category in sorted(categories):
-        current = [item for item in worn_items if item_category(item) == category]
-        available = [
-            item
-            for item in carried_items
-            if item_category(item) == category
-            and (
-                character_level is None
-                or item.effective_level <= character_level
-            )
-        ]
+        current = [item for item in worn if item_category(item) == category]
+        available = [item for item in carried if item_category(item) == category]
         capacity = _CATEGORY_CAPACITY.get(category, 1)
         ranked = sorted(
             [(item, True) for item in current]
@@ -485,11 +544,289 @@ def plan_stance(
             ),
             reverse=True,
         )[:capacity]
-        choices.extend(
-            GearChoice(item, category, worn)
-            for item, worn in ranked
-            if item is not None and not worn
+        loadout[category] = tuple(item for item, _ in ranked if item is not None)
+    return loadout
+
+
+def _category_options(
+    items: Sequence[ObjectSource],
+    category: str,
+) -> tuple[tuple[ObjectSource, ...], ...]:
+    eligible = [
+        item
+        for item in items
+        if item_category(item) == category
+        and not is_strength_penalty_ring(item)
+        and not any(
+            location in APPLY_STATS and modifier < 0
+            for location, modifier in item.affects
         )
+    ]
+    count = min(_CATEGORY_CAPACITY.get(category, 1), len(eligible))
+    if count == 0:
+        return ((),)
+    options: dict[tuple[int, ...], tuple[ObjectSource, ...]] = {}
+    for indices in combinations(range(len(eligible)), count):
+        option = tuple(eligible[index] for index in indices)
+        key = tuple(sorted(item.vnum for item in option))
+        options.setdefault(key, option)
+    return tuple(options[key] for key in sorted(options))
+
+
+def _loadout_items(
+    loadout: Mapping[str, Sequence[ObjectSource]],
+) -> tuple[ObjectSource, ...]:
+    return tuple(
+        item
+        for category in sorted(loadout)
+        for item in loadout[category]
+    )
+
+
+def _loadout_bonus_totals(
+    items: Sequence[ObjectSource],
+    object_sets: Sequence[ObjectSetSource],
+) -> dict[int, int]:
+    totals: dict[int, int] = {}
+    for item in items:
+        for location, modifier in item.affects:
+            totals[location] = totals.get(location, 0) + modifier
+
+    worn_vnums = {item.vnum for item in items}
+    for object_set in object_sets:
+        distinct_count = len(worn_vnums.intersection(object_set.object_vnums))
+        for bonus in object_set.bonuses:
+            if distinct_count >= bonus.required_count:
+                totals[bonus.location] = (
+                    totals.get(bonus.location, 0) + bonus.modifier
+                )
+    return totals
+
+
+def _loadout_rank(
+    loadout: Mapping[str, Sequence[ObjectSource]],
+    *,
+    stance: str,
+    level_gain_priorities: tuple[str, ...],
+    weapon_preference: str | None,
+    object_sets: Sequence[ObjectSetSource],
+    worn: Sequence[ObjectSource],
+    current_strength: int | None,
+) -> tuple[object, ...]:
+    items = _loadout_items(loadout)
+    bonuses = _loadout_bonus_totals(items, object_sets)
+    if current_strength is not None:
+        current_bonuses = _loadout_bonus_totals(worn, object_sets)
+        strength_delta = bonuses.get(1, 0) - current_bonuses.get(1, 0)
+        old_strength = max(3, min(len(_STR_APP) - 1, current_strength))
+        new_strength = max(
+            3,
+            min(len(_STR_APP) - 1, current_strength + strength_delta),
+        )
+        bonuses[APPLY_HITROLL] = bonuses.get(APPLY_HITROLL, 0) + (
+            _STR_APP[new_strength][0] - _STR_APP[old_strength][0]
+        )
+        bonuses[APPLY_DAMROLL] = bonuses.get(APPLY_DAMROLL, 0) + (
+            _STR_APP[new_strength][1] - _STR_APP[old_strength][1]
+        )
+
+    preferred_weapon = sum(
+        item_category(item) == "wield"
+        and (
+            weapon_preference == "piercing"
+            and is_piercing_weapon(item)
+            or weapon_preference == "blunt"
+            and is_blunt_weapon(item)
+        )
+        for item in items
+    )
+    score = _stance_score_from_totals(
+        bonuses,
+        stance,
+        level_gain_priorities=level_gain_priorities,
+        armor=sum(
+            item.values[0]
+            for item in items
+            if item.item_type == 9 and item.values
+        ),
+        weapon=sum(weapon_damage_score(item) for item in items),
+        aggregate_combat=True,
+    )
+    desired_counts = Counter(item.vnum for item in items)
+    worn_counts = Counter(item.vnum for item in worn)
+    retained = sum((desired_counts & worn_counts).values())
+    deterministic = tuple(-item.vnum for item in sorted(items, key=lambda item: item.vnum))
+    return (
+        preferred_weapon,
+        *score,
+        len(items),
+        retained,
+        deterministic,
+    )
+
+
+def _force_set_members(
+    loadout: Mapping[str, tuple[ObjectSource, ...]],
+    members: Sequence[ObjectSource],
+    category_options: Mapping[str, tuple[tuple[ObjectSource, ...], ...]],
+    rank,
+) -> dict[str, tuple[ObjectSource, ...]] | None:
+    forced_by_category: dict[str, set[int]] = {}
+    for item in members:
+        category = item_category(item)
+        if category is None:
+            return None
+        forced_by_category.setdefault(category, set()).add(item.vnum)
+
+    result = dict(loadout)
+    for category, required_vnums in forced_by_category.items():
+        matching = [
+            option
+            for option in category_options[category]
+            if required_vnums.issubset({item.vnum for item in option})
+        ]
+        if not matching:
+            return None
+        result[category] = max(
+            matching,
+            key=lambda option: rank({**result, category: option}),
+        )
+    return result
+
+
+def _desired_loadout(
+    carried: Sequence[ObjectSource],
+    worn: Sequence[ObjectSource],
+    stance: str,
+    *,
+    level_gain_priorities: tuple[str, ...],
+    weapon_preference: str | None,
+    object_sets: Sequence[ObjectSetSource],
+    current_strength: int | None,
+) -> dict[str, tuple[ObjectSource, ...]]:
+    baseline = _independent_loadout(
+        carried,
+        worn,
+        stance,
+        level_gain_priorities=level_gain_priorities,
+        weapon_preference=weapon_preference,
+    )
+    if not object_sets:
+        return baseline
+
+    all_items = (*carried, *worn)
+    available_by_vnum = {item.vnum: item for item in all_items}
+    relevant_sets = [
+        object_set
+        for object_set in object_sets
+        if object_set.bonuses
+        and len(set(object_set.object_vnums).intersection(available_by_vnum))
+        >= min(bonus.required_count for bonus in object_set.bonuses)
+    ]
+    if not relevant_sets:
+        return baseline
+
+    category_options = {
+        category: _category_options(all_items, category)
+        for category in baseline
+    }
+    rank = lambda loadout: _loadout_rank(
+        loadout,
+        stance=stance,
+        level_gain_priorities=level_gain_priorities,
+        weapon_preference=weapon_preference,
+        object_sets=object_sets,
+        worn=worn,
+        current_strength=current_strength,
+    )
+
+    def optimize(
+        seed: Mapping[str, tuple[ObjectSource, ...]],
+    ) -> dict[str, tuple[ObjectSource, ...]]:
+        result = dict(seed)
+        changed = True
+        while changed:
+            changed = False
+            for category in sorted(category_options):
+                best = max(
+                    category_options[category],
+                    key=lambda option: rank({**result, category: option}),
+                )
+                if best != result.get(category, ()):
+                    trial = {**result, category: best}
+                    if rank(trial) > rank(result):
+                        result = trial
+                        changed = True
+        return result
+
+    seeds: list[dict[str, tuple[ObjectSource, ...]]] = [optimize(baseline)]
+    for object_set in relevant_sets:
+        member_items = [
+            available_by_vnum[vnum]
+            for vnum in object_set.object_vnums
+            if vnum in available_by_vnum
+        ]
+        expanded = list(seeds)
+        for seed in seeds:
+            for required_count in sorted(
+                {bonus.required_count for bonus in object_set.bonuses}
+            ):
+                for members in combinations(member_items, required_count):
+                    forced = _force_set_members(
+                        seed,
+                        members,
+                        category_options,
+                        rank,
+                    )
+                    if forced is not None:
+                        expanded.append(optimize(forced))
+        deduplicated = {
+            tuple(
+                (category, tuple(item.vnum for item in loadout[category]))
+                for category in sorted(loadout)
+            ): loadout
+            for loadout in expanded
+        }
+        seeds = sorted(deduplicated.values(), key=rank, reverse=True)[:256]
+    return max(seeds, key=rank)
+
+
+def plan_stance(
+    carried: Iterable[ObjectSource],
+    worn: Iterable[ObjectSource],
+    stance: str,
+    *,
+    character_level: int | None = None,
+    level_gain_priorities: tuple[str, ...] = (),
+    weapon_preference: str | None = None,
+    object_sets: Iterable[ObjectSetSource] = (),
+    current_strength: int | None = None,
+) -> list[GearChoice]:
+    """Return carried items that should replace or fill the current gear set."""
+    carried_items = [
+        item
+        for item in carried
+        if character_level is None or item.effective_level <= character_level
+    ]
+    worn_items = list(worn)
+    desired = _desired_loadout(
+        carried_items,
+        worn_items,
+        stance,
+        level_gain_priorities=level_gain_priorities,
+        weapon_preference=weapon_preference,
+        object_sets=tuple(object_sets),
+        current_strength=current_strength,
+    )
+    worn_counts = Counter(item.vnum for item in worn_items)
+    selected_worn: Counter[int] = Counter()
+    choices: list[GearChoice] = []
+    for category in sorted(desired):
+        for item in desired[category]:
+            if selected_worn[item.vnum] < worn_counts[item.vnum]:
+                selected_worn[item.vnum] += 1
+            else:
+                choices.append(GearChoice(item, category, False))
     return choices
 
 
@@ -500,60 +837,38 @@ def plan_stance_swaps(
     *,
     level_gain_priorities: tuple[str, ...] = (),
     weapon_preference: str | None = None,
+    object_sets: Iterable[ObjectSetSource] = (),
+    current_strength: int | None = None,
 ) -> tuple[list[ObjectSource], list[ObjectSource]]:
     """Return worn removals and carried additions needed for a stance."""
     carried_items = list(carried)
     worn_items = list(worn)
+    desired_loadout = _desired_loadout(
+        carried_items,
+        worn_items,
+        stance,
+        level_gain_priorities=level_gain_priorities,
+        weapon_preference=weapon_preference,
+        object_sets=tuple(object_sets),
+        current_strength=current_strength,
+    )
+    desired = _loadout_items(desired_loadout)
     removals: list[ObjectSource] = []
     additions: list[ObjectSource] = []
-    categories = {
-        category
-        for item in carried_items + worn_items
-        if (category := item_category(item)) is not None
-    }
-    for category in sorted(categories):
-        current = [item for item in worn_items if item_category(item) == category]
-        available = [item for item in carried_items if item_category(item) == category]
-        capacity = _CATEGORY_CAPACITY.get(category, 1)
-        desired = [
-            item
-            for item, _ in sorted(
-                [(item, True) for item in current]
-                + [(item, False) for item in available]
-                + [(None, False)] * capacity,
-                key=lambda entry: (
-                    _stance_rank(
-                        entry[0],
-                        stance,
-                        level_gain_priorities=level_gain_priorities,
-                        weapon_preference=weapon_preference,
-                    ),
-                    entry[1],
-                ),
-                reverse=True,
-            )[:capacity]
-            if item is not None
-        ]
-        desired_counts: dict[int, int] = {}
-        for item in desired:
-            desired_counts[item.vnum] = desired_counts.get(item.vnum, 0) + 1
-        kept_counts: dict[int, int] = {}
-        for item in current:
-            kept = kept_counts.get(item.vnum, 0)
-            if kept < desired_counts.get(item.vnum, 0):
-                kept_counts[item.vnum] = kept + 1
-            else:
-                removals.append(item)
-        current_counts: dict[int, int] = {}
-        for item in current:
-            current_counts[item.vnum] = current_counts.get(item.vnum, 0) + 1
-        added_counts: dict[int, int] = {}
-        for item in desired:
-            already = current_counts.get(item.vnum, 0)
-            added = added_counts.get(item.vnum, 0)
-            if added < max(0, desired_counts[item.vnum] - already):
-                additions.append(item)
-                added_counts[item.vnum] = added + 1
+    desired_counts = Counter(item.vnum for item in desired)
+    kept_counts: Counter[int] = Counter()
+    for item in worn_items:
+        if kept_counts[item.vnum] < desired_counts[item.vnum]:
+            kept_counts[item.vnum] += 1
+        else:
+            removals.append(item)
+    worn_counts = Counter(item.vnum for item in worn_items)
+    added_counts: Counter[int] = Counter()
+    for item in desired:
+        needed = max(0, desired_counts[item.vnum] - worn_counts[item.vnum])
+        if added_counts[item.vnum] < needed:
+            additions.append(item)
+            added_counts[item.vnum] += 1
     removals.sort(
         key=lambda item: stance_score(
             item,

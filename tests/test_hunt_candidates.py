@@ -871,6 +871,43 @@ def test_candidate_ranking_marks_source_shopkeepers_as_non_xp_targets() -> None:
     assert "source mobile is a shopkeeper" in candidate.autonomy_rejections
 
 
+def test_candidate_ranking_rejects_source_fame_loss_targets() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "helpful citizen",
+                "a helpful citizen",
+                6,
+                1 << 15,
+                0,
+                "frontier.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Frontier room", "frontier.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=6,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+
+    assert candidate.status == "reject"
+    assert candidate.autonomous_safe is False
+    assert "source mobile costs fame when killed" in candidate.autonomy_rejections
+
+
 def test_source_mobile_coin_carrier_is_ranked_for_funding() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),

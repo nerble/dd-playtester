@@ -132,6 +132,7 @@ from dd4tester.starter import (
     midennir_horseman_probe_route,
     mirror_realm_gardener_research_stops,
     mirror_realm_gardener_hunt_stops,
+    mirror_realm_fame_recovery_stops,
     mirror_realm_jerry_garcia_research_stops,
     mirror_realm_storn_hunt_stops,
     mirror_realm_storn_research_stops,
@@ -386,6 +387,123 @@ def test_shadow_grove_return_home_uses_live_maze_and_source_route() -> None:
         state.room_vnum = destination
 
     assert policy._return_home_decision(state) is None
+
+
+def test_abyss_return_home_recovers_move_and_uses_recallable_room() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    state = CharacterState(
+        room_vnum="7531",
+        room_name="The Abyss",
+        room_flags=["no_recall"],
+        exits={
+            "n": "7534",
+            "e": "7532",
+            "s": "7535",
+            "w": "7536",
+            "u": "7533",
+            "d": "7530",
+        },
+        move=5,
+        max_move=360,
+        position=7,
+        affects=[[{"name": "fly", "duration": "18"}]],
+    )
+
+    # Standing recovery preserves flight and needs only one six-point step.
+    assert policy._return_home_decision(state) is None
+    state.move = 6
+    assert policy._return_home_decision(state).command == "west"
+
+    state.room_vnum = "7536"
+    state.room_flags = ["no_mob"]
+    assert policy._return_home_decision(state).command == "recall"
+    state.room_vnum = "3001"
+    assert policy._return_home_decision(state).command == "north"
+    state.room_vnum = "3054"
+    assert policy._return_home_decision(state) is None
+
+
+def test_abyss_return_home_waits_for_fall_when_flight_is_gone() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    state = CharacterState(
+        room_vnum="7531",
+        room_name="The Abyss",
+        room_flags=["no_recall"],
+        exits={"west": "7536"},
+        move=360,
+        max_move=360,
+        position=7,
+        affects=[[]],
+    )
+
+    assert policy._return_home_decision(state) is None
+    assert policy.prompt_ready is False
+
+    state.room_vnum = "7537"
+    state.room_flags = ["no_mob"]
+    assert policy._return_home_decision(state).command == "recall"
+
+
+def test_abyss_source_distance_covers_every_room_and_all_recall_points() -> None:
+    assert set(starter._ABYSS_RECALL_DISTANCE) == set(starter._ABYSS_ROOMS)
+    assert {
+        room
+        for room, distance in starter._ABYSS_RECALL_DISTANCE.items()
+        if distance == 0
+    } == set(starter._ABYSS_RECALL_ROOMS)
+    assert starter._ABYSS_RECALL_DISTANCE["7531"] == 1
+    assert "7536" in starter._ABYSS_RECALL_ROOMS
+
+
+def test_abyss_fastwalk_preserves_return_movement_reserve() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("galaxy white dwarf"),
+    )
+    state = CharacterState(
+        room_vnum="7531",
+        room_name="The Abyss",
+        room_flags=["no_recall"],
+        exits={"west": "7536"},
+        move=starter._ABYSS_RETURN_MOVE_RESERVE,
+        max_move=360,
+        position=7,
+        affects=[[{"name": "fly", "duration": "18"}]],
+    )
+
+    decision = policy._fastwalk_research_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert policy.fastwalk_returning is True
+    assert policy.return_home is True
+    assert "reserve was exhausted" in (policy.fastwalk_abort_reason or "")
+
+
+def test_abyss_return_home_flees_live_combat_before_recalling() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    state = CharacterState(
+        room_vnum="7536",
+        room_name="The Abyss",
+        room_flags=["no_mob"],
+        move=360,
+        max_move=360,
+        hp=100,
+        max_hp=200,
+        position=7,
+        enemies=[],
+        affects=[[{"name": "fly", "duration": "18"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.utility_emergency_recall_pending is True
 
 
 def test_shadow_grove_fastwalk_return_uses_the_same_source_route() -> None:
@@ -924,6 +1042,70 @@ def test_crowded_field_intercept_continues_to_later_registered_stop() -> None:
     assert decision.command == "north"
     assert policy.fastwalk_hunt_stop_index == 1
     assert policy.fastwalk_crowded is True
+
+
+def test_rejected_outbound_intercept_continues_to_independent_circuit_stop() -> None:
+    stops = (
+        FieldHuntStop(
+            (),
+            "watchman",
+            exact_target=True,
+            source_mobile_vnum=19009,
+            source_policy_id="source-ranked-hunt-mirror-realm-19009-19009-24",
+        ),
+        FieldHuntStop(
+            (),
+            "watchman",
+            exact_target=True,
+            route_vnums=("19008", "19010"),
+            source_mobile_vnum=19010,
+            source_policy_id="source-ranked-hunt-mirror-realm-19010-19010-24",
+        ),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=Fastwalk("watchman circuit", 1, 100, "w"),
+        fastwalk_hunt_stops=stops,
+        source_mobile_level_ranges_by_vnum={
+            19009: (17, 21),
+            19010: (17, 21),
+        },
+    )
+    policy.fastwalk_outbound_index = 1
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_targetmode_configured = True
+    policy.fastwalk_hunt_stop_index = 0
+    policy.fastwalk_hunt_stop_skipped = True
+    policy.fastwalk_intercept_returning = True
+    policy.fastwalk_field_intercept_active = False
+    policy.fastwalk_attack_target = "watchman"
+    policy.consider_target = "watchman"
+    policy.consider_viable = False
+    policy.current_room = "19009"
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=350,
+        max_move=380,
+        room_vnum="19009",
+        exits={"e": "19008"},
+        position=7,
+    )
+
+    assert policy._fastwalk_intercept_followup_decision(state) is None
+    assert policy.fastwalk_intercept_returning is False
+    assert policy.fastwalk_returning is False
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "east"
+    assert policy.fastwalk_hunt_stop_index == 1
+    assert policy.fastwalk_below_band_targets == set()
 
 
 def test_field_intercept_equips_required_loot_before_bounded_recall() -> None:
@@ -1793,7 +1975,7 @@ def test_mobile_short_description_matching_room_title_is_not_counted_twice() -> 
         "Town Clerk\n"
         "[Exits: east west]\n"
         f"{description}\n"
-        "[#5628] (White Aura) The Town Clerk is here impatiently waiting to pay taxes.\n"
+        "[#5628] (White Aura) The Town Clerk is here impatiently waiting for you to pay taxes.\n"
     )
 
     assert policy.room_target_counts["10266"] == {"town clerk": 1}
@@ -5045,6 +5227,39 @@ def test_completed_kill_records_direct_xp_when_total_line_is_absent() -> None:
     ]
 
 
+def test_completed_source_kill_keeps_per_stop_identity() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "wolf",
+                source_mobile_vnum=123,
+                source_policy_id="source-ranked-hunt-test-123-3713-5",
+            ),
+        ),
+    )
+    policy.current_room = "3713"
+    policy.room_targets["3713"] = ["wolf"]
+    policy.active_target = "wolf"
+    policy.combat_active = True
+
+    policy.observe_text(
+        "A wolf is DEAD!!\n"
+        "You receive 100 experience points for the kill.\n"
+    )
+
+    assert policy.completed_kills == [
+        {
+            "mob_name": "wolf",
+            "xp_gained": 100,
+            "source_mobile_vnum": 123,
+            "source_policy_id": "source-ranked-hunt-test-123-3713-5",
+        }
+    ]
+
+
 def test_flee_rejection_clears_the_combat_state() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.current_room = "3737"
@@ -6388,7 +6603,7 @@ def test_dwarven_nobleman_allows_only_the_source_maid_as_a_bystander() -> None:
     assert policy.fastwalk_abort_reason is None
 
 
-def test_room_mobile_parser_prefers_source_lines_and_keeps_unknown_mobiles() -> None:
+def test_room_mobile_parser_ignores_unknown_prose_with_source_catalog() -> None:
     targets = _room_mobile_target_counts(
         "A pig wallows in the mud and oinks in contentment.\n"
         "An ugly kobold mumbles something under its breath.\n",
@@ -6397,7 +6612,21 @@ def test_room_mobile_parser_prefers_source_lines_and_keeps_unknown_mobiles() -> 
         },
     )
 
-    assert targets == {"pig": 1, "ugly kobold": 1}
+    assert targets == {"pig": 1}
+
+
+def test_room_mobile_parser_does_not_promote_static_are_prose() -> None:
+    targets = _room_mobile_target_counts(
+        "Metal and wooden objects are everywhere.\n"
+        "[#7442] A townguard is on patrol.\n"
+        "[#7443] Alex is here, looking for something to do.\n",
+        {
+            "a townguard is on patrol.": ("townguard",),
+            "alex is here, looking for something to do.": ("alex",),
+        },
+    )
+
+    assert targets == {"townguard": 1, "alex": 1}
 
 
 def test_room_mobile_parser_counts_repeated_source_lines() -> None:
@@ -9648,6 +9877,57 @@ def test_fastwalk_keeps_fighting_when_live_level_proves_joiner_below_band() -> N
     assert policy.active_target == "bull"
 
 
+def test_fastwalk_flees_below_band_joiner_after_final_objective() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "Secretary"),
+            FieldHuntStop((), "Alex"),
+        ),
+        fastwalk_kill_limit=2,
+        source_mobile_level_ranges={"Townguard": (11, 15)},
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_attack_started = True
+    policy.fastwalk_hunt_stop_index = 1
+    policy.fastwalk_hunt_stop_killed = True
+    policy.fastwalk_attack_target = "Alex"
+    policy.completed_kills = [
+        {"mob_name": "Secretary", "xp_gained": 856},
+        {"mob_name": "Alex", "xp_gained": 2067},
+    ]
+    policy.observe_text("Townguard misses you.")
+
+    decision = policy.next_decision(
+        CharacterState(
+            level=24,
+            hp=172,
+            max_hp=334,
+            position=6,
+            room_name="Alex's Tinkery",
+            room_vnum="10318",
+            enemies=[[
+                {
+                    "name": "Townguard",
+                    "level": "13",
+                    "hp": "250",
+                    "maxhp": "250",
+                }
+            ]],
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "post-objective attacker" in decision.reason
+    assert policy.fastwalk_returning is True
+    assert policy.fastwalk_emergency_recall_pending is True
+    assert policy.fastwalk_crowded is True
+
+
 def test_fastwalk_keeps_fighting_when_source_identifies_text_only_joiner() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -12765,16 +13045,83 @@ def test_fastwalk_recalls_after_loot_below_next_stop_health_floor() -> None:
         position=7,
     )
 
-    commands: list[str] = []
+    decisions: list[BotDecision] = []
     for _ in range(5):
         decision = policy.next_decision(state)
         if decision is not None:
-            commands.append(decision.command)
+            decisions.append(decision)
             if decision.command == "recall":
                 break
         policy.prompt_ready = True
 
-    assert "recall" in commands
+    recall = next(decision for decision in decisions if decision.command == "recall")
+    assert recall.reason == (
+        "skip the next field target without its required health reserve"
+    )
+    assert policy.fastwalk_one_kill_recovery_limits == ("health",)
+
+
+def test_one_way_circuit_records_health_limit_before_post_loot_recall() -> None:
+    stops = (
+        FieldHuntStop((), target="first target"),
+        FieldHuntStop(
+            ("north",),
+            target="second target",
+            minimum_health_ratio=0.675,
+        ),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=Fastwalk(
+            "source circuit",
+            1,
+            100,
+            "south",
+            recall_after_loot=True,
+        ),
+        fastwalk_hunt_stops=stops,
+        fastwalk_kill_limit=2,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 1
+    policy.fastwalk_hunt_stop_index = 0
+    policy.fastwalk_requested_target = "first target"
+    policy.fastwalk_last_kill_target = "first target"
+    policy.fastwalk_hunt_stop_killed = True
+    policy.completed_kills.append(
+        {"mob_name": "first target", "xp_gained": 1934}
+    )
+    policy.pending_loot_rooms.add("10312")
+    state = CharacterState(
+        level=24,
+        hp=195,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=325,
+        max_move=380,
+        room_name="Captain's Waiting Room",
+        room_vnum="10312",
+        position=7,
+    )
+
+    decisions: list[BotDecision] = []
+    for _ in range(5):
+        decision = policy.next_decision(state)
+        if decision is not None:
+            decisions.append(decision)
+            if decision.command == "recall":
+                break
+        policy.prompt_ready = True
+
+    recall = next(decision for decision in decisions if decision.command == "recall")
+    assert recall.reason == (
+        "withdraw after loot because the next field target recovery gate is not met"
+    )
+    assert policy.fastwalk_one_kill_recovery_limits == ("health",)
 
 
 def test_fastwalk_eats_fresh_body_part_without_waiting_for_hunger() -> None:
@@ -14024,6 +14371,29 @@ def test_runtime_boundary_continues_healer_route_after_recall_clears_combat() ->
     assert policy.combat_active is False
 
 
+def test_fame_recovery_accepts_only_the_source_bounded_high_consider_branch() -> None:
+    stops = mirror_realm_fame_recovery_stops()
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("mirror realm fame recovery"),
+        fastwalk_hunt_stops=stops,
+    )
+    policy.consider_target = "the buck"
+
+    policy.observe_text("The buck laughs at you mercilessly.\n")
+
+    assert policy.consider_viable is True
+    assert policy.consider_level_offset_ceiling == 9
+
+    policy.fastwalk_hunt_stop_index = 1
+    policy.consider_target = "the moose"
+    policy.consider_viable = None
+    policy.observe_text("Do you feel lucky, punk?\n")
+
+    assert policy.consider_viable is False
+
+
 def test_runtime_boundary_finishes_one_half_dead_lower_level_target() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -14409,6 +14779,14 @@ def test_death_event_enters_recovery_instead_of_blocking_decisions() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.in_world = True
     policy.prompt_ready = True
+    policy.utility_emergency_recall_pending = True
+    policy.fastwalk_emergency_recall_pending = True
+    policy.pending_travel_origin = "7537"
+    policy.pending_recall_origin = "7537"
+    policy.pending_fastwalk_outbound_move = True
+    policy.pending_fastwalk_hunt_move = True
+    policy.gear_response_expectation = "wear"
+    policy.consider_response_pending = True
     purgatory = CharacterState(
         area="Purgatory",
         room_name="The Purgatory",
@@ -14430,6 +14808,14 @@ def test_death_event_enters_recovery_instead_of_blocking_decisions() -> None:
     assert policy.combat_active is False
     assert policy.active_target is None
     assert policy.flee_pending is False
+    assert policy.utility_emergency_recall_pending is False
+    assert policy.fastwalk_emergency_recall_pending is False
+    assert policy.pending_travel_origin is None
+    assert policy.pending_recall_origin is None
+    assert policy.pending_fastwalk_outbound_move is False
+    assert policy.pending_fastwalk_hunt_move is False
+    assert policy.gear_response_expectation is None
+    assert policy.consider_response_pending is False
 
 
 def test_noncombat_utility_flees_then_recalls_after_unexpected_combat() -> None:
@@ -24840,6 +25226,103 @@ def test_disarm_stops_after_opponent_is_confirmed_unarmed(monkeypatch) -> None:
     assert second is None
 
 
+def test_source_proven_unarmed_target_skips_disarm(monkeypatch) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        "dd4tester.starter.time.monotonic",
+        lambda: clock["now"],
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "an unarmed sentry",
+                source_target_armed=False,
+            ),
+        ),
+    )
+    policy.active_target = "an unarmed sentry"
+    policy.known_skills.update({"disarm", "knife toss"})
+    policy.primary_weapon_observed = True
+    state = CharacterState(hp=100, max_hp=100, position=6)
+
+    decision = policy._between_round_combat_decision(state)
+
+    assert decision is not None
+    assert decision.command == "knife sentry"
+
+
+def test_one_kill_recovery_with_targets_remaining_is_recorded() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "first target"),
+            FieldHuntStop((), "second target"),
+        ),
+    )
+    policy.in_world = True
+    policy.current_room = "200"
+    policy.fastwalk_hunt_stop_index = 1
+    policy.completed_kills = [
+        {"mob_name": "first target", "xp_gained": 100}
+    ]
+    state = CharacterState(
+        hp=20,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        room_vnum="200",
+    )
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_one_kill_recovery_limits == ("health",)
+
+
+def test_one_kill_below_next_target_health_floor_is_recorded() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "first target"),
+            FieldHuntStop(
+                (),
+                "second target",
+                minimum_health_ratio=0.675,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.current_room = "200"
+    policy.fastwalk_hunt_stop_index = 1
+    policy.fastwalk_hunt_looked = True
+    policy.completed_kills = [
+        {"mob_name": "first target", "xp_gained": 100}
+    ]
+    state = CharacterState(
+        hp=50,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        room_vnum="200",
+    )
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_one_kill_recovery_limits == ("health",)
+
+
 def test_disarm_resets_for_same_named_opponent_with_new_selector(
     monkeypatch,
 ) -> None:
@@ -25311,6 +25794,388 @@ def test_combat_disarm_recovers_and_rearms_audited_weapon() -> None:
     assert recover.command == "get dagger"
     assert rearm is not None
     assert rearm.command == "wield dagger"
+
+
+def test_trivial_fastwalk_attacker_recovers_weapon_before_recurring_attack() -> None:
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "rolling rock", consider_only=True),
+        ),
+        gear_catalog=GearCatalog({dagger.vnum: dagger}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "The rolling rock"
+    policy.active_target_selector = "#22383"
+    policy.known_skills.add("knife toss")
+    policy.gear_worn = [dagger]
+    policy.primary_weapon_observed = True
+    state = CharacterState(
+        level=24,
+        hp=316,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        position=6,
+        room_vnum="18428",
+        enemies=[
+            {
+                "name": "The rolling rock",
+                "level": "17",
+                "hp": "297",
+                "maxhp": "366",
+                "isnpc": "18401",
+            }
+        ],
+    )
+
+    policy.observe_events(
+        [
+            GameEvent(
+                "equipment_changed",
+                "gmcp",
+                {"package": "Char.Worn", "value": []},
+            ),
+            GameEvent("prompt_seen", "text", {}),
+        ],
+        state,
+    )
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "get dagger"
+
+
+def test_worn_gmcp_uses_exact_vnum_for_ambiguous_weapon() -> None:
+    purchased_dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    unrelated_dagger = ObjectSource(
+        31015,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 0, 0, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 4), (19, -2)),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog(
+            {
+                purchased_dagger.vnum: purchased_dagger,
+                unrelated_dagger.vnum: unrelated_dagger,
+            }
+        ),
+    )
+
+    policy.observe_events(
+        [
+            GameEvent(
+                "equipment_changed",
+                "gmcp",
+                {
+                    "package": "Char.Worn",
+                    "value": [
+                        {
+                            "slot": "wield",
+                            "wear_loc": 16,
+                            "vnum": 3020,
+                            "name": "a dagger",
+                        }
+                    ],
+                },
+            )
+        ],
+        CharacterState(),
+    )
+
+    assert policy.gear_worn == [purchased_dagger]
+    assert policy.primary_weapon_observed is True
+    assert policy.primary_weapon_lost is False
+
+
+def test_text_audit_preserves_fresh_structured_worn_identity() -> None:
+    purchased_dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    unrelated_dagger = ObjectSource(
+        31015,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 0, 0, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 4), (19, -2)),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog(
+            {
+                purchased_dagger.vnum: purchased_dagger,
+                unrelated_dagger.vnum: unrelated_dagger,
+            }
+        ),
+    )
+    state = CharacterState(level=24, position=7)
+    policy.observe_events(
+        [
+            GameEvent(
+                "equipment_changed",
+                "gmcp",
+                {
+                    "package": "Char.Worn",
+                    "value": [
+                        {
+                            "slot": "wield",
+                            "wear_loc": 16,
+                            "vnum": 3020,
+                            "name": "a dagger",
+                        }
+                    ],
+                },
+            )
+        ],
+        state,
+    )
+    policy.gear_audit_pending = True
+    policy.gear_confirmation_required = True
+    policy.last_response = "[weapon] a dagger\n"
+
+    decision = policy._gear_decision(state)
+
+    assert decision is None
+    assert policy.gear_worn == [purchased_dagger]
+    assert policy.gear_applied_stance == STANCE_COMBAT
+
+
+def test_text_audit_rebuilds_worn_identity_after_unconfirmed_gear_command() -> None:
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({dagger.vnum: dagger}),
+    )
+    state = CharacterState(level=24, position=7)
+    policy.gear_worn = []
+    policy.gear_worn_structured_current = True
+    policy.after_command(BotDecision("wield dagger", "restore primary weapon"))
+    policy.gear_audit_pending = True
+    policy.last_response = "[weapon] a dagger\n"
+
+    policy._gear_decision(state)
+
+    assert policy.gear_worn == [dagger]
+
+
+def test_combat_stance_converges_after_structured_set_confirmation() -> None:
+    source_catalog = GearCatalog.from_area_directory(
+        Path("runs/dd4-source/server/area")
+    )
+    vnums = (108, 1509, 3020, 4538, 6601)
+    catalog = GearCatalog(
+        {vnum: source_catalog.objects[vnum] for vnum in vnums},
+        {2707: source_catalog.object_sets[2707]},
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief"}, subclass="ninja"),
+        "swordfish",
+        gear_catalog=catalog,
+    )
+    policy.gear_allowed_categories = {"finger", "neck", "wield"}
+    bead_state = CharacterState(
+        level=24,
+        position=7,
+        room_name="The Weapon Shop",
+        room_vnum="3011",
+        inventory=[
+            [
+                {"short_desc": "a silver circlet", "quan": "1"},
+                {"short_desc": "a war dog collar", "quan": "1"},
+            ]
+        ],
+        stats={"str_mod": 15},
+    )
+    policy.observe_events(
+        [
+            GameEvent(
+                "equipment_changed",
+                "gmcp",
+                {
+                    "package": "Char.Worn",
+                    "value": [
+                        {"slot": "finger_l", "vnum": 6601},
+                        {"slot": "finger_r", "vnum": 6601},
+                        {"slot": "neck_1", "vnum": 1509},
+                        {"slot": "neck_2", "vnum": 1509},
+                        {"slot": "wield", "vnum": 3020},
+                    ],
+                },
+            )
+        ],
+        bead_state,
+    )
+
+    first_swap = policy._gear_decision(bead_state)
+
+    assert first_swap is not None
+    assert first_swap.command == "remove necklace"
+    assert [command for command, _ in policy.gear_command_queue] == [
+        "remove necklace",
+        "wear circlet",
+        "wear collar",
+    ]
+
+    policy.gear_command_queue.clear()
+    set_state = replace(
+        bead_state,
+        inventory=[[{"short_desc": "a bead necklace", "quan": "2"}]],
+        stats={"str_mod": 17},
+    )
+    policy.observe_events(
+        [
+            GameEvent(
+                "equipment_changed",
+                "gmcp",
+                {
+                    "package": "Char.Worn",
+                    "value": [
+                        {"slot": "finger_l", "vnum": 6601},
+                        {"slot": "finger_r", "vnum": 6601},
+                        {"slot": "neck_1", "vnum": 108},
+                        {"slot": "neck_2", "vnum": 4538},
+                        {"slot": "wield", "vnum": 3020},
+                    ],
+                },
+            )
+        ],
+        set_state,
+    )
+    policy.gear_audit_pending = True
+    policy.last_response = (
+        "<worn on finger> a pink ice ring\n"
+        "<worn on finger> a pink ice ring\n"
+        "<worn around neck> a silver circlet\n"
+        "<worn around neck> a war dog collar\n"
+        "[weapon] a dagger\n"
+    )
+
+    confirmation = policy._gear_decision(set_state)
+    repeated = policy._gear_decision(set_state)
+
+    assert confirmation is None
+    assert repeated is None
+    assert {item.vnum for item in policy.gear_worn} == {108, 3020, 4538, 6601}
+
+
+def test_worn_gmcp_recovers_weapon_removed_during_combat() -> None:
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({dagger.vnum: dagger}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "The rolling rock"
+    policy.gear_worn = [dagger]
+    policy.primary_weapon_observed = True
+    state = CharacterState(level=24, hp=334, max_hp=334, position=6)
+
+    policy.observe_text(
+        "The rolling rock \x1b[1m\x1b[32mDISARMS\x1b[0m you!\n"
+    )
+    policy.observe_events(
+        [
+            GameEvent(
+                "equipment_changed",
+                "gmcp",
+                {"package": "Char.Worn", "value": []},
+            ),
+            GameEvent("prompt_seen", "text", {}),
+        ],
+        state,
+    )
+
+    recover = policy.next_decision(state)
+
+    assert recover is not None
+    assert recover.command == "get dagger"
+
+
+def test_disarm_requires_weapon_response_recovers_known_dropped_weapon() -> None:
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({dagger.vnum: dagger}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = "The rolling rock"
+    policy.gear_worn = [dagger]
+    state = CharacterState(level=24, hp=334, max_hp=334, position=6)
+
+    policy.observe_text("You must wield a weapon to disarm.")
+    recover = policy.next_decision(state)
+
+    assert recover is not None
+    assert recover.command == "get dagger"
 
 
 def test_combat_disarm_does_not_rearm_after_get_autowields_weapon() -> None:
@@ -25871,6 +26736,29 @@ def test_city_rearm_stops_after_shop_rejects_purchase_weight() -> None:
     assert buy.command == "buy dagger"
     assert after_rejection is None
     assert policy.failure == "insufficient carry capacity for the source-backed dagger"
+
+
+def test_city_rearm_returns_safely_after_reputation_refusal() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", city_rearm=True)
+    policy.city_rearm_route_index = 6
+    policy.city_rearm_capacity_checked = True
+    shop = CharacterState(
+        room_name="The Weapon Shop",
+        room_vnum="3011",
+        position=7,
+    )
+
+    assert policy._city_rearm_decision(shop).command == "list dagger"
+    assert policy._city_rearm_decision(shop).command == "buy dagger"
+    policy.observe_text(
+        "The weaponsmith refuses to serve you due to your reputation."
+    )
+    return_move = policy._city_rearm_decision(shop)
+
+    assert return_move is not None
+    assert return_move.command == "south"
+    assert policy.city_rearm_reputation_blocked is True
+    assert policy.failure is None
 
 
 def test_equipment_empty_categories_uses_only_visible_empty_slots() -> None:
@@ -26960,6 +27848,112 @@ def test_profession_rejected_wear_is_blacklisted_without_retrying() -> None:
     assert policy.gear_audited is False
     assert policy.gear_confirmation_required is False
     assert policy.gear_applied_stance is None
+
+
+def test_generic_wear_rejection_is_blacklisted_without_retrying() -> None:
+    boots = ObjectSource(
+        110,
+        "blue snakeskin boots",
+        "a pair of blue snakeskin boots",
+        9,
+        (1, 0, 0, 0),
+        5,
+        wear_flags=1 | (1 << 6),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja", "race": "drow"}),
+        "swordfish",
+        gear_catalog=GearCatalog({boots.vnum: boots}),
+    )
+    policy.gear_command_queue = [
+        ("wear snakeskin", "equip recovery gear: a pair of blue snakeskin boots")
+    ]
+    policy.gear_audit_pending = True
+    policy.gear_audited = True
+    policy.gear_confirmation_required = True
+    policy.gear_applied_stance = STANCE_RECOVERY
+    policy.after_command(
+        BotDecision(
+            "wear snakeskin",
+            "equip recovery gear: a pair of blue snakeskin boots",
+        )
+    )
+
+    policy.observe_text("You can't wear, wield, or hold that.")
+
+    assert policy.gear_unusable_keywords == {"snakeskin"}
+    assert policy.gear_pending_wear_keyword is None
+    assert policy.gear_response_expectation is None
+    assert policy.gear_command_queue == []
+    assert policy.gear_confirmation_required is False
+    assert policy.gear_applied_stance is None
+
+
+def test_gear_stance_disambiguates_wear_keyword_from_non_gear_inventory() -> None:
+    boots = ObjectSource(
+        110,
+        "blue snakeskin boots",
+        "a pair of blue snakeskin boots",
+        9,
+        (1, 0, 0, 0),
+        5,
+        wear_flags=1 | (1 << 6),
+        affects=((13, 8),),
+    )
+    stiletto_boots = ObjectSource(
+        111,
+        "black stiletto boots",
+        "black stiletto boots",
+        9,
+        (1, 0, 0, 0),
+        5,
+        wear_flags=1 | (1 << 6),
+    )
+    flight_potion = ObjectSource(
+        22323,
+        "potion light blue",
+        "a light blue potion",
+        10,
+        (30, 0, 0, 0),
+        133,
+        wear_flags=1,
+    )
+    catalog = GearCatalog(
+        {
+            item.vnum: item
+            for item in (boots, stiletto_boots, flight_potion)
+        }
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja", "race": "drow"}),
+        "swordfish",
+        gear_catalog=catalog,
+    )
+    policy.gear_audited = True
+    policy.gear_allowed_categories = {"feet"}
+    state = CharacterState(
+        area="Midgaard",
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        hp=80,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        position=7,
+        level=23,
+        inventory=[[
+            {"short_desc": "a light blue potion"},
+            {"short_desc": "black stiletto boots"},
+            {"short_desc": "a pair of blue snakeskin boots"},
+        ]],
+    )
+
+    decision = policy._gear_decision(state)
+
+    assert decision is not None
+    assert decision.command == "wear snakeskin"
 
 
 def test_eq_all_records_empty_and_occupied_profession_wear_slots() -> None:

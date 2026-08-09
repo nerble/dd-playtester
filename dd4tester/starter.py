@@ -835,6 +835,102 @@ _SHADOW_GROVE_HEALER_RETURN_COMMANDS = (
     *("east",) * 13,
     *("north",) * 3,
 )
+# All Abyss rooms are air sectors. Source rooms 7505, 7536-7539, 7548,
+# 7551-7552, 7554-7555, and 7557-7558 omit ROOM_NO_RECALL and are therefore
+# valid recall points. Exit directions in rooms 7500-7550 are randomized, but
+# their GMCP destinations remain stable; the distance tiers let recovery take
+# any live exit that moves closer to the nearest recallable room.
+_ABYSS_ROOMS = frozenset({str(vnum) for vnum in range(7500, 7560)})
+_ABYSS_RECALL_ROOMS = frozenset(
+    {
+        "7505",
+        "7536",
+        "7537",
+        "7538",
+        "7539",
+        "7548",
+        "7551",
+        "7552",
+        "7554",
+        "7555",
+        "7557",
+        "7558",
+    }
+)
+_ABYSS_RECALL_DISTANCE = {
+    **{room: 0 for room in _ABYSS_RECALL_ROOMS},
+    **{
+        room: 1
+        for room in {
+            "7501",
+            "7502",
+            "7503",
+            "7504",
+            "7506",
+            "7507",
+            "7508",
+            "7531",
+            "7532",
+            "7533",
+            "7534",
+            "7535",
+            "7540",
+            "7541",
+            "7542",
+            "7545",
+            "7546",
+            "7547",
+            "7549",
+            "7550",
+            "7553",
+            "7556",
+            "7559",
+        }
+    },
+    **{
+        room: 2
+        for room in {
+            "7500",
+            "7509",
+            "7510",
+            "7511",
+            "7526",
+            "7527",
+            "7528",
+            "7529",
+            "7530",
+            "7543",
+            "7544",
+        }
+    },
+    **{
+        room: 3
+        for room in {
+            "7512",
+            "7513",
+            "7514",
+            "7521",
+            "7522",
+            "7523",
+            "7524",
+            "7525",
+        }
+    },
+    **{
+        room: 4
+        for room in {
+            "7515",
+            "7516",
+            "7517",
+            "7518",
+            "7519",
+            "7520",
+        }
+    },
+}
+_ABYSS_NO_RECALL_ROOMS = _ABYSS_ROOMS - _ABYSS_RECALL_ROOMS
+_ABYSS_RECOVERY_MINIMUM_MOVE = 6
+_ABYSS_RETURN_MOVE_RESERVE = 36
 # Mud School resets at age 14. After a reset it starts at 12, and the two
 # randomized area pulses each take 30-90 seconds while the area is vacant.
 _ARENA_RESPAWN_WAIT_SECONDS = 180
@@ -1002,6 +1098,7 @@ class FieldHuntStop:
     allowed_bystanders: tuple[str, ...] = ()
     trivial_bystanders: tuple[str, ...] = ()
     rejected_consider_subjects: tuple[str, ...] = ()
+    accepted_consider_fragments: tuple[str, ...] = ()
     minimum_health_ratio: float = _FIELD_CONTINUE_HEALTH_RATIO
     consider_only: bool = False
     exact_target: bool = False
@@ -1021,6 +1118,8 @@ class FieldHuntStop:
     preserve_where_route_waypoints: bool = False
     source_mobile_vnum: int | None = None
     source_mobile_room_description: str | None = None
+    source_policy_id: str | None = None
+    source_target_armed: bool | None = None
 
 
 class StarterPolicy:
@@ -1254,6 +1353,7 @@ class StarterPolicy:
         self.fastwalk_hunt_looked = False
         self.fastwalk_hunt_stop_killed = False
         self.fastwalk_hunt_stop_skipped = False
+        self.fastwalk_one_kill_recovery_limits: tuple[str, ...] = ()
         self.fastwalk_hunt_route_before_target = False
         self.fastwalk_intercept_returning = False
         self.fastwalk_field_intercept_active = False
@@ -1409,6 +1509,7 @@ class StarterPolicy:
         self.city_rearm_borrow_withdraw_required = False
         self.city_rearm_borrow_withdraw_issued = False
         self.city_rearm_funding_attempted = False
+        self.city_rearm_reputation_blocked = False
         self.city_outfit_route_index = 0
         self.city_outfit_returning = False
         self.city_outfit_audited = False
@@ -1614,6 +1715,7 @@ class StarterPolicy:
         self.gear_audit_pending = False
         self.gear_audited = False
         self.gear_worn = []
+        self.gear_worn_structured_current = False
         self.gear_command_queue: list[tuple[str, str]] = []
         self.gear_applied_stance: str | None = None
         self.gear_inventory_signature: tuple[str, ...] = ()
@@ -2051,6 +2153,14 @@ class StarterPolicy:
             if resolved_to_rejected_subject:
                 self.consider_viable = False
                 self.consider_level_offset_ceiling = None
+            elif stop is not None and any(
+                phrase.casefold() in recent
+                for phrase in stop.accepted_consider_fragments
+            ):
+                self.consider_viable = True
+                self.consider_level_offset_ceiling = (
+                    9 if "laughs at you mercilessly" in recent else None
+                )
             elif any(phrase in recent for phrase in _CONSIDER_VIABLE_FRAGMENTS):
                 self.consider_viable = True
                 self.consider_level_offset_ceiling = (
@@ -2229,7 +2339,25 @@ class StarterPolicy:
             self.shoot_pending_target = None
             self.combat_active = False
             self.prompt_ready = True
-        if "disarms you" in recent or "your weapon slips from your hand" in recent:
+        disarm_rejection_without_weapon = (
+            "you must wield a weapon to disarm" in recent
+            and self.combat_active
+            and (
+                self.disarmed_weapon_keyword is not None
+                or any(
+                    item_category(item) == "wield"
+                    for item in self.gear_worn
+                )
+            )
+        )
+        if (
+            self.disarm_recovery_step == 0
+            and (
+                "disarms you" in recent
+                or "your weapon slips from your hand" in recent
+                or disarm_rejection_without_weapon
+            )
+        ):
             wielded = next(
                 (
                     item
@@ -2291,6 +2419,7 @@ class StarterPolicy:
                     "you cannot use ",
                     "your profession prohibits wearing anything in that location",
                     "it is too heavy for you to wield",
+                    "you can't wear, wield, or hold that",
                 )
             )
         ):
@@ -2487,6 +2616,14 @@ class StarterPolicy:
                 )
             ):
                 self.city_rearm_borrow_rejected = True
+        if self.city_rearm and any(
+            phrase in folded
+            for phrase in (
+                "i will not serve the likes of you",
+                "refuses to serve you due to your reputation",
+            )
+        ):
+            self.city_rearm_reputation_blocked = True
         carry_rejected = any(
             phrase in folded
             for phrase in (
@@ -2706,6 +2843,22 @@ class StarterPolicy:
         if combat_resolved:
             was_in_combat = self.combat_active
             defeated_target = self.active_target or _defeated_mobile(cleaned)
+            completed_source_stop = None
+            if (
+                self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+                and self.active_target is not None
+            ):
+                candidate_stop = self.fastwalk_hunt_stops[
+                    self.fastwalk_hunt_stop_index
+                ]
+                if (
+                    candidate_stop.target is not None
+                    and _targets_match(
+                        self.active_target,
+                        candidate_stop.target,
+                    )
+                ):
+                    completed_source_stop = candidate_stop
             intercepted_kill = bool(
                 self.fastwalk_intercept_returning
                 and (self.active_target is not None or was_in_combat)
@@ -2751,16 +2904,24 @@ class StarterPolicy:
                         _TOTAL_XP_GAIN.search(cleaned)
                         or _KILL_XP_GAIN.search(cleaned)
                     )
-                    self.completed_kills.append(
-                        {
-                            "mob_name": defeated_target,
-                            "xp_gained": (
-                                int(xp_gain.group("xp"))
-                                if xp_gain is not None
-                                else None
-                            ),
-                        }
-                    )
+                    completed_kill: dict[str, Any] = {
+                        "mob_name": defeated_target,
+                        "xp_gained": (
+                            int(xp_gain.group("xp"))
+                            if xp_gain is not None
+                            else None
+                        ),
+                    }
+                    if completed_source_stop is not None:
+                        if completed_source_stop.source_mobile_vnum is not None:
+                            completed_kill["source_mobile_vnum"] = (
+                                completed_source_stop.source_mobile_vnum
+                            )
+                        if completed_source_stop.source_policy_id is not None:
+                            completed_kill["source_policy_id"] = (
+                                completed_source_stop.source_policy_id
+                            )
+                    self.completed_kills.append(completed_kill)
                 if self.active_target:
                     self.defeated_targets.setdefault(self.current_room, set()).add(
                         self.active_target
@@ -2975,6 +3136,8 @@ class StarterPolicy:
             )
         ):
             self.pending_recall_origin = None
+            if self.return_home:
+                self.return_home_recall_started = False
         if (
             self.pending_recall_origin is not None
             and re.search(
@@ -3251,16 +3414,54 @@ class StarterPolicy:
                     self.awaiting_enemy_assessment = False
                     self.prompt_ready = True
             if event.type == "equipment_changed" and self.gear_catalog is not None:
-                self.gear_worn = self.gear_catalog.match_many(
-                    _equipment_descriptions(event.data.get("value", event.data))
+                equipment_value = event.data.get("value", event.data)
+                previous_weapon = next(
+                    (
+                        item
+                        for item in self.gear_worn
+                        if item_category(item) == "wield"
+                    ),
+                    None,
                 )
-                equipment_text = str(event.data.get("value", event.data)).casefold()
-                weapon_slot_seen, weapon_description = _equipment_weapon_slot(
-                    equipment_text
+                self.gear_worn = _equipment_sources(
+                    equipment_value,
+                    self.gear_catalog,
                 )
+                package = str(event.data.get("package", "")).casefold()
+                full_worn_snapshot = package == "char.worn"
+                self.gear_worn_structured_current = full_worn_snapshot
+                weapon_slot_seen, weapon_description = (
+                    _equipment_weapon_from_payload(equipment_value)
+                )
+                current_weapon = next(
+                    (
+                        item
+                        for item in self.gear_worn
+                        if item_category(item) == "wield"
+                    ),
+                    None,
+                )
+                if (
+                    full_worn_snapshot
+                    and previous_weapon is not None
+                    and current_weapon is None
+                    and self.combat_active
+                    and self.disarm_recovery_step == 0
+                ):
+                    self.disarmed_weapon_keyword = item_command_keyword(
+                        previous_weapon,
+                        self.gear_catalog.objects.values(),
+                    )
+                    self.disarm_recovery_step = 1
+                    self.primary_weapon_lost = True
+                    self.primary_weapon_observed = False
+                    self.gear_applied_stance = None
                 if weapon_slot_seen:
                     self.primary_weapon_observed = weapon_description is not None
                     self.primary_weapon_lost = weapon_description is None
+                elif full_worn_snapshot:
+                    self.primary_weapon_observed = current_weapon is not None
+                    self.primary_weapon_lost = current_weapon is None
                 elif any(
                     item_category(item) == "wield" for item in self.gear_worn
                 ):
@@ -3276,6 +3477,23 @@ class StarterPolicy:
                 self.purgatory_recovery_active = True
                 self.fastwalk_resume_hunt_after_interrupt = False
                 self.fastwalk_resume_current_route_after_interrupt = False
+                # Death invalidates every command acknowledgement and route
+                # origin from the former body.  In particular, a queued
+                # emergency recall must not run after DD4 has moved the ghost
+                # to Purgatory and then wait forever for room 401 to change.
+                self.utility_emergency_recall_pending = False
+                self.fastwalk_emergency_recall_pending = False
+                self.pending_travel_origin = None
+                self.pending_recall_origin = None
+                self.pending_fastwalk_outbound_move = False
+                self.pending_fastwalk_hunt_move = False
+                self.sleep_confirmation_pending = False
+                self.stand_confirmation_pending = False
+                self.gear_response_expectation = None
+                self.consider_response_pending = False
+                self.fastwalk_where_response_pending = False
+                self.fastwalk_where_response_deadline = None
+                self.fastwalk_post_flee_audit_due = None
                 self.combat_active = False
                 self.active_target = None
                 self.active_target_selector = None
@@ -3672,6 +3890,12 @@ class StarterPolicy:
         if decision.command == "flee":
             self.flee_pending = True
             self.flee_succeeded = False
+        if decision.command == "wear all" or decision.command.startswith(
+            ("wear ", "remove ", "wield ", "hold ")
+        ):
+            # A later Char.Worn event restores exact prototype identity. Until
+            # then, an eq audit may need to rebuild the paper doll from text.
+            self.gear_worn_structured_current = False
         if (
             decision.command.startswith("wear ")
             and decision.reason.startswith("equip ")
@@ -4232,6 +4456,13 @@ class StarterPolicy:
                 self.prompt_ready = False
                 return None
 
+        if (
+            self.return_home
+            and room_vnum in _ABYSS_NO_RECALL_ROOMS
+            and _is_sleeping(state)
+        ):
+            return self._return_home_decision(state)
+
         if _is_sleeping(state):
             return BotDecision("stand", "wake before travel or arena actions")
 
@@ -4242,9 +4473,12 @@ class StarterPolicy:
             self.active_target_selector = None
             if self.utility_emergency_recall_pending:
                 self.utility_emergency_recall_pending = False
-                self.return_home_recall_started = True
-                if state.room_vnum in _PYRAMID_DESERT_MAZE_ROOMS:
+                if state.room_vnum in (
+                    _PYRAMID_DESERT_MAZE_ROOMS
+                    | _ABYSS_ROOMS
+                ):
                     return self._return_home_decision(state)
+                self.return_home_recall_started = True
                 return BotDecision(
                     "recall",
                     "recall immediately after fleeing unexpected utility-run combat",
@@ -4284,9 +4518,11 @@ class StarterPolicy:
             self.return_home
             and (
                 state.room_vnum in _PYRAMID_DESERT_MAZE_ROOMS
+                or state.room_vnum in _ABYSS_ROOMS
                 or self.return_home_recovery_commands is not None
             )
             and not _enemy_records(state.enemies)
+            and not self.combat_active
         ):
             # A reconnect can leave the local combat flag set after the server
             # has already cleared the enemy list. Prioritize the bounded return
@@ -4309,6 +4545,20 @@ class StarterPolicy:
             if self.flee_pending:
                 self.prompt_ready = False
                 return None
+            if (
+                self.return_home
+                and self.fastwalk_route is None
+                and state.room_vnum in _ABYSS_ROOMS
+            ):
+                self.utility_emergency_recall_pending = True
+                if self.utility_abort_reason is None:
+                    self.utility_abort_reason = (
+                        "unexpected combat interrupted return-home travel"
+                    )
+                return BotDecision(
+                    "flee",
+                    "withdraw before continuing the healer return route",
+                )
             if (
                 self.fastwalk_route is not None
                 and self.fastwalk_hunt_stops
@@ -4384,6 +4634,19 @@ class StarterPolicy:
                 self.fastwalk_route is not None
                 and self.unapproved_field_attacker is not None
             ):
+                if self.fastwalk_objective_budget_complete:
+                    self.fastwalk_abort_reason = (
+                        "field combat aborted after unapproved attacker "
+                        f"{self.unapproved_field_attacker!r} joined after "
+                        "objective completion"
+                    )
+                    self.fastwalk_crowded = True
+                    self.fastwalk_returning = True
+                    self.fastwalk_emergency_recall_pending = True
+                    return BotDecision(
+                        "flee",
+                        "withdraw immediately from an unplanned post-objective attacker",
+                    )
                 if self._field_attacker_is_known_below_band(
                     self.unapproved_field_attacker,
                     state,
@@ -4812,60 +5075,6 @@ class StarterPolicy:
                         "use emergency recall when reconnecting to trapped combat",
                     )
                 return BotDecision("flee", "leave combat before emergency resupply")
-            if self.disarm_recovery_step == 1:
-                if self.disarmed_weapon_keyword is None:
-                    self.disarm_recovery_step = 2
-                    return BotDecision(
-                        "get all",
-                        "recover an unidentified weapon dropped by a combat disarm",
-                    )
-                self.disarm_recovery_step = 2
-                return BotDecision(
-                    f"get {self.disarmed_weapon_keyword}",
-                    "recover the weapon dropped by a combat disarm",
-                )
-            if self.disarm_recovery_step == 2:
-                self.prompt_ready = False
-                return None
-            if self.disarm_recovery_step == 4:
-                relief = self._disarm_capacity_relief_decision(state)
-                if relief is not None:
-                    return relief
-            if self.disarm_recovery_step == 3:
-                self.disarm_recovery_step = 0
-                if self.disarmed_weapon_keyword is None and self.gear_catalog is not None:
-                    recovered = next(
-                        (
-                            item
-                            for item in self.gear_catalog.match_many_usable(
-                                _inventory_descriptions(state.inventory),
-                                character_class=self.spec.character_class,
-                                subclass=self._active_training_subclass(state),
-                            )
-                            if item_category(item) == "wield"
-                        ),
-                        None,
-                    )
-                    if recovered is not None:
-                        self.disarmed_weapon_keyword = item_keyword(recovered)
-                if self.disarmed_weapon_keyword is None:
-                    self.prompt_ready = False
-                    return None
-                return BotDecision(
-                    f"wield {self.disarmed_weapon_keyword}",
-                    "rearm the recovered weapon during combat",
-                )
-            if self.disarm_recovery_step == 5:
-                self.disarm_recovery_step = 2
-                command = (
-                    f"get {self.disarmed_weapon_keyword}"
-                    if self.disarmed_weapon_keyword is not None
-                    else "get all"
-                )
-                return BotDecision(
-                    command,
-                    "retry the dropped weapon after one bounded capacity-relief action",
-                )
             spell = self._between_round_combat_decision(state)
             if spell is not None:
                 return spell
@@ -4885,6 +5094,8 @@ class StarterPolicy:
 
         if self.utility_emergency_recall_pending:
             self.utility_emergency_recall_pending = False
+            if state.room_vnum in _ABYSS_ROOMS:
+                return self._return_home_decision(state)
             self.return_home_recall_started = True
             return BotDecision(
                 "recall",
@@ -5170,6 +5381,13 @@ class StarterPolicy:
                     return None
             research = self._fastwalk_research_decision(state)
             if research is not None:
+                if (
+                    research.command == "recall"
+                    and state.room_vnum in _ABYSS_NO_RECALL_ROOMS
+                ):
+                    self.fastwalk_returning = True
+                    self.return_home = True
+                    return self._return_home_decision(state)
                 return research
             if not self.prompt_ready:
                 return None
@@ -5338,7 +5556,8 @@ class StarterPolicy:
             explicit_audit = _equipment_audit_present(self.last_response)
             self.gear_audit_pending = False
             if audited_items or explicit_audit:
-                self.gear_worn = audited_items
+                if not self.gear_worn_structured_current:
+                    self.gear_worn = audited_items
                 self.gear_audited = True
                 self.gear_confirmation_required = False
                 allowed_categories = _equipment_slot_categories(self.last_response)
@@ -5379,6 +5598,12 @@ class StarterPolicy:
             character_class=self.spec.character_class,
             subclass=self._active_training_subclass(state),
         )
+        command_peers = (
+            *self.gear_catalog.match_many(
+                _inventory_descriptions(state.inventory)
+            ),
+            *self.gear_worn,
+        )
         if self.gear_allowed_categories is None and carried_candidates:
             self.gear_audit_pending = True
             return BotDecision(
@@ -5390,6 +5615,8 @@ class StarterPolicy:
             item
             for item in carried_candidates
             if item_keyword(item) not in self.gear_unusable_keywords
+            if item_command_keyword(item, command_peers)
+            not in self.gear_unusable_keywords
             if item_category(item) not in self.gear_prohibited_categories
             if (
                 self.gear_allowed_categories is None
@@ -5402,17 +5629,19 @@ class StarterPolicy:
             stance,
             level_gain_priorities=self.spec.effective_level_gain_priorities,
             weapon_preference=self._combat_weapon_preference(),
+            object_sets=self.gear_catalog.object_sets.values(),
+            current_strength=_state_stat(state, "str_mod"),
         )
         stance_label = stance.replace("_", " ")
         self.gear_command_queue = [
             (
-                f"remove {item_command_keyword(item, (*carried, *self.gear_worn))}",
+                f"remove {item_command_keyword(item, command_peers)}",
                 f"remove lower-priority gear for the {stance_label} stance",
             )
             for item in removals
         ] + [
             (
-                f"wear {item_command_keyword(item, (*carried, *self.gear_worn))}",
+                f"wear {item_command_keyword(item, command_peers)}",
                 f"equip {stance_label} gear: {item.short_description}",
             )
             for item in additions
@@ -5650,11 +5879,87 @@ class StarterPolicy:
             return BotDecision("south", "return from the Temple toward supplies")
         return None
 
+    def _combat_disarm_recovery_decision(
+        self,
+        state: CharacterState,
+    ) -> tuple[bool, BotDecision | None]:
+        """Recover a dropped weapon before any continued combat action."""
+        if self.disarm_recovery_step == 0:
+            return False, None
+        if self.disarm_recovery_step == 1:
+            self.disarm_recovery_step = 2
+            if self.disarmed_weapon_keyword is None:
+                return True, BotDecision(
+                    "get all",
+                    "recover an unidentified weapon dropped by a combat disarm",
+                )
+            return True, BotDecision(
+                f"get {self.disarmed_weapon_keyword}",
+                "recover the weapon dropped by a combat disarm",
+            )
+        if self.disarm_recovery_step == 2:
+            self.prompt_ready = False
+            return True, None
+        if self.disarm_recovery_step == 4:
+            relief = self._disarm_capacity_relief_decision(state)
+            return relief is not None, relief
+        if self.disarm_recovery_step == 3:
+            self.disarm_recovery_step = 0
+            if self.disarmed_weapon_keyword is None and self.gear_catalog is not None:
+                recovered = next(
+                    (
+                        item
+                        for item in self.gear_catalog.match_many_usable(
+                            _inventory_descriptions(state.inventory),
+                            character_class=self.spec.character_class,
+                            subclass=self._active_training_subclass(state),
+                        )
+                        if item_category(item) == "wield"
+                    ),
+                    None,
+                )
+                if recovered is not None:
+                    self.disarmed_weapon_keyword = item_keyword(recovered)
+            if self.disarmed_weapon_keyword is None:
+                self.prompt_ready = False
+                return True, None
+            return True, BotDecision(
+                f"wield {self.disarmed_weapon_keyword}",
+                "rearm the recovered weapon during combat",
+            )
+        if self.disarm_recovery_step == 5:
+            self.disarm_recovery_step = 2
+            command = (
+                f"get {self.disarmed_weapon_keyword}"
+                if self.disarmed_weapon_keyword is not None
+                else "get all"
+            )
+            return True, BotDecision(
+                command,
+                "retry the dropped weapon after one bounded capacity-relief action",
+            )
+        return False, None
+
+    def _active_source_target_armed(self) -> bool | None:
+        """Return source equipment evidence for the active field target."""
+        if (
+            self.active_target is None
+            or self.fastwalk_hunt_stop_index >= len(self.fastwalk_hunt_stops)
+        ):
+            return None
+        stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+        if stop.target is None or not _targets_match(self.active_target, stop.target):
+            return None
+        return stop.source_target_armed
+
     def _between_round_combat_decision(
         self,
         state: CharacterState,
     ) -> BotDecision | None:
         """Issue one active action while automatic combat rounds continue."""
+        recovery_pending, recovery = self._combat_disarm_recovery_decision(state)
+        if recovery_pending:
+            return recovery
         now = time.monotonic()
         if (
             not self.active_target
@@ -5682,6 +5987,7 @@ class StarterPolicy:
             "disarm" in self.known_skills
             and has_wielded_weapon
             and not self.combat_disarm_resolved
+            and self._active_source_target_armed() is not False
         )
         if disarm_available and (
             self.combat_disarm_attempts == 0
@@ -7204,6 +7510,12 @@ class StarterPolicy:
         self.fastwalk_emergency_recall_pending = False
         self.fastwalk_post_flee_audit_requested = False
         self.fastwalk_post_flee_audit_due = None
+        if state.room_vnum in _ABYSS_ROOMS:
+            self.fastwalk_resume_current_route_after_interrupt = False
+            self.fastwalk_resume_hunt_after_interrupt = False
+            self.fastwalk_returning = True
+            self.return_home = True
+            return self._return_home_decision(state)
         if self.fastwalk_resume_current_route_after_interrupt:
             self.fastwalk_resume_current_route_after_interrupt = False
             self.fastwalk_attack_started = False
@@ -7405,6 +7717,14 @@ class StarterPolicy:
                     reset_for_pounding_role()
                     return self._city_rearm_decision(state)
             return None
+
+        if (
+            self.city_rearm_reputation_blocked
+            and not self.city_rearm_returning
+            and room_vnum == shop_room
+        ):
+            self.city_rearm_returning = True
+            self.city_rearm_route_index = 0
 
         if self.city_rearm_borrowing and not pounding_role:
             if (
@@ -8832,6 +9152,7 @@ class StarterPolicy:
             self.live_maze_complete = True
             self.live_maze_abort_reason = None
             return None
+
         if room_vnum not in allowed_rooms:
             self.live_maze_abort_reason = (
                 f"live maze navigation reached unregistered room {room_vnum!r} "
@@ -9023,6 +9344,40 @@ class StarterPolicy:
         room_vnum = state.room_vnum
         room_name = (state.room_name or "").casefold()
         room_key = room_vnum or ""
+
+        if room_key in _ABYSS_ROOMS and not self.fastwalk_returning:
+            flight_duration = max(
+                (
+                    duration
+                    for name in ("fly", "levitation")
+                    if (duration := _named_affect_duration(state.affects, name))
+                    is not None
+                ),
+                default=None,
+            )
+            flight_missing = not (
+                _has_named_affect(state.affects, "fly")
+                or _has_named_affect(state.affects, "levitation")
+            )
+            movement_low = (state.move or 0) <= _ABYSS_RETURN_MOVE_RESERVE
+            flight_expiring = flight_duration is not None and flight_duration <= 1
+            if flight_missing or flight_expiring or movement_low:
+                causes = []
+                if flight_missing:
+                    causes.append("flight is no longer active")
+                if flight_expiring:
+                    causes.append("flight is about to expire")
+                if movement_low:
+                    causes.append(
+                        "movement reached the source-backed Abyss return reserve"
+                    )
+                self.fastwalk_abort_reason = (
+                    "Abyss expedition withdrew before its aerial recovery "
+                    "reserve was exhausted: " + ", ".join(causes)
+                )
+                self.fastwalk_returning = True
+                self.return_home = True
+                return self._return_home_decision(state)
 
         # Training must complete from a real trainer response before the
         # route can begin.  This also prevents a prompt arriving between a
@@ -9335,7 +9690,7 @@ class StarterPolicy:
             )
             kill_budget_remaining = (
                 self.fastwalk_kill_limit is None
-                or len(self.completed_kills) < self.fastwalk_kill_limit
+                or len(self.objective_kills) < self.fastwalk_kill_limit
             )
             healthy_for_next_stop = (
                 next_stop is not None
@@ -9351,6 +9706,29 @@ class StarterPolicy:
                 (_health_ratio(state) < 0.8 and not healthy_for_next_stop)
                 or _mana_ratio(state) < 0.3
             )
+            has_remaining_target = bool(
+                next_stop is not None
+                and next_stop.target is not None
+                and kill_budget_remaining
+            )
+            if (
+                len(self.objective_kills) == 1
+                and has_remaining_target
+                and low_reserve_after_loot
+            ):
+                recovery_limits = list(
+                    self.fastwalk_one_kill_recovery_limits
+                )
+                if (
+                    _health_ratio(state) < 0.8
+                    and not healthy_for_next_stop
+                ):
+                    recovery_limits.append("health")
+                if _mana_ratio(state) < 0.3:
+                    recovery_limits.append("mana")
+                self.fastwalk_one_kill_recovery_limits = tuple(
+                    dict.fromkeys(recovery_limits)
+                )
             if (
                 incidental_kill
                 and self.fastwalk_route.recall_after_loot
@@ -9433,9 +9811,19 @@ class StarterPolicy:
             if self.fastwalk_recall_after_loot:
                 self.fastwalk_recall_after_loot = False
                 self.fastwalk_returning = True
+                remaining_start = self.fastwalk_hunt_stop_index + 1
+                has_remaining_target = any(
+                    stop.target is not None
+                    for stop in self.fastwalk_hunt_stops[remaining_start:]
+                )
                 return BotDecision(
                     "recall",
-                    "leave a one-way hunt immediately after securing loot",
+                    (
+                        "withdraw after loot because the next field target "
+                        "recovery gate is not met"
+                        if has_remaining_target
+                        else "leave a one-way hunt immediately after securing loot"
+                    ),
                 )
             if not self.fastwalk_recall_started:
                 if room_vnum == "3001":
@@ -10099,6 +10487,9 @@ class StarterPolicy:
     @property
     def objective_kills(self) -> list[dict[str, Any]]:
         """Return deliberate fastwalk targets, excluding route interruptions."""
+        def kill_target(kill: Mapping[str, Any]) -> str:
+            return str(kill.get("mob_name") or kill.get("target") or "")
+
         if self.fastwalk_requested_target is None:
             if self.fastwalk_hunt_stops:
                 targets = tuple(
@@ -10109,8 +10500,9 @@ class StarterPolicy:
                 return [
                     kill
                     for kill in self.completed_kills
-                    if any(
-                        _targets_match(str(kill.get("mob_name", "")), target)
+                    if kill_target(kill)
+                    and any(
+                        _targets_match(kill_target(kill), target)
                         for target in targets
                     )
                 ]
@@ -10118,10 +10510,26 @@ class StarterPolicy:
         return [
             kill
             for kill in self.completed_kills
-            if _targets_match(
-                str(kill.get("mob_name", "")), self.fastwalk_requested_target
-            )
+            if kill_target(kill)
+            and _targets_match(kill_target(kill), self.fastwalk_requested_target)
         ]
+
+    @property
+    def fastwalk_objective_budget_complete(self) -> bool:
+        """Return whether no further deliberate field kill remains."""
+        objective_count = len(self.objective_kills)
+        if objective_count == 0:
+            return False
+        if self.fastwalk_kill_limit is not None:
+            return objective_count >= self.fastwalk_kill_limit
+        if self.fastwalk_requested_target is not None:
+            return True
+        return bool(
+            self.fastwalk_hunt_stops
+            and self.fastwalk_hunt_stop_killed
+            and self.fastwalk_hunt_stop_index
+            >= len(self.fastwalk_hunt_stops) - 1
+        )
 
     @property
     def _is_noncombat_utility_run(self) -> bool:
@@ -10179,18 +10587,8 @@ class StarterPolicy:
         if not self.fastwalk_intercept_returning or self.combat_active:
             return None
         if self.fastwalk_hunt_stop_skipped:
-            if (
-                self.fastwalk_field_intercept_active
-                and self.fastwalk_crowded
-            ):
-                self.fastwalk_intercept_returning = False
-                self.fastwalk_field_intercept_active = False
-                self.fastwalk_attack_target = None
-                self.active_target = None
-                self.active_target_selector = None
-                self.consider_target = None
-                self.consider_target_selector = None
-                self.consider_viable = None
+            if self._intercept_failure_can_continue_circuit():
+                self._clear_intercept_evaluation()
                 return None
             self.fastwalk_intercept_returning = False
             self.fastwalk_field_intercept_active = False
@@ -10232,6 +10630,9 @@ class StarterPolicy:
             or self.fastwalk_crowded
             or self.consider_viable is False
         ):
+            if self._intercept_failure_can_continue_circuit():
+                self._clear_intercept_evaluation()
+                return None
             self.fastwalk_intercept_returning = False
             self.fastwalk_field_intercept_active = False
             self.fastwalk_returning = True
@@ -10240,6 +10641,33 @@ class StarterPolicy:
                 "return after the intercepted source target failed its field gates",
             )
         return None
+
+    def _intercept_failure_can_continue_circuit(self) -> bool:
+        """Keep an independent later stop after one intercepted stop fails."""
+        if self.fastwalk_hunt_stop_index + 1 >= len(self.fastwalk_hunt_stops):
+            return False
+        stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+        if self.fastwalk_crowded:
+            return True
+        return bool(
+            not stop.abort_after_consider_rejection
+            and (
+                self.fastwalk_hunt_stop_skipped
+                or self.consider_viable is False
+            )
+        )
+
+    def _clear_intercept_evaluation(self) -> None:
+        """Release ephemeral target state before advancing the circuit."""
+        self.fastwalk_intercept_returning = False
+        self.fastwalk_field_intercept_active = False
+        self.fastwalk_attack_target = None
+        self.fastwalk_attack_started = False
+        self.active_target = None
+        self.active_target_selector = None
+        self.consider_target = None
+        self.consider_target_selector = None
+        self.consider_viable = None
 
     def _fastwalk_live_target_intercept_decision(
         self,
@@ -10788,6 +11216,24 @@ class StarterPolicy:
                     "sleep",
                     "recover in the source-vetted hunt room before continuing",
                 )
+            remaining_start = self.fastwalk_hunt_stop_index + int(
+                self.fastwalk_hunt_stop_killed
+            )
+            has_remaining_target = any(
+                stop.target is not None
+                for stop in self.fastwalk_hunt_stops[remaining_start:]
+            )
+            if len(self.objective_kills) == 1 and has_remaining_target:
+                recovery_limits = []
+                if _health_ratio(state) < _FIELD_CONTINUE_HEALTH_RATIO:
+                    recovery_limits.append("health")
+                if _mana_ratio(state) < _FIELD_CONTINUE_MANA_RATIO:
+                    recovery_limits.append("mana")
+                if _move_ratio(state) < _FIELD_CONTINUE_MOVE_RATIO:
+                    recovery_limits.append("movement")
+                self.fastwalk_one_kill_recovery_limits = tuple(
+                    recovery_limits
+                )
             resource_gaps = []
             if missing_food:
                 resource_gaps.append("food")
@@ -10859,7 +11305,7 @@ class StarterPolicy:
         if (
             self.fastwalk_hunt_stop_killed
             and self.fastwalk_kill_limit is not None
-            and len(self.completed_kills) >= self.fastwalk_kill_limit
+            and len(self.objective_kills) >= self.fastwalk_kill_limit
         ):
             self.fastwalk_returning = True
             return BotDecision(
@@ -11032,6 +11478,12 @@ class StarterPolicy:
             not must_take_no_recall_exit
             and _health_ratio(state) < stop.minimum_health_ratio
         ):
+            if len(self.objective_kills) == 1:
+                self.fastwalk_one_kill_recovery_limits = tuple(
+                    dict.fromkeys(
+                        (*self.fastwalk_one_kill_recovery_limits, "health")
+                    )
+                )
             self.fastwalk_returning = True
             return BotDecision(
                 "recall",
@@ -12226,7 +12678,8 @@ class StarterPolicy:
                     )
                     explicit_audit = _equipment_audit_present(self.last_response)
                     if audited_items or explicit_audit:
-                        self.gear_worn = audited_items
+                        if not self.gear_worn_structured_current:
+                            self.gear_worn = audited_items
                         self.gear_audited = True
                         self.gear_audit_pending = False
                     else:
@@ -12323,6 +12776,8 @@ class StarterPolicy:
                                 if stance == STANCE_COMBAT
                                 else None
                             ),
+                            object_sets=self.gear_catalog.object_sets.values(),
+                            current_strength=_state_stat(state, "str_mod"),
                         )
                         if stance == STANCE_COMBAT
                         or item_category(choice.item) != "wield"
@@ -12826,6 +13281,56 @@ class StarterPolicy:
     def _return_home_decision(self, state: CharacterState) -> BotDecision | None:
         """Recall from an interrupted field run and return to the healer."""
         room_vnum = state.room_vnum
+        if room_vnum in _ABYSS_NO_RECALL_ROOMS:
+            if _is_sleeping(state):
+                return BotDecision(
+                    "stand",
+                    "wake before escaping the aerial no-recall Abyss",
+                )
+            has_flight = bool(
+                _has_named_affect(state.affects, "fly")
+                or _has_named_affect(state.affects, "levitation")
+            )
+            if not has_flight:
+                # DD4 moves a non-flying character through air-sector exits
+                # automatically. Do not issue impossible movement commands;
+                # inspect each resulting room and recall on the first legal
+                # source-confirmed landing.
+                self.prompt_ready = False
+                return None
+            movement = state.move or 0
+            if movement < _ABYSS_RECOVERY_MINIMUM_MOVE:
+                # Sleeping in the Abyss can outlast flight and leaves the
+                # character exposed to wandering mobiles. Standing recovery
+                # needs only enough movement for the next six-point air step.
+                self.prompt_ready = False
+                return None
+            current_distance = _ABYSS_RECALL_DISTANCE.get(room_vnum)
+            closer_rooms = {
+                destination
+                for destination, distance in _ABYSS_RECALL_DISTANCE.items()
+                if (
+                    current_distance is not None
+                    and distance < current_distance
+                )
+            }
+            direction = _direction_to_destination(state, closer_rooms)
+            if direction is None:
+                return BotDecision(
+                    "look",
+                    "refresh live Abyss exits toward the nearest recallable room",
+                )
+            return BotDecision(
+                direction,
+                "follow the live Abyss exit toward the nearest recallable room",
+            )
+        if room_vnum in _ABYSS_RECALL_ROOMS:
+            if not self.return_home_recall_started:
+                self.return_home_recall_started = True
+                return BotDecision(
+                    "recall",
+                    "recall from the source-confirmed recallable Abyss room",
+                )
         if (
             self.return_home_recovery_commands is None
             and room_vnum in _PYRAMID_DESERT_MAZE_ROOMS
@@ -14952,6 +15457,10 @@ class StarterBotRunner:
                 ),
                 title_configured=(
                     not self.spec.title
+                    or bool(
+                        self.character_state.level is not None
+                        and self.character_state.level > 1
+                    )
                     or storage.latest_character_command(
                         self.spec.name,
                         prefix="title ",
@@ -14960,6 +15469,10 @@ class StarterBotRunner:
                 ),
                 description_configured=(
                     not self.spec.description
+                    or bool(
+                        self.character_state.level is not None
+                        and self.character_state.level > 1
+                    )
                     or storage.latest_character_command(
                         self.spec.name,
                         prefix="description ",
@@ -15298,6 +15811,9 @@ class StarterBotRunner:
                     "city_restock": self.city_restock,
                     "city_rearm": self.city_rearm,
                     "city_rearm_pounding": self.city_rearm_pounding,
+                    "city_rearm_reputation_blocked": (
+                        policy.city_rearm_reputation_blocked
+                    ),
                     "city_outfit": self.city_outfit,
                     "guildmaster_research": self.guildmaster_research,
                     "magic_shop_research": self.magic_shop_research,
@@ -15345,6 +15861,9 @@ class StarterBotRunner:
                         policy.fastwalk_target_vnum_mismatch
                     ),
                     "fastwalk_objective_killed": policy.fastwalk_objective_killed,
+                    "fastwalk_one_kill_recovery_limits": list(
+                        policy.fastwalk_one_kill_recovery_limits
+                    ),
                     "fastwalk_abort_reason": policy.fastwalk_abort_reason,
                     "fastwalk_route_hazards": list(policy.fastwalk_route_hazards),
                     "fastwalk_route_preflight_hazard_observed": (
@@ -15375,10 +15894,18 @@ class StarterBotRunner:
                 "campaign_magic_shop_flight_price_boot_id": (
                     policy.magic_shop_flight_price_boot_id
                 ),
+                "campaign_shop_rearm_blocked_by_reputation": (
+                    policy.city_rearm_reputation_blocked
+                ),
                 "vault_storage_rejected": policy.vault_storage_rejected,
                 "vault_lodged_items": list(policy.vault_lodged_items),
                 "vault_claimed_items": list(policy.vault_claimed_items),
                 "world_boot_id": policy.world_boot_id,
+                "campaign_fastwalk_training_complete": (
+                    policy.fastwalk_training_complete
+                ),
+                "campaign_gear_audit_completed": policy.gear_audited,
+                "campaign_gear_applied_stance": policy.gear_applied_stance,
                 # Preserve concrete combat output for the campaign planner.  XP can
                 # change after a flee, but it is not useful evidence of a hunt if
                 # the runner did not confirm a deliberate kill.
@@ -15395,6 +15922,9 @@ class StarterBotRunner:
                     policy.fastwalk_where_relocation_attempts
                 ),
                 "campaign_fastwalk_crowded": policy.fastwalk_crowded,
+                "campaign_fastwalk_one_kill_recovery_limits": list(
+                    policy.fastwalk_one_kill_recovery_limits
+                ),
                 "campaign_fastwalk_unattackable_target": (
                     policy.fastwalk_unattackable_target
                 ),
@@ -17623,6 +18153,48 @@ def shire_dwarven_prince_hunt_stops() -> tuple[FieldHuntStop, ...]:
     )
 
 
+def mirror_realm_fame_recovery_stops() -> tuple[FieldHuntStop, ...]:
+    """Kill one isolated level-30 animal only when it awards bravery fame."""
+    common = {
+        "accepted_consider_fragments": ("laughs at you mercilessly",),
+        "exact_target": True,
+        "require_isolated": True,
+        "require_sanctuary": True,
+        "minimum_health_ratio": 0.95,
+        "minimum_combat_health_ratio": 0.95,
+        "maximum_level_offset": 8,
+        "abort_after_consider_rejection": True,
+    }
+    return (
+        FieldHuntStop(
+            (),
+            "the buck",
+            command_keyword="buck",
+            route_vnums=("19132",),
+            source_mobile_vnum=19039,
+            source_mobile_room_description=(
+                "A deer stands here rubbing his antlers against a tree."
+            ),
+            source_policy_id="fame-recovery-mirror-realm-19039-24-26",
+            source_target_armed=False,
+            **common,
+        ),
+        FieldHuntStop(
+            ("west",),
+            "the moose",
+            command_keyword="moose",
+            route_vnums=("19131",),
+            source_mobile_vnum=19048,
+            source_mobile_room_description=(
+                "A moose stands here, nibbling at the tree branches."
+            ),
+            source_policy_id="fame-recovery-mirror-realm-19048-24-26",
+            source_target_armed=False,
+            **common,
+        ),
+    )
+
+
 @lru_cache(maxsize=2)
 def _shire_thain_where_location_routes(
     search_path: tuple[str, ...],
@@ -18903,6 +19475,7 @@ def _gear_response_matches(expectation: str, recent: str) -> bool:
                 "you wield ",
                 "you cannot use ",
                 "your profession prohibits wearing",
+                "you can't wear, wield, or hold that",
                 "you do not have that item",
             )
         )
@@ -19164,6 +19737,36 @@ def _has_named_affect(value: Any, name: str) -> bool:
     return False
 
 
+def _named_affect_duration(value: Any, name: str) -> int | None:
+    """Return the longest visible duration for one named affect."""
+    target = name.casefold()
+    durations: list[int] = []
+
+    def collect(item: Any) -> None:
+        if isinstance(item, str):
+            try:
+                collect(json.loads(_ANSI_ESCAPE.sub("", item)))
+            except json.JSONDecodeError:
+                pass
+            return
+        if isinstance(item, Mapping):
+            affect_name = item.get("name")
+            if isinstance(affect_name, str) and affect_name.casefold() == target:
+                try:
+                    durations.append(int(item.get("duration")))
+                except (TypeError, ValueError):
+                    pass
+            for nested in item.values():
+                collect(nested)
+            return
+        if isinstance(item, (list, tuple)):
+            for nested in item:
+                collect(nested)
+
+    collect(value)
+    return max(durations) if durations else None
+
+
 def _training_targets(text: str) -> list[str]:
     return list(_training_target_counts(text))
 
@@ -19256,7 +19859,7 @@ def _room_mobile_target_counts(
     text: str,
     source_mobile_targets: Mapping[str, tuple[str, ...]],
 ) -> dict[str, int]:
-    """Recognize source-defined mobile lines before parsing unknown live prose."""
+    """Count source-defined mobiles without promoting room or object prose."""
     if not source_mobile_targets:
         return _training_target_counts(text)
 
@@ -19277,10 +19880,6 @@ def _room_mobile_target_counts(
             matched_lines.update(indexes)
             targets.update(source_targets)
 
-    unmatched = "\n".join(
-        line for index, line in enumerate(lines) if index not in matched_lines
-    )
-    targets.update(_training_target_counts(unmatched))
     return dict(targets)
 
 
@@ -19977,6 +20576,76 @@ def _equipment_descriptions(value: Any) -> list[str]:
             result.extend(_equipment_descriptions(item))
         return result
     return []
+
+
+def _equipment_sources(value: Any, catalog: GearCatalog) -> list[ObjectSource]:
+    """Match exact GMCP worn VNUMs before falling back to display text."""
+    if isinstance(value, str):
+        cleaned = _ANSI_ESCAPE.sub("", value).strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            matched = catalog.match(cleaned)
+            return [matched] if matched is not None else []
+        return _equipment_sources(parsed, catalog)
+    if isinstance(value, dict):
+        vnum = _int_or_none(value.get("vnum"))
+        if vnum is not None and vnum in catalog.objects:
+            return [catalog.objects[vnum]]
+        description = value.get("name", value.get("short_desc"))
+        result: list[ObjectSource] = []
+        if isinstance(description, str):
+            matched = catalog.match(description)
+            if matched is not None:
+                result.append(matched)
+        for key, item in value.items():
+            if key not in {"name", "short_desc"} and isinstance(
+                item, (dict, list)
+            ):
+                result.extend(_equipment_sources(item, catalog))
+        return result
+    if isinstance(value, list):
+        result: list[ObjectSource] = []
+        for item in value:
+            result.extend(_equipment_sources(item, catalog))
+        return result
+    return []
+
+
+def _equipment_weapon_from_payload(value: Any) -> tuple[bool, str | None]:
+    """Read the occupied wield slot from a structured GMCP snapshot."""
+    if isinstance(value, str):
+        cleaned = _ANSI_ESCAPE.sub("", value).strip()
+        try:
+            return _equipment_weapon_from_payload(json.loads(cleaned))
+        except json.JSONDecodeError:
+            return False, None
+    if isinstance(value, dict):
+        slot = str(value.get("slot", "")).casefold()
+        wear_loc = _int_or_none(value.get("wear_loc"))
+        if slot in {"weapon", "wield"} or wear_loc == 16:
+            description = value.get("name", value.get("short_desc"))
+            return True, str(description) if description is not None else None
+        for key, item in value.items():
+            if str(key).casefold() in {"weapon", "wield"}:
+                if isinstance(item, dict):
+                    description = item.get("name", item.get("short_desc"))
+                    return (
+                        True,
+                        str(description) if description is not None else None,
+                    )
+                return True, str(item) if item is not None else None
+            if isinstance(item, (dict, list)):
+                seen, description = _equipment_weapon_from_payload(item)
+                if seen:
+                    return seen, description
+        return False, None
+    if isinstance(value, list):
+        for item in value:
+            seen, description = _equipment_weapon_from_payload(item)
+            if seen:
+                return seen, description
+    return False, None
 
 
 def _near_level_gain(state: CharacterState) -> bool:

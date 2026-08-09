@@ -131,7 +131,12 @@ class ObservationParser:
         package, separator, body = message.partition(" ")
         payload = self._decode_gmcp_body(body) if separator else None
         normalized = package.casefold()
-        if normalized in {"char.items", "char.items.add", "char.equipment"}:
+        if normalized in {
+            "char.items",
+            "char.items.add",
+            "char.equipment",
+            "char.worn",
+        }:
             payload = self._normalize_targetmode_descriptions(payload)
         events: list[GameEvent] = []
 
@@ -186,6 +191,7 @@ class ObservationParser:
             "char.affect": "affects_changed",
             "char.items": "inventory_changed",
             "char.equipment": "equipment_changed",
+            "char.worn": "equipment_changed",
             "char.enemies": "enemies_changed",
         }
         snapshot_type = snapshot_types.get(normalized)

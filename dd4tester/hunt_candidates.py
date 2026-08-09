@@ -16,6 +16,8 @@ from .fastwalks import FASTWALKS, MAP_ROUTES
 ACT_SENTINEL = 1 << 1
 ACT_AGGRESSIVE = 1 << 5
 ACT_STAY_AREA = 1 << 6
+ACT_IS_FAMOUS = 1 << 14
+ACT_LOSE_FAME = 1 << 15
 ACT_DIE_IF_MASTER_GONE = 1 << 21
 ACT_NO_EXPERIENCE = 1 << 24
 
@@ -136,6 +138,14 @@ class MobileSource:
         return bool(self.affected_flags & AFF_CONFUSION)
 
     @property
+    def awards_fame(self) -> bool:
+        return bool(self.act_flags & ACT_IS_FAMOUS)
+
+    @property
+    def costs_fame(self) -> bool:
+        return bool(self.act_flags & ACT_LOSE_FAME)
+
+    @property
     def dies_if_master_gone(self) -> bool:
         return bool(self.act_flags & ACT_DIE_IF_MASTER_GONE)
 
@@ -168,6 +178,22 @@ class ObjectSource:
     def effective_level(self) -> int:
         """Return the lowest source-backed level at which this object can load."""
         return self.load_level_min or self.level
+
+
+@dataclass(frozen=True)
+class ObjectSetBonus:
+    required_count: int
+    location: int
+    modifier: int
+
+
+@dataclass(frozen=True)
+class ObjectSetSource:
+    vnum: int
+    name: str
+    description: str
+    object_vnums: tuple[int, ...]
+    bonuses: tuple[ObjectSetBonus, ...]
 
 
 @dataclass(frozen=True)
@@ -351,6 +377,19 @@ def load_object_sources(area_directory: Path) -> dict[int, ObjectSource]:
         )
         objects.update(parsed.objects)
     return objects
+
+
+def load_object_set_sources(area_directory: Path) -> dict[int, ObjectSetSource]:
+    """Load DD4 object sets with their runtime bonus thresholds."""
+    if not area_directory.is_dir():
+        raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
+
+    object_sets: dict[int, ObjectSetSource] = {}
+    for path in sorted(area_directory.glob("*.are")):
+        lines = path.read_text(encoding="latin-1").splitlines()
+        bounds = _section_ranges(lines).get("#OBJECT_SETS")
+        object_sets.update(_parse_object_sets(lines, bounds))
+    return object_sets
 
 
 def parse_area_file(
@@ -682,6 +721,10 @@ def rank_hunt_candidates(
             hazards.append("source mobile is a shopkeeper")
             dangerous = True
             autonomy_rejections.append("source mobile is a shopkeeper")
+        if mobile.costs_fame:
+            hazards.append("source mobile costs fame when killed")
+            dangerous = True
+            autonomy_rejections.append("source mobile costs fame when killed")
         if mobile.aggressive:
             hazards.append("target is aggressive")
             dangerous = True
@@ -929,6 +972,99 @@ def _parse_objects(
         )
         index = record_end
     return objects
+
+
+def _parse_object_sets(
+    lines: list[str],
+    bounds: tuple[int, int] | None,
+) -> dict[int, ObjectSetSource]:
+    object_sets: dict[int, ObjectSetSource] = {}
+    if bounds is None:
+        return object_sets
+
+    index, end = bounds
+    while index < end:
+        marker = lines[index].strip()
+        if marker == "#0":
+            break
+        if not _is_vnum_marker(marker):
+            index += 1
+            continue
+        vnum = int(marker[1:])
+        index += 1
+        name, index = _read_tilde(lines, index, end)
+        description, index = _read_tilde(lines, index, end)
+        object_numbers, index = _read_integer_fields(lines, index, end, 5)
+        bonus_numbers, index = _read_integer_fields(lines, index, end, 5)
+        if len(object_numbers) != 5 or len(bonus_numbers) != 5:
+            index = _next_vnum_marker(lines, index, end)
+            continue
+
+        file_affects: list[tuple[int, int]] = []
+        record_end = _next_vnum_marker(lines, index, end)
+        while index < record_end:
+            parts = lines[index].split()
+            index += 1
+            if not parts or parts[0] != "A":
+                continue
+            affect_parts = parts[1:]
+            if len(affect_parts) < 2 and index < record_end:
+                affect_parts = lines[index].split()
+                index += 1
+            if len(affect_parts) >= 2 and _all_ints(affect_parts[:2]):
+                file_affects.append((int(affect_parts[0]), int(affect_parts[1])))
+
+        thresholds: list[int] = []
+        cumulative = 0
+        for required_count in range(2, 6):
+            matching = bonus_numbers.count(required_count)
+            if matching:
+                cumulative += matching
+                thresholds.append(cumulative)
+
+        # load_object_sets prepends each affect. Runtime position one is
+        # therefore the final A record in the area file.
+        runtime_affects = reversed(file_affects)
+        bonuses = tuple(
+            ObjectSetBonus(required_count, location, modifier)
+            for required_count, (location, modifier) in zip(
+                thresholds,
+                runtime_affects,
+            )
+        )
+        object_sets[vnum] = ObjectSetSource(
+            vnum=vnum,
+            name=_clean_text(name),
+            description=_clean_text(description),
+            object_vnums=tuple(value for value in object_numbers if value > 0),
+            bonuses=bonuses,
+        )
+        index = record_end
+    return object_sets
+
+
+def _read_integer_fields(
+    lines: list[str],
+    index: int,
+    end: int,
+    count: int,
+) -> tuple[list[int], int]:
+    values: list[int] = []
+    while index < end and len(values) < count:
+        line = lines[index].strip()
+        if _is_vnum_marker(line):
+            break
+        index += 1
+        if not line:
+            continue
+        for part in line.split():
+            try:
+                values.append(int(part))
+            except ValueError:
+                return values, index
+            if len(values) == count:
+                break
+    return values, index
 
 
 def _parse_rooms(

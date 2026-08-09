@@ -362,6 +362,13 @@ MAP_ROUTES = (
         recall_after_loot=True,
     ),
     Fastwalk(
+        "mirror realm fame recovery",
+        24,
+        26,
+        "2s4w3n2e3ne3n2e2n;open north;3nwd2d;open west;w2s2ws",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
         "mirror realm guardian",
         26,
         30,

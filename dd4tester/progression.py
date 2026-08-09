@@ -85,6 +85,7 @@ class ProgressionContext:
     has_emergency_provision_sale: bool = False
     needs_return_home: bool = False
     has_weapon: bool = True
+    shop_rearm_blocked_by_reputation: bool = False
     needs_basic_gear: bool = False
     needs_body_gear_recovery: bool = False
     needs_school_wrist_float: bool = False
@@ -1665,6 +1666,30 @@ _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY = ProgressionPolicy(
         "The existing bounded Moria deep-carrier route can recover one purple "
         "sanctuary potion without turning its below-band carrier into an XP "
         "policy.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_FAME_RECOVERY_POLICY = ProgressionPolicy(
+    policy_id="fame-recovery-mirror-realm-24-26",
+    minimum_level=24,
+    maximum_level=26,
+    status="research",
+    execution="fame-recovery",
+    summary=(
+        "Recover negative fame through one source-isolated, sanctuary-protected "
+        "level-30 Mirror Realm animal kill."
+    ),
+    evidence=(
+        "DD4 fight.c awards fame when the victim is at least six live levels "
+        "above the character and does not carry ACT_LOSE_FAME.",
+        "Mirror Realm mobiles 19039 and 19048 are level-30 sentinel, "
+        "non-aggressive, single-reset animals with no special procedure, no "
+        "source weapon, and no ACT_LOSE_FAME flag.",
+        "The live consider branch `laughs at you mercilessly` proves a level "
+        "difference from six through nine before this exceptional combat is "
+        "authorized.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -4860,6 +4885,7 @@ def policy_for(
     has_emergency_provision_sale: bool = False,
     needs_return_home: bool = False,
     has_weapon: bool = True,
+    shop_rearm_blocked_by_reputation: bool = False,
     needs_basic_gear: bool = False,
     needs_body_gear_recovery: bool = False,
     needs_school_wrist_float: bool = False,
@@ -4911,6 +4937,7 @@ def policy_for(
         has_emergency_provision_sale=has_emergency_provision_sale,
         needs_return_home=needs_return_home,
         has_weapon=has_weapon,
+        shop_rearm_blocked_by_reputation=shop_rearm_blocked_by_reputation,
         needs_basic_gear=needs_basic_gear,
         needs_body_gear_recovery=needs_body_gear_recovery,
         needs_school_wrist_float=needs_school_wrist_float,
@@ -5181,6 +5208,18 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
     # into combat. Repair the primary slot before spending another segment on
     # provisions or flight money. ``select_policy`` can still promote a
     # pending flight purchase when the newly available cash is sufficient.
+    if (
+        (not context.has_weapon or context.needs_piercing_weapon)
+        and context.shop_rearm_blocked_by_reputation
+        and context.character_class == "thief"
+        and 10 <= normalized_level <= 29
+        and context.needs_intermediate_piercing_weapon_upgrade
+        and not context.intermediate_piercing_weapon_upgrade_attempted
+    ):
+        return replace(
+            _THALOS_LONG_DAGGER_UPGRADE_POLICY,
+            practice_skill=context.practice_skill,
+        )
     if not context.has_weapon:
         return _REARM_WEAPON_POLICY
     if context.needs_piercing_weapon or context.needs_pounding_weapon:
@@ -8632,14 +8671,19 @@ def _moria_absent_cooldown_alternate_policy(
         )
         if deep_policy is not None:
             return deep_policy
+    rock_toad_policy = _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY
     if (
         context.character_class == "thief"
-        and context.level >= 19
-        and _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY.policy_id
+        and context.level >= max(19, rock_toad_policy.minimum_level)
+        and (
+            rock_toad_policy.maximum_level is None
+            or context.level <= rock_toad_policy.maximum_level
+        )
+        and rock_toad_policy.policy_id
         not in context.excluded_policy_ids
     ):
         return replace(
-            _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY,
+            rock_toad_policy,
             segment_kill_limit=1,
             summary=(
                 "Use one isolated Mahn-Tor Rock Toad as a level-19 trial "

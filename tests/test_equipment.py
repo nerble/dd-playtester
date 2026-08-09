@@ -19,7 +19,12 @@ from dd4tester.equipment import (
     stance_score,
     weapon_damage_score,
 )
-from dd4tester.hunt_candidates import ObjectSource, parse_area_file
+from dd4tester.hunt_candidates import (
+    ObjectSetBonus,
+    ObjectSetSource,
+    ObjectSource,
+    parse_area_file,
+)
 
 
 def _item(
@@ -596,6 +601,90 @@ def test_catalog_matches_set_prefix_and_protects_foundry_circlet() -> None:
     assert catalog.match("[SET] a silver circlet") == circlet
     assert circlet.affects == ((3, 1),)
     assert protects_from_sale(circlet)
+
+
+def test_catalog_loads_object_set_thresholds_in_runtime_affect_order() -> None:
+    catalog = GearCatalog.from_area_directory(
+        Path("runs/dd4-source/server/area")
+    )
+
+    alliance = catalog.object_sets[2707]
+    huntsmith = catalog.object_sets[2704]
+    assert alliance.object_vnums == (108, 6601)
+    assert alliance.bonuses == (ObjectSetBonus(2, 1, 2),)
+    assert huntsmith.object_vnums == (2707, 2708, 2709)
+    assert huntsmith.bonuses == (
+        ObjectSetBonus(2, 19, 10),
+        ObjectSetBonus(3, 51, 5),
+    )
+
+
+def test_combat_stance_preserves_live_strength_set_before_hitroll() -> None:
+    catalog = GearCatalog.from_area_directory(
+        Path("runs/dd4-source/server/area")
+    )
+    collar = catalog.objects[4538]
+    circlet = catalog.objects[108]
+    pink_ring = catalog.objects[6601]
+    recovery_boots = catalog.objects[110]
+    bead_necklace = catalog.objects[1509]
+    combat_boots = catalog.objects[28372]
+
+    removals, additions = plan_stance_swaps(
+        [bead_necklace, combat_boots],
+        [collar, circlet, pink_ring, pink_ring, recovery_boots],
+        STANCE_COMBAT,
+        object_sets=catalog.object_sets.values(),
+        current_strength=17,
+    )
+
+    assert removals == [recovery_boots]
+    assert additions == [combat_boots]
+
+
+def test_combat_stance_without_set_data_retains_independent_scoring() -> None:
+    catalog = GearCatalog.from_area_directory(
+        Path("runs/dd4-source/server/area")
+    )
+    collar = catalog.objects[4538]
+    circlet = catalog.objects[108]
+    pink_ring = catalog.objects[6601]
+    recovery_boots = catalog.objects[110]
+    bead_necklace = catalog.objects[1509]
+    combat_boots = catalog.objects[28372]
+
+    removals, additions = plan_stance_swaps(
+        [bead_necklace, combat_boots],
+        [collar, circlet, pink_ring, pink_ring, recovery_boots],
+        STANCE_COMBAT,
+        current_strength=17,
+    )
+
+    assert removals == [circlet, recovery_boots]
+    assert additions == [bead_necklace, combat_boots]
+
+
+def test_duplicate_set_prototypes_do_not_activate_a_set_bonus() -> None:
+    set_ring = _item(1, "set ring", wear_bit=1)
+    damage_ring = _item(2, "damage ring", (19, 1), wear_bit=1)
+    object_set = ObjectSetSource(
+        10,
+        "two distinct rings",
+        "",
+        (1, 3),
+        (ObjectSetBonus(2, 19, 100),),
+    )
+
+    removals, additions = plan_stance_swaps(
+        [damage_ring, damage_ring],
+        [set_ring, set_ring],
+        STANCE_COMBAT,
+        object_sets=[object_set],
+        current_strength=15,
+    )
+
+    assert removals == [set_ring, set_ring]
+    assert additions == [damage_ring, damage_ring]
 
 
 def test_item_keyword_uses_the_displayed_noun_instead_of_a_shared_adjective() -> None:

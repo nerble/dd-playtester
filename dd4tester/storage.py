@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 
+_CAMPAIGN_EVENT_HISTORY_LIMIT = 256
+
+
 class RunStorage:
     def __init__(self, path: Path, *, event_commit_interval: int = 25) -> None:
         if event_commit_interval < 1:
@@ -14,6 +17,12 @@ class RunStorage:
         self.path = path
         self.event_commit_interval = event_commit_interval
         self._events_since_commit = 0
+        self._recent_campaign_segments_cache: dict[
+            tuple[int, int], list[sqlite3.Row]
+        ] = {}
+        self._recent_campaign_checkpoints_cache: dict[
+            tuple[int, int], list[sqlite3.Row]
+        ] = {}
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(self.path)
         self.connection.row_factory = sqlite3.Row
@@ -58,6 +67,33 @@ class RunStorage:
             CREATE INDEX IF NOT EXISTS idx_state_snapshots_run_id
             ON state_snapshots(run_id, id);
 
+            CREATE TABLE IF NOT EXISTS character_commands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER NOT NULL UNIQUE
+                    REFERENCES events(id) ON DELETE CASCADE,
+                run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                character_name TEXT NOT NULL COLLATE NOCASE,
+                command TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_character_commands_name_id
+            ON character_commands(character_name, id DESC);
+
+            CREATE TABLE IF NOT EXISTS character_acquired_items (
+                character_name TEXT NOT NULL COLLATE NOCASE,
+                item_description TEXT NOT NULL COLLATE NOCASE,
+                first_snapshot_id INTEGER
+                    REFERENCES state_snapshots(id) ON DELETE SET NULL,
+                first_seen_at TEXT NOT NULL,
+                PRIMARY KEY (character_name, item_description)
+            );
+
+            CREATE TABLE IF NOT EXISTS character_item_backfills (
+                character_name TEXT PRIMARY KEY COLLATE NOCASE,
+                completed_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_state_snapshots_character_id
             ON state_snapshots(
                 lower(json_extract(state_json, '$.name')), id DESC
@@ -92,6 +128,8 @@ class RunStorage:
                 boot_id TEXT,
                 mob_name TEXT NOT NULL,
                 xp_gained INTEGER,
+                source_mobile_vnum INTEGER,
+                source_policy_id TEXT,
                 timestamp TEXT NOT NULL
             );
 
@@ -133,6 +171,15 @@ class RunStorage:
             CREATE INDEX IF NOT EXISTS idx_campaign_segments_campaign_id
             ON campaign_segments(campaign_id, sequence);
 
+            CREATE TABLE IF NOT EXISTS campaign_usage (
+                campaign_id INTEGER PRIMARY KEY
+                    REFERENCES campaigns(id) ON DELETE CASCADE,
+                segment_count INTEGER NOT NULL,
+                command_count INTEGER NOT NULL,
+                duration_seconds REAL NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS campaign_checkpoints (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -162,7 +209,20 @@ class RunStorage:
         }
         if "boot_id" not in run_columns:
             self.connection.execute("ALTER TABLE runs ADD COLUMN boot_id TEXT")
+        mob_kill_columns = {
+            row["name"]
+            for row in self.connection.execute("PRAGMA table_info(mob_kills)")
+        }
+        if "source_mobile_vnum" not in mob_kill_columns:
+            self.connection.execute(
+                "ALTER TABLE mob_kills ADD COLUMN source_mobile_vnum INTEGER"
+            )
+        if "source_policy_id" not in mob_kill_columns:
+            self.connection.execute(
+                "ALTER TABLE mob_kills ADD COLUMN source_policy_id TEXT"
+            )
         self.connection.commit()
+        self._events_since_commit = 0
 
     def create_run(self, *, scenario_name: str, scenario_path: Path) -> int:
         cursor = self.connection.execute(
@@ -199,18 +259,43 @@ class RunStorage:
         payload: dict[str, Any],
         timestamp: str | None = None,
     ) -> int:
+        event_timestamp = timestamp or _now()
         cursor = self.connection.execute(
             """
             INSERT INTO events (run_id, timestamp, kind, payload_json)
             VALUES (?, ?, ?, ?)
             """,
-            (run_id, timestamp or _now(), kind, json.dumps(payload, sort_keys=True)),
+            (run_id, event_timestamp, kind, json.dumps(payload, sort_keys=True)),
         )
+        event_id = int(cursor.lastrowid)
+        command = payload.get("command") if kind == "command" else None
+        if isinstance(command, str):
+            run = self.connection.execute(
+                "SELECT scenario_name FROM runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is not None:
+                character_name = str(run["scenario_name"]).rpartition(":")[2]
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO character_commands (
+                        event_id, run_id, character_name, command, timestamp
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_id,
+                        run_id,
+                        character_name,
+                        command,
+                        event_timestamp,
+                    ),
+                )
         self._events_since_commit += 1
         if self._events_since_commit >= self.event_commit_interval:
             self.connection.commit()
             self._events_since_commit = 0
-        return int(cursor.lastrowid)
+        return event_id
 
     def record_state_snapshot(
         self,
@@ -221,6 +306,7 @@ class RunStorage:
         state: dict[str, Any],
         timestamp: str | None = None,
     ) -> int:
+        snapshot_timestamp = timestamp or _now()
         cursor = self.connection.execute(
             """
             INSERT INTO state_snapshots (
@@ -231,12 +317,47 @@ class RunStorage:
             (
                 run_id,
                 source_event_id,
-                timestamp or _now(),
+                snapshot_timestamp,
                 reason,
                 json.dumps(state, sort_keys=True),
             ),
         )
-        return int(cursor.lastrowid)
+        snapshot_id = int(cursor.lastrowid)
+        if reason == "item_acquired":
+            self._record_character_acquired_items(
+                snapshot_id,
+                state,
+                timestamp=snapshot_timestamp,
+            )
+        return snapshot_id
+
+    def _record_character_acquired_items(
+        self,
+        snapshot_id: int,
+        state: dict[str, Any],
+        *,
+        timestamp: str,
+    ) -> None:
+        character_name = state.get("name")
+        acquisitions = state.get("acquired_items")
+        if not isinstance(character_name, str) or not isinstance(acquisitions, list):
+            return
+        for acquisition in acquisitions:
+            if not isinstance(acquisition, dict):
+                continue
+            description = acquisition.get("item")
+            if not isinstance(description, str) or not description.strip():
+                continue
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO character_acquired_items (
+                    character_name, item_description,
+                    first_snapshot_id, first_seen_at
+                )
+                VALUES (?, ?, ?, ?)
+                """,
+                (character_name, description, snapshot_id, timestamp),
+            )
 
     def finish_run(self, run_id: int, *, status: str, error: str | None = None) -> None:
         self.connection.execute(
@@ -248,7 +369,22 @@ class RunStorage:
             (_now(), status, error, run_id),
         )
         self.connection.commit()
-        self._events_since_commit = 0
+
+    def _invalidate_campaign_history(self, campaign_id: int | None = None) -> None:
+        if campaign_id is None:
+            self._recent_campaign_segments_cache.clear()
+            self._recent_campaign_checkpoints_cache.clear()
+            return
+        self._recent_campaign_segments_cache = {
+            key: value
+            for key, value in self._recent_campaign_segments_cache.items()
+            if key[0] != campaign_id
+        }
+        self._recent_campaign_checkpoints_cache = {
+            key: value
+            for key, value in self._recent_campaign_checkpoints_cache.items()
+            if key[0] != campaign_id
+        }
 
     def fail_interrupted_runs(self, *, reason: str) -> int:
         """Mark orphaned running records as failed after their process has ended."""
@@ -289,6 +425,7 @@ class RunStorage:
             (timestamp, reason),
         )
         self.connection.commit()
+        self._invalidate_campaign_history()
         return int(segments.rowcount), int(campaigns.rowcount)
 
     def recover_interrupted_campaign_segments(
@@ -348,6 +485,7 @@ class RunStorage:
             (reason, timestamp, campaign_id),
         )
         self.connection.commit()
+        self._invalidate_campaign_history(campaign_id)
         return int(cursor.rowcount)
 
     def fail_campaign_after_timeout(
@@ -435,6 +573,7 @@ class RunStorage:
             (reason, timestamp, campaign_id),
         )
         self.connection.commit()
+        self._invalidate_campaign_history(campaign_id)
         return int(segment_cursor.rowcount)
 
     def list_runs(self, *, limit: int = 20) -> list[sqlite3.Row]:
@@ -664,13 +803,16 @@ class RunStorage:
         *,
         level: int | None = None,
         skill: str | None = None,
+        event_types: tuple[str, ...] | None = None,
+        segment_limit: int = _CAMPAIGN_EVENT_HISTORY_LIMIT,
     ) -> list[sqlite3.Row]:
         """Return filtered game events for a campaign in one indexed join."""
+        if segment_limit < 1:
+            raise ValueError("segment_limit must be positive")
         clauses = [
-            "s.campaign_id = ?",
             "e.kind = 'game_event'",
         ]
-        parameters: list[Any] = [campaign_id]
+        parameters: list[Any] = [campaign_id, segment_limit]
         if level is not None:
             clauses.append(
                 "CAST(json_extract(s.start_state_json, '$.level') AS INTEGER) = ?"
@@ -681,14 +823,27 @@ class RunStorage:
                 "lower(json_extract(e.payload_json, '$.data.skill')) = ?"
             )
             parameters.append(skill.casefold())
+        if event_types:
+            placeholders = ", ".join("?" for _ in event_types)
+            clauses.append(
+                f"json_extract(e.payload_json, '$.type') IN ({placeholders})"
+            )
+            parameters.extend(event_types)
         cursor = self.connection.execute(
             f"""
+            WITH recent_segments AS MATERIALIZED (
+                SELECT run_id, start_state_json
+                FROM campaign_segments
+                WHERE campaign_id = ?
+                ORDER BY sequence DESC
+                LIMIT ?
+            )
             SELECT e.id, e.run_id, e.timestamp, e.kind, e.payload_json,
                    CAST(json_extract(s.start_state_json, '$.level') AS INTEGER)
                        AS character_level
-            FROM events AS e
-            JOIN campaign_segments AS s ON s.run_id = e.run_id
-            WHERE {' AND '.join(clauses)}
+            FROM recent_segments AS s
+            CROSS JOIN events AS e INDEXED BY idx_events_run_id
+            WHERE e.run_id = s.run_id AND {' AND '.join(clauses)}
             ORDER BY e.id
             """,
             parameters,
@@ -701,27 +856,10 @@ class RunStorage:
         command: str,
     ) -> bool:
         """Return whether this character previously issued an exact command."""
-        cursor = self.connection.execute(
-            """
-            SELECT r.scenario_name, e.payload_json
-            FROM events AS e
-            JOIN runs AS r ON r.id = e.run_id
-            WHERE e.kind = 'command'
-            ORDER BY e.id DESC
-            """
-        )
-        expected_name = character_name.casefold()
-        for row in cursor:
-            scenario_character = str(row["scenario_name"]).rpartition(":")[2]
-            if scenario_character.casefold() != expected_name:
-                continue
-            try:
-                payload = json.loads(row["payload_json"])
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if payload.get("command") == command:
-                return True
-        return False
+        return self._latest_character_command(
+            character_name,
+            exact=command,
+        ) is not None
 
     def latest_character_command(
         self,
@@ -730,30 +868,40 @@ class RunStorage:
         prefix: str | None = None,
     ) -> str | None:
         """Return the newest recorded command for a character."""
+        return self._latest_character_command(character_name, prefix=prefix)
+
+    def _latest_character_command(
+        self,
+        character_name: str,
+        *,
+        exact: str | None = None,
+        prefix: str | None = None,
+    ) -> str | None:
+        """Query the compact write-time command ledger for one character."""
+        if exact is not None and prefix is not None:
+            raise ValueError("exact and prefix command filters are mutually exclusive")
+        filters = ["character_name = ? COLLATE NOCASE"]
+        parameters: list[object] = [character_name]
+        if exact is not None:
+            filters.append("command = ?")
+            parameters.append(exact)
+        elif prefix is not None:
+            filters.append("substr(command, 1, length(?)) = ?")
+            parameters.extend((prefix, prefix))
         cursor = self.connection.execute(
-            """
-            SELECT r.scenario_name, e.payload_json
-            FROM events AS e
-            JOIN runs AS r ON r.id = e.run_id
-            WHERE e.kind = 'command'
-            ORDER BY e.id DESC
-            """
+            f"""
+            SELECT command
+            FROM character_commands
+            WHERE {' AND '.join(filters)}
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            parameters,
         )
-        expected_name = character_name.casefold()
-        for row in cursor:
-            scenario_character = str(row["scenario_name"]).rpartition(":")[2]
-            if scenario_character.casefold() != expected_name:
-                continue
-            try:
-                payload = json.loads(row["payload_json"])
-            except (TypeError, json.JSONDecodeError):
-                continue
-            command = payload.get("command")
-            if not isinstance(command, str):
-                continue
-            if prefix is None or command.startswith(prefix):
-                return command
-        return None
+        row = cursor.fetchone()
+        if row is None or not isinstance(row["command"], str):
+            return None
+        return str(row["command"])
 
     def count_events(self, run_id: int, *, kind: str | None = None) -> int:
         if kind is None:
@@ -840,14 +988,17 @@ class RunStorage:
         boot_id: str | None,
         mob_name: str,
         xp_gained: int | None,
+        source_mobile_vnum: int | None = None,
+        source_policy_id: str | None = None,
         timestamp: str | None = None,
     ) -> int:
         cursor = self.connection.execute(
             """
             INSERT INTO mob_kills (
-                run_id, character_name, boot_id, mob_name, xp_gained, timestamp
+                run_id, character_name, boot_id, mob_name, xp_gained,
+                source_mobile_vnum, source_policy_id, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -855,6 +1006,8 @@ class RunStorage:
                 boot_id,
                 mob_name,
                 xp_gained,
+                source_mobile_vnum,
+                source_policy_id,
                 timestamp or _now(),
             ),
         )
@@ -870,7 +1023,8 @@ class RunStorage:
             cursor = self.connection.execute(
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
-                       xp_gained, timestamp
+                       xp_gained, source_mobile_vnum, source_policy_id,
+                       timestamp
                 FROM mob_kills
                 WHERE character_name = ?
                 ORDER BY id
@@ -881,7 +1035,8 @@ class RunStorage:
             cursor = self.connection.execute(
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
-                       xp_gained, timestamp
+                       xp_gained, source_mobile_vnum, source_policy_id,
+                       timestamp
                 FROM mob_kills
                 WHERE character_name = ? AND boot_id = ?
                 ORDER BY id
@@ -916,8 +1071,19 @@ class RunStorage:
                 now,
             ),
         )
+        campaign_id = int(cursor.lastrowid)
+        self.connection.execute(
+            """
+            INSERT INTO campaign_usage (
+                campaign_id, segment_count, command_count,
+                duration_seconds, updated_at
+            )
+            VALUES (?, 0, 0, 0, ?)
+            """,
+            (campaign_id, now),
+        )
         self.connection.commit()
-        return int(cursor.lastrowid)
+        return campaign_id
 
     def get_campaign(self, campaign_id: int) -> sqlite3.Row | None:
         cursor = self.connection.execute(
@@ -1008,6 +1174,7 @@ class RunStorage:
         phase: str,
         start_state: dict[str, Any],
     ) -> int:
+        self._ensure_campaign_usage(campaign_id)
         sequence = int(
             self.connection.execute(
                 "SELECT COALESCE(MAX(sequence), 0) + 1 FROM campaign_segments "
@@ -1030,7 +1197,16 @@ class RunStorage:
                 json.dumps(start_state, sort_keys=True),
             ),
         )
+        self.connection.execute(
+            """
+            UPDATE campaign_usage
+            SET segment_count = segment_count + 1, updated_at = ?
+            WHERE campaign_id = ?
+            """,
+            (_now(), campaign_id),
+        )
         self.connection.commit()
+        self._invalidate_campaign_history(campaign_id)
         return int(cursor.lastrowid)
 
     def finish_campaign_segment(
@@ -1044,6 +1220,20 @@ class RunStorage:
         duration_seconds: float | None,
         error: str | None = None,
     ) -> None:
+        campaign_row = self.connection.execute(
+            """
+            SELECT campaign_id, command_count, duration_seconds
+            FROM campaign_segments
+            WHERE id = ?
+            """,
+            (segment_id,),
+        ).fetchone()
+        if campaign_row is None:
+            return
+        campaign_id = int(campaign_row["campaign_id"])
+        self._ensure_campaign_usage(campaign_id)
+        old_commands = int(campaign_row["command_count"] or 0)
+        old_duration = float(campaign_row["duration_seconds"] or 0)
         self.connection.execute(
             """
             UPDATE campaign_segments
@@ -1062,7 +1252,23 @@ class RunStorage:
                 segment_id,
             ),
         )
+        self.connection.execute(
+            """
+            UPDATE campaign_usage
+            SET command_count = command_count + ?,
+                duration_seconds = duration_seconds + ?,
+                updated_at = ?
+            WHERE campaign_id = ?
+            """,
+            (
+                int(command_count or 0) - old_commands,
+                float(duration_seconds or 0) - old_duration,
+                _now(),
+                campaign_id,
+            ),
+        )
         self.connection.commit()
+        self._invalidate_campaign_history(campaign_id)
 
     def list_campaign_segments(self, campaign_id: int) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
@@ -1079,7 +1285,25 @@ class RunStorage:
         return list(cursor.fetchall())
 
     def campaign_totals(self, campaign_id: int) -> sqlite3.Row:
+        self._ensure_campaign_usage(campaign_id)
         cursor = self.connection.execute(
+            """
+            SELECT segment_count, command_count, duration_seconds
+            FROM campaign_usage
+            WHERE campaign_id = ?
+            """,
+            (campaign_id,),
+        )
+        return cursor.fetchone()
+
+    def _ensure_campaign_usage(self, campaign_id: int) -> None:
+        existing = self.connection.execute(
+            "SELECT 1 FROM campaign_usage WHERE campaign_id = ?",
+            (campaign_id,),
+        ).fetchone()
+        if existing is not None:
+            return
+        aggregate = self.connection.execute(
             """
             SELECT COUNT(*) AS segment_count,
                    COALESCE(SUM(command_count), 0) AS command_count,
@@ -1088,8 +1312,24 @@ class RunStorage:
             WHERE campaign_id = ?
             """,
             (campaign_id,),
+        ).fetchone()
+        self.connection.execute(
+            """
+            INSERT OR IGNORE INTO campaign_usage (
+                campaign_id, segment_count, command_count,
+                duration_seconds, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                campaign_id,
+                int(aggregate["segment_count"]),
+                int(aggregate["command_count"]),
+                float(aggregate["duration_seconds"]),
+                _now(),
+            ),
         )
-        return cursor.fetchone()
+        self.connection.commit()
 
     def record_campaign_checkpoint(
         self,
@@ -1119,6 +1359,7 @@ class RunStorage:
             ),
         )
         self.connection.commit()
+        self._invalidate_campaign_history(campaign_id)
         return int(cursor.lastrowid)
 
     def get_latest_campaign_checkpoint(self, campaign_id: int) -> sqlite3.Row | None:
@@ -1147,6 +1388,65 @@ class RunStorage:
             (campaign_id,),
         )
         return list(cursor.fetchall())
+
+    def list_recent_campaign_segments(
+        self,
+        campaign_id: int,
+        *,
+        limit: int,
+    ) -> list[sqlite3.Row]:
+        """Return a bounded tail in normal campaign sequence order."""
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        cache_key = (campaign_id, limit)
+        cached = self._recent_campaign_segments_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
+        cursor = self.connection.execute(
+            """
+            SELECT id, campaign_id, sequence, phase, run_id, started_at,
+                   finished_at, status, start_state_json, end_state_json,
+                   command_count, duration_seconds, error
+            FROM campaign_segments
+            WHERE campaign_id = ?
+            ORDER BY sequence DESC
+            LIMIT ?
+            """,
+            (campaign_id, limit),
+        )
+        rows = list(cursor.fetchall())
+        rows.reverse()
+        self._recent_campaign_segments_cache[cache_key] = rows
+        return list(rows)
+
+    def list_recent_campaign_checkpoints(
+        self,
+        campaign_id: int,
+        *,
+        limit: int,
+    ) -> list[sqlite3.Row]:
+        """Return a bounded checkpoint tail in normal insertion order."""
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        cache_key = (campaign_id, limit)
+        cached = self._recent_campaign_checkpoints_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
+        cursor = self.connection.execute(
+            """
+            SELECT id, campaign_id, segment_id, run_id, phase, reason,
+                   created_at, state_json
+            FROM campaign_checkpoints
+            WHERE campaign_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (campaign_id, limit),
+        )
+        rows = list(cursor.fetchall())
+        rows.reverse()
+        self._recent_campaign_checkpoints_cache[cache_key] = rows
+        return list(rows)
 
     def list_state_snapshots(self, run_id: int) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
@@ -1202,9 +1502,33 @@ class RunStorage:
         item_name: str,
     ) -> bool:
         """Return whether observations show this character acquiring an item."""
+        expected_item = item_name.casefold()
+        known = self.connection.execute(
+            """
+            SELECT 1
+            FROM character_acquired_items
+            WHERE character_name = ? COLLATE NOCASE
+              AND instr(lower(item_description), ?) > 0
+            LIMIT 1
+            """,
+            (character_name, expected_item),
+        ).fetchone()
+        if known is not None:
+            return True
+        backfilled = self.connection.execute(
+            """
+            SELECT 1
+            FROM character_item_backfills
+            WHERE character_name = ? COLLATE NOCASE
+            """,
+            (character_name,),
+        ).fetchone()
+        if backfilled is not None:
+            return False
+
         cursor = self.connection.execute(
             """
-            SELECT state_json
+            SELECT id, timestamp, state_json
             FROM state_snapshots
             WHERE reason = 'item_acquired'
               AND lower(json_extract(state_json, '$.name')) = ?
@@ -1212,12 +1536,19 @@ class RunStorage:
             """,
             (character_name.casefold(),),
         )
-        expected_item = item_name.casefold()
+        found = False
         for row in cursor:
             try:
                 state = json.loads(row["state_json"])
             except (TypeError, json.JSONDecodeError):
                 continue
+            if not isinstance(state, dict):
+                continue
+            self._record_character_acquired_items(
+                int(row["id"]),
+                state,
+                timestamp=str(row["timestamp"]),
+            )
             for acquisition in state.get("acquired_items", []):
                 if not isinstance(acquisition, dict):
                     continue
@@ -1226,8 +1557,18 @@ class RunStorage:
                     isinstance(description, str)
                     and expected_item in description.casefold()
                 ):
-                    return True
-        return False
+                    found = True
+        self.connection.execute(
+            """
+            INSERT OR REPLACE INTO character_item_backfills (
+                character_name, completed_at
+            )
+            VALUES (?, ?)
+            """,
+            (character_name, _now()),
+        )
+        self.connection.commit()
+        return found
 
     def close(self) -> None:
         self.connection.commit()

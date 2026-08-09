@@ -165,6 +165,107 @@ def test_storage_binds_unique_interrupted_campaign_run(tmp_path) -> None:
     assert segment["run_id"] == run_id
 
 
+def test_storage_lists_bounded_recent_campaign_history_in_sequence_order(
+    tmp_path,
+) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="campaign",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    for sequence in range(4):
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase=f"phase-{sequence}",
+            start_state={"sequence": sequence},
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=segment_id,
+            run_id=None,
+            phase=f"phase-{sequence}",
+            reason="test",
+            state={"sequence": sequence},
+        )
+
+    assert [
+        row["sequence"]
+        for row in storage.list_recent_campaign_segments(campaign_id, limit=3)
+    ] == [2, 3, 4]
+    assert [
+        row["phase"]
+        for row in storage.list_recent_campaign_checkpoints(campaign_id, limit=2)
+    ] == ["phase-2", "phase-3"]
+
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="phase-4",
+        start_state={"sequence": 4},
+    )
+    storage.record_campaign_checkpoint(
+        campaign_id,
+        segment_id=segment_id,
+        run_id=None,
+        phase="phase-4",
+        reason="test",
+        state={"sequence": 4},
+    )
+    segments = storage.list_recent_campaign_segments(campaign_id, limit=3)
+    checkpoints = storage.list_recent_campaign_checkpoints(campaign_id, limit=2)
+    storage.close()
+
+    assert [row["sequence"] for row in segments] == [3, 4, 5]
+    assert [row["phase"] for row in segments] == ["phase-2", "phase-3", "phase-4"]
+    assert [row["phase"] for row in checkpoints] == ["phase-3", "phase-4"]
+
+
+def test_storage_maintains_exact_campaign_usage_after_segment_updates(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="campaign",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="field-hunt",
+        start_state={"level": 12},
+    )
+
+    assert dict(storage.campaign_totals(campaign_id)) == {
+        "segment_count": 1,
+        "command_count": 0,
+        "duration_seconds": 0.0,
+    }
+
+    storage.finish_campaign_segment(
+        segment_id,
+        status="success",
+        run_id=7,
+        end_state={"level": 12},
+        command_count=11,
+        duration_seconds=4.5,
+    )
+    storage.finish_campaign_segment(
+        segment_id,
+        status="success",
+        run_id=7,
+        end_state={"level": 12},
+        command_count=13,
+        duration_seconds=5.0,
+    )
+
+    assert dict(storage.campaign_totals(campaign_id)) == {
+        "segment_count": 1,
+        "command_count": 13,
+        "duration_seconds": 5.0,
+    }
+    storage.close()
+
+
 def test_storage_filters_campaign_game_events_by_level_and_skill(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     campaign_id = storage.create_campaign(
@@ -205,16 +306,56 @@ def test_storage_filters_campaign_game_events_by_level_and_skill(tmp_path) -> No
     )
     storage.finish_run(run_id, status="success")
 
+    recent_segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="training",
+        start_state={"level": 20},
+    )
+    recent_run_id = storage.create_run(
+        scenario_name="starter:Kestrel",
+        scenario_path=tmp_path / "character.yaml",
+    )
+    storage.connection.execute(
+        "UPDATE campaign_segments SET run_id = ? WHERE id = ?",
+        (recent_run_id, recent_segment_id),
+    )
+    storage.connection.commit()
+    storage.record_event(
+        recent_run_id,
+        kind="game_event",
+        payload={
+            "type": "training_completed",
+            "data": {"practice_type": "physical", "skill": "backstab"},
+        },
+    )
+    storage.finish_run(recent_run_id, status="success")
+
     events = storage.list_campaign_game_events(campaign_id, level=19)
     counterbalance = storage.list_campaign_game_events(
         campaign_id,
         skill="COUNTERBALANCE",
+    )
+    recent_events = storage.list_campaign_game_events(
+        campaign_id,
+        segment_limit=1,
+    )
+    rejected_events = storage.list_campaign_game_events(
+        campaign_id,
+        event_types=("training_rejected",),
     )
 
     assert len(events) == 2
     assert len(counterbalance) == 1
     assert json.loads(counterbalance[0]["payload_json"])["type"] == (
         "training_completed"
+    )
+    assert len(recent_events) == 1
+    assert json.loads(recent_events[0]["payload_json"])["data"]["skill"] == (
+        "backstab"
+    )
+    assert len(rejected_events) == 1
+    assert json.loads(rejected_events[0]["payload_json"])["data"]["skill"] == (
+        "backstab"
     )
     storage.close()
 
@@ -341,6 +482,20 @@ def test_storage_remembers_exact_commands_for_each_character(tmp_path) -> None:
         kind="command",
         payload={"command": "description Ararisa studies every hinge."},
     )
+    other_run_id = storage.create_run(
+        scenario_name="starter:NotArarisa",
+        scenario_path=Path("profile.yaml"),
+    )
+    storage.record_event(
+        other_run_id,
+        kind="command",
+        payload={"command": "description This newer command belongs elsewhere."},
+    )
+    storage.record_event(
+        run_id,
+        kind="command",
+        payload={"command": "train con"},
+    )
 
     assert storage.character_command_recorded(
         "ararisa",
@@ -358,6 +513,7 @@ def test_storage_remembers_exact_commands_for_each_character(tmp_path) -> None:
         storage.latest_character_command("Ararisa", prefix="description ")
         == "description Ararisa studies every hinge."
     )
+    assert storage.latest_character_command("ARARISA", prefix="train ") == "train con"
     assert storage.latest_character_command("Kestrel", prefix="description ") is None
     storage.close()
 
@@ -416,6 +572,16 @@ def test_storage_remembers_historically_acquired_items(tmp_path) -> None:
 
     assert storage.character_has_acquired_item("ararisa", "large sack") is True
     assert storage.character_has_acquired_item("ararisa", "backpack") is False
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="item_acquired",
+        state={
+            "name": "Ararisa",
+            "acquired_items": [{"item": "a canvas backpack"}],
+        },
+    )
+    assert storage.character_has_acquired_item("ararisa", "backpack") is True
     storage.close()
 
 
@@ -444,6 +610,8 @@ def test_storage_scopes_sales_and_kills_by_boot_identity(tmp_path) -> None:
         boot_id=boot_id,
         mob_name="Olog",
         xp_gained=45,
+        source_mobile_vnum=10247,
+        source_policy_id="source-ranked-hunt-solace-10247-10312-24",
     )
 
     run = storage.get_run(run_id)
@@ -457,3 +625,7 @@ def test_storage_scopes_sales_and_kills_by_boot_identity(tmp_path) -> None:
     assert kills[0]["id"] == kill_id
     assert kills[0]["mob_name"] == "Olog"
     assert kills[0]["xp_gained"] == 45
+    assert kills[0]["source_mobile_vnum"] == 10247
+    assert kills[0]["source_policy_id"] == (
+        "source-ranked-hunt-solace-10247-10312-24"
+    )
