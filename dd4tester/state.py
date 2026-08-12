@@ -29,6 +29,12 @@ class CharacterState:
     max_move: int | float | None = None
     rage: int | float | None = None
     max_rage: int | float | None = None
+    hunger: int | float | None = None
+    max_hunger: int | float | None = None
+    thirst: int | float | None = None
+    max_thirst: int | float | None = None
+    drunk: int | float | None = None
+    max_drunk: int | float | None = None
     position: str | int | None = None
     form: str | None = None
     room_name: str | None = None
@@ -92,6 +98,12 @@ class CharacterState:
             self.max_move = _number(data.get("maxmove"), self.max_move)
             self.rage = _number(data.get("rage"), self.rage)
             self.max_rage = _number(data.get("maxrage"), self.max_rage)
+            self.hunger = _number(data.get("hunger"), self.hunger)
+            self.max_hunger = _number(data.get("maxhunger"), self.max_hunger)
+            self.thirst = _number(data.get("thirst"), self.thirst)
+            self.max_thirst = _number(data.get("maxthirst"), self.max_thirst)
+            self.drunk = _number(data.get("drunk"), self.drunk)
+            self.max_drunk = _number(data.get("maxdrunk"), self.max_drunk)
             self.position = _scalar(data.get("position"), self.position)
             self.form = _text(data.get("form"), self.form)
             return

@@ -4,6 +4,14 @@ DD4Tester targets any valid race, gender, base-class, and subclass combination.
 Character names identify credentials and stored history only; they must never
 select behavior.
 
+## Current Boundary
+
+The deterministic Telnet/GMCP path is the product boundary under active
+development. Mudlet consumes the same command and observation contract, but
+Mudlet profile automation and Windows VM lifecycle control are validation work,
+not alternate decision engines. AI decisions are intentionally absent until
+the deterministic path can be replayed and measured.
+
 ## Data Flow
 
 1. A character YAML profile supplies identity and local safety limits.
@@ -19,6 +27,32 @@ select behavior.
 6. Every command records its stage, reason, category, and safety-critical flag.
    Reports derive progress, decision analysis, feedback signals, and first-
    person commentary from those records.
+
+## Policy Lifecycle
+
+The selector must distinguish three states. `verified` is reusable executable
+evidence. `research` is a bounded live probe with explicit route, combat,
+resource, and return limits. `unavailable` is a durable safe stop explaining
+what evidence or implementation is missing. A checkpoint, source catalog
+entry, policy count, or research result is not a progression proof by itself.
+
+Source identity is part of the policy key: area, mobile VNUM, reset room,
+character level, and reboot identity are retained separately. Same-reboot
+productive XP may carry a safe repeat across a level boundary when the source
+identity is unambiguous and the normal live presence, consider, crowd, health,
+equipment, and recovery gates still pass. Research candidates must not hide
+such a repeat. Promotion requires objective XP, bounded damage and resource
+evidence, loot or funding evidence where relevant, and a safe healer return.
+
+## Current Proof And Debt
+
+The live mage/thief/warrior matrix proves level 10. Representative long-running
+campaigns currently anchor Aeloria at level 13, Dorrik at level 12, and Kestrel
+at level 24. The missing proof is a fresh uninterrupted creation-to-HERO run,
+generic class/subclass executable coverage after level 30, and the Mudlet/VM
+visible-client boundary. The next implementation work therefore expands the
+class-aware level-band registry and its promotion tests before adding model
+based decisions.
 
 ## Policy Boundaries
 

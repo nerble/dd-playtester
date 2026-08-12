@@ -1671,6 +1671,98 @@ _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-sanctuary-recovery-2-100",
+    minimum_level=2,
+    maximum_level=100,
+    status="research",
+    execution="moria-sanctuary-hunt",
+    summary=(
+        "Acquire one source-verified purple sanctuary potion before retrying "
+        "a current-band hunt that reached its protection floor."
+    ),
+    evidence=(
+        "DD4 source places purple sanctuary potions on the large hobgoblin reset in Moria.",
+        "The existing Moria carrier route is source-backed and uses the required-loot gate, so a below-band carrier is never promoted into ordinary XP hunting.",
+        "The recovery transition is class-independent: sanctuary protects fighters, thieves, and spellcasters before the exact failed hunt is retried.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_SOURCE_RANKED_CURE_CRITICAL_RESERVE_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-cure-critical-reserve-2-100",
+    minimum_level=2,
+    maximum_level=100,
+    status="research",
+    execution="source-ranked-cure-critical-reserve",
+    summary=(
+        "Acquire one source-verified cure-critical potion for a bounded "
+        "high-risk fight."
+    ),
+    evidence=(
+        "Source object values identify cure-critical potions independently "
+        "of their display names.",
+        "The carrier selector retains ordinary route, special, aggression, "
+        "crowd, live-consider, health, and healer-return gates.",
+        "Exact reset provenance is required because object 4150 and object "
+        "5210 share the display name black potion while the latter casts "
+        "blindness instead of healing.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_SOURCE_RANKED_FOOD_RESERVE_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-food-reserve-2-100",
+    minimum_level=2,
+    maximum_level=100,
+    status="research",
+    execution="source-ranked-food-reserve",
+    summary=(
+        "Acquire one source-verified non-poisonous ground food item without "
+        "depending on a shopkeeper."
+    ),
+    evidence=(
+        "Negative fame can make Midgaard shopkeepers refuse service, so the "
+        "ordinary city restock cannot restore a foodless character.",
+        "Direct room resets are ranked by safe fullness per route effort; "
+        "food whose source poison value is set is excluded.",
+        "The field collector binds the room line and command keyword to the "
+        "source object VNUM before acquiring the reserve.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=0,
+)
+
+_FAME_RECOVERY_CIRCUS_POLICY = ProgressionPolicy(
+    policy_id="fame-recovery-circus-24-26",
+    minimum_level=24,
+    maximum_level=26,
+    status="research",
+    execution="fame-recovery-circus",
+    summary=(
+        "Recover negative fame through one source-isolated, "
+        "sanctuary-protected Circus ticket clerk kill."
+    ),
+    evidence=(
+        "DD4 fight.c awards fame when an ordinary victim is at least six "
+        "live levels above the character and lacks ACT_LOSE_FAME.",
+        "Circus mobile 4400 is a level-31 sentinel, non-aggressive, "
+        "single-reset shopkeeper with no special procedure, source weapon, "
+        "or ACT_LOSE_FAME flag in room 4402.",
+        "DD4 create_mobile ignores the legacy hit and damage dice in area "
+        "mobile records and derives ordinary durability and damage from the "
+        "live level. The live `laughs at you mercilessly` branch proves a "
+        "six-through-nine level difference before combat is authorized.",
+        "Shop inventory is marked ITEM_INVENTORY by db.c and extracted by "
+        "make_corpse, so this policy does not claim that killing the clerk "
+        "yields a ticket.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
 _FAME_RECOVERY_POLICY = ProgressionPolicy(
     policy_id="fame-recovery-mirror-realm-24-26",
     minimum_level=24,
@@ -1690,6 +1782,31 @@ _FAME_RECOVERY_POLICY = ProgressionPolicy(
         "The live consider branch `laughs at you mercilessly` proves a level "
         "difference from six through nine before this exceptional combat is "
         "authorized.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_FAME_RECOVERY_LOTUS_POLICY = ProgressionPolicy(
+    policy_id="fame-recovery-lotus-temple-24-26",
+    minimum_level=24,
+    maximum_level=26,
+    status="research",
+    execution="fame-recovery-lotus",
+    summary=(
+        "Recover negative fame through one source-isolated, flight-assisted, "
+        "sanctuary-protected Lotus Temple chamber attendant kill."
+    ),
+    evidence=(
+        "DD4 fight.c awards fame when the victim is at least six live levels "
+        "above the character and does not carry ACT_LOSE_FAME.",
+        "Lotus Temple mobile 10736 is a level-32 sentinel, non-aggressive, "
+        "single-reset mobile alone in room 10837 with no special procedure, "
+        "no source weapon, and no ACT_LOSE_FAME flag.",
+        "The source route crosses flight-required terrain. A carried light "
+        "blue potion establishes level-30 fly before departure, while the "
+        "live `laughs at you mercilessly` branch proves a six-through-nine "
+        "level difference before combat is authorized.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -2139,8 +2256,8 @@ _UNAVAILABLE_POLICY = ProgressionPolicy(
 )
 
 _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
-    policy_id="source-ranked-hunt-13-100",
-    minimum_level=13,
+    policy_id="source-ranked-hunt-10-100",
+    minimum_level=10,
     maximum_level=100,
     status="research",
     execution="source-ranked-hunt",
@@ -2839,6 +2956,87 @@ _MAHNTOR_ROCK_TOAD_THIEF_CIRCUIT_POLICY = ProgressionPolicy(
 )
 
 
+_MAHNTOR_ROCK_TOAD_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="mahntor-rock-toad-probe-13-15",
+    minimum_level=13,
+    maximum_level=15,
+    status="research",
+    execution="mahntor-rock-toad-research",
+    summary=(
+        "Survey the four source-isolated Mahn-Tor Rock Toad resets before "
+        "authorizing combat for a non-thief class."
+    ),
+    evidence=(
+        "The DD4 source catalog identifies mobile 2303 as a non-aggressive, "
+        "sentinel Rock Toad with no special procedure and four reset rooms: "
+        "2311, 2312, 2313, and 2319.",
+        "The source level-14 mobile fuzz range is 12-16. Its conservative "
+        "unarmed peak round bound is 140 damage, so the shared runner must "
+        "confirm a larger character maximum before a combat promotion.",
+        "The route and exact TARGETMODE isolation gates have been live-proven "
+        "for the thief route. This shared family remains research-gated until "
+        "each base class records its own live combat evidence.",
+    ),
+    practice_skill=None,
+)
+
+
+_MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="mahntor-rock-toad-kill-research-13-15",
+    minimum_level=13,
+    maximum_level=15,
+    status="research",
+    execution="mahntor-rock-toad-hunt",
+    summary=(
+        "Run one isolated Rock Toad combat probe after a viable shared-class "
+        "survey and source-peak health check."
+    ),
+    evidence=(
+        *_MAHNTOR_ROCK_TOAD_RESEARCH_POLICY.evidence,
+        "The first combat pass keeps a 90% departure-health floor, exact "
+        "source selector, fresh consider, +1 live-level ceiling, isolated "
+        "room requirement, and a one-kill segment limit.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
+_MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY = ProgressionPolicy(
+    policy_id="mahntor-rock-toad-circuit-13-15",
+    minimum_level=13,
+    maximum_level=15,
+    status="research",
+    execution="mahntor-rock-toad-circuit",
+    summary=(
+        "Use the shared-class Mahn-Tor Rock Toad circuit under the proven "
+        "two-kill, exact-target, and healer-return gates."
+    ),
+    evidence=(
+        *_MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY.evidence,
+        "The circuit visits each source reset independently and skips a room "
+        "when TARGETMODE finds a duplicate or unknown bystander. The normal "
+        "continuation health floor and source peak bound remain active.",
+        "This policy is research-gated: positive thief evidence is not copied "
+        "into mage, warrior, or another class without a live class-tagged run.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+    allow_partial_below_band=True,
+)
+
+
+def _configured_mahntor_rock_toad_circuit_for_shared_class(
+    context: ProgressionContext,
+) -> ProgressionPolicy:
+    """Apply the shared route cap without borrowing thief-only evidence."""
+    return replace(
+        _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY,
+        practice_skill=context.practice_skill,
+        segment_kill_limit=1 if context.has_sanctuary_potion else 2,
+    )
+
+
 _MAHNTOR_ROCK_TOAD_THIEF_LEVEL_SIXTEEN_POLICY = replace(
     _MAHNTOR_ROCK_TOAD_THIEF_CIRCUIT_POLICY,
     policy_id="mahntor-rock-toad-thief-circuit-16-18",
@@ -2878,6 +3076,106 @@ def _configured_mahntor_rock_toad_circuit(
         practice_skill=context.practice_skill,
         segment_kill_limit=1 if context.has_sanctuary_potion else 2,
     )
+
+
+_DWARVEN_NOBLEMAN_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="dwarven-nobleman-probe-12-15",
+    minimum_level=12,
+    maximum_level=15,
+    status="research",
+    execution="dwarven-nobleman-research",
+    summary=(
+        "Survey the source-identified Dwarven Home nobleman before authorizing "
+        "a shared-class combat probe."
+    ),
+    evidence=(
+        "The DD4 source catalog identifies mobile 20504, the dwarven nobleman, "
+        "as a single source-level-13 sentinel with no special procedure in "
+        "Dwarven Home room 20506.",
+        "Its reset equips a cane, pants, and tuxedo, providing varied source-"
+        "keyed loot for later sale and equipment analysis.",
+        "The source path has two closed doors and crosses Miden'nir. Source "
+        "mobile 3506, the level-seven aggressive wandering goblin lieutenant, "
+        "can reach rooms 3570 and 3572-3584; the level-eight dark horseman "
+        "and wyvern can also occupy that approach graph. The route now checks "
+        "for the lieutenant at room 3505 and treats all three identities as "
+        "hard route hazards. The shared probe records the live route, exact "
+        "target identity, crowd state, and consider result without initiating "
+        "combat; unknown or useful-band attackers remain a hard live abort.",
+        "The source-conservative peak round bound is 185 damage. A combat "
+        "promotion must recheck each character's current maximum hit points "
+        "before opening the fight.",
+        "Live run 5054: level-twelve Dorrik was intercepted by the source- "
+        "matched goblin lieutenant in Miden'nir before reaching Dwarven Home; "
+        "the no-combat probe withdrew, lost 116 XP, and persisted a reboot- "
+        "scoped route-hazard result. The route remains deferred for that boot.",
+    ),
+    practice_skill=None,
+)
+
+
+_DWARVEN_NOBLEMAN_HUNT_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="dwarven-nobleman-kill-research-12-15",
+    minimum_level=12,
+    maximum_level=15,
+    status="research",
+    execution="dwarven-nobleman-hunt",
+    summary=(
+        "Run one exact, isolated Dwarven Home nobleman combat probe after a "
+        "same-reboot viable shared-class survey."
+    ),
+    evidence=(
+        *_DWARVEN_NOBLEMAN_RESEARCH_POLICY.evidence,
+        "Combat promotion retains a fresh useful-band consider result, one "
+        "source-matched target, no unapproved bystander, at least 90% "
+        "departure health, a +1 live-level ceiling, the 185-damage HP gate, "
+        "and a one-kill segment limit.",
+        "A positive combat result is class-tagged evidence. It may authorize "
+        "the shared route for future characters only after the current class "
+        "has recorded its own live kill and safe healer return.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
+def _shared_dwarven_nobleman_policy(
+    context: ProgressionContext,
+) -> ProgressionPolicy | None:
+    """Offer the source-backed nobleman probe to every non-thief class."""
+    if context.character_class == "thief" or not 12 <= context.level <= 15:
+        return None
+    probe_id = _DWARVEN_NOBLEMAN_RESEARCH_POLICY.policy_id
+    hunt_id = _DWARVEN_NOBLEMAN_HUNT_RESEARCH_POLICY.policy_id
+    last_policy_id = context.last_policy_id or ""
+    if (
+        last_policy_id
+        and last_policy_id not in {probe_id, hunt_id}
+        and not last_policy_id.startswith(("source-ranked-", "unregistered-"))
+    ):
+        # Do not interrupt an already registered class route. The campaign
+        # selector may open this new frontier after a generic source-ranked
+        # stop or an unavailable checkpoint, while normal route rotation keeps
+        # established evidence in control.
+        return None
+    hunt_xp = (context.policy_xp_deltas or {}).get(hunt_id)
+    if context.last_policy_id == probe_id:
+        if _research_result_is_viable(context, probe_id) and hunt_xp is None:
+            return _DWARVEN_NOBLEMAN_HUNT_RESEARCH_POLICY
+        return None
+    if context.last_policy_id == hunt_id:
+        return None
+    if (
+        _research_result_is_viable(context, probe_id)
+        and hunt_xp is None
+    ):
+        return _DWARVEN_NOBLEMAN_HUNT_RESEARCH_POLICY
+    if _research_result_recorded(context, probe_id) or _research_result_recorded(
+        context,
+        hunt_id,
+    ):
+        return None
+    return _DWARVEN_NOBLEMAN_RESEARCH_POLICY
 
 
 _DWARVEN_NOBLEMAN_THIEF_RESEARCH_POLICY = ProgressionPolicy(
@@ -5010,8 +5308,22 @@ def policy_for(
                     "before retrying the failed current-band hunt."
                 ),
                 practice_skill=context.practice_skill,
-            )
+        )
         return _moria_sanctuary_wait_policy(context)
+    if (
+        context.protection_recovery_required
+        and not context.has_sanctuary_potion
+        and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
+    ):
+        # Protection recovery is a shared capability gate, not a thief-only
+        # progression rule. Use the safe Moria carrier route for every class
+        # when a viable hunt has already reached the field safety floor.
+        return replace(
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+            minimum_level=context.level,
+            maximum_level=context.level,
+            practice_skill=context.practice_skill,
+        )
     if handoff_policy_id:
         handoff_policy = _POLICY_BY_ID.get(handoff_policy_id)
         if (
@@ -5046,9 +5358,16 @@ def policy_for(
             practice_skill=context.practice_skill,
         )
     excluded_retry_allowed = bool(
-        selected.policy_id
-        == _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
-        and _moria_sanctuary_recovery_is_incomplete(context)
+        (
+            selected.policy_id
+            == _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id
+            and _moria_sanctuary_recovery_is_incomplete(context)
+        )
+        or (
+            selected.policy_id == _THALOS_LONG_DAGGER_UPGRADE_POLICY.policy_id
+            and context.shop_rearm_blocked_by_reputation
+            and not context.has_weapon
+        )
     )
     if (
         selected.policy_id not in context.excluded_policy_ids
@@ -5204,6 +5523,11 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _BANK_EXCESS_COIN_POLICY
     if context.needs_capacity_relief:
         return _VAULT_SPARE_GEAR_POLICY
+    if context.has_sellable_loot:
+        # Clear carried drops before buying a replacement weapon. This also
+        # handles full item-count capacity, which weight-only rearm checks do
+        # not expose to the StarterBot.
+        return _LIQUIDATE_LOOT_POLICY
     # A character without a wielded weapon cannot safely turn a funding trip
     # into combat. Repair the primary slot before spending another segment on
     # provisions or flight money. ``select_policy`` can still promote a
@@ -5213,8 +5537,10 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         and context.shop_rearm_blocked_by_reputation
         and context.character_class == "thief"
         and 10 <= normalized_level <= 29
-        and context.needs_intermediate_piercing_weapon_upgrade
-        and not context.intermediate_piercing_weapon_upgrade_attempted
+        and (
+            not context.has_weapon
+            or context.needs_intermediate_piercing_weapon_upgrade
+        )
     ):
         return replace(
             _THALOS_LONG_DAGGER_UPGRADE_POLICY,
@@ -5246,8 +5572,6 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _RESTOCK_POLICY
     if context.needs_provision_funding:
         return _PROVISION_FUNDING_POLICY
-    if context.has_sellable_loot:
-        return _LIQUIDATE_LOOT_POLICY
     if not context.has_food:
         return _RESTOCK_POLICY
     if context.needs_subclass_selection:
@@ -5976,6 +6300,26 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             ):
                 return replace(
                     _FLESHMONGER_TWO_GUARD_RESEARCH_POLICY,
+                    practice_skill=context.practice_skill,
+                )
+            circuit_result = (context.research_results or {}).get(
+                _FLESHMONGER_GUARD_CIRCUIT_POLICY.policy_id
+            )
+            if (
+                isinstance(circuit_result, Mapping)
+                and circuit_result.get("verified_empty") is True
+                and circuit_result.get("boot_id") == context.world_boot_id
+            ):
+                return replace(
+                    _UNAVAILABLE_POLICY,
+                    minimum_level=normalized_level,
+                    maximum_level=normalized_level,
+                    summary=(
+                        "The verified Fleshmonger circuit is empty in this "
+                        "reboot; defer it and let the source ranker choose "
+                        "another current-band route."
+                    ),
+                    evidence=_FLESHMONGER_GUARD_CIRCUIT_POLICY.evidence,
                     practice_skill=context.practice_skill,
                 )
             return replace(
@@ -6929,14 +7273,131 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 _FLESHMONGER_THIEF_LEVEL_TWELVE_POLICY,
                 practice_skill=context.practice_skill,
             )
-    if normalized_level == 12:
+    if context.character_class != "thief" and 12 <= normalized_level <= 15:
+        nobleman_policy = _shared_dwarven_nobleman_policy(context)
+        if nobleman_policy is not None:
+            return replace(
+                nobleman_policy,
+                practice_skill=context.practice_skill,
+            )
+    if context.character_class != "thief" and 13 <= normalized_level <= 15:
+        completed = context.policy_xp_deltas or {}
+        probe_id = _MAHNTOR_ROCK_TOAD_RESEARCH_POLICY.policy_id
+        hunt_id = _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY.policy_id
+        circuit_id = _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY.policy_id
+        hunt_xp = completed.get(hunt_id)
+        circuit_xp = completed.get(circuit_id)
+        probe_route_failed = (
+            context.last_policy_id == probe_id
+            and (
+                str(context.last_fastwalk_abort_reason or "").startswith(
+                    "field route "
+                )
+                or str(context.last_fastwalk_abort_reason or "").startswith(
+                    "unexpected combat interrupted a no-combat field probe"
+                )
+            )
+        )
+        if probe_route_failed:
+            return replace(
+                _UNAVAILABLE_POLICY,
+                minimum_level=normalized_level,
+                maximum_level=normalized_level,
+                summary=(
+                    "The shared-class Rock Toad probe was interrupted by a "
+                    "route hazard in this reboot; defer the unchanged target "
+                    "and let the source ranker choose another route."
+                ),
+                evidence=_MAHNTOR_ROCK_TOAD_RESEARCH_POLICY.evidence,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id == probe_id
+            and _research_result_is_viable(context, probe_id)
+            and hunt_xp is None
+        ):
+            return replace(
+                _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            context.last_policy_id == hunt_id
+            and hunt_xp is not None
+            and hunt_xp > 0
+        ):
+            return _configured_mahntor_rock_toad_circuit_for_shared_class(
+                context
+            )
+        if (
+            context.last_policy_id == hunt_id
+            and hunt_xp is not None
+            and hunt_xp <= 0
+        ):
+            return replace(
+                _UNAVAILABLE_POLICY,
+                minimum_level=normalized_level,
+                maximum_level=normalized_level,
+                summary=(
+                    "The shared-class Rock Toad probe failed its live consider "
+                    "gate in this reboot; defer the unchanged target and let "
+                    "the source ranker choose another route."
+                ),
+                evidence=_MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY.evidence,
+                practice_skill=context.practice_skill,
+            )
+        if context.last_policy_id == circuit_id and circuit_xp is not None:
+            if circuit_xp > 0:
+                return _configured_mahntor_rock_toad_circuit_for_shared_class(
+                    context
+                )
+            return replace(
+                _UNAVAILABLE_POLICY,
+                minimum_level=normalized_level,
+                maximum_level=normalized_level,
+                summary=(
+                    "The shared-class Rock Toad circuit produced no XP in "
+                    "this reboot; defer the unchanged reset and let the "
+                    "source ranker choose another route."
+                ),
+                evidence=_MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY.evidence,
+                practice_skill=context.practice_skill,
+            )
+        return replace(
+            _MAHNTOR_ROCK_TOAD_RESEARCH_POLICY,
+            practice_skill=context.practice_skill,
+        )
+    if field_martial and normalized_level == 12:
         return replace(
             _PLAINS_ARUNCUS_LEVEL_TWELVE_RESEARCH_POLICY,
             practice_skill=context.practice_skill,
         )
-    if 13 <= normalized_level <= 15:
+    if normalized_level == 12:
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=12,
+            maximum_level=13,
+            summary=(
+                "No registered level-12 caster route is required here; "
+                "let the campaign source ranker select the next safe field "
+                "target."
+            ),
+            practice_skill=context.practice_skill,
+        )
+    if field_martial and 13 <= normalized_level <= 15:
         return replace(
             _PLAINS_ARUNCUS_RESEARCH_POLICY,
+            practice_skill=context.practice_skill,
+        )
+    if 13 <= normalized_level <= 15:
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=13,
+            maximum_level=15,
+            summary=(
+                "No registered level-13-to-15 caster route is required here; "
+                "let the campaign source ranker select the next safe field "
+                "target."
+            ),
             practice_skill=context.practice_skill,
         )
     if 16 <= normalized_level <= 20:

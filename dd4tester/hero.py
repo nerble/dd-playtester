@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
 import re
+import secrets
+import string
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -56,6 +60,9 @@ _NAME_SYLLABLES = (
     "ul",
     "ver",
 )
+_GENERATED_PASSWORD_ALPHABET = string.ascii_letters + string.digits
+_GENERATED_PASSWORD_LENGTH = 24
+_CREDENTIAL_WRITE_TIMEOUT_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -333,10 +340,22 @@ async def run_hero_request(
         workspace=workspace,
         target_level=target_level,
     )
+    generated_password = False
+    if password is None and not preparation.resumed:
+        password = _generated_character_password()
+        await _save_character_password_with_timeout(
+            preparation.character.credential_name,
+            password,
+        )
+        generated_password = True
     if remember_password:
         if password is None:
             raise ValueError("remember_password requires a plaintext password")
-        save_character_password(preparation.character.credential_name, password)
+        if not generated_password:
+            await _save_character_password_with_timeout(
+                preparation.character.credential_name,
+                password,
+            )
     with _temporary_character_password(
         preparation.character.password_env,
         password,
@@ -354,6 +373,57 @@ async def run_hero_request(
             max_segment_runtime=max_segment_runtime,
         )
     return preparation, result
+
+
+def _generated_character_password() -> str:
+    return "".join(
+        secrets.choice(_GENERATED_PASSWORD_ALPHABET)
+        for _ in range(_GENERATED_PASSWORD_LENGTH)
+    )
+
+
+async def _save_character_password_with_timeout(
+    credential_name: str,
+    password: str,
+    timeout: float = _CREDENTIAL_WRITE_TIMEOUT_SECONDS,
+) -> None:
+    """Persist a password without allowing a keyring prompt to stall the run."""
+    loop = asyncio.get_running_loop()
+    result: asyncio.Future[BaseException | None] = loop.create_future()
+
+    def finish(value: BaseException | None) -> None:
+        if result.done():
+            return
+        result.set_result(value)
+
+    def publish(value: BaseException | None) -> None:
+        try:
+            loop.call_soon_threadsafe(finish, value)
+        except RuntimeError:
+            # The runner may be shutting down after the timeout fired.
+            pass
+
+    def save() -> None:
+        try:
+            save_character_password(credential_name, password)
+        except BaseException as exc:
+            publish(exc)
+        else:
+            publish(None)
+
+    threading.Thread(
+        target=save,
+        name="dd4-keyring-save",
+        daemon=True,
+    ).start()
+    try:
+        failure = await asyncio.wait_for(result, timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError(
+            f"credential storage for {credential_name!r} exceeded {timeout:g} seconds"
+        ) from exc
+    if failure is not None:
+        raise failure
 
 
 def _validate_target_level(target_level: int) -> None:

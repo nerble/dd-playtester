@@ -49,6 +49,7 @@ def test_hero_uses_segment_budget_for_default_reset_retries(
         (),
         {
             "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": True,
             "character": type(
                 "Character",
                 (),
@@ -102,6 +103,7 @@ def test_hero_disables_default_reset_retries_for_bounded_runs(
         (),
         {
             "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": True,
             "character": type(
                 "Character",
                 (),
@@ -154,6 +156,7 @@ def test_hero_uses_plaintext_password_only_for_campaign_process(
         (),
         {
             "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": True,
             "character": type(
                 "Character",
                 (),
@@ -246,6 +249,64 @@ def test_hero_can_remember_plaintext_password_for_checkpoint_resume(
         "credential_name": "character:valora",
         "password": "command-line-secret",
     }
+
+
+def test_new_hero_generates_and_stores_a_password_without_logging_it(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": False,
+            "character": type(
+                "Character",
+                (),
+                {
+                    "password_env": "DD4_VALORA_PASSWORD",
+                    "credential_name": "character:valora",
+                },
+            )(),
+        },
+    )()
+
+    def fake_prepare(request, **options):
+        return prepared
+
+    def fake_save(credential_name: str, password: str) -> None:
+        captured["credential_name"] = credential_name
+        captured["stored_password"] = password
+
+    async def fake_campaign(path, **options):
+        captured["campaign_password"] = os.environ.get("DD4_VALORA_PASSWORD")
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 2})
+
+    monkeypatch.setattr("dd4tester.hero.prepare_hero_request", fake_prepare)
+    monkeypatch.setattr("dd4tester.hero.save_character_password", fake_save)
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+        )
+    )
+
+    stored_password = captured["stored_password"]
+    assert captured["credential_name"] == "character:valora"
+    assert captured["campaign_password"] == stored_password
+    assert isinstance(stored_password, str)
+    assert len(stored_password) == 24
+    assert stored_password.isalnum()
+    assert os.environ.get("DD4_VALORA_PASSWORD") is None
 
 
 def test_prepare_hero_request_writes_resumable_secret_free_configuration(

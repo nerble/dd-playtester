@@ -102,7 +102,7 @@ def test_thief_stops_armed_gateway_at_exact_second_attack_threshold() -> None:
     assert "pre_req-thief.c" in " ".join(armed.source_refs)
 
 
-def test_thief_keeps_improving_second_attack_after_the_initial_unlock() -> None:
+def test_thief_reaches_second_attack_gateway_for_third_attack() -> None:
     choices = plan_training(
         "thief",
         _listing(
@@ -115,6 +115,61 @@ def test_thief_keeps_improving_second_attack_after_the_initial_unlock() -> None:
     )
 
     assert [choice.skill for choice in choices] == ["second attack"]
+    assert choices[0].target_percent == 60
+
+
+def test_thief_buys_functional_third_attack_as_soon_as_chain_is_ready() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 67%    second attack: 75%    "
+            "backstab: 69%    knife toss: 48%    thievery skills: 46%",
+            "third attack: 0%",
+            physical=3,
+            intellectual=2,
+        ),
+        character_level=24,
+        excluded_skills=frozenset({"armed combat knowledge"}),
+    )
+
+    assert [choice.skill for choice in choices] == ["third attack"]
+    assert choices[0].target_percent == 35
+    assert "after a successful second attack" in choices[0].reason
+
+
+def test_thief_improves_second_attack_before_mastering_third_attack() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 67%    second attack: 65%    "
+            "third attack: 37%    backstab: 69%    knife toss: 48%    "
+            "thievery skills: 46%",
+            "",
+            physical=2,
+            intellectual=0,
+        ),
+        character_level=24,
+    )
+
+    assert [choice.skill for choice in choices] == ["second attack"]
+    assert choices[0].target_percent == 100
+
+
+def test_thief_improves_third_attack_after_second_attack_cap() -> None:
+    choices = plan_training(
+        "thief",
+        _listing(
+            "armed combat knowledge: 67%    second attack: 100%    "
+            "third attack: 37%    backstab: 69%    knife toss: 48%    "
+            "thievery skills: 46%",
+            "",
+            physical=2,
+            intellectual=0,
+        ),
+        character_level=24,
+    )
+
+    assert [choice.skill for choice in choices] == ["third attack"]
     assert choices[0].target_percent == 100
 
 
@@ -248,7 +303,9 @@ def test_thief_keeps_practising_backstab_when_its_teacher_offers_it() -> None:
     choices = plan_training(
         "thief",
         _listing(
-            "armed combat knowledge: 41%    second attack: 37%    stealth techniques: 60%    sneak: 99%    backstab: 31%",
+            "armed combat knowledge: 60%    second attack: 100%    "
+            "third attack: 100%    stealth techniques: 60%    "
+            "sneak: 99%    backstab: 31%",
             "",
             physical=1,
             intellectual=0,
@@ -297,7 +354,8 @@ def test_thief_builds_disarm_chain_after_backstab() -> None:
     choices = plan_training(
         "thief",
         _listing(
-            "armed combat knowledge: 70%    second attack: 40%    "
+            "armed combat knowledge: 70%    second attack: 100%    "
+            "third attack: 100%    "
             "stealth techniques: 60%    hide: 30%    sneak: 99%    "
             "backstab: 100%    defense knowledge: 60%    dodge: 50%    "
             "parry: 40%",
@@ -315,7 +373,8 @@ def test_thief_builds_circle_after_disarm_and_its_gateways() -> None:
     choices = plan_training(
         "thief",
         _listing(
-            "armed combat knowledge: 70%    second attack: 40%    "
+            "armed combat knowledge: 70%    second attack: 100%    "
+            "third attack: 100%    "
             "stealth techniques: 60%    hide: 30%    sneak: 99%    "
             "backstab: 100%    defense knowledge: 60%    dodge: 50%    "
             "parry: 40%    disarm: 60%    unarmed combat knowledge: 20%    "
@@ -537,7 +596,7 @@ def test_subclass_priorities_precede_inherited_base_priorities() -> None:
 
 def test_subclass_plan_is_used_only_when_explicitly_active() -> None:
     listing = _listing(
-        "backstab: 100%    second attack: 90%    third attack: 90%    "
+        "backstab: 100%    second attack: 100%    third attack: 100%    "
         "advanced combat knowledge: 65%",
         "fourth attack: 0%    dodge: 0%",
         physical=1,

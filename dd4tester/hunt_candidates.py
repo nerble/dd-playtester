@@ -8,9 +8,10 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Callable, Collection, Iterable, Mapping
 
 from .fastwalks import FASTWALKS, MAP_ROUTES
+from .specials import SAFE_NONCOMBAT_SPECIALS, source_special_profile
 
 
 ACT_SENTINEL = 1 << 1
@@ -49,7 +50,9 @@ AFF_CONFUSION = 1 << 36
 ITEM_TREASURE = 8
 ITEM_WEAPON = 5
 ITEM_ARMOR = 9
+ITEM_POTION = 10
 ITEM_CONTAINER = 15
+ITEM_FOOD = 19
 ITEM_MONEY = 20
 
 # ITEM_MONEY stores copper, silver, gold, and platinum in value[0:4].  Keep
@@ -107,6 +110,16 @@ _TILDE_VALUE = re.compile(r"(-?\d+)")
 # source route cost separate from command count: terrain, not the direction
 # name, determines whether a live route can be completed.
 _MOVEMENT_LOSS = (1, 2, 2, 3, 4, 5, 4, 1, 3, 10, 6, 4)
+
+# A single source-proven below-band attacker can be finished as an incidental
+# interruption. A large reset crowd is different: it can consume a field
+# segment with low-value kills before the useful target is reached.
+_MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY = 4
+
+# A modest detour is worthwhile when it removes a source-proven crowd from a
+# route. Keep route planning from replacing a short, unusable path with an
+# effectively cross-world journey.
+_MAX_SOURCE_ROUTE_DETOUR_STEPS = 20
 
 
 @dataclass(frozen=True)
@@ -171,6 +184,7 @@ class ObjectSource:
     extra_flags: int = 0
     room_description: str = ""
     weight: int = 0
+    value_strings: tuple[str, ...] = ()
     load_level_min: int = 0
     load_level_max: int = 0
 
@@ -310,7 +324,9 @@ class HuntCandidate:
     estimated_flying_move_cost: int = 0
     requires_flight: bool = False
     ground_loot_keywords: tuple[str, ...] = ()
+    ground_loot_object_vnums: tuple[int, ...] = ()
     is_coin_stash: bool = False
+    is_food_stash: bool = False
 
     @property
     def autonomous_safe(self) -> bool:
@@ -323,6 +339,17 @@ def money_value(values: Iterable[int]) -> int:
     return sum(
         max(0, int(amount)) * multiplier
         for amount, multiplier in zip(values, MONEY_DENOMINATION_VALUES)
+    )
+
+
+def potion_spell_names(item: ObjectSource) -> tuple[str, ...]:
+    """Return normalized source spell names encoded on a potion prototype."""
+    if item.item_type != ITEM_POTION:
+        return ()
+    return tuple(
+        value.casefold()
+        for value in item.value_strings[1:]
+        if value and not value.lstrip("-").isdigit()
     )
 
 
@@ -470,6 +497,7 @@ def rank_hunt_candidates(
     character_max_hp: int | None = None,
     include_level_ceiling_candidates: bool = False,
     include_all_areas: bool = False,
+    required_loot_object_vnums: Collection[int] = (),
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -493,6 +521,19 @@ def rank_hunt_candidates(
         for mobile, reset in wandering_aggressors
     }
     source_keyword_counts = _source_keyword_counts(world)
+    required_loot_vnums = {
+        int(object_vnum) for object_vnum in required_loot_object_vnums
+    }
+    route_hazard_rooms = _route_hazard_rooms(
+        world,
+        resets_by_room,
+        character_level=character_level,
+    )
+    safe_recall_paths = _shortest_paths_from(
+        world.rooms,
+        RECALL_VNUM,
+        blocked_rooms=route_hazard_rooms - {RECALL_VNUM},
+    )
     ranked: list[HuntCandidate] = []
 
     for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
@@ -517,6 +558,14 @@ def rank_hunt_candidates(
             (mobile.level > character_level and not level_ceiling_candidate)
             or mobile.act_flags & ACT_NO_EXPERIENCE
         ):
+            continue
+        required_loot_objects = tuple(
+            world.objects[object_vnum]
+            for object_vnum in reset.object_vnums
+            if object_vnum in required_loot_vnums
+            and object_vnum in world.objects
+        )
+        if required_loot_vnums and not required_loot_objects:
             continue
         level_range = _mobile_level_range(mobile.level)
         # DD4's do_consider treats a target five or more levels below the
@@ -567,13 +616,26 @@ def rank_hunt_candidates(
             for item in loot_objects
             if item.item_type == ITEM_MONEY
         )
-        if not include_xp_only and not sellable and contained_coins <= 0:
+        if (
+            not include_xp_only
+            and not sellable
+            and contained_coins <= 0
+            and not required_loot_objects
+        ):
             continue
 
         path = recall_paths.get(reset.room_vnum)
         if path is None:
             continue
         route, path_rooms, closed_doors = path
+        if route_hazard_rooms.intersection(path_rooms[:-1]):
+            safe_path = safe_recall_paths.get(reset.room_vnum)
+            if (
+                safe_path is not None
+                and len(safe_path[0])
+                <= len(route) + _MAX_SOURCE_ROUTE_DETOUR_STEPS
+            ):
+                route, path_rooms, closed_doors = safe_path
         estimated_move_cost = source_route_movement_cost(
             world,
             path_rooms,
@@ -670,6 +732,12 @@ def rank_hunt_candidates(
                 hazard = world.mobiles.get(path_reset.mobile_vnum)
                 if hazard is None or not hazard.aggressive:
                     continue
+                if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
+                    hazards.append(
+                        f"source-backed noncombat route special: "
+                        f"{hazard.short_description}"
+                    )
+                    continue
                 hazards.append(
                     f"route: {hazard.short_description} L{hazard.level} in {path_room}"
                 )
@@ -683,9 +751,23 @@ def rank_hunt_candidates(
                     autonomy_rejections.append(
                         "route crosses an aggressive reset inside the useful XP band"
                     )
+                elif (
+                    path_reset.maximum_count
+                    > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
+                ):
+                    hazards.append(
+                        "route crosses a large below-band aggressive reset "
+                        f"(up to {path_reset.maximum_count} mobiles)"
+                    )
+                    dangerous = True
+                    autonomy_rejections.append(
+                        "route crosses a large below-band aggressive crowd"
+                    )
 
         path_room_set = set(path_rooms)
         for hazard, hazard_reset in wandering_aggressors:
+            if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
+                continue
             if (
                 hazard.vnum == mobile.vnum
                 or hazard_reset.room_vnum in path_room_set
@@ -787,7 +869,12 @@ def rank_hunt_candidates(
                 source_spawn_limit=reset.maximum_count,
                 room_spawn_count=room_spawn_count,
                 boot_kills=boot_kills,
-                loot=tuple(item.short_description for item in sellable),
+                loot=tuple(
+                    dict.fromkeys(
+                        item.short_description
+                        for item in (*sellable, *required_loot_objects)
+                    )
+                ),
                 source_value=source_value,
                 contained_coins=contained_coins,
                 hazards=tuple(dict.fromkeys(hazards)),
@@ -922,8 +1009,13 @@ def _parse_objects(
             break
         type_parts = lines[index].split()
         index += 1
+        value_line = lines[index]
         values = tuple(
-            int(match.group(1)) for match in _TILDE_VALUE.finditer(lines[index])
+            int(match.group(1)) for match in _TILDE_VALUE.finditer(value_line)
+        )
+        value_strings = tuple(
+            _clean_text(value)
+            for value in value_line.split("~")[:-1]
         )
         index += 1
         cost_parts = lines[index].split()
@@ -969,6 +1061,7 @@ def _parse_objects(
             extra_flags=extra_flags,
             room_description=_clean_text(room_description),
             weight=weight,
+            value_strings=value_strings,
         )
         index = record_end
     return objects
@@ -1363,6 +1456,50 @@ def _shortest_path(
     return _shortest_paths_from(rooms, origin).get(destination)
 
 
+def _route_hazard_rooms(
+    world: WorldSource,
+    resets_by_room: Mapping[int, tuple[MobReset, ...]],
+    *,
+    character_level: int,
+) -> set[int]:
+    """Return rooms worth routing around for the current level band.
+
+    The target room itself remains an endpoint decision. Only intermediate
+    rooms are blocked by callers, so a target with its own source hazard still
+    receives the normal target-room rejection and is never silently exempted.
+    """
+    blocked: set[int] = set()
+    for room_vnum, resets in resets_by_room.items():
+        for reset in resets:
+            mobile = world.mobiles.get(reset.mobile_vnum)
+            if mobile is None or not mobile.aggressive:
+                continue
+            if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
+                continue
+            level_max = _mobile_level_range(mobile.level)[1]
+            if (
+                level_max > character_level - 5
+                or reset.maximum_count > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
+            ):
+                blocked.add(room_vnum)
+                break
+    return blocked
+
+
+def _source_mobile_has_safe_noncombat_special(
+    world: WorldSource,
+    mobile_vnum: int,
+) -> bool:
+    """Return whether a mobile special is proven non-attacking in transit."""
+    specials = tuple(world.mobile_specials.get(mobile_vnum, ()))
+    return bool(specials) and all(
+        special in SAFE_NONCOMBAT_SPECIALS
+        and source_special_profile(special).risk == "noncombat"
+        and source_special_profile(special).xp_bonus == 0
+        for special in specials
+    )
+
+
 def _shortest_paths_from(
     rooms: Mapping[int, RoomSource],
     origin: int,
@@ -1657,18 +1794,19 @@ def _money_object_keyword(item: ObjectSource) -> str:
     return words[0] if words else "coins"
 
 
-def rank_coin_stashes(
+def _rank_direct_ground_stashes(
     world: WorldSource,
     *,
     character_level: int,
-    include_all_areas: bool = False,
+    include_all_areas: bool,
+    object_filter: Callable[[ObjectSource], bool],
+    object_value: Callable[[ObjectSource], int],
+    object_keyword: Callable[[ObjectSource], str],
+    target: str,
+    is_coin_stash: bool = False,
+    is_food_stash: bool = False,
 ) -> list[HuntCandidate]:
-    """Rank directly reset ground coin piles reachable from recall.
-
-    These are intentionally non-combat candidates.  Room containers are left
-    for a later source-backed extraction pass; this first path only promotes
-    money objects that the reset places directly on the ground.
-    """
+    """Rank direct ground resets with the shared source route-safety gates."""
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
     allowed_areas = (
@@ -1686,7 +1824,7 @@ def rank_coin_stashes(
         ):
             continue
         item = world.objects.get(reset.object_vnum)
-        if item is None or item.item_type != ITEM_MONEY:
+        if item is None or not object_filter(item):
             continue
         grouped.setdefault(reset.room_vnum, []).append(reset)
 
@@ -1699,13 +1837,13 @@ def rank_coin_stashes(
         route, path_rooms, closed_doors = path
         path_room_set = set(path_rooms)
         object_vnums = tuple(dict.fromkeys(reset.object_vnum for reset in resets))
-        money_objects = [
+        ground_objects = [
             world.objects[object_vnum]
             for object_vnum in object_vnums
             if object_vnum in world.objects
         ]
-        copper_value = sum(money_value(item.values) for item in money_objects)
-        if copper_value <= 0:
+        total_value = sum(object_value(item) for item in ground_objects)
+        if total_value <= 0:
             continue
 
         hazards: list[str] = []
@@ -1757,9 +1895,7 @@ def rank_coin_stashes(
             )
             rejections.append("stash room has an aggressive reset")
 
-        keywords = tuple(
-            dict.fromkeys(_money_object_keyword(item) for item in money_objects)
-        )
+        keywords = tuple(dict.fromkeys(object_keyword(item) for item in ground_objects))
         if closed_doors:
             hazards.append(f"{closed_doors} closed door(s) on route")
         route_cost = source_route_movement_cost(world, path_rooms)
@@ -1772,14 +1908,14 @@ def rank_coin_stashes(
         if requires_flight:
             hazards.append("route requires flight or another movement capability")
         status = "reject" if rejections else "caution" if hazards else "promising"
-        score = copper_value / max(route_cost, len(route), 1)
+        score = total_value / max(route_cost, len(route), 1)
         ranked.append(
             HuntCandidate(
                 status=status,
                 score=round(score, 1),
                 area_file=room.area_file,
                 mobile_vnum=0,
-                target="coin stash",
+                target=target,
                 target_keyword=keywords[0],
                 level=0,
                 room_vnum=room_vnum,
@@ -1788,15 +1924,21 @@ def rank_coin_stashes(
                 source_spawn_limit=max(reset.maximum_count for reset in resets),
                 room_spawn_count=len(resets),
                 boot_kills=0,
-                loot=(),
-                source_value=0,
-                contained_coins=copper_value,
+                loot=(
+                    ()
+                    if is_coin_stash
+                    else tuple(item.short_description for item in ground_objects)
+                ),
+                source_value=0 if is_coin_stash else total_value,
+                contained_coins=total_value if is_coin_stash else 0,
                 hazards=tuple(dict.fromkeys(hazards)),
                 estimated_move_cost=route_cost,
                 estimated_flying_move_cost=flying_route_cost,
                 requires_flight=requires_flight,
                 ground_loot_keywords=keywords,
-                is_coin_stash=True,
+                ground_loot_object_vnums=object_vnums,
+                is_coin_stash=is_coin_stash,
+                is_food_stash=is_food_stash,
                 autonomy_rejections=tuple(dict.fromkeys(rejections)),
             )
         )
@@ -1810,6 +1952,59 @@ def rank_coin_stashes(
             candidate.area_file,
             candidate.room_vnum,
         ),
+    )
+
+
+def rank_coin_stashes(
+    world: WorldSource,
+    *,
+    character_level: int,
+    include_all_areas: bool = False,
+) -> list[HuntCandidate]:
+    """Rank directly reset ground coin piles reachable from recall."""
+    return _rank_direct_ground_stashes(
+        world,
+        character_level=character_level,
+        include_all_areas=include_all_areas,
+        object_filter=lambda item: item.item_type == ITEM_MONEY,
+        object_value=lambda item: money_value(item.values),
+        object_keyword=_money_object_keyword,
+        target="coin stash",
+        is_coin_stash=True,
+    )
+
+
+def _food_object_keyword(item: ObjectSource) -> str:
+    """Choose the most specific source-listed keyword for ground food."""
+    words = item.keywords.casefold().split()
+    return words[-1] if words else "food"
+
+
+def rank_food_stashes(
+    world: WorldSource,
+    *,
+    character_level: int,
+    include_all_areas: bool = False,
+) -> list[HuntCandidate]:
+    """Rank non-poisonous direct ground food by fullness per route effort."""
+
+    def safe_food(item: ObjectSource) -> bool:
+        return bool(
+            item.item_type == ITEM_FOOD
+            and item.values
+            and item.values[0] > 0
+            and (len(item.values) < 4 or item.values[3] == 0)
+        )
+
+    return _rank_direct_ground_stashes(
+        world,
+        character_level=character_level,
+        include_all_areas=include_all_areas,
+        object_filter=safe_food,
+        object_value=lambda item: max(0, item.values[0]),
+        object_keyword=_food_object_keyword,
+        target="food stash",
+        is_food_stash=True,
     )
 
 

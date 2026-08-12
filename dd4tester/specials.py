@@ -42,6 +42,9 @@ CONDITIONAL_COMBAT_SPECIALS = frozenset(
 ECONOMIC_SPECIALS = frozenset({"spec_thief"})
 """Specials that can remove a bounded amount of carried currency."""
 
+TRANSIT_SAFE_COMBAT_ONLY_SPECIALS = frozenset({"spec_cast_undead"})
+"""Specials that act only after another character is fighting the mobile."""
+
 WEAK_DEBILITATING_SPECIALS = frozenset(
     {"spec_poison", "spec_kungfu_poison"}
 )
@@ -171,4 +174,3 @@ def source_special_xp_bonus(name: str) -> int:
     """Return the additive XP modifier used by ``db.c`` for a special."""
 
     return source_special_profile(name).xp_bonus
-

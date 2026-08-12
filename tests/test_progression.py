@@ -4,6 +4,7 @@ from dd4tester.progression import (
     CLASS_PRACTICE_SKILLS,
     ProgressionContext,
     ProgressionPolicy,
+    _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
     _caster_hunt_requires_sanctuary_replenishment,
     _research_hunt_policy,
     policy_for,
@@ -508,6 +509,19 @@ def test_generic_protection_recovery_reopens_sanctuary_acquisition() -> None:
     )
 
     assert policy.policy_id == "moria-sanctuary-thief-17-20"
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
+def test_generic_protection_recovery_applies_to_a_mage() -> None:
+    policy = policy_for(
+        13,
+        "mage",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
     assert policy.execution == "moria-sanctuary-hunt"
 
 
@@ -1878,6 +1892,24 @@ def test_missing_primary_weapon_preempts_unaffordable_flight_funding() -> None:
     assert policy.execution == "rearm-weapon"
 
 
+def test_negative_fame_unarmed_thief_retries_excluded_field_dagger() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        has_weapon=False,
+        shop_rearm_blocked_by_reputation=True,
+        needs_piercing_weapon=True,
+        needs_intermediate_piercing_weapon_upgrade=True,
+        intermediate_piercing_weapon_upgrade_attempted=True,
+        excluded_policy_ids=frozenset(
+            {"thalos-long-dagger-upgrade-10-29"}
+        ),
+    )
+
+    assert policy.policy_id == "thalos-long-dagger-upgrade-10-29"
+    assert policy.execution == "upgrade-piercing-weapon"
+
+
 def test_thief_missing_piercing_primary_selects_safe_rearm_maintenance() -> None:
     policy = policy_for(
         17,
@@ -1909,6 +1941,18 @@ def test_sellable_loot_selects_safe_liquidation_before_the_next_hunt() -> None:
         "mage",
         has_large_sack=True,
         has_sellable_loot=True,
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
+
+
+def test_sellable_loot_precedes_rearm_when_the_item_slots_are_full() -> None:
+    policy = policy_for(
+        12,
+        "warrior",
+        has_sellable_loot=True,
+        has_weapon=False,
     )
 
     assert policy.policy_id == "liquidate-loot"
@@ -2855,6 +2899,29 @@ def test_level_twelve_thief_waits_for_review_after_unproductive_research() -> No
     assert not policy.executable
 
 
+def test_level_twelve_mage_starts_shared_dwarven_nobleman_probe() -> None:
+    policy = policy_for(12, "mage")
+
+    assert policy.policy_id == "dwarven-nobleman-probe-12-15"
+    assert policy.status == "research"
+    assert policy.execution == "dwarven-nobleman-research"
+    assert policy.executable
+    assert "185 damage" in " ".join(policy.evidence)
+
+
+@pytest.mark.parametrize("character_class", ["mage", "psionicist"])
+def test_level_thirteen_casters_start_shared_dwarven_nobleman_research(
+    character_class: str,
+) -> None:
+    policy = policy_for(13, character_class)
+
+    assert policy.policy_id == "dwarven-nobleman-probe-12-15"
+    assert policy.status == "research"
+    assert policy.execution == "dwarven-nobleman-research"
+    assert policy.executable
+    assert "185 damage" in " ".join(policy.evidence)
+
+
 @pytest.mark.parametrize(
     "character_class",
     ["cleric", "psionic", "shifter", "brawler", "ranger", "smithy"],
@@ -2880,9 +2947,9 @@ def test_level_ten_tutorial_track_does_not_repeat_completed_scout() -> None:
     assert not policy.executable
 
 
-@pytest.mark.parametrize("character_class", ["mage", "thief", "warrior", "psionicist"])
+@pytest.mark.parametrize("character_class", ["thief"])
 @pytest.mark.parametrize("level", [13, 14, 15])
-def test_levels_thirteen_to_fifteen_use_bounded_aruncus_research(
+def test_martial_levels_thirteen_to_fifteen_use_bounded_aruncus_research(
     character_class: str,
     level: int,
 ) -> None:
@@ -2893,6 +2960,181 @@ def test_levels_thirteen_to_fifteen_use_bounded_aruncus_research(
     assert policy.execution == "plains-aruncus-research"
     assert policy.executable
     assert "cannot promote a combat policy" in " ".join(policy.evidence)
+
+
+@pytest.mark.parametrize("character_class", ["warrior", "cleric"])
+@pytest.mark.parametrize("level", [13, 14, 15])
+def test_shared_classes_start_dwarven_nobleman_research_frontier(
+    character_class: str,
+    level: int,
+) -> None:
+    policy = policy_for(level, character_class)
+
+    assert policy.policy_id == "dwarven-nobleman-probe-12-15"
+    assert policy.status == "research"
+    assert policy.execution == "dwarven-nobleman-research"
+    assert policy.executable
+
+
+@pytest.mark.parametrize("character_class", ["mage", "warrior", "cleric"])
+def test_shared_dwarven_nobleman_probe_promotes_to_one_kill(
+    character_class: str,
+) -> None:
+    policy = policy_for(
+        13,
+        character_class,
+        last_policy_id="dwarven-nobleman-probe-12-15",
+        world_boot_id="boot-3",
+        policy_xp_deltas={"dwarven-nobleman-probe-12-15": 0},
+        research_results={
+            "dwarven-nobleman-probe-12-15": {
+                "boot_id": "boot-3",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-kill-research-12-15"
+    assert policy.execution == "dwarven-nobleman-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_nonviable_shared_dwarven_nobleman_probe_returns_to_rock_toad_frontier() -> None:
+    policy = policy_for(
+        13,
+        "warrior",
+        last_policy_id="dwarven-nobleman-probe-12-15",
+        world_boot_id="boot-3",
+        policy_xp_deltas={"dwarven-nobleman-probe-12-15": 0},
+        research_results={
+            "dwarven-nobleman-probe-12-15": {
+                "boot_id": "boot-3",
+                "observed": True,
+                "viable": False,
+            }
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-probe-13-15"
+    assert policy.execution == "mahntor-rock-toad-research"
+
+
+def test_shared_rock_toad_probe_promotes_to_one_kill_after_live_viability() -> None:
+    policy = policy_for(
+        13,
+        "mage",
+        last_policy_id="mahntor-rock-toad-probe-13-15",
+        world_boot_id="boot-2",
+        research_results={
+            "mahntor-rock-toad-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-kill-research-13-15"
+    assert policy.execution == "mahntor-rock-toad-hunt"
+    assert policy.practice_skill == "magic missile"
+    assert policy.segment_kill_limit == 1
+
+
+def test_shared_rock_toad_kill_promotes_to_class_aware_circuit() -> None:
+    policy = policy_for(
+        14,
+        "warrior",
+        last_policy_id="mahntor-rock-toad-kill-research-13-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-kill-research-13-15": 642,
+        },
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-circuit-13-15"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.status == "research"
+    assert policy.practice_skill == "kick"
+    assert policy.segment_kill_limit == 2
+
+
+def test_shared_rock_toad_empty_circuit_yields_to_source_ranker() -> None:
+    policy = policy_for(
+        14,
+        "warrior",
+        last_policy_id="mahntor-rock-toad-circuit-13-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-circuit-13-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "unregistered-10-100"
+    assert policy.status == "unavailable"
+    assert "produced no XP" in policy.summary
+
+
+def test_empty_warrior_fleshmonger_circuit_yields_until_reboot() -> None:
+    policy = policy_for(
+        11,
+        "warrior",
+        last_policy_id="fleshmonger-guard-circuit-10-11",
+        world_boot_id="boot-2",
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "fleshmonger-guard-kill-research-10-11": 500,
+            "fleshmonger-two-guard-research-v2-10-11": 700,
+            "fleshmonger-guard-circuit-10-11": 0,
+        },
+        research_results={
+            "fleshmonger-guard-circuit-10-11": {
+                "boot_id": "boot-2",
+                "verified_empty": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "unregistered-10-100"
+    assert policy.status == "unavailable"
+    assert "empty in this reboot" in policy.summary
+
+
+def test_failed_shared_rock_toad_probe_does_not_loop_before_reboot() -> None:
+    policy = policy_for(
+        13,
+        "mage",
+        last_policy_id="mahntor-rock-toad-kill-research-13-15",
+        policy_xp_deltas={
+            "mahntor-rock-toad-kill-research-13-15": 0,
+        },
+    )
+
+    assert policy.policy_id == "unregistered-10-100"
+    assert policy.status == "unavailable"
+    assert "failed its live consider gate" in policy.summary
+
+
+def test_route_failed_shared_rock_toad_probe_yields_to_source_ranker() -> None:
+    policy = policy_for(
+        13,
+        "mage",
+        last_policy_id="mahntor-rock-toad-probe-13-15",
+        world_boot_id="boot-2",
+        last_fastwalk_abort_reason=(
+            "field route could not find GMCP exit to room 2315"
+        ),
+        research_results={
+            "mahntor-rock-toad-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            }
+        },
+    )
+
+    assert policy.policy_id == "unregistered-10-100"
+    assert policy.status == "unavailable"
+    assert "route hazard" in policy.summary
 
 
 def test_level_thirteen_thief_adds_bounded_pursuit_after_aruncus_survey() -> None:

@@ -34,6 +34,33 @@ def test_replays_real_dd4_observations_into_character_state() -> None:
     assert CharacterState.from_dict(state.to_dict()).to_dict() == state.to_dict()
 
 
+def test_vitals_preserve_hunger_and_thirst_for_campaign_decisions() -> None:
+    state = CharacterState()
+
+    assert state.apply(
+        GameEvent(
+            "vitals_changed",
+            "gmcp",
+            {
+                "hunger": "-10",
+                "maxhunger": "48",
+                "thirst": "6",
+                "maxthirst": "48",
+                "drunk": "-10",
+                "maxdrunk": "48",
+            },
+        )
+    )
+
+    assert state.hunger == -10
+    assert state.max_hunger == 48
+    assert state.thirst == 6
+    assert state.max_thirst == 48
+    assert state.drunk == -10
+    assert state.max_drunk == 48
+    assert CharacterState.from_dict(state.to_dict()).hunger == -10
+
+
 def test_state_changes_only_when_event_changes_domain_state() -> None:
     state = CharacterState()
     room = GameEvent(

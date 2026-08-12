@@ -68,6 +68,24 @@ reset timer can advance faster.
 See [ROADMAP.md](ROADMAP.md) for the staged path from scripted scenarios to a
 level-100 autonomous campaign running visibly through Mudlet in a virtual machine.
 
+## Current status
+
+The protocol, state, persistence, starter, reporting, and resumable campaign
+layers are operational. The live mage/thief/warrior matrix has reached level 10
+for all three representatives. Current long-running anchors are Aeloria mage
+level 13, Dorrik warrior level 12, and Kestrel thief level 24. The offline suite
+currently passes 2,485 tests; Dorrik's latest live continuation is at 61,542 XP
+after source-ranked Shire and Fleshmonger kills, safely recovered at healer room
+3054.
+
+The `hero` command is a resumable execution boundary, not a claim that HERO is
+already solved. It checkpoints and stops when the selected class and level band
+has no executable policy. `verified` policies are repeatable evidence-backed
+progress; `research` policies are bounded probes; `unavailable` policies are
+explicit safe stops. No fresh character has yet completed an uninterrupted
+level-0-to-100 run. See the detailed [progress audit](docs/PROGRESS_AUDIT_2026-08-12.md)
+and the historical [roadmap](ROADMAP.md).
+
 ## Real DD4 capture
 
 `scenarios/capture.yaml` performs a bounded, read-only observation run against
@@ -135,6 +153,9 @@ durable target without rebuilding its character workspace.
 This command uses the existing verified policy graph. It will checkpoint and
 stop safely at the first level band that still lacks an executable policy;
 extending verified class-aware coverage through HERO remains ongoing work.
+The command is intentionally character-independent: names and credentials
+identify a stored profile, while race, class, subclass, live state, and
+source-backed evidence determine behavior.
 
 ## Campaign execution
 

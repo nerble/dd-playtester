@@ -741,3 +741,26 @@ def test_item_command_keyword_disambiguates_shared_weapon_nouns() -> None:
 
     assert item_command_keyword(long_dagger, [ordinary]) == "long"
     assert item_command_keyword(ordinary, [long_dagger]) == "dagger"
+
+
+def test_item_command_keyword_uses_an_ordinal_for_ambiguous_carried_gear() -> None:
+    patched = ObjectSource(
+        9404,
+        "jerkin leather patched",
+        "a patched leather jerkin",
+        9,
+        (0, 0, 0, 0),
+        5,
+        wear_flags=1 | (1 << 3),
+    )
+    studded = ObjectSource(
+        3066,
+        "jerkin",
+        "a studded leather jerkin",
+        9,
+        (0, 0, 0, 0),
+        1,
+        wear_flags=1 | (1 << 3),
+    )
+
+    assert item_command_keyword(studded, [patched, studded]) == "2.jerkin"

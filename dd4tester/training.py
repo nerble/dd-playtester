@@ -239,14 +239,15 @@ def plan_training(
     spent_types = set(excluded_practice_types)
     blocked_skills = {_normalize(skill) for skill in excluded_skills}
     priority_ceiling = _normalize(stop_after_skill) if stop_after_skill else None
-    priority_ceiling_index = max(
-        (
-            index
-            for index, selected in enumerate(priorities)
-            if selected.skill == priority_ceiling
-        ),
-        default=None,
+    matching_ceiling_indexes = tuple(
+        index
+        for index, selected in enumerate(priorities)
+        if selected.skill == priority_ceiling
     )
+    if priority_ceiling in listing.known:
+        priority_ceiling_index = max(matching_ceiling_indexes, default=None)
+    else:
+        priority_ceiling_index = min(matching_ceiling_indexes, default=None)
 
     for index, selected in enumerate(priorities):
         eligible = not (

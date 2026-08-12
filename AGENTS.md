@@ -10,6 +10,32 @@ SQLite databases and JSONL transcripts belong in `runs/` and `transcripts/`;
 both directories are intentionally ignored by Git. Generated declarative HERO
 requests, profiles, and campaign files belong under `runs/heroes/`.
 
+## Master Goal And Proof Discipline
+
+The master objective is a character-independent engine that accepts any
+source-legal race, cosmetic sex, base class, optional subclass, name, and
+personality, creates or resumes the character, and plays it autonomously to
+HERO level 100. Names and credentials identify stored history only; never add
+name-specific behavior to make a live run succeed. Direct Telnet/GMCP is the
+primary behavior adapter. Mudlet and Windows VM automation are separate
+visibility and lifecycle validation boundaries. AI decision-making remains out
+of scope until deterministic behavior is replayable.
+
+Keep proof layered and honest: creation/tutorial, representative level-10
+classes, executable class-aware level 1-30 coverage with confirmed subclass
+transition, then bands 31-70 and 71-100, followed by fresh creation-to-HERO
+runs. A checkpoint, policy-count report, source catalog entry, or research
+probe is not proof of progression. Use `verified` for reusable executable
+evidence, `research` for bounded probes with explicit limits, and
+`unavailable` for an explicit safe stop. Every engineering work unit must
+remove a concrete blocker to the next executable level band.
+
+Audit anchor for 2026-08-12: the live level-10 mage/thief/warrior matrix is
+complete; Aeloria is level 13, Dorrik level 12, and Kestrel level 24. These are
+representative checkpoints, not a HERO completion claim. The current detailed
+assessment and definition of done live in
+`docs/PROGRESS_AUDIT_2026-08-12.md`.
+
 The master product boundary is one character-independent autonomy engine that
 can create any source-legal race/class/subclass request and progress it to level
 100 without manual gameplay. Sex is cosmetic in DD4: accept and preserve it for
@@ -102,6 +128,14 @@ where available. Once learned and wielding a weapon, attempt `disarm` early
 against each exact opponent, alternate failed retries with recurring damage
 actions, and stop after success or live confirmation that the target is
 unarmed.
+For base Thief, include the source third-attack chain in the early damage plan:
+`second attack` and `armed combat knowledge` must each reach 60 before `third
+attack` unlocks. Buy a functional third attack after backstab and knife toss,
+then improve second attack before third attack because `multi_hit` attempts the
+third hit only after the second hit succeeds. Do not let a prior same-level
+physical-practice marker suppress an entirely missing automatic attack skill.
+Run class-aware training before every protected fame-recovery fight; a bounded
+high-level kill must not bypass newly available damage or mitigation training.
 Maintain a source-backed leveling-value analysis for every base class and
 level-30 subclass, not only active test characters. Apply subclass priorities
 only after live state confirms the character has subclassed. At exactly level
@@ -197,6 +231,23 @@ Persist each observed reboot-specific shop price; once the current price is
 known, do not treat a generic cash threshold as sufficient. Re-enter the
 source-backed money loop until the character can afford that price and its
 required travel and food reserve.
+Persist GMCP hunger and thirst values in character and campaign state. When
+negative fame blocks food service and hunger is zero or below, wake the
+character immediately and launch the shortest source-safe direct-food policy
+that provides enough fullness to end starvation. Never wait for healer HP
+recovery while starving: live run 4629 showed starvation damage can exceed the
+healer pulses. If the character is fed but lacks a reserve, collect the food
+without eating it. Track exact object VNUM acquisition as success even when
+urgent food is immediately eaten, then recall and resume fed healer recovery.
+Live run 4633 proved the room-331 rabbit route and exact ground acquisition;
+run 4634 consumed the roast and cleared hunger from -10 to 14; run 4635 then
+recovered Kestrel to full HP, mana, and movement in healer room 3054. Live
+run 4636 validated the fed reserve branch: it retained the roast, returned at
+full resources, and persisted hunger 9 and thirst 46 in campaign state. Run
+4637 then completed a full cure-critical reserve probe with the target absent,
+returned to healer room 3054 at full resources, retained the roast, and
+persisted hunger 6; an absent prerequisite carrier must not consume the food
+reserve or strand the character in the field.
 Parse `ITEM_MONEY` values as copper, silver, gold, and platinum and convert
 them at 1, 10, 100, and 1,000 copper respectively. Include direct `O`/`I`
 room coin resets as non-combat funding candidates when their source route has
@@ -221,6 +272,16 @@ two matching mobiles, it may enter research rotation: live TARGETMODE output
 must prove exactly one source-matched target before consider or combat. Never
 relax this exception for special procedures, aggression, companions, route
 hazards, or larger reset capacities.
+For a fixed capacity-two prototype with separate source reset rooms, tag each
+stop with its own reset-room policy identity and permit at most two total kills
+across the circuit. Retain the exact-one live TARGETMODE gate in every room;
+skip a duplicate room and never infer per-room safety from the global reset
+maximum.
+For a wandering capacity-two prototype, do not collapse its bounded room
+search to one kill merely because every stop shares one policy identity. Keep
+the global two-kill source cap and the exact-one gate in each live room. Run
+4758 followed two `where squire` locations, killed both New Ofcol squires for
+422 XP total, and returned safely to healer room 3054.
 When a current-reboot hunt withdraws with negative XP before a kill, persist
 that policy as protection-recovery evidence and do not immediately reselect the
 same source route. Recover or acquire the required protection first, or choose
@@ -251,6 +312,10 @@ healer-return gates. Do not blanket-reject every special, but keep
 `spec_celestial_repairman` and crime-conditional `spec_bounty`,
 `spec_clan_guard`, and `spec_executioner` research-gated until their movement
 or player-status preconditions are proven.
+When source route scoring finds one of those proven noncombat specials in a
+large below-band transit crowd, retain the hazard in evidence but do not turn
+it into an autonomy rejection. Ordinary aggressive crowds and all unclassified
+specials remain route-gated.
 Source `spec_thief` returns before its theft branch while fighting and can take
 at most 20% of carried coins while standing. Bound the possible loss to 250
 copper-equivalent (so carried currency may be as high as 1,250 copper), with
@@ -265,16 +330,74 @@ the healer while poison remains active. Bound weak `spec_guard`,
 and `spec_cast_judge` as its source `6 * level` high-explosive ceiling. Keep
 all other weak, moderate, strong, boss, breath, and caster specials blocked
 unless a matching source damage/effect policy and live evidence are added.
+Classify source-proven combat-only specials separately from target safety.
+`spec_cast_undead` scans only for a victim already fighting its mobile and
+returns otherwise, so a non-aggressive mobile with that special is safe to
+cross without engagement. This transit exception does not permit selecting or
+fighting the special mobile and must not be generalized without reading the
+specific source implementation.
 Never select a mobile carrying `ACT_LOSE_FAME` for XP or funding. Live run 4564
 proved that killing Solace mobile 10255 (Alex) cost 12 fame; DD4 then blocks
 both shop service and leveling while fame is negative. Treat a reputation shop
 refusal as a bounded, nonfatal return to the healer. When fame is negative,
-restore a legal field weapon first, acquire a purple sanctuary reserve, then use
-the level-24-26 Mirror Realm buck or moose recovery circuit. Attack exactly one
-isolated target only when live `consider` returns the `laughs at you
-mercilessly` branch, confirming the six-to-nine-level fame-award band; return
-to the healer after each kill and repeat until live fame is nonnegative. A live
-nonnegative fame value clears the sticky shop-refusal marker.
+restore a legal field weapon first and acquire a purple sanctuary reserve.
+Try the level-31 Circus ticket clerk (mobile 4400, room 4402) before the
+level-30 Mirror Realm buck or moose circuit. All three are single,
+non-aggressive, special-free source resets. Attack exactly one isolated target
+only when live `consider` returns the `laughs at you mercilessly` branch,
+confirming the six-to-nine-level fame-award band; return to the healer after
+each kill and repeat until live fame is nonnegative. DD4 ignores legacy mobile
+hit and damage dice when `create_mobile` derives ordinary combat values from
+live level. Shop `G` stock receives `ITEM_INVENTORY` and is extracted from a
+dead shopkeeper, so never expect the clerk's ticket to drop. A live nonnegative
+fame value clears the sticky shop-refusal marker.
+In Circus room 4402, source-proven level-3 Bobby's mother and wandering
+Midgaard Beastly Fido are trivial bystanders for the clerk probe. The latter is
+`spec_fido` and cannot attack a normal player. Ignore those exact identities
+there, but retain the crowd gate for every other mobile.
+The fame routes require at least 95% health before the opener, but that is not
+their combat withdrawal floor. Once sanctuary is confirmed and combat begins,
+use the normal 15% field floor and live matchup logic; never flee merely because
+health drops below the departure threshold.
+Before another bounded fame-recovery fight, carry one source-verified
+`cure critical` potion in the worn pouch as well as sanctuary. Select its
+carrier by parsed potion effect, safe source route, mobile risk, and exact live
+target count rather than by a fixed character or route. A reset capacity of two
+is admissible only when TARGETMODE proves exactly one matching carrier in the
+room. Use the healing reserve at or below 55% combat health without consuming
+sanctuary during the below-band acquisition fight.
+Potion display names are not provenance. Moria object 4150 and Thalos object
+5210 are both `a black potion`; the first casts `cure critical`, while the
+second casts `blindness` and `giant strength`. Retain parsed object value
+strings, bind an ambiguous potion to the exact source reset that produced it,
+persist that verified count across pouch audits, and decrement it when quaffed.
+Never classify, stow, or quaff an ambiguous black potion from name alone.
+Select any source-safe potion that provides the required spell, then persist
+and use its actual source-unambiguous command keyword; do not pin cure-critical
+acquisition to a black potion or one route. DD4's multi-object `put all.<name>`
+path can place non-potions in a worn pouch, so stow one exact collision-free
+selector at a time and remove any audited pouch contaminant before combat.
+If sanctuary expires before a protected opener and no reserve remains, record
+the target as live and viable with a sanctuary dependency. Do not assign an
+absence or generic failed-hunt cooldown; acquire a new reserve first, then
+return to the same gated target.
+After an absent or rejected fame target, require three productive field
+segments before retrying that exact circuit. Preserve the sanctuary potion
+until a source-matched target passes its live consider gate; ordinary
+source-ranked alternatives must not consume it. A living low-roll Mirror
+Realm mobile retains its live level until it dies or the world reboots, so a
+cooldown alone cannot reroll it.
+The flight-assisted Lotus Temple chamber attendant (mobile 10736, room 10837)
+is an independent fame-recovery research route only while carrying both a
+light blue flight potion and a purple sanctuary potion. Live run 4581 reached
+the level-31 attendant and exposed a post-opener guard that incorrectly
+reapplied the ordinary +1 level ceiling after the six-to-nine-level consider
+gate. Twenty-two failed flee attempts ended in death; the Purgatory controller
+recovered the corpse and returned Kestrel fully equipped to healer room 3054.
+The active-combat GMCP guard must honor the current stop's explicit maximum
+level offset. Any research-hunt death is nevertheless durable fatal evidence:
+do not reopen that exact policy at the same character level and reboot, even
+after ordinary retry cooldowns expire.
 Any explicitly audited `spec_cast_mage` hunt must mark sanctuary as required,
 quaff its carried purple potion before the opener, and confirm the sanctuary
 affect before attacking. Live run 4217 exposed the unsafe gap between merely
@@ -302,7 +425,10 @@ ceiling or the normal route and crowd gates.
 Live run 3613 validated this gate against the Old Treant in Mahn-Tor: Kestrel
 earned 1,644 XP and returned to healer room 3054 at 236/283 HP. Live run 3618
 then validated the independent Solace secretary reset for 1,198 XP without
-player damage. Preserve both as reusable level-20 source-ranked evidence.
+player damage. Preserve both as reusable level-20 source-ranked evidence. Live
+run 4638 killed the level-band Old Treant for 971 XP while losing only 9 HP;
+that margin requires continuation to another vetted target when a safe circuit
+is available instead of an unconditional single-kill recall.
 When comparing an exact registered target with a parsed live identity, strip
 only leading grammatical articles (`a`, `an`, `the`) on both sides; preserve
 the remaining source identity and selector distinctions.
@@ -323,6 +449,13 @@ Normalize flattened GMCP room descriptions with the same sentence boundaries
 used by live room output before applying crowd gates; furniture or other static
 room prose must not become a phantom mobile. Ignore companions only when their
 source identity is explicitly trivial for the current character level.
+When the source mobile catalog is available, subtract static GMCP room prose
+only through exact normalized source display-line matches. Never subtract a
+live source-matched mobile by a generic noun parsed from differently worded
+room prose. Run 4773 incorrectly removed the visible Fleshmonger cook because
+the room said `a cook is bent` while the mobile said `the cook bends`; run 4779
+then retained selector 23775, killed the cook for 322 XP, recovered its dropped
+weapon after a disarm, and returned safely to healer room 3054.
 Keep source-ranked evidence keyed by area, mobile VNUM, reset-room VNUM, and
 character level. Do not let a crowd or absence result from one reset room
 suppress an independent reset room for the same mobile; only a legacy,
@@ -339,6 +472,50 @@ level fuzz to land inside the useful consider band, prefer a same-reboot route
 whose latest recorded kill still earned meaningful XP, even after its third
 kill. High-confidence fresh targets retain priority, and a repeat stops being
 eligible when its latest reward falls below the meaningful-XP threshold.
+Apply the 50% fresh threshold across the complete research pool ordering, not
+only within one candidate category. A low-probability capacity probe must not
+hide a high-confidence level-ceiling probe merely because capacity research is
+visited first. At level 11, revision 162 replaced the 20%-useful Circus father
+with the 60%-useful Shire receptionist; live run 4771 earned 743 XP and returned
+safely to healer room 3054.
+Carry that reward evidence across a character level boundary by source mobile
+VNUM, not by the generated policy ID's level suffix. Use the tagged objective
+kill's `xp_gained`, because a level transition can make the aggregate XP delta
+look negligible. Campaign revision 156 threads those proven repeats through
+same-area circuit construction, so capped but still-productive mobiles can
+form a multi-kill route while live consider, crowd, health, and below-band
+gates remain mandatory.
+If the fresh selector initially returns a research-only candidate, still
+evaluate the current-band productive repeat pool before stopping or exposing
+the research route. Research must never mask executable progress. For legacy
+source-ranked segments that lack a mobile VNUM, carry forward XP only from the
+unambiguous selected candidate record; never guess an identity from a display
+name or assign the reward to a different prototype.
+Live run 4727 validated the level-11 Gnome circuit after seven same-reboot
+kills per prototype: Aeloria killed treasurer 1521 for 368 XP, continued to
+cook 1526 for 191 XP, ate the cook's severed leg, then returned to healer room
+3054 at full health and movement. Preserve the tagged reward per mobile VNUM
+and the two-kill route as reusable evidence until a later reward falls below
+the meaningful-XP threshold or a live gate rejects either stop.
+Do not poll a just-killed source prototype before its area can plausibly reset.
+Campaign revision 158 blocks each tagged mobile VNUM until two later completed
+source-ranked hunt segments have run; city maintenance does not count. Live
+run 4731 killed the Gnome pair for 448 XP, run 4732 supplied only one
+intervening Daycare hunt, and premature run 4733 then found both Gnomes absent.
+The two-segment cooldown would have blocked exactly that wasted revisit while
+leaving other areas available for productive work.
+Live run 4734 validated the selector boundary: it withheld the recent Gnome
+and Daycare VNUMs, killed Moria large orc 4005 for 166 XP instead, and returned
+to healer room 3054 at full health, mana, and movement.
+Live run 5047 exposed a route-throughput hazard in the Gnome kitchen approach:
+the source-safe cook route crossed barracks resets permitting up to 15-20
+below-band aggressive soldiers, producing a long chain of incidental 20-40 XP
+kills before the useful endpoint. Reject a route that crosses an aggressive
+below-band reset with capacity greater than four, while retaining lone
+source-proven below-band interruptions as finishable transit hazards. A
+source-backed required-loot reserve may retain that route only when its exact
+carrier also passes the one-live-target, isolation, health, and item-provenance
+gates; this exception does not reopen the route for ordinary XP hunting.
 Bound that discovery preference with durable throughput evidence: after two
 consecutive same-level, same-reboot source-ranked segments earn zero XP, choose
 a proven meaningful repeat even when the next fresh candidate has at least 50%
@@ -346,6 +523,11 @@ useful fuzz odds. Derive the streak from campaign segment history, ignore city
 maintenance between hunts, and reset it on XP gain, level change, or reboot.
 Runs 4537-4541 produced five consecutive zero-XP probes after run 4535 earned
 1,044 XP, proving that unbounded fresh discovery can displace progression.
+An explicit `--retry-stalled` rotation may reopen a current-reboot
+retry-exhausted policy only when that exact policy is also a meaningful,
+productive repeat. Keep the marker binding during normal selection and never
+use the switch to open unrelated absence, crowd, protection, or route-hazard
+cooldowns.
 Use the source level-difference branch as the level-band decision: the separate
 hitpoint comparison text is descriptive combat-risk context, not a substitute
 for level difference and not an automatic rejection of an otherwise viable
@@ -360,6 +542,11 @@ terminal for that policy and discard its short retry cooldown instead.
 Persist that below-band result against the selected policy for the current
 character level and reboot. Do not revisit the same surviving mobile until the
 level or reboot identity changes.
+Attach a below-band source-mobile key only when the active execution is the
+matching source-ranked policy. Bespoke equipment or maintenance hunts may
+inherit a stale candidate record at their checkpoint boundary; never let that
+record exclude an unrelated source mobile. Sanitize mismatched and non-source
+keys during policy revision repair.
 Every shared probe-to-hunt promotion and fallback must enforce both the
 policy's minimum and maximum character level. Live run 4223 proved that an
 expired level-18 Rock Toad policy is below-band and wasteful at level 22; a
@@ -409,13 +596,24 @@ Treat `hide` as a stationary ambush or avoidance skill because ordinary
 movement removes it; do not use it as travel concealment.
 Before a mage field fastwalk, establish known invisibility at recall so
 wandering Midgaard greet-program mobiles cannot replace a productive target
-with a trivial forced fight.
+with a trivial forced fight. Cast it before stepping south for the fountain
+water preflight, then confirm the affect before moving. Live run 4702 reached
+the fountain before casting and was forced to kill the wandering drunk for 10
+XP; the ordering fix prevents that avoidable transit combat.
 Before a Magic Shop trip, use known invisibility when available. Otherwise
 issue `where drunk` from healer room 3054 and defer the trip when mobile 3064
 is in a source-route room. Its `greet_prog` calls `mpkill`, while
 `mprog_greet_trigger` requires the mobile to see the entering player. Treat a
 blocked route as a bounded retry after productive work, not as an
 unaffordable-purchase result.
+Live runs 4668-4669 exposed an immediate next-connection retry despite the
+three-segment marker: run 4668 correctly stayed at the healer while the drunk
+blocked the route, but run 4669 immediately crossed the now-clear route and
+bought flight. Campaign policy revision 148 therefore persists the route block
+against the reboot identity, suppresses another affordable purchase until
+three productive field segments advance the cooldown, and clears the block
+only when that cooldown completes, active flight is confirmed, or the reboot
+identity changes.
 For verified hunts, continue until a meaningful discomfort threshold: low
 health without vetted local recovery, an uncured disabling affect, unusable
 food or water when needed, insufficient movement, encumbrance, or exhausted
@@ -445,13 +643,52 @@ already recorded, and prefer the largest viable lower-peak-damage source
 circuit before raw XP score. Record the completed training and gear audits on
 the marker, but clear it only after at least two objective kills or a level
 gain; an audit by itself is not proof that throughput improved.
+A generated circuit applies the full departure-health gate only before its
+first target. After an objective kill, ordinary later stops use the 22.5%
+field-continuation floor; stops with specials, sanctuary requirements, or
+bounded peak-damage exceptions retain the 67.5% high-risk floor. Live run 4683
+validated this at level 10: Aeloria killed Gnome treasurer 1521 for 276 XP,
+continued at 129/145 HP, killed cook 1526 for 248 XP, and returned to healer
+room 3054 at full health. The two-kill circuit earned 524 XP in 114 seconds.
+After loot, use the same 7.5% mana and 5% movement continuation floors; never
+fall back to the old 30% mana recovery gate while a kill-budget-eligible target
+remains. Scan past targetless locator or transit stops to the next actual
+combat stop before deciding that the circuit is over. Live run 4692 exposed
+the stale mana gate by recalling at 87/382 mana after one kill; campaign policy
+revision 153 clears throughput markers produced by that obsolete boundary.
+When the kill budget is already exhausted, return normally and do not report a
+fictional next-target recovery failure.
 A failed live `consider` at one generated circuit stop must preserve that
 policy-specific evidence and advance to later independently tagged stops. Recall
 only when no vetted stop remains or the stop explicitly requires abort after
 rejection.
+Key generated-circuit `consider` and below-band evidence by the active stop's
+source policy ID, mobile VNUM, and reset room. Never assign a supplementary
+stop result to the primary route merely because both ran in one segment. For
+legacy transcripts without stop IDs, match only an exact normalized source
+identity after stripping a leading article. Campaign revision 151 repaired
+the Fleshmonger level-10 history so cook 9403 remains productive while the
+independent cook's boy 9404 remains terminally below-band.
+Key absence evidence by the same exact source policy. Presence or a live
+`consider` at one supplementary stop must not hide an absent primary reset or
+cool down the whole circuit. Live runs 4717 and 4719 exposed the old aggregate
+failure at mage level 11: absent Ivan 4409 was retried because the visible,
+below-band Bearded Lady and Illusionist made the circuit look present. Campaign
+revision 154 began recording each searched reset miss independently. A later
+live sighting, `consider`, or kill for that exact policy must clear and dominate
+all waypoint misses; run 4721 found and fought the wandering Shire Miller
+before it fled through a crowded room, proving that an empty later waypoint is
+not target absence. Campaign revision 155 preserves the positive presence and
+applies absence cooldowns only to policies never seen during the circuit.
 Before any hunt fastwalk from recall, refill the carried water skin in room
 3005, drink there, and return north; never rely on a stale in-memory thirst
 flag for a long route.
+When negative fame makes a shopkeeper refuse food, never bounce between that
+shop and the healer. Rank source-direct ground food resets, exclude every food
+prototype with a nonzero poison value, bind acquisition to the exact object
+VNUM and source keyword, and carry the reserve home before consuming it. Treat
+an empty reset as a bounded, reset-specific absence and rotate to another safe
+food route.
 Before any source-ranked, funding, or coin-stash fastwalk departs from healer
 room 3054, sleep until its movement threshold is ready; apply this even when
 the route has no combat hunt stops.
@@ -481,6 +718,10 @@ field fight's 15% withdrawal or 10% finisher threshold.
 For a return-home checkpoint at the healer, use the same 90% movement floor
 both when deciding to sleep and when deciding to wake. A lower generic wake
 floor creates a no-progress sleep/stand command loop.
+After a completed field hunt reaches healer room 3054, recover to the same 90%
+movement floor before save and quit. The lower field-ready reserve may carry a
+return through Midgaard, but must not force the next campaign segment to spend
+a separate connection on healer recovery.
 For bounded live HERO invocations that can enter progression combat, set
 `--max-segment-runtime` to at least 420 seconds so the 360-second combat bound
 still has travel and healer-cleanup time. Live run 4211 proved that 240 seconds
@@ -497,6 +738,12 @@ Live run 4564 killed both Solace circuit targets for 2,923 XP, then stayed again
 mobile 10215 because its live level was only 13. Its `spec_guard` headbutt and
 kick bursts killed Kestrel and turned the segment into a net XP loss; an early
 post-objective flee is now mandatory.
+For static required-loot circuits, derive trivial bystanders per destination
+room from the source movement graph and the current character level. Do not use
+a world-wide display-name level range when source reachability can distinguish
+the local low-level prototype from a dangerous namesake. Live run 4654 used
+this gate to ignore the level-1 teddy and level-3 toy soldier, kill an old doll
+and the nanny for 151 XP, and return Dorrik safely at full health.
 For source-ranked room isolation, include a trivial same-area wanderer only
 when its source movement graph can reach the live room. Before ignoring its
 normalized short identity, prove that no materially dangerous source mobile
@@ -505,11 +752,47 @@ with the same identity can also reach that room; generic names such as
 reachability index once for the complete circuit, never once per destination;
 the White Stag's 38-stop graph exposed minute-scale CPU stalls from per-room
 world scans before the inverted index correction.
+When the bot opens a source-closed door, live movement can place an ordinary
+wanderer outside that static graph. In that case, permit an area-scoped
+fallback only when every same-area reset prototype with the normalized live
+identity is source-proven trivial at the current level. Campaign revision 157
+adds this boundary after run 4730 found Granny Jenkins with a harmless level-5
+New Ofcol citizen in room 600; a dangerous same-name prototype still preserves
+the crowd rejection. Live run 4744 validated the repair: the citizen no longer
+made Granny Jenkins appear crowded, while her below-band live `consider` still
+prevented combat independently.
+Apply the same reverse-reachability proof to global wanderers whose source
+movement can cross area boundaries. Ignore only an exact trivial identity that
+can reach the destination, and retain it as a crowd when any dangerous
+same-named prototype can also reach that room. Live run 4678 exposed wandering
+Midgaard Fidos and a vagabond inside the Circus; campaign revision 150 reopened
+the resulting false crowd result for the Bearded Lady and Illusionist circuit.
 Treat duplicate same-prototype targets as a possible assist crowd: `fight.c`
 allows an idle mobile sharing the engaged mobile's prototype to join
 probabilistically. Skip that stop and continue to later registered circuit
 rooms; do not let a matching target in the old room satisfy the next routed
 stop before its destination is reached.
+For a source-ranked mobile proven by `MobileSource.wanders` to move, do not
+discard a full circuit merely because the target enters a crowded room. Remain
+standing and re-run `look` at 12-second intervals, deriving three to eight
+attempts from the number of source-reachable exits. This mirrors the four-second
+`mobile_update` and 1-in-32 chance per usable direction, targeting about a 50%
+chance that the mobile leaves while keeping the live segment bounded. Retain
+every normal source, identity, isolation, health, and live-`consider` gate, and
+cancel the wait immediately if combat starts.
+Live run 4601 validated the timer against Mirror Realm mobile 19022 in the
+one-exit Travellers Shop: three 12-second looks remained safe but did not move
+the gardener. Source `update.c` then justified the exit-weighted three-to-eight
+look budget. The same rotation continued productively in run 4603, where
+Kestrel killed Mahn-Tor mobile 2301 for 1,137 XP and returned to healer room
+3054 at 274/334 HP without consuming the reserved sanctuary potion.
+For Mirror Realm fame recovery only, treat an unrelated wandering mobile in
+the buck or moose room as potentially transient. Remain standing, re-run
+`look` up to three times at 12-second intervals, and apply the full source
+identity, isolation, health, sanctuary, and live-`consider` gates after every
+refresh. Any combat interruption cancels the wait immediately. If the room is
+still crowded after the third refresh, preserve the normal retryable crowd
+result and return to the healer without consuming the sanctuary potion.
 Treat an unapproved attacker that joins after combat starts as the same
 retryable crowd condition: flee, recover, discard the interrupted research
 result, and recheck the source target on the next bounded segment.
@@ -562,6 +845,13 @@ safe route graph. Still require its exact source display line and fresh
 TARGETMODE selector. Live run 4253 saw mobile 5201's lamia twice in Thalos room
 5212 and exposed the obsolete endpoint-only guard before the corrected worker
 was loaded.
+DD4 mobile arrival notices do not include a TARGETMODE selector. When an exact
+active source target produces `<target> has arrived.` in a source-vetted route
+room, pause navigation for one `look`; only the resulting source-matched room
+line and fresh selector may enter the ordinary interception gates. Do not treat
+the arrival notice itself as combat authorization. Live run 4616 saw the large
+hobgoblin enter Moria room 4063, but the pre-fix circuit continued navigating
+and returned without its sanctuary potion.
 Use the source parser's canonical `strange lamia` identity for this exact
 target while retaining `lamia` as the explicit `where_target` and command
 keyword. Live run 4273 exposed the combat mismatch: the circuit saw many valid
@@ -582,6 +872,18 @@ below-band 80 XP, looted object 5252, verified the long slim dagger in the
 primary weapon slot, and returned at full health to healer room 3054. Apply the same canonical contract to the Forest `kodiak bear` and
 Moria `garter snake`; their longer room prose is not the parsed mobile
 identity.
+Apply the same bounded pursuit when an engaged target flees: live run 4673
+reduced Circus mobile 4409, Ivan, from 106 to 57 HP before he fled east, but a
+cleared live-enemy identity prevented the old detector from following him and
+six stale `kill #2923` commands triggered the watchdog. Campaign policy
+revision 149 recognizes an observed departure after combat has started even
+when GMCP has already cleared the active identity, removes the stale room
+selector, and follows the legal adjacent exit for a fresh room safety check.
+Treat a seen or considered target as positive evidence even when it survives:
+never propagate whole-circuit absence to supplementary resets. Revision 149
+repairs the primary as a retryable present attempt and reopens any unvisited
+supplementary targets; run 4675 confirmed the repaired checkpoint before a
+productive two-kill, 495-XP Fleshmonger repeat and safe healer return.
 When different mobile prototypes share a short description, preserve the
 source-distinct identity from the room line and keyword list (for example,
 male versus female `a centaur`). Use the generic short name only for the
@@ -658,7 +960,10 @@ that room to the empty reset room loses the recovery opportunity.
 An absent or crowded ring carrier is a temporary area-state miss, not a
 reboot-scoped failure. Rotate through three productive field segments before
 retrying the Daycare ring recovery during the same reboot; a reboot permits an
-immediate retry.
+immediate retry. Policy-revision migration must preserve an in-progress retry
+countdown, and below-band evidence from a required-loot nanny or doll must not
+exclude `recover-daycare-ring` itself. Runs 4738 and 4760 respectively proved
+the countdown decrement and the repaired exclusion-free live retry.
 A registered one-off gear recovery may attack a source-proven low-level carrier
 after a below-band `consider`, but must record that the kill is solely for a
 required missing item and never treat it as an XP policy. Do not consume a
@@ -714,6 +1019,11 @@ killing a level-13 Rock Toad for 303 XP and returning safely. Runs 2224 and
 2225 correctly rejected three crowded Toads but exposed an immediate zero-XP
 repeat; run 2226 proved the corrected rotation by killing Bardoosh for 517 XP
 and returning safely at full health.
+Keep optional-maintenance fastwalk results out of generic research metadata.
+Preserve their dedicated retry cooldown, but clear transient crowd, absence,
+consider, and abort fields before checkpointing so the retained last XP policy
+cannot inherit a maintenance-room outcome. Runs 4653-4654 exposed and verified
+this separation for Dwarven Day Care ring recovery at policy revision 145.
 If a specialized opener such as `backstab` or `shoot` is rejected while the
 exact target remains present, immediately retry once with normal `kill` using
 the same TARGETMODE selector. During recurring combat actions, treat a changed
@@ -1160,7 +1470,14 @@ Treat an `eq all` line containing `[weapon] -` as an empty slot, never as proof
 of a wielded weapon. A dedicated rearm run must buy, wield, and verify an
 occupied weapon line before succeeding. If the source-backed dagger is
 unaffordable, use the existing Dragonhoard Bank credit route, then retry and
-return to healer room 3054.
+return to healer room 3054. If item-count capacity is full, liquidate or
+donate safe carried drops before entering the weapon shop; weight capacity
+alone does not prove that a purchase can be carried. Live run 5048 exposed
+this with two source-matched large clubs hidden behind a retained war-dog
+collar; the selector must preserve the collar and free a slot with the clubs.
+Runs 5049-5051 validated the repair: the clubs were cleared at healer room
+3054, the return-home checkpoint completed, and the subsequent Daycare-ring
+maintenance finished safely with Dorrik still wielding his broadsword.
 
 ## Development Commands
 
@@ -1200,6 +1517,13 @@ they use Windows Credential Manager through `keyring`. `DD4_USERNAME`,
 overrides. Transcript and database records must redact credentials. Use direct
 Telnet/GMCP for primary testing and reserve Mudlet-in-VM automation for
 client-specific validation.
+For a new `hero` request, generate a random alphanumeric character password and
+persist it under the profile credential name before the first connection; keep
+it out of profiles, manifests, transcripts, and status output. Bound the
+credential write to five seconds on a daemon worker so a keyring prompt cannot
+stall the campaign. `--prepare-only` stays secret-free, and resumed work uses
+the existing keyring or environment override rather than generating a new
+password.
 For live progression, prefer one bounded multi-segment campaign process over
 repeated one-shot connections. Before launching, verify no tester process is
 already active. Omitted campaign `--reset-retries` now uses the `--segments`
@@ -1215,6 +1539,22 @@ may reuse a same-reboot route only if its evidence records a completed kill
 and its policy XP delta is at least 50; this exception does not permit trivial
 or crowded routes to loop, and ordinary absent/crowded cooldowns still defer
 to the bounded reset controller.
+From level 10 onward, open the generic source-ranked frontier only after the
+registered class-aware routes are unavailable or excluded by current evidence;
+never let generic ranking displace an executable registered route.
+Live run 4661 validated this fallback for a level-10 mage: Aeloria killed the
+Gnome Village treasurer and cook for 529 total XP, then returned to healer room
+3054 at full health, mana, and movement.
+When a generated multi-target circuit completes with no observed target, mark
+every exact primary and supplementary policy saved in that circuit absent; do
+not suppress unrelated reset rooms. If that generated absence is on cooldown
+and the registered fallback most recently earned less than 50 XP, continue to
+an independent generated candidate instead of alternating the two depleted
+routes. Runs 4662-4664 exposed this Moria/Gnome oscillation at mage level 10.
+Run 4665 validated the repaired rotation by selecting the independent
+Fleshmonger kitchen circuit: Aeloria recovered her disarmed weapon, consumed a
+verified cure-critical reserve at low health, killed both cooks for 715 XP,
+and returned to healer room 3054 safely after the second kill.
 Within that selector, fully source-safe current-band routes have priority over
 special-procedure research; among safe routes, productive same-reboot evidence
 comes first, then fresh routes, then retryable routes. Research remains
@@ -1297,6 +1637,10 @@ The streamer configuration must include `USER`; after any logging repair,
 confirm the source contains the user record, `streamer.stdout.log` contains
 both `Publishing USER record` and a successful delivery with no matching
 error, and the checkpoint offset equals the source length with an empty queue.
+The streamer cannot infer a user message from the Codex interface. When a user
+turn arrives, append that exact turn as `USER` before or with the response;
+diagnosing Discord without checking the source file only hides the logging
+failure.
 Use `python tools/conversation_log.py append --speaker "CODEX COMMENTARY"
 --body "..."` or `--body-file <UTF-8 text file>` for new entries whenever possible;
 the helper emits the exact header and appends UTF-8 bytes without rewriting

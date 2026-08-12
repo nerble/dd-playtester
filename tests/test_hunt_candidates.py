@@ -6,6 +6,7 @@ from dd4tester.hunt_candidates import (
     ACT_AGGRESSIVE,
     ACT_DIE_IF_MASTER_GONE,
     AFF_CONFUSION,
+    ITEM_FOOD,
     ITEM_MONEY,
     ExitSource,
     MobileSource,
@@ -15,12 +16,14 @@ from dd4tester.hunt_candidates import (
     RoomObjectReset,
     WorldSource,
     money_value,
+    potion_spell_names,
     _route_preflight_metadata,
     load_object_sources,
     load_world_source,
     parse_area_file,
     rank_hunt_candidates,
     rank_coin_stashes,
+    rank_food_stashes,
     _source_mobile_identity,
     source_mobile_identities,
     source_mobile_search_rooms,
@@ -30,6 +33,60 @@ from dd4tester.hunt_candidates import (
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "hunt_area.are"
+
+
+def test_required_consumable_can_rank_a_carrier_without_saleable_loot() -> None:
+    potion = ObjectSource(
+        50,
+        "black potion",
+        "a black potion",
+        10,
+        (15, 0, 0, 0),
+        100,
+        value_strings=("15", "cure critical", "", ""),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "orc",
+                "a large orc",
+                5,
+                1 << 1,
+                0,
+                "test.are",
+            )
+        },
+        objects={50: potion},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "tunnel", "test.are"),
+        },
+        mob_resets=[MobReset(100, 200, 1, (50,))],
+    )
+
+    assert rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_below_band=True,
+        include_all_areas=True,
+    ) == []
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_below_band=True,
+        include_all_areas=True,
+        required_loot_object_vnums={50},
+    )
+
+    assert candidate.mobile_vnum == 100
+    assert candidate.loot == ("a black potion",)
 
 
 def test_source_route_movement_cost_follows_core_terrain_and_flight_rules() -> None:
@@ -312,6 +369,29 @@ def test_money_value_converts_all_coin_denominations() -> None:
     assert money_value((50, 45, 6, 0)) == 1_100
 
 
+def test_area_parser_preserves_potion_spell_names(tmp_path: Path) -> None:
+    area_file = tmp_path / "potions.are"
+    area_file.write_text(
+        """#OBJECTS
+#4150
+black potion~
+a black potion~
+A thick black potion is here.~
+~
+10 0 1
+15~ cure critical~ ~ ~
+1 100 35
+#0
+""",
+        encoding="latin-1",
+    )
+
+    item = parse_area_file(area_file).objects[4150]
+
+    assert item.value_strings == ("15", "cure critical", "", "")
+    assert potion_spell_names(item) == ("cure critical",)
+
+
 def test_area_parser_records_direct_coin_stash_resets(tmp_path: Path) -> None:
     area_file = tmp_path / "stash.are"
     area_file.write_text(
@@ -449,6 +529,55 @@ def test_rank_coin_stashes_rejects_a_reachable_aggressive_wanderer() -> None:
     assert "an aggressive wanderer inside the useful XP band can reach the route" in (
         candidates[0].autonomy_rejections
     )
+
+
+def test_rank_food_stashes_promotes_safe_food_and_excludes_poison() -> None:
+    world = WorldSource(
+        objects={
+            100: ObjectSource(
+                100,
+                "rabbit roast wabbit",
+                "a rabbit roast",
+                ITEM_FOOD,
+                (24, 0, 0, 0),
+                0,
+            ),
+            101: ObjectSource(
+                101,
+                "mushroom",
+                "a mushroom",
+                ITEM_FOOD,
+                (40, 0, 0, 1),
+                0,
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"south": ExitSource("south", 3002, 0, -1)},
+            ),
+            3002: RoomSource(3002, "Hermit hut", "plains.are"),
+        },
+        room_object_resets=[
+            RoomObjectReset(100, 3002),
+            RoomObjectReset(101, 3002),
+        ],
+    )
+
+    candidates = rank_food_stashes(
+        world,
+        character_level=24,
+        include_all_areas=True,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].is_food_stash is True
+    assert candidates[0].source_value == 24
+    assert candidates[0].ground_loot_keywords == ("wabbit",)
+    assert candidates[0].ground_loot_object_vnums == (100,)
+    assert candidates[0].loot == ("a rabbit roast",)
 
 
 def test_candidate_ranking_values_mixed_denominations_on_mobile_loot() -> None:
@@ -1526,6 +1655,175 @@ def test_autonomous_filter_uses_route_aggressor_fuzzed_maximum(monkeypatch) -> N
     assert (
         "route crosses an aggressive reset inside the useful XP band"
         in candidate.autonomy_rejections
+    )
+
+
+def test_autonomous_filter_rejects_large_below_band_route_crowd(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 10, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "soldier",
+                "the route soldier",
+                3,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Barracks", "target.are"),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 8, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=15,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    )
+
+    assert not candidate.autonomous_safe
+    assert (
+        "route crosses a large below-band aggressive crowd"
+        in candidate.autonomy_rejections
+    )
+    assert any(
+        "up to 8 mobiles" in hazard for hazard in candidate.hazards
+    )
+
+
+def test_noncombat_special_route_crowd_does_not_block_target(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 10, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "fido",
+                "the beastly fido",
+                0,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Fido room", "target.are"),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 15, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+        mobile_specials={200: ("spec_fido",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=15,
+        include_xp_only=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert candidate.route == ("north", "north")
+    assert any(
+        "noncombat route special" in hazard
+        for hazard in candidate.hazards
+    )
+    assert not any(
+        "large below-band aggressive crowd" in rejection
+        for rejection in candidate.autonomy_rejections
+    )
+
+
+def test_candidate_uses_longer_route_around_large_below_band_crowd(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 10, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "soldier",
+                "the route soldier",
+                3,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={
+                    "north": ExitSource("north", 7001, 0, -1),
+                    "east": ExitSource("east", 7002, 0, -1),
+                },
+            ),
+            7001: RoomSource(
+                7001,
+                "Barracks",
+                "target.are",
+                exits={"north": ExitSource("north", 7003, 0, -1)},
+            ),
+            7002: RoomSource(
+                7002,
+                "Side road",
+                "target.are",
+                exits={"east": ExitSource("east", 7004, 0, -1)},
+            ),
+            7003: RoomSource(7003, "Target room", "target.are"),
+            7004: RoomSource(
+                7004,
+                "Side road",
+                "target.are",
+                exits={"north": ExitSource("north", 7003, 0, -1)},
+            ),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 8, ()),
+            MobReset(100, 7003, 1, ()),
+        ],
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=15,
+        include_xp_only=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert candidate.route == ("east", "east", "north")
+    assert not any(
+        "large below-band aggressive crowd" in rejection
+        for rejection in candidate.autonomy_rejections
     )
 
 

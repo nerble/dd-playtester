@@ -913,12 +913,13 @@ def item_command_keyword(
     absent from the other prototypes and keep the legacy noun fallback for
     genuinely ambiguous or uncontextualized items.
     """
+    peer_list = tuple(peers)
     keyword_words = [word.casefold() for word in item.keywords.split() if word]
     if not keyword_words:
         return item_keyword(item)
     other_keywords = {
         word.casefold()
-        for peer in peers
+        for peer in peer_list
         if peer.vnum != item.vnum
         for word in peer.keywords.split()
     }
@@ -932,7 +933,27 @@ def item_command_keyword(
             (word for word in unique_words if word in description_words),
             unique_words[0],
         )
-    return item_keyword(item)
+    fallback = item_keyword(item)
+    matching_vnums = {
+        peer.vnum
+        for peer in peer_list
+        if fallback in {word.casefold() for word in peer.keywords.split()}
+    }
+    if item.vnum in matching_vnums and len(matching_vnums) > 1:
+        occurrence = 0
+        for peer in peer_list:
+            if fallback not in {
+                word.casefold() for word in peer.keywords.split()
+            }:
+                continue
+            occurrence += 1
+            if peer.vnum == item.vnum:
+                return (
+                    fallback
+                    if occurrence == 1
+                    else f"{occurrence}.{fallback}"
+                )
+    return fallback
 
 
 def _bonus_totals(item: ObjectSource) -> dict[int, int]:

@@ -2,6 +2,7 @@ from dd4tester.specials import (
     CONDITIONAL_COMBAT_SPECIALS,
     ECONOMIC_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
+    TRANSIT_SAFE_COMBAT_ONLY_SPECIALS,
     WEAK_DEBILITATING_SPECIALS,
     WEAK_DIRECT_DAMAGE_SPECIALS,
     WEAK_EXTRA_ATTACK_SPECIALS,
@@ -33,7 +34,7 @@ def test_special_classification_sets_are_explicit() -> None:
     assert "spec_cast_orb" in SAFE_NONCOMBAT_SPECIALS
     assert "spec_clan_guard" in CONDITIONAL_COMBAT_SPECIALS
     assert "spec_thief" in ECONOMIC_SPECIALS
+    assert "spec_cast_undead" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
     assert "spec_kungfu_poison" in WEAK_DEBILITATING_SPECIALS
     assert "spec_cast_judge" in WEAK_DIRECT_DAMAGE_SPECIALS
     assert "spec_bloodsucker" in WEAK_EXTRA_ATTACK_SPECIALS
-

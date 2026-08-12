@@ -82,6 +82,22 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     assert midget.recall_after_loot is True
     assert midget.loot_container == "purse"
 
+    fame = route_named("Circus Fame Recovery")
+    assert fame.minimum_level == 24
+    assert fame.maximum_level == 26
+    assert fame.commands == (
+        "south",
+        "south",
+        "east",
+        "east",
+        "east",
+        "south",
+        "south",
+        "south",
+        "south",
+    )
+    assert fame.recall_after_loot is True
+
     guards = route_named("Gnome Guard Hut")
     assert guards.minimum_level == 7
     assert guards.maximum_level == 10
@@ -230,6 +246,15 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         "north", "north", "east", "east", "north",
     )
     assert nobleman.recall_after_loot is True
+    assert nobleman.route_preflight_room_vnum == "3505"
+    assert nobleman.route_preflight_command == "where goblin lieutenant"
+    assert nobleman.route_preflight_target == "goblin lieutenant"
+    assert nobleman.route_preflight_hard_hazard is True
+    assert nobleman.route_hard_hazard_targets == (
+        "goblin lieutenant",
+        "dark horseman",
+        "wyvern",
+    )
 
     servant = route_named("Dwarven Servant")
     assert servant.minimum_level == 17
@@ -333,6 +358,41 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         "west",
     )
     assert watchman.recall_after_loot is True
+
+    fame_recovery = route_named("Mirror Realm Fame Recovery")
+    assert fame_recovery.minimum_level == 24
+    assert fame_recovery.maximum_level == 26
+    assert fame_recovery.commands[-13:] == (
+        "north",
+        "north",
+        "north",
+        "west",
+        "down",
+        "down",
+        "open west",
+        "west",
+        "south",
+        "south",
+        "west",
+        "west",
+        "south",
+    )
+    assert fame_recovery.recall_after_loot is True
+
+    lotus_fame_recovery = route_named("Lotus Temple Fame Recovery")
+    assert lotus_fame_recovery.minimum_level == 24
+    assert lotus_fame_recovery.maximum_level == 26
+    assert len(lotus_fame_recovery.commands) == 70
+    assert lotus_fame_recovery.commands[:18] == (
+        "south", "south", "south", "south", "south", "south",
+        "west", "south", "south", "west", "south", "west",
+        "south", "south", "west", "south", "south", "open south",
+    )
+    assert lotus_fame_recovery.commands[-12:] == (
+        "south", "south", "open south", "south", "south", "east",
+        "north", "east", "south", "south", "west", "down",
+    )
+    assert lotus_fame_recovery.recall_after_loot is True
 
     white_stag = route_named("Crystalmir White Stag")
     assert white_stag.minimum_level == 16

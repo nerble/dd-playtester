@@ -12,6 +12,44 @@ headlessly or through a visible Mudlet client in a Windows virtual machine.
 - Make campaign runs resumable; a level-100 test must survive process and VM restarts.
 - Keep AI optional until deterministic behavior and safety boundaries are measurable.
 
+## Current Assessment (2026-08-12)
+
+The first five practical milestones are complete as foundations. Async Telnet,
+GMCP, transcripts, SQLite state, YAML profiles, deterministic starter behavior,
+reports, checkpoints, bounded segments, and death/recovery handling are in use.
+The live level-10 matrix is complete for mage, thief, and warrior. The current
+representative campaigns are Aeloria mage level 13, Dorrik warrior level 12,
+and Kestrel thief level 24.
+
+This is not yet a HERO proof. A level-100 campaign can resume and checkpoint,
+but it must still stop at a missing or research-gated band. Treat policy status
+as a contract: `verified` means executable evidence is reusable, `research`
+means a bounded probe with explicit limits, and `unavailable` means the runner
+must stop safely. A checkpoint, a source catalog entry, or a policy-count report
+does not by itself prove progression.
+
+## Refined Goal And Work Order
+
+Given a source-legal race, cosmetic sex, base class, optional subclass, name,
+and personality, one command must create or resume the character and play it
+without manual gameplay to level 100. Character names identify credentials and
+history only. Direct Telnet/GMCP is the primary behavior adapter; Mudlet and a
+Windows virtual machine are later visual and lifecycle validation boundaries.
+
+The proof sequence is creation/tutorial, representative level-10 classes,
+class-aware level 1-30 coverage with the level-30 subclass transition, then
+executable bands through 31-70 and 71-100, followed by fresh creation-to-HERO
+runs. Each band must have source identity, live consider and route evidence,
+combat/resource/return evidence, and offline regression coverage. AI-assisted
+decisions remain intentionally deferred.
+
+The immediate work package is to keep the frontier productive while extending
+coverage: carry legacy source-identified XP across level boundaries, let safe
+same-reboot repeats compete with research candidates, add class/subclass
+training and equipment gates, and promote one new level band at a time. See
+[`docs/PROGRESS_AUDIT_2026-08-12.md`](docs/PROGRESS_AUDIT_2026-08-12.md) for the
+full architecture assessment and definition of done.
+
 ## Practical Milestones
 
 1. **Structured observations — complete.** Convert text and GMCP into typed events
@@ -1891,3 +1929,37 @@ and failure handling before registering each new level-band policy.
   that food restocking could not buy even one pie. Policy revision 17 now
   treats protected carried stat gear as vaultable capacity relief, preserving
   it for later stance use while making room before essential restocking.
+
+## Character-Independent Autonomy Cycle 19 - 2026-08-12
+
+- The project audit separated the product goal from the evidence ledger. The
+  level-10 mage/thief/warrior matrix remains proven, while the level-100 hero
+  command is correctly described as resumable and safe-stopping rather than
+  complete. A full audit is recorded in
+  `docs/PROGRESS_AUDIT_2026-08-12.md`.
+- A legacy source-ranked kill ledger was missing source mobile VNUMs for older
+  segments. Latest XP now inherits the selected candidate VNUM only when the
+  segment has an unambiguous selected source candidate, allowing meaningful
+  rewards to carry across a character level boundary.
+- The selector now evaluates productive same-reboot repeats when its first
+  choice is research-only. A regression test prevents a capacity or other
+  research probe from hiding a safe repeat route.
+- Kestrel's live campaign validated the repair at level 24: the Dwarven Home
+  host (mobile 20507, room 20510) yielded 1,006 XP and returned to healer room
+  3054 at full HP and mana. The campaign checkpoint is 13571.
+- The Discord streamer was audited after a missing user message report. Its
+  configuration already included `USER`; the source log was missing the user
+  record. Appending the record with `tools/conversation_log.py` produced both
+  `Publishing USER record` and `Delivered USER record`, with an empty queue and
+  current source offset. Future turns must append user steering as strictly as
+  Codex commentary and final responses.
+- The route-aware Nobleman probe was live-tested with Dorrik (run 5054):
+  source mobile 3506, the wandering goblin lieutenant, interrupted the
+  Miden'nir approach and caused a safe withdrawal with a 116-XP loss. The
+  route now performs an early `where goblin lieutenant` check and names the
+  goblin lieutenant, dark horseman, and wyvern as hard hazards. The reboot-
+  scoped result remains deferred rather than retried blindly.
+- Source-ranked routing now excludes source-proven noncombat specials such as
+  `spec_fido` from hard route-crowd rejection. The full suite is 2,485 tests;
+  Dorrik subsequently earned 584 XP from the Shire receptionist and 519 XP
+  from two Fleshmonger targets, returning safely after both segments.

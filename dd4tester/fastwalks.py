@@ -263,6 +263,15 @@ MAP_ROUTES = (
             "open east;e3n2en"
         ),
         recall_after_loot=True,
+        route_preflight_room_vnum="3505",
+        route_preflight_command="where goblin lieutenant",
+        route_preflight_target="goblin lieutenant",
+        route_preflight_hard_hazard=True,
+        route_hard_hazard_targets=(
+            "goblin lieutenant",
+            "dark horseman",
+            "wyvern",
+        ),
     ),
     Fastwalk(
         "dwarven servant",
@@ -365,7 +374,22 @@ MAP_ROUTES = (
         "mirror realm fame recovery",
         24,
         26,
-        "2s4w3n2e3ne3n2e2n;open north;3nwd2d;open west;w2s2ws",
+        "2s4w3n2e3ne3n2e2n;open north;3nw2d;open west;w2s2ws",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "circus fame recovery",
+        24,
+        26,
+        "2s3e4s",
+        recall_after_loot=True,
+    ),
+    Fastwalk(
+        "lotus temple fame recovery",
+        24,
+        26,
+        "6sw2swsw2sw2s;open south;6s2w3s2w5swnw2swsd3wnwnwn2w;"
+        "open south;5s;open south;2sene2swd",
         recall_after_loot=True,
     ),
     Fastwalk(
