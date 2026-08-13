@@ -29,15 +29,16 @@ identity but is not a separate progression coverage dimension.
 - Campaign checkpoints, bounded segments, source-backed route selection,
   training, equipment stances, provisions, money loops, combat recovery, and
   death/corpse recovery have substantial live evidence.
-- Current representative campaign anchors are Aeloria mage level 13, Dorrik
-  warrior level 12, and Kestrel thief level 24. Kestrel's level-24 Dwarven
-  Home host route most recently yielded 1,006 XP and returned to healer room
-  3054 at full HP and mana.
-- Offline regression coverage is now 2,485 passing tests. Live continuation
-  recorded Dorrik's level-12 route hazard at Dwarven Home (run 5054), then
-  rotated without manual steering to the Shire receptionist for 584 XP (run
-  5055) and a two-kill Fleshmonger circuit for 519 XP (run 5056). He is at
-  61,542 XP, 8,508 short of level 13, safely recovered in healer room 3054.
+- Current representative campaign anchors are Aeloria mage level 13 at 74,825
+  XP, Dorrik warrior level 12 at 65,469 XP, and Kestrel thief level 24 at
+  360,704 XP. Dorrik's bounded continuation completed runs 5103 and 5106 for
+  531 XP and returned safely to healer room 3054.
+- Offline regression coverage is now 2,490 passing tests. Dorrik's current
+  frontier remains safe and productive: the Shire receptionist and
+  Fleshmonger routes returned him to healer room 3054 without manual target
+  steering. Aeloria remains at 74,825 XP, with sanctuary recovery explicitly
+  waiting through its current-reboot cooldown; Kestrel's negative-fame campaign
+  now reports its cure-critical reserve cooldown before unrelated crowd waits.
 - Source-ranked route scoring now recognizes `spec_fido` and other source-
   proven noncombat specials as safe transit occupants. It retains their
   hazard evidence but no longer rejects an otherwise safe target because of a
@@ -70,14 +71,49 @@ knowledge, while declarative class analysis and generated source candidates are
 not yet a single auditable registry. A fresh research candidate must never hide
 a productive repeat, and legacy objective kills need durable source identity so
 their XP can be reused at the next character level. The current selector fix
-and regression test close that specific rotation failure. The next structural
+and regression tests close both the repeat-rotation failure and the reconnect
+clear-marker oscillation. Reconnect repair now restores clear decisions only
+from explicit retry events, while an active sanctuary cooldown is surfaced as a
+protection wait before unrelated crowd handling. The next structural
 improvement is to make policy status, evidence, and promotion explicit per
 class, subclass, level band, source mobile, and reboot.
+
+The latest route audit also corrected a concrete source mismatch. In
+`daycare.are`, mobile VNUM 6605 is loaded in room 6605 twice, but the single
+`E 1 6601` reset equips only the last loaded doll with the pink ice ring;
+room 6603 is a wanderer observation point, not a ring-bearing reset. The
+required-loot exception now targets the source room and one carrier attempt,
+then lets the existing reboot-area cooldown obtain the second ring later. This
+keeps low-value required-loot kills bounded and source-auditable.
+
+The follow-up execution fix makes this source boundary executable. A static
+required-loot stop may pass through a room where its mobile has wandered, but
+`source_reset_room_vnum` prevents both field interception and ordinary target
+evaluation until the registered reset room is reached. The new regression
+proves the Day Care nanny is ignored in room 6603 and considered in room 6602;
+this is generic route behavior rather than a character-specific exception.
+
+The next route audit found a second generic boundary in run 5102. A
+source-ranked wandering target was intercepted during the official outbound
+fastwalk and rejected by live `consider` in room 4011. The runner then treated
+the later relative circuit segment as if it still began at room 4011, even
+though the official route had safely reached room 4022, and requested a
+non-adjacent room 4010. The starter now snapshots and restores the outbound
+hunt context for rejected interceptions, completes the official endpoint, and
+only then resumes relative source stops. A focused regression and the full
+2,490-test suite cover this invariant.
+
+The conversation streamer was checked against the source log as part of the
+same audit. Its configured speaker set includes `USER`, and live delivery
+confirmed both missing steering records with an empty queue and an offset at
+the source-file end. The current DD4 source revision used for this decision is
+`044aa2e`.
 
 ## Refined Work Order
 
 1. Keep the selector frontier productive: carry source-identified rewards across
-   level boundaries, rotate safe repeats, and test every fallback path.
+   level boundaries, rotate safe repeats, and test every fallback path. Preserve
+   event-specific cooldown decisions across reconnects.
 2. Build an executable class-aware matrix for levels 1-30, including practice
    gateways, equipment roles, and confirmed subclass transition at 30.
 3. Expand source-backed routes one level band at a time through 31-70, then

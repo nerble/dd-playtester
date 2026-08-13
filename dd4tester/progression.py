@@ -2032,20 +2032,22 @@ _RECOVER_DAYCARE_RING_POLICY = ProgressionPolicy(
     evidence=(
         "DD4 daycare.are equips the level-1 old doll in room 6605 with object 6601, a pink ice ring granting +1 strength and +6 hit points.",
         "Only the room-6605 old-doll reset equips the ring. A same-vnum doll "
-        "loads without a ring in room 6604 and can wander into 6605, so an "
-        "empty corpse is a bounded failed drop rather than evidence that the "
-        "ring prototype or recovery route is wrong.",
-        "Live run 2107 killed the non-carrier after it wandered into room 6605, "
-        "found an empty corpse, and safely activated the three-productive-segment "
+        "loads without a ring in room 6604 and can wander into room 6603 or "
+        "6605, so an empty corpse is a bounded failed drop rather than evidence "
+        "that the ring prototype or recovery route is wrong.",
+        "The executable route now observes or bypasses room-6603 wanderers, "
+        "uses the last exact room-6605 selector for one carrier attempt, and "
+        "preserves the second-ring objective for the three-productive-segment "
         "retry cooldown.",
         "The same route returns through room 6602, where the old wrinkled nanny carries a linen robe granting wisdom and mana.",
         "The old doll is reached two rooms beyond the verified Dwarven Daycare route; other source resets in the room are low-level non-aggressive dolls and youths.",
-        "These are three bounded required-loot kills; below-band targets remain forbidden for XP progression.",
+        "The route permits at most one ring-carrier kill and one source-verified nanny kill; below-band targets remain forbidden for XP progression.",
         "Live run 1730: a room-6602 nanny cast blindness during a ring-recovery pass; the runner fled, recalled, and waited at the Midgaard healer without dying. Treat blindness as a terminal recovery condition for the remaining pass.",
         "Live run 1739: one old doll and the live-considered nanny yielded four recovery items, 444 XP, and a safe level-6 transition; the following generic segment liquidated compatible loot in Midgaard.",
         "Live run 2042 found both old dolls wandering through transit room 6603 "
-        "while reset room 6605 was empty. Inspect each doll independently in "
-        "6603 before continuing south, then retain two independent 6605 checks.",
+        "while reset room 6605 was empty. The current route treats that room as "
+        "observation-only for the ring objective and waits for a source carrier "
+        "in room 6605.",
         "Live run 2121 found no eligible ring carrier, killed only the "
         "source-registered nanny, and returned safely. The generic stance "
         "planner equipped her linen robe, raising modified wisdom from 16 to "
@@ -2056,7 +2058,7 @@ _RECOVER_DAYCARE_RING_POLICY = ProgressionPolicy(
         "carry limit rose from 250 to 300.",
     ),
     practice_skill=None,
-    segment_kill_limit=3,
+    segment_kill_limit=2,
 )
 
 _RECOVER_WAR_DOG_COLLAR_POLICY = ProgressionPolicy(
@@ -3098,10 +3100,13 @@ _DWARVEN_NOBLEMAN_RESEARCH_POLICY = ProgressionPolicy(
         "mobile 3506, the level-seven aggressive wandering goblin lieutenant, "
         "can reach rooms 3570 and 3572-3584; the level-eight dark horseman "
         "and wyvern can also occupy that approach graph. The route now checks "
-        "for the lieutenant at room 3505 and treats all three identities as "
-        "hard route hazards. The shared probe records the live route, exact "
-        "target identity, crowd state, and consider result without initiating "
-        "combat; unknown or useful-band attackers remain a hard live abort.",
+        "for the lieutenant at room 3505. At level fourteen and above, the "
+        "known level-seven lieutenant is below the useful XP band and may be "
+        "handled as a bounded transit attacker; the higher-damage horseman "
+        "and wyvern remain hard route hazards. The shared probe records the "
+        "live route, exact target identity, crowd state, and consider result "
+        "without initiating objective combat; unknown or useful-band attackers "
+        "remain a hard live abort.",
         "The source-conservative peak round bound is 185 damage. A combat "
         "promotion must recheck each character's current maximum hit points "
         "before opening the fight.",

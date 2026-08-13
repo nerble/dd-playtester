@@ -251,7 +251,6 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     assert nobleman.route_preflight_target == "goblin lieutenant"
     assert nobleman.route_preflight_hard_hazard is True
     assert nobleman.route_hard_hazard_targets == (
-        "goblin lieutenant",
         "dark horseman",
         "wyvern",
     )

@@ -130,6 +130,8 @@ class RunStorage:
                 xp_gained INTEGER,
                 source_mobile_vnum INTEGER,
                 source_policy_id TEXT,
+                below_useful_band INTEGER NOT NULL DEFAULT 0,
+                objective_eligible INTEGER NOT NULL DEFAULT 1,
                 timestamp TEXT NOT NULL
             );
 
@@ -221,6 +223,16 @@ class RunStorage:
             self.connection.execute(
                 "ALTER TABLE mob_kills ADD COLUMN source_policy_id TEXT"
             )
+        if "below_useful_band" not in mob_kill_columns:
+            self.connection.execute(
+                "ALTER TABLE mob_kills ADD COLUMN below_useful_band "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+        if "objective_eligible" not in mob_kill_columns:
+            self.connection.execute(
+                "ALTER TABLE mob_kills ADD COLUMN objective_eligible "
+                "INTEGER NOT NULL DEFAULT 1"
+            )
         self.connection.commit()
         self._events_since_commit = 0
 
@@ -249,7 +261,16 @@ class RunStorage:
             "UPDATE runs SET boot_id = ? WHERE id = ?",
             (boot_id, run_id),
         )
+        self.connection.execute(
+            "UPDATE mob_kills SET boot_id = ? WHERE run_id = ? AND boot_id IS NULL",
+            (boot_id, run_id),
+        )
+        self.connection.execute(
+            "UPDATE loot_sales SET boot_id = ? WHERE run_id = ? AND boot_id IS NULL",
+            (boot_id, run_id),
+        )
         self.connection.commit()
+        self._events_since_commit = 0
 
     def record_event(
         self,
@@ -433,12 +454,13 @@ class RunStorage:
         campaign_id: int,
         *,
         reason: str,
+        character_name: str | None = None,
     ) -> int:
         """Close orphaned work for one campaign before it is resumed."""
         running_segments = list(
             self.connection.execute(
                 """
-                SELECT id, run_id
+                SELECT id, run_id, started_at
                 FROM campaign_segments
                 WHERE campaign_id = ? AND status = 'running'
                 ORDER BY id
@@ -455,6 +477,26 @@ class RunStorage:
             for row in running_segments
             if row["run_id"] is not None
         }
+        if character_name:
+            character_suffixes = (
+                f":{character_name.casefold()}",
+                f"-{character_name.casefold()}",
+            )
+            segment_started_at = min(
+                str(row["started_at"]) for row in running_segments
+            )
+            for row in self.connection.execute(
+                """
+                SELECT id, scenario_name
+                FROM runs
+                WHERE status = 'running' AND started_at >= ?
+                """,
+                (segment_started_at,),
+            ):
+                if str(row["scenario_name"]).casefold().endswith(
+                    character_suffixes
+                ):
+                    run_ids.add(int(row["id"]))
         if run_ids:
             placeholders = ", ".join("?" for _ in run_ids)
             self.connection.execute(
@@ -951,6 +993,10 @@ class RunStorage:
                 timestamp or _now(),
             ),
         )
+        # Sales are compact campaign evidence. Commit them at write time so a
+        # killed worker cannot erase completed money-loop observations.
+        self.connection.commit()
+        self._events_since_commit = 0
         return int(cursor.lastrowid)
 
     def list_loot_sales(self, character_name: str) -> list[sqlite3.Row]:
@@ -990,15 +1036,20 @@ class RunStorage:
         xp_gained: int | None,
         source_mobile_vnum: int | None = None,
         source_policy_id: str | None = None,
+        below_useful_band: bool = False,
+        objective_eligible: bool | None = None,
         timestamp: str | None = None,
     ) -> int:
+        if objective_eligible is None:
+            objective_eligible = not below_useful_band
         cursor = self.connection.execute(
             """
             INSERT INTO mob_kills (
                 run_id, character_name, boot_id, mob_name, xp_gained,
-                source_mobile_vnum, source_policy_id, timestamp
+                source_mobile_vnum, source_policy_id, below_useful_band,
+                objective_eligible, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -1008,10 +1059,31 @@ class RunStorage:
                 xp_gained,
                 source_mobile_vnum,
                 source_policy_id,
+                int(below_useful_band),
+                int(objective_eligible),
                 timestamp or _now(),
             ),
         )
+        # Kill evidence drives reboot-local target ranking and interrupted-run
+        # recovery, so it must survive before the runner reaches final cleanup.
+        self.connection.commit()
+        self._events_since_commit = 0
         return int(cursor.lastrowid)
+
+    def list_mob_kills_for_run(self, run_id: int) -> list[sqlite3.Row]:
+        """Return durable kill evidence for one run in execution order."""
+        cursor = self.connection.execute(
+            """
+            SELECT id, run_id, character_name, boot_id, mob_name,
+                   xp_gained, source_mobile_vnum, source_policy_id,
+                   below_useful_band, objective_eligible, timestamp
+            FROM mob_kills
+            WHERE run_id = ?
+            ORDER BY id
+            """,
+            (run_id,),
+        )
+        return list(cursor.fetchall())
 
     def list_mob_kills(
         self,
@@ -1024,7 +1096,7 @@ class RunStorage:
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
                        xp_gained, source_mobile_vnum, source_policy_id,
-                       timestamp
+                       below_useful_band, objective_eligible, timestamp
                 FROM mob_kills
                 WHERE character_name = ?
                 ORDER BY id
@@ -1036,7 +1108,7 @@ class RunStorage:
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
                        xp_gained, source_mobile_vnum, source_policy_id,
-                       timestamp
+                       below_useful_band, objective_eligible, timestamp
                 FROM mob_kills
                 WHERE character_name = ? AND boot_id = ?
                 ORDER BY id

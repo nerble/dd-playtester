@@ -33,7 +33,9 @@ from .fastwalks import Fastwalk, route_named
 from .hunt_candidates import (
     HuntCandidate,
     ITEM_POTION,
+    _bounded_borderline_route_aggressor,
     _shortest_paths_from,
+    _mobile_critical_hit_damage,
     _mobile_peak_round_damage,
     _source_mobile_identity,
     load_world_source,
@@ -79,6 +81,7 @@ from .starter import (
     _equipment_audit_descriptions,
     _equipment_audit_present,
     _equipment_empty_categories,
+    _equipment_weapon_from_payload,
     _equipment_weapon_slot,
     _inventory_descriptions,
     _has_named_affect,
@@ -280,6 +283,13 @@ _SOURCE_ROUTE_MOVEMENT_RESERVE = 15
 # Prefer a proven meaningful repeat over a fresh prototype whose normal
 # five-level load fuzz is more likely than not to land below the XP band.
 _SOURCE_RANKED_MIN_FRESH_USEFUL_FUZZ_PROBABILITY = 0.5
+# Let a clearly better fresh reward-per-travel option beat proven history;
+# source peak damage remains a soft penalty because live health and consider
+# gates still control whether combat actually starts.
+_SOURCE_RANKED_FRESH_REWARD_ADVANTAGE = 1.25
+# A ten-XP incidental or deliberate kill is evidence of contact, not useful
+# progression. Keep it out of productive-policy history and repeats.
+_SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP = _MEANINGFUL_FIELD_SEGMENT_XP
 # After two consecutive source-ranked segments produce no XP, spend the next
 # field opportunity on a proven meaningful repeat instead of more discovery.
 _SOURCE_RANKED_NO_PROGRESS_REPEAT_THRESHOLD = 2
@@ -3241,6 +3251,7 @@ class CampaignRunner:
             self._source_ranked_no_progress_streak = (
                 _source_ranked_no_progress_streak(
                     campaign_segments,
+                    storage=storage,
                     boot_id=state.get("world_boot_id"),
                     character_level=_level(state),
                 )
@@ -3273,6 +3284,7 @@ class CampaignRunner:
                     boot_id=state.get("world_boot_id") or boot_id,
                 ),
                 boot_id=state.get("world_boot_id") or boot_id,
+                replace_source_ranked_hunt_ids=True,
             )
             state = _repair_source_ranked_circuit_consider_history(
                 state,
@@ -3601,6 +3613,56 @@ class CampaignRunner:
                 return CampaignResult(campaign_id, "blocked", checkpoint_id, budget_failure, state)
 
             if not policy.executable:
+                sanctuary_recovery_waiting = bool(
+                    _protection_recovery_required(state)
+                    and _research_retry_cooldown_active(
+                        state,
+                        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                    )
+                )
+                if sanctuary_recovery_waiting:
+                    message = (
+                        "Protection recovery remains required; "
+                        f"{_SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id} "
+                        "is on a current-reboot cooldown. Campaign "
+                        "checkpointed while awaiting the field area reset "
+                        "before retrying the sanctuary route."
+                    )
+                    storage.finish_campaign(
+                        campaign_id,
+                        status="ready",
+                        error=message,
+                    )
+                    return CampaignResult(
+                        campaign_id,
+                        "ready",
+                        checkpoint_id,
+                        message,
+                        state,
+                    )
+                fame_recovery_cure_waiting = (
+                    _negative_fame_cure_critical_reserve_waiting(state)
+                )
+                if fame_recovery_cure_waiting:
+                    message = (
+                        "Negative fame blocks city service; "
+                        f"{_SOURCE_RANKED_CURE_CRITICAL_RESERVE_POLICY.policy_id} "
+                        "is on a current-reboot cooldown. Campaign "
+                        "checkpointed while awaiting the field area reset "
+                        "before retrying the fame-recovery route."
+                    )
+                    storage.finish_campaign(
+                        campaign_id,
+                        status="ready",
+                        error=message,
+                    )
+                    return CampaignResult(
+                        campaign_id,
+                        "ready",
+                        checkpoint_id,
+                        message,
+                        state,
+                    )
                 crowd_wait_policy_id = _active_crowded_research_policy_id(state)
                 if (
                     crowd_wait_policy_id is not None
@@ -3911,9 +3973,22 @@ class CampaignRunner:
             **selection_kwargs,
         )
         repeated_policy_ids: frozenset[str] = frozenset()
+        selected_status = (
+            _source_ranked_result_status(
+                selected,
+                state,
+                character_level=level,
+                allow_cooldown_retry=bool(
+                    selection_kwargs["allow_cooldown_retry"]
+                ),
+            )
+            if selected is not None
+            else None
+        )
         if (
             selected is None
             or not selected.autonomous_safe
+            or selected_status == "retryable"
             or self._source_ranked_no_progress_streak
             >= _SOURCE_RANKED_NO_PROGRESS_REPEAT_THRESHOLD
             or _source_ranked_useful_fuzz_probability(
@@ -3943,6 +4018,7 @@ class CampaignRunner:
                 )
                 if repeated is not None:
                     selected = repeated
+                    selected_status = "productive"
         if (
             state.get("affects") is not None
             and not any(
@@ -3959,7 +4035,33 @@ class CampaignRunner:
                 allow_repeated_policy_ids=repeated_policy_ids,
             )
             if selected_without_flight is not None:
-                selected = selected_without_flight
+                no_flight_status = _source_ranked_result_status(
+                    selected_without_flight,
+                    state,
+                    character_level=level,
+                    allow_cooldown_retry=bool(
+                        selection_kwargs["allow_cooldown_retry"]
+                    ),
+                )
+                # An expired absence retry is not a reason to abandon a
+                # measured productive route that happens to need flight.
+                # Fresh ground evidence may still replace an unproductive
+                # flight route, preserving the normal risk/reward ordering.
+                if (
+                    selected is None
+                    or no_flight_status == "productive"
+                    or (
+                        no_flight_status == "fresh"
+                        and selected_status != "productive"
+                    )
+                    or (
+                        no_flight_status == "retryable"
+                        and selected_status
+                        not in {"productive", "fresh"}
+                    )
+                ):
+                    selected = selected_without_flight
+                    selected_status = no_flight_status
         selected_from_recent_rotation = False
         if selected is None and recent_source_candidates:
             # A short post-kill rotation must not deadlock a campaign when the
@@ -4616,16 +4718,35 @@ class CampaignRunner:
         )
         if selected.execution != "source-ranked-hunt" or source_candidate_mismatch:
             state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+        flight_refresh_required = bool(
+            selected.execution == "source-ranked-hunt"
+            and not source_candidate_mismatch
+            and persisted_source_candidate is not None
+            and _source_ranked_candidate_needs_flight_refresh(
+                persisted_source_candidate,
+                state,
+            )
+        )
+        if flight_refresh_required:
+            # A productive handoff may preserve the last candidate, but it
+            # must not preserve a nearly expired flight affect through a
+            # no-recall route whose return still needs flight.
+            has_flight = False
         if (
             handoff_policy_id
             and selected.policy_id == handoff_policy_id
             and not source_candidate_mismatch
+            and not flight_refresh_required
         ):
             return selected
-        if source_candidate_mismatch or _source_ranked_fallback_needed(
-            state,
-            selected,
-            policy_xp_deltas=self._policy_xp_deltas,
+        if (
+            source_candidate_mismatch
+            or flight_refresh_required
+            or _source_ranked_fallback_needed(
+                state,
+                selected,
+                policy_xp_deltas=self._policy_xp_deltas,
+            )
         ):
             preserve_sanctuary_reserve = bool(
                 (
@@ -4968,6 +5089,7 @@ class CampaignRunner:
                     "previous campaign worker was interrupted before the "
                     "next invocation"
                 ),
+                character_name=self.spec.character.name,
             )
             campaign = storage.get_campaign(campaign_id) or campaign
             checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
@@ -5387,12 +5509,25 @@ class CampaignRunner:
                 if isinstance(description, str)
             )
         if primary_weapon_slot is not None and not weapon_loss:
-            # The weapon slot is omitted from the general worn-equipment list.
-            state["campaign_has_weapon"] = bool(
+            # Char.Worn and later confirmed wield/disarm events are the final
+            # authority for this slot; eq-all empties remain useful elsewhere.
+            has_primary_weapon = bool(
                 primary_weapon_slot[0] and primary_weapon_slot[1]
             )
-        if "wield" in set(state.get("campaign_empty_equipment_categories") or ()):
-            # Prefer an explicit empty audit over stale direct wield metadata.
+            state["campaign_has_weapon"] = has_primary_weapon
+            empty_categories = set(
+                state.get("campaign_empty_equipment_categories") or ()
+            )
+            if has_primary_weapon:
+                empty_categories.discard("wield")
+            else:
+                empty_categories.add("wield")
+            state["campaign_empty_equipment_categories"] = sorted(
+                empty_categories
+            )
+        elif "wield" in set(
+            state.get("campaign_empty_equipment_categories") or ()
+        ):
             state["campaign_has_weapon"] = False
         if (
             checkpoint is not None
@@ -6279,14 +6414,27 @@ class CampaignRunner:
         primary_weapon = _run_primary_weapon_slot(storage, result.run_id)
         if primary_weapon is not None:
             end_state["campaign_primary_weapon"] = primary_weapon[1]
-            end_state["campaign_has_weapon"] = bool(
+            has_primary_weapon = bool(
                 primary_weapon[0] and primary_weapon[1]
+            )
+            end_state["campaign_has_weapon"] = has_primary_weapon
+            empty_categories = set(
+                end_state.get("campaign_empty_equipment_categories") or ()
+            )
+            if has_primary_weapon:
+                empty_categories.discard("wield")
+            else:
+                empty_categories.add("wield")
+            end_state["campaign_empty_equipment_categories"] = sorted(
+                empty_categories
             )
         elif "campaign_primary_weapon" in state:
             end_state["campaign_primary_weapon"] = state[
                 "campaign_primary_weapon"
             ]
-        if "wield" in set(end_state.get("campaign_empty_equipment_categories") or ()):
+        if primary_weapon is None and "wield" in set(
+            end_state.get("campaign_empty_equipment_categories") or ()
+        ):
             # A split or stale wield acknowledgement must not make an empty
             # primary slot look ready for the next progression segment.
             end_state["campaign_has_weapon"] = False
@@ -6393,14 +6541,26 @@ class CampaignRunner:
                 end_state.pop(_DAYCARE_RING_ATTEMPT_BOOT_KEY, None)
                 end_state.pop(_DAYCARE_RING_COOLDOWN_KEY, None)
         xp_delta = _xp_delta(state, end_state)
-        if xp_delta > 0 and policy.execution == "source-ranked-hunt":
-            end_state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
-            end_state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
         objective_kills = _objective_kills_for_execution(
             storage,
             result.run_id,
             execution=policy.execution,
         )
+        source_ranked_progress_xp = (
+            _effective_policy_xp_delta(
+                state,
+                end_state,
+                completed_kills=objective_kills,
+            )
+            if policy.execution == "source-ranked-hunt"
+            else xp_delta
+        )
+        if (
+            source_ranked_progress_xp > 0
+            and policy.execution == "source-ranked-hunt"
+        ):
+            end_state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
+            end_state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
         if isinstance(objective_kills, list) and objective_kills:
             # Research promotion must see the authoritative kill record from
             # the run before it evaluates whether a hunt completed.
@@ -6527,7 +6687,7 @@ class CampaignRunner:
             policy=policy,
             xp_delta=xp_delta,
         )
-        if xp_delta > 0:
+        if source_ranked_progress_xp > 0:
             end_state = _clear_absent_research_results(
                 end_state,
                 except_policy_id=policy.policy_id,
@@ -6629,7 +6789,7 @@ class CampaignRunner:
                 execution=policy.execution,
                 xp_delta=xp_delta,
             )
-        self._policy_xp_deltas[policy.policy_id] = xp_delta
+        self._policy_xp_deltas[policy.policy_id] = source_ranked_progress_xp
         if result.status != "success":
             message = f"starter segment returned status {result.status}"
             storage.finish_campaign_segment(
@@ -6654,7 +6814,7 @@ class CampaignRunner:
             return CampaignResult(campaign_id, "failed", checkpoint_id, message, end_state)
 
         if policy.execution == "source-ranked-hunt":
-            if xp_delta > 0:
+            if source_ranked_progress_xp > 0:
                 self._source_ranked_no_progress_streak = 0
             else:
                 self._source_ranked_no_progress_streak += 1
@@ -8953,7 +9113,7 @@ async def _run_policy_segment(
             )
             doll_bystanders = _source_trivial_bystanders_by_room(
                 source_world,
-                room_vnums=(6603, 6605),
+                room_vnums=(6605,),
                 target_mobile_vnum=6605,
                 character_level=character_level,
             )
@@ -8963,7 +9123,7 @@ async def _run_policy_segment(
                 target_mobile_vnum=6606,
                 character_level=character_level,
             )
-            destination_rooms = (6603, 6603, 6605, 6605, 6602)
+            destination_rooms = (6605, 6602)
             ring_stops = tuple(
                 replace(
                     stop,
@@ -9959,6 +10119,11 @@ def _repair_confirmed_research_kills(
         # a reset retry had cleared it. Recover that intent from the durable
         # same-reboot checkpoint history so existing campaigns migrate safely.
         for checkpoint in _runtime_campaign_checkpoints(storage, campaign_id):
+            if checkpoint["reason"] != "research_policy_retried":
+                # Only an explicit retry checkpoint records a new clear
+                # decision. Metadata, segment-complete, and dispatch snapshots
+                # contain derived sets that can resurrect stale routes.
+                continue
             try:
                 checkpoint_state = json.loads(
                     checkpoint["state_json"] or "{}"
@@ -11350,6 +11515,17 @@ def _source_ranked_hunt_stops(
         character_level=character_level,
     )
     source_target_armed = bool(candidate.equipped_weapons)
+    source_critical_hit_damage = candidate.estimated_critical_hit_damage
+    if source_critical_hit_damage <= 0:
+        source_level = max(
+            candidate.level,
+            candidate.estimated_level_range[1],
+        )
+        if source_level > 0:
+            source_critical_hit_damage = _mobile_critical_hit_damage(
+                source_level,
+                wielding=source_target_armed,
+            )
     mobile = world.mobiles.get(candidate.mobile_vnum)
     if mobile is None:
         return (
@@ -11374,6 +11550,9 @@ def _source_ranked_hunt_stops(
                 ),
                 source_policy_id=source_policy_id,
                 source_target_armed=source_target_armed,
+                source_critical_hit_damage=(
+                    source_critical_hit_damage or None
+                ),
             ),
         )
     source_identities = source_mobile_identities(
@@ -11519,8 +11698,7 @@ def _source_ranked_hunt_stops(
             )
         )
         relocation_routes: list[tuple[str, str, tuple[str, ...]]] = []
-        if ordered_destinations:
-            relocation_origin = ordered_destinations[-1]
+        for relocation_origin in ordered_destinations:
             relocation_paths = _shortest_paths_from(
                 world.rooms,
                 relocation_origin,
@@ -11645,6 +11823,9 @@ def _source_ranked_hunt_stops(
                 source_mobile_room_description=mobile.room_description,
                 source_policy_id=destination_policy_id,
                 source_target_armed=source_target_armed,
+                source_critical_hit_damage=(
+                    source_critical_hit_damage or None
+                ),
                 source_loot_object_vnums=source_loot_object_vnums(destination),
                 maximum_target_count=1,
                 require_isolated=True,
@@ -11685,6 +11866,7 @@ def _source_ranked_hunt_stops(
             source_mobile_room_description=mobile.room_description,
             source_policy_id=source_policy_id,
             source_target_armed=source_target_armed,
+            source_critical_hit_damage=(source_critical_hit_damage or None),
             source_loot_object_vnums=source_loot_object_vnums(
                 candidate.room_vnum
             ),
@@ -11774,6 +11956,12 @@ def _source_ranked_area_circuit_blocked_rooms(
 ) -> frozenset[int]:
     """Build the reusable useful-band hazard mask for area circuits."""
     useful_floor = character_level - 5
+    raw_max_hp = (state or {}).get("max_hp")
+    character_max_hp = (
+        int(raw_max_hp)
+        if isinstance(raw_max_hp, (int, float)) and raw_max_hp > 0
+        else None
+    )
     blocked_rooms: set[int] = set()
     for mobile_vnum in {
         reset.mobile_vnum for reset in world.mob_resets
@@ -11788,9 +11976,26 @@ def _source_ranked_area_circuit_blocked_rooms(
                 state,
             )
         )
+        matching_resets = tuple(
+            reset
+            for reset in world.mob_resets
+            if reset.mobile_vnum == mobile.vnum
+        )
+        bounded_borderline_aggressor = bool(
+            matching_resets
+            and all(
+                _bounded_borderline_route_aggressor(
+                    world,
+                    reset,
+                    character_level=character_level,
+                    character_max_hp=character_max_hp,
+                )
+                for reset in matching_resets
+            )
+        )
         if mobile.level + 2 <= useful_floor or not (
             mobile.aggressive or special_transit_hazard
-        ):
+        ) or bounded_borderline_aggressor:
             continue
         blocked_rooms.update(
             source_mobile_search_rooms(
@@ -11964,17 +12169,18 @@ def _source_ranked_preferred_area_circuit(
     character_level: int,
     allow_repeated_policy_ids: Collection[str] = (),
 ) -> tuple[HuntCandidate | None, tuple[HuntCandidate, ...]]:
-    """Prefer a high-ranked safe circuit over an ordinary singleton hunt."""
+    """Prefer a high-throughput safe circuit over an ordinary singleton hunt.
+
+    The highest-ranked source candidate may be a wandering mobile and therefore
+    cannot itself anchor a fixed-reset circuit.  That must not hide a nearby
+    fixed-reset area with several safe targets.  Compare those alternatives by
+    source score per outbound/inter-target step, with only a mild peak-damage
+    penalty so the planner balances XP/min against risk instead of treating
+    every non-zero risk as disqualifying.
+    """
     if selected is None:
         return None, ()
     ranked_candidates = tuple(candidates)
-    if (
-        selected.specials
-        or selected.requires_flight
-        or not selected.autonomous_safe
-        or not _source_ranked_fixed_single_reset(selected, world)
-    ):
-        return selected, ()
     blocked_rooms = _source_ranked_area_circuit_blocked_rooms(
         world,
         character_level=character_level,
@@ -12058,17 +12264,26 @@ def _source_ranked_preferred_area_circuit(
                 )
 
             return max(circuit_options, key=throughput_rank)
-    selected_extras = _source_ranked_area_circuit_candidates(
-        selected,
-        ranked_candidates,
-        world,
-        state,
-        character_level=character_level,
-        blocked_rooms=blocked_rooms,
-        allow_repeated_policy_ids=allow_repeated_policy_ids,
-    )
-    if selected_extras:
-        return selected, selected_extras
+    circuit_options: list[
+        tuple[HuntCandidate, tuple[HuntCandidate, ...]]
+    ] = []
+    if (
+        not selected.specials
+        and not selected.requires_flight
+        and selected.autonomous_safe
+        and _source_ranked_fixed_single_reset(selected, world)
+    ):
+        selected_extras = _source_ranked_area_circuit_candidates(
+            selected,
+            ranked_candidates,
+            world,
+            state,
+            character_level=character_level,
+            blocked_rooms=blocked_rooms,
+            allow_repeated_policy_ids=allow_repeated_policy_ids,
+        )
+        if selected_extras:
+            circuit_options.append((selected, selected_extras))
 
     max_hp = state.get("max_hp")
     character_max_hp = (
@@ -12080,6 +12295,13 @@ def _source_ranked_preferred_area_circuit(
         :_SOURCE_RANKED_AREA_CIRCUIT_PRIMARY_SCAN_LIMIT
     ]:
         if candidate == selected:
+            continue
+        if (
+            candidate.specials
+            or candidate.requires_flight
+            or not candidate.autonomous_safe
+            or not _source_ranked_fixed_single_reset(candidate, world)
+        ):
             continue
         status = _source_ranked_result_status(
             candidate,
@@ -12118,7 +12340,48 @@ def _source_ranked_preferred_area_circuit(
             allow_repeated_policy_ids=allow_repeated_policy_ids,
         )
         if extras:
-            return candidate, extras
+            circuit_options.append((candidate, extras))
+    if circuit_options:
+        def circuit_rank(
+            option: tuple[HuntCandidate, tuple[HuntCandidate, ...]],
+        ) -> tuple[float, float, int, float, int, int]:
+            primary, extras = option
+            circuit = (primary, *extras)
+            travel_steps = max(1, len(primary.route))
+            origin = primary
+            for candidate in extras:
+                inter_route = _source_ranked_inter_candidate_route(
+                    world,
+                    origin,
+                    candidate,
+                    character_level=character_level,
+                    blocked_rooms=blocked_rooms,
+                    state=state,
+                )
+                travel_steps += len(inter_route or ())
+                origin = candidate
+            total_score = sum(max(0.0, item.score) for item in circuit)
+            reward_per_step = total_score / max(1, travel_steps)
+            peak_damage = max(
+                (max(0, item.estimated_peak_round_damage) for item in circuit),
+                default=0,
+            )
+            risk_ratio = (
+                peak_damage / character_max_hp
+                if character_max_hp
+                else 0.0
+            )
+            risk_adjusted_efficiency = reward_per_step / (1.0 + risk_ratio)
+            return (
+                risk_adjusted_efficiency,
+                reward_per_step,
+                len(circuit),
+                total_score,
+                -risk_ratio,
+                -travel_steps,
+            )
+
+        return max(circuit_options, key=circuit_rank)
     return selected, ()
 
 
@@ -12435,6 +12698,7 @@ def _source_ranked_candidate_record(
         "estimated_base_hp_range": list(candidate.estimated_base_hp_range),
         "estimated_peak_round_damage": candidate.estimated_peak_round_damage,
         "estimated_min_peak_round_damage": candidate.estimated_min_peak_round_damage,
+        "estimated_critical_hit_damage": candidate.estimated_critical_hit_damage,
         "autonomy_rejections": list(candidate.autonomy_rejections),
         "specials": list(candidate.specials),
         "route_preflight_room_vnum": candidate.route_preflight_room_vnum,
@@ -12519,6 +12783,9 @@ def _source_ranked_candidate_from_record(
             ),
             estimated_min_peak_round_damage=int(
                 value.get("estimated_min_peak_round_damage") or 0
+            ),
+            estimated_critical_hit_damage=int(
+                value.get("estimated_critical_hit_damage") or 0
             ),
             autonomy_rejections=text_tuple("autonomy_rejections"),
             specials=text_tuple("specials"),
@@ -12802,6 +13069,23 @@ def _source_ranked_kill_policy_ids(kills: object) -> tuple[str, ...]:
     return tuple(policy_ids)
 
 
+def _objective_kill_xp_stats(kills: object) -> tuple[int, int, bool]:
+    """Return total, best, and presence of explicit XP evidence."""
+    if not isinstance(kills, (list, tuple)):
+        return 0, 0, False
+    values: list[int] = []
+    saw_xp = False
+    for kill in kills:
+        if not isinstance(kill, Mapping):
+            continue
+        saw_xp = saw_xp or "xp_gained" in kill
+        try:
+            values.append(max(0, int(kill.get("xp_gained") or 0)))
+        except (TypeError, ValueError):
+            continue
+    return sum(values), max(values, default=0), saw_xp
+
+
 def _source_ranked_target_tokens(candidate: HuntCandidate) -> frozenset[str]:
     identity_tokens = frozenset(
         token
@@ -12862,6 +13146,12 @@ def _source_ranked_result_status(
     retryable = False
     cooldown_active = False
     productive = False
+    low_reward = False
+    productive_history = _state_productive_policy_ids(state)
+    history_is_present = isinstance(
+        state.get(_PRODUCTIVE_POLICY_HISTORY_KEY),
+        Mapping,
+    )
     for policy_id, result in matching_results:
         if result.get("crowd_exhausted") is True:
             # A source-ranked route has already checked its source-vetted
@@ -12891,6 +13181,26 @@ def _source_ranked_result_status(
             cooldown_active = True
             continue
         if result.get("viable") is True and result.get("completed_kill") is True:
+            if (
+                history_is_present
+                and candidate_policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX)
+                and "-hunt-" in candidate_policy_id
+                and candidate_policy_id not in productive_history
+            ):
+                # A wandering kill may have been recorded under its selected
+                # anchor room. Once startup rebuilds history from the tagged
+                # source VNUM, that anchor result is no longer productive.
+                continue
+            if "max_objective_kill_xp" in result:
+                try:
+                    max_kill_xp = int(result.get("max_objective_kill_xp") or 0)
+                except (TypeError, ValueError):
+                    max_kill_xp = 0
+                if max_kill_xp < _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP:
+                    # Preserve the observation, but do not let a low-value
+                    # target become the campaign's productive repeat.
+                    low_reward = True
+                    continue
             if result.get("crowded") is True:
                 try:
                     remaining = max(
@@ -12974,6 +13284,8 @@ def _source_ranked_result_status(
         return "retryable"
     if productive:
         return "productive"
+    if low_reward:
+        return "low_reward"
     return "fresh"
 
 
@@ -13292,6 +13604,16 @@ def _select_source_ranked_hunt_candidate(
             character_level=character_level,
             allow_cooldown_retry=allow_cooldown_retry,
         )
+        if (
+            status == "fresh"
+            and candidate_policy_id in allow_repeated_policy_ids
+        ):
+            # A level transition changes the generated policy suffix even
+            # though the source mobile and reboot-local reward evidence are
+            # unchanged. Let that proven cross-level repeat compete with
+            # other productive routes instead of ranking below a much weaker
+            # current-level repeat solely because its new policy ID is fresh.
+            status = "productive"
         if candidate.autonomous_safe:
             if current_band:
                 valid.append((candidate, status))
@@ -13408,6 +13730,25 @@ def _select_source_ranked_hunt_candidate(
             candidate.source_value,
         )
 
+    def reward_per_travel(candidate: HuntCandidate) -> float:
+        """Estimate source reward per outbound step with a soft risk cost."""
+        reference_hp = max(1, int(character_max_hp or 1))
+        peak_risk = min(
+            2.0,
+            max(0, candidate.estimated_peak_round_damage) / reference_hp,
+        )
+        return max(0.0, float(candidate.score)) / max(
+            1, len(candidate.route)
+        ) / (1.0 + 0.5 * peak_risk)
+
+    def best_by_reward(
+        choices: Collection[tuple[HuntCandidate, str]],
+    ) -> tuple[HuntCandidate, str]:
+        return max(
+            choices,
+            key=lambda item: (reward_per_travel(item[0]), *rank(item)),
+        )
+
     pools = (
         valid,
         capacity_research,
@@ -13429,7 +13770,22 @@ def _select_source_ranked_hunt_candidate(
                 and candidate_policy_id(item[0]) not in blocked_policy_ids
             ]
             if choices:
-                return max(choices, key=rank)[0]
+                if preferred_status == "productive" and not allow_repeated_policy_ids:
+                    fresh_choices = [
+                        item
+                        for item in pool
+                        if item[1] == "fresh"
+                        and candidate_policy_id(item[0]) not in blocked_policy_ids
+                    ]
+                    if fresh_choices:
+                        best_productive = best_by_reward(choices)
+                        best_fresh = best_by_reward(fresh_choices)
+                        if reward_per_travel(best_fresh[0]) >= (
+                            reward_per_travel(best_productive[0])
+                            * _SOURCE_RANKED_FRESH_REWARD_ADVANTAGE
+                        ):
+                            return best_fresh[0]
+                return best_by_reward(choices)[0]
     research_pools = (
         capacity_research,
         level_ceiling_probes,
@@ -14181,6 +14537,11 @@ def _reconcile_interrupted_segment(
     if current_state is None:
         return False
     phase = str(segment["phase"])
+    objective_kills = _objective_kills_for_execution(
+        storage,
+        int(run["id"]),
+        execution=phase,
+    ) or []
     end_state = _campaign_segment_end_state(
         start_state,
         current_state,
@@ -14192,8 +14553,8 @@ def _reconcile_interrupted_segment(
     )
     end_state["campaign_last_policy"] = phase
     end_state["campaign_policy_revision"] = _CAMPAIGN_POLICY_REVISION
-    end_state["campaign_completed_kills"] = []
-    end_state["campaign_objective_kills"] = []
+    end_state["campaign_completed_kills"] = objective_kills
+    end_state["campaign_objective_kills"] = objective_kills
 
     if phase.startswith(_SOURCE_RANKED_POLICY_PREFIX):
         candidate = _source_ranked_candidate_from_record(
@@ -14205,6 +14566,9 @@ def _reconcile_interrupted_segment(
             int(run["id"]),
             candidate,
         )
+        if objective_kills:
+            target_seen = True
+            consider_viable = True
         end_state["campaign_fastwalk_target_present_observed"] = target_seen
         end_state["campaign_fastwalk_target_absent"] = not target_seen
         end_state["campaign_fastwalk_consider_outcomes"] = (
@@ -15222,10 +15586,11 @@ def _campaign_policy_xp_deltas(
 def _source_ranked_no_progress_streak(
     segments: Collection[Any],
     *,
+    storage: RunStorage | None = None,
     boot_id: Any,
     character_level: int,
 ) -> int:
-    """Count trailing same-level source hunts that earned no XP this reboot."""
+    """Count trailing same-level source hunts with no objective XP this reboot."""
     if boot_id is None:
         return 0
     streak = 0
@@ -15245,7 +15610,14 @@ def _source_ranked_no_progress_streak(
                 break
             if _level(end) != character_level:
                 break
-            if _xp_delta(start, end) > 0:
+            if (
+                _effective_policy_xp_delta(
+                    start,
+                    end,
+                    completed_kills=_segment_objective_kills(storage, segment),
+                )
+                > 0
+            ):
                 break
             streak += 1
     return streak
@@ -15257,7 +15629,7 @@ def _campaign_productive_policy_ids(
     storage: RunStorage | None = None,
     boot_id: str | int | None = None,
 ) -> frozenset[str]:
-    """Collect same-reboot hunt policies with a confirmed positive kill."""
+    """Collect same-reboot hunt policies with a meaningful objective kill."""
     productive: set[str] = set()
     for segment in segments:
         if segment["status"] not in {"success", "ready"}:
@@ -15273,12 +15645,27 @@ def _campaign_productive_policy_ids(
         if not end or (boot_id is not None and end.get("world_boot_id") != boot_id):
             continue
         objective_kills = _segment_objective_kills(storage, segment)
+        _total_xp, max_kill_xp, explicit_xp = _objective_kill_xp_stats(
+            objective_kills
+        )
+        meaningful_kill = (
+            max_kill_xp >= _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
+            if explicit_xp
+            else _xp_delta(start, end)
+            >= _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
+        )
         if (
             isinstance(objective_kills, list)
             and objective_kills
+            and meaningful_kill
             and _xp_delta(start, end) > 0
         ):
-            productive.add(phase)
+            # A wandering source mobile can be killed at a different reset
+            # room than the selected anchor. Preserve the actual source
+            # policy identity when it is present; falling back to the segment
+            # phase keeps older untagged records compatible.
+            source_policy_ids = _source_ranked_kill_policy_ids(objective_kills)
+            productive.update(source_policy_ids or (phase,))
     return frozenset(productive)
 
 
@@ -15387,12 +15774,22 @@ def _with_productive_policy_history(
     *,
     policy_ids: Collection[str],
     boot_id: str | int | None,
+    replace_source_ranked_hunt_ids: bool = False,
 ) -> dict[str, Any]:
     """Merge durable same-reboot productive hunt identities into state."""
     updated = dict(state)
     if boot_id is None:
         return updated
     current_ids = _state_productive_policy_ids(state)
+    if replace_source_ranked_hunt_ids:
+        current_ids = frozenset(
+            policy_id
+            for policy_id in current_ids
+            if not (
+                policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX)
+                and "-hunt-" in policy_id
+            )
+        )
     merged_ids = current_ids | {str(policy_id) for policy_id in policy_ids}
     if merged_ids:
         updated[_PRODUCTIVE_POLICY_HISTORY_KEY] = {
@@ -15417,8 +15814,13 @@ def _effective_policy_xp_delta(
     return xp_delta
 
 
-def _run_objective_kills(storage: RunStorage, run_id: int) -> list[Any] | None:
-    """Read objective kills even when the runner failed after recording them."""
+def _run_objective_kills(
+    storage: RunStorage,
+    run_id: int,
+    *,
+    execution: str | None = None,
+) -> list[Any] | None:
+    """Read objective kills even when final runner state was never written."""
     for event in reversed(storage.list_events(run_id)):
         if event["kind"] != "state":
             continue
@@ -15429,7 +15831,29 @@ def _run_objective_kills(storage: RunStorage, run_id: int) -> list[Any] | None:
         completed_kills = payload.get("completed_kills")
         if isinstance(completed_kills, list):
             return completed_kills
-    return None
+
+    rows = storage.list_mob_kills_for_run(run_id)
+    rows = [row for row in rows if bool(row["objective_eligible"])]
+    if execution and execution.startswith(_SOURCE_RANKED_POLICY_PREFIX):
+        rows = [
+            row
+            for row in rows
+            if row["source_policy_id"] == execution
+        ]
+    if not rows:
+        return None
+    kills: list[dict[str, Any]] = []
+    for row in rows:
+        kill: dict[str, Any] = {
+            "mob_name": str(row["mob_name"]),
+            "xp_gained": row["xp_gained"],
+        }
+        if row["source_mobile_vnum"] is not None:
+            kill["source_mobile_vnum"] = int(row["source_mobile_vnum"])
+        if row["source_policy_id"] is not None:
+            kill["source_policy_id"] = str(row["source_policy_id"])
+        kills.append(kill)
+    return kills
 
 
 def _objective_kills_for_execution(
@@ -15439,7 +15863,11 @@ def _objective_kills_for_execution(
     execution: str | None,
 ) -> list[Any] | None:
     """Exclude incidental combat from maintenance and loot-only segments."""
-    objective_kills = _run_objective_kills(storage, run_id)
+    objective_kills = _run_objective_kills(
+        storage,
+        run_id,
+        execution=execution,
+    )
     if not _execution_records_objective_kills(execution):
         return []
     return objective_kills
@@ -16332,9 +16760,29 @@ def _remember_last_productive_policy(
     """Keep a current-reboot hunt available after an absent research probe."""
     results = _campaign_research_results(state)
     boot_id = state.get("world_boot_id")
+    productive_history = _state_productive_policy_ids(state)
+    history_is_present = isinstance(
+        state.get(_PRODUCTIVE_POLICY_HISTORY_KEY),
+        Mapping,
+    )
 
     def is_productive(policy_id: str) -> bool:
         result = results.get(policy_id)
+        if (
+            history_is_present
+            and policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX)
+            and "-hunt-" in policy_id
+            and policy_id not in productive_history
+        ):
+            return False
+        if isinstance(result, dict) and "max_objective_kill_xp" in result:
+            try:
+                if int(result.get("max_objective_kill_xp") or 0) < (
+                    _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
+                ):
+                    return False
+            except (TypeError, ValueError):
+                return False
         return bool(
             isinstance(result, dict)
             and result.get("boot_id") == boot_id
@@ -16350,7 +16798,8 @@ def _remember_last_productive_policy(
     candidates = [
         str(policy_id)
         for policy_id, delta in policy_xp_deltas.items()
-        if int(delta or 0) > 0 and is_productive(str(policy_id))
+        if int(delta or 0) >= _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
+        and is_productive(str(policy_id))
     ]
     if not candidates:
         return state
@@ -16447,6 +16896,29 @@ def _protection_recovery_required(state: Mapping[str, Any]) -> bool:
     if record.get("boot_id") != state.get("world_boot_id"):
         return False
     return not _state_has_sanctuary_reserve(state)
+
+
+def _negative_fame_cure_critical_reserve_waiting(
+    state: Mapping[str, Any],
+) -> bool:
+    """Return whether fame recovery is waiting for its blocked reserve route."""
+    fame = _state_fame(state)
+    if fame is None or fame >= 0:
+        return False
+    verified_pouch = dict(state.get("verified_combat_pouch_potions") or {})
+    if (
+        _verified_combat_potion_keyword_for_spell(
+            verified_pouch,
+            None,
+            "cure critical",
+        )
+        is not None
+    ):
+        return False
+    return _research_retry_cooldown_active(
+        state,
+        _SOURCE_RANKED_CURE_CRITICAL_RESERVE_POLICY.policy_id,
+    )
 
 
 def _campaign_sanctuary_recovery_required(state: dict[str, Any]) -> bool:
@@ -17499,9 +17971,14 @@ def _merge_campaign_research_result(
                 # distinction between a productive hunt and a viable probe.
                 # Other objective-bearing policies may intentionally record
                 # an acquisition without promoting it to XP progress.
-                result["completed_kill"] = bool(
-                    current.get("campaign_objective_kills")
+                objective_kills = current.get("campaign_objective_kills")
+                result["completed_kill"] = bool(objective_kills)
+                total_xp, max_kill_xp, explicit_xp = _objective_kill_xp_stats(
+                    objective_kills
                 )
+                if objective_kills and explicit_xp:
+                    result["objective_xp"] = total_xp
+                    result["max_objective_kill_xp"] = max_kill_xp
             if (
                 policy.policy_id == _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY_ID
                 and current.get("campaign_objective_kills")
@@ -18203,13 +18680,26 @@ def _merge_source_ranked_circuit_kill_results(
     results = _campaign_research_results(state)
     boot_id = state.get("world_boot_id")
     for policy_id in killed_policy_ids:
-        results[policy_id] = {
+        result: dict[str, Any] = {
             "observed": True,
             "viable": True,
             "completed_kill": True,
             "consider_viable": True,
             "boot_id": boot_id,
         }
+        policy_kills = [
+            kill
+            for kill in objective_kills
+            if isinstance(kill, Mapping)
+            and str(kill.get("source_policy_id") or "") == policy_id
+        ]
+        total_xp, max_kill_xp, explicit_xp = _objective_kill_xp_stats(
+            policy_kills
+        )
+        if explicit_xp:
+            result["objective_xp"] = total_xp
+            result["max_objective_kill_xp"] = max_kill_xp
+        results[policy_id] = result
 
     # The generic research merger sees the circuit-wide kill list. Do not let
     # a secondary kill falsely promote an absent or rejected primary target.
@@ -18726,33 +19216,10 @@ def _run_has_unrecovered_weapon_loss(
     run_id: int,
 ) -> bool:
     """Reconstruct the final weapon state for legacy or interrupted runs."""
-    weapon_present: bool | None = None
-    awaiting_equipment_response = False
-    for event in storage.list_events(run_id):
-        payload = json.loads(event["payload_json"])
-        if event["kind"] == "command":
-            awaiting_equipment_response = str(
-                payload.get("command", "")
-            ).casefold() in {"equipment", "eq all"}
-            continue
-        if event["kind"] != "response":
-            continue
-        response = _ANSI_ESCAPE.sub("", str(payload.get("text", ""))).casefold()
-        if awaiting_equipment_response:
-            cleaned = _ANSI_ESCAPE.sub("", response)
-            if _is_equipment_audit_response(cleaned):
-                weapon_present = bool(
-                    re.search(r"(?:\[weapon\]|<[^>]*wield[^>]*>)", cleaned)
-                )
-                awaiting_equipment_response = False
-        if (
-            "disarms you" in response
-            or "your weapon slips from your hand" in response
-        ):
-            weapon_present = False
-        if "you wield " in response:
-            weapon_present = True
-    return weapon_present is False
+    primary_weapon = _replay_run_equipment(storage, run_id).primary_weapon
+    return primary_weapon is not None and not bool(
+        primary_weapon[0] and primary_weapon[1]
+    )
 
 
 def _latest_character_run(
@@ -18837,90 +19304,179 @@ def _run_successful_vault_lodges(
     return tuple(dict.fromkeys(lodged))
 
 
+@dataclass
+class _RunEquipmentReplay:
+    empty_categories: set[str] | None = None
+    worn_descriptions: list[str] | None = None
+    primary_weapon: tuple[bool, str | None] | None = None
+
+
+def _complete_worn_snapshot(payload: Mapping[str, Any]) -> Any | None:
+    """Return the value from a complete GMCP Char.Worn event."""
+    if payload.get("type") != "equipment_changed":
+        return None
+    data = payload.get("data")
+    if not isinstance(data, Mapping):
+        return None
+    if str(data.get("package", "")).casefold() != "char.worn":
+        return None
+    value = data.get("value", [])
+    if isinstance(value, str):
+        try:
+            return json.loads(_ANSI_ESCAPE.sub("", value))
+        except json.JSONDecodeError:
+            return None
+    return value
+
+
+def _structured_worn_descriptions(value: Any) -> list[str]:
+    """Extract occupied-slot descriptions from a structured worn snapshot."""
+    if isinstance(value, list):
+        descriptions: list[str] = []
+        for item in value:
+            descriptions.extend(_structured_worn_descriptions(item))
+        return descriptions
+    if not isinstance(value, Mapping):
+        return []
+    if "slot" in value or "wear_loc" in value:
+        description = value.get("name", value.get("short_desc"))
+        if description is None:
+            return []
+        cleaned = _ANSI_ESCAPE.sub("", str(description)).strip()
+        return [_strip_live_selector(cleaned)] if cleaned else []
+    descriptions = []
+    for item in value.values():
+        if isinstance(item, (list, Mapping)):
+            descriptions.extend(_structured_worn_descriptions(item))
+    return descriptions
+
+
+def _replay_run_equipment(
+    storage: RunStorage,
+    run_id: int,
+) -> _RunEquipmentReplay:
+    """Replay authoritative worn snapshots plus later confirmed slot changes."""
+    result = _RunEquipmentReplay()
+    weapon_description: str | None = None
+    structured_current = False
+    awaiting_audit = False
+
+    def set_weapon(present: bool, description: str | None) -> None:
+        nonlocal weapon_description
+        cleaned = (
+            _strip_live_selector(description)
+            if description is not None
+            else None
+        )
+        if result.worn_descriptions is not None and weapon_description is not None:
+            result.worn_descriptions = [
+                item
+                for item in result.worn_descriptions
+                if item != weapon_description
+            ]
+        weapon_description = cleaned if present else None
+        result.primary_weapon = (bool(present and cleaned), weapon_description)
+        if result.worn_descriptions is not None and weapon_description is not None:
+            result.worn_descriptions.append(weapon_description)
+        if result.empty_categories is not None:
+            if weapon_description is not None:
+                result.empty_categories.discard("wield")
+            else:
+                result.empty_categories.add("wield")
+
+    for event in storage.list_events(run_id):
+        payload = json.loads(event["payload_json"])
+        kind = event["kind"]
+        if kind == "command":
+            command = str(payload.get("command", "")).strip().casefold()
+            if command in {"equipment", "eq all"}:
+                awaiting_audit = True
+            if command == "wear all" or command.startswith(
+                ("wear ", "remove ", "wield ", "hold ")
+            ):
+                structured_current = False
+            continue
+        if kind == "game_event":
+            snapshot = _complete_worn_snapshot(payload)
+            if snapshot is None:
+                continue
+            result.worn_descriptions = _structured_worn_descriptions(snapshot)
+            weapon_seen, structured_description = _equipment_weapon_from_payload(
+                snapshot
+            )
+            weapon_description = (
+                _strip_live_selector(structured_description)
+                if weapon_seen and structured_description is not None
+                else None
+            )
+            result.primary_weapon = (
+                weapon_description is not None,
+                weapon_description,
+            )
+            if result.empty_categories is not None:
+                if weapon_description is None:
+                    result.empty_categories.add("wield")
+                else:
+                    result.empty_categories.discard("wield")
+            structured_current = True
+            continue
+        if kind != "response":
+            continue
+
+        response = str(payload.get("text", ""))
+        if awaiting_audit and _equipment_audit_present(response):
+            empty_categories = _equipment_empty_categories(response)
+            if structured_current:
+                if result.primary_weapon and result.primary_weapon[1] is not None:
+                    empty_categories.discard("wield")
+                else:
+                    empty_categories.add("wield")
+            else:
+                result.worn_descriptions = [
+                    _strip_live_selector(description)
+                    for description in _equipment_audit_descriptions(response)
+                ]
+                weapon_seen, audited_description = _equipment_weapon_slot(response)
+                weapon_description = (
+                    _strip_live_selector(audited_description)
+                    if weapon_seen and audited_description is not None
+                    else None
+                )
+                result.primary_weapon = (
+                    weapon_description is not None,
+                    weapon_description,
+                )
+            result.empty_categories = empty_categories
+            awaiting_audit = False
+
+        acknowledgement = _direct_weapon_slot_acknowledgement(response)
+        if acknowledgement is not None:
+            structured_current = False
+            set_weapon(acknowledgement[0], acknowledgement[1])
+        folded = _ANSI_ESCAPE.sub("", response).casefold()
+        if (
+            "disarms you" in folded
+            or "your weapon slips from your hand" in folded
+        ):
+            structured_current = False
+            set_weapon(False, None)
+    return result
+
+
 def _run_equipment_empty_categories(
     storage: RunStorage,
     run_id: int,
 ) -> set[str] | None:
-    """Return the newest empty categories, including later weapon acks."""
-    result: set[str] | None = None
-    awaiting_audit = False
-    for event in storage.list_events(run_id):
-        payload = json.loads(event["payload_json"])
-        if event["kind"] == "command":
-            awaiting_audit = (
-                str(payload.get("command", "")).strip().casefold() == "eq all"
-            )
-            continue
-        if event["kind"] != "response":
-            continue
-        response = str(payload.get("text", ""))
-        if awaiting_audit and _equipment_audit_present(response):
-            result = _equipment_empty_categories(response)
-            awaiting_audit = False
-        acknowledgement = _direct_weapon_slot_acknowledgement(response)
-        if acknowledgement is None or result is None:
-            continue
-        if acknowledgement[0]:
-            result.discard("wield")
-        else:
-            result.add("wield")
-    return result
+    """Return the newest empty categories from structured and text evidence."""
+    return _replay_run_equipment(storage, run_id).empty_categories
 
 
 def _run_worn_equipment_descriptions(
     storage: RunStorage,
     run_id: int,
 ) -> list[str] | None:
-    """Return worn descriptions, applying later direct weapon acknowledgements."""
-    result: list[str] | None = None
-    weapon_description: str | None = None
-    awaiting_audit = False
-    for event in storage.list_events(run_id):
-        payload = json.loads(event["payload_json"])
-        if event["kind"] == "command":
-            awaiting_audit = (
-                str(payload.get("command", "")).strip().casefold() == "eq all"
-            )
-            continue
-        if event["kind"] != "response":
-            continue
-        response = str(payload.get("text", ""))
-        if awaiting_audit and _equipment_audit_present(response):
-            result = [
-                _strip_live_selector(description)
-                for description in _equipment_audit_descriptions(response)
-            ]
-            weapon_seen, weapon_description = _equipment_weapon_slot(response)
-            if not weapon_seen:
-                weapon_description = None
-            elif weapon_description is not None:
-                weapon_description = _strip_live_selector(weapon_description)
-            awaiting_audit = False
-        acknowledgement = _direct_weapon_slot_acknowledgement(response)
-        if acknowledgement is None or result is None:
-            continue
-        if acknowledgement[0]:
-            if weapon_description is not None:
-                result = [
-                    description
-                    for description in result
-                    if description != weapon_description
-                ]
-            weapon_description = (
-                _strip_live_selector(acknowledgement[1])
-                if acknowledgement[1] is not None
-                else None
-            )
-            if weapon_description is not None:
-                result.append(weapon_description)
-        elif weapon_description is not None:
-            result = [
-                description
-                for description in result
-                if description != weapon_description
-            ]
-            weapon_description = None
-    return result
+    """Return occupied equipment from structured and text evidence."""
+    return _replay_run_equipment(storage, run_id).worn_descriptions
 
 
 def _direct_weapon_slot_acknowledgement(
@@ -18950,42 +19506,8 @@ def _run_primary_weapon_slot(
     storage: RunStorage,
     run_id: int,
 ) -> tuple[bool, str | None] | None:
-    """Return the newest observed primary weapon state, if one was recorded.
-
-    Equipment output can be split across Telnet response chunks.  Replay both
-    explicit ``eq all`` slots and direct ``You wield ...`` acknowledgements so
-    a later successful rearm is not hidden by an earlier empty-slot audit.
-    """
-    awaiting_audit = False
-    result: tuple[bool, str | None] | None = None
-    for event in storage.list_events(run_id):
-        payload = json.loads(event["payload_json"])
-        if event["kind"] == "command":
-            awaiting_audit = (
-                str(payload.get("command", "")).strip().casefold() == "eq all"
-            )
-            continue
-        if event["kind"] != "response":
-            continue
-        response = str(payload.get("text", ""))
-        if awaiting_audit and _equipment_audit_present(response):
-            weapon_seen, weapon_description = _equipment_weapon_slot(response)
-            result = (
-                weapon_seen,
-                _strip_live_selector(weapon_description)
-                if weapon_description is not None
-                else None,
-            )
-            awaiting_audit = False
-        acknowledgement = _direct_weapon_slot_acknowledgement(response)
-        if acknowledgement is not None:
-            result = (
-                acknowledgement[0],
-                _strip_live_selector(acknowledgement[1])
-                if acknowledgement[1] is not None
-                else None,
-            )
-    return result
+    """Return the newest observed primary weapon state, if one was recorded."""
+    return _replay_run_equipment(storage, run_id).primary_weapon
 
 
 def _research_absence_retry_group(policy_id: str) -> frozenset[str]:

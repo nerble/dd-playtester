@@ -310,6 +310,7 @@ class HuntCandidate:
     estimated_base_hp_range: tuple[int, int] = (0, 0)
     estimated_peak_round_damage: int = 0
     estimated_min_peak_round_damage: int = 0
+    estimated_critical_hit_damage: int = 0
     autonomy_rejections: tuple[str, ...] = ()
     specials: tuple[str, ...] = ()
     route_preflight_room_vnum: str | None = None
@@ -486,6 +487,67 @@ def parse_area_file(
     )
 
 
+def _bounded_borderline_route_aggressor(
+    world: WorldSource,
+    reset: MobReset,
+    *,
+    character_level: int,
+    character_max_hp: int | None,
+) -> bool:
+    """Allow a one-mobile route hazard whose only useful roll is the fringe.
+
+    The live runner still defeats the mobile only when GMCP proves it is in the
+    forbidden below-band range. A maximum fuzzy roll at ``level - 4`` follows
+    the existing flee-and-return path instead of becoming an implicit target.
+    """
+    if character_max_hp is None or character_max_hp <= 0:
+        return False
+    mobile = world.mobiles.get(reset.mobile_vnum)
+    if (
+        mobile is None
+        or not mobile.aggressive
+        or mobile.costs_fame
+        or mobile.vnum in world.shopkeepers
+        or mobile.act_flags & ACT_NO_EXPERIENCE
+        or world.mobile_specials.get(mobile.vnum)
+    ):
+        return False
+    source_capacity = max(
+        (
+            candidate.maximum_count
+            for candidate in world.mob_resets
+            if candidate.mobile_vnum == mobile.vnum
+        ),
+        default=0,
+    )
+    if reset.maximum_count != 1 or source_capacity != 1:
+        return False
+    maximum_level = _mobile_level_range(mobile.level)[1]
+    if maximum_level != character_level - 4:
+        return False
+    wielding = any(
+        wear_location == WEAR_WIELD
+        for wear_location, _ in reset.equipment
+    )
+    dual_wielding = any(
+        wear_location == WEAR_DUAL
+        for wear_location, _ in reset.equipment
+    )
+    peak_round_damage = _mobile_peak_round_damage(
+        maximum_level,
+        wielding=wielding,
+        dual_wielding=dual_wielding,
+    )
+    critical_hit_damage = _mobile_critical_hit_damage(
+        maximum_level,
+        wielding=wielding or dual_wielding,
+    )
+    return (
+        peak_round_damage < character_max_hp
+        and critical_hit_damage < character_max_hp
+    )
+
+
 def rank_hunt_candidates(
     world: WorldSource,
     *,
@@ -605,6 +667,10 @@ def rank_hunt_candidates(
                 wear_location == WEAR_DUAL
                 for wear_location, _ in equipped_weapon_slots
             ),
+        )
+        critical_hit_damage = _mobile_critical_hit_damage(
+            level_range[1],
+            wielding=bool(equipped_weapon_slots),
         )
         sellable = [
             item
@@ -748,9 +814,20 @@ def rank_hunt_candidates(
                         "route crosses a higher-level aggressive reset"
                     )
                 elif hazard_level_max > character_level - 5:
-                    autonomy_rejections.append(
-                        "route crosses an aggressive reset inside the useful XP band"
-                    )
+                    if _bounded_borderline_route_aggressor(
+                        world,
+                        path_reset,
+                        character_level=character_level,
+                        character_max_hp=character_max_hp,
+                    ):
+                        hazards.append(
+                            "bounded borderline route aggressor may be defeated "
+                            "only on a below-band live roll"
+                        )
+                    else:
+                        autonomy_rejections.append(
+                            "route crosses an aggressive reset inside the useful XP band"
+                        )
                 elif (
                     path_reset.maximum_count
                     > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
@@ -788,9 +865,20 @@ def rank_hunt_candidates(
                     "a higher-level aggressive wanderer can reach the route"
                 )
             elif hazard_level_max > character_level - 5:
-                autonomy_rejections.append(
-                    "an aggressive wanderer inside the useful XP band can reach the route"
-                )
+                if _bounded_borderline_route_aggressor(
+                    world,
+                    hazard_reset,
+                    character_level=character_level,
+                    character_max_hp=character_max_hp,
+                ):
+                    hazards.append(
+                        "bounded borderline aggressive wanderer may be defeated "
+                        "only on a below-band live roll"
+                    )
+                else:
+                    autonomy_rejections.append(
+                        "an aggressive wanderer inside the useful XP band can reach the route"
+                    )
 
         if closed_doors:
             hazards.append(f"{closed_doors} closed door(s) on route")
@@ -809,8 +897,11 @@ def rank_hunt_candidates(
             autonomy_rejections.append("source mobile costs fame when killed")
         if mobile.aggressive:
             hazards.append("target is aggressive")
-            dangerous = True
-            autonomy_rejections.append("target is aggressive")
+            # The requested mobile's own reset room is a valid destination.
+            # Keep the aggression as a risk signal for scoring and live
+            # consider/isolation gates, but do not reject an otherwise
+            # isolated target before the runner can weigh reward against the
+            # source-derived peak-damage bound.
         if equipped_weapons:
             weapon_names = ", ".join(
                 item.short_description for item in equipped_weapons
@@ -890,6 +981,7 @@ def rank_hunt_candidates(
                 estimated_base_hp_range=hp_range,
                 estimated_peak_round_damage=peak_round_damage,
                 estimated_min_peak_round_damage=minimum_peak_round_damage,
+                estimated_critical_hit_damage=critical_hit_damage,
                 autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
                 specials=world.mobile_specials.get(mobile.vnum, ()),
                 route_preflight_room_vnum=route_preflight_room_vnum,
@@ -1764,13 +1856,24 @@ def _mobile_peak_round_damage(
     dual_wielding: bool,
 ) -> int:
     """Return the raw upper bound when every possible NPC strike lands."""
-    unarmed_hit = level * 3 // 2 + level // 4
-    weapon_hit = unarmed_hit + unarmed_hit // 2
+    unarmed_hit = _mobile_normal_hit_damage(level, wielding=False)
+    weapon_hit = _mobile_normal_hit_damage(level, wielding=True)
     cycle_damage = weapon_hit if wielding else unarmed_hit
     if dual_wielding:
         cycle_damage += weapon_hit
     possible_attacks = 5 + int(level >= 20)
     return cycle_damage * possible_attacks
+
+
+def _mobile_normal_hit_damage(level: int, *, wielding: bool) -> int:
+    """Mirror the maximum ordinary NPC damage for one ``one_hit`` call."""
+    unarmed_hit = level * 3 // 2 + level // 4
+    return unarmed_hit + (unarmed_hit // 2 if wielding else 0)
+
+
+def _mobile_critical_hit_damage(level: int, *, wielding: bool) -> int:
+    """Mirror DD4's NPC critical, which doubles one ordinary hit."""
+    return _mobile_normal_hit_damage(level, wielding=wielding) * 2
 
 
 def _wandering_aggressors(

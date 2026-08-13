@@ -1277,7 +1277,7 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert "mobility\tsearch_rooms\tsource_level" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
     assert "autonomy_rejections" in captured.out
-    assert "reject\t" in captured.out
+    assert "caution\t" in captured.out
     assert "the dangerous guard" in captured.out
     assert "reachable wanderer: a cellar rat L3" in captured.out
     assert "a cellar rat\t3\t1-5" not in captured.out

@@ -39,6 +39,9 @@ def append_entry(path: Path, speaker: str, body: str) -> str:
     if speaker not in SPEAKERS:
         raise ValueError(f"speaker must be one of: {', '.join(SPEAKERS)}")
     clean_body = body.rstrip("\r\n")
+    for line in clean_body.encode("utf-8").splitlines():
+        if CURRENT_HEADERISH_RE.fullmatch(line):
+            raise ValueError("body must not contain a timestamped speaker header")
     header = f"[{timestamp()}] {speaker}"
     entry = f"\r\n\r\n{header}\r\n{clean_body}\r\n"
     with path.open("ab") as handle:

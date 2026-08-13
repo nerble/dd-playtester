@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import re
 
 from tools.conversation_log import append_entry, timestamp, validate
@@ -24,6 +25,19 @@ def test_timestamp_forces_uppercase_meridiem() -> None:
         r"\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2} (?:AM|PM) NZST",
         timestamp(),
     )
+
+
+def test_append_entry_rejects_nested_streamer_header(tmp_path: Path) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+
+    with pytest.raises(ValueError, match="must not contain"):
+        append_entry(
+            path,
+            "CODEX COMMENTARY",
+            "[2026-08-13 8:34:40 PM NZST] USER\nOld message",
+        )
+
+    assert not path.exists()
 
 
 def test_validate_rejects_malformed_headerish_lines(tmp_path: Path) -> None:

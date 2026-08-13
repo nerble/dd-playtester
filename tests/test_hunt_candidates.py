@@ -18,6 +18,8 @@ from dd4tester.hunt_candidates import (
     money_value,
     potion_spell_names,
     _route_preflight_metadata,
+    _mobile_critical_hit_damage,
+    _mobile_peak_round_damage,
     load_object_sources,
     load_world_source,
     parse_area_file,
@@ -839,6 +841,15 @@ def test_candidate_ranking_rejects_route_through_higher_level_aggressor(
     assert not any("instance limit" in hazard for hazard in candidate.hazards)
 
 
+def test_armed_mobile_damage_keeps_ordinary_peak_separate_from_critical_burst() -> None:
+    assert _mobile_peak_round_damage(
+        14,
+        wielding=True,
+        dual_wielding=False,
+    ) == 180
+    assert _mobile_critical_hit_damage(14, wielding=True) == 72
+
+
 def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -> None:
     monkeypatch.setattr(
         "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
@@ -1250,7 +1261,9 @@ def test_candidate_ranking_rejects_same_vnum_assist_capacity(monkeypatch) -> Non
     )
 
 
-def test_candidate_ranking_rejects_an_aggressive_target(monkeypatch) -> None:
+def test_candidate_ranking_keeps_an_isolated_aggressive_target_in_risk_pool(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
         ("target.are",),
@@ -1284,7 +1297,8 @@ def test_candidate_ranking_rejects_an_aggressive_target(monkeypatch) -> None:
         include_xp_only=True,
     )[0]
 
-    assert candidate.status == "reject"
+    assert candidate.status == "caution"
+    assert candidate.autonomous_safe
     assert "target is aggressive" in candidate.hazards
 
 
@@ -1655,6 +1669,54 @@ def test_autonomous_filter_uses_route_aggressor_fuzzed_maximum(monkeypatch) -> N
     assert (
         "route crosses an aggressive reset inside the useful XP band"
         in candidate.autonomy_rejections
+    )
+
+
+def test_autonomous_filter_allows_bounded_borderline_route_aggressor(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 29, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "guard",
+                "the route guard",
+                25,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Guard post", "target.are"),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[MobReset(200, 7001, 1, ()), MobReset(100, 7002, 1, ())],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=31,
+            character_max_hp=500,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    )
+
+    assert candidate.autonomous_safe
+    assert any(
+        "bounded borderline route aggressor" in hazard
+        for hazard in candidate.hazards
     )
 
 

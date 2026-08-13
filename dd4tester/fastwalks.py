@@ -268,7 +268,6 @@ MAP_ROUTES = (
         route_preflight_target="goblin lieutenant",
         route_preflight_hard_hazard=True,
         route_hard_hazard_targets=(
-            "goblin lieutenant",
             "dark horseman",
             "wyvern",
         ),

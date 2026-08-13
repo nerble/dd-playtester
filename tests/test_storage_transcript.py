@@ -629,3 +629,66 @@ def test_storage_scopes_sales_and_kills_by_boot_identity(tmp_path) -> None:
     assert kills[0]["source_policy_id"] == (
         "source-ranked-hunt-solace-10247-10312-24"
     )
+
+
+def test_kill_evidence_commits_before_run_cleanup(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    storage = RunStorage(database, event_commit_interval=100)
+    run_id = storage.create_run(
+        scenario_name="fastwalk-source-ranked-hunt:Ararisa",
+        scenario_path=Path("profile.yaml"),
+    )
+    storage.record_event(
+        run_id,
+        kind="response",
+        payload={"text": "Bardoosh is DEAD!!"},
+    )
+    storage.record_mob_kill(
+        run_id,
+        character_name="Ararisa",
+        boot_id=None,
+        mob_name="Bardoosh",
+        xp_gained=460,
+        source_mobile_vnum=4515,
+        source_policy_id="source-ranked-hunt-ambush-4515-4514-15",
+    )
+
+    with sqlite3.connect(database) as observer:
+        persisted = observer.execute(
+            "SELECT mob_name, xp_gained, boot_id FROM mob_kills WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+
+    storage.set_run_boot_id(run_id, "boot-1")
+    run_kills = storage.list_mob_kills_for_run(run_id)
+    storage.close()
+
+    assert persisted == ("Bardoosh", 460, None)
+    assert len(run_kills) == 1
+    assert run_kills[0]["boot_id"] == "boot-1"
+    assert run_kills[0]["source_mobile_vnum"] == 4515
+
+
+def test_storage_persists_below_band_kill_as_non_objective(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    run_id = storage.create_run(
+        scenario_name="fastwalk-source-ranked-hunt:Ararisa",
+        scenario_path=Path("profile.yaml"),
+    )
+
+    storage.record_mob_kill(
+        run_id,
+        character_name="Ararisa",
+        boot_id="boot-1",
+        mob_name="the goblin leader",
+        xp_gained=90,
+        below_useful_band=True,
+        objective_eligible=False,
+    )
+
+    kills = storage.list_mob_kills_for_run(run_id)
+    storage.close()
+
+    assert len(kills) == 1
+    assert kills[0]["below_useful_band"] == 1
+    assert kills[0]["objective_eligible"] == 0

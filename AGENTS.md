@@ -30,11 +30,112 @@ evidence, `research` for bounded probes with explicit limits, and
 `unavailable` for an explicit safe stop. Every engineering work unit must
 remove a concrete blocker to the next executable level band.
 
-Audit anchor for 2026-08-12: the live level-10 mage/thief/warrior matrix is
-complete; Aeloria is level 13, Dorrik level 12, and Kestrel level 24. These are
-representative checkpoints, not a HERO completion claim. The current detailed
-assessment and definition of done live in
-`docs/PROGRESS_AUDIT_2026-08-12.md`.
+Audit anchor for 2026-08-13: the live level-10 mage/thief/warrior matrix is
+complete; Aeloria is level 13 at 74,825 XP, Dorrik level 16 at 123,437 XP, and
+Kestrel level 24 at 360,704 XP. Run 5246 proves Dorrik's level-14 transition;
+runs 5231 through 5306 prove the surrounding generic source-ranked execution
+without steering, including safe healer return and preserved subclass state.
+Runs 5274, 5280, 5284, and 5295 add productive current-band alternatives after
+the reboot-scoped Dwarven Nobleman probe withdrew at the 15% floor without a
+kill. Run 5302 then completed a successful Shire continuation. Run 5307 exposed
+an armed Ambush Bardoosh critical-hit death after two incidental low-XP goblin
+interruptions; Purgatory recovery, equipment restoration, and healer recovery
+succeeded, leaving the durable checkpoint at 87,820 XP. Runs 5308 through
+5310 then resumed with productive duty and ranger alternatives, refreshed
+flight, recovered a long bow, and returned Dorrik to healer room 3054 at
+88,279 XP. Runs 5311 through 5316 then completed maintenance and killed a
+Shadow Wraith for 296 XP after trivial transit interruptions, returning safely
+at 89,572 XP. Runs 5317 through 5319 then completed daycare and flight
+maintenance and killed a source-matched ranger for 624 XP, returning safely;
+the long-bow collection hit the carry-count limit without invalidating the
+objective kill. Runs 5320 through 5325 then handled sanctuary and Moria
+prerequisites, killed a Shire receptionist for 569 XP, and recorded both Wraith
+rooms absent before returning safely. Runs 5326 through 5328 repeated the
+source-backed Moria/Wraith circuit without forcing an absent objective target;
+Dorrik returned safely at 91,025 XP after incidental field kills. Runs 5329
+through 5334 then added ranger and Shire receptionist objective kills and
+recorded the later Wraith absence without forcing combat. Runs 5335 through
+5337 then completed a 743-XP Aruncus kill and safe maintenance; runs 5338 and
+5339 completed two safe Wraith probes with incidental goblin XP kept separate
+from objective evidence. Run 5344 then completed an Aruncus kill for 919 XP in
+166.6 seconds with full health before and after; runs 5345 and 5346 found the
+Wraith targets absent and retained incidental goblin XP outside objective
+evidence. Run 5353 then reached the Dwarven Homestead through the Miden'nir
+bridge, resolved the level-6 mountain goblin by live mobile VNUM 3501, and
+recorded a positive consider result for the nobleman without attacking him.
+Runs 5354 through 5358 reconciled the standalone probe's XP loss, restocked,
+and rotated past crowded or absent candidates. Run 5359 then completed a
+source-ranked current-band kill for 413 XP in 141.8 seconds and returned full
+to healer room 3054; runs 5373, 5376, 5378, and 5383 added productive
+source-matched kills, and the bounded 5385-5386 rotation crossed level 15.
+Run 5391 then killed the level-15 Undead Soldier for 956 XP and returned full.
+Runs 5392 through 5425 then exercised maintenance, absence, interruption,
+source-special crowd, and assertive repeat branches. Run 5419 earned 286
+objective XP plus 70 incidental XP and returned full. Runs 5420 and 5421 then
+produced only incidental 60-XP and 10-XP transit kills while their objectives
+were absent. After objective-aware progress accounting, run 5425 selected a
+measured repeat and earned 303 objective XP. Runs 5426-5428 then added 1,400
+aggregate XP; the productive nomad commander supplied 536 objective XP, while
+the level-8 goblin leader exposed and motivated exact live below-band objective
+filtering. Run 5436 then live-validated that repair: mobile 3507 loaded at
+level 8, its 80-XP kill was persisted as below-band and non-objective, the
+campaign recorded the exact source-policy exclusion, and Dorrik returned to
+healer room 3054. Run 5437 moved on to a useful-band fanatical guard and
+returned safely at 108,315 XP. Runs 5438-5443 then exercised bounded absence,
+repeat, split-locator, and safe-return paths. Run 5444 live-validated immediate
+split-locator resumption and safe healer logout; Dorrik is at 109,271 XP. The
+following rotation exposed a cross-level status bug: measured Shire and Wyvern
+repeats were allowlisted by mobile VNUM but still sorted as `fresh`, behind a
+50-XP current-level repeat. Run 5460 live-validated the repair by selecting
+Shire receptionist 1131, earning 401 objective XP, and returning Dorrik safely
+to healer room 3054. Runs 5467 and 5468 then selected the two strongest
+cross-level repeats back to back, earning 283 XP from Wyvern ranger 1706 and
+317 XP from Shire receptionist 1131 before safe healer returns. Dorrik is at
+111,291 XP. Runs 5470 through 5488 continued the same generic rotation while
+keeping absent objectives and incidental XP separate. Run 5493 then killed
+Wyvern ranger 1706 for 380 objective XP and crossed Dorrik to level 16 at
+115,129 XP; the live checkpoint recorded 345 max HP, 300 max movement, three
+practices, subclass `none`, and a safe healer return. Runs 5494-5496 then
+proved the level-16 handoff: the
+equipment audit returned safely, both Fleshmonger guards were rejected on the
+prohibited below-band consider branch, the Warrior trainer accepted `shield
+block` and `defense knowledge`, and Aruncus 300 yielded 519 objective XP.
+Dorrik finished full at healer room 3054 with two practices and 115,688 XP.
+Run 5499 then proved that required-loot accounting includes worn gear: one
+worn pink ice ring left one ring outstanding, while the worn linen robe
+suppressed the nanny carrier entirely. Runs 5498 and 5500 added 1,107 objective
+XP from Bardoosh and Aruncus around that maintenance proof. Dorrik is now full
+and safely logged out at healer room 3054 with 117,035 XP; the full offline
+suite passes 2,524 tests.
+Runs 5502, 5503, 5506, and 5507 then added 1,612 objective XP through
+source-matched Bardoosh, Aruncus, ranger, and Bardoosh kills. Runs 5504 and
+5505 interleaved bounded ring and flight maintenance without suppressing that
+progress. Dorrik finished full and safely logged out at healer room 3054 with
+118,647 XP, 14,953 short of level 17.
+Campaign revision 164 admits a single source-proven borderline route aggressor
+only when its maximum fuzzy level is exactly the useful-band fringe, it has one
+global source instance, no special, fame, shop, or no-XP flag, and both its
+peak-round and critical-hit bounds are below current max HP. Live GMCP remains
+authoritative: defeat it only on a below-band roll; a useful-band roll follows
+the existing flee-and-return path. The full offline suite passes 2,528 tests.
+Run 5512 proved this gate in Ambush: three unavoidable below-band transit kills
+contributed 160 incidental XP, Haglik 4519 supplied 622 objective XP, and the
+below-band prisoner and elite guard were considered but not attacked. Dorrik
+finished full at healer room 3054 with 119,429 XP, 14,171 short of level 17.
+Run 5515 then killed Dwarven Nobleman 20504 for 963 objective XP. Run 5518
+added 930 objective XP from Haglik and 160 incidental XP before returning
+safely through the runtime watchdog. Dorrik is at healer room 3054 with
+121,482 XP, 12,118 short of level 17.
+Run 5526 live-validated mapped-room compaction: `where` reported `Path in the
+plains`, the runner found Aruncus in room 302 for 501 objective XP, and returned
+without a runtime boundary. Run 5527 added 655 objective Haglik XP and 160
+incidental transit XP. Dorrik finished full at healer room 3054 with 123,437
+XP, 10,163 short of level 17. The named-exit branch remains regression-verified
+but not yet post-repair live-validated.
+These are
+representative checkpoints, not a HERO completion claim. The current
+detailed assessment and definition of done live in
+`docs/PROGRESS_AUDIT_2026-08-13.md`; the prior audit is historical.
 
 The master product boundary is one character-independent autonomy engine that
 can create any source-legal race/class/subclass request and progress it to level
@@ -47,6 +148,25 @@ Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
 Treat VNUMs as separate namespaces: room, mobile, object, and object-set VNUMs
 are unique within their category, but the same number may appear across them.
+When plain combat text arrives before `Char.Enemies`, wait one bounded prompt
+for the authoritative GMCP enemy record. Resolve a live enemy's source level
+by its `isnpc` mobile VNUM before matching its abbreviated display name; only
+then may a source-proven below-band transit attacker pass the incidental
+combat gate. An unresolved attacker remains a hard route interruption.
+Refresh `runs/dd4-source` with `git pull --ff-only` before source-sensitive
+research and record the revision used for the decision. The live checkout used
+by the 2026-08-13 audit is `f2491fd`. The bundled prerequisite and training
+snapshots are pinned evidence from `f703daa`, while the fallback character
+catalog is pinned to `0482387`; do not silently present a pinned snapshot as
+the current checkout. If a relevant source file changes, either regenerate the
+snapshot or record both revisions and re-audit the affected policy.
+
+The registered policy table is a declarative research graph, not a live proof
+ledger. After a bounded registered probe has a reboot-scoped result, the
+campaign may select the generic source-ranked executor when its candidate
+passes source, route, crowd, consider, health, resource, and return gates.
+Use campaign segments, objective-kill records, and checkpoints to claim live
+progression; `show-policy-coverage` alone never proves that a band is solved.
 Scope reboot-local source hunt kill caps by mobile prototype VNUM, not by the
 mobile's display name: distinct mobile VNUMs can share a short description
 (for example, two different `Secretary` prototypes). Derive source-ranked kill
@@ -67,6 +187,12 @@ set, preflight source-graph reachability after excluding source-proven
 aggressive or special-procedure hazard rooms. Skip a candidate whose only
 source-connected path is blocked; do not spend a live connection discovering
 that the maze cannot reach its target.
+The Great Eastern Desert pyramid maze also needs a live movement reserve:
+when a no-combat return or outbound search has fewer than 12 movement points,
+sleep until one live step is affordable before issuing another maze move.
+Room 5006 is the legal underground-lake return boundary; if flight or
+levitation is inactive, recall there rather than issuing the impossible west
+step. Never let a movement-starved maze branch spin on repeated navigation.
 The Shadow Grove (rooms 1300-1309) is a randomized `no_recall` maze. For
 return-home and fastwalk recovery, navigate by live GMCP exits to room 1300,
 then follow the source-backed reverse route through Haon Dor rooms 6137,
@@ -186,6 +312,12 @@ re-wield it before recurring attacks resume. Treat `You must wield a weapon to
 disarm.` as secondary evidence of the same loss. Equipment stance application
 must converge; stop and re-audit exact worn VNUMs instead of repeating opposing
 swap signatures.
+For multi-command shop maintenance, a generic prompt or unrelated room message
+does not acknowledge the pending command. Wait independently for a completed
+`list` response, an explicit purchase result, a wield acknowledgement or fresh
+`Char.Worn`, and the requested equipment audit before advancing. Buy from an
+ambiguous listing with its live `#target` selector, then verify the cloned
+purchased object's source VNUM through the post-wield structured snapshot.
 Live run 4499 exposed the missing weapon recovery after a rolling-rock disarm.
 Runs 4501-4502 then showed that display-only confirmation could mistake dagger
 3020 for dagger 31015 and alternate forever between the object set and bead
@@ -316,6 +448,15 @@ When source route scoring finds one of those proven noncombat specials in a
 large below-band transit crowd, retain the hazard in evidence but do not turn
 it into an autonomy rejection. Ordinary aggressive crowds and all unclassified
 specials remain route-gated.
+For a live target-room crowd, resolve every matching source mobile profile and
+retain ambiguous identities, including profiles with no special. Ignore a
+bystander immediately only when every matching profile is nonempty and every
+special is source-proven non-attacking or combat-only in transit. A sole
+`spec_guard` profile may stop inflating the crowd only when the controlled
+character's alignment is at least 300 and one complete crowd retry has passed
+without hostility; lower alignment and ambiguous profiles stay blocked. Run
+5418 proved the good-alignment Ofcol cityguard remained non-hostile throughout
+the bounded wait, though Aruncus wandered away before consider.
 Source `spec_thief` returns before its theft branch while fighting and can take
 at most 20% of carried coins while standing. Bound the possible loss to 250
 copper-equivalent (so carried currency may be as high as 1,250 copper), with
@@ -445,6 +586,16 @@ the full bounded source search instead of abandoning the target.
 matching row, prefer source-vetted safe locations, and never let the first row
 hide a later mapped location. Treat an excluded location as fatal only when no
 safe source-vetted match remains.
+DD4 may send a prompt before the rows of a `where` response. A bounded locator
+grace timer must be evaluated before the ordinary `prompt_ready` gate so its
+expiry can wake the policy without another server prompt. Apply the same rule
+to the magic-shop drunk preflight. Preserve a synthetic line boundary when a
+new locator header begins in a later socket read, but do not split a target row
+that genuinely continues across reads. Run 5442 exposed both defects by
+waiting for the inactivity watchdog after `where nomad`. Run 5444 then parsed
+the delayed leader row in Fungus Temple, issued its next command in the same
+timestamped read, completed the bounded search without a watchdog event, and
+saved and quit at healer room 3054.
 Normalize flattened GMCP room descriptions with the same sentence boundaries
 used by live room output before applying crowd gates; furniture or other static
 room prose must not become a phantom mobile. Ignore companions only when their
@@ -467,6 +618,22 @@ let the live crowd/isolation gate decide. A visible room target or positive
 below-band or too dangerous; never serialize that case as target absence.
 Never attack for XP when `consider` returns a `do_consider` result from the
 `diff <= -5` or `diff <= -10` branches; those targets are too low to be useful.
+Apply the same floor when authoritative `Char.Enemies` identifies the exact
+source target at five or more levels below the character after aggression has
+already forced combat. Finish a harmless unavoidable fight when appropriate,
+but record the kill as incidental, persist the exact source-policy below-band
+sighting, and do not let its XP satisfy the objective or reset no-progress
+selection. Explicit required-loot carriers retain their separate audited
+exception. Run 5426 exposed this when level-15 Dorrik's selected goblin leader
+loaded at level 8 and paid only 80 XP among forced Miden'nir attackers. Run
+5436 proved the repaired path end to end: the SQLite kill ledger stores
+`below_useful_band=1` and `objective_eligible=0`, omits source-policy credit,
+and restart reconciliation filters the row from objective progress.
+Treat an explicit objective kill below 50 XP as contact evidence only, not as
+productive source history or permission to repeat a route. Use the tagged
+`source_policy_id`/mobile VNUM for wandering kills; never attribute the reward
+to the selected room or a display-name anchor. Fall back to the segment XP
+delta only for legacy kill records that lack explicit objective XP metadata.
 When the best fresh source prototype has less than a 50% chance for its normal
 level fuzz to land inside the useful consider band, prefer a same-reboot route
 whose latest recorded kill still earned meaningful XP, even after its third
@@ -485,6 +652,16 @@ look negligible. Campaign revision 156 threads those proven repeats through
 same-area circuit construction, so capped but still-productive mobiles can
 form a multi-kill route while live consider, crowd, health, and below-band
 gates remain mandatory.
+When a cross-level repeat is allowlisted by that evidence, classify it as
+`productive` for candidate ordering even if its new level-suffixed policy ID
+has no direct result yet. Do not let a weak current-level repeat outrank it
+merely because the regenerated ID is marked `fresh`. Run 5460 proved this
+handoff by replacing a 50-XP Ambush goblin route with the Shire receptionist
+and earning 401 objective XP. Runs 5467-5468 then proved repeat rotation after
+cooldown by earning another 600 objective XP from the Wyvern and Shire routes.
+Run 5493 proved that the same source-mobile reward continuity survives through
+the next level transition: ranger 1706 earned 380 objective XP, crossed Dorrik
+to level 16, and returned him safely to healer room 3054.
 If the fresh selector initially returns a research-only candidate, still
 evaluate the current-band productive repeat pool before stopping or exposing
 the research route. Research must never mask executable progress. For legacy
@@ -713,6 +890,95 @@ lower-level half-dead opponent down to 10%. Retain a 67.5% departure floor
 for high-risk and aggressive targets. Keep death traps, unknown high-level
 enemies, unsafe crowds, disabling affects, and unsupplied hunger or thirst as
 hard withdrawal boundaries.
+For every source-ranked combat stop, also carry the source-derived maximum
+critical damage of one NPC hit. DD4 criticals double one ordinary hit; when
+that verified burst can kill at current HP, raise only the active stop's live
+withdrawal floor to the burst ratio. Otherwise retain the aggressive 15%/10%
+thresholds. Do not blanket-reject armed, high-XP targets: preserve explicit
+bounded peak probes and research pools, and let source, live consider, gear,
+protection, and reward evidence balance risk against XP per trip. When a safe
+fixed-reset area offers multiple isolated targets, rank the whole circuit by
+risk-adjusted source reward per outbound and inter-target travel step. A
+wandering high-score candidate must not suppress that circuit merely because
+it ranked first as a singleton. A death
+without an objective kill is fatal evidence for the exact mobile VNUM, reset
+room, character level, and reboot, and must block blind retries. Tag objective
+kills by exact source identity so incidental transit kills cannot inflate
+progress or promotion evidence.
+Balance risk against throughput rather than minimizing death probability alone.
+An expired absence or retryable probe is not progress evidence: when a
+same-reboot source route has a meaningful measured XP return, let that
+productive repeat outrank the retry unless the fresh route has materially
+stronger risk-adjusted reward evidence. A no-flight fallback must not displace
+a productive route solely because it avoids buying flight; preserve the normal
+source, live-consider, crowd, health, protection, and return gates while
+optimizing expected XP per travel step.
+Quantify the fresh-route exception: a fresh candidate may displace a
+productive repeat only when its risk-adjusted source score per travel step is
+at least 25% higher. The score is a route reward proxy with a soft peak-damage
+penalty, not a replacement for live gates. Keep the requested mobile's own
+aggressive reset in the risk pool when its route is otherwise source-reachable;
+score the aggression as caution and enforce the normal consider, isolation,
+health, protection, equipment, and return checks instead of rejecting it solely
+for being aggressive. Other aggressive route or companion hazards remain hard
+blocks.
+Live run 5402 validated this balance for Dorrik: Bardoosh mobile 4515 in room
+4514 produced 671 objective XP and 851 XP total after three incidental 60-XP
+goblin kills, then returned safely to healer room 3054 at full health and
+movement. Runs 5392 through 5401 remain recovery, maintenance, or low-value
+contact evidence and must not be misreported as equivalent progression.
+Run 5403 then selected Aruncus the Druid, mobile VNUM 300 in reset room 323,
+for 505 objective XP and a full healer return. Dorrik reached 101,307 XP;
+this is productive level-15 evidence, not merely a safe recovery.
+Run 5405 repeated Bardoosh mobile VNUM 4515 for 351 objective XP plus one
+incidental 70-XP goblin kill, returning at full HP and 264/290 movement. Keep
+the repeat eligible while its tagged reward remains meaningful and its live
+gates continue to pass.
+Run 5406 repeated Aruncus mobile VNUM 300 for 462 objective XP and returned
+at full HP and 269/290 movement. Continue this productive repeat while its
+measured reward remains meaningful; do not let an empty unrelated route or a
+generic safety preference displace it.
+Run 5407 found fanatical goblin guard mobile VNUM 4516 wandering into room
+4522; Dorrik killed it for 264 XP after absorbing a critical hit and returned
+safely for healer recovery. The transcript proved the exact live VNUM even
+though the registered reset-room stop used a different display name, so retain
+wandering kill attribution by source identity rather than by room label alone.
+Run 5408 accepted the measured Bardoosh repeat: mobile VNUM 4515 yielded 460
+objective XP and a wandering goblin added 70 incidental XP. Dorrik returned
+without death or flee at full 322/322 HP and 279/290 movement. Treat this as
+productive risk/reward evidence and keep the repeat eligible while its tagged
+reward remains meaningful; do not optimize for zero damage or zero incidental
+encounters when the live withdrawal and return gates still pass. Run 5409 then
+selected Aruncus for 421 XP in 69.8 seconds and returned at full HP; run 5410
+reopened the cooled Shargugh route and confirmed it absent. Runs 5411 and 5412
+were required flight/provision maintenance and must not be counted as XP work.
+Run 5413 reached Bardoosh and SQLite events recorded a 60-XP goblin-lieutenant
+interruption plus a 460-XP Bardoosh kill, but the worker was stopped after its
+transcript stayed empty; run 5414 recovered safely at 103,935 XP. Keep the
+interrupted segment failed until its kill metadata is reconciled, and close both
+the segment and its unbound run record during process recovery. Persist each
+recognized mob kill and loot sale immediately while the run is active, not only
+during normal runner cleanup. Recover an interrupted source-ranked objective
+from the run-scoped kill ledger only when its exact `source_policy_id` matches;
+never promote an incidental kill. Run 5417 proved that a kill row was externally
+visible while its run still had status `running`. Run 5415
+confirmed both Shadow Keep Wraith rooms absent after one incidental 60-XP goblin
+interruption; do not promote that result. Run 5416 then reopened fanatical
+goblin guard mobile VNUM 4516, earned 257 objective XP, and returned at full HP
+with 281/290 movement. This is an approved higher-risk repeat because the
+reward remained meaningful and the live withdrawal/return gates passed.
+Run 5419 then killed the same source-matched guard for 286 objective XP plus 70
+incidental XP and returned full at 104,728 XP. A confirmed objective kill must
+force target-presence evidence and clear stale target-absence state before the
+segment and campaign snapshots are serialized.
+For source-ranked throughput, count progress only from objective-kill evidence,
+not the character's aggregate XP delta. Incidental transit kills must not reset
+the no-progress streak, clear unrelated absence evidence, or become the current
+policy's productive XP result. Apply the same calculation during a live
+multi-segment process and when reconstructing after restart. Runs 5420 and 5421
+earned 60 and 10 incidental XP with empty objective-kill lists; the repaired
+two-segment streak forced a measured productive repeat, and run 5425 killed
+mobile 4516 for 303 objective XP before returning safely at 105,161 XP.
 Do not let the generic non-fastwalk 25% emergency-resupply floor override a
 field fight's 15% withdrawal or 10% finisher threshold.
 For a return-home checkpoint at the healer, use the same 90% movement floor
@@ -804,6 +1070,12 @@ reset it to the default merely because the positive evidence was reconstructed.
 Run 4533 both killed the Solace lieutenant and ended crowded at Alex. Run 4544
 then reduced that cooldown from three to two at checkpoint 11429, and the fixed
 live reconnect preserved two through checkpoints 11430-11433.
+Historical clear-marker recovery is event-specific: only an explicit
+`research_policy_retried` checkpoint may restore `campaign_cleared_research_policies`.
+`campaign_metadata_repaired`, `source_policy_rotated`, and segment-complete
+snapshots are derived state and must not be replayed as new clear decisions. If
+protection recovery is required while its sanctuary policy is on cooldown,
+report that protection wait before applying unrelated crowd or reset handling.
 Before HERO renaming is available, use source-backed keywords and keep active
 gear directly accessible; put spare ambiguous items in containers or the vault.
 Never guess object or mobile command keywords when the entity exists in the
@@ -908,10 +1180,15 @@ from the current area and recall rather than enumerating the full area. For a
 global wanderer this is current-area evidence, not a reboot-wide absence claim;
 rotate to another candidate and retry later. If `where` reports a presence,
 retain the bounded source-room search. Treat the reported room as a snapshot,
-not a guarantee: check its mapped source-room group first, then continue
-through the remaining source-reachable rooms if the wanderer has moved before
-arrival. Live run 2048 spent about 290 seconds searching for a globally absent
-Kodiak and motivated this gate.
+not a guarantee. Collapse differently named intermediate rooms into
+movement-only legs, inspect every safe room in the mapped name group, then
+refresh `where` once from the actual current room using source routes generated
+for every safe origin. Do not blind-sweep the remaining differently named
+rooms first. Preserve the complete waypoint sweep only for legacy locators
+without a safe relocation graph. Run 5516 spent its 240-second boundary on 42
+Aruncus destinations; the repaired `Grassy plains` group requires seven target
+checks. Live run 2048 spent about 290 seconds searching for a globally absent
+Kodiak and motivated the original gate.
 Treat source-program messages that forcibly relocate the character as hard
 route hazards. Record the relocation, stop the stale route immediately, and
 recall even if GMCP omits the post-transfer room snapshot; never retry doors
@@ -921,9 +1198,28 @@ door is required, roll back that waypoint and record the route hazard. Skip
 only the blocked registered stop and continue the bounded circuit when a later
 source reset remains; if it was the final stop, return immediately. Never wait
 for the inactivity watchdog before trying the next safe location or policy.
+Treat any pending movement response of the form `The <source name> is closed.`
+as a dynamic exit, not only `door` or `grate`: roll back the exact route index,
+issue `open <direction>`, and retry. If the named exit reports locked after the
+open attempt, stop the stale route and recall. Run 5518 exposed this with `The
+brush is closed`; its watchdog returned Dorrik safely before the generic parser
+was repaired.
+Do not let one borderline aggressive transit reset permanently hide a deeper
+source-safe circuit. It may be crossed only when its maximum source-fuzz level
+is exactly `character level - 4`, the prototype has one global reset instance,
+no special, fame, shopkeeper, or no-XP flag, and its maximum peak round and
+critical hit are each below current max HP. Require live GMCP level evidence:
+finish it only below-band, and flee from a useful-band roll. Run 5512 validated
+this with Ambush mobile 4516 before a 622-XP Haglik kill and a safe healer
+return.
 Treat profession-visible empty `eq all` slots as equipment debt. Prefer usable
 mob drops, then inexpensive class-legal Midgaard basics; after major gear loss,
 revisit Mud School first and repeat its course to recover free starter drops.
+Count required replacement gear across both carried inventory and the
+authoritative worn paper doll. A worn item satisfies its share of a duplicate
+quantity requirement; never attack a carrier for an item already worn. Run
+5499 proved that one worn pink ice ring leaves only one ring missing and a worn
+linen robe removes the nanny branch.
 Never wear a finger item that applies a strength penalty. For low-level
 characters with two legal finger slots, prefer two pink ice rings; each gives
 +1 strength and +6 hit points. Only the old-doll reset in Dwarven Daycare room
@@ -953,10 +1249,22 @@ weapon before considering a shop trip, and never accept an arbitrary wielded
 weapon as the primary when backstab gear is available. Live run 2338 verified
 the persisted long slim dagger, exact-selector backstab, a 484-XP nobleman
 kill, and safe healer recovery after this maintenance gate.
-The old dolls can wander north into room 6603. Check up to two exact old-doll
-selectors there before moving south, then keep two independent room-6605
-checks. Live run 2042 saw both dolls in 6603 and proved that walking through
-that room to the empty reset room loses the recovery opportunity.
+Old dolls from the room-6604 reset can wander north into room 6603, but that
+reset has no `E 1 6601` ring load. Observe or bypass those wanderers; do not
+use them as a pink-ring required-loot exception. The room-6605 reset loads two
+mobile-VNUM-6605 dolls and applies its single `E 1 6601` ring load to the last
+created doll. Enter room 6605, use the last exact TARGETMODE selector, and
+perform one carrier attempt per area reset. Keep the second finger objective
+for the existing reboot-local retry cooldown rather than killing the other
+10-XP doll without a possible ring. The room-6602 nanny's separate `E 1 6621`
+reset remains valid for the linen robe. Source evidence comes from
+`daycare.are` at DD4 revision `f2491fd`; do not infer a second ring from the
+mobile reset capacity.
+When a static required-loot `FieldHuntStop` has a known source reset room,
+record it as `source_reset_room_vnum`. The route may pass through a waypoint
+where the same mobile has wandered, but field interception and ordinary target
+evaluation must wait until that registered room. This endpoint gate is generic
+and must not be replaced with character-specific target handling.
 An absent or crowded ring carrier is a temporary area-state miss, not a
 reboot-scoped failure. Rotate through three productive field segments before
 retrying the Daycare ring recovery during the same reboot; a reboot permits an
@@ -1204,6 +1512,12 @@ target, so funding cannot dead-end on ordinary Midgaard transit. On a
 no-combat funding route, any unexpected useful-band or higher attacker is
 terminal for that route: return to healer room 3054 and let campaign rotation
 choose the next policy rather than resuming an intermediate waypoint.
+For the Dwarven Nobleman fastwalk, the source-level-seven goblin lieutenant is
+an allowed below-band transit interruption from level fourteen onward: finish
+it only under the ordinary live combat, health, and crowd gates, record it as
+incidental, and resume the route. Keep the source-level-eight dark horseman
+and wyvern as hard hazards because their damage or procedures can overwhelm a
+nominally below-band character.
 At thief level 15, use the Olive Grove bandit leader after the level-10
 guildmaster cap blocks further progression. The leader wanders among source
 rooms 25202 through 25205, so the reset room alone is not presence evidence:
@@ -1610,6 +1924,15 @@ resets in rooms 8850 and 8843. Keep their closed-door routes and the adjacent
 water-weird hazard behind the normal abort gates, and promote combat only
 after a fresh exact `consider` proves the live level difference useful.
 
+When an outbound official fastwalk sees a source-ranked target at an
+intermediate waypoint, an opportunistic `consider` may collect evidence but
+must not replace the official route with that later relative circuit stop. If
+the target is below-band, crowded, or otherwise rejected, restore the
+pre-intercept stop context, mark the outbound route complete at its actual
+endpoint, and only then resume source-ranked stops. Keep this invariant
+character-independent; the Moria run 5102 failure and the outbound-intercept
+regression capture its need.
+
 ## Local Commit And Commentary Policy
 
 Keep all changes local. Do not push, open pull requests, merge remote branches,
@@ -1644,11 +1967,31 @@ failure.
 Use `python tools/conversation_log.py append --speaker "CODEX COMMENTARY"
 --body "..."` or `--body-file <UTF-8 text file>` for new entries whenever possible;
 the helper emits the exact header and appends UTF-8 bytes without rewriting
-legacy mixed-encoding history. Before restarting or diagnosing the Discord+streamer, run `python tools/conversation_log.py validate`. A malformed
+legacy mixed-encoding history. It must reject a body containing another
+timestamped speaker header; nested headers split one update into misleading
+records. Before restarting or diagnosing the Discord
+streamer, run `python tools/conversation_log.py validate`. A malformed
 headerish line is a format failure to investigate, not a reason to change the
 required header contract. Before every visible progress update, perform this
 checklist: create the timestamped header, append the matching log entry, then
 send the same header and commentary to the user.
+Run the Discord streamer in permanent `--new-only` mode. This is a runtime
+no-rewind guarantee, not merely a startup preference: if the conversation file
+is truncated, replaced, or rewritten, discard queued and partial records and
+checkpoint its new end. Never restart from byte zero or publish historical
+records unless the user explicitly requests a one-off replay.
+Maintain a monotonic local-record timestamp watermark in that mode and reject
+records older than the watermark before queueing. Also reject a queued record
+older than the configured 120-second live-feed age before sending it. These are
+independent backstops: cursor or source-checkpoint damage must never become a
+historical Discord posting burst.
+In `--new-only` mode, also retain a bounded persistent fingerprint ledger keyed
+by speaker and body, independent of the log timestamp. Seed it from the complete
+source history whenever the streamer checkpoints startup at EOF, so an old turn
+from anywhere in the file cannot be re-stamped with a fresh timestamp and
+reposted. Do not apply this semantic deduplication to an explicitly requested
+`--from-start` export. The 2026-08-13 live repair seeded 13,840 historical
+identities and rejected an in-memory restamp of the old 1:37 PM commentary.
 
 ## Commits And Pull Requests
 

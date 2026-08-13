@@ -696,7 +696,7 @@ def test_finger_gap_selects_daycare_old_doll_ring_recovery() -> None:
 
     assert policy.policy_id == "recover-daycare-ring"
     assert policy.execution == "recover-daycare-ring"
-    assert policy.segment_kill_limit == 3
+    assert policy.segment_kill_limit == 2
     assert "+1 strength and +6 hit points" in policy.evidence[0]
 
 

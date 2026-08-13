@@ -12,14 +12,76 @@ headlessly or through a visible Mudlet client in a Windows virtual machine.
 - Make campaign runs resumable; a level-100 test must survive process and VM restarts.
 - Keep AI optional until deterministic behavior and safety boundaries are measurable.
 
-## Current Assessment (2026-08-12)
+## Current Assessment (2026-08-13)
 
 The first five practical milestones are complete as foundations. Async Telnet,
 GMCP, transcripts, SQLite state, YAML profiles, deterministic starter behavior,
 reports, checkpoints, bounded segments, and death/recovery handling are in use.
 The live level-10 matrix is complete for mage, thief, and warrior. The current
-representative campaigns are Aeloria mage level 13, Dorrik warrior level 12,
-and Kestrel thief level 24.
+representative campaigns are Aeloria mage level 13 at 74,825 XP, Dorrik warrior
+level 16 at 123,437 XP, and Kestrel thief level 24 at 360,704 XP. The offline
+suite passes 2,528 tests. Dorrik's level-15 transition is now live evidence:
+run 5246 crossed the boundary, and runs 5231 through 5306 executed
+source-ranked field circuits with no manual target steering before returning
+to healer room 3054. Runs 5249 and 5251 then validated both registered Ambush
+reset rooms at level 14, while run 5261 correctly skipped a non-viable live
+candidate and run 5262 refreshed flight. Runs 5274, 5280, 5284, and 5295 then
+proved productive current-band alternatives after the reboot-scoped Dwarven
+Nobleman probe withdrew at the 15% floor without a kill. Run 5297 checkpointed
+Dorrik at 91,474 XP; run 5302 then completed another successful Shire segment.
+Run 5307 exposed an armed Ambush Bardoosh critical-hit burst that killed him
+after two incidental low-XP goblin interruptions. Purgatory corpse recovery,
+equipment restoration, and healer recovery completed correctly; the death
+penalty left the durable checkpoint at 87,820 XP. The transition checkpoint preserved
+two practices and the live subclass value `none`; the requested knight
+subclass is not being assumed before the level-30 change point. Aeloria and
+Kestrel remain correctly waiting on their reboot-scoped protection and
+cure-critical dependencies rather than false crowd results.
+- Bounded post-repair runs 5308 through 5310 then selected a productive duty
+  target, refreshed flight, completed the ranger circuit, recovered a long bow,
+  and returned Dorrik to healer room 3054 at full resources and 88,279 XP.
+- Runs 5311 through 5316 then completed maintenance, returned through Moria,
+  and killed a Shadow Wraith for 296 XP after two trivial transit interruptions;
+  Dorrik returned safely at 89,572 XP.
+- Runs 5317 through 5319 then completed daycare and flight maintenance and
+  killed the source-matched ranger for 624 XP. The long-bow collection hit the
+  carry-count limit without affecting the successful kill or healer return.
+  Dorrik is now at 90,196 XP.
+- Runs 5320 through 5325 then handled sanctuary/Moria prerequisites, killed a
+  Shire receptionist for 569 XP, and recorded both Wraith rooms absent before
+  returning safely. Dorrik is now at 90,835 XP.
+- Runs 5326 through 5328 followed the source-backed Moria and Wraith circuits;
+  both Wraith rooms remained absent, so no objective kill was forced. Dorrik
+  returned safely at 91,025 XP after incidental field kills.
+- Runs 5329 through 5334 then added a 449-XP ranger kill and a 349-XP Shire
+  receptionist kill; the later Wraith absence was recorded without forcing a
+  low-value fight. Dorrik is now at 91,903 XP.
+- Runs 5335 through 5337 then completed a source-ranked Aruncus kill for 743
+  XP and safe daycare/Moria maintenance. Runs 5338 and 5339 completed two
+  Wraith probes safely; their incidental goblin XP was kept separate from
+  objective evidence. Runs 5344 then completed an Aruncus kill for 919 XP in
+  166.6 seconds with full health before and after. Runs 5345 and 5346 found
+  both Wraith targets absent and kept their incidental goblin XP outside
+  objective evidence. Dorrik is now at 94,264 XP. The selector's new circuit
+  rule compares safe multi-target routes by risk-adjusted source score per
+travel step, preventing a wandering high-score target from hiding a better
+fixed-reset circuit. Run 5353 then re-proved the Dwarven Homestead route with
+a delayed-GMCP, VNUM-resolved below-band bridge goblin and a positive nobleman
+consider without combat. Runs 5354 through 5358 rotated past maintenance,
+crowding, and absence; run 5359 completed a 413-XP current-band ranger kill in
+141.8 seconds and run 5360 completed safe maintenance.
+
+Runs 5392 through 5401 then exercised failed-return recovery, maintenance, and
+low-value or absent route evidence without leaving a campaign worker behind.
+Run 5402 selected source-matched Bardoosh mobile 4515 in room 4514 and earned
+671 objective XP, plus 180 incidental XP from three goblin interruptions, for
+851 XP total before returning to healer room 3054 at full health and movement.
+This is the intended risk/reward balance: the runner remains willing to enter
+a scored aggressive-target risk pool when the source, live `consider`, crowd,
+health, protection, and return gates pass, but it does not promote an explicit
+objective kill below 50 XP as productive history. Wandering kills are keyed by
+tagged source identity, and a fresh route can displace a productive repeat only
+when its risk-adjusted reward per travel step is at least 25% stronger.
 
 This is not yet a HERO proof. A level-100 campaign can resume and checkpoint,
 but it must still stop at a missing or research-gated band. Treat policy status
@@ -43,12 +105,357 @@ runs. Each band must have source identity, live consider and route evidence,
 combat/resource/return evidence, and offline regression coverage. AI-assisted
 decisions remain intentionally deferred.
 
-The immediate work package is to keep the frontier productive while extending
-coverage: carry legacy source-identified XP across level boundaries, let safe
-same-reboot repeats compete with research candidates, add class/subclass
-training and equipment gates, and promote one new level band at a time. See
-[`docs/PROGRESS_AUDIT_2026-08-12.md`](docs/PROGRESS_AUDIT_2026-08-12.md) for the
-full architecture assessment and definition of done.
+The immediate work package is now the level-14-to-30 frontier: preserve the
+newly proven level-boundary behavior, make class-aware training and equipment
+decisions observable at every level, and promote one generic band at a time
+until the level-30 subclass handoff is executable. See
+[`docs/PROGRESS_AUDIT_2026-08-13.md`](docs/PROGRESS_AUDIT_2026-08-13.md) for the
+current architecture assessment and definition of done; the 2026-08-12 audit
+remains the historical record.
+
+## Character-Independent Autonomy Cycle 27 - 2026-08-13
+
+- Run 5353 re-proved the Dwarven Nobleman route through the Miden'nir bridge.
+  A level-6 mountain goblin arrived in abbreviated live text before GMCP; the
+  executor waited for `Char.Enemies`, resolved mobile VNUM 3501, and handled it
+  as incidental below-band combat. The route reached the homestead, recorded a
+  positive consider for mobile 10734, and returned without attacking the
+  research target.
+- Runs 5354 through 5358 reconciled the standalone probe's XP penalty,
+  restocked, and rotated past a crowded Shire room and an absent Aruncus
+  reset. Run 5359 then selected a current-band source-ranked route and killed
+  the source-matched ranger for 413 XP in 141.8 seconds, returning at full
+  resources; run 5360 completed safe maintenance. Dorrik is now level 14 at
+  95,303 XP in healer room 3054.
+- The VNUM-first and delayed-GMCP identity behavior has focused regression
+  coverage, and the full offline suite passes 2,496 tests. The active goal
+  remains level-14-to-30 progression; no remote publication or local commit
+  was attempted under the 24-hour publication policy.
+
+## Character-Independent Autonomy Cycle 29 - 2026-08-13
+
+- Runs 5392 through 5401 exercised return recovery, maintenance, and absent or
+  low-value route evidence. Run 5400's lone 10-XP drunk kill exposed stale
+  wandering-target promotion: the selector had been treating contact as
+  productive because it was keyed to the selected room rather than the tagged
+  source mobile. The repaired ledger now uses source policy identity and
+  requires an explicit objective kill of at least 50 XP for productive history.
+- Run 5402 selected Bardoosh mobile 4515 in room 4514 and earned 671 objective
+  XP plus three incidental 60-XP goblin kills, for 851 XP total. Dorrik reached
+  100,802 XP at level 15 and returned to healer room 3054 at full health and
+  movement without dying. A fresh source route may now outrank a productive
+  repeat only when its risk-adjusted reward per travel step is at least 25%
+  stronger; aggressive requested targets remain soft risk-pool candidates
+  behind the normal source, consider, crowd, health, protection, and return
+  gates.
+- Run 5403 then selected Aruncus the Druid, mobile 300 in room 323, and earned
+  505 objective XP. Dorrik returned to healer room 3054 at full 322/322 HP and
+  290/290 movement, now 13,493 XP short of level 16.
+- Run 5405 repeated the productive Bardoosh route for 351 objective XP and one
+  incidental 70-XP goblin kill. Dorrik returned at full HP and 264/290 movement;
+  13,072 XP remain to level 16.
+- Run 5406 repeated Aruncus for 462 objective XP, returning at full HP and
+  269/290 movement. Dorrik is now 12,610 XP short of level 16.
+- Run 5407 reached the fanatical goblin guard, source mobile 4516, after it
+  wandered into room 4522. Dorrik killed it for 264 XP, took a critical hit,
+  and returned safely after finishing at 228/322 HP. The old run record lacked
+  source attribution because the display-name stop differed from the live
+  wandering identity; the repaired ledger now keys this evidence by VNUM.
+- Run 5408 then accepted the measured Bardoosh repeat: mobile 4515 yielded 460
+  objective XP and a wandering goblin added 70 incidental XP. Dorrik returned
+  without death or flee at full 322/322 HP and 279/290 movement, reaching
+  102,994 XP. This is productive risk/reward evidence, not a safe-return-only
+  result.
+- Run 5409 selected Aruncus for 421 XP in 69.8 seconds and returned at full HP
+  with 272/290 movement. Run 5410 reopened the cooled Shargugh route and
+  confirmed it absent; runs 5411 and 5412 completed flight and provision
+  maintenance without misreporting them as XP progress.
+- Run 5413 reached Bardoosh and SQLite events show a 60-XP goblin-lieutenant
+  interruption followed by a 460-XP Bardoosh kill, but the worker was stopped
+  after its transcript produced no bytes. Run 5414 recovered at healer room
+  3054 with 103,935 XP. The interrupted segment remains failed evidence until
+  its kill metadata is reconciled; orphan cleanup now closes its run row too.
+- Run 5415 confirmed both Shadow Keep Wraith rooms absent after one incidental
+  60-XP goblin interruption. Run 5416 then deliberately reopened the fanatical
+  goblin guard, earned 257 objective XP from mobile 4516, and returned at full
+  HP with 281/290 movement. Dorrik is now 10,488 XP short of level 16.
+- Run 5417 live-validated write-time kill persistence: its incidental goblin
+  row was committed while the run still had status `running`. Run 5418 found
+  Aruncus with a non-hostile Ofcol cityguard, waited through the generic crowd
+  budget, and lost the wandering target. The source-special crowd gate now
+  ignores proven noncombat bystanders immediately and permits `spec_guard` only
+  after one non-hostile interval for alignment 300 or higher. Ambiguous
+  profiles and lower-alignment characters remain blocked.
+- Run 5419 selected the fanatical guard again and earned 286 objective XP plus
+  70 incidental XP, with all three kill rows durable before final cleanup. It
+  returned Dorrik fully recovered at 104,728 XP, 10,072 from level 16. A
+  confirmed objective kill now clears stale target-absence metadata.
+- The full offline suite passes 2,523 tests. This is local work only; no commit
+  or remote publication is due
+  under the 24-hour publication policy. The active goal remains generic
+  level-15-to-30 progression toward the level-30 subclass handoff.
+- The Discord streamer replayed August 2 records after the append-only source
+  became shorter at 11:51 AM. Permanent `--new-only` mode now fingerprints the
+  source identity and preceding 4 KiB at every checkpoint; truncation,
+  replacement, or in-place rewrite discards queued and partial history and
+  resumes at the new end. A second guard now preserves a monotonic record-time
+  watermark and refuses queued records more than 120 seconds old. A third guard
+  fingerprints speaker/body content independently of timestamps and seeds its
+  bounded ledger from the complete source history, preventing a resumed task
+  from reposting any old turn that was appended again with a new timestamp. All
+  18 streamer tests pass; the live process restarted with 13,840 protected
+  content identities, an empty queue, a current watermark, and an exact EOF
+  checkpoint. The conversation writer also rejects nested timestamped headers.
+- Runs 5420 and 5421 found their source objectives absent but earned 60 and 10
+  incidental transit XP. Raw XP had incorrectly reset the no-progress streak,
+  allowing empty probes to keep displacing measured repeats. Source-ranked
+  progress now uses exact objective-kill evidence during live execution and
+  restart reconstruction. Run 5425 validated the repair: it selected mobile
+  4516, earned 303 objective XP, and returned Dorrik full at 105,161 XP.
+- Run 5426 then earned 470 aggregate XP while clearing forced Miden'nir
+  aggression, but its selected goblin leader loaded at level 8 against
+  level-15 Dorrik and paid only 80 XP. Live `Char.Enemies` below-band evidence
+  now makes such an unavoidable kill incidental and persists the exact source
+  policy exclusion; required-loot hunts retain their explicit exception. Run
+  5428 supplied the productive contrast by earning 536 objective XP from the
+  nomad commander and returning Dorrik safely at 106,561 XP, 8,239 from level
+  16.
+- Run 5436 then supplied the clean end-to-end proof. Mobile 3507 loaded at
+  level 8, the unavoidable 80-XP leader kill was durably marked below-band and
+  non-objective in SQLite, and the campaign checkpoint persisted the exact
+  level-15 source-policy exclusion before returning safely to healer room
+  3054. Run 5437 moved on to a live level-11 fanatical guard, earned 113 direct
+  objective XP, and returned Dorrik safely at 108,315 XP, 6,485 from level 16.
+  The full suite passes 2,523 tests.
+- Run 5442 exposed a separate liveness bug when DD4 sent the `where nomad`
+  prompt before the locator rows. The grace wait suppressed that prompt, but
+  its expiry check was itself behind `prompt_ready`, so only the 45-second
+  inactivity watchdog recalled. Locator and magic-shop preflight deadlines now
+  wake before the prompt gate, and their bounded buffers preserve a line break
+  before a late response header without breaking a row split mid-identity.
+  Run 5444 live-validated the complete repair: the leader was mapped to Fungus
+  Temple, the next command was issued immediately, no inactivity watchdog ran,
+  and Dorrik saved and quit at healer room 3054 with 109,271 XP. Focused tests
+  and the full 2,523-test suite pass.
+
+## Character-Independent Autonomy Cycle 33 - 2026-08-13
+
+- Run 5515 killed Dwarven Nobleman mobile 20504 for 963 objective XP and
+  returned safely. Run 5516 then positively located Aruncus in `Grassy plains`
+  but spent its 240-second budget inspecting every differently named source
+  room on the way through the ambiguous room-name group.
+- A mapped wandering locator now combines nonmatching source rooms into safe
+  transit legs, inspects only the reported room-name group, and refreshes once
+  from the actual current room through an all-origin relocation graph. The
+  real Aruncus graph narrows from 42 target checks to seven while retaining
+  every source-backed movement step.
+- Run 5518 earned 930 objective XP from Haglik and 160 incidental transit XP.
+  It returned safely through the runtime watchdog after DD4 reported `The
+  brush is closed`, exposing a noun-specific exit parser. Any source-named
+  closed exit now triggers `open <direction>` and a bounded retry; named locked
+  exits fail closed. Dorrik is safe at healer room 3054 with 121,482 XP,
+  12,118 short of level 17. The complete 2,528-test suite passes.
+- Run 5522 added 619 objective Bardoosh XP. After bounded maintenance, run 5526
+  live-validated locator compaction by following `Path in the plains`, finding
+  Aruncus in room 302, earning 501 objective XP, and returning without the
+  runtime watchdog. Run 5527 then added 655 objective Haglik XP and 160
+  incidental transit XP. Dorrik finished full at healer room 3054 with
+  123,437 XP, 10,163 short of level 17. The named-exit branch remains
+  regression-verified but has not yet received a post-repair live trigger.
+
+## Character-Independent Autonomy Cycle 32 - 2026-08-13
+
+- Source ranking could permanently hide a deeper safe circuit when its only
+  path crossed one aggressive mobile whose normal fuzz straddled the forbidden
+  below-band boundary. The runner already distinguishes live below-band
+  transit attackers from useful-band targets, but the source filter never let
+  that evidence reach it.
+- A generic bounded-borderline gate now admits only one global source instance
+  with no special, fame, shop, or no-XP flag, a maximum fuzzy level exactly at
+  `character level - 4`, and peak-round and critical-hit bounds below current
+  max HP. Live below-band rolls may be defeated; useful-band rolls retain the
+  existing flee-and-return behavior. Fifty hunt-candidate tests, 739 campaign
+  tests, and the complete 2,526-test suite pass.
+- Run 5512 live-validated the Ambush circuit. Three unavoidable below-band
+  transit attackers yielded 160 incidental XP, Haglik mobile 4519 yielded 622
+  tagged objective XP, and the prisoner and elite guard were considered and
+  skipped as below-band. Dorrik returned full to healer room 3054 at 119,429
+  XP, 14,171 short of level 17.
+
+## Character-Independent Autonomy Cycle 31 - 2026-08-13
+
+- Repeated Dwarven Daycare maintenance exposed a carried-only required-loot
+  count: a worn pink ice ring and worn linen robe were invisible to the
+  acquisition planner, so it could overstate duplicate quantities and revisit
+  a carrier whose item was already equipped.
+- Required field-item accounting now combines inventory with the authoritative
+  worn paper doll. Worn copies satisfy duplicate quantities individually; a
+  worn item also closes its single-item carrier branch. The focused starter
+  suite passes 985 tests and the full offline suite passes 2,524 tests.
+- Run 5499 live-validated the repair. The runner searched the registered old
+  doll room for the one remaining ring, traversed the nanny room without a
+  consider or attack, and returned safely to healer room 3054 in 50 seconds.
+  Runs 5498 and 5500 added 580 and 527 objective XP from Bardoosh and Aruncus.
+  Dorrik is level 16 at 117,035 XP, full, and safely logged out at the healer.
+- Runs 5502, 5503, 5506, and 5507 then added another 1,612 objective XP from
+  Bardoosh, Aruncus, ranger, and Bardoosh. Ring and flight maintenance remained
+  bounded between those kills. Dorrik finished full at healer room 3054 with
+  118,647 XP, 14,953 short of level 17.
+
+## Character-Independent Autonomy Cycle 30 - 2026-08-13
+
+- Runs 5447 through 5459 showed that a useful cross-level repeat could be
+  allowlisted by source mobile VNUM yet remain classified as `fresh` under its
+  regenerated level-15 policy ID. That let a measured 50-XP Ambush goblin
+  repeat outrank prior-level Shire and Wyvern kills worth 334 and 389 XP.
+- The selector now promotes an allowlisted cross-level candidate into the
+  productive pool for the current decision. The durable result ledger and all
+  live consider, crowd, route, health, and below-band gates remain unchanged.
+- Run 5460 live-validated the repair by selecting Shire receptionist mobile
+  1131 in room 1157, earning 401 objective XP, and returning Dorrik safely to
+  healer room 3054.
+- Runs 5467 and 5468 then selected the two strongest cross-level repeats back
+  to back: Wyvern ranger 1706 yielded 283 objective XP and Shire receptionist
+  1131 yielded 317. Both runs returned safely to healer room 3054. The third
+  slot found its lower-value Ambush fallback absent rather than forcing a kill.
+  Dorrik is level 15 at 111,291 XP, 3,509 short of level 16. The full offline
+  suite passes 2,523 tests.
+- Runs 5470 through 5488 continued the measured Wyvern/Shire rotation while
+  retaining separate absence and incidental-XP evidence for Shadow Keep and
+  Haon Dor. Run 5493 killed Wyvern ranger 1706 for 380 objective XP and crossed
+  Dorrik to level 16 at 115,129 XP. The live checkpoint records 345 max HP,
+  300 max movement, three practices, subclass `none`, and a safe return to
+  healer room 3054.
+- Runs 5494 through 5496 proved the post-level handoff. The generic executor
+  completed equipment maintenance, refused both Fleshmonger guards on the
+  prohibited below-band consider branch, trained `shield block` and `defense
+  knowledge`, and killed Aruncus mobile 300 for 519 objective XP. Dorrik
+  returned full to healer room 3054 at 115,688 XP with two practices.
+
+## Character-Independent Autonomy Cycle 28 - 2026-08-13
+
+- Runs 5373, 5376, 5378, and 5383 added 332, 337, 533, and 389 XP from
+  source-matched Shire and Wyvern targets. Dorrik then crossed to level 15 at
+  98,229 XP during the bounded 5385-5386 rotation and returned with full
+  resources to healer room 3054.
+- Run 5391 then found a wandering source-matched Undead Soldier in room 16618
+  and earned 956 XP, returning at full health. Fleshmonger and Ambush routes
+  were closed by live below-band evidence instead of being repeated for noise.
+- Selector audit found that a fresh or expired Shadow Keep absence probe could
+  hide a measured same-reboot repeat after the fresh pool's kill cap removed
+  the productive route. The generic selector now compares retry status with
+  measured reward evidence and keeps a productive flight route from being
+  displaced by a low-value ground retry.
+- Focused campaign coverage passes 729 tests and the full offline suite passes
+  2,497 tests. This is a local change only; no commit or remote publication is
+  due under the 24-hour publication policy.
+
+## Character-Independent Autonomy Cycle 26 - 2026-08-13
+
+- Run 5307 tested the generic source-ranked Ambush Bardoosh reset after two
+  incidental goblin interruptions. Live consider was viable and the target
+  was source-matched, but DD4's armed NPC critical stab killed Dorrik at
+  46/295 HP while Bardoosh was nearly dead. This is durable fatal evidence for
+  that exact mobile VNUM, reset room, level, and reboot; it is not permission to
+  retreat to low-XP routes or to retry the same fight blindly.
+- The executor recovered the corpse through Purgatory, restored equipment,
+  reached healer room 3054, and saved and quit. The death penalty reduced XP
+  from 92,389 to 87,820. Objective-kill attribution was tightened so route
+  interruptions cannot be promoted as the deliberate source target.
+- Source-ranked stops now carry a source-derived one-hit critical reserve. The
+  ordinary 15%/10% aggressive field thresholds remain in force for normal
+  fights, but a source-verified critical that can kill overrides the finish
+  floor. High-payoff candidates remain selectable through the existing bounded
+  probe/research pools, preserving risk/reward throughput rather than applying
+  a blanket armed-target ban. The offline suite passes 2,496 tests.
+- The active goal remains generic level-14-to-30 progression. Resume Dorrik
+  from the recovered checkpoint, rotate to productive alternatives, and use
+  the new reserve evidence to improve subsequent class and equipment policy.
+  The Dwarven Nobleman route now permits only the source-level-seven goblin
+  lieutenant as a below-band incidental interruption from level fourteen
+  onward; the horseman and wyvern remain hard hazards. A bounded live retry
+  re-proved that the route reaches the target without accepting low-XP
+  interruptions as objectives; the next work is productive level-14 rotation.
+  No remote publication or local commit was attempted.
+
+## Character-Independent Autonomy Cycle 25 - 2026-08-13
+
+- Runs 5231 through 5242 continued Dorrik's level-13 source-ranked frontier
+  through Shire, Fleshmonger, Grove, provisioning, liquidation, and healer
+  return segments without manual target steering.
+- Run 5246 crossed Dorrik from level 13 to level 14 at 83,427 XP. The live
+  checkpoint recorded 295/295 HP, 280/280 movement, two practices, and
+  subclass `none`; run 5247 then completed the post-level daycare recovery at
+  healer room 3054. No segment stalled and no death or corpse recovery occurred.
+- Runs 5249 and 5251 then killed useful source-matched Ambush targets from two
+  distinct reset rooms for 911 and 514 XP, with liquidation and healer return
+  after each. Dorrik reached 84,852 XP at level 14 without manual steering.
+- Run 5258 added another 551 XP from a productive Ambush repeat; run 5261
+  recorded a live but non-viable Ambush identity and skipped it without combat.
+  Run 5262 refreshed flight. Runs 5274, 5280, 5284, and 5295 then added
+  productive Plains North, Fleshmonger, and Ambush kills. Run 5297 left Dorrik
+  at 91,474 XP; run 5302 then left him at 91,544 XP in healer room 3054, with
+  the active goal still level-14-to-30 progression.
+- The MUD rebooted during this cycle. Runs 5269 and 5271 re-established the
+  Dwarven Nobleman route under the new boot; the kill probe reached the hard
+  15% withdrawal floor without an objective kill, returned as run 5272, and
+  remained negative research evidence rather than a promoted policy. The
+  selector rotated away instead of stalling, and later productive alternatives
+  carried Dorrik to 91,544 XP in healer room 3054; run 5302 then completed a
+  successful Shire continuation and left the campaign ready for resumption.
+- The active goal is updated operationally to the next concrete frontier:
+  execute generic level-14-to-30 progression, confirm class-aware training and
+  the level-30 subclass transition, then expand the same evidence contract to
+  the higher bands. No remote publication or local commit was attempted.
+
+## Character-Independent Autonomy Cycle 24 - 2026-08-13
+
+- Dorrik crossed from level 12 to level 13 on run 5142 and completed the
+  level-13 maintenance and research sequence without manual intervention.
+- Run 5146 completed the registered Mahn-Tor Rock Toad probe safely. The
+  campaign then opened the generic source-ranked executor, which continued to
+  kill source-matched Fleshmonger and Shire targets through run 5174, returning
+  to healer room 3054 after each bounded circuit. Dorrik reached 74,115 XP.
+- This validates the two-stage policy lifecycle: a registered `research` row
+  acquires evidence, then the runtime selector may choose a safe generic
+  source-ranked candidate. Static coverage output must not be mistaken for
+  live proof; campaign segments and objective-kill evidence remain the source
+  of truth.
+- The current read-only DD4 checkout is `f2491fd`; packaged prerequisite and
+  training data retain their pinned `f703daa` evidence revision. No remote
+  publication or local commit was attempted.
+
+## Character-Independent Autonomy Cycle 23 - 2026-08-13
+
+- An outbound fastwalk interception now snapshots the pre-intercept hunt
+  context. A rejected source-ranked target can no longer advance the relative
+  circuit to a later waypoint and then ask the live exit graph for a non-
+  adjacent VNUM. The context is restored, the official endpoint is marked
+  complete, and the source circuit resumes from there.
+- Run 5102 exposed the bug in the Moria large-orc route: the target was seen
+  below-band in room 4011, the character reached room 4022 safely, and the
+  stale relative segment requested room 4010 before recalling. Runs 5103 and
+  5106 then completed clean Fleshmonger kills for 279 XP and 252 XP, returning
+  Dorrik to healer room 3054 at level 12 and 65,469 XP.
+- The focused route checks and full offline suite pass 2,490 tests. No remote
+  publication or local commit was attempted; the active HERO goal resumes at
+  Dorrik's level-13 frontier with 9,135 XP remaining to level 14.
+
+## Character-Independent Autonomy Cycle 22 - 2026-08-12
+
+- Added `source_reset_room_vnum` to field stops so a static required-loot
+  carrier is evaluated only at its source reset room. Direct-command routes may
+  cross a waypoint where the same mobile has wandered, but neither interception
+  nor ordinary target evaluation may consume that waypoint as source evidence.
+- Applied the boundary to the Day Care ring and linen-robe carriers. The new
+  regression proves the nanny is ignored in room 6603 and considered in room
+  6602; this is generic endpoint behavior, not a character-specific rule.
+- Full offline verification now passes 2,489 tests. Dorrik runs 5094 and 5095
+  added 533 live XP and returned him to healer room 3054 at level 12 and 64,515
+  XP. The HERO goal remains active: the next concrete frontier is level 13 and
+  then executable policy coverage beyond the current level-12 band.
+- No remote publication was attempted. The local worktree remains the durable
+  source of truth under the recorded 24-hour commit policy.
 
 ## Practical Milestones
 
@@ -135,6 +542,23 @@ This completes the campaign execution foundation, not a claim that every class
 already has a verified level-2-to-HERO policy. The next progression work must
 collect live evidence for safe XP routes, class abilities, recovery, equipment,
 and failure handling before registering each new level-band policy.
+
+## Character-Independent Autonomy Cycle 21 - 2026-08-12
+
+- The campaign now reports a reboot-scoped cure-critical reserve wait before
+  unrelated crowd handling when negative fame blocks city service.
+- Day Care route evidence was reconciled with `db.c::reset_area`: room 6605's
+  old-doll reset supplies one pink ice ring per area reset. The route no longer
+  attacks room-6603 wanderers for that loot and performs one exact carrier
+  attempt before the existing reset cooldown can seek the second ring.
+- Dorrik's live level-12 continuation reached 63,548 XP. Run 5088 earned 241
+  XP from the source-matched Fleshmonger guard; run 5091 earned 200 XP from the
+  cook and recorded one incidental 20-XP drunk interruption separately. Runs
+  5089 and 5090 demonstrated clean bounded return boundaries with no stale
+  worker left behind.
+- The full offline suite is green at 2,488 tests. The Discord source log and
+  streamer were verified together: Codex and USER records both delivered, with
+  no duplicate in-flight queue remaining. Remote publishing remains manual.
 
 ## Progression Evidence Cycle 1
 
@@ -1963,3 +2387,25 @@ and failure handling before registering each new level-band policy.
   `spec_fido` from hard route-crowd rejection. The full suite is 2,485 tests;
   Dorrik subsequently earned 584 XP from the Shire receptionist and 519 XP
   from two Fleshmonger targets, returning safely after both segments.
+
+## Character-Independent Autonomy Cycle 20 - 2026-08-12
+
+- Reconnect repair is now event-specific. Only an explicit
+  `research_policy_retried` checkpoint can restore a cleared research-policy
+  marker; metadata-repair, policy-rotation, and segment-complete snapshots are
+  derived state and cannot resurrect stale clear decisions. A regression test
+  covers the former reconnect oscillation.
+- When a character still requires sanctuary recovery but that policy is on a
+  reboot-scoped cooldown, the campaign now reports the protection wait before
+  generic crowd handling. Aeloria's level-13 campaign therefore checkpoints as
+  ready at healer room 3054 instead of looping on a false Midgaard crowd.
+- Fresh bounded continuation kept the frontier productive without manual target
+  steering. Dorrik reached 62,672 XP at level 12 after a Shire receptionist
+  kill and two Fleshmonger guard circuits; Kestrel reached 359,301 XP at level
+  24 after an Old Treant kill and two Dwarven Home host kills. Both returned to
+  healer room 3054 with recovery complete.
+- The offline suite now passes 2,487 tests. The source checkout was refreshed
+  and was already at the current upstream revision. The HERO objective remains
+  active: the next work is executable, class-aware policy coverage through the
+  level-30 subclass transition and then the higher level bands, followed by a
+  fresh uninterrupted creation-to-HERO acceptance run.
