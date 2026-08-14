@@ -33,6 +33,10 @@ from .fastwalks import Fastwalk, route_named
 from .hunt_candidates import (
     HuntCandidate,
     ITEM_POTION,
+    ITEM_MONEY,
+    ITEM_CONTAINER,
+    MobReset,
+    WorldSource,
     _bounded_borderline_route_aggressor,
     _shortest_paths_from,
     _mobile_critical_hit_damage,
@@ -45,6 +49,7 @@ from .hunt_candidates import (
     potion_spell_names,
     source_mobile_identities,
     source_mobile_search_rooms,
+    source_route_requires_flight,
 )
 from .progression import (
     _BUY_FLIGHT_POLICY,
@@ -244,12 +249,15 @@ _MAINTENANCE_EXECUTIONS = {
     "borrow-flight",
     "provision-funding",
     "choose-subclass",
+    "empty-money-container",
 }
 _MAINTENANCE_ROUTE_WATCHDOG_EXECUTIONS = frozenset(
     {"upgrade-piercing-weapon"}
 )
 _MAINTENANCE_ROUTE_HAZARDS_KEY = "campaign_maintenance_route_hazards"
-_NON_OBJECTIVE_MAINTENANCE_PHASES = frozenset({"liquidate-loot"})
+_NON_OBJECTIVE_MAINTENANCE_PHASES = frozenset(
+    {"liquidate-loot", "empty-money-container"}
+)
 _LIQUIDATION_BASELINE_KEY = "campaign_liquidation_baseline"
 _PROVISION_FUNDING_REQUIRED_KEY = "campaign_provision_funding_required"
 _PROVISION_FUNDING_ATTEMPTS_KEY = "campaign_provision_funding_attempts"
@@ -302,7 +310,7 @@ _SOURCE_RANKED_CONTINUATION_HEALTH_RATIO = 0.225
 _SOURCE_RANKED_HIGH_RISK_CONTINUATION_HEALTH_RATIO = 0.675
 _SACK_VAULT_ITEMS_KEY = "campaign_sack_vault_items"
 _SACK_VAULT_RECLAIM_LEVEL_KEY = "campaign_sack_vault_reclaim_attempted_level"
-_CAMPAIGN_POLICY_REVISION = 164
+_CAMPAIGN_POLICY_REVISION = 167
 _SOURCE_REVISION_KEY = "campaign_source_revision"
 _FIELD_ROOM_CROWD_ABORT_PREFIX = "field room contained "
 _FIELD_REQUIRED_SANCTUARY_ABORT_FRAGMENT = (
@@ -496,6 +504,9 @@ _SOURCE_RANKED_RETRY_EXHAUSTED_KEY = (
 )
 _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY = (
     "campaign_source_ranked_retry_exhausted_boot"
+)
+_SOURCE_RANKED_XP_LOSS_POLICIES_KEY = (
+    "campaign_source_ranked_xp_loss_policies"
 )
 _SOURCE_SPECIAL_LEVEL_CEILING_REPAIR_KEY = (
     "campaign_source_special_level_ceiling_repair_revision"
@@ -744,6 +755,8 @@ _RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT = 21
 _DAYCARE_RING_ATTEMPT_BOOT_KEY = "campaign_daycare_ring_attempted_boot_id"
 _DAYCARE_RING_COOLDOWN_KEY = "campaign_daycare_ring_cooldown"
 _DAYCARE_RING_COOLDOWN_SEGMENTS = 3
+_DAYCARE_RING_BLOCKED_LEVEL_KEY = "campaign_daycare_ring_blocked_level"
+_DAYCARE_RING_BLOCKED_BOOT_KEY = "campaign_daycare_ring_blocked_boot_id"
 _RECOVER_WAR_DOG_COLLAR_REQUIRED_FREE_WEIGHT = 20
 _RECOVER_FOUNDRY_SET_CIRCLET_REQUIRED_FREE_WEIGHT = 1
 _FOUNDRY_SET_CIRCLET_ATTEMPTED_LEVEL_KEY = (
@@ -830,10 +843,13 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     "campaign_flight_funding_repair_applied",
     "campaign_training_cap_gear_attempted_level",
     "campaign_training_cap_gear_recovered_level",
+    _DAYCARE_RING_BLOCKED_LEVEL_KEY,
+    _DAYCARE_RING_BLOCKED_BOOT_KEY,
     _SOURCE_RANKED_CANDIDATE_KEY,
     _SOURCE_RANKED_FRONTIER_RETRY_KEY,
     _SOURCE_RANKED_RETRY_EXHAUSTED_KEY,
     _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY,
+    _SOURCE_RANKED_XP_LOSS_POLICIES_KEY,
     _PROTECTION_RECOVERY_KEY,
 )
 _CAMPAIGN_METADATA_REPAIRED_REASON = "campaign_metadata_repaired"
@@ -899,6 +915,7 @@ def _synchronize_source_revision(
     state.pop(_SOURCE_RANKED_FRONTIER_RETRY_KEY, None)
     state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
     state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+    state.pop(_SOURCE_RANKED_XP_LOSS_POLICIES_KEY, None)
 
     for key in (_RESEARCH_ABSENCE_COOLDOWN_KEY, _RESEARCH_CROWD_COOLDOWN_KEY):
         values = dict(state.get(key) or {})
@@ -1637,6 +1654,19 @@ def _refresh_policy_revision(
         "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
         "campaign_stalled_segments": 0,
     }
+    if previous_revision < _CAMPAIGN_POLICY_REVISION and (
+        int(refreshed.get("campaign_daycare_ring_attempted_level", -1))
+        == _level(refreshed)
+        and _daycare_ring_below_band_observed(refreshed)
+    ):
+        # The prior cleanup deliberately removed the optional route's generic
+        # below-band result. Preserve the live proof as a level/reboot marker
+        # so an existing campaign does not repeat the same wasted probe.
+        refreshed[_DAYCARE_RING_BLOCKED_LEVEL_KEY] = _level(refreshed)
+        attempted_boot = refreshed.get(_DAYCARE_RING_ATTEMPT_BOOT_KEY)
+        if attempted_boot is not None:
+            refreshed[_DAYCARE_RING_BLOCKED_BOOT_KEY] = attempted_boot
+        refreshed.pop(_DAYCARE_RING_COOLDOWN_KEY, None)
     if previous_revision < 151:
         # Source-ranked negative considers are level-and-reboot terminal. Old
         # checkpoints attached generic retry metadata even though selection
@@ -3214,11 +3244,13 @@ class CampaignRunner:
         self._boot_source_latest_xp: dict[int, int] = {}
         self._recent_source_mobile_kill_vnums: frozenset[int] = frozenset()
         self._gear_catalog: GearCatalog | None = None
+        self._source_world: WorldSource | None = None
         self._boot_id: int | None = None
         self._selected_source_ranked_circuit: tuple[HuntCandidate, ...] = ()
         self._selected_source_consumable_candidate: HuntCandidate | None = None
         self._selected_source_consumable_object_vnums: tuple[int, ...] = ()
         self._selected_source_food_candidate: HuntCandidate | None = None
+        self._selected_money_container_keyword: str | None = None
 
     async def run(self) -> CampaignResult:
         with RunStorage(self.spec.database) as storage:
@@ -3771,12 +3803,15 @@ class CampaignRunner:
 
     def _ensure_gear_catalog(self) -> None:
         """Load local source metadata before a bounded live timeout starts."""
-        if self._gear_catalog is not None:
-            return
         source_directory = Path("runs/dd4-source/server/area")
-        if source_directory.is_dir():
+        if self._gear_catalog is None and source_directory.is_dir():
             self._gear_catalog = load_gear_catalog(
                 str(source_directory.resolve())
+            )
+        if self._source_world is None and source_directory.is_dir():
+            self._source_world = load_world_source(
+                source_directory,
+                include_all_areas=True,
             )
 
     def _needs_piercing_weapon(self, state: dict[str, Any]) -> bool:
@@ -4126,6 +4161,11 @@ class CampaignRunner:
         self._selected_source_consumable_candidate = None
         self._selected_source_consumable_object_vnums = ()
         self._selected_source_food_candidate = None
+        self._selected_money_container_keyword = _source_money_container_keyword(
+            state,
+            gear_catalog=self._gear_catalog,
+            world=self._source_world,
+        )
         throughput_limit = state.get(_SOURCE_RANKED_THROUGHPUT_LIMIT_KEY)
         if (
             isinstance(throughput_limit, Mapping)
@@ -4192,6 +4232,14 @@ class CampaignRunner:
                 or state.get(_DAYCARE_RING_ATTEMPT_BOOT_KEY) == self._boot_id
             )
             and int(state.get(_DAYCARE_RING_COOLDOWN_KEY) or 0) > 0
+        )
+        daycare_ring_blocked_this_level = (
+            int(state.get(_DAYCARE_RING_BLOCKED_LEVEL_KEY, -1))
+            == _level(state)
+            and (
+                self._boot_id is None
+                or state.get(_DAYCARE_RING_BLOCKED_BOOT_KEY) == self._boot_id
+            )
         )
         war_dog_collar_attempted_this_level = (
             int(state.get("campaign_war_dog_collar_attempted_level", -1))
@@ -4321,6 +4369,10 @@ class CampaignRunner:
                 and
                 vault_stow_items
             ),
+            needs_money_container_extraction=(
+                not school_exit_required
+                and self._selected_money_container_keyword is not None
+            ),
             has_food=has_food,
             needs_return_home=bool(
                 needs_healer_recovery
@@ -4398,6 +4450,7 @@ class CampaignRunner:
             needs_daycare_ring=(
                 "finger" in empty_categories
                 and not daycare_ring_attempted_this_level
+                and not daycare_ring_blocked_this_level
                 and _has_campaign_free_weight(
                     state,
                     _RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT,
@@ -5697,6 +5750,7 @@ class CampaignRunner:
                     self.spec.character_profile,
                     policy,
                     current_state=state,
+                    gear_catalog=self._gear_catalog,
                     character_level=_level(state),
                     practice_types_spent=practice_types_spent,
                     rejected_practice_skills=rejected_practice_skills,
@@ -5742,6 +5796,9 @@ class CampaignRunner:
                         source_consumable_object_vnums
                     ),
                     source_food_candidate=source_food_candidate,
+                    money_container_keyword=(
+                        self._selected_money_container_keyword
+                    ),
                 )
         except Exception as exc:
             if self._is_controlled_runtime_boundary(exc):
@@ -6660,7 +6717,15 @@ class CampaignRunner:
             policy=policy,
         )
         if policy.execution == "recover-daycare-ring":
+            daycare_ring_below_band = _daycare_ring_below_band_observed(
+                end_state
+            )
             end_state = _clear_daycare_ring_field_metadata(end_state)
+            if daycare_ring_below_band:
+                end_state[_DAYCARE_RING_BLOCKED_LEVEL_KEY] = _level(end_state)
+                if segment_boot_id is not None:
+                    end_state[_DAYCARE_RING_BLOCKED_BOOT_KEY] = segment_boot_id
+                end_state.pop(_DAYCARE_RING_COOLDOWN_KEY, None)
         if policy.execution == "source-ranked-hunt":
             end_state = _merge_source_ranked_circuit_consider_results(
                 state,
@@ -7433,6 +7498,7 @@ async def _run_policy_segment(
     policy: ProgressionPolicy,
     *,
     current_state: Mapping[str, Any] | None = None,
+    gear_catalog: GearCatalog | None = None,
     character_level: int | None = None,
     practice_types_spent: frozenset[str] = frozenset(),
     rejected_practice_skills: frozenset[str] = frozenset(),
@@ -7447,9 +7513,12 @@ async def _run_policy_segment(
     source_consumable_candidate: HuntCandidate | None = None,
     source_consumable_object_vnums: tuple[int, ...] = (),
     source_food_candidate: HuntCandidate | None = None,
+    money_container_keyword: str | None = None,
     emergency_provision_sale: bool = False,
 ) -> RunResult:
     def starter_runner(**kwargs: Any) -> StarterBotRunner:
+        if gear_catalog is not None:
+            kwargs.setdefault("gear_catalog", gear_catalog)
         if current_state is not None:
             kwargs.setdefault(
                 "verified_combat_pouch_potions",
@@ -7481,6 +7550,13 @@ async def _run_policy_segment(
         return await starter_runner(
             return_home=True,
             emergency_provision_sale=emergency_provision_sale,
+        ).run()
+    if policy.execution == "empty-money-container":
+        return await starter_runner(
+            return_home=True,
+            extract_money_container=True,
+            money_container_keyword=money_container_keyword,
+            require_fastwalk_kill=False,
         ).run()
     if policy.execution == "choose-subclass":
         if not spec.subclass:
@@ -7731,6 +7807,10 @@ async def _run_policy_segment(
                 "no source-safe current-reboot funding target is available"
             )
         candidate = provision_funding_candidate
+        source_world = load_world_source(
+            Path("runs/dd4-source/server/area"),
+            include_all_areas=True,
+        )
         route = Fastwalk(
             name=(
                 "provision funding "
@@ -7745,10 +7825,10 @@ async def _run_policy_segment(
             route_preflight_target=candidate.route_preflight_target,
             route_preflight_hard_hazard=candidate.route_preflight_hard_hazard,
             route_hard_hazard_targets=candidate.route_hard_hazard_targets,
-        )
-        source_world = load_world_source(
-            Path("runs/dd4-source/server/area"),
-            include_all_areas=True,
+            loot_container=_source_candidate_loot_container(
+                source_world,
+                candidate,
+            ),
         )
         required_items: tuple[str, ...] = ()
         if candidate.loot:
@@ -7776,6 +7856,9 @@ async def _run_policy_segment(
                 allow_below_band_for_required_loot=(
                     bool(required_items) and stop.target is not None
                 ),
+                allow_below_band_for_source_coins=(
+                    candidate.contained_coins > 0 and stop.target is not None
+                ),
                 minimum_health_ratio=(
                     0.27 if stop.target is not None else stop.minimum_health_ratio
                 ),
@@ -7788,6 +7871,10 @@ async def _run_policy_segment(
         return await starter_runner(
             objective_level=100,
             fastwalk_route=route,
+            fastwalk_origin_actions=_provision_funding_capacity_relief_actions(
+                current_state,
+                gear_catalog=gear_catalog,
+            ),
             fastwalk_hunt_stops=funding_stops,
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_required_move=_source_candidate_required_move(
@@ -10160,6 +10247,27 @@ def _repair_confirmed_research_kills(
         completed_kill = bool(
             isinstance(objective_kills, list) and objective_kills
         )
+        if end_state.get("campaign_died_during_segment"):
+            total_xp, max_kill_xp, explicit_xp = _objective_kill_xp_stats(
+                objective_kills
+            )
+            fatal_result: dict[str, Any] = {
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "fatal_failure": True,
+                "boot_id": end_state.get("world_boot_id"),
+                "level": _level(end_state),
+            }
+            if completed_kill:
+                fatal_result["objective_kill_observed"] = True
+            if completed_kill and explicit_xp:
+                fatal_result["objective_xp"] = total_xp
+                fatal_result["max_objective_kill_xp"] = max_kill_xp
+            if repaired_results.get(policy_id) != fatal_result:
+                repaired_results[policy_id] = fatal_result
+                changed = True
+            continue
         if result.get("completed_kill") == completed_kill:
             continue
         repaired_results[policy_id] = {
@@ -10191,6 +10299,10 @@ def _repair_confirmed_research_kills(
                 end_state = {}
             objective_kills = _segment_objective_kills(storage, segment)
             if isinstance(objective_kills, list) and objective_kills:
+                if end_state.get("campaign_died_during_segment"):
+                    positive_evidence = None
+                    latest_crowd_evidence = False
+                    continue
                 historical_result = _campaign_research_results(end_state).get(
                     policy_id
                 )
@@ -11025,6 +11137,109 @@ def _candidate_has_saleable_funding_drop(
     )
 
 
+def _provision_funding_capacity_relief_actions(
+    state: Mapping[str, Any] | None,
+    *,
+    gear_catalog: GearCatalog | None,
+) -> tuple[str, ...]:
+    """Free one item slot before funding when safe redundant loot exists."""
+    if gear_catalog is None or not isinstance(state, Mapping):
+        return ()
+    stats = state.get("stats")
+    if not isinstance(stats, Mapping):
+        return ()
+    try:
+        carry_num = int(stats.get("carry_num"))
+        maximum_num = int(stats.get("maxcarry_num"))
+    except (TypeError, ValueError):
+        return ()
+    if maximum_num <= 0 or carry_num < maximum_num:
+        return ()
+
+    descriptions = _inventory_descriptions(state.get("inventory"))
+    counts = Counter(normalize_item_name(description) for description in descriptions)
+    for description in descriptions:
+        normalized = normalize_item_name(description)
+        if counts[normalized] <= 2:
+            continue
+        item = gear_catalog.match(description)
+        if item is None or item.item_type != ITEM_POTION:
+            continue
+        # Prefer a distinctive source keyword over the ambiguous noun
+        # ``potion`` so the command cannot donate the wrong prototype.
+        keyword = _combat_potion_item_keyword(
+            item,
+            gear_catalog.candidates(description),
+        )
+        if keyword:
+            return (f"donate {keyword}",)
+    return ()
+
+
+def _source_candidate_loot_container(
+    world: WorldSource,
+    candidate: HuntCandidate,
+) -> str | None:
+    """Return the source keyword for a mob-carried money container."""
+    for reset in world.mob_resets:
+        if (
+            reset.mobile_vnum != candidate.mobile_vnum
+            or reset.room_vnum != candidate.room_vnum
+        ):
+            continue
+        for container_vnum in reset.object_vnums:
+            container = world.objects.get(container_vnum)
+            if container is None or not world.container_contents.get(container_vnum):
+                continue
+            pending = list(world.container_contents.get(container_vnum, ()))
+            visited: set[int] = set()
+            contains_money = False
+            while pending:
+                object_vnum = pending.pop()
+                if object_vnum in visited:
+                    continue
+                visited.add(object_vnum)
+                item = world.objects.get(object_vnum)
+                if item is None:
+                    continue
+                if item.item_type == ITEM_MONEY:
+                    contains_money = True
+                    break
+                pending.extend(world.container_contents.get(object_vnum, ()))
+            if contains_money:
+                return item_keyword(container)
+    return None
+
+
+def _source_money_container_keyword(
+    state: Mapping[str, Any] | None,
+    *,
+    gear_catalog: GearCatalog | None,
+    world: WorldSource | None,
+) -> str | None:
+    """Find a carried source container whose reset contents include money."""
+    if not isinstance(state, Mapping) or gear_catalog is None or world is None:
+        return None
+    for description in _inventory_descriptions(state.get("inventory")):
+        for container in gear_catalog.candidates(description):
+            if container.item_type != ITEM_CONTAINER:
+                continue
+            pending = list(world.container_contents.get(container.vnum, ()))
+            visited: set[int] = set()
+            while pending:
+                object_vnum = pending.pop()
+                if object_vnum in visited:
+                    continue
+                visited.add(object_vnum)
+                item = world.objects.get(object_vnum)
+                if item is None:
+                    continue
+                if item.item_type == ITEM_MONEY:
+                    return item_keyword(container)
+                pending.extend(world.container_contents.get(object_vnum, ()))
+    return None
+
+
 def _funding_candidate_source_value(candidate: HuntCandidate) -> int:
     """Use source loot and contained coins as a conservative funding proxy."""
     return max(0, int(candidate.source_value)) + max(
@@ -11659,6 +11874,11 @@ def _source_ranked_hunt_stops(
             for destination in remaining_destinations
             if (path := paths.get(destination)) is not None
             and not path[2]
+            and _source_ranked_route_is_traversable(
+                world,
+                path[1],
+                state,
+            )
         ]
         if not choices:
             break
@@ -11707,7 +11927,16 @@ def _source_ranked_hunt_stops(
             for destination in ordered_destinations:
                 room = world.rooms.get(destination)
                 path = relocation_paths.get(destination)
-                if room is None or path is None or path[2]:
+                if (
+                    room is None
+                    or path is None
+                    or path[2]
+                    or not _source_ranked_route_is_traversable(
+                        world,
+                        path[1],
+                        state,
+                    )
+                ):
                     continue
                 label = _source_room_label(room.name)
                 if not label:
@@ -12064,6 +12293,12 @@ def _source_ranked_inter_candidate_route(
     ).get(destination.room_vnum)
     if path is None or len(path[0]) > _SOURCE_RANKED_AREA_CIRCUIT_ROUTE_LIMIT:
         return None
+    if (
+        state is not None
+        and source_route_requires_flight(world, path[1])
+        and not _source_ranked_movement_capability_available(state)
+    ):
+        return None
     if any(
         world.rooms.get(room_vnum) is None
         or world.rooms[room_vnum].area_file != destination.area_file
@@ -12071,6 +12306,45 @@ def _source_ranked_inter_candidate_route(
     ):
         return None
     return tuple(str(room_vnum) for room_vnum in path[1][1:])
+
+
+def _source_ranked_movement_capability_available(
+    state: Mapping[str, Any] | None,
+) -> bool:
+    """Return whether a live character can traverse a source water route."""
+    if state is None:
+        return True
+    if any(
+        _state_has_active_affect(state.get("affects"), affect_name)
+        for affect_name in (
+            "fly",
+            "levitation",
+            "swim",
+            "mist walk",
+            "astral sidestep",
+        )
+    ):
+        return True
+    race = state.get("race")
+    if isinstance(race, str) and race.casefold().strip() in {
+        "sahuagin",
+        "grung",
+    }:
+        return True
+    return _state_has_item(state.get("inventory"), "boat")
+
+
+def _source_ranked_route_is_traversable(
+    world: Any,
+    path_rooms: Collection[int],
+    state: Mapping[str, Any] | None,
+) -> bool:
+    """Reject water transitions whose live movement capability is absent."""
+    return not (
+        state is not None
+        and source_route_requires_flight(world, path_rooms)
+        and not _source_ranked_movement_capability_available(state)
+    )
 
 
 def _source_ranked_area_circuit_candidates(
@@ -14640,6 +14914,12 @@ def _source_ranked_candidate_blocked_by_protection_recovery(
     character_level: int,
 ) -> bool:
     """Defer the exact hunt that caused a current-reboot XP loss."""
+    candidate_policy_id = _source_ranked_policy_id(
+        candidate,
+        character_level=character_level,
+    )
+    if candidate_policy_id in _source_ranked_xp_loss_policy_ids(state):
+        return True
     if not _protection_recovery_required(state):
         return False
     record = state.get(_PROTECTION_RECOVERY_KEY)
@@ -14650,10 +14930,101 @@ def _source_ranked_candidate_blocked_by_protection_recovery(
     policy_id = record.get("policy_id")
     if not isinstance(policy_id, str):
         return False
-    return _source_ranked_policy_id(
-        candidate,
-        character_level=character_level,
-    ) == policy_id
+    return candidate_policy_id == policy_id
+
+
+def _source_ranked_xp_loss_records(
+    state: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], ...]:
+    """Return source-hunt XP-loss records for the current reboot."""
+    boot_id = state.get("world_boot_id")
+    if boot_id is None:
+        return ()
+    raw_records = state.get(_SOURCE_RANKED_XP_LOSS_POLICIES_KEY)
+    if not isinstance(raw_records, (list, tuple)):
+        return ()
+    return tuple(
+        record
+        for record in raw_records
+        if isinstance(record, Mapping)
+        and record.get("boot_id") == boot_id
+        and isinstance(record.get("policy_id"), str)
+    )
+
+
+def _source_ranked_xp_loss_policy_ids(
+    state: Mapping[str, Any],
+) -> set[str]:
+    """Return exact source-hunt policies blocked by a current-reboot XP loss."""
+    return {
+        str(record["policy_id"])
+        for record in _source_ranked_xp_loss_records(state)
+    }
+
+
+def _remember_source_ranked_xp_loss(
+    state: Mapping[str, Any],
+    *,
+    policy_id: str,
+    level: int,
+    boot_id: Any,
+    xp_delta: int,
+) -> dict[str, Any]:
+    """Persist one exact source route that withdrew with a net XP loss."""
+    if not policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX) or boot_id is None:
+        return dict(state)
+    raw_records = state.get(_SOURCE_RANKED_XP_LOSS_POLICIES_KEY)
+    records: list[dict[str, Any]] = []
+    if isinstance(raw_records, (list, tuple)):
+        for raw_record in raw_records:
+            if not isinstance(raw_record, Mapping):
+                continue
+            if (
+                raw_record.get("boot_id") == boot_id
+                and raw_record.get("policy_id") != policy_id
+            ):
+                records.append(dict(raw_record))
+    records.append(
+        {
+            "boot_id": boot_id,
+            "level": level,
+            "policy_id": policy_id,
+            "xp_delta": xp_delta,
+            "reason": (
+                "source-ranked hunt withdrew with an XP loss before an "
+                "objective kill"
+            ),
+        }
+    )
+    updated = dict(state)
+    updated[_SOURCE_RANKED_XP_LOSS_POLICIES_KEY] = records[-64:]
+    return updated
+
+
+def _clear_source_ranked_xp_loss(
+    state: Mapping[str, Any],
+    *,
+    policy_ids: Collection[str],
+) -> dict[str, Any]:
+    """Clear only source routes that have since produced their own kill."""
+    target_policy_ids = {str(policy_id) for policy_id in policy_ids}
+    if not target_policy_ids:
+        return dict(state)
+    raw_records = state.get(_SOURCE_RANKED_XP_LOSS_POLICIES_KEY)
+    if not isinstance(raw_records, (list, tuple)):
+        return dict(state)
+    retained = [
+        dict(record)
+        for record in raw_records
+        if isinstance(record, Mapping)
+        and str(record.get("policy_id") or "") not in target_policy_ids
+    ]
+    updated = dict(state)
+    if retained:
+        updated[_SOURCE_RANKED_XP_LOSS_POLICIES_KEY] = retained
+    else:
+        updated.pop(_SOURCE_RANKED_XP_LOSS_POLICIES_KEY, None)
+    return updated
 
 
 def _source_food_policy_id(
@@ -15296,14 +15667,48 @@ def _provision_funding_completed(
     end_state: Mapping[str, Any],
     objective_kills: Collection[Any] | None,
 ) -> bool:
-    """Treat a direct coin-stash collection as funding progress."""
-    if objective_kills:
+    """Require the selected funding source to produce usable evidence."""
+    if candidate is None:
+        return False
+    currency_increased = _state_copper_value(dict(end_state)) > _state_copper_value(
+        dict(start_state)
+    )
+    if candidate.is_coin_stash:
+        return currency_increased
+
+    matching_kill = False
+    candidate_name = normalize_item_name(candidate.target)
+    candidate_keyword = normalize_item_name(candidate.target_keyword)
+    for kill in objective_kills or ():
+        if not isinstance(kill, Mapping):
+            continue
+        if candidate.mobile_vnum is not None:
+            try:
+                if int(kill.get("source_mobile_vnum")) == int(
+                    candidate.mobile_vnum
+                ):
+                    matching_kill = True
+                    break
+            except (TypeError, ValueError):
+                pass
+        kill_name = normalize_item_name(
+            str(kill.get("mob_name") or kill.get("target") or "")
+        )
+        if kill_name in {candidate_name, candidate_keyword}:
+            matching_kill = True
+            break
+    if not matching_kill:
+        return False
+    if candidate.contained_coins > 0:
+        # A carrier kill without a currency delta usually means the purse or
+        # coin container could not be collected because the inventory was
+        # full. Let the next bounded attempt retry after capacity relief.
+        return currency_increased
+    if not candidate.loot:
         return True
-    return bool(
-        candidate is not None
-        and candidate.is_coin_stash
-        and _state_copper_value(dict(end_state))
-        > _state_copper_value(dict(start_state))
+    return not _missing_required_inventory_items(
+        end_state.get("inventory"),
+        tuple(candidate.loot),
     )
 
 
@@ -16129,6 +16534,18 @@ def _advance_daycare_ring_cooldown(
     )
 
 
+def _daycare_ring_below_band_observed(state: Mapping[str, Any]) -> bool:
+    """Return whether the ring route has direct live below-band evidence."""
+    return any(
+        state.get(key)
+        for key in (
+            "campaign_fastwalk_below_band_targets",
+            "campaign_fastwalk_below_band_sightings",
+            _SOURCE_BELOW_BAND_SIGHTINGS_KEY,
+        )
+    )
+
+
 def _clear_daycare_ring_field_metadata(
     state: dict[str, Any],
 ) -> dict[str, Any]:
@@ -16278,6 +16695,12 @@ def _campaign_segment_end_state(
 ) -> dict[str, Any]:
     """Keep maintenance facts sticky until their owning policy re-evaluates them."""
     merged = dict(current)
+    if not _execution_records_objective_kills(execution):
+        # A maintenance runner can still be attacked by a wandering mobile.
+        # Its transient kill ledger belongs to the run transcript, not to the
+        # campaign objective ledger. Clear it before the checkpoint is saved.
+        merged.pop("campaign_completed_kills", None)
+        merged.pop("campaign_objective_kills", None)
     for key in _CAMPAIGN_STICKY_METADATA_KEYS:
         if key not in merged and key in previous:
             merged[key] = previous[key]
@@ -16373,6 +16796,8 @@ def _campaign_segment_end_state(
         ("recover-daycare-ring", "campaign_daycare_ring_attempted_level"),
         ("recover-daycare-ring", _DAYCARE_RING_ATTEMPT_BOOT_KEY),
         ("recover-daycare-ring", _DAYCARE_RING_COOLDOWN_KEY),
+        ("recover-daycare-ring", _DAYCARE_RING_BLOCKED_LEVEL_KEY),
+        ("recover-daycare-ring", _DAYCARE_RING_BLOCKED_BOOT_KEY),
         ("recover-war-dog-collar", "campaign_war_dog_collar_attempted_level"),
         ("recover-war-dog-collar", _WAR_DOG_COLLAR_ATTEMPT_BOOT_KEY),
         ("recover-war-dog-collar", _WAR_DOG_COLLAR_COOLDOWN_KEY),
@@ -16647,16 +17072,24 @@ def _repair_protection_recovery_metadata(
         if not end or end.get("world_boot_id") != boot_id:
             return None
         outcomes = end.get("campaign_fastwalk_consider_outcomes")
-        if not (
+        objective_kills = _segment_objective_kills(storage, segment)
+        xp_delta = _xp_delta(start, end)
+        has_viable_consider = (
             isinstance(outcomes, Mapping)
             and any(value is True for value in outcomes.values())
-        ):
+        )
+        source_ranked_xp_loss = (
+            phase.startswith(_SOURCE_RANKED_POLICY_PREFIX)
+            and not objective_kills
+            and xp_delta < 0
+        )
+        if not (has_viable_consider or source_ranked_xp_loss):
             return None
         return (
             phase,
             end,
-            _segment_objective_kills(storage, segment),
-            _xp_delta(start, end),
+            objective_kills,
+            xp_delta,
             _hard_health_floor_withdrawal(end),
         )
 
@@ -16686,6 +17119,22 @@ def _repair_protection_recovery_metadata(
         except (AttributeError, KeyError, TypeError):
             continue
     evidence = [hunt_evidence(segment) for segment in normalized_segments]
+    for item in evidence:
+        if item is None:
+            continue
+        phase, end, objective_kills, xp_delta, _hard_health = item
+        if (
+            phase.startswith(_SOURCE_RANKED_POLICY_PREFIX)
+            and not objective_kills
+            and xp_delta < 0
+        ):
+            updated = _remember_source_ranked_xp_loss(
+                updated,
+                policy_id=phase,
+                level=_level(end),
+                boot_id=end.get("world_boot_id"),
+                xp_delta=xp_delta,
+            )
     existing = updated.get(_PROTECTION_RECOVERY_KEY)
     if (
         isinstance(existing, Mapping)
@@ -17529,6 +17978,16 @@ def _merge_protection_recovery_metadata(
         and isinstance(objective_kills, (list, tuple))
         and objective_kills
     )
+    source_kill_policy_ids = (
+        set(_source_ranked_kill_policy_ids(objective_kills))
+        if positive_objective_kill
+        else set()
+    )
+    if source_kill_policy_ids:
+        updated = _clear_source_ranked_xp_loss(
+            updated,
+            policy_ids=source_kill_policy_ids,
+        )
     same_policy_recovery = bool(
         positive_objective_kill
         and isinstance(existing, Mapping)
@@ -17540,6 +17999,18 @@ def _merge_protection_recovery_metadata(
         updated.pop(_PROTECTION_RECOVERY_KEY, None)
         return updated
     execution = str(policy.execution or "")
+    if (
+        execution == "source-ranked-hunt"
+        and not updated.get("campaign_objective_kills")
+        and xp_delta < 0
+    ):
+        updated = _remember_source_ranked_xp_loss(
+            updated,
+            policy_id=policy.policy_id,
+            level=_level(updated),
+            boot_id=updated.get("world_boot_id"),
+            xp_delta=xp_delta,
+        )
     outcomes = updated.get("campaign_fastwalk_consider_outcomes")
     viable = isinstance(outcomes, Mapping) and any(
         value is True for value in outcomes.values()
@@ -17989,11 +18460,15 @@ def _merge_campaign_research_result(
             absence_cooldowns.pop(policy.policy_id, None)
             crowd_cooldowns.pop(policy.policy_id, None)
             source_ranked_crowd_attempts.pop(policy.policy_id, None)
-        if (
-            hunt_without_confirmed_kill
-            and current.get("campaign_died_during_segment")
-        ):
-            results[policy.policy_id] = {
+        if current.get("campaign_died_during_segment"):
+            # A target kill before death is still useful forensic evidence, but
+            # it does not make the route viable: the net attempt lost XP and
+            # must remain blocked until the level or reboot changes.
+            objective_kills = current.get("campaign_objective_kills")
+            total_xp, max_kill_xp, explicit_xp = _objective_kill_xp_stats(
+                objective_kills
+            )
+            fatal_result: dict[str, Any] = {
                 "observed": True,
                 "viable": False,
                 "completed_kill": False,
@@ -18001,6 +18476,12 @@ def _merge_campaign_research_result(
                 "boot_id": current.get("world_boot_id"),
                 "level": _level(current),
             }
+            if objective_kills:
+                fatal_result["objective_kill_observed"] = True
+            if objective_kills and explicit_xp:
+                fatal_result["objective_xp"] = total_xp
+                fatal_result["max_objective_kill_xp"] = max_kill_xp
+            results[policy.policy_id] = fatal_result
             recorded_current_result = True
             absence_cooldowns.pop(policy.policy_id, None)
             crowd_cooldowns.pop(policy.policy_id, None)

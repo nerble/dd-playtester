@@ -29,6 +29,7 @@ from dd4tester.campaign import (
     _apply_flight_funding_state_transition,
     _clear_absent_research_results,
     _clear_daycare_ring_field_metadata,
+    _daycare_ring_below_band_observed,
     _retry_required_sanctuary_research_policy,
     _campaign_should_await_research_reset,
     _retry_current_absent_research_policy,
@@ -65,10 +66,12 @@ from dd4tester.campaign import (
     _source_ranked_level_ceiling_probe_allowed,
     _source_ranked_candidate_from_record,
     _source_ranked_candidate_record,
+    _source_ranked_candidate_blocked_by_protection_recovery,
     _source_ranked_circuit_from_record,
     _source_ranked_circuit_hunt_stops,
     _source_ranked_area_circuit_candidates,
     _source_ranked_inter_candidate_route,
+    _source_ranked_movement_capability_available,
     _source_ranked_preferred_area_circuit,
     _source_ranked_segment_kill_limit,
     _source_ranked_training_reaudit_required,
@@ -85,6 +88,7 @@ from dd4tester.campaign import (
     _SOURCE_RANKED_CANDIDATE_KEY,
     _SOURCE_RANKED_RETRY_EXHAUSTED_KEY,
     _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY,
+    _source_ranked_xp_loss_policy_ids,
     _SOURCE_RANKED_THROUGHPUT_LIMIT_KEY,
     _SOURCE_SPECIAL_LEVEL_CEILING_REPAIR_KEY,
     _source_ranked_fallback_needed,
@@ -154,6 +158,10 @@ from dd4tester.campaign import (
     _repair_source_special_level_ceiling_evidence,
     _research_retry_cooldown_active,
     _refresh_policy_revision,
+    _provision_funding_capacity_relief_actions,
+    _source_candidate_loot_container,
+    _source_money_container_keyword,
+    _provision_funding_completed,
     _record_provision_funding_attempt,
     _record_provision_funding_proceeds,
     _run_equipment_empty_categories,
@@ -302,6 +310,25 @@ def test_maintenance_combat_is_not_recorded_as_objective_kills(tmp_path) -> None
             run_id,
             execution="source-ranked-hunt",
         ) == [{"mob_name": "the drunk", "xp_gained": 10}]
+
+
+def test_maintenance_end_state_clears_transient_incidental_kills() -> None:
+    state = _campaign_segment_end_state(
+        {"level": 17, "campaign_last_policy": "source-ranked-hunt-old"},
+        {
+            "level": 17,
+            "campaign_completed_kills": [
+                {"mob_name": "the drunk", "xp_gained": 20}
+            ],
+            "campaign_objective_kills": [
+                {"mob_name": "the drunk", "xp_gained": 20}
+            ],
+        },
+        execution="liquidate-loot",
+    )
+
+    assert "campaign_completed_kills" not in state
+    assert "campaign_objective_kills" not in state
 
 
 def test_legacy_loot_checkpoint_kill_metadata_is_cleared() -> None:
@@ -3445,6 +3472,72 @@ def test_source_ranked_wanderer_uses_locator_and_source_reachable_rooms() -> Non
     } == {"200", "201", "202"}
 
 
+def test_source_ranked_stops_skip_water_reset_without_capability() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "sentinel",
+                "a water sentinel",
+                15,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            )
+        },
+        rooms={
+            200: RoomSource(
+                200,
+                "Land Room",
+                "test.are",
+                exits={"east": ExitSource("east", 202, 0, -1)},
+            ),
+            202: RoomSource(
+                202,
+                "Water Room",
+                "test.are",
+                exits={"west": ExitSource("west", 200, 0, -1)},
+                sector_type=6,
+            ),
+        },
+        mob_resets=[
+            MobReset(100, 200, 1, ()),
+            MobReset(100, 202, 1, ()),
+        ],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="a water sentinel",
+            level_range=(13, 17),
+            mobile_vnum=100,
+            room_vnum=200,
+        ),
+        target_keyword="sentinel",
+    )
+
+    land_only = _source_ranked_hunt_stops(
+        candidate,
+        world,
+        character_level=17,
+        state={"affects": [], "inventory": [], "race": "dwarf"},
+    )
+    with_flight = _source_ranked_hunt_stops(
+        candidate,
+        world,
+        character_level=17,
+        state={"affects": [[{"name": "fly"}]], "inventory": []},
+    )
+
+    assert [stop.route_vnums for stop in land_only] == [("200",)]
+    assert [stop.route_vnums for stop in with_flight] == [
+        ("200",),
+        ("202",),
+    ]
+    assert _source_ranked_movement_capability_available(
+        {"race": "sahuagin", "affects": [], "inventory": []}
+    )
+
+
 def test_source_ranked_wanderer_routes_through_below_band_aggressive_bystander() -> None:
     world = WorldSource(
         mobiles={
@@ -5786,6 +5879,55 @@ def test_source_ranked_selection_defers_hunt_that_lost_xp_during_recovery() -> N
     )
 
     assert selected == safe
+
+
+def test_source_ranked_selection_defers_only_current_reboot_xp_loss_route() -> None:
+    failed = _source_test_candidate(
+        target="a risky sentinel",
+        level_range=(17, 19),
+        mobile_vnum=20000,
+        room_vnum=20000,
+    )
+    safe = _source_test_candidate(
+        target="a safe sentinel",
+        level_range=(17, 19),
+        mobile_vnum=20001,
+        room_vnum=20001,
+    )
+    failed_policy_id = _source_ranked_policy_id(
+        failed,
+        character_level=18,
+    )
+    current_boot_state = {
+        "level": 18,
+        "world_boot_id": "boot-1",
+        "campaign_source_ranked_xp_loss_policies": [{
+            "boot_id": "boot-1",
+            "level": 18,
+            "policy_id": failed_policy_id,
+            "xp_delta": -218,
+        }],
+    }
+
+    assert _source_ranked_candidate_blocked_by_protection_recovery(
+        failed,
+        current_boot_state,
+        character_level=18,
+    ) is True
+    assert _select_source_ranked_hunt_candidate(
+        (failed, safe),
+        current_boot_state,
+        character_level=18,
+        character_max_hp=264,
+    ) == safe
+    assert _source_ranked_candidate_blocked_by_protection_recovery(
+        failed,
+        {
+            **current_boot_state,
+            "world_boot_id": "boot-2",
+        },
+        character_level=18,
+    ) is False
 
 
 def test_source_ranked_productive_safe_candidate_beats_fresh_audited_research() -> None:
@@ -9315,6 +9457,232 @@ def test_provision_funding_dispatches_one_exact_source_target(
     assert captured["require_fastwalk_kill"] is False
 
 
+def test_provision_funding_frees_one_slot_from_redundant_potions() -> None:
+    potion = ObjectSource(
+        6646,
+        "potion amber",
+        "an amber potion",
+        10,
+        (30,),
+        1500,
+        value_strings=("30", "cure light", "armor", ""),
+    )
+    catalog = GearCatalog({potion.vnum: potion})
+    full_state = {
+        "stats": {"carry_num": 37, "maxcarry_num": 37},
+        "inventory": [[
+            {"quan": "14", "short_desc": "an amber potion"},
+            {"quan": "1", "short_desc": "a big pot pie"},
+            {"quan": "1", "short_desc": "a buffalo water skin"},
+            {"quan": "1", "short_desc": "a small key"},
+        ]],
+    }
+
+    assert _provision_funding_capacity_relief_actions(
+        full_state,
+        gear_catalog=catalog,
+    ) == ("donate amber",)
+    assert _provision_funding_capacity_relief_actions(
+        {**full_state, "stats": {"carry_num": 36, "maxcarry_num": 37}},
+        gear_catalog=catalog,
+    ) == ()
+
+
+def test_empty_money_container_dispatches_to_healer_only_runner(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(database, spec.character_profile, {"level": 16})
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(
+                16,
+                "warrior",
+                needs_money_container_extraction=True,
+            ),
+            money_container_keyword="purse",
+        )
+    )
+
+    assert captured["return_home"] is True
+    assert captured["extract_money_container"] is True
+    assert captured["money_container_keyword"] == "purse"
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_coin_carrier_funding_requires_matching_kill_and_currency_delta() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="the Midget",
+            level_range=(1, 5),
+            mobile_vnum=4408,
+            room_vnum=4411,
+        ),
+        loot=(),
+        source_value=0,
+        contained_coins=50,
+    )
+    start = {"currencies": {"silver": 1, "copper": 1}}
+    unchanged = {"currencies": {"silver": 1, "copper": 1}}
+    funded = {"currencies": {"silver": 1, "copper": 51}}
+
+    assert _provision_funding_completed(
+        candidate,
+        start_state=start,
+        end_state=unchanged,
+        objective_kills=[
+            {"mob_name": "the drunk", "source_mobile_vnum": 4407}
+        ],
+    ) is False
+    assert _provision_funding_completed(
+        candidate,
+        start_state=start,
+        end_state=unchanged,
+        objective_kills=[
+            {"mob_name": "midget", "source_mobile_vnum": 4408}
+        ],
+    ) is False
+    assert _provision_funding_completed(
+        candidate,
+        start_state=start,
+        end_state=funded,
+        objective_kills=[
+            {"mob_name": "midget", "source_mobile_vnum": 4408}
+        ],
+    ) is True
+
+
+def test_source_coin_carrier_exposes_money_container_keyword() -> None:
+    purse = ObjectSource(4411, "purse", "the midget's purse", 15, (30, 5, 0, 0), 0)
+    coins = ObjectSource(4437, "bunch coins", "a bunch of coins", 20, (0, 50, 0, 0), 0)
+    world = WorldSource(
+        objects={purse.vnum: purse, coins.vnum: coins},
+        mob_resets=[MobReset(4408, 4411, 1, (4411,))],
+        container_contents={4411: [4437]},
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="the Midget",
+            level_range=(1, 5),
+            mobile_vnum=4408,
+            room_vnum=4411,
+        ),
+        contained_coins=50,
+    )
+
+    assert _source_candidate_loot_container(world, candidate) == "purse"
+
+
+def test_carried_source_money_container_is_detected_from_inventory() -> None:
+    purse = ObjectSource(
+        4411,
+        "purse",
+        "the midget's purse",
+        15,
+        (30, 5, 0, 0),
+        0,
+    )
+    coins = ObjectSource(
+        4437,
+        "bunch coins",
+        "a bunch of coins",
+        20,
+        (0, 50, 0, 0),
+        0,
+    )
+    world = WorldSource(
+        objects={purse.vnum: purse, coins.vnum: coins},
+        container_contents={purse.vnum: [coins.vnum]},
+    )
+
+    assert _source_money_container_keyword(
+        {"inventory": [[{"short_desc": "the midget's purse"}]]},
+        gear_catalog=GearCatalog({purse.vnum: purse}),
+        world=world,
+    ) == "purse"
+
+
+def test_provision_funding_dispatch_marks_source_coin_carrier_below_band_safe(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    candidate = HuntCandidate(
+        status="promising",
+        score=20,
+        area_file="test.are",
+        mobile_vnum=123,
+        target="a Coin Carrier",
+        target_keyword="carrier",
+        level=5,
+        room_vnum=456,
+        room_name="a test room",
+        route=("south",),
+        source_spawn_limit=1,
+        room_spawn_count=1,
+        boot_kills=0,
+        loot=(),
+        source_value=0,
+        contained_coins=25,
+        hazards=(),
+        estimated_level_range=(3, 7),
+        estimated_base_hp_range=(10, 20),
+        estimated_peak_round_damage=10,
+        autonomy_rejections=(),
+        estimated_move_cost=6,
+    )
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                spec.character_profile,
+                {"level": 18},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(
+                18,
+                "mage",
+                has_food=False,
+                needs_provision_funding=True,
+            ),
+            current_state={"move": 100, "max_move": 100},
+            character_level=18,
+            provision_funding_candidate=candidate,
+        )
+    )
+
+    (stop,) = captured["fastwalk_hunt_stops"]
+    assert stop.required_items == ()
+    assert stop.allow_below_band_for_required_loot is False
+    assert stop.allow_below_band_for_source_coins is True
+
+
 def test_source_ranked_dispatch_runs_a_bounded_multi_target_circuit(
     tmp_path,
     monkeypatch,
@@ -11640,6 +12008,80 @@ def test_viable_failed_hunt_records_protection_recovery_metadata() -> None:
     }
 
 
+def test_source_ranked_xp_loss_is_blocked_without_consider_evidence() -> None:
+    policy = ProgressionPolicy(
+        policy_id="source-ranked-hunt-goblin-caves-20000-20000-18",
+        minimum_level=18,
+        maximum_level=18,
+        status="research",
+        execution="source-ranked-hunt",
+        summary="hunt",
+        evidence=(),
+        practice_skill="bash",
+    )
+
+    merged = _merge_protection_recovery_metadata(
+        {
+            "world_boot_id": "boot-1",
+            "level": 18,
+            "campaign_fastwalk_abort_reason": (
+                "field combat aborted after GMCP reported the live enemy "
+                "level fell outside the safe field band"
+            ),
+            "campaign_fastwalk_consider_outcomes": {},
+            "campaign_objective_kills": [],
+        },
+        policy=policy,
+        xp_delta=-218,
+    )
+
+    assert _source_ranked_xp_loss_policy_ids(merged) == {policy.policy_id}
+    assert merged["campaign_source_ranked_xp_loss_policies"] == [{
+        "boot_id": "boot-1",
+        "level": 18,
+        "policy_id": policy.policy_id,
+        "xp_delta": -218,
+        "reason": (
+            "source-ranked hunt withdrew with an XP loss before an "
+            "objective kill"
+        ),
+    }]
+
+
+def test_campaign_start_repairs_source_ranked_xp_loss_without_consider() -> None:
+    policy_id = "source-ranked-hunt-goblin-caves-20000-20000-18"
+    segments = [
+        {
+            "status": "success",
+            "phase": policy_id,
+            "run_id": 5798,
+            "start_state_json": json.dumps(
+                {"level": 18, "xp": 166498, "world_boot_id": "boot-1"}
+            ),
+            "end_state_json": json.dumps(
+                {
+                    "level": 18,
+                    "xp": 166280,
+                    "world_boot_id": "boot-1",
+                    "campaign_fastwalk_abort_reason": (
+                        "field combat aborted after GMCP reported the live "
+                        "enemy level fell outside the safe field band"
+                    ),
+                    "campaign_fastwalk_consider_outcomes": {},
+                    "campaign_objective_kills": [],
+                }
+            ),
+        }
+    ]
+
+    repaired = _repair_protection_recovery_metadata(
+        {"level": 18, "world_boot_id": "boot-1"},
+        segments,
+    )
+
+    assert _source_ranked_xp_loss_policy_ids(repaired) == {policy_id}
+
+
 def test_hard_health_withdrawal_records_protection_despite_partial_xp() -> None:
     policy = ProgressionPolicy(
         policy_id="source-ranked-hunt-hitower-1303-1312-23",
@@ -12635,6 +13077,74 @@ def test_repair_promotes_historical_research_kill_from_run_record(
         "viable": True,
         "completed_kill": True,
         "boot_id": "boot-1",
+    }
+
+
+def test_repair_blocks_historical_kill_followed_by_death(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    objective_kills = [{"mob_name": "the Jailor", "xp_gained": 750}]
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        run_id = storage.create_run(
+            scenario_name="fastwalk-hightower-jailor:Campaignmage",
+            scenario_path=spec.character_profile,
+        )
+        storage.record_event(
+            run_id,
+            kind="state",
+            payload={"state": "completed", "objective_kills": objective_kills},
+        )
+        storage.finish_run(run_id, status="success")
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="jailor-hunt",
+            start_state={},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=run_id,
+            end_state={
+                "world_boot_id": "boot-1",
+                "level": 18,
+                "campaign_died_during_segment": True,
+                "campaign_objective_kills": objective_kills,
+            },
+            command_count=0,
+            duration_seconds=0,
+        )
+        repaired = _repair_confirmed_research_kills(
+            storage,
+            campaign_id,
+            {
+                "world_boot_id": "boot-1",
+                "campaign_research_results": {
+                    "jailor-hunt": {
+                        "observed": True,
+                        "viable": True,
+                        "completed_kill": True,
+                        "boot_id": "boot-1",
+                    }
+                },
+            },
+        )
+
+    assert repaired["campaign_research_results"]["jailor-hunt"] == {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "boot_id": "boot-1",
+        "level": 18,
+        "objective_kill_observed": True,
+        "objective_xp": 750,
+        "max_objective_kill_xp": 750,
     }
 
 
@@ -14552,6 +15062,42 @@ def test_death_makes_a_research_hunt_fatal_for_the_live_level_and_reboot() -> No
         "fatal_failure": True,
         "boot_id": "boot-1",
         "level": 24,
+    }
+    assert "campaign_research_absence_cooldowns" not in state
+
+
+def test_death_after_objective_kill_keeps_evidence_but_blocks_route() -> None:
+    policy_id = _FAME_RECOVERY_LOTUS_POLICY.policy_id
+    state = _merge_campaign_research_result(
+        {},
+        {
+            "level": 24,
+            "world_boot_id": "boot-1",
+            "campaign_died_during_segment": True,
+            "campaign_fastwalk_target_present_observed": True,
+            "campaign_fastwalk_consider_outcomes": {
+                "chamber attendant": True,
+            },
+            "campaign_objective_kills": [
+                {
+                    "mob_name": "chamber attendant",
+                    "xp_gained": 517,
+                }
+            ],
+        },
+        policy=_FAME_RECOVERY_LOTUS_POLICY,
+    )
+
+    assert state["campaign_research_results"][policy_id] == {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "boot_id": "boot-1",
+        "level": 24,
+        "objective_kill_observed": True,
+        "objective_xp": 517,
+        "max_objective_kill_xp": 517,
     }
     assert "campaign_research_absence_cooldowns" not in state
 
@@ -24579,6 +25125,48 @@ def test_campaign_retries_missing_daycare_rings_after_cooldown_or_reboot(
     assert runner._policy_for_state(state).execution == "recover-daycare-ring"
 
 
+def test_daycare_ring_below_band_block_is_scoped_to_level_and_reboot(
+    tmp_path,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._boot_id = "boot-1"
+    state = {
+        "level": 17,
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": ["finger"],
+        "campaign_outfit_attempted_level": 17,
+        "campaign_daycare_ring_attempted_level": 17,
+        "campaign_daycare_ring_attempted_boot_id": "boot-1",
+        "campaign_daycare_ring_blocked_level": 17,
+        "campaign_daycare_ring_blocked_boot_id": "boot-1",
+    }
+
+    assert runner._policy_for_state(state).execution != "recover-daycare-ring"
+
+    state["level"] = 18
+    assert runner._policy_for_state(state).execution == "recover-daycare-ring"
+
+    state["level"] = 17
+    state["campaign_daycare_ring_blocked_boot_id"] = "old boot"
+    assert runner._policy_for_state(state).execution == "recover-daycare-ring"
+
+
+def test_daycare_ring_below_band_observation_accepts_direct_live_markers() -> None:
+    assert _daycare_ring_below_band_observed(
+        {"campaign_fastwalk_below_band_targets": ["old wrinkled nanny"]}
+    )
+    assert _daycare_ring_below_band_observed(
+        {
+            "campaign_fastwalk_source_below_band_sightings": [
+                {"room_vnum": "6602", "target": "old wrinkled nanny"}
+            ]
+        }
+    )
+    assert not _daycare_ring_below_band_observed({})
+
+
 def test_daycare_ring_retry_cooldown_ignores_maintenance_and_zero_xp() -> None:
     state = {"campaign_daycare_ring_cooldown": 3}
 
@@ -24704,6 +25292,27 @@ def test_policy_revision_preserves_active_daycare_ring_countdown() -> None:
 
     assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
     assert migrated["campaign_daycare_ring_cooldown"] == 1
+
+
+def test_policy_revision_migrates_existing_daycare_below_band_evidence() -> None:
+    migrated = _refresh_policy_revision(
+        {
+            "level": 17,
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION - 1,
+            "campaign_daycare_ring_attempted_level": 17,
+            "campaign_daycare_ring_attempted_boot_id": "boot-1",
+            "campaign_daycare_ring_cooldown": 3,
+            "campaign_fastwalk_below_band_targets": [
+                "old wrinkled nanny"
+            ],
+            "campaign_empty_equipment_categories": ["finger"],
+        }
+    )
+
+    assert migrated["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert migrated["campaign_daycare_ring_blocked_level"] == 17
+    assert migrated["campaign_daycare_ring_blocked_boot_id"] == "boot-1"
+    assert "campaign_daycare_ring_cooldown" not in migrated
 
 
 def test_policy_revision_repairs_daycare_ring_below_band_exclusion() -> None:
@@ -25412,6 +26021,15 @@ def test_poisoned_source_food_does_not_suppress_restock() -> None:
         {"inventory": [[{"short_desc": safe_meat.short_description}]]},
         gear_catalog=catalog,
     )
+
+
+def test_malformed_inventory_quotes_do_not_hide_pie_reserve() -> None:
+    inventory = (
+        '[[{"quan":"1","short_desc":"a scroll which reads "ysafg""},'
+        '{"quan":"2","short_desc":"a big pot pie"}]]'
+    )
+
+    assert _has_campaign_food({"inventory": inventory}, gear_catalog=None)
 
 
 def test_full_inventory_with_poisoned_food_selects_liquidation() -> None:
@@ -29738,6 +30356,9 @@ def test_first_live_maintenance_attempt_records_its_observed_boot(
                 "level": 10,
                 "world_boot_id": "new boot",
                 "campaign_empty_equipment_categories": ["finger"],
+                "campaign_fastwalk_below_band_targets": [
+                    "old wrinkled nanny"
+                ],
             },
         )
 
@@ -29754,6 +30375,9 @@ def test_first_live_maintenance_attempt_records_its_observed_boot(
     )
 
     assert result.state["campaign_daycare_ring_attempted_boot_id"] == "new boot"
+    assert result.state["campaign_daycare_ring_blocked_level"] == 10
+    assert result.state["campaign_daycare_ring_blocked_boot_id"] == "new boot"
+    assert "campaign_daycare_ring_cooldown" not in result.state
 
 
 def test_predeparture_invisibility_abort_retries_daycare_ring_preparation(

@@ -80,6 +80,7 @@ class ProgressionContext:
     has_sellable_loot: bool = False
     needs_coin_deposit: bool = False
     needs_capacity_relief: bool = False
+    needs_money_container_extraction: bool = False
     has_food: bool = True
     needs_provision_funding: bool = False
     has_emergency_provision_sale: bool = False
@@ -1916,6 +1917,25 @@ _RETURN_HOME_POLICY = ProgressionPolicy(
     summary="Leave an interrupted tutorial or field room and recover at the Midgaard healer.",
     evidence=(
         "The starter runner has a source-backed return route from Mud School rooms to healer room 3054.",
+    ),
+    practice_skill=None,
+)
+
+_EMPTY_MONEY_CONTAINER_POLICY = ProgressionPolicy(
+    policy_id="empty-money-container",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="empty-money-container",
+    summary=(
+        "Empty source-verified money containers at the Midgaard healer "
+        "before resuming progression."
+    ),
+    evidence=(
+        "DD4 source resets can place money objects inside containers carried "
+        "by mobiles, such as the Midget's purse in Circus room 4411.",
+        "The healer room is a safe fixed checkpoint; container extraction must "
+        "not require the Mage's Laboratory sale route or unrelated city combat.",
     ),
     practice_skill=None,
 )
@@ -5183,6 +5203,7 @@ def policy_for(
     has_sellable_loot: bool = False,
     needs_coin_deposit: bool = False,
     needs_capacity_relief: bool = False,
+    needs_money_container_extraction: bool = False,
     has_food: bool = True,
     needs_provision_funding: bool = False,
     has_emergency_provision_sale: bool = False,
@@ -5235,6 +5256,7 @@ def policy_for(
         has_sellable_loot=has_sellable_loot,
         needs_coin_deposit=needs_coin_deposit,
         needs_capacity_relief=needs_capacity_relief,
+        needs_money_container_extraction=needs_money_container_extraction,
         has_food=has_food,
         needs_provision_funding=needs_provision_funding,
         has_emergency_provision_sale=has_emergency_provision_sale,
@@ -5421,6 +5443,7 @@ _HANDOFF_BLOCKING_EXECUTIONS = frozenset(
         "restock",
         "sell-loot",
         "vault-spare-gear",
+        "empty-money-container",
         "rearm-weapon",
         "outfit-basic-gear",
         "recover-basic-body",
@@ -5528,6 +5551,8 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _BANK_EXCESS_COIN_POLICY
     if context.needs_capacity_relief:
         return _VAULT_SPARE_GEAR_POLICY
+    if context.needs_money_container_extraction:
+        return _EMPTY_MONEY_CONTAINER_POLICY
     if context.has_sellable_loot:
         # Clear carried drops before buying a replacement weapon. This also
         # handles full item-count capacity, which weight-only rearm checks do

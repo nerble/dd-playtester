@@ -133,8 +133,94 @@ incidental transit XP. Dorrik finished full at healer room 3054 with 123,437
 XP, 10,163 short of level 17. The named-exit branch remains regression-verified
 but not yet post-repair live-validated.
 These are
-representative checkpoints, not a HERO completion claim. The current
-detailed assessment and definition of done live in
+representative checkpoints, not a HERO completion claim. Since that anchor,
+runs 5856-5883 crossed Dorrik to level 19 and added a source-ranked XP-loss
+ledger, safe level-19 Mirror Realm and Shadow Keep kills, an Ambush guard kill,
+and a measured Eastern Desert hidden-attacker throughput result. Runs
+5884-5898 then added hard-health withdrawal and sanctuary-recovery evidence,
+plus a second successful worm route; Dorrik is now at 182,530 XP and safely
+full in healer room 3054. Runs 5899-5918 then widened the source-ranked
+level-19 rotation, including a 996-XP Dwarven giant kill, a 692-XP Solace
+Foreign Trade Representative kill, and bounded empty or incident-only routes;
+Dorrik is now at 184,290 XP and safely full in healer room 3054. Runs
+5919-5933 then added exact Eastern Desert route quarantine, separate alternate
+desert handling, two productive Arachnos routes, and two productive Solace
+Secretary sweeps; Dorrik is now at 189,549 XP and safely full in healer room
+3054. Runs 5934-5973 then extended the generic level-19 rotation through
+Arachnos, Solace, Haon Dor, Hood, Forest, Shadow Keep, Shire, and Arikasbab.
+The exact Arachnos and Arikasbab source policies that lost XP without objective
+kills were deferred for this reboot, while unrelated routes continued; Dorrik
+is now at 197,009 XP and safely full in healer room 3054. Runs 5974-5996 then
+closed the level-19 frontier, deferred a -119-XP Mirror route, and crossed
+Dorrik to level 20 through a Dwarven giant kill. He is now at 203,423 XP with
+444 max HP, 218 max mana, 340 max movement, three practices, and subclass
+`none`, safely in healer room 3054; the first level-20 route is active. The
+Runs 6018-6021 then validated movement-starved Great Eastern Desert recovery:
+the repaired runner waited through a real movement pulse, recalled from legal
+room 5006 without flight, and recovered Dorrik to 444/444 HP, 218/218 mana,
+and 340/340 movement before saving and quitting in healer room 3054. The
+Runs 6022-6025 then resumed the level-20 rotation: after loot liquidation and
+flight maintenance, run 6025 reached Solace room 10295, received a live
+perfect-match consider, killed the source-matched level-19 Secretary for 888
+XP, and returned safely from 176 HP to full healer recovery. Dorrik is now at
+211,328 XP, safely logged out in healer room 3054. The
+Runs 6026-6027 then kept the same generic rotation honest: the Solace
+sergeant locator returned a live below-band no-match and was skipped, while
+the Great Eastern Desert route killed the level-17 giant purple sand worm for
+665 XP. Dorrik is now at 211,993 XP after another full healer recovery and
+safe logout.
+Runs 6028-6030 then liquidated loot, refreshed the safe healer checkpoint, and
+repeated the Solace lieutenant route successfully for another 718 XP. Dorrik
+is now at 212,711 XP after full healer recovery and clean logout.
+Runs 6031-6032 then exercised the Shadow Keep absence gate and a live level-18
+Mirror Realm watchman engagement. The watchman reached 26 HP, but critical
+pound attacks and bleeding forced a flee at 50/444 HP; the net result was a
+safe 193-XP gain after damage credit and the flee loss. Run 6033 killed the
+level-17 giant purple sand worm for 616 objective XP; runs 6034-6035 completed
+loot and return-home maintenance; run 6036 killed the source-matched level-19
+Secretary on the Solace lieutenant route for 622 objective XP. Dorrik is now
+at 214,142 XP, full and safely logged out in healer room 3054. These remain
+representative level-20 checkpoints, not a HERO completion claim.
+Runs 6037-6040 then maintained flight and funding while continuing the generic
+rotation. Run 6037 recorded the live Magic Shop stock, bought a light blue
+potion for 30 copper, confirmed flight, and returned to the healer. Run 6038
+killed the Great Eastern Desert nomad leader for 738 objective XP; run 6039
+sold its long curved sabre for 68 coins; run 6040 killed the level-17 giant
+purple sand worm for 653 objective XP. Dorrik is now at 215,533 XP, full and
+based in healer room 3054. These remain representative level-20 checkpoints,
+not a HERO completion claim.
+Runs 6041-6045 then completed worm loot and return-home maintenance and
+exhausted the absent nomad circuit without forcing a target. Run 6046
+live-validated the source-ranked XP-loss guard: the worm route withdrew for a
+270-XP loss without an objective kill, and the exact level-20 policy was
+deferred for this reboot. Run 6047 then exhausted the Shadow Keep undead
+circuit with no target, while run 6048 selected an unrelated eligible Solace
+Secretary and supplied 733 objective XP. Dorrik is now at 216,794 XP, full and
+safely logged out in healer room 3054. These remain representative level-20
+checkpoints, not a HERO completion claim.
+Run 6049 then exposed a live flee-latency hazard: Dorrik reached 41/444 HP,
+issued the shared 17-percent withdrawal decision, and took one already queued
+combat round to 6/444 before escaping after several DD4 flee failures. He
+survived, recovered at the healer, and finished at 216,813 XP. The executor now
+tracks the largest target-scoped HP loss between authoritative combat snapshots
+and adds one observed round to the greater of that loss or the source critical
+reserve before selecting flee. This is a timing reserve, not a blanket risk
+ban; reset it when the target or combat ends and validate it against live
+transcripts.
+Runs 6050-6051 then recovered the interrupted flight-maintenance segment and
+validated a safe no-target route completion. Runs 6053-6054 exercised two live
+Mirror Realm circuits: one exposed a missing destination-guided GMCP exit and
+the other reached a viable young boy that departed after repeated kick attacks,
+with only 16 HP lost. Run 6055 reached Moria, correctly separated two
+below-band transit kills and 360 incidental XP from the below-band troll
+objective, and returned full. Runs 6056-6059 then collected source-backed
+coins, bought pies and water, repaired food recognition, liquidated a quoted
+scroll safely, and restored the healer checkpoint. Run 6060 recorded a clean
+Crystal target absence; run 6061 rejected a five-mobile Dwarven Home crowd;
+run 6062 then completed two source-matched level-20 woman kills for 1,800
+objective XP, bringing Dorrik to 218,973 XP at full healer recovery. These are
+productive level-20 checkpoints, not a HERO completion claim.
+current detailed assessment and definition of done live in
 `docs/PROGRESS_AUDIT_2026-08-13.md`; the prior audit is historical.
 
 The master product boundary is one character-independent autonomy engine that
@@ -189,10 +275,15 @@ source-connected path is blocked; do not spend a live connection discovering
 that the maze cannot reach its target.
 The Great Eastern Desert pyramid maze also needs a live movement reserve:
 when a no-combat return or outbound search has fewer than 12 movement points,
-sleep until one live step is affordable before issuing another maze move.
-Room 5006 is the legal underground-lake return boundary; if flight or
-levitation is inactive, recall there rather than issuing the impossible west
-step. Never let a movement-starved maze branch spin on repeated navigation.
+sleep until one live step is affordable before issuing another maze move. DD4
+regenerates movement on a randomized 3.75-to-11.25 second character-update
+window, so the decision must carry a 12-second asynchronous wait after the
+specific recovery sleep; repeated sleep commands while already asleep are
+intentional until GMCP reports enough movement. Room 5006 is the legal
+underground-lake return boundary; if flight or levitation is inactive, both
+generic return-home and fastwalk recovery must recall there before any fixed
+route can issue the impossible west step. Never let a movement-starved maze
+branch spin on repeated navigation.
 The Shadow Grove (rooms 1300-1309) is a randomized `no_recall` maze. For
 return-home and fastwalk recovery, navigate by live GMCP exits to room 1300,
 then follow the source-backed reverse route through Haon Dor rooms 6137,
@@ -310,8 +401,15 @@ complete snapshot loses the wield slot
 during combat, recover the previously audited source keyword from the room and
 re-wield it before recurring attacks resume. Treat `You must wield a weapon to
 disarm.` as secondary evidence of the same loss. Equipment stance application
-must converge; stop and re-audit exact worn VNUMs instead of repeating opposing
-swap signatures.
+must converge. Preserve `Char.Items` target selectors and `Char.Worn`
+`instance_id` to source-VNUM mappings for carried objects whose display names
+are ambiguous; issue `wear #<instance_id>` for those objects and accept the
+source VNUM only after the complete worn snapshot confirms it. Never collapse
+distinct live instances back to one display keyword during a stance swap. Keep
+a bounded repeated `(stance, worn VNUMs, inventory selectors, command)` guard;
+if the same equipment state repeats twice, stop the swap, retain the current
+legal gear, record the loop reason, and let the campaign continue rather than
+consuming the 500-command run budget.
 For multi-command shop maintenance, a generic prompt or unrelated room message
 does not acknowledge the pending command. Wait independently for a completed
 `list` response, an explicit purchase result, a wield acknowledgement or fresh
@@ -419,6 +517,18 @@ that policy as protection-recovery evidence and do not immediately reselect the
 same source route. Recover or acquire the required protection first, or choose
 another current-band route; a later retry is allowed only after the recovery
 gate clears.
+For source-ranked hunts, a negative net XP delta before an objective kill is
+also durable evidence when consider outcomes are empty (for example, a live
+GMCP level-band abort). Persist the exact policy, reboot identity, level, and
+delta; exclude only that exact policy on the same reboot, and clear it only
+after that policy records its own objective kill. Do not reject unrelated
+current-band routes.
+During active combat, track the largest HP loss for the current target between
+authoritative snapshots. DD4's `do_flee` waits a violence pulse before reporting
+failure or success, so use one additional observed round plus the greater of
+the source critical-hit reserve and that observed loss as the withdrawal floor.
+Reset the reserve when the target or combat ends; this absorbs command latency
+without turning normal current-band combat into an automatic retreat.
 Treat an explicit hard-health-floor withdrawal as stronger policy-specific
 protection evidence even when partial combat produced a net XP gain. Sanctuary
 may temporarily satisfy the gate, but retain it until that exact policy records
@@ -536,9 +646,11 @@ reapplied the ordinary +1 level ceiling after the six-to-nine-level consider
 gate. Twenty-two failed flee attempts ended in death; the Purgatory controller
 recovered the corpse and returned Kestrel fully equipped to healer room 3054.
 The active-combat GMCP guard must honor the current stop's explicit maximum
-level offset. Any research-hunt death is nevertheless durable fatal evidence:
-do not reopen that exact policy at the same character level and reboot, even
-after ordinary retry cooldowns expire.
+level offset. Any research-hunt death is nevertheless durable fatal evidence,
+including a death after the nominal target kill when the whole attempt loses
+XP: preserve the objective-kill observation for audit, but do not mark the
+route viable or reopen that exact policy at the same character level and
+reboot, even after ordinary retry cooldowns expire.
 Any explicitly audited `spec_cast_mage` hunt must mark sanctuary as required,
 quaff its carried purple potion before the opener, and confirm the sanctuary
 affect before attacking. Live run 4217 exposed the unsafe gap between merely
@@ -719,6 +831,12 @@ terminal for that policy and discard its short retry cooldown instead.
 Persist that below-band result against the selected policy for the current
 character level and reboot. Do not revisit the same surviving mobile until the
 level or reboot identity changes.
+For the optional `recover-daycare-ring` equipment probe, a live below-band
+source target is terminal for the current level and reboot: persist
+`campaign_daycare_ring_blocked_level` and
+`campaign_daycare_ring_blocked_boot_id`, clear the temporary countdown, and
+reopen only after either identity changes. Do not spend productive field
+segments retrying that same ring route.
 Attach a below-band source-mobile key only when the active execution is the
 matching source-ranked policy. Bespoke equipment or maintenance hunts may
 inherit a stale candidate record at their checkpoint boundary; never let that
@@ -900,11 +1018,12 @@ protection, and reward evidence balance risk against XP per trip. When a safe
 fixed-reset area offers multiple isolated targets, rank the whole circuit by
 risk-adjusted source reward per outbound and inter-target travel step. A
 wandering high-score candidate must not suppress that circuit merely because
-it ranked first as a singleton. A death
-without an objective kill is fatal evidence for the exact mobile VNUM, reset
-room, character level, and reboot, and must block blind retries. Tag objective
-kills by exact source identity so incidental transit kills cannot inflate
-progress or promotion evidence.
+it ranked first as a singleton. A death during a source-ranked attempt is
+fatal evidence for the exact mobile VNUM, reset room, character level, and
+reboot, including when an objective kill was recorded before the death and the
+net attempt lost XP. Preserve that kill as forensic evidence, but block blind
+retries. Tag objective kills by exact source identity so incidental transit
+kills cannot inflate progress or promotion evidence.
 Balance risk against throughput rather than minimizing death probability alone.
 An expired absence or retryable probe is not progress evidence: when a
 same-reboot source route has a meaningful measured XP return, let that
@@ -1169,6 +1288,12 @@ liquidation signatures; never treat it as part of an object's identity. Live
 run 2047 validated that this recognizes Aruncus's no-drop strange amulet,
 triggers `heal curse`, destroys it, and disposes of the remaining unsellable
 loot safely.
+DD4 can also emit malformed `Char.Items` JSON when a scroll description contains
+unescaped quotation marks. Keep the structured parser as the first path, but
+fall back to a bounded item-entry recovery that preserves quantities and
+`[#number]` selectors; otherwise a newly purchased pie can disappear from the
+food reserve detector and cause a needless funding loop. Cover this fallback
+with a fixture derived from a redacted live payload.
 For source-ranked wandering targets, first follow the source-backed path from
 any fastwalk staging room into the target area's source endpoint, then issue a
 source-keyword `where` preflight. Require an exact source identity in the
@@ -1980,18 +2105,39 @@ no-rewind guarantee, not merely a startup preference: if the conversation file
 is truncated, replaced, or rewritten, discard queued and partial records and
 checkpoint its new end. Never restart from byte zero or publish historical
 records unless the user explicitly requests a one-off replay.
-Maintain a monotonic local-record timestamp watermark in that mode and reject
-records older than the watermark before queueing. Also reject a queued record
-older than the configured 120-second live-feed age before sending it. These are
-independent backstops: cursor or source-checkpoint damage must never become a
-historical Discord posting burst.
-In `--new-only` mode, also retain a bounded persistent fingerprint ledger keyed
-by speaker and body, independent of the log timestamp. Seed it from the complete
-source history whenever the streamer checkpoints startup at EOF, so an old turn
-from anywhere in the file cannot be re-stamped with a fresh timestamp and
-reposted. Do not apply this semantic deduplication to an explicitly requested
-`--from-start` export. The 2026-08-13 live repair seeded 13,840 historical
-identities and rejected an in-memory restamp of the old 1:37 PM commentary.
+The streamer must keep `allow_historical_replay` set to `false` in its live
+configuration, and `run_from_start_once.bat` must remain disabled. Even after
+an explicit user request, historical replay requires both temporarily setting
+that configuration value to literal `true` and supplying the separate
+`--allow-historical-replay` command-line confirmation. Validate that a denied
+`--reset-state --from-start` attempt leaves the existing checkpoint unchanged.
+Maintain a monotonic local-record timestamp watermark in that mode, set to the
+later of the source tail and the actual restart time. Reject the first record
+at or before that cutover before queueing; after one live append crosses the
+byte cursor, allow additional same-second records because they are still fresh
+appends. Also reject a queued record older than the configured 30-second
+live-feed age before sending it. These are independent backstops: cursor or
+source-checkpoint damage must never become a historical Discord posting burst.
+In `--new-only` mode, append position plus the monotonic local-record timestamp
+watermark define newness. Seed a separate cutover content set from the source
+tail and reject a copied pre-cutover speaker/body pair even when it is
+restamped with a fresh timestamp. Apply this content fence only to `CODEX
+COMMENTARY` and `CODEX FINAL`; never content-dedupe `USER` turns, because
+repeated steering is a legitimate new turn. Include already-delivered Codex
+content in the live fence as well, so a previously published assistant body
+copied later cannot become a second Discord post. Keep exact-record
+fingerprints to prevent the same append from being queued twice or replayed
+after a checkpoint. Retry Discord HTTP 429 responses after their rate-limit delay, but
+do not retry network failures or HTTP 5xx responses because Discord may have
+accepted the request; mark that delivery uncertain and drop it to prefer
+at-most-once posting over duplicate commentary. The 2026-08-14 repair verified
+29 focused streamer tests, one live worker, an empty queue, and an EOF-matching
+checkpoint after cutover. Launch the production worker directly with the
+configured `python.exe` in `run_streamer.bat`; do not restore a `py.exe`
+launcher/child pair, which makes cleanup and duplicate-worker detection
+ambiguous. After any restart, inspect the fresh startup log for `Initial mode:
+new records only` and no historical `Publishing` lines before accepting new
+traffic.
 
 ## Commits And Pull Requests
 

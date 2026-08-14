@@ -84,6 +84,11 @@ _TARGET_SELECTOR_PREFIX = re.compile(
     r"^\s*\[#(?P<target_id>\d+)\]\s*",
     re.MULTILINE,
 )
+_LOOSE_INVENTORY_ENTRY = re.compile(
+    r'"quan"\s*:\s*(?P<quantity>"[^"]*"|\d+)\s*,\s*'
+    r'"short_desc"\s*:\s*"(?P<description>.*?)(?:"\s*})',
+    re.DOTALL,
+)
 _SHOP_LIST_ITEM = re.compile(
     r"^\s*\[\s*(?P<level>\d+)\s+(?P<price>\d+)\]\s+"
     r"(?:(?P<target>\[#\d+\])\s+)?(?P<name>.+?)\s*$",
@@ -852,6 +857,9 @@ _PYRAMID_HEALER_RETURN_COMMANDS = (
 # recover enough for one actual step before asking the randomized maze walker
 # to issue another command.
 _PYRAMID_DESERT_MINIMUM_MAZE_MOVE = 12
+# DD4 regenerates movement on a randomized 3.75-to-11.25 second tick. Wait
+# through the full upper bound after sleeping so the next maze step is real.
+_PYRAMID_DESERT_MOVEMENT_RECOVERY_WAIT_SECONDS = 12.0
 # The Shadow Grove uses randomized exits and blocks recall.  Navigate the
 # grove from live GMCP exits to its stable entrance, then use the source-backed
 # reverse route through Haon Dor and Midgaard to the healer.
@@ -1127,6 +1135,7 @@ class BotDecision:
     command: str
     reason: str
     secret: bool = False
+    wait_seconds: float = 0.0
 
 
 def _decision_payload(decision: BotDecision, stage: str) -> dict[str, Any]:
@@ -1171,6 +1180,7 @@ class FieldHuntStop:
     crowd_retry_delay_seconds: float = 0.0
     allow_local_recovery: bool = False
     allow_below_band_for_required_loot: bool = False
+    allow_below_band_for_source_coins: bool = False
     require_sanctuary: bool = False
     minimum_combat_health_ratio: float = 0.0
     route_vnums: tuple[str, ...] = ()
@@ -1216,6 +1226,8 @@ class StarterPolicy:
         flight_borrowing: bool = False,
         bank_excess_coins: bool = False,
         liquidate_loot: bool = False,
+        extract_money_container: bool = False,
+        money_container_keyword: str | None = None,
         emergency_provision_sale: bool = False,
         loot_sale_counts: Mapping[tuple[str, str], int] | None = None,
         loot_sale_history: list[Mapping[str, Any]] | None = None,
@@ -1306,6 +1318,10 @@ class StarterPolicy:
         self.flight_borrowing = flight_borrowing
         self.bank_excess_coins = bank_excess_coins
         self.liquidate_loot = liquidate_loot
+        self.extract_money_container = extract_money_container
+        self.money_container_keyword = money_container_keyword
+        self.money_container_step = 0
+        self.money_container_complete = not extract_money_container
         self.emergency_provision_sale = emergency_provision_sale
         self.loot_sale_counts = dict(loot_sale_counts or {})
         self.loot_sale_history = [dict(row) for row in loot_sale_history or []]
@@ -1514,6 +1530,9 @@ class StarterPolicy:
         self.field_combat_progress_target: str | None = None
         self.field_combat_lowest_hp: int | None = None
         self.field_combat_last_progress_at: float | None = None
+        self.field_combat_damage_target: str | None = None
+        self.field_combat_previous_hp: int | None = None
+        self.field_combat_max_observed_damage = 0
         self.flee_pending = False
         self.flee_succeeded = False
         self.needs_stand = False
@@ -1850,8 +1869,14 @@ class StarterPolicy:
         self.gear_inventory_signature: tuple[str, ...] = ()
         self.gear_confirmation_required = False
         self.gear_pending_wear_keyword: str | None = None
+        self.gear_pending_wear_selector: str | None = None
         self.gear_response_expectation: str | None = None
         self.gear_unusable_keywords: set[str] = set()
+        self.gear_unusable_selectors: set[str] = set()
+        self.gear_instance_sources: dict[str, int] = {}
+        self.gear_worn_instance_ids: set[str] = set()
+        self.gear_command_history: deque[tuple[Any, ...]] = deque(maxlen=32)
+        self.gear_loop_abort_reason: str | None = None
         self.gear_prohibited_categories: set[str] = set()
         self.gear_allowed_categories: set[str] | None = None
         self.gear_empty_category_counts: Counter[str] = Counter()
@@ -2714,6 +2739,9 @@ class StarterPolicy:
                 if category is not None:
                     self.gear_prohibited_categories.add(category)
             self.gear_unusable_keywords.add(self.gear_pending_wear_keyword)
+            if self.gear_pending_wear_selector is not None:
+                self.gear_unusable_selectors.add(self.gear_pending_wear_selector)
+                self.gear_pending_wear_selector = None
             self.gear_pending_wear_keyword = None
             self.gear_command_queue.clear()
             self.gear_recompute_after_removals = False
@@ -2725,6 +2753,8 @@ class StarterPolicy:
         elif self.gear_pending_wear_keyword is not None and any(
             phrase in recent for phrase in ("you wear ", "you wield ")
         ):
+            if self.gear_pending_wear_selector is not None:
+                self.gear_pending_wear_selector = None
             self.gear_pending_wear_keyword = None
         weapon_acknowledgement = _direct_weapon_slot_acknowledgement(cleaned)
         if weapon_acknowledgement is not None and self.gear_catalog is not None:
@@ -3829,6 +3859,19 @@ class StarterPolicy:
                 )
                 package = str(event.data.get("package", "")).casefold()
                 full_worn_snapshot = package == "char.worn"
+                instance_sources = _equipment_instance_sources(
+                    equipment_value,
+                    self.gear_catalog,
+                )
+                self.gear_instance_sources.update(instance_sources)
+                if full_worn_snapshot:
+                    self.gear_worn_instance_ids = set(instance_sources)
+                    if self.gear_pending_wear_selector is not None:
+                        pending_id = self.gear_pending_wear_selector.removeprefix(
+                            "#"
+                        )
+                        if pending_id in self.gear_worn_instance_ids:
+                            self.gear_pending_wear_selector = None
                 self.gear_worn_structured_current = full_worn_snapshot
                 weapon_slot_seen, weapon_description = (
                     _equipment_weapon_from_payload(equipment_value)
@@ -4082,8 +4125,28 @@ class StarterPolicy:
                 self.pending_recall_origin = None
         if self.pending_travel_origin is not None:
             if _room_key(state) == self.pending_travel_origin:
-                if self.pending_fastwalk_hunt_move:
-                    self.pending_fastwalk_hunt_move = False
+                pending_route_move = (
+                    self.pending_fastwalk_outbound_move
+                    or self.pending_fastwalk_hunt_move
+                )
+                if pending_route_move:
+                    # A movement command can be consumed by combat before DD4
+                    # emits a new-room snapshot.  The cursor was advanced when
+                    # the command was issued, so rewind it before clearing the
+                    # acknowledgement state and let the live exit be retried.
+                    if self.pending_fastwalk_outbound_move:
+                        self.fastwalk_outbound_index = max(
+                            0,
+                            self.fastwalk_outbound_index - 1,
+                        )
+                        self.pending_fastwalk_outbound_move = False
+                    if self.pending_fastwalk_hunt_move:
+                        self.fastwalk_hunt_move_index = max(
+                            0,
+                            self.fastwalk_hunt_move_index - 1,
+                        )
+                        self.pending_fastwalk_hunt_move = False
+                    self.fastwalk_pending_move_command = None
                     self.pending_travel_origin = None
                     if not (
                         self.combat_active or _enemy_records(state.enemies)
@@ -4348,6 +4411,11 @@ class StarterPolicy:
             self.gear_pending_wear_keyword = decision.command.removeprefix(
                 "wear "
             ).strip()
+            self.gear_pending_wear_selector = (
+                self.gear_pending_wear_keyword
+                if self.gear_pending_wear_keyword.startswith("#")
+                else None
+            )
         if decision.command in {"equipment", "eq all"}:
             self.gear_response_expectation = "audit"
         elif decision.command != "wear all" and decision.command.startswith(
@@ -4582,6 +4650,9 @@ class StarterPolicy:
             self.field_combat_progress_target = None
             self.field_combat_lowest_hp = None
             self.field_combat_last_progress_at = None
+            self.field_combat_damage_target = None
+            self.field_combat_previous_hp = None
+            self.field_combat_max_observed_damage = 0
             self.runtime_boundary_finish_deadline = None
             self.runtime_boundary_finish_commands_remaining = 0
             self.runtime_boundary_finish_target = None
@@ -4668,6 +4739,21 @@ class StarterPolicy:
                 f"description {self.spec.description}",
                 "apply the configured character backstory and personality",
             )
+
+        if (
+            self.return_home
+            and state.room_vnum == "3054"
+            and not self.combat_active
+            and not state.in_combat
+            and not _enemy_records(state.enemies)
+            and not self.waiting_for_heal
+            and not self.runtime_boundary_requested
+        ):
+            # Finish healer recovery before a generic equipment audit can
+            # consume the next decision slot at a return-home checkpoint.
+            recovery = self._recovery_decision(state)
+            if recovery is not None:
+                return recovery
 
         if (
             _is_sleeping(state)
@@ -5010,6 +5096,7 @@ class StarterPolicy:
         live_enemies = _enemy_records(state.enemies)
         if self.fastwalk_route is not None and live_enemies:
             self._reconcile_live_enemy_state(live_enemies)
+        self._record_field_combat_damage(state)
         if self.combat_active or (
             self.fastwalk_route is not None and live_enemies
         ):
@@ -5698,12 +5785,25 @@ class StarterPolicy:
                 )
             )
         )
+        carried_provision_needed = bool(
+            (
+                self.needs_food
+                and not self.food_unavailable
+                and _has_inventory_food(state.inventory, self.gear_catalog)
+            )
+            or (
+                self.needs_drink
+                and not self.water_unavailable
+                and _has_inventory_item(state.inventory, "water skin")
+            )
+        )
         if (
             (not self.emergency_provision_sale or emergency_sale_owned_provisions)
-            and not returning_fastwalk_at_healer
+            and (not returning_fastwalk_at_healer or carried_provision_needed)
             and not (
                 self.fastwalk_route is not None
                 and self.fastwalk_defer_provision_resupply
+                and not carried_provision_needed
             )
         ):
             resupply = self._resupply_decision(state)
@@ -5766,6 +5866,17 @@ class StarterPolicy:
             home = self._return_home_decision(state)
             if home is not None:
                 return home
+            if self.extract_money_container:
+                extraction = self._extract_money_container_decision(state)
+                if extraction is not None:
+                    return extraction
+                if self.failure is not None or not self.money_container_complete:
+                    return None
+                return self._begin_midgaard_logout(
+                    state,
+                    save_reason="persist extracted money before progression",
+                    quit_reason="safe money-container extraction complete",
+                )
             return self._begin_midgaard_logout(
                 state,
                 save_reason="persist safe recall recovery",
@@ -6025,8 +6136,138 @@ class StarterPolicy:
         self.failure = f"no starter rule for room {state.room_name!r} ({state.room_vnum})"
         return None
 
+    def _gear_command_state_key(
+        self,
+        state: CharacterState,
+        stance: str,
+        command: str,
+    ) -> tuple[Any, ...]:
+        inventory = tuple(
+            (
+                normalize_item_name(description),
+                selector or "",
+            )
+            for description, selector in _inventory_entries(state.inventory)
+        )
+        worn = tuple(
+            sorted(
+                (item_category(item) or "", item.vnum)
+                for item in self.gear_worn
+            )
+        )
+        return stance, worn, inventory, command
+
+    def _gear_command_would_loop(
+        self,
+        state: CharacterState,
+        stance: str,
+        command: str,
+    ) -> bool:
+        """Stop a repeated live gear state before it consumes the run budget."""
+        key = self._gear_command_state_key(state, stance, command)
+        repeated = sum(previous == key for previous in self.gear_command_history)
+        if repeated >= 2:
+            self.gear_loop_abort_reason = (
+                f"stopped repeated {stance} equipment command {command!r}"
+            )
+            self.gear_command_queue.clear()
+            self.gear_recompute_after_removals = False
+            self.gear_confirmation_required = False
+            self.gear_pending_wear_keyword = None
+            self.gear_pending_wear_selector = None
+            self.gear_applied_stance = stance
+            self.gear_inventory_signature = tuple(
+                sorted(
+                    normalize_item_name(description)
+                    for description in _inventory_descriptions(state.inventory)
+                )
+            )
+            self.gear_audited = True
+            return True
+        self.gear_command_history.append(key)
+        return False
+
+    def _gear_inventory_sources(
+        self,
+        state: CharacterState,
+    ) -> tuple[list[ObjectSource], list[tuple[str, str | None]]]:
+        """Resolve carried objects by exact instance when GMCP has identified it."""
+        if self.gear_catalog is None:
+            return [], []
+        entries = _inventory_entries(state.inventory)
+        candidates: list[ObjectSource] = []
+        for description, selector in entries:
+            if selector is not None and selector in self.gear_unusable_selectors:
+                continue
+            instance_id = selector.removeprefix("#") if selector else None
+            mapped_vnum = (
+                self.gear_instance_sources.get(instance_id)
+                if instance_id is not None
+                else None
+            )
+            item = (
+                self.gear_catalog.objects.get(mapped_vnum)
+                if mapped_vnum is not None
+                else None
+            )
+            if item is None:
+                if not self.gear_catalog.is_unambiguously_usable(
+                    description,
+                    character_class=self.spec.character_class,
+                    subclass=self._active_training_subclass(state),
+                ):
+                    continue
+                item = self.gear_catalog.match(description)
+            if item is None or not character_can_use_item(
+                item,
+                character_class=self.spec.character_class,
+                subclass=self._active_training_subclass(state),
+            ):
+                continue
+            candidates.append(item)
+        return candidates, entries
+
+    def _gear_exact_selector_for_item(
+        self,
+        item: ObjectSource,
+        entries: Iterable[tuple[str, str | None]],
+    ) -> str | None:
+        """Prefer a live object selector over an ambiguous display keyword."""
+        if self.gear_catalog is None:
+            return None
+        desired_name = normalize_item_name(item.short_description)
+        unknown: list[str] = []
+        known: list[str] = []
+        for description, selector in entries:
+            if selector is None or normalize_item_name(description) != desired_name:
+                continue
+            if selector in self.gear_unusable_selectors:
+                continue
+            instance_id = selector.removeprefix("#")
+            if instance_id in self.gear_worn_instance_ids:
+                continue
+            mapped_vnum = self.gear_instance_sources.get(instance_id)
+            if mapped_vnum is not None and mapped_vnum != item.vnum:
+                continue
+            (unknown if mapped_vnum is None else known).append(selector)
+        return (unknown or known or [None])[0]
+
     def _gear_decision(self, state: CharacterState) -> BotDecision | None:
         """Apply the right source-backed loadout before the next activity."""
+        if (
+            self.return_home
+            and not self.runtime_boundary_requested
+            and state.room_vnum == "3054"
+            and _move_ratio(state) < _HEALER_RETURN_MOVE_RATIO
+        ):
+            self.waiting_for_heal = True
+            if _is_sleeping(state):
+                self.prompt_ready = False
+                return None
+            return BotDecision(
+                "sleep",
+                "finish movement recovery at the Midgaard healer before equipment auditing",
+            )
         if (
             self.gear_catalog is None
             or state.dead
@@ -6050,6 +6291,8 @@ class StarterPolicy:
         recomputing_after_removals = False
         if self.gear_command_queue:
             command, reason = self.gear_command_queue.pop(0)
+            if self._gear_command_would_loop(state, stance, command):
+                return None
             if command == "eq all" and reason.startswith(
                 "audit worn items after stance removals"
             ):
@@ -6101,11 +6344,7 @@ class StarterPolicy:
                 f"audit worn items before applying the {stance.replace('_', ' ')} stance",
             )
 
-        carried_candidates = self.gear_catalog.match_many_usable(
-            _inventory_descriptions(state.inventory),
-            character_class=self.spec.character_class,
-            subclass=self._active_training_subclass(state),
-        )
+        carried_candidates, inventory_entries = self._gear_inventory_sources(state)
         inventory_peers = tuple(
             self.gear_catalog.match_many(_inventory_descriptions(state.inventory))
         )
@@ -6148,10 +6387,13 @@ class StarterPolicy:
         ]
         addition_commands = [
             (
-                f"wear {item_command_keyword(item, command_peers)}",
+                f"wear {selector or item_command_keyword(item, command_peers)}",
                 f"equip {stance_label} gear: {item.short_description}",
             )
             for item in additions
+            for selector in [
+                self._gear_exact_selector_for_item(item, inventory_entries)
+            ]
         ]
         refresh_after_removal = any(
             item_command_keyword(addition, command_peers).casefold()
@@ -6545,6 +6787,30 @@ class StarterPolicy:
         if state.max_hp is not None and state.max_hp > 0:
             return min(int(state.max_hp), int(critical_damage))
         return int(critical_damage)
+
+    def _record_field_combat_damage(self, state: CharacterState) -> None:
+        """Track the largest recent HP loss for the next flee attempt."""
+        if not self.combat_active:
+            self.field_combat_damage_target = None
+            self.field_combat_previous_hp = None
+            self.field_combat_max_observed_damage = 0
+            return
+        target = normalize_item_name(self.active_target or "")
+        current_hp = _int_or_none(state.hp)
+        if not target or current_hp is None:
+            return
+        if self.field_combat_damage_target != target:
+            self.field_combat_damage_target = target
+            self.field_combat_previous_hp = current_hp
+            self.field_combat_max_observed_damage = 0
+            return
+        previous_hp = self.field_combat_previous_hp
+        if previous_hp is not None and current_hp < previous_hp:
+            self.field_combat_max_observed_damage = max(
+                self.field_combat_max_observed_damage,
+                previous_hp - current_hp,
+            )
+        self.field_combat_previous_hp = current_hp
 
     def _between_round_combat_decision(
         self,
@@ -10035,10 +10301,15 @@ class StarterPolicy:
             return False, None
         if _is_sleeping(state):
             self.prompt_ready = False
-            return True, None
+            return True, BotDecision(
+                "sleep",
+                "recover enough movement in the no-recall desert for one live maze step",
+                wait_seconds=_PYRAMID_DESERT_MOVEMENT_RECOVERY_WAIT_SECONDS,
+            )
         return True, BotDecision(
             "sleep",
             "recover enough movement in the no-recall desert for one live maze step",
+            wait_seconds=_PYRAMID_DESERT_MOVEMENT_RECOVERY_WAIT_SECONDS,
         )
 
     def _consume_live_maze_abort_decision(
@@ -11600,7 +11871,26 @@ class StarterPolicy:
         # source-registered carrier even when the first consider result was
         # persisted as below-band. Provision funding may deliberately obtain
         # a duplicate saleable drop; ordinary XP hunts retain the terminal skip.
+        if self._allows_below_band_resource_kill(state, stop):
+            return False
+        room_vnum = str(state.room_vnum or self.current_room or "")
+        return any(
+            sighting_room == room_vnum
+            and _stop_target_matches(sighting_target, stop.target, stop)
+            for sighting_room, sighting_target in self.fastwalk_below_band_sightings
+        )
+
+    def _allows_below_band_resource_kill(
+        self,
+        state: CharacterState,
+        stop: FieldHuntStop,
+    ) -> bool:
         if (
+            self.fastwalk_defer_provision_resupply
+            and stop.allow_below_band_for_source_coins
+        ):
+            return True
+        return bool(
             stop.allow_below_band_for_required_loot
             and stop.required_items
             and (
@@ -11610,13 +11900,6 @@ class StarterPolicy:
                     stop.required_items,
                 )
             )
-        ):
-            return False
-        room_vnum = str(state.room_vnum or self.current_room or "")
-        return any(
-            sighting_room == room_vnum
-            and _stop_target_matches(sighting_target, stop.target, stop)
-            for sighting_room, sighting_target in self.fastwalk_below_band_sightings
         )
 
     def _fastwalk_intercept_followup_decision(
@@ -12157,15 +12440,7 @@ class StarterPolicy:
         if self.consider_viable is False:
             below_band_required_loot = bool(
                 stop is not None
-                and stop.allow_below_band_for_required_loot
-                and stop.required_items
-                and (
-                    self.fastwalk_defer_provision_resupply
-                    or self._missing_required_carried_or_worn_items(
-                        state,
-                        stop.required_items,
-                    )
-                )
+                and self._allows_below_band_resource_kill(state, stop)
                 and any(
                     fragment in self.last_response.casefold()
                     for fragment in _CONSIDER_BELOW_BAND_FRAGMENTS
@@ -12359,17 +12634,7 @@ class StarterPolicy:
             and current_stop is not None
             and (
                 current_stop.consider_only
-                or (
-                    current_stop.allow_below_band_for_required_loot
-                    and current_stop.required_items
-                    and (
-                        self.fastwalk_defer_provision_resupply
-                        or self._missing_required_carried_or_worn_items(
-                            state,
-                            current_stop.required_items,
-                        )
-                    )
-                )
+                or self._allows_below_band_resource_kill(state, current_stop)
             )
         )
         if (
@@ -13712,9 +13977,18 @@ class StarterPolicy:
         else:
             normal_floor = max(_FIELD_WITHDRAW_HEALTH_RATIO, stop_floor)
         critical_damage = self._active_source_critical_hit_damage(state)
-        if critical_damage is None or not state.max_hp:
+        if not state.max_hp:
             return normal_floor
-        return max(normal_floor, critical_damage / state.max_hp)
+        observed_damage = self.field_combat_max_observed_damage
+        if critical_damage is None:
+            damage_reserve = observed_damage * 2
+        else:
+            damage_reserve = max(critical_damage, observed_damage) + observed_damage
+        if damage_reserve <= 0:
+            return normal_floor
+        # DD4's flee command waits a violence pulse before reporting failure or
+        # success. Reserve one additional observed round for that in-flight hit.
+        return max(normal_floor, min(1.0, damage_reserve / state.max_hp))
 
     def _sanctuary_expiry_withdraw_reason(
         self,
@@ -14181,6 +14455,56 @@ class StarterPolicy:
                 "are outside the safe live-consider band"
             )
         return f"leave the arena after reaching level {self.objective_level}"
+
+    def _extract_money_container_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Empty one source-verified money container without leaving the healer."""
+        if self.money_container_complete:
+            return None
+        if state.room_vnum != "3054":
+            self.failure = (
+                "money-container extraction reached an unverified room "
+                f"({state.room_name!r}, {state.room_vnum})"
+            )
+            return None
+        if _is_sleeping(state):
+            return BotDecision(
+                "stand",
+                "wake before extracting a money container at the healer",
+            )
+        keyword = self.money_container_keyword
+        if not keyword:
+            self.money_container_complete = True
+            return None
+        if self.money_container_step == 0:
+            self.money_container_step = 1
+            return BotDecision(
+                f"open {keyword}",
+                "open a source-verified carried money container at the healer",
+            )
+        if self.money_container_step == 1:
+            self.money_container_step = 2
+            return BotDecision(
+                f"get all {keyword}",
+                "extract the source-listed coins before field progression",
+            )
+        if self.money_container_step == 2:
+            still_carried = any(
+                keyword.casefold() in description.casefold()
+                for description in _inventory_descriptions(state.inventory)
+            )
+            if still_carried:
+                self.money_container_step = 3
+                return BotDecision(
+                    f"donate {keyword}",
+                    "discard the emptied money container to restore capacity",
+                )
+            self.money_container_complete = True
+            return None
+        self.money_container_complete = True
+        return None
 
     def _liquidate_loot_decision(self, state: CharacterState) -> BotDecision | None:
         """Sell known equipment through source-backed safe Midgaard shops."""
@@ -14918,6 +15242,28 @@ class StarterPolicy:
                 return None
             self.return_home_recovery_commands = _SHADOW_GROVE_HEALER_RETURN_COMMANDS
             self.return_home_recovery_index = 0
+        if (
+            room_vnum == "5006"
+            and not (
+                _has_named_affect(state.affects, "fly")
+                or _has_named_affect(state.affects, "levitation")
+            )
+            and not self.combat_active
+            and not state.in_combat
+            and not state.combat_target
+            and not _enemy_records(state.enemies)
+        ):
+            # The west exit enters the underground lake and requires flight
+            # or a boat. Recall is legal in this tunnel, so stop at this
+            # boundary before any fixed healer route can issue west.
+            if not self.return_home_recall_started:
+                self.return_home_recall_started = True
+                return BotDecision(
+                    "recall",
+                    "recall from the underground lake return tunnel without flight",
+                )
+            self.prompt_ready = False
+            return None
         if self.return_home_recovery_commands is not None:
             if room_vnum == "3054":
                 self.utility_abort_reason = None
@@ -15324,6 +15670,19 @@ class StarterPolicy:
             if self.recovery_wake_command_pending:
                 self.recovery_wake_command_pending = False
                 return None
+            if (
+                self.return_home
+                and state.room_vnum == "3054"
+                and _move_ratio(state) < _HEALER_RETURN_MOVE_RATIO
+            ):
+                self.waiting_for_heal = True
+                if _is_sleeping(state):
+                    self.prompt_ready = False
+                    return None
+                return BotDecision(
+                    "sleep",
+                    "continue sleeping at the Midgaard healer until the movement reserve is ready",
+                )
             if _is_sleeping(state):
                 return BotDecision("stand", "resume training after sanctuary recovery")
             return BotDecision("stand", "resume training after sanctuary recovery")
@@ -16629,6 +16988,8 @@ class StarterBotRunner:
         flight_borrowing: bool = False,
         bank_excess_coins: bool = False,
         liquidate_loot: bool = False,
+        extract_money_container: bool = False,
+        money_container_keyword: str | None = None,
         emergency_provision_sale: bool = False,
         fastwalk_route: Fastwalk | None = None,
         fastwalk_explore_direction: str | None = None,
@@ -16699,6 +17060,8 @@ class StarterBotRunner:
         self.flight_borrowing = flight_borrowing
         self.bank_excess_coins = bank_excess_coins
         self.liquidate_loot = liquidate_loot
+        self.extract_money_container = extract_money_container
+        self.money_container_keyword = money_container_keyword
         self.emergency_provision_sale = emergency_provision_sale
         self.fastwalk_route = fastwalk_route
         self.fastwalk_explore_direction = fastwalk_explore_direction
@@ -16771,6 +17134,8 @@ class StarterBotRunner:
                 if self.city_outfit
                 else f"sell-loot:{self.spec.name}"
                 if self.liquidate_loot
+                else f"empty-money-container:{self.spec.name}"
+                if self.extract_money_container
                 else f"return-home:{self.spec.name}"
                 if self.return_home
                 else f"guildmaster:{self.spec.name}"
@@ -16804,6 +17169,8 @@ class StarterBotRunner:
                 if self.city_outfit
                 else f"sell-loot-{self.spec.name}"
                 if self.liquidate_loot
+                else f"empty-money-container-{self.spec.name}"
+                if self.extract_money_container
                 else f"return-home-{self.spec.name}"
                 if self.return_home
                 else f"guildmaster-{self.spec.name}"
@@ -17018,6 +17385,8 @@ class StarterBotRunner:
                 flight_borrowing=self.flight_borrowing,
                 bank_excess_coins=self.bank_excess_coins,
                 liquidate_loot=self.liquidate_loot,
+                extract_money_container=self.extract_money_container,
+                money_container_keyword=self.money_container_keyword,
                 emergency_provision_sale=self.emergency_provision_sale,
                 loot_sale_history=[
                     dict(row) for row in storage.list_loot_sales(self.spec.name)
@@ -17389,6 +17758,9 @@ class StarterBotRunner:
                 last_policy_progress = last_connection_activity
                 commands += 1
                 policy.after_command(decision)
+                if decision.wait_seconds > 0:
+                    await asyncio.sleep(decision.wait_seconds)
+                    last_policy_progress = asyncio.get_running_loop().time()
 
             if policy.utility_abort_reason is not None:
                 raise RuntimeError(policy.utility_abort_reason)
@@ -17563,6 +17935,7 @@ class StarterBotRunner:
                 ),
                 "campaign_gear_audit_completed": policy.gear_audited,
                 "campaign_gear_applied_stance": policy.gear_applied_stance,
+                "campaign_gear_loop_abort_reason": policy.gear_loop_abort_reason,
                 # Preserve concrete combat output for the campaign planner.  XP can
                 # change after a flee, but it is not useful evidence of a hunt if
                 # the runner did not confirm a deliberate kill.
@@ -22691,28 +23064,78 @@ def _sellable_inventory_keyword(
 
 
 def _inventory_descriptions(value: Any) -> list[str]:
+    return [description for description, _ in _inventory_entries(value)]
+
+
+def _loose_inventory_entries(value: str) -> list[tuple[str, str | None]]:
+    """Recover item descriptions from DD4's occasionally invalid JSON."""
+    entries: list[tuple[str, str | None]] = []
+    for match in _LOOSE_INVENTORY_ENTRY.finditer(value):
+        raw_quantity = match.group("quantity").strip('"')
+        try:
+            quantity = max(1, int(raw_quantity))
+        except ValueError:
+            quantity = 1
+        description = match.group("description")
+        escaped_quotes = re.sub(r'(?<!\\)"', r'\\"', description)
+        try:
+            description = json.loads(f'"{escaped_quotes}"')
+        except json.JSONDecodeError:
+            description = description.replace(r"\u001b", "\x1b")
+        selector_match = _TARGET_SELECTOR_PREFIX.match(
+            _ANSI_ESCAPE.sub("", description)
+        )
+        selector = (
+            f"#{selector_match.group('target_id')}"
+            if selector_match is not None
+            else None
+        )
+        if selector_match is not None:
+            description = description[selector_match.end() :].strip()
+        entries.extend([(description, selector)] * quantity)
+    return entries
+
+
+def _inventory_entries(value: Any) -> list[tuple[str, str | None]]:
+    """Return carried descriptions together with DD4's exact selectors."""
     if isinstance(value, str):
         cleaned = _ANSI_ESCAPE.sub("", value).strip()
         try:
             parsed = json.loads(cleaned)
         except json.JSONDecodeError:
-            return []
-        return _inventory_descriptions(parsed)
+            return _loose_inventory_entries(cleaned)
+        return _inventory_entries(parsed)
     if isinstance(value, dict):
         description = value.get("short_desc")
         quantity = _int_or_none(value.get("quan")) or 1
-        result = (
-            [str(description)] * max(1, quantity)
-            if isinstance(description, str)
-            else []
-        )
-        for item in value.values():
-            result.extend(_inventory_descriptions(item))
+        result: list[tuple[str, str | None]] = []
+        if isinstance(description, str):
+            raw_description = description.strip()
+            cleaned_description = _ANSI_ESCAPE.sub("", raw_description)
+            output_description = raw_description
+            selector: str | None = None
+            prefix = _TARGET_SELECTOR_PREFIX.match(cleaned_description)
+            if prefix is not None:
+                selector = f"#{prefix.group('target_id')}"
+                output_description = raw_description[prefix.end() :].strip()
+            else:
+                raw_selector = value.get("target_selector")
+                raw_target_id = value.get("target_id")
+                if isinstance(raw_selector, str) and raw_selector.startswith("#"):
+                    selector = raw_selector.strip()
+                elif raw_target_id is not None:
+                    selector = f"#{raw_target_id}"
+            result.extend(
+                [(output_description, selector)] * max(1, quantity)
+            )
+        for key, item in value.items():
+            if key not in {"short_desc", "quan", "target_id", "target_selector"}:
+                result.extend(_inventory_entries(item))
         return result
     if isinstance(value, list):
-        result: list[str] = []
+        result: list[tuple[str, str | None]] = []
         for item in value:
-            result.extend(_inventory_descriptions(item))
+            result.extend(_inventory_entries(item))
         return result
     return []
 
@@ -22816,6 +23239,35 @@ def _equipment_sources(value: Any, catalog: GearCatalog) -> list[ObjectSource]:
             result.extend(_equipment_sources(item, catalog))
         return result
     return []
+
+
+def _equipment_instance_sources(value: Any, catalog: GearCatalog) -> dict[str, int]:
+    """Map live object instance IDs to source VNUMs from structured GMCP."""
+    if isinstance(value, str):
+        cleaned = _ANSI_ESCAPE.sub("", value).strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return {}
+        return _equipment_instance_sources(parsed, catalog)
+    if isinstance(value, dict):
+        result: dict[str, int] = {}
+        raw_instance = value.get("instance_id", value.get("target_id"))
+        instance_id = str(raw_instance).strip() if raw_instance is not None else ""
+        vnum = _int_or_none(value.get("vnum"))
+        if instance_id and instance_id != "0" and vnum in catalog.objects:
+            result[instance_id] = vnum
+        for key, item in value.items():
+            if key not in {"instance_id", "target_id", "vnum"}:
+                if isinstance(item, (dict, list)):
+                    result.update(_equipment_instance_sources(item, catalog))
+        return result
+    if isinstance(value, list):
+        result: dict[str, int] = {}
+        for item in value:
+            result.update(_equipment_instance_sources(item, catalog))
+        return result
+    return {}
 
 
 def _equipment_weapon_from_payload(value: Any) -> tuple[bool, str | None]:

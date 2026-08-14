@@ -648,6 +648,19 @@ def test_interrupted_mud_school_funding_run_returns_home_first() -> None:
     assert policy.executable is True
 
 
+def test_money_container_extraction_precedes_loot_sales() -> None:
+    policy = policy_for(
+        16,
+        "warrior",
+        needs_money_container_extraction=True,
+        has_sellable_loot=True,
+    )
+
+    assert policy.policy_id == "empty-money-container"
+    assert policy.execution == "empty-money-container"
+    assert policy.executable is True
+
+
 def test_healer_recovery_precedes_thief_sanctuary_wait() -> None:
     policy = policy_for(
         20,

@@ -34,6 +34,7 @@ from dd4tester.starter import (
     _emergency_provision_potion_keyword,
     _has_named_affect,
     _inventory_descriptions,
+    _inventory_entries,
     _load_source_mobile_level_ranges,
     _load_source_mobile_level_ranges_by_vnum,
     _load_source_mobile_targets,
@@ -359,10 +360,14 @@ def test_pyramid_fastwalk_return_recovers_before_issuing_exhausted_move() -> Non
     assert sleep is not None
     assert sleep.command == "sleep"
     assert "one live maze step" in sleep.reason
+    assert sleep.wait_seconds == 12.0
 
     state.position = 4
     policy.prompt_ready = True
-    assert policy._fastwalk_research_decision(state) is None
+    sleeping = policy._fastwalk_research_decision(state)
+    assert sleeping is not None
+    assert sleeping.command == "sleep"
+    assert sleeping.wait_seconds == 12.0
     assert policy.prompt_ready is False
 
     state.position = 7
@@ -421,6 +426,23 @@ def test_pyramid_return_home_recovers_before_issuing_exhausted_move() -> None:
 
     assert step is not None
     assert step.command == "west"
+
+
+def test_pyramid_return_home_recalls_from_underground_lake_without_flight() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    state = CharacterState(
+        room_vnum="5006",
+        exits={"e": "5007", "w": "5005"},
+        move=200,
+        max_move=290,
+        position=7,
+    )
+
+    decision = policy._return_home_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert "underground lake" in decision.reason
 
 
 def test_shadow_grove_return_home_uses_live_maze_and_source_route() -> None:
@@ -1779,6 +1801,50 @@ def test_previously_recorded_identity_is_not_reapplied() -> None:
 
     assert decision is not None
     assert not decision.command.startswith(("title ", "description "))
+
+
+def test_return_home_healer_recovery_precedes_equipment_audit() -> None:
+    sword = ObjectSource(
+        3021,
+        "sword",
+        "a steel sword",
+        5,
+        (0, 2, 5, 1),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        objective_level=100,
+        return_home=True,
+        gear_catalog=GearCatalog({sword.vnum: sword}),
+        title_configured=True,
+        description_configured=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        area="Midgaard",
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["no_mob", "indoors", "safe", "healing"],
+        position=7,
+        hp=345,
+        max_hp=345,
+        mana=194,
+        max_mana=194,
+        move=242,
+        max_move=300,
+        inventory='[[{"quan":"1","short_desc":"a steel sword"}]]',
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "sleep"
+    assert "healer" in decision.reason
+    assert policy.gear_audit_pending is False
 
 
 def _respond(
@@ -7230,6 +7296,39 @@ def test_provision_funding_can_repeat_a_carried_drop_for_sale() -> None:
     assert policy.combat_active is True
 
 
+def test_provision_funding_can_kill_a_persisted_below_band_coin_carrier() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "coin carrier",
+                allow_below_band_for_source_coins=True,
+            ),
+        ),
+        fastwalk_defer_provision_resupply=True,
+    )
+    policy.current_room = "110"
+    policy.room_targets["110"] = ["coin carrier"]
+    policy.room_target_counts["110"] = {"coin carrier": 1}
+    policy.fastwalk_attack_target = "coin carrier"
+    policy.consider_target = "coin carrier"
+    policy.consider_viable = False
+    policy.fastwalk_below_band_sightings.add(("110", "coin carrier"))
+    policy.last_response = "The coin carrier is no match for you.\n"
+
+    decision = policy._fastwalk_hunt_plan_decision(
+        CharacterState(level=18, room_vnum="110", inventory=[])
+    )
+
+    assert decision is not None
+    assert decision.command == "kill carrier"
+    assert "funding drop" in decision.reason
+    assert policy.combat_active is True
+
+
 def test_persisted_below_band_skip_remains_terminal_for_xp_hunts() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -9723,6 +9822,52 @@ def test_resupply_wakes_and_eats_carried_food_before_general_work() -> None:
     assert eat.command == "eat roast"
 
 
+def test_deferred_fastwalk_return_eats_carried_food_before_logout() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        objective_level=24,
+        fastwalk_route=Fastwalk("coin stash", 1, 100, "south"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "coin stash target"),),
+        fastwalk_defer_provision_resupply=True,
+    )
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    policy.return_home = True
+    policy.fastwalk_returning = True
+    policy.waiting_for_heal = True
+    policy.needs_food = True
+    sleeping = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=380,
+        max_move=380,
+        position=4,
+        area="Midgaard",
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+        inventory=[[{"quan": "2", "short_desc": "a big pot pie"}]],
+    )
+
+    wake = policy.next_decision(sleeping)
+
+    assert wake is not None
+    assert wake.command == "stand"
+    policy.after_command(wake)
+    policy.prompt_ready = True
+    sleeping.position = 7
+
+    eat = policy.next_decision(sleeping)
+
+    assert eat is not None
+    assert eat.command == "eat pie"
+
+
 def test_gmcp_starvation_state_sets_food_need_without_waiting_for_text() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     state = CharacterState(hunger=-10, thirst=6)
@@ -10541,6 +10686,38 @@ def test_source_critical_reserve_overrides_aggressive_finish_floor() -> None:
     )
 
     assert policy._field_combat_withdraw_ratio(state) == pytest.approx(72 / 295)
+
+
+def test_recent_damage_reserve_absorbs_one_flee_round() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "Bardoosh",
+                exact_target=True,
+                source_critical_hit_damage=72,
+            ),
+        ),
+    )
+    policy.active_target = "Bardoosh"
+    policy.active_target_level = 14
+    policy.fastwalk_hunt_stop_index = 0
+    policy.combat_active = True
+    policy.field_combat_damage_target = "bardoosh"
+    policy.field_combat_previous_hp = 160
+    policy.field_combat_max_observed_damage = 60
+    state = CharacterState(
+        level=14,
+        hp=100,
+        max_hp=295,
+        enemies=[
+            [{"name": "Bardoosh", "level": "14", "hp": "80", "maxhp": "203"}]
+        ],
+    )
+
+    assert policy._field_combat_withdraw_ratio(state) == pytest.approx(132 / 295)
 
 
 def test_source_objective_kills_require_exact_mobile_identity() -> None:
@@ -12444,6 +12621,59 @@ def test_field_expedition_retries_move_rejected_by_combat() -> None:
 
     assert policy.fastwalk_hunt_move_index == 0
     assert policy.pending_fastwalk_hunt_move is False
+
+
+def test_field_expedition_rewinds_move_when_combat_keeps_the_origin_room() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(
+            FieldHuntStop(("west", "south"), actions=("get sack",)),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_preflight_food_attempted = True
+    policy.current_room = "3505"
+    state = CharacterState(
+        hp=105,
+        max_hp=105,
+        mana=289,
+        max_mana=289,
+        position=6,
+        room_vnum="3505",
+        enemies=[[{"name": "the goblin", "level": "5"}]],
+    )
+
+    move = policy.next_decision(
+        CharacterState(
+            hp=105,
+            max_hp=105,
+            mana=289,
+            max_mana=289,
+            position=7,
+            room_vnum="3505",
+        )
+    )
+    assert move is not None
+    assert move.command == "west"
+    policy.after_command(move)
+    policy.combat_active = True
+    policy.active_target = "the goblin"
+    policy.active_target_level = 5
+    policy.prompt_ready = True
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert policy.fastwalk_hunt_move_index == 0
+    assert policy.pending_fastwalk_hunt_move is False
+    assert policy.fastwalk_pending_move_command is None
 
 
 @pytest.mark.parametrize(
@@ -24101,6 +24331,19 @@ def test_inventory_descriptions_parse_serialized_gmcp_inventory() -> None:
     ]
 
 
+def test_inventory_descriptions_recover_unescaped_quotes_from_gmcp() -> None:
+    value = (
+        '[[{"quan":"1","short_desc":"a scroll which reads "ysafg""},'
+        '{"quan":"2","short_desc":"[#23138] a big pot pie"}]]'
+    )
+
+    assert _inventory_descriptions(value) == [
+        'a scroll which reads "ysafg"',
+        "a big pot pie",
+        "a big pot pie",
+    ]
+
+
 def test_inventory_descriptions_expand_stacked_quantities() -> None:
     value = [[{"quan": "2", "short_desc": "a pair of blue snakeskin boots"}]]
 
@@ -24122,6 +24365,100 @@ def test_targetmode_inventory_remains_usable_by_starter_policy() -> None:
 
     assert _inventory_descriptions(state.inventory) == ["a notched scimitar"]
     assert state.inventory[0][0]["target_selector"] == "#4871"
+
+
+def test_inventory_entries_preserve_exact_target_selectors() -> None:
+    value = (
+        '[[{"quan":"1","short_desc":"[#24390] a long sword"},'
+        '{"quan":"1","short_desc":"[#24364] a long sword"}]]'
+    )
+
+    assert _inventory_entries(value) == [
+        ("a long sword", "#24390"),
+        ("a long sword", "#24364"),
+    ]
+
+
+def test_gear_swap_prefers_exact_inventory_selector_for_ambiguous_item() -> None:
+    source_catalog = GearCatalog.from_area_directory(
+        Path("runs/dd4-source/server/area")
+    )
+    catalog = GearCatalog(
+        {
+            vnum: source_catalog.objects[vnum]
+            for vnum in (1317, 3022)
+        }
+    )
+    policy = StarterPolicy(_spec(), "swordfish", gear_catalog=catalog)
+    policy.in_world = True
+    policy.gear_audited = True
+    policy.gear_allowed_categories = {"wield"}
+    policy.gear_worn = [catalog.objects[3022]]
+    policy.gear_instance_sources["24390"] = 3022
+    policy.gear_worn_instance_ids = {"24390"}
+    state = CharacterState(
+        level=18,
+        hp=200,
+        max_hp=393,
+        mana=208,
+        max_mana=208,
+        move=280,
+        max_move=320,
+        position=7,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+        inventory=(
+            '[[{"quan":"1","short_desc":"[#24390] a long sword"},'
+            '{"quan":"1","short_desc":"[#24364] a long sword"},'
+            '{"quan":"1","short_desc":"[#24362] a long sword"}]]'
+        ),
+    )
+
+    remove = policy._gear_decision(state)
+    assert remove is not None
+    assert remove.command == "remove sword"
+
+    policy.gear_command_queue.clear()
+    policy.gear_recompute_after_removals = False
+    policy.gear_worn = []
+    policy.gear_worn_instance_ids = set()
+    policy.gear_confirmation_required = False
+    policy.gear_audited = True
+    wear = policy._gear_decision(state)
+
+    assert wear is not None
+    assert wear.command == "wear #24364"
+    policy.after_command(wear)
+    assert policy.gear_pending_wear_selector == "#24364"
+
+
+def test_repeated_gear_state_aborts_without_consuming_command_budget() -> None:
+    sword = ObjectSource(
+        3022,
+        "sword long",
+        "a long sword",
+        5,
+        (0, 2, 6, 3),
+        8,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({sword.vnum: sword}),
+    )
+    policy.gear_worn = [sword]
+    state = CharacterState(
+        level=18,
+        inventory=[[{"short_desc": "a long sword"}]],
+    )
+
+    assert policy._gear_command_would_loop(state, STANCE_RECOVERY, "remove sword") is False
+    assert policy._gear_command_would_loop(state, STANCE_RECOVERY, "remove sword") is False
+    assert policy._gear_command_would_loop(state, STANCE_RECOVERY, "remove sword") is True
+    assert policy.gear_command_queue == []
+    assert policy.gear_loop_abort_reason is not None
 
 
 def test_connection_close_discards_all_ephemeral_mobile_selectors() -> None:
@@ -25370,6 +25707,46 @@ def test_liquidation_opens_and_extracts_a_purse_before_planning_sales() -> None:
 
     assert extracted is not None
     assert extracted.command == "get all purse"
+
+
+def test_money_container_extraction_stays_at_healer_and_donates_empty_container() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        return_home=True,
+        extract_money_container=True,
+        money_container_keyword="purse",
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    healer = CharacterState(
+        room_name="The Healer",
+        room_vnum="3054",
+        position=7,
+        inventory=[[{"short_desc": "the midget's purse", "quan": "1"}]],
+    )
+
+    opened = policy.next_decision(healer)
+    assert opened is not None
+    assert opened.command == "open purse"
+    policy.after_command(opened)
+    policy.prompt_ready = True
+
+    extracted = policy.next_decision(healer)
+    assert extracted is not None
+    assert extracted.command == "get all purse"
+    policy.after_command(extracted)
+    policy.prompt_ready = True
+
+    donated = policy.next_decision(healer)
+    assert donated is not None
+    assert donated.command == "donate purse"
+    policy.after_command(donated)
+    policy.prompt_ready = True
+
+    save = policy.next_decision(healer)
+    assert save is not None
+    assert save.command == "save"
 
 
 def test_fastwalk_extracts_source_backed_container_before_inventory() -> None:
