@@ -61,6 +61,93 @@ def test_vitals_preserve_hunger_and_thirst_for_campaign_decisions() -> None:
     assert CharacterState.from_dict(state.to_dict()).hunger == -10
 
 
+def test_text_score_prevents_stale_lower_gmcp_progress_regression() -> None:
+    state = CharacterState()
+
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "gmcp",
+            {"level": "20", "xp": "229913", "xptnl": "387"},
+        )
+    )
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "text",
+            {
+                "level": 20,
+                "xp": 229913,
+                "maxxp": 230300,
+                "xptnl": 387,
+            },
+        )
+    ) is True
+
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "gmcp",
+            {"level": "20", "xp": "216813", "xptnl": "13487"},
+        )
+    ) is False
+    assert state.xp == 229913
+    assert state.xp_to_next_level == 387
+
+
+def test_experience_loss_is_preserved_as_state_evidence() -> None:
+    state = CharacterState(level=24, xp=365893)
+
+    assert state.apply(
+        GameEvent(
+            "experience_lost",
+            "text",
+            {"xp": 385, "text": "You flee from combat! You lose 385 exp."},
+        )
+    )
+
+    assert state.xp_loss_observed is True
+    assert state.xp_loss_total == 385
+    assert CharacterState.from_dict(state.to_dict()).xp_loss_total == 385
+
+
+def test_explicit_experience_loss_allows_following_gmcp_regression() -> None:
+    state = CharacterState(level=24, xp=365486, progress_source="text")
+
+    assert state.apply(
+        GameEvent(
+            "experience_lost",
+            "text",
+            {"xp": 385, "text": "You flee from combat! You lose 385 exp."},
+        )
+    )
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "gmcp",
+            {"level": "24", "xp": "365437", "xptnl": "663"},
+        )
+    )
+
+    assert state.xp == 365437
+    assert state.xp_to_next_level == 663
+    assert state.progress_source == "gmcp"
+
+
+def test_observed_death_allows_a_real_progress_regression() -> None:
+    state = CharacterState(level=20, xp=229913)
+    state.apply(GameEvent("character_died", "text", {"text": "You have died."}))
+
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "gmcp",
+            {"level": "20", "xp": "216813", "xptnl": "13487"},
+        )
+    )
+    assert state.xp == 216813
+
+
 def test_state_changes_only_when_event_changes_domain_state() -> None:
     state = CharacterState()
     room = GameEvent(

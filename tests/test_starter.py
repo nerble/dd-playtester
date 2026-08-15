@@ -445,6 +445,116 @@ def test_pyramid_return_home_recalls_from_underground_lake_without_flight() -> N
     assert "underground lake" in decision.reason
 
 
+def test_midgaard_logout_uses_pyramid_return_for_no_recall_maze() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.midgaard_logout_pending = True
+    state = CharacterState(
+        room_vnum="5024",
+        room_name="The Great Eastern Desert",
+        room_flags=["no_recall"],
+        exits={"w": "5007"},
+        move=200,
+        max_move=290,
+        position=7,
+    )
+
+    decision = policy._midgaard_logout_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert "live GMCP exit" in decision.reason
+
+
+def test_midgaard_logout_uses_mahntor_return_for_no_recall_maze() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.midgaard_logout_pending = True
+    state = CharacterState(
+        room_vnum="2334",
+        room_name="Lost in the Mist",
+        room_flags=["no_recall"],
+        exits={"e": "2332", "n": "2338", "s": "2332", "w": "2336"},
+        position=7,
+    )
+
+    decision = policy._midgaard_logout_decision(state)
+
+    assert decision is not None
+    assert decision.command in {"east", "north", "south", "west"}
+    assert decision.command != "recall"
+    assert policy.failure is None
+
+    policy.prompt_ready = True
+    state.room_vnum = "2331"
+    state.exits = {"s": "2330"}
+    decision = policy._midgaard_logout_decision(state)
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert (
+        decision.reason
+        == "follow the source-backed no-recall route to the Midgaard healer"
+    )
+
+
+def test_no_recall_return_hands_off_at_midgaard_recall_room() -> None:
+    policy = StarterPolicy(_spec(), "swordfish", return_home=True)
+    policy.return_home_recovery_commands = ("north",)
+    policy.return_home_recovery_index = 1
+    state = CharacterState(room_vnum="3001")
+
+    decision = policy._return_home_decision(state)
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert policy.failure is None
+
+
+def test_fastwalk_return_reverses_only_the_prefix_before_a_randomized_route() -> None:
+    route = Fastwalk(
+        "source-ranked Mahn-Tor hunt",
+        1,
+        100,
+        "32s",
+        live_navigation_target="2336",
+        live_navigation_entry_room="2331",
+        live_navigation_start_index=32,
+        live_navigation_resume_index=35,
+        live_navigation_room_vnums=tuple(
+            str(vnum) for vnum in range(2331, 2339)
+        ),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(FieldHuntStop((), "swamp wraith"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_returning = True
+    policy.midgaard_logout_pending = True
+
+    state = CharacterState(
+        room_vnum="2334",
+        room_flags=["no_recall"],
+        exits={"n": "2338", "e": "2332", "s": "2332", "w": "2336"},
+    )
+    decision = policy._midgaard_logout_decision(state)
+
+    assert decision is not None
+    assert decision.command in {"north", "east", "south", "west"}
+    assert decision.command != "recall"
+
+    policy.prompt_ready = True
+    state.room_vnum = "2331"
+    state.exits = {"s": "2330"}
+    decision = policy._fastwalk_research_decision(state)
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert policy.fastwalk_recovery_commands == ("north",) * 32
+
+
 def test_shadow_grove_return_home_uses_live_maze_and_source_route() -> None:
     policy = StarterPolicy(_spec(), "swordfish", return_home=True)
     state = CharacterState(room_vnum="1305", exits={"e": "1308"})
@@ -22588,6 +22698,40 @@ def test_fastwalk_outbound_returns_from_healer_to_recall_origin() -> None:
     assert decision.command == "south"
 
 
+def test_movement_recovery_wakes_before_resuming_saved_route() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.movement_recovery_return_route = ("south", "east")
+
+    sleeping = CharacterState(
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+        position=4,
+    )
+
+    wake = policy.next_decision(sleeping)
+
+    assert wake is not None
+    assert wake.command == "stand"
+    assert wake.reason == (
+        "wake before resuming the route interrupted by healer recovery"
+    )
+
+    policy.prompt_ready = True
+    sleeping.position = 7
+    resume = policy.next_decision(sleeping)
+
+    assert resume is not None
+    assert resume.command == "south"
+    assert resume.reason == "return to the route interrupted by healer recovery"
+
+
 def test_fastwalk_records_an_incidental_kill_name_from_death_text() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -24461,6 +24605,44 @@ def test_repeated_gear_state_aborts_without_consuming_command_budget() -> None:
     assert policy.gear_loop_abort_reason is not None
 
 
+def test_complete_worn_snapshot_resets_gear_loop_history() -> None:
+    sword = ObjectSource(
+        3022,
+        "sword long",
+        "a long sword",
+        5,
+        (0, 2, 6, 3),
+        8,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({sword.vnum: sword}),
+    )
+    state = CharacterState(
+        level=18,
+        inventory=[[{"short_desc": "a long sword"}]],
+    )
+
+    assert policy._gear_command_would_loop(state, STANCE_RECOVERY, "remove sword") is False
+    assert policy._gear_command_would_loop(state, STANCE_RECOVERY, "remove sword") is False
+
+    policy.observe_events(
+        [
+            GameEvent(
+                "equipment_changed",
+                "gmcp",
+                {"package": "Char.Worn", "value": []},
+            ),
+        ],
+        state,
+    )
+
+    assert not policy.gear_command_history
+    assert policy._gear_command_would_loop(state, STANCE_RECOVERY, "remove sword") is False
+
+
 def test_connection_close_discards_all_ephemeral_mobile_selectors() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
     policy.room_target_selectors = {
@@ -25199,6 +25381,71 @@ def test_emergency_provision_sale_consumes_owned_food_at_healer() -> None:
             inventory=[[{"short_desc": "a big pot pie"}]],
         )
     )
+
+    assert decision is not None
+    assert decision.command == "eat pie"
+
+
+def test_field_circuit_preserves_last_food_reserve_at_positive_hunger() -> None:
+    route = route_named("ambush")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_hunt_stops=(FieldHuntStop((), "goblin"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = len(route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.needs_food = True
+    state = CharacterState(
+        level=8,
+        hp=115,
+        max_hp=115,
+        mana=316,
+        max_mana=316,
+        move=200,
+        max_move=220,
+        hunger=9,
+        max_hunger=48,
+        room_name="The Trail to Miden'nir",
+        room_vnum="3505",
+        position=7,
+        inventory=[[{"short_desc": "a big pot pie"}]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert policy.fastwalk_hunt_preflight_food_attempted is True
+
+
+def test_numeric_starvation_rearms_food_recovery_after_reconnect() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    policy.return_home = True
+    state = CharacterState(
+        hp=254,
+        max_hp=254,
+        mana=242,
+        max_mana=242,
+        move=320,
+        max_move=320,
+        hunger=-5,
+        max_hunger=48,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+        position=7,
+        inventory=[[{"short_desc": "a big pot pie"}]],
+    )
+
+    decision = policy.next_decision(state)
 
     assert decision is not None
     assert decision.command == "eat pie"
@@ -25974,6 +26221,31 @@ def test_magic_shop_research_can_buy_and_verify_a_fly_potion() -> None:
     leave_shop = policy.next_decision(shop)
     assert leave_shop is not None
     assert leave_shop.command == "south"
+
+
+def test_magic_shop_research_precedes_starvation_resupply_gate() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        magic_shop_research=True,
+        magic_shop_buy_fly=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    healer = CharacterState(
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        position=7,
+        level=24,
+        hunger=-6,
+        stats={"fame": "-12"},
+    )
+
+    decision = policy.next_decision(healer)
+
+    assert decision is not None
+    assert decision.command == "where drunk"
+    assert policy.failure is None
 
 
 def test_magic_shop_waits_for_existing_flight_before_buying_replacement() -> None:
@@ -28633,6 +28905,51 @@ def test_combat_disarm_recovers_and_rearms_audited_weapon() -> None:
     assert rearm.command == "wield dagger"
 
 
+def test_combat_disarm_does_not_number_live_get_from_source_catalog() -> None:
+    unrelated_dagger = ObjectSource(
+        31015,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 0, 0, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        9,
+        (0, 2, 4, 11),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        gear_catalog=GearCatalog(
+            {
+                unrelated_dagger.vnum: unrelated_dagger,
+                long_dagger.vnum: long_dagger,
+            }
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+    policy.active_target = "The war dog"
+    policy.gear_worn = [long_dagger]
+    state = CharacterState(level=9, hp=120, max_hp=126, position=6)
+
+    policy.observe_text("The war dog DISARMS you!")
+    recover = policy.next_decision(state)
+
+    assert recover is not None
+    assert recover.command == "get dagger"
+
+
 def test_trivial_fastwalk_attacker_recovers_weapon_before_recurring_attack() -> None:
     dagger = ObjectSource(
         3020,
@@ -30273,6 +30590,9 @@ class _LedgerProbePolicy:
         self.fastwalk_source_below_band_sightings: set[tuple[str, str, str]] = set()
         self.fastwalk_source_absent_sightings: set[tuple[str, str, str]] = set()
         self.fastwalk_source_present_sightings: set[tuple[str, str, str]] = set()
+        self.class_trainer_return_pending = False
+        self.midgaard_logout_pending = False
+        self.in_world = True
         self.stage = "ledger-probe"
 
     def observe_text(self, text: str) -> None:
@@ -30305,6 +30625,46 @@ class _LedgerProbePolicy:
         self.runtime_boundary_requested = True
 
 
+class _DelayedPromptPolicy(_LedgerProbePolicy):
+    def __init__(self, *_args, **_kwargs) -> None:
+        super().__init__(*_args, **_kwargs)
+        self.response_seen = False
+
+    def observe_text(self, text: str) -> None:
+        if ">" in text:
+            self.response_seen = True
+
+    def next_decision(self, _state) -> BotDecision:
+        if self.response_seen:
+            raise RuntimeError("probe complete")
+        return BotDecision("eat venison", "wait for the delayed prompt")
+
+
+class _DelayedPromptConnection(_SilentConnection):
+    def __init__(self) -> None:
+        super().__init__()
+        self.sent: list[str] = []
+        self.empty_reads_remaining = 3
+        self.response_pending = False
+
+    async def send_command(self, command: str) -> None:
+        self.sent.append(command)
+        self.response_pending = True
+
+    async def read_available(self, timeout: float = 0.25) -> ReadResult:
+        if not self.sent:
+            return ReadResult(text="ready", raw=b"ready")
+        if self.response_pending and self.empty_reads_remaining:
+            self.empty_reads_remaining -= 1
+            return ReadResult()
+        if self.response_pending:
+            self.response_pending = False
+            return ReadResult(
+                text="<1/1 hits 1/1 mana 10/10 move [Midgaard]>"
+            )
+        return ReadResult()
+
+
 def test_starter_runner_redacts_password_on_failed_run(
     tmp_path,
     monkeypatch,
@@ -30333,6 +30693,36 @@ def test_starter_runner_redacts_password_on_failed_run(
     assert connection.sent == ["Rulemage", "not-for-transcripts"]
     assert "not-for-transcripts" not in transcript
     assert "[REDACTED]" in transcript
+
+
+def test_starter_runner_waits_for_prompt_before_sending_next_command(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    connection = _DelayedPromptConnection()
+    spec = _spec(
+        password_env="STARTER_TEST_PASSWORD",
+        max_commands=10,
+        max_runtime=2,
+        database=str(tmp_path / "runs.sqlite3"),
+        transcript_dir=str(tmp_path / "transcripts"),
+    )
+    monkeypatch.setenv("STARTER_TEST_PASSWORD", "not-for-transcripts")
+    monkeypatch.setattr(starter, "StarterPolicy", _DelayedPromptPolicy)
+    runner = StarterBotRunner(
+        spec,
+        tmp_path / "starter.yaml",
+        connection_factory=lambda _spec: connection,
+        gear_catalog=GearCatalog({}),
+        source_mobile_targets={},
+        source_mobile_level_ranges={},
+        source_mobile_level_ranges_by_vnum={},
+    )
+
+    with pytest.raises(RuntimeError, match="probe complete"):
+        asyncio.run(runner.run())
+
+    assert connection.sent == ["eat venison"]
 
 
 def test_starter_runner_does_not_duplicate_write_time_kill_on_cleanup(

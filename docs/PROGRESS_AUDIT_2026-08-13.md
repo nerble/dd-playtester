@@ -39,8 +39,30 @@ route evidence, resource and recovery evidence, and offline regression tests.
   were each published once; the live checkpoint remains at source EOF with
   an empty queue and no in-flight record.
 - The live mage/thief/warrior matrix reaches level 10. Current long-running
-  anchors are Aeloria mage level 13 at 74,825 XP, Dorrik warrior level 16 at
+  anchors are Aeloria mage level 14 at 84,126 XP, Dorrik warrior level 16 at
   123,437 XP, and Kestrel thief level 24 at 360,704 XP.
+- The 2026-08-15 Aeloria continuation reached checkpoint 19251 at full
+  resources in healer room 3054, with 1,858 XP to level 14. Runs 6481 and
+  6482 live-validated the shared-class Mahn-Tor Rock Toad research-to-circuit
+  handoff; later runs rotated through Moria, Plains, Fleshmonger, Haon, Drow,
+  and other source-ranked candidates without manual target steering. The
+  Moria route earned 381 XP after a bounded timeout/cooldown cycle, while a
+  separate Fleshmonger attempt correctly recorded a -17 XP hard-floor result
+  and preserved its reboot-scoped protection marker. No death or false level
+  claim was made.
+- The progression selector now promotes a viable same-reboot Rock Toad probe
+  even when an intervening productive route changed `last_policy_id`, ignores
+  stale historical XP for the paired research handoff, and defers a circuit
+  that already produced a non-positive result in the same reboot. Regression
+  coverage passes 453 progression tests and the full offline suite passes
+  2,609 tests.
+- Runs 6533-6542 then crossed Aeloria from level 13 to level 14 and completed
+  the level-14 training, provisions, equipment, and healer handoff. The first
+  Ambush 4503/4506 policy withdrew for -34 XP at the hard health floor and was
+  quarantined by exact source policy; Miden'nir 3503/3576 then earned 343 XP,
+  and alternate Ambush 4514/4515 earned 435 XP. Aeloria finished full in
+  healer room 3054 at 84,126 XP. This is executable level-14 evidence, not a
+  level-30, subclass, or HERO completion claim.
 - Runs 5447 through 5459 exposed a level-boundary selector defect: useful
   Shire and Wyvern repeats were allowlisted through source-mobile reward
   evidence but retained `fresh` ordering under regenerated level-15 policy

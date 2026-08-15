@@ -75,9 +75,10 @@ The current architecture and evidence audit is in
 The protocol, state, persistence, starter, reporting, and resumable campaign
 layers are operational. The live mage/thief/warrior matrix has reached level 10
 for all three representatives. Current long-running anchors are Aeloria mage
-level 13 at 74,825 XP, Dorrik warrior level 16 at 123,437 XP, and Kestrel thief
-level 24 at 360,704 XP. The offline suite currently passes 2,528 tests. Dorrik
-crossed level 14 on run 5246 after the level-13 source-ranked frontier, and
+level 14 at 84,126 XP, Dorrik warrior level 16 at 123,437 XP, and Kestrel thief
+level 24 at 360,704 XP. The offline suite currently passes 2,609 tests. Aeloria's
+current checkpoint is full in healer room 3054 after the first level-14 routes.
+Dorrik crossed level 14 on run 5246 after the level-13 source-ranked frontier, and
 runs 5231 through 5306 continued the generic executor without steering,
 returning safely to healer room 3054 after every bounded circuit. Run 5307
 then exposed an under-modeled risk: an armed Ambush Bardoosh reset passed the

@@ -170,9 +170,27 @@ class ProgressionContext:
     @property
     def needs_subclass_selection(self) -> bool:
         return (
-            self.level >= 30
+            self.level == 30
             and self.target_subclass is not None
             and self.subclass is None
+        )
+
+    @property
+    def subclass_selection_expired(self) -> bool:
+        """Return whether a requested subclass missed DD4's level-30 window."""
+        return (
+            self.level > 30
+            and self.target_subclass is not None
+            and self.subclass is None
+        )
+
+    @property
+    def subclass_selection_mismatch(self) -> bool:
+        """Return whether live subclass state contradicts the request."""
+        return (
+            self.target_subclass is not None
+            and self.subclass is not None
+            and self.subclass.casefold() != self.target_subclass.casefold()
         )
 
 
@@ -5312,6 +5330,31 @@ def policy_for(
         # return after an interrupted field segment.
         return selected
     if (
+        (context.subclass_selection_expired or context.subclass_selection_mismatch)
+        and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
+    ):
+        if context.subclass_selection_expired:
+            summary = (
+                f"Requested subclass {context.target_subclass!r} can only be "
+                f"selected at exactly level 30, but the character is now "
+                f"level {context.level}; stop rather than silently continuing "
+                "as the base class."
+            )
+        else:
+            summary = (
+                f"Live subclass {context.subclass!r} does not match requested "
+                f"subclass {context.target_subclass!r}; stop rather than "
+                "claiming the requested progression track."
+            )
+        return replace(
+            _UNAVAILABLE_POLICY,
+            minimum_level=context.level,
+            maximum_level=context.level,
+            summary=summary,
+            evidence=_CHOOSE_SUBCLASS_POLICY.evidence,
+            practice_skill=context.practice_skill,
+        )
+    if (
         context.character_class == "thief"
         and context.level >= 17
         and context.protection_recovery_required
@@ -5393,7 +5436,10 @@ def policy_for(
         or (
             selected.policy_id == _THALOS_LONG_DAGGER_UPGRADE_POLICY.policy_id
             and context.shop_rearm_blocked_by_reputation
-            and not context.has_weapon
+            and (
+                not context.has_weapon
+                or context.needs_piercing_weapon
+            )
         )
     )
     if (
@@ -7342,12 +7388,46 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 practice_skill=context.practice_skill,
             )
         if (
-            context.last_policy_id == probe_id
-            and _research_result_is_viable(context, probe_id)
-            and hunt_xp is None
+            _research_result_is_viable(context, probe_id)
+            and not _research_result_recorded(context, hunt_id)
         ):
+            # A productive route may have run between the probe and this
+            # decision. Same-reboot viability is still the authorization for
+            # the paired combat probe; do not survey the same reset again.
+            # Historical policy XP is deliberately ignored here because the
+            # paired combat result is reboot-scoped research evidence.
             return replace(
                 _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        if (
+            _research_result_is_viable(context, hunt_id)
+            and hunt_xp is not None
+            and hunt_xp > 0
+        ):
+            # A later source-ranked segment may have changed
+            # ``last_policy_id`` without consuming the paired circuit. Keep
+            # the current-reboot hunt evidence promotable, but do not reopen
+            # a circuit that has already produced a non-positive result in
+            # this reboot.
+            circuit_result_current = _research_result_recorded(
+                context,
+                circuit_id,
+            )
+            if not circuit_result_current or circuit_xp is None or circuit_xp > 0:
+                return _configured_mahntor_rock_toad_circuit_for_shared_class(
+                    context
+                )
+            return replace(
+                _UNAVAILABLE_POLICY,
+                minimum_level=normalized_level,
+                maximum_level=normalized_level,
+                summary=(
+                    "The shared-class Rock Toad circuit already produced a "
+                    "non-positive result in this reboot; defer the unchanged "
+                    "reset and let the source ranker choose another route."
+                ),
+                evidence=_MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY.evidence,
                 practice_skill=context.practice_skill,
             )
         if (

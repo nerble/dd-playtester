@@ -18,9 +18,10 @@ The first five practical milestones are complete as foundations. Async Telnet,
 GMCP, transcripts, SQLite state, YAML profiles, deterministic starter behavior,
 reports, checkpoints, bounded segments, and death/recovery handling are in use.
 The live level-10 matrix is complete for mage, thief, and warrior. The current
-representative campaigns are Aeloria mage level 13 at 74,825 XP, Dorrik warrior
+representative campaigns are Aeloria mage level 14 at 84,126 XP, Dorrik warrior
 level 16 at 123,437 XP, and Kestrel thief level 24 at 360,704 XP. The offline
-suite passes 2,528 tests. Dorrik's level-15 transition is now live evidence:
+suite passes 2,609 tests. Aeloria is full in healer room 3054 after the first
+level-14 source-ranked routes. Dorrik's level-15 transition is now live evidence:
 run 5246 crossed the boundary, and runs 5231 through 5306 executed
 source-ranked field circuits with no manual target steering before returning
 to healer room 3054. Runs 5249 and 5251 then validated both registered Ambush

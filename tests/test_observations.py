@@ -51,6 +51,100 @@ def test_text_observations_handle_split_chunks_and_unterminated_prompts() -> Non
     assert parser.flush_text() == []
 
 
+def test_text_score_reports_authoritative_progress_and_currency() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "You are level 20, have 229913 experience and need 387 to level.\n"
+        "Coin:  Platinum: 24  Gold: 277  Silver: 9  Copper: 3\n"
+    )
+
+    progress = [event for event in events if event.type == "progress_changed"]
+    assert progress[0].data == {
+        "level": 20,
+        "xp": 229913,
+        "maxxp": 230300,
+        "xptnl": 387,
+        "text": "You are level 20, have 229913 experience and need 387 to level.",
+    }
+    assert progress[1].data == {
+        "platinum": 24,
+        "gold": 277,
+        "silver": 9,
+        "copper": 3,
+    }
+
+
+def test_text_flee_reports_authoritative_experience_loss() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "You flee from combat! You lose 385 exp. "
+        "However, you damaged your opponent sufficiently for 7 experience.\n"
+    )
+
+    assert [event.type for event in events] == ["experience_lost"]
+    assert events[0].data == {
+        "xp": 385,
+        "text": (
+            "You flee from combat! You lose 385 exp. "
+            "However, you damaged your opponent sufficiently for 7 experience."
+        ),
+    }
+
+
+def test_duplicate_login_snapshot_is_discarded_until_next_room_update() -> None:
+    parser = ObservationParser()
+
+    assert parser.feed_gmcp(
+        'Room.Info {"name":"By the Temple Altar","vnum":"3054",'
+        '"arrival":{"kind":"login"}}'
+    )
+    assert parser.feed_gmcp(
+        'Char.Worth {"level":"20","xp":"229913","xptnl":"387"}'
+    )
+
+    assert parser.feed_gmcp(
+        'Room.Info {"name":"By \\u0000\\u0000","vnum":"3054",'
+        '"arrival":{"kind":"login"}}'
+    ) == []
+    assert parser.feed_gmcp(
+        'Char.Worth {"level":"20","xp":"216813","xptnl":"13487"}'
+    ) == []
+    assert parser.feed_gmcp(
+        'Char.Items [[{"quan":"1","short_desc":"a stale item"}]]'
+    ) == []
+
+    room = parser.feed_gmcp(
+        'Room.Info {"name":"The Temple Of Midgaard","vnum":"3001",'
+        '"arrival":{"kind":"walk"}}'
+    )
+    assert room[0].type == "room_entered"
+    progress = parser.feed_gmcp(
+        'Char.Worth {"level":"20","xp":"229914","xptnl":"386"}'
+    )
+    assert progress[0].data["xp"] == "229914"
+
+
+def test_first_login_room_info_enriches_text_room_before_duplicate_guard() -> None:
+    parser = ObservationParser()
+
+    text_room = parser.feed_text("Room: By the Temple Altar\n")
+    assert text_room[0].type == "room_entered"
+
+    room = parser.feed_gmcp(
+        'Room.Info {"name":"By the Temple Altar","vnum":"3054",'
+        '"arrival":{"kind":"login"}}'
+    )
+    assert room[0].type == "room_updated"
+    assert room[0].data["vnum"] == "3054"
+
+    assert parser.feed_gmcp(
+        'Room.Info {"name":"By \\u0000\\u0000","vnum":"3054",'
+        '"arrival":{"kind":"login"}}'
+    ) == []
+
+
 def test_complete_dd4_prompt_is_not_held_behind_gmcp_only_traffic() -> None:
     parser = ObservationParser()
 

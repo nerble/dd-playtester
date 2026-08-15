@@ -1923,6 +1923,23 @@ def test_negative_fame_unarmed_thief_retries_excluded_field_dagger() -> None:
     assert policy.execution == "upgrade-piercing-weapon"
 
 
+def test_negative_fame_fallback_weapon_retries_excluded_field_dagger() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        has_weapon=True,
+        shop_rearm_blocked_by_reputation=True,
+        needs_piercing_weapon=True,
+        needs_intermediate_piercing_weapon_upgrade=True,
+        excluded_policy_ids=frozenset(
+            {"thalos-long-dagger-upgrade-10-29"}
+        ),
+    )
+
+    assert policy.policy_id == "thalos-long-dagger-upgrade-10-29"
+    assert policy.execution == "upgrade-piercing-weapon"
+
+
 def test_thief_missing_piercing_primary_selects_safe_rearm_maintenance() -> None:
     policy = policy_for(
         17,
@@ -3040,6 +3057,11 @@ def test_shared_rock_toad_probe_promotes_to_one_kill_after_live_viability() -> N
         last_policy_id="mahntor-rock-toad-probe-13-15",
         world_boot_id="boot-2",
         research_results={
+            "dwarven-nobleman-probe-12-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": False,
+            },
             "mahntor-rock-toad-probe-13-15": {
                 "boot_id": "boot-2",
                 "observed": True,
@@ -3052,6 +3074,136 @@ def test_shared_rock_toad_probe_promotes_to_one_kill_after_live_viability() -> N
     assert policy.execution == "mahntor-rock-toad-hunt"
     assert policy.practice_skill == "magic missile"
     assert policy.segment_kill_limit == 1
+
+
+def test_shared_rock_toad_probe_promotes_after_intervening_productive_route() -> None:
+    policy = policy_for(
+        13,
+        "mage",
+        last_policy_id="fleshmonger-guard-circuit-10-11",
+        world_boot_id="boot-2",
+        policy_xp_deltas={
+            "fleshmonger-guard-circuit-10-11": 644,
+        },
+        research_results={
+            "mahntor-rock-toad-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-kill-research-13-15"
+    assert policy.execution == "mahntor-rock-toad-hunt"
+    assert policy.practice_skill == "magic missile"
+
+
+def test_shared_rock_toad_probe_ignores_stale_hunt_xp() -> None:
+    policy = policy_for(
+        13,
+        "mage",
+        last_policy_id="source-ranked-hunt-fleshmonger-9400-9400-13",
+        world_boot_id="boot-2",
+        policy_xp_deltas={
+            "mahntor-rock-toad-kill-research-13-15": 0,
+            "source-ranked-hunt-fleshmonger-9400-9400-13": 644,
+        },
+        research_results={
+            "dwarven-nobleman-probe-12-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": False,
+            },
+            "mahntor-rock-toad-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            },
+            "mahntor-rock-toad-kill-research-13-15": {
+                "boot_id": "old-boot",
+                "completed_kill": False,
+                "observed": True,
+                "viable": False,
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-kill-research-13-15"
+    assert policy.execution == "mahntor-rock-toad-hunt"
+
+
+def test_shared_rock_toad_hunt_promotes_after_intervening_productive_route() -> None:
+    policy = policy_for(
+        13,
+        "mage",
+        last_policy_id="source-ranked-hunt-shire-1131-1157-13",
+        world_boot_id="boot-2",
+        policy_xp_deltas={
+            "mahntor-rock-toad-kill-research-13-15": 733,
+            "source-ranked-hunt-shire-1131-1157-13": 711,
+        },
+        research_results={
+            "dwarven-nobleman-probe-12-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": False,
+            },
+            "mahntor-rock-toad-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            },
+            "mahntor-rock-toad-kill-research-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            },
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-circuit-13-15"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.segment_kill_limit == 2
+
+
+def test_shared_rock_toad_depleted_circuit_defers_after_intervening_route() -> None:
+    policy = policy_for(
+        13,
+        "mage",
+        last_policy_id="source-ranked-hunt-shire-1131-1157-13",
+        world_boot_id="boot-2",
+        policy_xp_deltas={
+            "mahntor-rock-toad-kill-research-13-15": 733,
+            "mahntor-rock-toad-circuit-13-15": -54,
+            "source-ranked-hunt-shire-1131-1157-13": 711,
+        },
+        research_results={
+            "dwarven-nobleman-probe-12-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": False,
+            },
+            "mahntor-rock-toad-probe-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            },
+            "mahntor-rock-toad-kill-research-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            },
+            "mahntor-rock-toad-circuit-13-15": {
+                "boot_id": "boot-2",
+                "observed": True,
+                "viable": True,
+            },
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert "non-positive result" in policy.summary
 
 
 def test_shared_rock_toad_kill_promotes_to_class_aware_circuit() -> None:
@@ -9337,3 +9489,48 @@ def test_live_subclass_state_releases_the_level_thirty_selection_gate() -> None:
     assert context.needs_subclass_selection is False
     assert "ninjutsu" in context.capabilities
     assert policy.policy_id != "choose-subclass-30"
+
+
+def test_requested_subclass_expires_after_level_thirty_instead_of_falling_back() -> None:
+    context = ProgressionContext.from_values(
+        31,
+        "thief",
+        target_subclass="ninja",
+    )
+    policy = policy_for(
+        31,
+        "thief",
+        target_subclass="ninja",
+        has_food=True,
+        has_weapon=True,
+        source_ranked_fallback=True,
+    )
+
+    assert context.needs_subclass_selection is False
+    assert context.subclass_selection_expired is True
+    assert policy.executable is False
+    assert policy.execution is None
+    assert "exactly level 30" in policy.summary
+
+
+def test_live_subclass_mismatch_blocks_the_requested_progression_track() -> None:
+    context = ProgressionContext.from_values(
+        30,
+        "thief",
+        subclass="bounty hunter",
+        target_subclass="ninja",
+    )
+    policy = policy_for(
+        30,
+        "thief",
+        subclass="bounty hunter",
+        target_subclass="ninja",
+        has_food=True,
+        has_weapon=True,
+        source_ranked_fallback=True,
+    )
+
+    assert context.subclass_selection_mismatch is True
+    assert policy.executable is False
+    assert policy.execution is None
+    assert "does not match" in policy.summary

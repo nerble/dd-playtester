@@ -68,6 +68,21 @@ _DEATH = re.compile(
     r"\bYou (?:are dead|have died|were killed|have been killed)\b",
     re.IGNORECASE,
 )
+_SCORE_PROGRESS = re.compile(
+    r"\bYou are level\s+(?P<level>\d+),\s+have\s+(?P<xp>\d+)\s+"
+    r"experience\s+and\s+need\s+(?P<xptnl>\d+)\s+to level\b",
+    re.IGNORECASE,
+)
+_XP_LOSS = re.compile(
+    r"\bYou lose\s+(?P<xp>\d+)\s+exp(?:erience)?\b",
+    re.IGNORECASE,
+)
+_SCORE_CURRENCY = re.compile(
+    r"\bCoin:\s+Platinum:\s+(?P<platinum>\d+)\s+"
+    r"Gold:\s+(?P<gold>\d+)\s+Silver:\s+(?P<silver>\d+)\s+"
+    r"Copper:\s+(?P<copper>\d+)\b",
+    re.IGNORECASE,
+)
 _TARGETMODE_DESCRIPTION = re.compile(
     r"^\s*\[#(?P<target_id>\d+)\]\s*(?P<description>.*)$"
 )
@@ -95,6 +110,8 @@ class ObservationParser:
         self._room_name: str | None = None
         self._room_vnum: str | None = None
         self._gmcp_snapshots: dict[str, Any] = {}
+        self._discarding_duplicate_login_snapshot = False
+        self._discarded_duplicate_snapshot_messages = 0
 
     def feed_text(self, text: str) -> list[GameEvent]:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
@@ -126,6 +143,8 @@ class ObservationParser:
         self._room_name = None
         self._room_vnum = None
         self._gmcp_snapshots.clear()
+        self._discarding_duplicate_login_snapshot = False
+        self._discarded_duplicate_snapshot_messages = 0
 
     def feed_gmcp(self, message: str) -> list[GameEvent]:
         package, separator, body = message.partition(" ")
@@ -146,9 +165,57 @@ class ObservationParser:
             )
 
         if normalized == "room.info":
+            arrival = payload.get("arrival") if isinstance(payload, dict) else None
+            arrival_kind = (
+                str(arrival.get("kind", "")).casefold()
+                if isinstance(arrival, dict)
+                else ""
+            )
+            if self._discarding_duplicate_login_snapshot:
+                if arrival_kind == "login":
+                    return []
+                self._discarding_duplicate_login_snapshot = False
+                self._discarded_duplicate_snapshot_messages = 0
+            elif (
+                arrival_kind == "login"
+                and self._room_name is not None
+                and self._room_vnum is not None
+            ):
+                # DD4 can emit a second login-style full snapshot on an
+                # established connection.  It may contain stale character
+                # data (and, in one live transcript, malformed room bytes),
+                # so discard that snapshot until the next ordinary room
+                # update.  A real reconnect resets the parser first.
+                self._discarding_duplicate_login_snapshot = True
+                self._discarded_duplicate_snapshot_messages = 0
+                return []
             room_event = self._room_event(package, payload)
             if room_event is not None:
                 events.append(room_event)
+
+        if (
+            self._discarding_duplicate_login_snapshot
+            and normalized
+            in {
+                "char.base",
+                "char.vitals",
+                "char.stats",
+                "char.worth",
+                "char.affect",
+                "char.items",
+                "char.items.add",
+                "char.equipment",
+                "char.worn",
+                "char.enemies",
+                "char.quest",
+                "char.config",
+            }
+        ):
+            self._discarded_duplicate_snapshot_messages += 1
+            if self._discarded_duplicate_snapshot_messages >= 16:
+                self._discarding_duplicate_login_snapshot = False
+                self._discarded_duplicate_snapshot_messages = 0
+            return []
 
         if normalized in {"char.vitals", "char.status", "char.worth"} and isinstance(
             payload, dict
@@ -311,6 +378,48 @@ class ObservationParser:
                     "item_acquired",
                     "text",
                     item_data,
+                )
+            )
+
+        score_progress = _SCORE_PROGRESS.search(text)
+        if score_progress:
+            level = int(score_progress.group("level"))
+            xp = int(score_progress.group("xp"))
+            xptnl = int(score_progress.group("xptnl"))
+            events.append(
+                GameEvent(
+                    "progress_changed",
+                    "text",
+                    {
+                        "level": level,
+                        "xp": xp,
+                        "maxxp": xp + xptnl,
+                        "xptnl": xptnl,
+                        "text": text,
+                    },
+                )
+            )
+
+        score_currency = _SCORE_CURRENCY.search(text)
+        if score_currency:
+            events.append(
+                GameEvent(
+                    "progress_changed",
+                    "text",
+                    {
+                        name: int(score_currency.group(name))
+                        for name in ("platinum", "gold", "silver", "copper")
+                    },
+                )
+            )
+
+        xp_loss = _XP_LOSS.search(text)
+        if xp_loss:
+            events.append(
+                GameEvent(
+                    "experience_lost",
+                    "text",
+                    {"xp": int(xp_loss.group("xp")), "text": text},
                 )
             )
 

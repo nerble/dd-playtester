@@ -31,6 +31,7 @@ class Fastwalk:
     recall_after_loot: bool = False
     loot_container: str | None = None
     live_navigation_target: str | None = None
+    live_navigation_entry_room: str | None = None
     live_navigation_start_index: int | None = None
     live_navigation_resume_index: int | None = None
     live_navigation_room_vnums: tuple[str, ...] = ()

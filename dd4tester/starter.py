@@ -878,6 +878,47 @@ _SHADOW_GROVE_HEALER_RETURN_COMMANDS = (
     *("east",) * 13,
     *("north",) * 3,
 )
+# Mahn-Tor's swamp rooms 2332-2338 have reset-randomized exits and block
+# recall. Room 2331 is the stable source-backed entrance; the remaining
+# commands reverse the source path from that entrance to Midgaard recall.
+_MAHNTOR_SWAMP_MAZE_ROOMS = frozenset(
+    {str(vnum) for vnum in range(2332, 2339)}
+)
+_MAHNTOR_SWAMP_RETURN_ROOMS = _MAHNTOR_SWAMP_MAZE_ROOMS | {"2331"}
+_MAHNTOR_HEALER_RETURN_COMMANDS = (
+    "north",
+    "west",
+    "west",
+    "west",
+    "west",
+    "north",
+    "west",
+    "north",
+    "north",
+    "north",
+    "west",
+    "south",
+    "south",
+    "south",
+    "up",
+    "west",
+    "west",
+    "north",
+    "west",
+    "west",
+    "north",
+    "north",
+    "north",
+    "north",
+    "west",
+    "west",
+    "west",
+    "west",
+    "west",
+    "west",
+    "north",
+    "north",
+)
 # All Abyss rooms are air sectors. Source rooms 7505, 7536-7539, 7548,
 # 7551-7552, 7554-7555, and 7557-7558 omit ROOM_NO_RECALL and are therefore
 # valid recall points. Exit directions in rooms 7500-7550 are randomized, but
@@ -2097,9 +2138,12 @@ class StarterPolicy:
             self.city_rearm_equipment_audit_seen = True
         if self.fastwalk_pending_required_item_vnum is not None:
             if re.search(r"\byou (?:get|pick up)\b", recent):
-                self.fastwalk_acquired_required_object_vnums.add(
-                    self.fastwalk_pending_required_item_vnum
-                )
+                acquired_vnum = self.fastwalk_pending_required_item_vnum
+                self.fastwalk_acquired_required_object_vnums.add(acquired_vnum)
+                # A ground-resource stop has no mobile target, so its item
+                # acquisition is the authoritative positive presence signal.
+                self.fastwalk_target_present_observed = True
+                self.fastwalk_target_absent = False
                 self.fastwalk_pending_required_item_vnum = None
             elif any(
                 marker in recent
@@ -2675,12 +2719,7 @@ class StarterPolicy:
                 None,
             )
             self.disarmed_weapon_keyword = (
-                item_command_keyword(
-                    wielded,
-                    self.gear_catalog.objects.values()
-                    if self.gear_catalog is not None
-                    else (),
-                )
+                item_keyword(wielded)
                 if wielded is not None
                 else None
             )
@@ -3866,6 +3905,11 @@ class StarterPolicy:
                 self.gear_instance_sources.update(instance_sources)
                 if full_worn_snapshot:
                     self.gear_worn_instance_ids = set(instance_sources)
+                    # A complete paper-doll snapshot proves the preceding
+                    # stance command advanced the live equipment state. Do
+                    # not count a later, legitimate stance swap as the same
+                    # stalled command sequence.
+                    self.gear_command_history.clear()
                     if self.gear_pending_wear_selector is not None:
                         pending_id = self.gear_pending_wear_selector.removeprefix(
                             "#"
@@ -3903,10 +3947,7 @@ class StarterPolicy:
                     and self.combat_active
                     and self.disarm_recovery_step == 0
                 ):
-                    self.disarmed_weapon_keyword = item_command_keyword(
-                        previous_weapon,
-                        self.gear_catalog.objects.values(),
-                    )
+                    self.disarmed_weapon_keyword = item_keyword(previous_weapon)
                     self.disarm_recovery_step = 1
                     self.primary_weapon_lost = True
                     self.primary_weapon_observed = False
@@ -4628,6 +4669,13 @@ class StarterPolicy:
         return None
 
     def _tutorial_decision(self, state: CharacterState) -> BotDecision | None:
+        # A reconnect may provide a numeric starvation state without repeating
+        # the warning text that normally arms these local flags. Treat the
+        # authoritative GMCP value as sufficient to interrupt field work.
+        if state.hunger is not None and state.hunger <= 0:
+            self.needs_food = True
+        if state.thirst is not None and state.thirst <= 0:
+            self.needs_drink = True
         in_purgatory = (
             (state.area or "").casefold() == "purgatory"
             or state.room_vnum in _PURGATORY_DESTINATION_PATH
@@ -4866,6 +4914,11 @@ class StarterPolicy:
                     "sleep",
                     "sleep beside the Midgaard healer until the source route "
                     "movement budget is ready",
+                )
+            if _is_sleeping(state):
+                return BotDecision(
+                    "stand",
+                    "wake before resuming the route interrupted by healer recovery",
                 )
             if self.movement_recovery_return_index < len(
                 self.movement_recovery_return_route
@@ -5765,6 +5818,16 @@ class StarterPolicy:
                 quit_reason="safe flight-funding loan complete",
             )
 
+        if self.magic_shop_research:
+            research = self._magic_shop_research_decision(state)
+            if research is not None:
+                return research
+            return self._begin_midgaard_logout(
+                state,
+                save_reason="persist Magic Shop stock evidence",
+                quit_reason="Magic Shop research complete",
+            )
+
         returning_fastwalk_at_healer = bool(
             self.fastwalk_route is not None
             and self.fastwalk_returning
@@ -5898,16 +5961,6 @@ class StarterPolicy:
                 state,
                 save_reason="persist class-trainer route evidence",
                 quit_reason="class-trainer route research complete",
-            )
-
-        if self.magic_shop_research:
-            research = self._magic_shop_research_decision(state)
-            if research is not None:
-                return research
-            return self._begin_midgaard_logout(
-                state,
-                save_reason="persist Magic Shop stock evidence",
-                quit_reason="Magic Shop research complete",
             )
 
         if self.bank_excess_coins:
@@ -6507,22 +6560,31 @@ class StarterPolicy:
             if room_vnum == "3054":
                 self._reset_liquidation_after_resupply()
             return None
+        food_keyword = _inventory_food_keyword(
+            state.inventory,
+            self.gear_catalog,
+        )
+        food_needs_attention = self.needs_food and (
+            food_keyword is None
+            or _food_consumption_allowed(
+                state,
+                state.inventory,
+                self.gear_catalog,
+                urgent=self.urgent_food_acquisition,
+            )
+        )
         needs_healer_route = (
             self.resupply_only
             and _health_ratio(state) < 0.95
             and not healer_room
         )
-        if not (self.needs_food or self.needs_drink or needs_healer_route):
+        if not (food_needs_attention or self.needs_drink or needs_healer_route):
             return None
 
         if _is_sleeping(state):
             return BotDecision("stand", "wake before eating or drinking")
 
-        food_keyword = _inventory_food_keyword(
-            state.inventory,
-            self.gear_catalog,
-        )
-        if self.needs_food and food_keyword is not None:
+        if food_needs_attention and food_keyword is not None:
             if not self.food_unavailable:
                 return BotDecision(
                     f"eat {food_keyword}",
@@ -10526,6 +10588,49 @@ class StarterPolicy:
 
         if (
             self.fastwalk_returning
+            and self.fastwalk_recovery_commands is None
+            and self.fastwalk_route.live_navigation_entry_room is not None
+            and room_key
+            in frozenset(self.fastwalk_route.live_navigation_room_vnums)
+        ):
+            live_return = self._live_maze_navigation_decision(
+                state,
+                context=f"fastwalk-return:{self.fastwalk_route.name}",
+                target=self.fastwalk_route.live_navigation_entry_room,
+                allowed_rooms=frozenset(
+                    self.fastwalk_route.live_navigation_room_vnums
+                ),
+                blocked_rooms=frozenset(
+                    self.fastwalk_route.live_navigation_blocked_room_vnums
+                ),
+            )
+            if live_return is not None:
+                return live_return
+            if not self.live_maze_complete:
+                maze_abort = self._consume_live_maze_abort_decision(
+                    state,
+                    no_recall_is_terminal=True,
+                )
+                if maze_abort is not None:
+                    return maze_abort
+                return None
+            start_index = self.fastwalk_route.live_navigation_start_index
+            if start_index is None:
+                self.failure = (
+                    "live randomized route return has no source entry index"
+                )
+                return None
+            try:
+                self.fastwalk_recovery_commands = _reverse_fastwalk_commands(
+                    self.fastwalk_route.commands[:start_index]
+                )
+            except ValueError as exc:
+                self.failure = str(exc)
+                return None
+            self.fastwalk_return_index = 0
+
+        if (
+            self.fastwalk_returning
             and self.fastwalk_unattackable_target is not None
         ):
             if room_key == "3737":
@@ -11496,7 +11601,16 @@ class StarterPolicy:
                         state.inventory,
                         self.gear_catalog,
                     )
-                    if self.needs_food and food_keyword is not None:
+                    if (
+                        self.needs_food
+                        and food_keyword is not None
+                        and _food_consumption_allowed(
+                            state,
+                            state.inventory,
+                            self.gear_catalog,
+                            urgent=self.urgent_food_acquisition,
+                        )
+                    ):
                         return BotDecision(
                             f"eat {food_keyword}",
                             "address hunger before beginning the field circuit",
@@ -15127,6 +15241,16 @@ class StarterPolicy:
                 "wake before returning to the healer for a safe logout",
             )
 
+        # A completed field segment can enter logout while still inside a
+        # randomized no-recall maze. Reuse the live-exit return state machine
+        # instead of issuing the generic recall fallback in that maze.
+        if state.room_vnum in (
+            _PYRAMID_DESERT_MAZE_ROOMS
+            | _SHADOW_GROVE_ROOMS
+        ):
+            self.return_home = True
+            return self._return_home_decision(state)
+
         healer_routes = {
             "3063": "north",
             "3060": "down",
@@ -15142,6 +15266,18 @@ class StarterPolicy:
                 direction,
                 "reach the Midgaard healer before saving and quitting",
             )
+        if "no_recall" in state.room_flags:
+            self.return_home = True
+            if self.fastwalk_route is not None:
+                self.fastwalk_returning = True
+                return self._fastwalk_research_decision(state)
+            if state.room_vnum in _MAHNTOR_SWAMP_RETURN_ROOMS:
+                return self._return_home_decision(state)
+            self.failure = (
+                "no registered no-recall recovery route from "
+                f"room {state.room_name!r} ({state.room_vnum})"
+            )
+            return None
         return BotDecision(
             "recall",
             "return to Midgaard before saving and quitting at the healer",
@@ -15150,6 +15286,32 @@ class StarterPolicy:
     def _return_home_decision(self, state: CharacterState) -> BotDecision | None:
         """Recall from an interrupted field run and return to the healer."""
         room_vnum = state.room_vnum
+        if room_vnum in _MAHNTOR_SWAMP_RETURN_ROOMS:
+            if _is_sleeping(state):
+                return BotDecision(
+                    "stand",
+                    "wake before escaping the no-recall Mahn-Tor swamp",
+                )
+            maze_return = self._live_maze_navigation_decision(
+                state,
+                context="return-home:mahntor-swamp",
+                target="2331",
+                allowed_rooms=_MAHNTOR_SWAMP_RETURN_ROOMS,
+            )
+            if maze_return is not None:
+                return maze_return
+            if not self.live_maze_complete:
+                maze_abort = self._consume_live_maze_abort_decision(
+                    state,
+                    no_recall_is_terminal=True,
+                )
+                if maze_abort is not None:
+                    return maze_abort
+                return None
+            self.return_home_recovery_commands = (
+                _MAHNTOR_HEALER_RETURN_COMMANDS
+            )
+            self.return_home_recovery_index = 0
         if room_vnum in _ABYSS_NO_RECALL_ROOMS:
             if _is_sleeping(state):
                 return BotDecision(
@@ -15271,19 +15433,27 @@ class StarterPolicy:
             if self.return_home_recovery_index >= len(
                 self.return_home_recovery_commands
             ):
-                self.failure = (
-                    "no-recall recovery route did not reach the Midgaard healer "
-                    f"from room {state.room_name!r} ({state.room_vnum})"
+                if room_vnum not in _MIDGAARD_HEALER_ROUTES:
+                    self.failure = (
+                        "no-recall recovery route did not reach the Midgaard "
+                        "healer "
+                        f"from room {state.room_name!r} ({state.room_vnum})"
+                    )
+                    return None
+                # The source-backed route ends at a normal Midgaard waypoint
+                # such as room 3001. Hand control to the ordinary healer route
+                # instead of treating that waypoint as a failed maze escape.
+                self.return_home_recovery_commands = None
+                self.return_home_recovery_index = 0
+            else:
+                command = self.return_home_recovery_commands[
+                    self.return_home_recovery_index
+                ]
+                self.return_home_recovery_index += 1
+                return BotDecision(
+                    command,
+                    "follow the source-backed no-recall route to the Midgaard healer",
                 )
-                return None
-            command = self.return_home_recovery_commands[
-                self.return_home_recovery_index
-            ]
-            self.return_home_recovery_index += 1
-            return BotDecision(
-                command,
-                "follow the source-backed no-recall route to the Midgaard healer",
-            )
         home_routes = {
             "3063": "north",
             "3060": "down",
@@ -17487,6 +17657,7 @@ class StarterBotRunner:
             loop = asyncio.get_running_loop()
             last_connection_activity = loop.time()
             last_policy_progress = loop.time()
+            command_in_flight = False
 
             while not policy.done:
                 if policy.failure:
@@ -17515,6 +17686,7 @@ class StarterBotRunner:
                     if connection is not None:
                         await connection.close()
                         policy.on_connection_closed()
+                        command_in_flight = False
                         self.observation_parser.reset_connection()
                         self._last_gmcp_messages.clear()
                         reconnects += 1
@@ -17539,6 +17711,7 @@ class StarterBotRunner:
                     record("state", {"state": "connected"})
 
                 result = await connection.read_available(timeout=0.25)
+                response_complete = False
                 if result.empty:
                     self._flush_observations(record, policy)
                     persist_policy_research()
@@ -17558,8 +17731,22 @@ class StarterBotRunner:
                         continue
                 else:
                     last_connection_activity = asyncio.get_running_loop().time()
-                    self._record_read(result, record, policy)
+                    response_complete = self._record_read(result, record, policy)
                     persist_policy_research()
+
+                if command_in_flight:
+                    # A policy may make a prompt-ready side effect from a
+                    # GMCP update while the Telnet response to the previous
+                    # command is still buffered. Never let that state update
+                    # queue a second command. In-world commands complete on a
+                    # parsed prompt; login/creation commands may complete on
+                    # their text-only question.
+                    if not response_complete and not (
+                        result.text
+                        and not bool(getattr(policy, "in_world", True))
+                    ):
+                        continue
+                    command_in_flight = False
 
                 decision = policy.next_decision(self.character_state)
                 current_progress = _watchdog_progress_marker(self.character_state)
@@ -17757,6 +17944,7 @@ class StarterBotRunner:
                 last_connection_activity = asyncio.get_running_loop().time()
                 last_policy_progress = last_connection_activity
                 commands += 1
+                command_in_flight = True
                 policy.after_command(decision)
                 if decision.wait_seconds > 0:
                     await asyncio.sleep(decision.wait_seconds)
@@ -17842,6 +18030,9 @@ class StarterBotRunner:
                     ),
                     "fastwalk_target_present_observed": (
                         policy.fastwalk_target_present_observed
+                    ),
+                    "fastwalk_required_object_vnums": sorted(
+                        policy.fastwalk_acquired_required_object_vnums
                     ),
                     "fastwalk_where_relocation_attempts": (
                         policy.fastwalk_where_relocation_attempts
@@ -17953,6 +18144,9 @@ class StarterBotRunner:
                 ),
                 "campaign_fastwalk_target_present_observed": (
                     policy.fastwalk_target_present_observed
+                ),
+                "campaign_fastwalk_required_object_vnums": sorted(
+                    policy.fastwalk_acquired_required_object_vnums
                 ),
                 "campaign_fastwalk_where_relocation_attempts": (
                     policy.fastwalk_where_relocation_attempts
@@ -18121,7 +18315,7 @@ class StarterBotRunner:
         result: ReadResult,
         record: Callable[[str, dict[str, Any]], None],
         policy: StarterPolicy,
-    ) -> None:
+    ) -> bool:
         events: list[GameEvent] = []
         if result.text:
             record("response", {"text": result.text})
@@ -18143,20 +18337,21 @@ class StarterBotRunner:
                     "option": negotiation.option,
                 },
             )
+        prompt_seen = any(event.type == "prompt_seen" for event in events)
         self._record_game_events(events, record, policy)
         for event in policy.drain_training_events():
             record("game_event", event.as_payload())
+        return prompt_seen
 
     def _flush_observations(
         self,
         record: Callable[[str, dict[str, Any]], None],
         policy: StarterPolicy,
-    ) -> None:
-        self._record_game_events(
-            self.observation_parser.flush_text(),
-            record,
-            policy,
-        )
+    ) -> bool:
+        events = self.observation_parser.flush_text()
+        prompt_seen = any(event.type == "prompt_seen" for event in events)
+        self._record_game_events(events, record, policy)
+        return prompt_seen
 
     def _record_game_events(
         self,
@@ -22551,6 +22746,28 @@ def _inventory_food_keyword(
     gear_catalog: GearCatalog | None = None,
 ) -> str | None:
     """Return a source keyword for one carried, non-poisonous food item."""
+    return next(iter(_inventory_food_keywords(value, gear_catalog)), None)
+
+
+def _food_consumption_allowed(
+    state: CharacterState,
+    value: Any,
+    gear_catalog: GearCatalog | None = None,
+    *,
+    urgent: bool = False,
+) -> bool:
+    """Allow eating when hungry, urgent, or when another reserve remains."""
+    if urgent or state.hunger is None or state.hunger <= 0:
+        return True
+    return len(_inventory_food_keywords(value, gear_catalog)) > 1
+
+
+def _inventory_food_keywords(
+    value: Any,
+    gear_catalog: GearCatalog | None = None,
+) -> list[str]:
+    """Return source keywords for all carried, non-poisonous food items."""
+    keywords: list[str] = []
     for description in _inventory_descriptions(value):
         normalized = normalize_item_name(description)
         item = gear_catalog.match(description) if gear_catalog is not None else None
@@ -22560,14 +22777,16 @@ def _inventory_food_keyword(
             and len(item.values) >= 4
             and item.values[3] <= 0
         ):
-            return item_keyword(item)
+            keywords.append(item_keyword(item))
+            continue
         # These are the ordinary food nouns already used by the live parser.
         # Prefer source matching above; retain this narrow fallback for a live
         # inventory line whose prototype cannot yet be matched.
         for keyword in ("pie", "steak"):
             if keyword in normalized:
-                return keyword
-    return None
+                keywords.append(keyword)
+                break
+    return keywords
 
 
 def _capacity_relief_inventory_keyword(

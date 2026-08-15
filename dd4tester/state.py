@@ -45,6 +45,9 @@ class CharacterState:
     exits: dict[str, str | None] = field(default_factory=dict)
     stats: dict[str, Any] = field(default_factory=dict)
     progress: dict[str, Any] = field(default_factory=dict)
+    progress_source: str | None = None
+    xp_loss_observed: bool = False
+    xp_loss_total: int = 0
     currencies: dict[str, int | float] = field(default_factory=dict)
     inventory: Any = None
     equipment: Any = None
@@ -117,10 +120,40 @@ class CharacterState:
             self.stats = _payload(data)
             return
 
+        if event.type == "experience_lost":
+            self.xp_loss_observed = True
+            amount = _integer(data.get("xp"), 0) or 0
+            self.xp_loss_total += amount
+            return
+
         if event.type == "progress_changed":
-            self.progress = _payload(data)
-            self.level = _integer(data.get("level"), self.level)
-            self.xp = _integer(data.get("xp"), self.xp)
+            incoming_level = _integer(data.get("level"), self.level)
+            incoming_xp = _integer(data.get("xp"), self.xp)
+            if (
+                event.source == "gmcp"
+                and self.progress_source == "text"
+                and not self.dead
+                and not self.xp_loss_observed
+                and incoming_level == self.level
+                and incoming_xp is not None
+                and self.xp is not None
+                and incoming_xp < self.xp
+            ):
+                # A stale login-style GMCP snapshot can arrive after a
+                # textual score response. A same-level XP regression is not a
+                # valid progression update unless death or explicit DD4 loss
+                # evidence has been observed.
+                return
+
+            payload = _payload(data)
+            if event.source == "text":
+                self.progress = {**self.progress, **payload}
+                self.progress_source = "text"
+            else:
+                self.progress = payload
+                self.progress_source = "gmcp"
+            self.level = incoming_level
+            self.xp = incoming_xp
             self.max_xp = _integer(data.get("maxxp"), self.max_xp)
             self.xp_to_next_level = _integer(data.get("xptnl"), self.xp_to_next_level)
             self.practice = _integer(data.get("practice"), self.practice)
@@ -135,11 +168,13 @@ class CharacterState:
                 "electrum",
                 "starmetal",
             )
-            self.currencies = {
+            currency_values = {
                 name: value
                 for name in currency_names
                 if (value := _number(data.get(name))) is not None
             }
+            if currency_values:
+                self.currencies = currency_values
             return
 
         if event.type == "level_gained":
@@ -243,6 +278,7 @@ class CharacterState:
             self.dead = True
             self.in_combat = False
             self.combat_target = None
+            self._progress_source = None
 
 
 def replay_events(

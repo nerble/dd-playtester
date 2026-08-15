@@ -30,6 +30,13 @@ evidence, `research` for bounded probes with explicit limits, and
 `unavailable` for an explicit safe stop. Every engineering work unit must
 remove a concrete blocker to the next executable level band.
 
+Live continuation anchor for 2026-08-15: Aeloria is level 14 at 84,126 XP,
+full in healer room 3054 after the first level-14 rotations. Runs 6533-6542
+supplied the level-14 transition, training/provision handoff, Miden'nir and
+Ambush evidence, and a source-policy-specific -34 XP protection marker without
+a death or manual target selection. The offline suite passes 2,609 tests.
+This is level-14 continuation evidence, not a HERO completion claim.
+
 Audit anchor for 2026-08-13: the live level-10 mage/thief/warrior matrix is
 complete; Aeloria is level 13 at 74,825 XP, Dorrik level 16 at 123,437 XP, and
 Kestrel level 24 at 360,704 XP. Run 5246 proves Dorrik's level-14 transition;
@@ -253,6 +260,12 @@ campaign may select the generic source-ranked executor when its candidate
 passes source, route, crowd, consider, health, resource, and return gates.
 Use campaign segments, objective-kill records, and checkpoints to claim live
 progression; `show-policy-coverage` alone never proves that a band is solved.
+Treat explicit DD4 flee or death XP-loss text as authoritative negative
+progress. Persist the loss evidence and accept the following GMCP progress
+snapshot as authoritative; only an unexplained same-level GMCP regression
+after a text score is stale. Never restore an older higher same-level XP total
+merely because the regression did not include a death; the campaign must
+optimize real XP per hour, including the cost of failed engagements.
 Scope reboot-local source hunt kill caps by mobile prototype VNUM, not by the
 mobile's display name: distinct mobile VNUMs can share a short description
 (for example, two different `Secretary` prototypes). Derive source-ranked kill
@@ -318,6 +331,15 @@ area from Purgatory to Midgaard; otherwise a fully recovered character remains
 falsely dead and the campaign fails after safe healer cleanup. Run 4564 exposed
 this ordering after Kestrel looted the corpse, entered the portal, restored gear,
 and recovered fully in room 3054.
+The Mahn-Tor swamp (rooms 2332-2338) is another randomized `no_recall` maze.
+On a return-home or runtime-watchdog boundary, follow live GMCP exits to the
+stable source entrance 2331, then use the source-backed reverse route through
+room 2300 to Midgaard recall room 3001 before taking the ordinary north healer
+route. A fixed return-route list ending at a normal Midgaard waypoint must hand
+off to the ordinary healer routes rather than report a failed maze escape.
+Never retry `recall` in these rooms after DD4 answers `God has forsaken you`;
+use the bounded live maze state machine and fail explicitly if its registered
+exit graph is exhausted.
 Before training or automating a skill, read both its current in-game help and
 its source implementation. Record whether it is active or passive, its legal
 position and target, pulse/mana cost, effect formula, prerequisites, and any
