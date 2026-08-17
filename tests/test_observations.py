@@ -51,6 +51,20 @@ def test_text_observations_handle_split_chunks_and_unterminated_prompts() -> Non
     assert parser.flush_text() == []
 
 
+def test_text_observations_track_sleep_and_wake_posture() -> None:
+    parser = ObservationParser()
+
+    sleeping = parser.feed_text("You sleep.\n")
+    waking = parser.feed_text("You wake and ready yourself for action.\n")
+
+    assert sleeping[0].as_payload() == {
+        "type": "posture_changed",
+        "source": "text",
+        "data": {"position": 4, "text": "You sleep."},
+    }
+    assert waking[0].data["position"] == 7
+
+
 def test_text_score_reports_authoritative_progress_and_currency() -> None:
     parser = ObservationParser()
 

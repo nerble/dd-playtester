@@ -3041,6 +3041,11 @@ _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+# The explicit research registry currently ends at level 80.  Keep later
+# HERO bands executable through the generic source-ranked frontier while their
+# area-specific routes are still being researched.
+_GENERIC_SOURCE_RANKED_LEVEL_MINIMUM = 81
+
 
 _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY = ProgressionPolicy(
     policy_id="mahntor-rock-toad-circuit-13-15",
@@ -8872,6 +8877,18 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 "until new evidence is registered."
             ),
             evidence=_GHOST_TOWN_RETRIEVER_RESEARCH_POLICY.evidence,
+            practice_skill=context.practice_skill,
+        )
+    if normalized_level >= _GENERIC_SOURCE_RANKED_LEVEL_MINIMUM:
+        return replace(
+            _SOURCE_RANKED_HUNT_POLICY,
+            minimum_level=normalized_level,
+            maximum_level=normalized_level,
+            summary=(
+                "No later fixed research band is registered yet; use the "
+                "generic source-ranked frontier and retain its live source, "
+                "route, consider, health, and recovery gates."
+            ),
             practice_skill=context.practice_skill,
         )
     return replace(

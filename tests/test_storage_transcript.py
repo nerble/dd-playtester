@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from dd4tester.storage import RunStorage
+from dd4tester.storage import RunStorage, _SQLITE_BUSY_TIMEOUT_MS
 from dd4tester.transcript import TranscriptRecorder
 
 
@@ -86,6 +86,18 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert sales[0]["offered_coins"] == 10
     assert sales[0]["sold_coins"] == 10
     assert run_sales[0]["id"] == sale_id
+
+
+def test_storage_uses_bounded_busy_timeout_for_shared_campaign_database(
+    tmp_path,
+) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+
+    timeout = storage.connection.execute("PRAGMA busy_timeout").fetchone()[0]
+
+    storage.close()
+
+    assert timeout == _SQLITE_BUSY_TIMEOUT_MS
 
 
 def test_storage_replays_missing_transcript_suffix_idempotently(tmp_path) -> None:

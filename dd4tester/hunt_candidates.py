@@ -47,6 +47,9 @@ _FLIGHT_OR_WATER_SECTORS = frozenset(
 # even when the prototype is sentinel or stay-area.
 AFF_CONFUSION = 1 << 36
 
+ITEM_SCROLL = 2
+ITEM_WAND = 3
+ITEM_STAFF = 4
 ITEM_TREASURE = 8
 ITEM_WEAPON = 5
 ITEM_ARMOR = 9
@@ -54,6 +57,8 @@ ITEM_POTION = 10
 ITEM_CONTAINER = 15
 ITEM_FOOD = 19
 ITEM_MONEY = 20
+
+_CASTABLE_ITEM_TYPES = frozenset({ITEM_SCROLL, ITEM_WAND, ITEM_STAFF})
 
 # ITEM_MONEY stores copper, silver, gold, and platinum in value[0:4].  Keep
 # this conversion close to source parsing so candidate ranking cannot mistake
@@ -343,15 +348,26 @@ def money_value(values: Iterable[int]) -> int:
     )
 
 
-def potion_spell_names(item: ObjectSource) -> tuple[str, ...]:
-    """Return normalized source spell names encoded on a potion prototype."""
-    if item.item_type != ITEM_POTION:
-        return ()
+def _encoded_spell_names(item: ObjectSource) -> tuple[str, ...]:
     return tuple(
         value.casefold()
         for value in item.value_strings[1:]
         if value and not value.lstrip("-").isdigit()
     )
+
+
+def castable_spell_names(item: ObjectSource) -> tuple[str, ...]:
+    """Return normalized spells encoded on a scroll, wand, or staff."""
+    if item.item_type not in _CASTABLE_ITEM_TYPES:
+        return ()
+    return _encoded_spell_names(item)
+
+
+def potion_spell_names(item: ObjectSource) -> tuple[str, ...]:
+    """Return normalized source spell names encoded on a potion prototype."""
+    if item.item_type != ITEM_POTION:
+        return ()
+    return _encoded_spell_names(item)
 
 
 @lru_cache(maxsize=4)
@@ -645,6 +661,13 @@ def rank_hunt_candidates(
             and item.item_type == ITEM_WEAPON
         )
         equipped_weapons = tuple(item for _, item in equipped_weapon_slots)
+        equipped_spell_items = tuple(
+            item
+            for wear_location, object_vnum in reset.equipment
+            if wear_location in {WEAR_HOLD, WEAR_WIELD, WEAR_DUAL}
+            and (item := world.objects.get(object_vnum)) is not None
+            and castable_spell_names(item)
+        )
         hp_range = _mobile_base_hp_range(level_range)
         peak_round_damage = _mobile_peak_round_damage(
             level_range[1],
@@ -908,6 +931,16 @@ def rank_hunt_candidates(
             )
             hazards.append(
                 f"target equips {weapon_names} (NPC base damage x1.5 per wielded hit)"
+            )
+        if equipped_spell_items:
+            spell_items = ", ".join(
+                f"{item.short_description} ({', '.join(castable_spell_names(item))})"
+                for item in equipped_spell_items
+            )
+            hazards.append(f"target equips a castable spell item: {spell_items}")
+            dangerous = True
+            autonomy_rejections.append(
+                "target carries a source-castable spell item"
             )
         if (
             character_max_hp is not None

@@ -50,13 +50,18 @@ from .hunt_candidates import (
     load_world_source,
     parse_area_file,
     potion_spell_names,
+    source_mobile_search_rooms,
     source_mobile_identities as _canonical_source_mobile_identities,
 )
 from .observations import GameEvent, ObservationParser
 from .mudlet import MudletConnection
 from .runner import RunResult
 from .shops import SafeShop, safe_shop_for_item, sale_keyword
-from .specials import SAFE_NONCOMBAT_SPECIALS, TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+from .specials import (
+    SAFE_NONCOMBAT_SPECIALS,
+    TRANSIT_SAFE_COMBAT_ONLY_SPECIALS,
+    source_special_status_effects,
+)
 from .state import CharacterState
 from .storage import RunStorage
 from .training import (
@@ -246,6 +251,9 @@ _CONSIDER_BELOW_BAND_FRAGMENTS = (
     "is no match for you",
     "is no match for your offensive capabilities",
 )
+_CONSIDER_TARGET_ABSENT_FRAGMENTS = (
+    "they're not here",
+)
 _CONSIDER_DANGEROUS_FRAGMENTS = (
     "do you feel lucky, punk?",
     "laughs at you mercilessly",
@@ -253,11 +261,14 @@ _CONSIDER_DANGEROUS_FRAGMENTS = (
     "could crush you with my little finger",
     "puny insect",
     "unimaginably more powerful",
-    "they're not here",
 )
 _CONSIDER_REJECTED_FRAGMENTS = (
     _CONSIDER_BELOW_BAND_FRAGMENTS + _CONSIDER_DANGEROUS_FRAGMENTS
 )
+# A live socket that never produces a prompt is not useful progress. Permit
+# one reconnect for a transient server-side silence, then fail the bounded
+# work unit so the campaign scheduler can checkpoint and move on.
+_CONNECTION_INACTIVITY_RETRY_LIMIT = 1
 _EXPENDABLE_FIELD_JUNK = {
     "hairy key": "hairy",
     "shimmering key": "shimmering",
@@ -337,6 +348,7 @@ class _ClassTrainerRoute:
     search_room_vnum: str | None = None
     open_before: frozenset[tuple[str, str]] = frozenset()
     research_only: bool = False
+    locator_routes: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def outbound(self) -> dict[str, str]:
@@ -643,6 +655,75 @@ _KEROFK_ROUTE_PREFIX = (
 )
 _KEROFK_ROUTE_OPEN_BEFORE = frozenset({("4512", "south")})
 
+# Mobile 30257 is the source-defined shifter teacher.  It resets in the
+# player-inaccessible MobChute, then wanders through the 62 source-reachable
+# Kerofk rooms.  ``where shifter`` returns room names rather than VNUMs, so
+# duplicate labels are retained as separate route candidates and the live
+# runner advances to the next candidate after a stale locator result.
+_SHIFTER_KEROFK_LOCATOR_ROUTES = (
+    ("Intersection", ()),
+    ("Intersection at the Cliff's Edge", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208")),
+    ("Citizen's Road, South", ("30238", "30224", "30225", "30202", "30204", "30205", "30213")),
+    ("Star Gate Road, East", ("30238", "30224", "30225", "30202", "30204", "30205", "30218", "30217", "30216")),
+    ("Center Road, West", ("30238", "30224", "30225")),
+    ("Star Gate Road, West", ("30235", "30236", "30237")),
+    ("Plaza of Kerofk", ("30238", "30224", "30225", "30202")),
+    ("Intersection", ("30238", "30224", "30225", "30202", "30204", "30205")),
+    ("Center Road, East", ("30238", "30224", "30225", "30202", "30204", "30205", "30206")),
+    ("Cliffside Road, South", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208", "30209")),
+    ("Intersection", ("30238", "30224", "30225", "30202", "30204", "30205", "30213", "30212")),
+    ("Cliffside Road, North", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208", "30214")),
+    ("Intersection at the Cliff's Edge", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208", "30214", "30215")),
+    ("Intersection", ("30238", "30224", "30225", "30202", "30204", "30205", "30218", "30217")),
+    ("Intersection", ("30238", "30224", "30223", "30222")),
+    ("Intersection", ("30238", "30224")),
+    ("Wall Side Road, South", ("30233",)),
+    ("Wall Side Road, North", ("30235",)),
+    ("Intersection", ("30235", "30236")),
+    ("Center Road, West", ("30238",)),
+    ("The Bookstore", ("30238", "30224", "30225", "30202", "30204", "30205", "30218", "30217", "30216", "30247")),
+    ("Town Hall--Entrance", ("30238", "30224", "30225", "30255")),
+    ("Center Road, East", ("30238", "30224", "30225", "30202", "30204")),
+    ("Intersection at the Cliff's Edge", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208", "30209", "30210")),
+    ("Moon Gate Road, East", ("30238", "30224", "30225", "30202", "30204", "30205", "30213", "30212", "30211")),
+    ("Citizen's Road, North", ("30238", "30224", "30225", "30202", "30204", "30205", "30218")),
+    ("Star Gate Road, East", ("30238", "30224", "30223", "30222", "30221", "30220", "30219")),
+    ("Star Gate Road, West", ("30238", "30224", "30223", "30222", "30221")),
+    ("Business Road, North", ("30238", "30224", "30223")),
+    ("Moon Gate Road, East", ("30238", "30224", "30230", "30229", "30228", "30227", "30226")),
+    ("Business Road, South", ("30238", "30224", "30230")),
+    ("Intersection", ("30233", "30232")),
+    ("The Edge of Luck", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208", "30209", "30241")),
+    ("The CliffHanger", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208", "30214", "30246")),
+    ("Outer Office", ("30238", "30224", "30225", "30255", "30256")),
+    ("Courtroom", ("30238", "30224", "30225", "30255", "30258")),
+    ("Jailer's Room", ("30238", "30224", "30225", "30255", "30261")),
+    ("Whoops...", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208", "30214", "30267")),
+    ("Temple of Edahs", ("30238", "30269")),
+    ("Recruiting Office", ("30235", "30271")),
+    ("House of Pugilism", ("30238", "30353")),
+    ("The Red Card", ("30238", "30224", "30223", "30222", "30221", "30220", "30219", "30207")),
+    ("Star Gate Road", ("30238", "30224", "30223", "30222", "30221", "30220")),
+    ("Moon Gate Road", ("30238", "30224", "30230", "30229", "30228", "30227")),
+    ("Intersection", ("30238", "30224", "30230", "30229")),
+    ("Moon Gate Road, West", ("30233", "30232", "30231")),
+    ("Benzaldehyde's Office", ("30238", "30224", "30225", "30202", "30204", "30205", "30206", "30208", "30209", "30241", "30242")),
+    ("Bob's Armoury and Tackle", ("30238", "30224", "30225", "30202", "30204", "30205", "30213", "30212", "30211", "30243")),
+    ("The Fortress", ("30238", "30224", "30230", "30229", "30228", "30227", "30226", "30244")),
+    ("Mages' Guild, Entrance", ("30238", "30224", "30225", "30202", "30249")),
+    ("The Herbalist's Shoppe", ("30238", "30224", "30223", "30254")),
+    ("Kell's House", ("30238", "30224", "30223", "30222", "30221", "30263")),
+    ("Living Area", ("30238", "30269", "30270")),
+    ("Captain's Office", ("30235", "30271", "30272")),
+    ("Fleecem and Son", ("30238", "30224", "30230", "30347")),
+    ("Moon Gate Road, West", ("30238", "30224", "30230", "30229", "30228")),
+    ("Jenk's Place", ("30233", "30232", "30231", "30239")),
+    ("The Reception Area", ("30238", "30224", "30230", "30229", "30228", "30227", "30226", "30244", "30245")),
+    ("Kell's Tavern", ("30238", "30224", "30223", "30222", "30221", "30263", "30265")),
+    ("Blacksmiths Foundry", ("30238", "30224", "30230", "30229", "30228", "30227", "30273")),
+    ("Farmer's Stand", ("30238", "30224", "30223", "30222", "30221", "30220", "30352")),
+)
+
 
 def _kerofk_trainer_route(
     room_vnum: str,
@@ -784,12 +865,15 @@ _LEVEL_20_CLASS_TRAINERS = {
         ),
     ),
     "shifter": _ClassTrainerRoute(
-        "30250",
-        "The Kerofk MobChute",
+        "30354",
+        "Kerofk shifter-teacher locator",
         "shifter",
-        (),
+        _KEROFK_ROUTE_PREFIX + (
+            ("30232", "north", "30233"),
+            ("30233", "north", "30354"),
+        ),
         minimum_level=20,
-        research_only=True,
+        locator_routes=_SHIFTER_KEROFK_LOCATOR_ROUTES,
     ),
 }
 _ALL_CLASS_TRAINERS = (
@@ -1047,8 +1131,12 @@ _FIELD_READY_MANA_RATIO = 0.15
 _HEALER_RETURN_MOVE_RATIO = 0.90
 _FIELD_WITHDRAW_HEALTH_RATIO = 0.15
 _FIELD_FINISH_HEALTH_RATIO = 0.10
-# After protection expires, use the live matchup only as a late-fight tie
-# breaker. A nearly dead opponent is still worth finishing aggressively.
+_FIELD_FINISH_OPPONENT_RATIO = 0.35
+# After protection expires, use the live matchup rather than treating the
+# ordinary field floor as sufficient. A nearly dead opponent is still worth
+# finishing aggressively, but an unprotected character below this threshold
+# must not continue against a materially healthier or higher-level opponent.
+_SANCTUARY_EXPIRY_HIGH_RISK_HEALTH_RATIO = 0.75
 _SANCTUARY_EXPIRY_LOW_HEALTH_RATIO = 0.30
 _SANCTUARY_EXPIRY_NEAR_DEATH_RATIO = 0.25
 _CASTER_MITIGATION_SPELLS = {
@@ -1240,6 +1328,33 @@ class FieldHuntStop:
     source_policy_id: str | None = None
     source_target_armed: bool | None = None
     source_loot_object_vnums: tuple[int, ...] = ()
+    source_specials: tuple[str, ...] = ()
+
+
+_FASTWALK_COMMAND_BUDGET_RESERVE = 128
+_FASTWALK_STOP_COMMAND_OVERHEAD = 4
+
+
+def _fastwalk_command_budget(
+    route: Fastwalk,
+    hunt_stops: Collection[FieldHuntStop],
+) -> int:
+    """Allow a finite hunt circuit to finish without removing its hard cap."""
+    stop_work = sum(
+        len(stop.route_vnums)
+        + len(stop.route)
+        + len(stop.actions)
+        + len(stop.post_actions)
+        + _FASTWALK_STOP_COMMAND_OVERHEAD
+        for stop in hunt_stops
+    )
+    # Reserve the registered route once in each direction for a failed recall
+    # and leave a bounded allowance for combat, loot, and healer cleanup.
+    return (
+        2 * len(route.commands)
+        + stop_work
+        + _FASTWALK_COMMAND_BUDGET_RESERVE
+    )
 
 
 class StarterPolicy:
@@ -1300,12 +1415,17 @@ class StarterPolicy:
         source_mobile_targets: Mapping[str, tuple[str, ...]] | None = None,
         source_mobile_level_ranges: Mapping[str, tuple[int, int]] | None = None,
         source_mobile_level_ranges_by_vnum: Mapping[int, tuple[int, int]] | None = None,
+        source_mobile_vnums_by_target_room: Mapping[
+            str, Mapping[str, tuple[int, ...]]
+        ]
+        | None = None,
         source_mobile_special_profiles: Mapping[
             str,
             tuple[tuple[str, ...], ...],
         ]
         | None = None,
         practice_types_spent: frozenset[str] = frozenset(),
+        deferred_practice_types: frozenset[str] = frozenset(),
         rejected_practice_skills: frozenset[str] = frozenset(),
         counterbalance_preparation_required: bool = False,
         title_configured: bool = False,
@@ -1450,6 +1570,15 @@ class StarterPolicy:
         self.subclass_change_sent = False
         self.subclass_confirmation_attempted = False
         self.subclass_selection_complete = False
+        self.class_trainer_locator_target_vnum: str | None = None
+        self.class_trainer_locator_route: tuple[str, ...] = ()
+        self.class_trainer_locator_label: str | None = None
+        self.class_trainer_locator_queries = 0
+        self.class_trainer_locator_tried_routes: set[
+            tuple[str, tuple[str, ...]]
+        ] = set()
+        self.class_trainer_locator_query_pending = False
+        self.class_trainer_locator_response_buffer = ""
         self.fastwalk_training_started = False
         self.fastwalk_training_complete = not fastwalk_train_before_departure
         self.class_trainer_return_pending = False
@@ -1506,10 +1635,18 @@ class StarterPolicy:
         self.source_mobile_level_ranges_by_vnum = dict(
             source_mobile_level_ranges_by_vnum or {}
         )
+        self.source_mobile_vnums_by_target_room = {
+            str(target).casefold(): {
+                str(room): tuple(sorted({int(vnum) for vnum in vnums}))
+                for room, vnums in rooms.items()
+            }
+            for target, rooms in (source_mobile_vnums_by_target_room or {}).items()
+        }
         self.source_mobile_special_profiles = dict(
             source_mobile_special_profiles or {}
         )
         self.practice_types_spent = set(practice_types_spent)
+        self.deferred_practice_types = set(deferred_practice_types)
         self.stage = "login"
         self.done = False
         self.failure: str | None = None
@@ -1580,6 +1717,8 @@ class StarterPolicy:
         self.waiting_for_heal = False
         self.recovery_wake_command_pending = False
         self.blindness_recovery_active = False
+        self.blindness_recovery_cure_attempted = False
+        self.blindness_recovery_cast_pending = False
         self.health_check_due: float | None = None
         self.resume_recovery_after_resupply = False
         self.waiting_for_move = False
@@ -1825,6 +1964,8 @@ class StarterPolicy:
         self.fastwalk_where_fallback_stops: tuple[FieldHuntStop, ...] = ()
         self.fastwalk_where_fallback_initialized = False
         self.fastwalk_room_target_present_observed = False
+        self.fastwalk_stale_target_refresh_attempts: dict[int, int] = {}
+        self.fastwalk_target_refresh_pending = False
         self.consider_target: str | None = None
         self.consider_target_selector: str | None = None
         self.consider_viable: bool | None = None
@@ -1915,8 +2056,10 @@ class StarterPolicy:
         self.gear_unusable_keywords: set[str] = set()
         self.gear_unusable_selectors: set[str] = set()
         self.gear_instance_sources: dict[str, int] = {}
+        self.gear_inventory_source_hints: dict[str, int] = {}
         self.gear_worn_instance_ids: set[str] = set()
         self.gear_command_history: deque[tuple[Any, ...]] = deque(maxlen=32)
+        self.gear_cycle_history: deque[tuple[Any, ...]] = deque(maxlen=12)
         self.gear_loop_abort_reason: str | None = None
         self.gear_prohibited_categories: set[str] = set()
         self.gear_allowed_categories: set[str] | None = None
@@ -2051,6 +2194,13 @@ class StarterPolicy:
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
         self.last_response = cleaned
+        if self.class_trainer_locator_query_pending:
+            self.class_trainer_locator_response_buffer = (
+                _append_locator_response_chunk(
+                    self.class_trainer_locator_response_buffer,
+                    cleaned,
+                )
+            )
         flight_price = _MAGIC_SHOP_FLIGHT_PRICE.search(cleaned)
         if flight_price is not None:
             try:
@@ -2501,6 +2651,14 @@ class StarterPolicy:
                 self.consider_level_offset_ceiling = (
                     1 if "the perfect match" in recent else 0
                 )
+            elif any(
+                phrase in recent for phrase in _CONSIDER_TARGET_ABSENT_FRAGMENTS
+            ):
+                # A wandering mobile can leave after TARGETMODE selected it.
+                # Keep this distinct from a below-band consider result so the
+                # hunt can refresh the room before deciding whether to abort.
+                self.consider_viable = False
+                self.consider_level_offset_ceiling = None
             elif any(phrase in recent for phrase in _CONSIDER_REJECTED_FRAGMENTS):
                 self.consider_viable = False
                 self.consider_level_offset_ceiling = None
@@ -3732,7 +3890,28 @@ class StarterPolicy:
                 ):
                     self.prompt_ready = True
             if event.type in {"room_entered", "room_updated"}:
-                room = _room_key(state)
+                event_room_vnum = event.data.get("vnum")
+                if event_room_vnum is None and isinstance(
+                    event.data.get("value"), dict
+                ):
+                    event_room_vnum = event.data["value"].get("vnum")
+                room = (
+                    str(event_room_vnum)
+                    if event_room_vnum is not None
+                    else _room_key(state)
+                )
+                arrival = event.data.get("arrival")
+                arrival_from = (
+                    str(arrival.get("from"))
+                    if isinstance(arrival, dict)
+                    and arrival.get("from") is not None
+                    else None
+                )
+                arrived_after_pending_move = bool(
+                    self.pending_travel_origin is not None
+                    and room
+                    and room != self.pending_travel_origin
+                )
                 if (
                     self.pending_recall_origin is not None
                     and room
@@ -3742,7 +3921,7 @@ class StarterPolicy:
                 if room and room != self.current_room:
                     if self.body_part_cleanup_step == 0:
                         self._clear_body_part_cleanup()
-                    self.previous_room = self.current_room
+                    self.previous_room = arrival_from or self.current_room
                     self.current_room = room
                     self.pending_travel_origin = None
                     self.pending_fastwalk_outbound_move = False
@@ -3751,6 +3930,17 @@ class StarterPolicy:
                     self.fastwalk_open_exit_waiting = None
                     self.advice_direction = None
                     self.pending_move = None
+                elif room and arrival_from is not None:
+                    # Room text and Room.Info can arrive in one read batch. If
+                    # text already advanced current_room using the final state,
+                    # retain GMCP's authoritative arrival origin for repeated
+                    # room routes.
+                    self.previous_room = arrival_from
+                if arrived_after_pending_move:
+                    # A prompt can precede the room event in a single read.
+                    # The authoritative room change still acknowledges the
+                    # movement and permits the next route command.
+                    self.prompt_ready = True
                 if room:
                     description = event.data.get("description")
                     if isinstance(description, str):
@@ -3884,6 +4074,7 @@ class StarterPolicy:
                     self.prompt_ready = True
             if event.type == "equipment_changed" and self.gear_catalog is not None:
                 equipment_value = event.data.get("value", event.data)
+                previous_worn_items = tuple(self.gear_worn)
                 previous_weapon = next(
                     (
                         item
@@ -3904,6 +4095,27 @@ class StarterPolicy:
                 )
                 self.gear_instance_sources.update(instance_sources)
                 if full_worn_snapshot:
+                    current_worn_counts = Counter(item.vnum for item in self.gear_worn)
+                    removed_worn_counts = Counter(
+                        item.vnum for item in previous_worn_items
+                    ) - current_worn_counts
+                    for item in previous_worn_items:
+                        if removed_worn_counts[item.vnum] <= 0:
+                            continue
+                        description_key = normalize_item_name(
+                            item.short_description
+                        )
+                        if description_key:
+                            self.gear_inventory_source_hints[description_key] = (
+                                item.vnum
+                            )
+                        removed_worn_counts[item.vnum] -= 1
+                    worn_vnums = {item.vnum for item in self.gear_worn}
+                    self.gear_inventory_source_hints = {
+                        description: vnum
+                        for description, vnum in self.gear_inventory_source_hints.items()
+                        if vnum not in worn_vnums
+                    }
                     self.gear_worn_instance_ids = set(instance_sources)
                     # A complete paper-doll snapshot proves the preceding
                     # stance command advanced the live equipment state. Do
@@ -4135,6 +4347,16 @@ class StarterPolicy:
                 # permission to cross the greet-program mobile's wander graph.
                 self.magic_shop_route_blocked_by_drunk = True
             self.prompt_ready = True
+        if (
+            self.in_world
+            and self.waiting_for_heal
+            and _is_sleeping(state)
+            and self.health_check_due is not None
+            and now >= self.health_check_due
+        ):
+            # Sleeping recovery suppresses ordinary prompts. A timed health
+            # check must still reopen the policy gate after a score command.
+            self.prompt_ready = True
         runtime_cleanup = (
             self.runtime_boundary_requested and self.midgaard_logout_pending
         )
@@ -4244,6 +4466,13 @@ class StarterPolicy:
         self.midgaard_logout_quit_reason = "bounded runtime checkpoint complete"
         self.fastwalk_resume_hunt_after_interrupt = False
         self.fastwalk_resume_current_route_after_interrupt = False
+        # A bounded field run must spend its cleanup window returning home,
+        # never waiting for a stale crowd or locator response to expire.
+        self.fastwalk_crowd_retry_due = None
+        self.fastwalk_where_response_pending = False
+        self.fastwalk_where_response_deadline = None
+        self.fastwalk_where_response_buffer = ""
+        self.prompt_ready = True
         # Keep the first concrete safety finding (for example, a live
         # source-registered route hazard) so campaign research does not
         # misclassify a bounded healer return as an unobserved target.
@@ -5150,6 +5379,57 @@ class StarterPolicy:
         if self.fastwalk_route is not None and live_enemies:
             self._reconcile_live_enemy_state(live_enemies)
         self._record_field_combat_damage(state)
+        if self.fastwalk_route is not None and not self.fastwalk_attack_started:
+            endpoint_target = self.fastwalk_attack_target
+            endpoint_stop = (
+                self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+                if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+                else None
+            )
+            live_endpoint_enemy = next(
+                (
+                    enemy
+                    for enemy in live_enemies
+                    if endpoint_target is not None
+                    and _targets_match(
+                        str(enemy.get("name", "")),
+                        endpoint_target,
+                    )
+                ),
+                None,
+            )
+            if (
+                live_endpoint_enemy is not None
+                and self._enemy_is_known_below_useful_band(
+                    live_endpoint_enemy,
+                    state,
+                )
+                and not (
+                    endpoint_stop is not None
+                    and self._allows_below_band_resource_kill(
+                        state,
+                        endpoint_stop,
+                    )
+                )
+            ):
+                live_level = _int_or_none(live_endpoint_enemy.get("level"))
+                self._record_live_below_band_source_targets(
+                    state,
+                    (live_endpoint_enemy,),
+                )
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_abort_reason = (
+                    f"field target {endpoint_target!r} loaded at live level "
+                    f"{live_level}, at or below the useful XP floor"
+                )
+                self.fastwalk_emergency_recall_pending = True
+                if self.flee_pending:
+                    self.prompt_ready = False
+                    return None
+                return BotDecision(
+                    "flee",
+                    "withdraw before attacking a live below-band endpoint target",
+                )
         if self.combat_active or (
             self.fastwalk_route is not None and live_enemies
         ):
@@ -5258,7 +5538,15 @@ class StarterPolicy:
                 self.fastwalk_route is not None
                 and self.unapproved_field_attacker is not None
             ):
-                if self.fastwalk_objective_budget_complete:
+                allow_post_objective_below_band_return = (
+                    self.fastwalk_returning
+                    and "no_recall" in state.room_flags
+                    and state.room_vnum in _MAHNTOR_SWAMP_RETURN_ROOMS
+                )
+                if (
+                    self.fastwalk_objective_budget_complete
+                    and not allow_post_objective_below_band_return
+                ):
                     self.fastwalk_abort_reason = (
                         "field combat aborted after unapproved attacker "
                         f"{self.unapproved_field_attacker!r} joined after "
@@ -5277,6 +5565,19 @@ class StarterPolicy:
                 ):
                     self.unapproved_field_attacker = None
                 else:
+                    if self.fastwalk_objective_budget_complete:
+                        self.fastwalk_abort_reason = (
+                            "field combat aborted after unapproved attacker "
+                            f"{self.unapproved_field_attacker!r} joined after "
+                            "objective completion"
+                        )
+                        self.fastwalk_crowded = True
+                        self.fastwalk_returning = True
+                        self.fastwalk_emergency_recall_pending = True
+                        return BotDecision(
+                            "flee",
+                            "withdraw immediately from an unplanned post-objective attacker",
+                        )
                     resume_mode = self._fastwalk_prepare_interrupt_resume(state)
                     if resume_mode is None:
                         self.fastwalk_abort_reason = (
@@ -5288,6 +5589,39 @@ class StarterPolicy:
                         "flee",
                         "withdraw immediately because an unapproved attacker joined field combat",
                     )
+            if self._is_noncombat_utility_run:
+                if self.liquidate_loot and self.emergency_provision_sale:
+                    self.return_home = True
+                    self.utility_emergency_recall_pending = True
+                    self.utility_abort_reason = (
+                        "unexpected combat interrupted emergency loot liquidation"
+                    )
+                    return BotDecision(
+                        "flee",
+                        "withdraw from unexpected combat before emergency loot liquidation",
+                    )
+                if self._utility_attacker_is_trivial(state):
+                    combat = self._between_round_combat_decision(state)
+                    if combat is not None:
+                        return combat
+                    self.prompt_ready = False
+                    return None
+                if (
+                    self.active_target_level is None
+                    and not self.awaiting_enemy_assessment
+                ):
+                    self.awaiting_enemy_assessment = True
+                    self.prompt_ready = False
+                    return None
+                self.return_home = True
+                self.utility_emergency_recall_pending = True
+                self.utility_abort_reason = (
+                    "unexpected combat interrupted a non-combat utility run"
+                )
+                return BotDecision(
+                    "flee",
+                    "withdraw from unexpected combat before returning home safely",
+                )
             source_known_below_band_enemies = [
                 enemy
                 for enemy in live_enemies
@@ -5355,40 +5689,58 @@ class StarterPolicy:
                     "flee",
                     "withdraw from field combat after its bounded duration elapsed",
                 )
-            if self._is_noncombat_utility_run:
-                if self.liquidate_loot and self.emergency_provision_sale:
-                    self.return_home = True
-                    self.utility_emergency_recall_pending = True
-                    self.utility_abort_reason = (
-                        "unexpected combat interrupted emergency loot liquidation"
+            if self.fastwalk_route is not None and self.fastwalk_returning:
+                if (
+                    "no_recall" in state.room_flags
+                    and state.room_vnum in _MAHNTOR_SWAMP_RETURN_ROOMS
+                    and live_enemies
+                    and all(
+                        self._source_mobile_enemy_is_known_below_useful_band(
+                            enemy,
+                            state,
+                        )
+                        for enemy in live_enemies
                     )
-                    return BotDecision(
-                        "flee",
-                        "withdraw from unexpected combat before emergency loot liquidation",
+                    and not self.needs_food
+                    and not self.needs_drink
+                    and _health_ratio(state)
+                        > self._field_combat_withdraw_ratio(state)
+                ):
+                    live_enemy = next(
+                        (
+                            enemy
+                            for enemy in live_enemies
+                            if enemy.get("name")
+                        ),
+                        None,
                     )
-                if self._utility_attacker_is_trivial(state):
+                    if live_enemy is not None and (
+                        self.active_target is None
+                        or not any(
+                            _targets_match(
+                                self.active_target,
+                                str(enemy.get("name", "")),
+                            )
+                            for enemy in live_enemies
+                        )
+                    ):
+                        self.active_target = str(live_enemy["name"])
+                        self.active_target_selector = self._target_selector_for(
+                            self.active_target,
+                        )
+                        self.active_target_mobile_vnum = _int_or_none(
+                            live_enemy.get("isnpc")
+                        )
+                        self.combat_active = True
+                    # Mahn-Tor's return maze is no-recall and its source-known
+                    # below-band Mistlings can occupy every path to the exit.
+                    # Fight a bounded interruption instead of paying DD4's flee
+                    # penalty, then resume the live-VNUM escape graph.
                     combat = self._between_round_combat_decision(state)
                     if combat is not None:
                         return combat
                     self.prompt_ready = False
                     return None
-                if (
-                    self.active_target_level is None
-                    and not self.awaiting_enemy_assessment
-                ):
-                    self.awaiting_enemy_assessment = True
-                    self.prompt_ready = False
-                    return None
-                self.return_home = True
-                self.utility_emergency_recall_pending = True
-                self.utility_abort_reason = (
-                    "unexpected combat interrupted a non-combat utility run"
-                )
-                return BotDecision(
-                    "flee",
-                    "withdraw from unexpected combat before returning home safely",
-                )
-            if self.fastwalk_route is not None and self.fastwalk_returning:
                 self.fastwalk_emergency_recall_pending = True
                 return BotDecision(
                     "flee",
@@ -6219,9 +6571,19 @@ class StarterPolicy:
         """Stop a repeated live gear state before it consumes the run budget."""
         key = self._gear_command_state_key(state, stance, command)
         repeated = sum(previous == key for previous in self.gear_command_history)
-        if repeated >= 2:
+        alternating = (
+            len(self.gear_cycle_history) >= 3
+            and self.gear_cycle_history[-3] == self.gear_cycle_history[-1]
+            and self.gear_cycle_history[-2] == key
+            and self.gear_cycle_history[-3] != key
+        )
+        if repeated >= 2 or alternating:
             self.gear_loop_abort_reason = (
-                f"stopped repeated {stance} equipment command {command!r}"
+                (
+                    f"stopped oscillating {stance} equipment command {command!r}"
+                    if alternating
+                    else f"stopped repeated {stance} equipment command {command!r}"
+                )
             )
             self.gear_command_queue.clear()
             self.gear_recompute_after_removals = False
@@ -6238,6 +6600,7 @@ class StarterPolicy:
             self.gear_audited = True
             return True
         self.gear_command_history.append(key)
+        self.gear_cycle_history.append(key)
         return False
 
     def _gear_inventory_sources(
@@ -6248,6 +6611,13 @@ class StarterPolicy:
         if self.gear_catalog is None:
             return [], []
         entries = _inventory_entries(state.inventory)
+        inventory_names = {normalize_item_name(description) for description, _ in entries}
+        worn_vnums = {item.vnum for item in self.gear_worn}
+        self.gear_inventory_source_hints = {
+            description: vnum
+            for description, vnum in self.gear_inventory_source_hints.items()
+            if description in inventory_names and vnum not in worn_vnums
+        }
         candidates: list[ObjectSource] = []
         for description, selector in entries:
             if selector is not None and selector in self.gear_unusable_selectors:
@@ -6263,6 +6633,12 @@ class StarterPolicy:
                 if mapped_vnum is not None
                 else None
             )
+            if item is None and selector is None:
+                hinted_vnum = self.gear_inventory_source_hints.get(
+                    normalize_item_name(description)
+                )
+                if hinted_vnum is not None:
+                    item = self.gear_catalog.objects.get(hinted_vnum)
             if item is None:
                 if not self.gear_catalog.is_unambiguously_usable(
                     description,
@@ -6388,6 +6764,7 @@ class StarterPolicy:
             self.gear_applied_stance == stance
             and self.gear_inventory_signature == signature
         ):
+            self.gear_cycle_history.clear()
             return None
 
         if not self.gear_audited:
@@ -7232,9 +7609,18 @@ class StarterPolicy:
             for practice_type, balance in balances.items()
         )
         critical_unlock = self._critical_damage_unlock(state)
+        critical_unlock_type = self._critical_unlock_practice_type(
+            state,
+            critical_unlock,
+        )
         has_critical_unlock_budget = bool(
             critical_unlock is not None
-            and any(balance is None or balance > 0 for balance in balances.values())
+            and critical_unlock_type is not None
+            and critical_unlock_type not in self.deferred_practice_types
+            and (
+                balances.get(critical_unlock_type) is None
+                or balances.get(critical_unlock_type, 0) > 0
+            )
         )
         preferred_stat = self._preferred_training_stat(state)
         needs_stat_selection = bool(
@@ -7445,6 +7831,26 @@ class StarterPolicy:
             )
         return None
 
+    def _critical_unlock_practice_type(
+        self,
+        state: CharacterState,
+        skill: str | None,
+    ) -> str | None:
+        if skill is None:
+            return None
+        folded_skill = skill.casefold()
+        return next(
+            (
+                priority.practice_type
+                for priority in training_priorities_for(
+                    self.spec.character_class,
+                    subclass=self._active_training_subclass(state),
+                )
+                if priority.skill.casefold() == folded_skill
+            ),
+            None,
+        )
+
     def _training_practice_type_exclusions(
         self,
         state: CharacterState,
@@ -7651,10 +8057,15 @@ class StarterPolicy:
             self.failure = "the requested subclass has no source-backed change keyword"
             return None
 
+        locator_decision = self._class_trainer_locator_decision(state, trainer)
+        if locator_decision is not None:
+            return locator_decision
+        if self.failure is not None:
+            return None
+
         room_vnum = state.room_vnum or ""
         at_trainer = bool(
-            room_vnum == trainer.destination_vnum
-            or self._class_trainer_present(state, trainer)
+            self._class_trainer_at_state(state, trainer)
         )
         if at_trainer:
             if self.subclass_change_sent:
@@ -7700,6 +8111,22 @@ class StarterPolicy:
                         "you fail to find anyone by that name",
                     )
                 ):
+                    if trainer.locator_routes:
+                        if self.class_trainer_locator_label is not None:
+                            self.class_trainer_locator_tried_routes.add(
+                                (
+                                    self.class_trainer_locator_label,
+                                    self.class_trainer_locator_route,
+                                )
+                            )
+                        self.class_trainer_locator_target_vnum = None
+                        self.class_trainer_locator_route = ()
+                        self.class_trainer_locator_label = None
+                        self.subclass_change_step = 0
+                        return BotDecision(
+                            "recall",
+                            "rebase before refreshing a stale shifter-teacher locator result",
+                        )
                     self.failure = (
                         f"source-registered subclass teacher {trainer.keyword!r} "
                         "was absent from its live room"
@@ -7754,6 +8181,185 @@ class StarterPolicy:
             return advanced
         return _CLASS_TRAINERS.get(character_class)
 
+    @staticmethod
+    def _class_trainer_locator_options(
+        trainer: _ClassTrainerRoute,
+        label: str,
+        tried: set[tuple[str, tuple[str, ...]]],
+    ) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        folded = label.casefold()
+        options = tuple(
+            (room_label, route)
+            for room_label, route in trainer.locator_routes
+            if room_label.casefold() == folded
+        )
+        untried = tuple(
+            option
+            for option in options
+            if (option[0], option[1]) not in tried
+        )
+        return untried or options
+
+    def _class_trainer_locator_move(
+        self,
+        state: CharacterState,
+        trainer: _ClassTrainerRoute,
+    ) -> BotDecision | None:
+        room_vnum = str(state.room_vnum or "")
+        route = self.class_trainer_locator_route
+        target_vnum = self.class_trainer_locator_target_vnum
+        if target_vnum is None or room_vnum == target_vnum:
+            return None
+        if room_vnum == trainer.destination_vnum:
+            next_vnum = route[0] if route else target_vnum
+        else:
+            try:
+                route_index = route.index(room_vnum)
+            except ValueError:
+                self.failure = (
+                    "live state left the source-backed shifter teacher route "
+                    f"at room {room_vnum}"
+                )
+                return BotDecision(
+                    "recall",
+                    "rebase after the live locator route left its source graph",
+                )
+            if route_index >= len(route) - 1:
+                self.failure = (
+                    "source-backed shifter teacher route ended before its target"
+                )
+                return BotDecision(
+                    "recall",
+                    "return when the shifter teacher route has no next room",
+                )
+            next_vnum = route[route_index + 1]
+        command = next(
+            (
+                _EXIT_COMMANDS.get(direction, direction)
+                for direction, destination in state.exits.items()
+                if str(destination) == next_vnum
+            ),
+            None,
+        )
+        if command not in _MOVEMENT_COMMANDS:
+            self.failure = (
+                "live GMCP did not expose the next source-backed shifter-teacher "
+                f"exit to room {next_vnum}"
+            )
+            return BotDecision(
+                "recall",
+                "return safely when a locator destination is not a live exit",
+            )
+        return BotDecision(
+            command,
+            f"follow the live GMCP route to source room {next_vnum} containing the shifter teacher",
+        )
+
+    def _class_trainer_locator_decision(
+        self,
+        state: CharacterState,
+        trainer: _ClassTrainerRoute,
+    ) -> BotDecision | None:
+        """Locate the wandering shifter teacher without trusting a stale room."""
+        if not trainer.locator_routes:
+            return None
+        room_vnum = str(state.room_vnum or "")
+        if self.class_trainer_locator_query_pending:
+            self.class_trainer_locator_query_pending = False
+            response = (
+                self.class_trainer_locator_response_buffer or self.last_response
+            )
+            self.class_trainer_locator_response_buffer = ""
+            locations = _where_locations_from_response(response, trainer.keyword)
+            choices = tuple(
+                option
+                for location in locations
+                for option in self._class_trainer_locator_options(
+                    trainer,
+                    location,
+                    self.class_trainer_locator_tried_routes,
+                )
+            )
+            if not choices:
+                if self.class_trainer_locator_queries >= 8:
+                    self.failure = (
+                        "where shifter did not map the live teacher to a "
+                        "source-reachable Kerofk room"
+                    )
+                    return None
+                self.class_trainer_locator_queries += 1
+                self.class_trainer_locator_query_pending = True
+                return BotDecision(
+                    f"where {trainer.keyword}",
+                    "retry the bounded locator when the shifter teacher room was not source-mapped",
+                )
+            label, route = choices[0]
+            self.class_trainer_locator_label = label
+            self.class_trainer_locator_route = route
+            self.class_trainer_locator_target_vnum = (
+                route[-1] if route else trainer.destination_vnum
+            )
+            return self._class_trainer_locator_move(state, trainer)
+
+        if self.class_trainer_locator_target_vnum is not None:
+            return self._class_trainer_locator_move(state, trainer)
+        if room_vnum == trainer.destination_vnum:
+            self.class_trainer_locator_queries += 1
+            self.class_trainer_locator_query_pending = True
+            self.class_trainer_locator_response_buffer = ""
+            return BotDecision(
+                f"where {trainer.keyword}",
+                "locate the wandering shifter teacher within the source-reachable Kerofk rooms",
+            )
+        if room_vnum == "3054":
+            return BotDecision(
+                "south",
+                "leave the healer and begin the source-backed shifter-teacher route",
+            )
+        if room_vnum in trainer.outbound:
+            direction = trainer.command_for(room_vnum, self.previous_room)
+            if direction is None:
+                self.failure = (
+                    "source-backed Kerofk route lost its repeated-room transition "
+                    f"at room {room_vnum}"
+                )
+                return BotDecision(
+                    "recall",
+                    "rebase when the Kerofk teacher route is ambiguous",
+                )
+            if (room_vnum, direction) in trainer.open_before:
+                return self._open_then_move(
+                    direction,
+                    "open the source-backed Kerofk route to the shifter teacher",
+                )
+            return BotDecision(
+                direction,
+                "follow the source-backed Kerofk route to the shifter-teacher locator",
+            )
+        self.failure = (
+            "live state is outside the source-backed route to the shifter teacher "
+            f"at room {room_vnum}"
+        )
+        return BotDecision(
+            "recall",
+            "rebase at the healer before locating the wandering shifter teacher",
+        )
+
+    def _class_trainer_at_state(
+        self,
+        state: CharacterState,
+        trainer: _ClassTrainerRoute,
+    ) -> bool:
+        room_vnum = str(state.room_vnum or "")
+        return bool(
+            room_vnum == trainer.destination_vnum
+            or self._class_trainer_present(state, trainer)
+            or (
+                trainer.locator_routes
+                and self.class_trainer_locator_target_vnum == room_vnum
+            )
+        )
+
     def _class_trainer_present(
         self,
         state: CharacterState,
@@ -7799,12 +8405,22 @@ class StarterPolicy:
         room_vnum = state.room_vnum or ""
         room_name = (state.room_name or "").casefold()
         class_trainer = self._level_ten_class_trainer(state)
+        if class_trainer is not None:
+            locator_decision = self._class_trainer_locator_decision(
+                state,
+                class_trainer,
+            )
+            if locator_decision is not None:
+                return locator_decision
+            if self.failure is not None:
+                return None
         if (
             class_trainer is not None
             and room_vnum
             and room_vnum != class_trainer.destination_vnum
             and room_vnum not in class_trainer.outbound
             and room_vnum not in _MIDGAARD_CITY_HEALER_ROOMS
+            and not self._class_trainer_at_state(state, class_trainer)
         ):
             # A reconnect can leave a character in the field after an
             # interrupted segment. Rebase at the healer before retracing the
@@ -7818,10 +8434,7 @@ class StarterPolicy:
             or "loremaster" in room_name
             or (
                 class_trainer is not None
-                and (
-                    room_vnum == class_trainer.destination_vnum
-                    or self._class_trainer_present(state, class_trainer)
-                )
+                and self._class_trainer_at_state(state, class_trainer)
             )
         ):
             return self._loremaster_decision(state)
@@ -7881,6 +8494,15 @@ class StarterPolicy:
         }
         useful_types = self._useful_practice_types(state)
         critical_unlock = self._critical_damage_unlock(state)
+        critical_unlock_type = self._critical_unlock_practice_type(
+            state,
+            critical_unlock,
+        )
+        critical_unlock_pending = bool(
+            critical_unlock is not None
+            and critical_unlock_type is not None
+            and critical_unlock_type not in self.deferred_practice_types
+        )
         needs_smithy_preparation = bool(
             self.spec.character_class.casefold() == "smithy"
             and self.counterbalance_preparation_required
@@ -7889,7 +8511,7 @@ class StarterPolicy:
             balance > 0
             and practice_type in useful_types
             and (
-                critical_unlock is not None
+                critical_unlock_pending
                 or practice_type not in self.practice_types_spent
             )
             for practice_type, balance in available.items()
@@ -8624,6 +9246,16 @@ class StarterPolicy:
             else 1
         )
         room_vnum = state.room_vnum
+        if (
+            not self.city_rearm_returning
+            and not self.city_rearm_borrowing
+            and self.pending_travel_origin is not None
+            and str(room_vnum or "") == self.pending_travel_origin
+        ):
+            # DD4 can print a prompt and a textual room description before the
+            # authoritative Room.Info VNUM. Do not advance a fixed shop route
+            # on that stale room or its next direction can be applied twice.
+            return None
         wielded_weapon = self._wielded_weapon()
         source_weapon = self._city_rearm_source_weapon()
         weapon_wielded = (
@@ -10215,16 +10847,20 @@ class StarterPolicy:
         if self.live_maze_backtrack_room is not None:
             if room_vnum != self.live_maze_backtrack_room:
                 self.live_maze_rebases += 1
-            if self.live_maze_rebases > 8:
-                self.live_maze_abort_reason = (
+                if self.live_maze_rebases > 8:
+                    self.live_maze_abort_reason = (
                     "live maze navigation exceeded eight bounded rebases "
                     f"while seeking {target} (last room {room_vnum!r})"
                 )
                 return None
-            self.live_maze_visited = {room_vnum}
-            self.live_maze_attempted = {}
-            self.live_maze_stack = []
-            self.live_maze_backtrack_room = None
+                self.live_maze_visited = {room_vnum}
+                self.live_maze_attempted = {}
+                self.live_maze_stack = []
+            else:
+                # The expected parent was reached. Preserve the DFS stack
+                # and attempted exits so the next branch is explored instead
+                # of restarting the same child cycle.
+                self.live_maze_backtrack_room = None
 
         self.live_maze_visited.add(room_vnum)
         attempted = self.live_maze_attempted.setdefault(room_vnum, set())
@@ -12380,6 +13016,23 @@ class StarterPolicy:
         )
         ambiguous_keyword = keyword_match_count > target_count
         target_selector = self._target_selector_for(target, stop)
+        if not consider_only:
+            source_identity_issue = self._source_target_reachability_issue(
+                state,
+                stop,
+                target,
+            )
+            if source_identity_issue is not None:
+                self.fastwalk_abort_reason = source_identity_issue
+                self.fastwalk_target_present_observed = True
+                self.fastwalk_target_absent = False
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_attack_started = False
+                return BotDecision(
+                    "look",
+                    "skip a source target whose live identity is not uniquely "
+                    "resolvable before combat",
+                )
         maximum_target_count = stop.maximum_target_count if stop is not None else 1
         if (
             (not consider_only and target_count > maximum_target_count)
@@ -12444,6 +13097,20 @@ class StarterPolicy:
                 "consider the field target before committing to combat",
             )
         if self.consider_viable is True:
+            status_recovery_issue = self._source_status_recovery_issue(
+                state,
+                stop,
+            )
+            if status_recovery_issue is not None:
+                self.fastwalk_abort_reason = status_recovery_issue
+                self.fastwalk_target_present_observed = True
+                self.fastwalk_target_absent = False
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_attack_started = False
+                return BotDecision(
+                    "look",
+                    "skip a status-casting source target without its cure reserve",
+                )
             source_level_range = self._source_mobile_level_range(target, stop)
             live_target_levels = [
                 level
@@ -12552,6 +13219,50 @@ class StarterPolicy:
                 state=state,
             )
         if self.consider_viable is False:
+            target_absent = any(
+                fragment in self.last_response.casefold()
+                for fragment in _CONSIDER_TARGET_ABSENT_FRAGMENTS
+            )
+            if target_absent:
+                stop_index = self.fastwalk_hunt_stop_index
+                refresh_attempts = self.fastwalk_stale_target_refresh_attempts.get(
+                    stop_index,
+                    0,
+                )
+                stale_selector = self.consider_target_selector
+                self.consider_target = None
+                self.consider_target_selector = None
+                self.consider_viable = None
+                self.consider_level_offset_ceiling = None
+                self.consider_response_pending = False
+                self.fastwalk_attack_target = None
+                self.fastwalk_attack_started = False
+                self.fastwalk_room_target_present_observed = False
+                self.fastwalk_consider_outcomes.pop(target.casefold(), None)
+                if stop is not None and stop.source_policy_id:
+                    self.fastwalk_source_consider_outcomes.pop(
+                        stop.source_policy_id,
+                        None,
+                    )
+                if refresh_attempts < 2:
+                    self.fastwalk_stale_target_refresh_attempts[stop_index] = (
+                        refresh_attempts + 1
+                    )
+                    self.fastwalk_target_refresh_pending = True
+                    return BotDecision(
+                        "look",
+                        "refresh a wandering target after its live selector went stale",
+                    )
+                self._forget_defeated_room_target(target, stale_selector)
+                self.fastwalk_target_absent = True
+                self.fastwalk_abort_reason = (
+                    f"field target {target!r} moved after its live selector "
+                    "went stale"
+                )
+                return BotDecision(
+                    "look",
+                    "continue the bounded route after repeated stale-target evidence",
+                )
             below_band_required_loot = bool(
                 stop is not None
                 and self._allows_below_band_resource_kill(state, stop)
@@ -12687,6 +13398,12 @@ class StarterPolicy:
             if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
             else None
         )
+        if self.fastwalk_target_refresh_pending:
+            # The preceding consider response invalidated a live TARGETMODE
+            # selector. The fresh look has now been parsed; let the normal
+            # room-target and registered-route checks decide what remains.
+            self.fastwalk_target_refresh_pending = False
+            self.fastwalk_hunt_looked = True
         must_take_no_recall_exit = bool(
             current_stop is not None
             and current_stop.target is None
@@ -13847,6 +14564,114 @@ class StarterPolicy:
         # supersedes the old selector after a mobile dies, wanders, or resets.
         return matches[-1] if matches else None
 
+    def _source_target_reachability_issue(
+        self,
+        state: CharacterState,
+        stop: FieldHuntStop | None,
+        target: str,
+    ) -> str | None:
+        """Reject a source target whose same-name VNUM cannot be known safely.
+
+        DD4's TARGETMODE selector identifies a live instance, but it does not
+        expose that mobile's source VNUM until ``Char.Enemies`` arrives after
+        combat starts. A source graph can still tell us when multiple same-name
+        prototypes can occupy the current room; attacking in that situation
+        would turn a source-ranked route into a name guess.
+        """
+        if (
+            stop is None
+            or stop.source_mobile_vnum is None
+            or not self.source_mobile_vnums_by_target_room
+        ):
+            return None
+        room_vnum = str(self.current_room or state.room_vnum or "")
+        if not room_vnum:
+            return None
+        target_key = next(
+            (
+                identity
+                for identity in self.source_mobile_vnums_by_target_room
+                if _stop_target_matches(identity, target, stop)
+            ),
+            None,
+        )
+        if target_key is None:
+            return None
+        reachable = self.source_mobile_vnums_by_target_room[target_key].get(
+            room_vnum,
+            (),
+        )
+        if not reachable:
+            return (
+                f"source mobile VNUM {stop.source_mobile_vnum} has no "
+                f"source-graph path to room {room_vnum} for live identity "
+                f"{target!r}"
+            )
+        if stop.source_mobile_vnum not in reachable:
+            listed = ", ".join(str(vnum) for vnum in reachable)
+            return (
+                f"source mobile VNUM {stop.source_mobile_vnum} is not among the "
+                f"source-graph identities reachable in room {room_vnum} "
+                f"({listed})"
+            )
+        if len(reachable) > 1:
+            listed = ", ".join(str(vnum) for vnum in reachable)
+            return (
+                f"live identity {target!r} is source-ambiguous in room "
+                f"{room_vnum}: mobile VNUMs {listed} can reach it "
+                f"(expected {stop.source_mobile_vnum})"
+            )
+        return None
+
+    def _source_status_recovery_issue(
+        self,
+        state: CharacterState,
+        stop: FieldHuntStop | None,
+    ) -> str | None:
+        """Require a bounded cure before engaging status-casting specials."""
+        if stop is None or not stop.source_specials:
+            return None
+        effects = {
+            effect
+            for special in stop.source_specials
+            for effect in source_special_status_effects(special)
+        }
+        if "blindness" not in effects:
+            return None
+        if "cure blindness" in self.known_skills:
+            return None
+        cure_keyword = _verified_combat_potion_keyword_for_spell(
+            self.combat_pouch_potions,
+            self.gear_catalog,
+            "cure blindness",
+        )
+        if cure_keyword is None:
+            specials = ", ".join(sorted(set(stop.source_specials)))
+            return (
+                f"source special {specials} can inflict blindness without a "
+                "verified cure blindness reserve"
+            )
+        sanctuary_keyword = _verified_combat_potion_keyword_for_spell(
+            self.combat_pouch_potions,
+            self.gear_catalog,
+            "sanctuary",
+        )
+        sanctuary_consumed_before_fight = (
+            stop.require_sanctuary
+            and not _has_named_affect(state.affects, "sanctuary")
+            and sanctuary_keyword == cure_keyword
+        )
+        if sanctuary_consumed_before_fight and (
+            self.combat_pouch_potions.get(cure_keyword, 0) < 2
+        ):
+            specials = ", ".join(sorted(set(stop.source_specials)))
+            return (
+                f"source special {specials} can blind after the sanctuary "
+                f"potion is consumed; retain a second {cure_keyword} potion "
+                "or a trained cure blindness spell"
+            )
+        return None
+
     def _expected_field_target_mobile_vnum(self) -> int | None:
         """Return the source VNUM expected for the current field target."""
         if self.fastwalk_route is None or not self.fastwalk_hunt_stops:
@@ -14080,9 +14905,20 @@ class StarterPolicy:
         enemy_level = _int_or_none(enemy.get("level"))
         enemy_hp = _int_or_none(enemy.get("hp"))
         enemy_max_hp = _int_or_none(enemy.get("maxhp"))
+        finish_level_offset = 0
+        if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops):
+            configured_offset = self.fastwalk_hunt_stops[
+                self.fastwalk_hunt_stop_index
+            ].maximum_level_offset
+            if configured_offset is not None:
+                # A source-approved useful-band hunt may admit one level above
+                # the character. Keep the finishing grace aligned with that
+                # admission, but never extend it beyond a one-level offset.
+                finish_level_offset = min(1, max(0, configured_offset))
+        finish_level_ceiling = state.level + finish_level_offset
         if (
             enemy_level is not None
-            and enemy_level <= state.level
+            and enemy_level <= finish_level_ceiling
             and enemy_hp is not None
             and enemy_max_hp not in (None, 0)
             and enemy_hp / enemy_max_hp <= 0.5
@@ -14094,6 +14930,23 @@ class StarterPolicy:
         if not state.max_hp:
             return normal_floor
         observed_damage = self.field_combat_max_observed_damage
+        player_hp = _int_or_none(state.hp)
+        one_hit_reserve = max(observed_damage, critical_damage or 0)
+        # A nearly dead, lower/equal-level opponent is worth one final attack
+        # when the live matchup can absorb one known incoming hit. This keeps
+        # the source reserve for dangerous fights without abandoning a target
+        # that is already losing and still below the explicit stop floor.
+        if (
+            enemy_level is not None
+            and enemy_level <= finish_level_ceiling
+            and enemy_hp is not None
+            and enemy_max_hp not in (None, 0)
+            and enemy_hp / enemy_max_hp <= _FIELD_FINISH_OPPONENT_RATIO
+            and player_hp is not None
+            and player_hp > enemy_hp
+            and player_hp > one_hit_reserve
+        ):
+            return normal_floor
         if critical_damage is None:
             damage_reserve = observed_damage * 2
         else:
@@ -14142,6 +14995,32 @@ class StarterPolicy:
                     f"versus the opponent's {enemy_ratio:.0%} and {enemy_hp} HP"
                 )
             return None
+
+        player_hp = _int_or_none(state.hp)
+        enemy_level = _int_or_none(enemy.get("level"))
+        level_gap = None
+        if enemy_level is not None and state.level is not None:
+            level_gap = enemy_level - state.level
+        health_gap = enemy_ratio - health_ratio
+        materially_healthier = (
+            player_hp is not None
+            and enemy_hp > player_hp
+            and health_gap >= 0.10
+        )
+        materially_higher_level = level_gap is not None and level_gap > 1
+        if health_ratio < _SANCTUARY_EXPIRY_HIGH_RISK_HEALTH_RATIO and (
+            materially_healthier or materially_higher_level
+        ):
+            return (
+                f"own health is {health_ratio:.0%} and {player_hp or 0} HP "
+                f"while the opponent remains at {enemy_ratio:.0%} and "
+                f"{enemy_hp} HP"
+                + (
+                    f" ({level_gap} levels higher)"
+                    if materially_higher_level
+                    else ""
+                )
+            )
 
         matchup_floor = max(
             _FIELD_CONTINUE_HEALTH_RATIO,
@@ -15337,12 +16216,16 @@ class StarterPolicy:
                 self.prompt_ready = False
                 return None
             current_distance = _ABYSS_RECALL_DISTANCE.get(room_vnum)
+            route_blocked_rooms = frozenset(
+                self.fastwalk_route.live_navigation_blocked_room_vnums
+            ) if self.fastwalk_route is not None else frozenset()
             closer_rooms = {
                 destination
                 for destination, distance in _ABYSS_RECALL_DISTANCE.items()
                 if (
                     current_distance is not None
                     and distance < current_distance
+                    and destination not in route_blocked_rooms
                 )
             }
             direction = _direction_to_destination(state, closer_rooms)
@@ -15889,15 +16772,12 @@ class StarterPolicy:
             and not _enemy_records(state.enemies)
             and ratio >= _RUNTIME_BOUNDARY_HEALTH_RATIO
             and _mana_ratio(state) >= _RUNTIME_BOUNDARY_MANA_RATIO
-            and (
-                state.room_vnum == "3054"
-                or _move_ratio(state) >= _RUNTIME_BOUNDARY_MOVE_RATIO
-            )
+            and _move_ratio(state) >= _RUNTIME_BOUNDARY_MOVE_RATIO
         ):
             # A bounded field segment must not wait for its normal departure
-            # floor after it has already reached the healer. Stop at a modest
-            # safe-room reserve, then let the existing return-home logout
-            # path save and close the connection.
+            # floor after it has already reached the healer. It still needs
+            # the modest movement reserve so a saved character does not leave
+            # the next field launch movement-starved.
             self.fastwalk_recovery_ready = True
             self.waiting_for_heal = False
             self.health_check_due = None
@@ -16261,6 +17141,8 @@ class StarterPolicy:
         blinded = _has_named_affect(state.affects, "blindness")
         if not blinded:
             self.blindness_recovery_active = False
+            self.blindness_recovery_cure_attempted = False
+            self.blindness_recovery_cast_pending = False
             if self.utility_abort_reason == (
                 "blindness triggered healer recovery before further field activity"
             ):
@@ -16272,6 +17154,30 @@ class StarterPolicy:
         self.utility_abort_reason = (
             "blindness triggered healer recovery before further field activity"
         )
+        if (
+            "cure blindness" in self.known_skills
+            and not self.blindness_recovery_cast_pending
+        ):
+            self.blindness_recovery_cast_pending = True
+            return BotDecision(
+                "cast 'cure blindness' self",
+                "restore vision with the source-verified cure blindness spell",
+            )
+        cure_keyword = _verified_combat_potion_keyword_for_spell(
+            self.combat_pouch_potions,
+            self.gear_catalog,
+            "cure blindness",
+        )
+        if (
+            cure_keyword is not None
+            and not self.blindness_recovery_cure_attempted
+        ):
+            self.blindness_recovery_cure_attempted = True
+            self._consume_combat_pouch_potion(cure_keyword)
+            return BotDecision(
+                f"quaff {cure_keyword}",
+                "restore vision with a source-verified cure blindness potion",
+            )
         if self.combat_active or state.in_combat:
             if self.flee_pending:
                 self.prompt_ready = False
@@ -16566,10 +17472,7 @@ class StarterPolicy:
         class_trainer = self._level_ten_class_trainer(state)
         at_class_trainer = bool(
             class_trainer is not None
-            and (
-                state.room_vnum == class_trainer.destination_vnum
-                or self._class_trainer_present(state, class_trainer)
-            )
+            and self._class_trainer_at_state(state, class_trainer)
         )
         trainer_keyword = (
             class_trainer.keyword
@@ -16643,9 +17546,18 @@ class StarterPolicy:
                 state,
                 listing,
             )
+            critical_unlock_type = self._critical_unlock_practice_type(
+                state,
+                critical_unlock,
+            )
+            critical_unlock_pending = bool(
+                critical_unlock is not None
+                and critical_unlock_type is not None
+                and critical_unlock_type not in self.deferred_practice_types
+            )
             practice_type_exclusions = (
                 frozenset()
-                if critical_unlock is not None
+                if critical_unlock_pending
                 else frozenset(self.practice_types_spent)
             )
             self.practice_plan = plan_training(
@@ -16655,7 +17567,9 @@ class StarterPolicy:
                 character_level=state.level,
                 excluded_practice_types=practice_type_exclusions,
                 excluded_skills=frozenset(self._training_excluded_skills()),
-                stop_after_skill=critical_unlock,
+                stop_after_skill=(
+                    critical_unlock if critical_unlock_pending else None
+                ),
             )
             total_practices = sum(
                 value or 0
@@ -16685,6 +17599,7 @@ class StarterPolicy:
                         and practice_type not in practice_type_exclusions
                     ):
                         deferred_types.append(practice_type)
+                        self.deferred_practice_types.add(practice_type)
                         self.pending_training_events.append(
                             GameEvent(
                                 "training_deferred",
@@ -17190,12 +18105,17 @@ class StarterBotRunner:
         source_mobile_targets: Mapping[str, tuple[str, ...]] | None = None,
         source_mobile_level_ranges: Mapping[str, tuple[int, int]] | None = None,
         source_mobile_level_ranges_by_vnum: Mapping[int, tuple[int, int]] | None = None,
+        source_mobile_vnums_by_target_room: Mapping[
+            str, Mapping[str, tuple[int, ...]]
+        ]
+        | None = None,
         source_mobile_special_profiles: Mapping[
             str,
             tuple[tuple[str, ...], ...],
         ]
         | None = None,
         practice_types_spent: frozenset[str] = frozenset(),
+        deferred_practice_types: frozenset[str] = frozenset(),
         rejected_practice_skills: frozenset[str] = frozenset(),
         counterbalance_preparation_required: bool = False,
         use_sanctuary_potions: bool = True,
@@ -17267,8 +18187,12 @@ class StarterBotRunner:
         self.source_mobile_targets = source_mobile_targets
         self.source_mobile_level_ranges = source_mobile_level_ranges
         self.source_mobile_level_ranges_by_vnum = source_mobile_level_ranges_by_vnum
+        self.source_mobile_vnums_by_target_room = (
+            source_mobile_vnums_by_target_room
+        )
         self.source_mobile_special_profiles = source_mobile_special_profiles
         self.practice_types_spent = practice_types_spent
+        self.deferred_practice_types = deferred_practice_types
         self.rejected_practice_skills = rejected_practice_skills
         self.counterbalance_preparation_required = (
             counterbalance_preparation_required
@@ -17523,6 +18447,18 @@ class StarterBotRunner:
                         str(source_directory.resolve())
                     )
                 )
+            source_mobile_vnums_by_target_room = (
+                self.source_mobile_vnums_by_target_room
+            )
+            if (
+                source_mobile_vnums_by_target_room is None
+                and source_directory.is_dir()
+            ):
+                source_mobile_vnums_by_target_room = (
+                    _load_source_mobile_vnums_by_target_room(
+                        str(source_directory.resolve())
+                    )
+                )
             source_mobile_special_profiles = self.source_mobile_special_profiles
             if (
                 source_mobile_special_profiles is None
@@ -17601,8 +18537,12 @@ class StarterBotRunner:
                 source_mobile_level_ranges_by_vnum=(
                     source_mobile_level_ranges_by_vnum
                 ),
+                source_mobile_vnums_by_target_room=(
+                    source_mobile_vnums_by_target_room
+                ),
                 source_mobile_special_profiles=source_mobile_special_profiles,
                 practice_types_spent=self.practice_types_spent,
+                deferred_practice_types=self.deferred_practice_types,
                 rejected_practice_skills=self.rejected_practice_skills,
                 counterbalance_preparation_required=(
                     self.counterbalance_preparation_required
@@ -17646,6 +18586,25 @@ class StarterBotRunner:
                 subclass_selection=self.subclass_selection,
                 subclass_change_keyword=self.subclass_change_keyword,
             )
+            command_budget = self.spec.max_commands
+            if self.fastwalk_route is not None and self.fastwalk_hunt_stops:
+                command_budget = max(
+                    command_budget,
+                    _fastwalk_command_budget(
+                        self.fastwalk_route,
+                        self.fastwalk_hunt_stops,
+                    ),
+                )
+                if command_budget > self.spec.max_commands:
+                    record(
+                        "state",
+                        {
+                            "state": "command_budget_extended",
+                            "configured_commands": self.spec.max_commands,
+                            "effective_commands": command_budget,
+                            "reason": "finite source-vetted hunt circuit",
+                        },
+                    )
             commands = 0
             reconnects = 0
             repeated_command = ""
@@ -17658,6 +18617,7 @@ class StarterBotRunner:
             last_connection_activity = loop.time()
             last_policy_progress = loop.time()
             command_in_flight = False
+            connection_inactivity_retries = 0
 
             while not policy.done:
                 if policy.failure:
@@ -17677,9 +18637,15 @@ class StarterBotRunner:
                         raise TimeoutError(
                             f"Starter bot exceeded {self.spec.max_runtime:g} second runtime"
                         )
-                if commands >= self.spec.max_commands:
+                if commands >= command_budget:
+                    budget_label = (
+                        "source route command budget"
+                        if self.fastwalk_route is not None
+                        and self.fastwalk_hunt_stops
+                        else "command budget"
+                    )
                     raise RuntimeError(
-                        f"Starter bot exceeded {self.spec.max_commands} command budget"
+                        f"Starter bot exceeded {command_budget} {budget_label}"
                     )
 
                 if connection is None or connection.closed:
@@ -17727,10 +18693,26 @@ class StarterBotRunner:
                                 "idle_seconds": round(idle_seconds, 3),
                             },
                         )
+                        connection_inactivity_retries += 1
                         await connection.close()
+                        if (
+                            connection_inactivity_retries
+                            > _CONNECTION_INACTIVITY_RETRY_LIMIT
+                        ):
+                            record(
+                                "state",
+                                {
+                                    "state": "connection_inactivity_retry_limit",
+                                    "retries": connection_inactivity_retries,
+                                },
+                            )
+                            raise ConnectionError(
+                                "Starter bot exceeded connection inactivity retry limit"
+                            )
                         continue
                 else:
                     last_connection_activity = asyncio.get_running_loop().time()
+                    connection_inactivity_retries = 0
                     response_complete = self._record_read(result, record, policy)
                     persist_policy_research()
 
@@ -18036,6 +19018,9 @@ class StarterBotRunner:
                     ),
                     "fastwalk_where_relocation_attempts": (
                         policy.fastwalk_where_relocation_attempts
+                    ),
+                    "fastwalk_stale_target_refresh_attempts": dict(
+                        policy.fastwalk_stale_target_refresh_attempts
                     ),
                     "fastwalk_crowded": policy.fastwalk_crowded,
                     "fastwalk_unattackable_target": (
@@ -18361,7 +19346,10 @@ class StarterBotRunner:
     ) -> None:
         for event in events:
             record("game_event", event.as_payload())
-        policy.observe_events(events, self.character_state)
+            # The state callback above applies each event before the next one.
+            # Let policy observation see that same sequence instead of giving
+            # every event the final state of the entire read batch.
+            policy.observe_events([event], self.character_state)
 
     def _default_connection(self, spec: CharacterSpec) -> CommandConnection:
         if spec.transport == "mudlet":
@@ -21536,7 +22524,18 @@ def moria_deep_sanctuary_potion_research_stops() -> tuple[FieldHuntStop, ...]:
     them or treats them as progression targets.
     """
     reset_room = moria_sanctuary_potion_consider_stops()[0]
-    return (
+    source_route = (
+        "4064",
+        "4063",
+        "4058",
+        "4057",
+        "4062",
+        "4065",
+        "4066",
+        "4069",
+        "4071",
+    )
+    stops = [
         FieldHuntStop(
             reset_room.route,
             reset_room.target,
@@ -21544,27 +22543,24 @@ def moria_deep_sanctuary_potion_research_stops() -> tuple[FieldHuntStop, ...]:
             abort_if_where_target_absent=True,
             consider_only=True,
             exact_target=True,
-        ),
-        FieldHuntStop(
-            (),
-            "large hobgoblin",
-            consider_only=True,
-            exact_target=True,
-            route_vnums=(
-                "4064",
-                "4063",
-                "4058",
-                "4057",
-                "4062",
-                "4065",
-                "4066",
-                "4069",
-                "4071",
-            ),
-            trivial_bystanders=("snake", "warrior", "hobgoblin", "orc"),
-            abort_after_consider_rejection=True,
-        ),
-    )
+        )
+    ]
+    # Keep each source-room hop as its own stop. A crowded wandering carrier
+    # is a retryable room-state miss; separate stops let the route continue to
+    # the second reset room without weakening the exact-one target gate.
+    for from_vnum, to_vnum in zip(source_route, source_route[1:]):
+        stops.append(
+            FieldHuntStop(
+                (),
+                "large hobgoblin",
+                consider_only=True,
+                exact_target=True,
+                route_vnums=(from_vnum, to_vnum),
+                trivial_bystanders=("snake", "warrior", "hobgoblin", "orc"),
+                abort_after_consider_rejection=True,
+            )
+        )
+    return tuple(stops)
 
 
 def moria_deep_sanctuary_potion_hunt_stops() -> tuple[FieldHuntStop, ...]:
@@ -22267,6 +23263,39 @@ def _load_source_mobile_level_ranges_by_vnum(
     return {
         mobile_vnum: (max(1, mobile.level - 2), mobile.level + 2)
         for mobile_vnum, mobile in world.mobiles.items()
+    }
+
+
+@lru_cache(maxsize=4)
+def _load_source_mobile_vnums_by_target_room(
+    area_directory: str,
+) -> dict[str, dict[str, tuple[int, ...]]]:
+    """Index same-name mobile VNUMs by the rooms their source graph permits."""
+    world = load_world_source(Path(area_directory), include_all_areas=True)
+    identity_vnums: dict[str, set[int]] = {}
+    for mobile in world.mobiles.values():
+        for target in _source_mobile_identities(
+            mobile.room_description,
+            mobile.short_description,
+            mobile.keywords,
+        ):
+            identity_vnums.setdefault(target.casefold(), set()).add(mobile.vnum)
+
+    indexed: dict[str, dict[str, set[int]]] = {}
+    for target, vnums in identity_vnums.items():
+        if len(vnums) < 2:
+            continue
+        rooms_for_target = indexed.setdefault(target, {})
+        for mobile_vnum in sorted(vnums):
+            for room_vnum in source_mobile_search_rooms(world, mobile_vnum):
+                rooms_for_target.setdefault(str(room_vnum), set()).add(mobile_vnum)
+
+    return {
+        target: {
+            room: tuple(sorted(vnums))
+            for room, vnums in rooms.items()
+        }
+        for target, rooms in indexed.items()
     }
 
 

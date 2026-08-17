@@ -8,6 +8,7 @@ from dd4tester.hunt_candidates import (
     AFF_CONFUSION,
     ITEM_FOOD,
     ITEM_MONEY,
+    ITEM_STAFF,
     ExitSource,
     MobileSource,
     MobReset,
@@ -16,6 +17,7 @@ from dd4tester.hunt_candidates import (
     RoomObjectReset,
     WorldSource,
     money_value,
+    castable_spell_names,
     potion_spell_names,
     _route_preflight_metadata,
     _mobile_critical_hit_damage,
@@ -31,6 +33,7 @@ from dd4tester.hunt_candidates import (
     source_mobile_search_rooms,
     source_route_movement_cost,
     source_route_requires_flight,
+    WEAR_HOLD,
 )
 
 
@@ -392,6 +395,20 @@ A thick black potion is here.~
 
     assert item.value_strings == ("15", "cure critical", "", "")
     assert potion_spell_names(item) == ("cure critical",)
+
+
+def test_area_parser_preserves_staff_spell_names() -> None:
+    item = ObjectSource(
+        5302,
+        "staff serpentine",
+        "a green serpentine staff",
+        ITEM_STAFF,
+        (20, 2, 2),
+        7600,
+        value_strings=("20", "2", "2", "earthquake"),
+    )
+
+    assert castable_spell_names(item) == ("earthquake",)
 
 
 def test_area_parser_records_direct_coin_stash_resets(tmp_path: Path) -> None:
@@ -1932,3 +1949,65 @@ def test_held_nonweapon_does_not_count_as_a_dual_wielded_weapon(
     assert candidate.estimated_peak_round_damage == 70
     assert candidate.autonomous_safe
     assert not any("source peak round" in hazard for hazard in candidate.hazards)
+
+
+def test_candidate_ranking_rejects_a_mobile_holding_a_castable_staff(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "priest",
+                "the priest",
+                6,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        objects={
+            300: ObjectSource(
+                300,
+                "staff earthquake",
+                "a staff of earthquake",
+                ITEM_STAFF,
+                (20, 2, 2),
+                100,
+                value_strings=("20", "2", "2", "earthquake"),
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Temple", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, (300,), equipment=((WEAR_HOLD, 300),)),
+        ],
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=7,
+        character_max_hp=123,
+        include_xp_only=True,
+    )
+
+    assert candidate.status == "reject"
+    assert (
+        "target equips a castable spell item: a staff of earthquake (earthquake)"
+        in candidate.hazards
+    )
+    assert "target carries a source-castable spell item" in (
+        candidate.autonomy_rejections
+    )
+    assert not candidate.autonomous_safe

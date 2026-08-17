@@ -68,6 +68,11 @@ _DEATH = re.compile(
     r"\bYou (?:are dead|have died|were killed|have been killed)\b",
     re.IGNORECASE,
 )
+_POSTURE = re.compile(
+    r"^(?:you sleep\.|you wake\b.*|you stand up\.|"
+    r"you are already standing\.|you are already conscious and alert\.)$",
+    re.IGNORECASE,
+)
 _SCORE_PROGRESS = re.compile(
     r"\bYou are level\s+(?P<level>\d+),\s+have\s+(?P<xp>\d+)\s+"
     r"experience\s+and\s+need\s+(?P<xptnl>\d+)\s+to level\b",
@@ -291,6 +296,19 @@ class ObservationParser:
             return []
 
         events: list[GameEvent] = []
+        posture = _POSTURE.match(text)
+        if posture is not None:
+            message = posture.group(0).casefold()
+            events.append(
+                GameEvent(
+                    "posture_changed",
+                    "text",
+                    {
+                        "position": 4 if message.startswith("you sleep") else 7,
+                        "text": text,
+                    },
+                )
+            )
         room = _ROOM.match(text)
         if room:
             room_event = self._text_room_event(

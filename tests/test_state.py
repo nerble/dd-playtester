@@ -61,6 +61,17 @@ def test_vitals_preserve_hunger_and_thirst_for_campaign_decisions() -> None:
     assert CharacterState.from_dict(state.to_dict()).hunger == -10
 
 
+def test_text_posture_evidence_updates_position_without_gmcp_vitals() -> None:
+    parser = ObservationParser()
+    state = CharacterState(position=4)
+
+    events = parser.feed_text("You wake and ready yourself for action.\n")
+    for event in events:
+        state.apply(event)
+
+    assert state.position == 7
+
+
 def test_text_score_prevents_stale_lower_gmcp_progress_regression() -> None:
     state = CharacterState()
 

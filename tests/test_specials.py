@@ -7,6 +7,7 @@ from dd4tester.specials import (
     WEAK_DIRECT_DAMAGE_SPECIALS,
     WEAK_EXTRA_ATTACK_SPECIALS,
     source_special_profile,
+    source_special_status_effects,
     source_special_xp_bonus,
 )
 
@@ -38,3 +39,12 @@ def test_special_classification_sets_are_explicit() -> None:
     assert "spec_kungfu_poison" in WEAK_DEBILITATING_SPECIALS
     assert "spec_cast_judge" in WEAK_DIRECT_DAMAGE_SPECIALS
     assert "spec_bloodsucker" in WEAK_EXTRA_ATTACK_SPECIALS
+
+
+def test_source_caster_profiles_expose_status_effects_from_special_c() -> None:
+    assert source_special_status_effects("spec_cast_cleric") == (
+        "blindness",
+        "curse",
+        "dispel magic",
+    )
+    assert "blindness" in source_special_profile("spec_cast_mage").status_effects

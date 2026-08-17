@@ -9319,6 +9319,21 @@ def test_level_seventy_seven_waits_after_retriever_probe_rejection() -> None:
     assert not policy.executable
 
 
+@pytest.mark.parametrize("level", [81, 90, 100])
+def test_late_hero_levels_use_generic_source_ranked_frontier(
+    level: int,
+) -> None:
+    policy = policy_for(level, "warrior")
+
+    assert policy.policy_id == "source-ranked-hunt-10-100"
+    assert policy.status == "research"
+    assert policy.execution == "source-ranked-hunt"
+    assert policy.minimum_level == level
+    assert policy.maximum_level == level
+    assert policy.executable
+    assert "generic source-ranked frontier" in policy.summary
+
+
 def test_level_ten_thief_retires_empty_verified_combined_rotation() -> None:
     policy = policy_for(
         10,

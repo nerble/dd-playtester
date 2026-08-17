@@ -467,7 +467,7 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
         assert _kwargs["force_new"] is True
         assert _kwargs["segments"] == 1
         assert _kwargs["reset_retries"] is None
-        assert _kwargs["max_segment_runtime"] is None
+        assert _kwargs["max_segment_runtime"] == 180.0
         return CampaignResult(4, "blocked", 9, "awaiting verified policy", {"level": 2})
 
     monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)

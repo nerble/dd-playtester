@@ -30,12 +30,490 @@ evidence, `research` for bounded probes with explicit limits, and
 `unavailable` for an explicit safe stop. Every engineering work unit must
 remove a concrete blocker to the next executable level band.
 
-Live continuation anchor for 2026-08-15: Aeloria is level 14 at 84,126 XP,
-full in healer room 3054 after the first level-14 rotations. Runs 6533-6542
-supplied the level-14 transition, training/provision handoff, Miden'nir and
-Ambush evidence, and a source-policy-specific -34 XP protection marker without
-a death or manual target selection. The offline suite passes 2,609 tests.
-This is level-14 continuation evidence, not a HERO completion claim.
+The fixed research registry currently ends at level 80. At level 81 and above,
+`policy_for` must return the research-status generic source-ranked frontier so
+the HERO path remains executable while late-band routes are researched. This
+is a research handoff, not verified progression evidence; retain all live
+source, route, consider, health, resource, and healer-return gates.
+
+The source-ranked selector normally stops when the current reboot has no
+fresh, safe candidate. An explicit `retry_stalled` request (CLI
+`--retry-stalled`) may reopen one fresh candidate blocked only by trailing
+no-progress history, but it must not override live absence, crowd, route,
+consider, protection, resource, source-identity, or cooldown evidence. Record
+the bounded retry and rotate after its live result instead of replaying a
+blocked policy indefinitely.
+
+An explicit operator `--retry-stalled` invocation is not proof that an area
+reset occurred. It must not call a reset-consumption helper or clear active
+absence/crowd cooldowns. Only the automatic retry marked
+`reset_wait_completed=True` may consume reboot-local research evidence. A
+safe unavailable/awaiting-reset result is the correct outcome when no other
+candidate is executable.
+
+Protection recovery distinguishes source-proven non-combat specials from
+combat-capable procedures. A productive candidate with only a safe special
+such as `spec_fido` may use one existing sanctuary reserve after a single
+XP-loss record, provided it has no other autonomy rejection. Combat specials,
+extra rejections, and second-loss records remain quarantined.
+
+Startup repair is a migration, not a new decision loop: repeated reconnects
+must converge to the same state without metadata-only checkpoint churn. Persist
+explicit same-reboot research retries separately from generic crowd history,
+and treat a newer positive objective result as authoritative over older segment
+evidence. Add a regression test and one bounded live reconnect before claiming
+the repair is complete.
+
+All character campaigns share `runs/dd4tester.sqlite3`. `RunStorage` uses a
+bounded 30-second SQLite busy timeout so overlapping rotations wait for a
+commit instead of failing on transient write contention. Keep the worker's
+segment timeout as the liveness boundary; never replace it with an unbounded
+database wait.
+
+Maintenance fastwalks share navigation but not field-policy evidence. Store a
+new maintenance route abort in `campaign_maintenance_route_hazards`, restore
+source-owned target/crowd/absence/consider fields from the preceding field
+policy, and clear legacy unowned markers during resume. A safe funding or
+healer return must never change which progression route is retried.
+
+Latest live continuation anchor for 2026-08-17: Aeloria is level 15 at 107,709
+XP, Dorrik is level 24 at 360,891 XP, and Kestrel is level 24 at 345,698 XP.
+Aeloria's latest checkpoint is healer room 3054 at 193/193 HP, 533/533 mana,
+and 290/290 movement after the latest safe return. The full offline suite passes 2,682
+tests. The fixed research registry now hands levels 81-100 to the executable
+research-status generic source-ranked frontier; it is not verified HERO
+coverage. The latest bounded rotation kept active tracks safe in healer room
+3054: Aeloria checkpoint 23010 recorded a safe Grove absence, Dorrik checkpoint
+23014 recorded a safe Mirror Realm absence, Dorrik checkpoint 23018 rotated to
+the Highland crowd gate, and Kestrel remains deferred by the current-reboot
+fame-recovery reserve cooldown. These are continuation checkpoints, not level-25,
+subclass, or HERO proof. Shared SQLite writes use a
+bounded 30-second busy timeout; worker segment limits remain the liveness
+boundary. Kestrel run
+7376 exposed a real sanctuary-expiry death at 220/334 HP
+against a level-30 moose at 410/535 HP; run 7377 completed Purgatory recovery,
+and run 7379 reacquired a Moria sanctuary reserve and returned full to healer
+room 3054. The shared protection-loss guard now checks live player and enemy
+health before another attack while preserving the near-death finisher path.
+Run 7384 then killed the source-matched Midgaard secretary (mobile 3142) for
+494 objective XP and returned Aeloria safely to healer room 3054. Runs
+7385-7388 completed bounded healer, absence, and liquidation maintenance
+without false XP. Runs 22908 and 22910 re-evaluated Dorrik's current frontier
+and stopped at the Highland crowd gate without XP. Runs 7389 and 7390 then
+validated explicit retry-stalled rotation: the first
+reopened the fresh Mirror Realm young-boy route and recorded live absence; the
+second rotated to the independent mirror guardian route, recorded a live
+crowd, and returned Dorrik safely to healer room 3054 without XP change. The
+SQLite checkpoints are authoritative when an outer command wrapper times out.
+Run 7391 then selected Aeloria's source-ranked New Ofcol route, recorded the
+target absent, and returned her safely at level 15 and 107,709 XP. Kestrel's
+next bounded invocation persisted checkpoint 22941 while the fame-recovery
+service remained on its current-reboot cooldown; she stayed safe in healer
+room 3054 without another shop or combat attempt.
+The retry-stalled repair then passed a bounded live safety check: checkpoints
+22948-22954 retained Dorrik's Eastern Desert crowd result at cooldown 3 and
+created no duplicate field segment or XP claim. The campaign suite passes 818
+tests and the complete offline suite passes 2,678 tests. This is selector-
+integrity evidence, not progression or HERO completion evidence.
+Runs 7220-7229
+exposed and repaired ambiguous selector-less gear identity and stale-room
+ordering in the fixed rearm route; the repaired sequence validated a Queen Wasp
+kill for 374 objective XP, a Giant Kodiak bear kill for 280 XP, and Aeloria's
+level-15 transition. Run 7231 added 528 objective XP from Bardoosh. Runs 7230
+and 7232-7235 then completed bounded level-15 and maintenance rotations safely.
+Run 7236 killed Aruncus the Druid for 413 objective XP and returned safely. Runs
+7237-7270 then added 5,354 objective XP from Bardoosh, Bird Spider, and Queen
+Wasp kills, offset by two source-policy hard-floor withdrawals totaling 190 XP
+and 20 incidental XP. Run 7283 then exposed a randomized Great Eastern Desert
+DFS cycle; run 7284 recovered Aeloria through Limbo and the protected corpse
+after a death that cost 3,623 XP. The repaired walker now preserves its visited
+graph, the Eastern Desert route is quarantined for this reboot, and Aeloria is
+12,917 XP short of level 16. Runs 7285 and 7286 then added 624 objective XP
+from the Miden-nir goblin leader and Shire receptionist; the first also recorded
+167 incidental XP loss after an unapproved attacker joined. Aeloria is now
+12,460 XP short of level 16 and remains safely checkpointed in the healer room.
+Run 7289 then killed a second source-matched Shire receptionist for 397
+objective XP without an XP loss or death. Aeloria is now 12,063 XP short of
+level 16. Run 7291 was a residual selector-regression invocation after the
+timeout marker was cleared; it produced only 50 incidental XP from a transit
+dark dwarf and no Eastern Desert objective kill. Run 7292 restored the marker
+from history and selected liquidation instead, leaving that route quarantined
+for this reboot. Aeloria is now 12,013 XP short of level 16. Run 7294 then
+killed another source-matched Shire receptionist for 431 objective XP without an
+ XP loss or death. Run 7298 added a further 368-XP receptionist kill after
+addressing hunger during recovery. Aeloria is now 11,214 XP short of level 16.
+Run 7301 added a further 369-XP receptionist kill and acquired a usable body
+part. Aeloria is now 10,845 XP short of level 16. Run 7304 added a further
+414-XP receptionist kill without an XP loss or death. Aeloria is now 10,431 XP
+short of level 16. Run 7310 then added a 272-XP receptionist kill without an XP
+loss or death. Aeloria is now 10,159 XP short of level 16. Run 7313 then added
+333 objective XP from a receptionist without an XP loss or death; Aeloria is now
+9,826 XP short of level 16. Run 7321 then added 368 objective XP from a
+receptionist without an XP loss or death; Aeloria is now 8,844 XP short of level
+16. Run 7324 then withdrew from an incidental fight at the hard health floor,
+recording 167 XP loss, 58 net incidental XP, and no objective kill before a safe
+healer return; the exact route is quarantined for rotation. Aeloria is now 8,786
+XP short of level 16. Run 7328 then produced five Eastern Desert kills for 380
+XP, including successful dropped-weapon recovery after a disarm; Aeloria
+returned safely at 187/193 HP and was 8,406 XP short of level 16. Run 7332
+added only a 50-XP dark-dwarf contact, and run 7338 repeated the 146-room Forest
+absence without combat. The retry-marker guard now keeps that absent route
+closed after minimum-value contact; the full offline suite passes 2,662 tests.
+Run 7343 then added a clean 358-XP young dragon wormkin kill; Aeloria is now
+7,998 XP short of level 16. Run 7344 then added a clean 233-XP huge python kill;
+Aeloria is now 7,765 XP short of level 16. Runs 7349-7366 exercised safe
+absence, provisioning, liquidation, and bounded no-progress rotation; run 7351
+killed a drider for 90 objective XP and run 7367 killed a goblin leader for
+another 90 XP. Aeloria is now 7,585 XP short of level 16.
+Runs 7369-7372 bounded Kestrel's negative-fame recovery: the Magic Shop refused
+the reboot-local flight price, a retry met a wandering-drunk route boundary,
+Circus withdrew at the 39% health floor after consuming sanctuary, and Mirror
+Realm recalled before combat without a sanctuary reserve. An explicit shop
+refusal is a hard service boundary. Permit a non-shop fame route only with a
+verified sanctuary reserve; if the remaining frontier is flight-only, return a
+level-scoped `unavailable` result rather than retrying the refused shop. These
+runs are research evidence, not fame-kill proof.
+Run 7373 then resumed Kestrel through source food reserve route 5217, acquired
+exact object VNUM 5219, returned full to healer room 3054, and logged out
+without XP change, combat, or another shop attempt. Runs 7378-7379 then
+completed bounded fame recovery and Moria sanctuary-reserve continuation;
+run 7380 deferred the fame route as crowded without another fight. Kestrel
+remains safely checkpointed in healer room 3054. Aeloria checkpoint 22859
+and Dorrik checkpoint 22861 then recorded crowded current-band rooms and
+deferred safely for area reset. Treat these as bounded continuation checkpoints,
+not HERO completion evidence.
+Source-sensitive live decisions use checkout revision 7996722. Run 7104 added
+1,852 objective XP for Dorrik before the current-band frontier exhausted its
+reboot-local candidates. Runs 7105-7107 recorded bounded Dorrik absences and
+safe healer checkpoints. Aeloria runs 7108-7110 completed coin-stash funding,
+flight purchase, and return-home maintenance; run 7112 killed Sir Durok of EAT
+for 475 objective XP, and run 7113 repaired a missing ring slot. Runs 7114-7118
+completed sanctuary, Shadow Keep, Old Thalos, Gremlin Lair, and Forest probes;
+they returned safely, with 49 incidental XP from the later Gremlin attempt and
+no additional objective kill. Run 7121 killed a source-matched Bird Spider for
+600 objective XP, and run 7122 restocked safely. Run 7123 exposed a liquidation
+interruption that fought a city drunk, earned 10 incidental XP, and paid a
+148-XP flee cost; the utility dispatcher now flees before below-band transit
+combat, with regression coverage. Run 7126 then recorded 108 incidental XP
+before a shared health-floor withdrawal and safe healer return; no objective
+kill was confirmed. Run 7128 killed the large hobgoblin for 90 verified XP,
+recovered purple sanctuary and body-part evidence, and returned Kestrel full
+after applying recovery gear. Run 7130 exposed an on-duty guard interruption on
+the Fleshmonger route, costing 117 XP before a health-floor withdrawal; no death
+or objective kill occurred, and the exact policy is now quarantined. Run 7133
+then recorded an 83-XP loss and a 23% health-floor withdrawal on the Gizmo
+route; no death or objective kill occurred, and that exact policy is now
+quarantined. Run 7136 killed the source-matched huge python for 375 verified XP
+and returned Aeloria full after chill-touch combat. Run 7137 killed Bardoosh for
+743 verified XP, recovered a dagger after disarm, and returned full with four
+drops recorded. Run 7141 killed the large hobgoblin for 321 verified XP,
+recovered purple sanctuary, and returned full. Run 7142 used sanctuary, killed
+the below-band Midget for 30 non-objective XP, recovered its purse and coins,
+and returned full. Run 7145 killed the large hobgoblin for 283 verified XP,
+recovered purple sanctuary, and returned at full health. Run 7149 killed
+Bardoosh for 490 verified XP, maintained source-verified armor protection, and
+returned full with three drops. Run 7155 withdrew from Bardoosh at 56% health
+and cost 40 XP without a kill; it was the exact policy's second loss and is now
+quarantined. The new
+loss-count ledger quarantines an exact
+source route after its second current-reboot XP-loss withdrawal, while a
+protection recovery route on cooldown now checkpoints rather than reconnecting
+without an independent alternative. Run 7156 exposed that the Forest's 80-stop
+source circuit could exceed the profile's 250-command cap even when every target
+was absent. The runner now derives a finite circuit allowance from registered
+route and stop work, records the extension, and keeps a hard cap; Forest's
+derived allowance is 613 commands. The legacy failed checkpoint reconciled to
+ready, and runs 7157-7162 completed safe return-home, Shargugh, Shadow Keep,
+New Ofcol, coin-funding, and flight-maintenance segments. Run 7163 killed a
+source-matched Queen Wasp for 574 XP; run 7166 added 280 XP and run 7169 added
+371 XP. Runs 7164-7165, 7167-7168, and 7170-7172 completed bounded absence or
+maintenance routes safely. Aeloria remains full in healer room 3054. These are
+continuation checkpoints, not a HERO completion claim. The earlier run ledger
+is retained below as historical:
+Runs 6948-6950 then completed a
+bounded generic continuation: run 6949 killed the source-matched Mirror Realm
+watchman for 873 XP, while runs 6948 and 6950 correctly withdrew from crowded
+circuits without forcing combat. All three returned safely with no death or XP
+loss; runs 6951-6960 then added 1,988 aggregate XP, including a 636-XP
+Mirror Realm watchman and a 1,352-XP Kerofk route with 742 objective XP plus
+610 incidental XP. Absent and crowded targets were skipped without XP loss.
+Run 6963 exposed a
+timed sleeping-recovery watchdog gap during flight maintenance: after one
+health score, the policy suppressed its prompt gate while waiting for the
+affect to expire. The starter now reopens that gate when the scheduled health
+check is due; the full offline suite passes 2,636 tests, and run 6964
+live-validated the repair by buying and activating flight with no XP loss.
+Run 6965 completed a bounded Abyss route with the registered target absent;
+run 6966 then earned 460 incidental XP from three low-risk Kerofk
+interruptions, returned full to healer room 3054, and confirmed no death.
+Runs 6967 and 6968 then exposed the same Abyss return hazard twice and lost
+385 XP each; run 6971 live-validated the repaired return graph by skipping the
+blocked recall room and returning safely when its target was absent. Runs 6974
+and 6979 added 60 and 290 incidental XP without objective confirmation. Run
+6981 withdrew from the level-25 fisherman at 219/542 HP for a 149-XP net loss;
+run 6982 withdrew from the level-25 Donjonkeeper at 209/542 HP while it was at
+157/489 HP for a 16-XP net loss. The finisher now permits one bounded final
+action against a source-admitted target up to one level higher when it is at
+35% health or less and the observed one-hit reserve is covered; this remains
+offline-regression evidence because no matching live target has reappeared.
+Run 6983 added 450 incidental XP and returned safely. Run 6987 then exposed a
+different source gap: the noncombat priest of Thalos carried a held earthquake
+staff, causing a 223-XP net loss before a kill. Candidate ranking now parses
+source-equipped scrolls, wands, and staves and rejects an autonomous hunt when
+their encoded spell behavior has not been audited. Runs 6994-7004 added
+productive Moria, Mirror Realm, and Canyon evidence; run 7004 supplied 1,256
+objective XP before consuming the purple sanctuary reserve. Runs 7008 and
+7014 then added 886 and 799 objective XP from source-matched Mirror Realm
+watchmen. Run 7013 withdrew from Dwarven Homestead at the explicit 27% health
+floor after 179 incidental XP and installed a newer protection marker without
+death or XP loss. The Moria recovery circuit is now one reset-room stop plus
+eight bounded source-room edges, allowing a crowded room to continue to the
+alternate reset without weakening the exact-one target gate. Runs 7009-7011
+and 7015 completed liquidation, movement recovery, flight maintenance, and a
+safe zero-kill probe. Run 7019 then live-validated the recovery circuit through
+rooms 4064 and 4063, killed the source-matched carrier for 110 XP, acquired a
+purple sanctuary potion, and placed it in the combat pouch before returning
+full. The split circuit is now live acquisition verified; run 7022 then added
+683 objective XP from the Tentusks treant and consumed that reserve, while run
+7023 reacquired a purple potion through Moria and returned with 90 incidental
+XP. Runs 7024-7026 recorded safe protected Mirror rotations without forcing
+absent targets. Run 7027 then killed the source-matched Dwarven Home host for
+1,938 objective XP and returned full to healer room 3054 with the verified
+purple potion reserve intact. The full offline suite passes 2,641 tests;
+Dorrik is full at 352,084 XP, 14,116 XP short of level 25. Run 7029 reacquired
+the sanctuary reserve with 90 incidental XP; run 7030 safely skipped a wandering
+Mirror Realm gardener outside the source-safe relocation graph. Run 7031 then
+withdrew from the source-matched Solace Sergeant at Arms at the shared 30% health
+floor after sanctuary expired, recording a 385-XP flee loss; run 7032 restored
+full healer recovery. Run 7033 reacquired the reserve with 100 objective XP;
+run 7034 safely skipped a crowded Mirror Realm target without combat. Run 7035
+then killed the source-matched Dwarven Home host for 1,520 objective XP without
+consuming the reserve. Run 7038 exposed a source-identity race: the expected
+Grove mobile VNUM 8901 shared its live name with wandering VNUM 8900, so the
+old path attacked before GMCP could disambiguate and lost 385 XP. The runner now
+indexes source-graph reachability by identity and room and skips a source stop
+before `consider` or `kill` whenever multiple same-name VNUMs can occupy that
+room. Run 7039 restored the sanctuary reserve with 140 total XP, and run 7040
+then killed the source-matched Dwarven Home host for 1,465 objective XP and
+returned full to healer room 3054. Run 7041 then recorded a safe zero-kill
+Mirror Realm rotation with no XP change. Run 7042 live-validated the new
+pre-combat ambiguity guard at Grove room 8906: both wandering VNUMs 8900 and
+8901 were source-reachable, so the runner skipped before `consider` or `kill`
+with no XP loss. Run 7043 added 1,410 objective XP from the Dwarven Home host
+and returned full. Run 7049 exposed a separate status-risk gap: source mobile
+9202, a `spec_cast_cleric` cyclops, blinded Dorrik after sanctuary expired and
+forced a flee. The run returned safely but produced a 39-XP net loss. Source
+audit confirms that cleric specials can cast blindness; the runner now requires
+a verified cure-blindness route before starting such a hunt, retains a second
+matching potion when sanctuary would consume the first, and uses the cure
+before fleeing when blindness is already active. Runs 7050 and 7051 then
+completed safe sanctuary and Dwarven Home rotations without reaching that
+candidate, so the repair is offline-verified but not yet live-triggered. Run
+7055 then live-tested a source-matched Weeping Willow at a perfect consider:
+the target drove Dorrik from full health to 137/542, the shared 35% floor fired,
+and the flee cost exceeded damage credit by 213 XP. Runs 7056-7059 then
+recovered and rotated through Dwarven Home, Shire, flight, and Tentusks without
+another loss. Run 7060 then reopened the Dwarven Home host route: Dorrik
+withdrew at 124/542 HP after earning 602 damage-credit XP, paying the 385-XP
+flee cost for a 217-XP net gain without an objective kill. He returned safely
+to healer room 3054 at 480/542 HP, full mana and movement, with hunger 4 and
+thirst 42. Runs 7063-7066 then exercised the next protected frontier: run
+7063 killed the source-matched New Ofcol teller for 1,119 objective XP with a
+20-XP below-band drunk interruption; run 7064 reached the Drow weapons master
+and withdrew at 43/542 HP, losing 385 XP after 23 damage-credit XP. Run 7065
+replayed a Canyon `spec_cast_cleric` cyclops with the purple reserve active;
+the runner quaffed sanctuary before combat, then withdrew at 80/542 HP after
+the special's harm damage outlasted the aura, for a 117-XP net loss. Audited
+special routes that have already failed after sanctuary are now quarantined
+for the reboot rather than consuming another reserve. Run 7066 recovered the
+reserve from the source-matched large hobgoblin for 100 objective XP, pouch-
+stowed it, and returned full to room 3054. The full offline suite passes 2,648
+tests. Runs 7081 and 7092 repeated the Drow weapons master route under its
+two-mobile crowd: the first lost 210 XP, and the sanctuary-protected retry lost
+265 XP at the 39% health floor. The exact route is quarantined for this reboot.
+Run 7083 hit the 180-second segment boundary during a deferred Mirror Realm
+search and run 7084 returned Dorrik safely; the starter now clears stale crowd
+and locator waits before its runtime return boundary. Runs 7085-7091 completed
+flight, New Ofcol, Moria, and bounded absence maintenance. Run 7095 then killed
+the source-matched New Ofcol teller for 934 objective XP and returned full to
+healer room 3054 at 358,980 XP. These are continuation
+checkpoints, not a HERO claim. Objective and incidental XP
+remain separate in campaign evidence. Runs 6784,
+6786, 6788, 6790,
+6795, 6800, and 6801 supplied productive
+source-ranked kills; the latest two were the Kerofk gravedigger for 875 XP and
+the Old Treant for 857 XP; run 6804 then added 891 XP from the Kerofk
+gravedigger. Run 6805 completed liquidation and returned Dorrik full. Run 6807
+added 784 objective XP from another Old Treant, run 6808 refreshed flight, and
+run 6812 added 534 objective XP from the same route. Runs 6806, 6809, 6810,
+6811, and 6813 recorded bounded zero-kill rotations. Run 6814 then withdrew
+from a Shudde-M'ell interruption after the live level gate and lost 354 XP;
+the exact Plains North policy was quarantined for three same-reboot segments,
+and food recovery raised hunger from 5 to 40. Run 6815 then killed the
+source-matched Swamp Wraith in the alternate Mahn-Tor circuit for 1,060 XP;
+run 6816 restored full movement at the healer, and run 6817 recorded another
+bounded Mirror Realm zero-kill result. Runs 6818 and 6827 added 726 and 637
+objective XP through the generic Old Treant route. Run 6824 added 884 objective
+XP from Swamp Wraith but exposed two avoidable 354-XP flee penalties from
+source-known below-band Mistlings in the Mahn-Tor return maze. Runs 6785, 6787,
+6789, and 6794 recorded bounded
+Mirror Realm zero-kill or absence results without forcing combat; run 6793
+refreshed flight, run 6796 restored hunger from 2 to 39, and runs 6797-6799
+completed liquidation, safe rejection of a non-corporeal funding target, and
+restock. The outer watchdog stopped the next Mirror Realm batch after it
+stopped producing progress; recovery marked segment 6371 ready with explicit
+interruption evidence, and run 6803 returned Dorrik safely home without XP
+loss. The Mahn-Tor return policy now fights only a source-known below-band
+interruption when every live enemy is below-band and health and provision gates
+pass; it then resumes the live-GMCP exit graph. The focused policy set passes 38
+tests and the full offline suite passes 2,629 tests. Runs 6832 and 6835 added
+1,053 and 1,083 XP through the generic gravedigger route; run 6833 added 894 XP
+from Old Treant, and run 6834 rejected a crowded Mirror route without XP. Dorrik
+is now 9,361 XP short of level 24 and full on HP, mana, and movement in healer
+room 3054. Runs 6836 and 6839 were bounded zero-XP maintenance or Mirror
+rotations; run 6837 added 608 XP from Old Treant, run 6838 withdrew at the
+health floor with 208 net XP, and run 6840 added 150 XP from the Arachnos
+guardian. Hunger is now 2, so provision recovery is the next gate before
+another field launch. Run 6841 then restored hunger to 38 while adding 716 XP
+from Old Treant. Runs 6842-6845 recorded bounded Mirror, Crystal, Sentinel, and
+Abyss results without forced targets; run 6846 refreshed flight. Run 6847
+retained a repeated no-policy-decision watchdog failure, and run 6848
+reconciled it successfully. Before run 6851, Dorrik was at 319,871 XP with
+hunger 24. Run 6851 then added 687 XP from Old Treant, and
+run 6852 recorded another bounded Mirror zero-kill result. Dorrik is now at
+320,558 XP, 6,992 short of level 24, with hunger 24. Run 6853 recorded an
+absent Highland candidate without XP; run 6854 added 646 XP from Old Treant;
+and run 6855 found Nessy's child but withdrew when the adult Nessy joined,
+paying the 354-XP flee cost. The exact Highland policy was quarantined and
+Dorrik returned safely. He is now at 321,161 XP, 6,389 short of level 24. Run
+6856 then added 1,325 XP from the source-matched Maid; run 6857 sold four items
+for 291 coins; and run 6858 recorded another bounded Mirror zero-kill result.
+Dorrik is now at 322,486 XP, 5,064 short of level 24. Runs 6878-6881 then
+live-validated the source-route rotation repair: one empty Mirror attempt was
+excluded from the next selection, flight maintenance ran, and the Old Treant
+route supplied 633 objective XP before clearing the one-attempt marker. Run
+6883 acquired the source-matched sanctuary potion from the large hobgoblin;
+run 6887 added 760 objective XP from Old Treant. Run 6895 then withdrew from a
+source-ranked Dwarven Homestead interruption at the health floor, losing 189
+XP without dying and quarantining that exact route; run 6896 recorded another
+bounded Mirror absence after rotation. Dorrik is now level 23 at 326,057 XP,
+1,493 short of level 24, full in healer room 3054. A persisted deferred-practice
+marker now prevents repeated class-trainer trips when the current trainer has
+no immediately useful listed skill, while preserving legitimate reopening for
+newly unlocked damage gateways. The level-20 shifter trainer has a
+source-derived Kerofk locator route with bounded stale-result retries, but live
+level-20 and level-30 subclass proof remain outstanding. These are continuation
+checkpoints, not a HERO claim.
+
+Latest continuation detail: runs 6897-6925 kept the source-ranked rotation
+bounded; run 6921 added 802 objective XP from the Old Treant and run 6923 added
+1,367 objective XP from the New Ofcol Dragonhoard teller. Run 6926 exposed a
+live endpoint-gate bug when the level-19 Goblin Caves Sentry was attacked at
+Dorrik's level-24 useful-XP floor despite being recorded below-band and
+non-objective. The starter now withdraws before attacking such an endpoint
+target, except for an explicitly source-allowed resource or required-loot
+stop. Run 6927 live-validated the repair by avoiding the Sentry; runs 6928-6935
+continued bounded no-objective rotations and safe healer returns. Run 6936
+exposed a source-audited gas-breath special above Dorrik's live level ceiling
+and caused a 385-XP flee from the level-25 Green Dragon; combat-special
+admission now applies the ceiling before launch while preserving safe-noncombat
+fuzz exceptions. Run 6937 completed the healer return. Run 6938 killed the
+level-19 Swamp Wraith for 587 XP but encountered three source-known level-16
+Mistlings during the Mahn-Tor no-recall return and paid a 385-XP flee penalty;
+the return branch now keeps that bounded below-band interruption in combat.
+Run 6939 refreshed flight and run 6940 added 170 XP from the Eastern Desert
+worm, returning Dorrik safely to healer room 3054. Runs 6941 and 6942 then
+added 933 and 1,177 XP through the Kerofk gravedigger and Old Thalos mayor,
+respectively, with full healer returns and no XP loss. The full offline suite
+passes 2,631 tests; Dorrik was 333,261 XP with 32,839 XP to level 25 before
+runs 6948-6950. These are continuation checkpoints, not a HERO claim.
+
+Historical pre-repair continuation anchor: Aeloria was level 14 at 88,276 XP,
+Dorrik was level 22 at 290,220 XP, and Kestrel was level 24 at 363,995 XP.
+Runs 6566 and 6570 added
+484 and 287 objective XP to Aeloria through generic Plains North and Fleshmonger
+routes. Run 6572 added 570 XP to Dorrik through the source-ranked provision
+funding loop before automatic return and liquidation. The full offline suite
+passes 2,614 tests. Run 6594 then proved that a foodless, nonnegative-fame
+character now acquires and eats the source-matched rabbit roast before healer
+recovery or funding, raising hunger from -7 to 17 and returning alive to healer
+room 3054 with 481/489 HP. The current read-only DD4 source is `7996722`, and
+only the expected Discord streamer remains running. Runs 6596 and 6597 then
+added 560 XP to Dorrik and completed full healer recovery; run 6598 added 543
+objective XP to Aeloria through the source-ranked Shire receptionist route and
+returned her fully recovered to healer room 3054. This remains level-14-to-22
+continuation evidence, not a HERO completion claim. Runs 6602 and 6603 then
+added 450 objective XP to Dorrik and completed full healer recovery at room
+3054; his current live checkpoint is 281,724 XP. Aeloria run 6616 added 221
+net XP after a protected Wyvern withdrawal, and run 6617 completed a safe
+Shadow Keep rotation without another XP loss. Runs 6620 through 6623 and 6628
+through 6635 added 1,780 objective XP to Dorrik and left a five-pie plus
+rabbit-leg food reserve in inventory, with hunger 40 at healer room 3054.
+This is level-14-to-22 continuation evidence, not a HERO completion claim.
+Runs 6650 and 6651 added 371 XP to Aeloria through Gremlin Lair and completed
+safe recovery. Run 6658 added 330 objective XP through Plains North and run
+6659 completed bounded liquidation. Run 6663 recorded a -38 XP Shire withdrawal
+and run 6664 selected Shadow Keep without repeating it. Dorrik run 6653 added 280 XP through Solace;
+run 6656 added 130 XP through Mirror Realm, run 6657 completed full recovery,
+and run 6661 returned him safely after bounded liquidation. Run 6665 then added
+130 objective XP through Mahn-Tor and left him full in healer room 3054. These are
+level-14-to-22 continuation checkpoints, not a HERO completion claim. Runs
+6680 through 6690 then continued the generic source-ranked rotation: bounded
+gravedigger research found no target, flight and liquidation completed safely,
+and Shire and Mirror Realm attempts recorded no objective kill rather than
+forcing absent or unsafe targets. Run 6683 exposed stale posture after DD4
+accepted wake without a position field in `Char.Vitals`; explicit sleep and
+wake text now updates local state. Dorrik recovered to full resources at
+285,451 XP and 352 movement in healer room 3054. The full offline suite passes
+2,614 tests. These are level-22 continuation checkpoints, not a HERO completion
+claim. Runs 6691 through 6698 then completed resumable maintenance and return
+phases around three source-ranked probes. Mirror Realm watchman and Dwarven
+routes did not prove their objective targets; one Dwarven route recorded a
+reboot-local -163 XP loss and was quarantined, while incidental field kills
+added 750 XP outside objective evidence. Recovery returned Dorrik full to
+healer room 3054 at 285,878 XP. The next policy phase remains persisted for
+later continuation. Runs 6701 through 6706 then refreshed flight and completed
+bounded Abyss probes, liquidation, and healer returns without leaving a live
+process behind. Run 6707 exposed that generic sanctuary recovery still used
+only the short Moria reset-room stop. The repaired high-band dispatch now uses
+the source-room-guided deep circuit; run 6708 acquired a purple sanctuary
+potion from the large hobgoblin, recorded it in the verified combat pouch, and
+returned Dorrik to healer room 3054 at 287,128 XP with full HP and mana. The
+protection marker for the original failed hunt remains pending until that hunt
+is retried under the new reserve. These are level-22 continuation checkpoints,
+not a HERO completion claim. Runs 6709 through 6712 then exercised the
+protected original hunt, incidental-loot liquidation, healer movement recovery,
+and flight refresh. Run 6709 refused the crowded Ofcol teller rather than
+forcing two mobiles. Run 6713 used the temporary sanctuary reserve on an
+audited cleric-special cyclops route, withdrew when blindness and the live
+combat state made continuation unsafe, and returned without death; the route
+entered a reboot-local cooldown. Run 6714 found both Moria carriers in the
+large cave and correctly refused the crowd. Run 6715 then added 653 XP through
+an audited Highland alternative before an unapproved attacker joined and the
+runner withdrew. Run 6716 restored Dorrik to full HP and mana in healer room
+3054 at 288,592 XP. The original protection marker remains pending and the
+purple reserve must be reacquired before its exact failed hunt is retried.
+Runs 6717 through 6721 then completed liquidation, a productive Arikasbab
+rotation, and safe healer returns; run 6718 recorded the Maid for 1,338 XP
+plus two incidental rabbit kills, adding 1,628 XP and leaving Dorrik full at
+290,220 XP. The next Dorrik selection correctly held on the same-reboot
+sanctuary cooldown after one bounded reset retry. Aeloria runs 6722 and 6723
+completed bounded Ambush and Plains North probes without objective XP; she is
+safe in healer room 3054 at 174/183 HP. Kestrel run 6724 completed the
+sanctuary-reserve attempt without XP, and run 6725 completed a no-kill Mirror
+Realm probe; he remains full in healer room 3054 at 363,995 XP. These are
+continuation checkpoints, not a HERO completion claim.
+
+Continuation anchor for 2026-08-16: Dorrik is level 23 at 294,615 XP, full in
+healer room 3054. Runs 6730, 6735, and 6737 exposed stale wandering-target,
+repeated-room, and prompt-before-room ordering defects; the shared event-order
+repairs now pass 2,618 offline tests. Run 6738 validated the repaired Moria
+route and trainer handoff with 420 incidental XP and no false objective claim.
+Run 6742 preserved a Dwarven Home health-floor withdrawal, and run 6743 killed
+the level-20 gravedigger for 1,072 XP before safe healer recovery. This is
+continuation evidence, not a HERO completion claim. Run 6745 then recorded a
+split-locator Mirror Realm absence, four incidental kills worth 600 XP, and a
+full healer return at 295,215 XP without forcing an objective claim.
 
 Audit anchor for 2026-08-13: the live level-10 mage/thief/warrior matrix is
 complete; Aeloria is level 13 at 74,825 XP, Dorrik level 16 at 123,437 XP, and
@@ -241,14 +719,26 @@ Treat its public source and area files as valid read-only evidence for routes,
 resets, mob flags and levels, drops, shops, prerequisites, and mechanics.
 Treat VNUMs as separate namespaces: room, mobile, object, and object-set VNUMs
 are unique within their category, but the same number may appear across them.
+Treat explicit DD4 responses confirming sleep, wake, or standing as authoritative
+posture evidence when a command is accepted but `Char.Vitals` omits a position
+update. Emit and persist that text-backed posture event, and never reissue
+`stand` solely because a stale local position still says sleeping.
 When plain combat text arrives before `Char.Enemies`, wait one bounded prompt
 for the authoritative GMCP enemy record. Resolve a live enemy's source level
 by its `isnpc` mobile VNUM before matching its abbreviated display name; only
 then may a source-proven below-band transit attacker pass the incidental
 combat gate. An unresolved attacker remains a hard route interruption.
+Before any source-ranked attack, use the source wandering graph to index
+same-name mobile VNUMs that can reach the current room. If the expected VNUM is
+absent or another same-name VNUM is reachable, record live presence but skip
+the stop before `consider` or `kill`; do not wait for post-combat GMCP to
+reveal the mismatch. This pre-combat ambiguity guard is generic and never
+name-specific.
 Refresh `runs/dd4-source` with `git pull --ff-only` before source-sensitive
-research and record the revision used for the decision. The live checkout used
-by the 2026-08-13 audit is `f2491fd`. The bundled prerequisite and training
+research and record the revision used for the decision. The current live
+checkout used for the 2026-08-17 continuation is
+`7996722bc43508cc3773c48f8d79e3d07d68e5e4`; the 2026-08-13 audit used
+`f2491fd`. The bundled prerequisite and training
 snapshots are pinned evidence from `f703daa`, while the fallback character
 catalog is pinned to `0482387`; do not silently present a pinned snapshot as
 the current checkout. If a relevant source file changes, either regenerate the
@@ -340,6 +830,13 @@ off to the ordinary healer routes rather than report a failed maze escape.
 Never retry `recall` in these rooms after DD4 answers `God has forsaken you`;
 use the bounded live maze state machine and fail explicitly if its registered
 exit graph is exhausted.
+During that return, a live source-known below-band Mistling may be fought rather
+than fled from, but only when every enemy in the room is below-band, the
+character is above the normal field-combat health floor, and hunger and thirst
+are not urgent. This exception is restricted to the registered Mahn-Tor return
+rooms and is followed by the same live-GMCP exit graph; all other route
+interruptions retain the normal flee-and-return gate. The offline regression is
+verified; a fresh post-repair live trigger is still required before promotion.
 Before training or automating a skill, read both its current in-game help and
 its source implementation. Record whether it is active or passive, its legal
 position and target, pulse/mana cost, effect formula, prerequisites, and any
@@ -432,12 +929,25 @@ a bounded repeated `(stance, worn VNUMs, inventory selectors, command)` guard;
 if the same equipment state repeats twice, stop the swap, retain the current
 legal gear, record the loop reason, and let the campaign continue rather than
 consuming the 500-command run budget.
+When a selector-less inventory description is ambiguous after a structured worn
+item is removed, retain the disappeared item's source VNUM as a short-lived
+description hint until the next inventory and worn state settles. Prefer that
+hint over generic display matching; never alternate between distinct prototypes
+such as dagger 3020 and dagger 31015.
+Maintain an alternating gear-state history across complete `Char.Worn`
+snapshots. If an A/B/A/B command and state cycle repeats, abort the swap,
+retain the current legal loadout, and record the loop reason so the campaign can
+continue. A full worn snapshot must not erase this cross-snapshot guard.
 For multi-command shop maintenance, a generic prompt or unrelated room message
 does not acknowledge the pending command. Wait independently for a completed
 `list` response, an explicit purchase result, a wield acknowledgement or fresh
 `Char.Worn`, and the requested equipment audit before advancing. Buy from an
 ambiguous listing with its live `#target` selector, then verify the cloned
 purchased object's source VNUM through the post-wield structured snapshot.
+For fixed shop and rearm routes, a prompt or textual room description may still
+refer to the origin while the authoritative `Room.Info` VNUM is in flight.
+After each move, wait for that room VNUM before issuing the next route direction;
+never advance a route from stale prompt text or apply the next direction twice.
 Live run 4499 exposed the missing weapon recovery after a rolling-rock disarm.
 Runs 4501-4502 then showed that display-only confirmation could mistake dagger
 3020 for dagger 31015 and alternate forever between the object set and bead
@@ -515,6 +1025,13 @@ the total copper-equivalent value when comparing a carrier with other targets.
 Before a live area launch, parse each registered mobile's exact area-file room
 description through the target recognizer; use live output to confirm presence
 and dynamic reset state, not to discover static mobile display lines.
+Before admitting a source mobile to an autonomous hunt, inspect every `E`
+reset in its target room and resolve the object prototype. Parse encoded spell
+names on held or wielded scrolls, wands, and staves; record the object and
+spell as a hazard and reject the generic hunt until its source behavior has
+been audited. A source-proven noncombat mobile special does not neutralize a
+castable carried object, as live run 6987 demonstrated with Old Thalos mobile
+5307 and staff 5302 (`earthquake`).
 During outbound official fastwalk travel, inspect each fresh room response for
 source-catalogued ground items required by the active hunt. Collect a matching
 item before advancing the route index, then resume the same route step; never
@@ -545,6 +1062,35 @@ GMCP level-band abort). Persist the exact policy, reboot identity, level, and
 delta; exclude only that exact policy on the same reboot, and clear it only
 after that policy records its own objective kill. Do not reject unrelated
 current-band routes.
+For a source-ranked hunt that loses XP without an objective kill, allow at most
+one sanctuary-protected retry for the exact policy and reboot. Persist and
+migrate a `loss_count` from campaign segments; after the second loss quarantine
+that policy even if a sanctuary reserve is later reacquired. If protection
+recovery is required while its sanctuary route is on cooldown and no
+independent source-safe current-band route exists, checkpoint `ready` while
+awaiting the area reset instead of reopening the same route or spinning a
+connection loop.
+Persist the completed campaign segment identifier as the loss event identity.
+Startup reconstruction and interrupted-segment repair must replay the same
+event idempotently; they may not increment `loss_count` merely because a
+checkpoint or metadata repair ran again. Distinct completed loss segments still
+increment the count and remain subject to the second-loss quarantine.
+If a same-reboot source route is proven absent and carries the retry-exhausted
+marker, an exactly 50-XP objective contact elsewhere is still minimum-value
+evidence and must not clear that marker. Keep the absent route closed until a
+higher-value objective result, a level change, or a reboot; this prevents a
+long empty wandering search from immediately returning after a token kill.
+After two consecutive source-ranked segments produce no objective XP, pass the
+trailing no-progress policies as hard selection exclusions. Do not reopen one
+of those routes through the last-resort fresh fallback; checkpoint an explicit
+unavailable frontier instead of spending another long live window on an
+already exhausted route.
+Retain that exclusion across the full bounded same-reboot runtime tail, not
+just the last few policy IDs. A current-reboot crowd with `crowd_exhausted` is
+also a hard route exclusion, not an active reset wait; only a non-exhausted
+crowd with a live cooldown may hold an unavailable frontier. An executable
+alternate policy must run immediately even when stale crowd metadata remains
+in the checkpoint.
 During active combat, track the largest HP loss for the current target between
 authoritative snapshots. DD4's `do_flee` waits a violence pulse before reporting
 failure or success, so use one additional observed round plus the greater of
@@ -576,6 +1122,13 @@ healer-return gates. Do not blanket-reject every special, but keep
 `spec_celestial_repairman` and crime-conditional `spec_bounty`,
 `spec_clan_guard`, and `spec_executioner` research-gated until their movement
 or player-status preconditions are proven.
+Treat `spec_cast_cleric` and `spec_cast_mage` as status-risk specials: their
+source spell tables include blindness, so a source-ranked hunt must have a
+verified cure-blindness spell or potion before combat. If sanctuary is required
+and the same potion supplies both sanctuary and cure blindness, retain two
+verified copies. If blindness is active, cast the verified cure or quaff the
+verified cure potion before fleeing; do not spend a blind recovery action on an
+unverified display-name match.
 When source route scoring finds one of those proven noncombat specials in a
 large below-band transit crowd, retain the hazard in evidence but do not turn
 it into an autonomy rejection. Ordinary aggressive crowds and all unclassified
@@ -624,6 +1177,12 @@ hit and damage dice when `create_mobile` derives ordinary combat values from
 live level. Shop `G` stock receives `ITEM_INVENTORY` and is extracted from a
 dead shopkeeper, so never expect the clerk's ticket to drop. A live nonnegative
 fame value clears the sticky shop-refusal marker.
+An explicit refusal from the Magic Shop is a hard service boundary for the
+current reboot: persist the reputation marker and do not retry that purchase.
+When fame recovery is deferred, an ordinary grounded source route may continue,
+but a flight-only fallback must not reopen the refused shop. Permit a non-shop
+fame route only after a verified sanctuary reserve is present; otherwise keep
+the candidate unavailable or acquire the reserve through its source-safe route.
 In Circus room 4402, source-proven level-3 Bobby's mother and wandering
 Midgaard Beastly Fido are trivial bystanders for the clerk probe. The latter is
 `spec_fido` and cannot attack a normal player. Ignore those exact identities
@@ -730,6 +1289,15 @@ waiting for the inactivity watchdog after `where nomad`. Run 5444 then parsed
 the delayed leader row in Fungus Temple, issued its next command in the same
 timestamped read, completed the bounded search without a watchdog event, and
 saved and quit at healer room 3054.
+Any intentional `None` decision during sleeping or other timed recovery must
+have a persisted deadline that is evaluated before the ordinary `prompt_ready`
+gate. When that deadline expires, reopen the policy gate and issue the bounded
+health or state check; add a regression with `prompt_ready` false. A live
+watchdog may stop a stalled segment, but it must never be the only mechanism
+that can wake a timer-backed recovery state. When a bounded field segment
+reaches its runtime boundary, clear pending crowd or locator response deadlines
+and restore the prompt gate before dispatching return-home; stale deferred waits
+must never suppress recall or cause the outer timeout to strand the character.
 Normalize flattened GMCP room descriptions with the same sentence boundaries
 used by live room output before applying crowd gates; furniture or other static
 room prose must not become a phantom mobile. Ignore companions only when their
@@ -839,6 +1407,15 @@ retry-exhausted policy only when that exact policy is also a meaningful,
 productive repeat. Keep the marker binding during normal selection and never
 use the switch to open unrelated absence, crowd, protection, or route-hazard
 cooldowns.
+When a normal source-ranked segment makes no progress because its selected
+route is absent, crowded, unreachable, or otherwise safely unsuccessful,
+persist `campaign_source_ranked_retry_exhausted_policy` with the current boot
+identity and clear the candidate before the next selection. This is a
+one-attempt exclusion: a productive objective kill clears it, while the next
+selection rotates to another eligible route or waits for reset. Do not let a
+short absence retry cooldown replay the same empty route immediately. The
+marker is scheduling evidence only; claim progression from objective-kill
+records and checkpoints.
 Use the source level-difference branch as the level-band decision: the separate
 hitpoint comparison text is descriptive combat-risk context, not a substitute
 for level difference and not an automatic rejection of an otherwise viable
@@ -1641,6 +2218,12 @@ progress, treat it as a current-reboot route hazard: preserve the failed run
 and transcript, quarantine the candidate, checkpoint `ready`, and rotate after
 the bounded productive-work cooldown. Do not rerun the same stalled route in
 the next invocation.
+For a finite source-ranked hunt circuit, derive an effective command allowance
+from its registered route and hunt stops, including a bounded reserve for
+combat, loot, return, and healer cleanup. Record any extension above the
+profile cap. Keep the allowance finite and quarantine a circuit that exhausts
+it; never let the generic profile cap terminate a registered finite circuit
+before its final stop, and never remove the hard command boundary.
 The same rule applies to optional maintenance fastwalks such as Forest or
 Thalos piercing-weapon upgrades: preserve the failed evidence, apply their
 existing retry cooldown, checkpoint `ready`, and continue the generic campaign
@@ -1694,9 +2277,10 @@ repeatable damage rather than sanctuary as the immediate throughput blocker.
 When consumed sanctuary expires during a generic field fight, do not flee solely
 because the affect disappeared. Re-evaluate the live player and opponent HP:
 honor the ordinary finish threshold for a target at or below half HP, and
-withdraw only at the normal health floor or when the opponent remains materially
-healthier than the character; when both sides are low, compare current HP as
-well as percentages, while allowing a nearly dead opponent to be finished.
+withdraw only at the normal health floor or, when the opponent remains
+materially healthier or more than one level higher, below 75% player health;
+when both sides are low, compare current HP as well as percentages, while
+allowing a nearly dead opponent to be finished.
 Special-policy `require_sanctuary` fights use the same health-aware matchup gate
 after sanctuary loss: continue a favorable one-on-one fight with a usable live
 HP snapshot, withdraw when the matchup is unsafe, and fall back to the normal
@@ -2048,6 +2632,17 @@ action one short attempt, defer it on failure, and continue local or live work.
 Judge a live tester process by fresh SQLite events via `show-transcript` plus
 its process state, never by the JSONL file's observed size alone. A temporarily
 stale or zero-length file is not sufficient evidence of a stalled connection.
+Never wait indefinitely on a live worker. If a socket or process produces no
+transcript or SQLite progress for 45 seconds, allow one bounded reconnect; if
+the retry is silent, close the exact worker, checkpoint or mark the segment,
+and continue useful local work. Kill only the exact worker PID and never touch
+the Discord streamer.
+The CLI defaults every live `campaign` and `hero` segment to a 180-second
+StarterBot cap plus 45 seconds of cleanup grace; keep that default unless a
+bounded probe explicitly overrides it. A shell or app timeout must never be
+the first cleanup mechanism. If an interrupted source-ranked worker is
+reconciled without an objective kill, mark that exact reboot/level route as a
+timeout hazard and rotate before launching another live connection.
 When launching a bounded foreground segment, give the outer command timeout
 more time than the segment's own runtime cap so the runner can recall, save,
 and quit cleanly. The StarterBot deadline is a safe-return boundary: request it

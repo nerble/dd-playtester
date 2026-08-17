@@ -8,7 +8,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .campaign import DEFAULT_RESET_WAIT_SECONDS, run_campaign_file
+from .campaign import (
+    DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
+    DEFAULT_RESET_WAIT_SECONDS,
+    run_campaign_file,
+)
 from .character import load_character_spec
 from .credentials import (
     DEFAULT_LOGIN_CREDENTIAL,
@@ -468,7 +472,11 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_parser.add_argument(
         "--max-segment-runtime",
         type=float,
-        help="cap each live segment in seconds so the process exits cleanly before an outer launcher timeout",
+        default=DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
+        help=(
+            "cap each live segment in seconds; default: "
+            f"{DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS:g}"
+        ),
     )
     campaign_parser.add_argument(
         "--retry-stalled",
@@ -591,7 +599,11 @@ def build_parser() -> argparse.ArgumentParser:
     hero_parser.add_argument(
         "--max-segment-runtime",
         type=float,
-        help="cap each live segment in seconds so the process exits cleanly before an outer launcher timeout",
+        default=DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
+        help=(
+            "cap each live segment in seconds; default: "
+            f"{DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS:g}"
+        ),
     )
     hero_parser.add_argument(
         "--prepare-only",

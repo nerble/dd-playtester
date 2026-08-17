@@ -20,6 +20,7 @@ class SourceSpecialProfile:
     name: str
     xp_bonus: int
     risk: str
+    status_effects: tuple[str, ...] = ()
 
 
 SAFE_NONCOMBAT_SPECIALS = frozenset(
@@ -57,6 +58,20 @@ WEAK_EXTRA_ATTACK_SPECIALS = frozenset(
 
 WEAK_DIRECT_DAMAGE_SPECIALS = frozenset({"spec_cast_judge"})
 """Weak specials with a source-bounded direct damage spell."""
+
+_STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
+    # special.c chooses blindness without a level gate, then adds curse and
+    # dispel magic to the higher-level cleric spell pool.
+    "spec_cast_cleric": ("blindness", "curse", "dispel magic"),
+    # The mage special has the same level-zero blindness opener and can also
+    # remove protection or apply weakening effects at higher levels.
+    "spec_cast_mage": (
+        "blindness",
+        "weaken",
+        "dispel magic",
+        "energy drain",
+    ),
+}
 
 _ZERO_BONUS_SPECIALS = frozenset(
     {
@@ -167,7 +182,18 @@ def source_special_profile(name: str) -> SourceSpecialProfile:
         risk = "moderate-combat"
     else:
         risk = "combat"
-    return SourceSpecialProfile(normalized, xp_bonus, risk)
+    return SourceSpecialProfile(
+        normalized,
+        xp_bonus,
+        risk,
+        _STATUS_EFFECTS_BY_SPECIAL.get(normalized, ()),
+    )
+
+
+def source_special_status_effects(name: str) -> tuple[str, ...]:
+    """Return source-audited status effects a special may apply."""
+
+    return source_special_profile(name).status_effects
 
 
 def source_special_xp_bonus(name: str) -> int:

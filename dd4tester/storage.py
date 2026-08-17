@@ -8,6 +8,7 @@ from typing import Any
 
 
 _CAMPAIGN_EVENT_HISTORY_LIMIT = 256
+_SQLITE_BUSY_TIMEOUT_MS = 30_000
 
 
 class RunStorage:
@@ -24,9 +25,18 @@ class RunStorage:
             tuple[int, int], list[sqlite3.Row]
         ] = {}
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.path)
+        # Several character campaigns share the durable database.  Wait for
+        # a bounded interval when another process is committing instead of
+        # failing a live segment on a transient ``database is locked`` error.
+        self.connection = sqlite3.connect(
+            self.path,
+            timeout=_SQLITE_BUSY_TIMEOUT_MS / 1000,
+        )
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
+        self.connection.execute(
+            f"PRAGMA busy_timeout = {_SQLITE_BUSY_TIMEOUT_MS}"
+        )
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:

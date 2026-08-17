@@ -181,6 +181,10 @@ class CharacterState:
             self.level = _integer(data.get("level"), self.level)
             return
 
+        if event.type == "posture_changed":
+            self.position = _scalar(data.get("position"), self.position)
+            return
+
         if event.type in {"room_entered", "room_updated"}:
             previous_area = self.area
             self.room_name = _text(data.get("name"), self.room_name)
