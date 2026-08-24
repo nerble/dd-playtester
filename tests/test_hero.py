@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import sqlite3
 from dataclasses import replace
 from pathlib import Path
 
@@ -9,7 +10,12 @@ import pytest
 from dd4tester.campaign import CampaignResult, load_campaign_spec
 from dd4tester.character import load_character_spec
 from dd4tester.dd4_catalog import ClassOption, SubclassOption, parse_character_catalog
-from dd4tester.hero import HeroRequest, prepare_hero_request, run_hero_request
+from dd4tester.hero import (
+    HeroRequest,
+    load_existing_hero_request,
+    prepare_hero_request,
+    run_hero_request,
+)
 
 
 SOURCE = r'''
@@ -82,15 +88,64 @@ def test_hero_uses_segment_budget_for_default_reset_retries(
                 race="human",
                 sex="female",
                 character_class="mage",
-            ),
-            workspace=tmp_path / "heroes",
-            segments=17,
-        )
+                ),
+                workspace=tmp_path / "heroes",
+                segments=17,
+                password="test-password",
+            )
     )
 
     assert result.status == "ready"
     assert captured["segments"] == 17
     assert captured["reset_retries"] == 17
+    assert captured["retry_stalled"] is False
+
+
+def test_hero_forwards_explicit_retry_stalled_rotation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": True,
+            "character": type(
+                "Character",
+                (),
+                {"password_env": "DD4_VALORA_PASSWORD"},
+            )(),
+        },
+    )()
+
+    async def fake_campaign(path, **options):
+        captured.update(options)
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 17})
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+                workspace=tmp_path / "heroes",
+                segments=1,
+                retry_stalled=True,
+                password="test-password",
+            )
+    )
+
+    assert captured["retry_stalled"] is True
 
 
 def test_hero_disables_default_reset_retries_for_bounded_runs(
@@ -136,10 +191,11 @@ def test_hero_disables_default_reset_retries_for_bounded_runs(
                 sex="female",
                 character_class="mage",
             ),
-            workspace=tmp_path / "heroes",
-            segments=17,
-            max_segment_runtime=180,
-        )
+                workspace=tmp_path / "heroes",
+                segments=17,
+                max_segment_runtime=180,
+                password="test-password",
+            )
     )
 
     assert captured["segments"] == 17
@@ -285,6 +341,13 @@ def test_new_hero_generates_and_stores_a_password_without_logging_it(
         return CampaignResult(1, "ready", 2, "checkpoint", {"level": 2})
 
     monkeypatch.setattr("dd4tester.hero.prepare_hero_request", fake_prepare)
+    async def no_stored_password(_credential_name: str) -> str | None:
+        return None
+
+    monkeypatch.setattr(
+        "dd4tester.hero._load_character_password_with_timeout",
+        no_stored_password,
+    )
     monkeypatch.setattr("dd4tester.hero.save_character_password", fake_save)
     monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
 
@@ -306,6 +369,239 @@ def test_new_hero_generates_and_stores_a_password_without_logging_it(
     assert isinstance(stored_password, str)
     assert len(stored_password) == 24
     assert stored_password.isalnum()
+    assert os.environ.get("DD4_VALORA_PASSWORD") is None
+
+
+def test_prepared_but_unstarted_hero_generates_its_first_password(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": True,
+            "character": type(
+                "Character",
+                (),
+                {
+                    "password_env": "DD4_VALORA_PASSWORD",
+                    "credential_name": "character:valora",
+                    "database": tmp_path / "runs.sqlite3",
+                },
+            )(),
+        },
+    )()
+
+    def fake_save(credential_name: str, password: str) -> None:
+        captured["credential_name"] = credential_name
+        captured["stored_password"] = password
+
+    async def no_stored_password(_credential_name: str) -> str | None:
+        return None
+
+    async def fake_campaign(path, **options):
+        captured["campaign_password"] = os.environ.get("DD4_VALORA_PASSWORD")
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 2})
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr(
+        "dd4tester.hero._load_character_password_with_timeout",
+        no_stored_password,
+    )
+    monkeypatch.setattr("dd4tester.hero.save_character_password", fake_save)
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+        )
+    )
+
+    assert captured["credential_name"] == "character:valora"
+    assert captured["campaign_password"] == captured["stored_password"]
+
+
+def test_prepared_hero_with_campaign_stays_strict_about_missing_password(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    campaign_path = (tmp_path / "campaign.yaml").resolve()
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE campaigns (config_path TEXT NOT NULL)")
+        connection.execute(
+            "INSERT INTO campaigns (config_path) VALUES (?)",
+            (str(campaign_path),),
+        )
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": campaign_path,
+            "resumed": True,
+            "character": type(
+                "Character",
+                (),
+                {
+                    "name": "Valora",
+                    "password_env": "DD4_VALORA_PASSWORD",
+                    "credential_name": "character:valora",
+                    "database": database,
+                },
+            )(),
+        },
+    )()
+
+    async def no_stored_password(_credential_name: str) -> str | None:
+        return None
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr(
+        "dd4tester.hero._load_character_password_with_timeout",
+        no_stored_password,
+    )
+
+    with pytest.raises(RuntimeError, match="no stored password"):
+        asyncio.run(
+            run_hero_request(
+                HeroRequest(
+                    name="Valora",
+                    race="human",
+                    sex="female",
+                    character_class="mage",
+                ),
+                workspace=tmp_path / "heroes",
+            )
+        )
+
+
+def test_existing_character_password_is_reused_before_generation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": False,
+            "character": type(
+                "Character",
+                (),
+                {
+                    "password_env": "DD4_VALORA_PASSWORD",
+                    "credential_name": "character:valora",
+                },
+            )(),
+        },
+    )()
+
+    async def fake_campaign(path, **options):
+        captured["campaign_password"] = os.environ.get("DD4_VALORA_PASSWORD")
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 15})
+
+    async def stored_password(_credential_name: str) -> str:
+        return "existing-secret"
+
+    def unexpected_save(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("an existing character password must not be replaced")
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr(
+        "dd4tester.hero._load_character_password_with_timeout",
+        stored_password,
+    )
+    monkeypatch.setattr("dd4tester.hero.save_character_password", unexpected_save)
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+        )
+    )
+
+    assert captured["campaign_password"] == "existing-secret"
+
+
+def test_resumed_hero_reuses_stored_password_after_process_restart(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": True,
+            "character": type(
+                "Character",
+                (),
+                {
+                    "name": "Valora",
+                    "password_env": "DD4_VALORA_PASSWORD",
+                    "credential_name": "character:valora",
+                },
+            )(),
+        },
+    )()
+
+    async def stored_password(_credential_name: str) -> str:
+        return "resume-secret"
+
+    async def fake_campaign(path, **options):
+        captured["campaign_password"] = os.environ.get("DD4_VALORA_PASSWORD")
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 15})
+
+    monkeypatch.delenv("DD4_VALORA_PASSWORD", raising=False)
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr(
+        "dd4tester.hero._load_character_password_with_timeout",
+        stored_password,
+    )
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+        )
+    )
+
+    assert captured["campaign_password"] == "resume-secret"
     assert os.environ.get("DD4_VALORA_PASSWORD") is None
 
 
@@ -397,6 +693,130 @@ def test_prepare_hero_request_updates_resumed_level_goal(tmp_path: Path) -> None
     assert "password" not in resumed.manifest_path.read_text(
         encoding="utf-8"
     ).casefold()
+
+    shortened = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=20,
+    )
+    assert shortened.resumed
+    assert load_campaign_spec(shortened.campaign_path).target_level == 40
+
+
+def test_named_resume_finds_a_manifest_inside_a_matrix_workspace(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Corararfen",
+        race="human",
+        sex="male",
+        character_class="warrior",
+    )
+    nested_workspace = tmp_path / "heroes" / "validation"
+    first = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=nested_workspace,
+    )
+
+    loaded = load_existing_hero_request(
+        "Corararfen",
+        workspace=tmp_path / "heroes",
+    )
+    resumed = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=30,
+    )
+
+    assert loaded.race == "human"
+    assert loaded.character_class == "warrior"
+    assert resumed.resumed
+    assert resumed.directory == first.directory
+    assert load_campaign_spec(resumed.campaign_path).target_level == 100
+
+
+def test_named_resume_prefers_the_longest_duplicate_campaign_horizon(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Corararfen",
+        race="human",
+        sex="male",
+        character_class="warrior",
+    )
+    short_workspace = tmp_path / "heroes" / "validation-all"
+    long_workspace = tmp_path / "heroes" / "validation"
+    short = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=short_workspace,
+        target_level=10,
+    )
+    long = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=long_workspace,
+        target_level=100,
+    )
+
+    loaded = load_existing_hero_request(
+        "Corararfen",
+        workspace=tmp_path / "heroes",
+        target_level=5,
+    )
+    resumed_short = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=5,
+    )
+    resumed_long = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=25,
+    )
+
+    assert short.directory != long.directory
+    assert loaded.character_class == "warrior"
+    assert resumed_short.resumed
+    assert resumed_short.directory == short.directory
+    assert load_campaign_spec(resumed_short.campaign_path).target_level == 10
+    assert resumed_long.resumed
+    assert resumed_long.directory == long.directory
+    assert load_campaign_spec(resumed_long.campaign_path).target_level == 100
+
+
+def test_named_resume_rejects_equal_duplicate_campaign_horizons(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Corararfen",
+        race="human",
+        sex="male",
+        character_class="warrior",
+    )
+    prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes" / "first",
+        target_level=100,
+    )
+    prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes" / "second",
+        target_level=100,
+    )
+
+    with pytest.raises(ValueError, match="same campaign horizon"):
+        load_existing_hero_request("Corararfen", workspace=tmp_path / "heroes")
 
 
 def test_prepare_hero_request_generates_stable_name_when_omitted(

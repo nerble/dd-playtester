@@ -4,6 +4,8 @@ from dd4tester.progression import (
     CLASS_PRACTICE_SKILLS,
     ProgressionContext,
     ProgressionPolicy,
+    _QUEST_DIGGING_TOOL_POLICY,
+    _QUEST_POINTS_REQUIRED_POLICY,
     _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
     _caster_hunt_requires_sanctuary_replenishment,
     _research_hunt_policy,
@@ -18,6 +20,73 @@ def test_starter_policy_is_executable_before_level_two() -> None:
     assert policy.policy_id == "starter-0-2"
     assert policy.executable is True
     assert policy.execution == "starter"
+
+
+@pytest.mark.parametrize("character_class", ["brawler", "shifter"])
+def test_weaponless_natural_combat_classes_skip_primary_weapon_repair(
+    character_class: str,
+) -> None:
+    policy = policy_for(
+        2,
+        character_class,
+        has_weapon=False,
+        has_food=True,
+        has_flight=True,
+    )
+
+    assert policy.policy_id == "mud-school-2-6"
+    assert policy.execution == "arena"
+
+
+def test_level_six_falls_back_to_cult_fanatic_after_arena_exclusion() -> None:
+    policy = policy_for(
+        6,
+        "warrior",
+        excluded_policy_ids={"mud-school-6-10"},
+    )
+
+    assert policy.policy_id == "cult-fanatic-6-7"
+    assert policy.execution == "cult-fanatic-hunt"
+    assert policy.status == "research"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_six_does_not_repeat_absent_cult_fanatic_same_reboot() -> None:
+    policy = policy_for(
+        6,
+        "warrior",
+        excluded_policy_ids={"mud-school-6-10"},
+        research_results={
+            "cult-fanatic-6-7": {
+                "absent": True,
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+        world_boot_id="boot-1",
+    )
+
+    assert policy.executable is False
+    assert policy.minimum_level == 6
+    assert "Dragon Cult fanatic" in policy.summary
+
+    reopened = policy_for(
+        6,
+        "warrior",
+        excluded_policy_ids={"mud-school-6-10"},
+        research_results={
+            "cult-fanatic-6-7": {
+                "absent": True,
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+        world_boot_id="boot-2",
+    )
+
+    assert reopened.policy_id == "cult-fanatic-6-7"
 
 
 def test_research_hunt_selector_rejects_an_expired_level_band() -> None:
@@ -85,12 +154,215 @@ def test_required_funding_preempts_a_productive_hunt_handoff() -> None:
     assert policy.execution == "provision-funding"
 
 
+def test_post_25_quest_point_shortfall_uses_goldmoon_route() -> None:
+    policy = policy_for(
+        29,
+        "mage",
+        has_food=True,
+        has_weapon=True,
+        quest_points=0,
+        total_quest_points=0,
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+    )
+
+    assert policy.policy_id == "quest-request"
+    assert policy.execution == "quest-request"
+    assert policy.executable is True
+    assert "Goldmoon" in policy.summary
+
+
+def test_missing_quest_fields_are_reconstructed_from_source_gate() -> None:
+    policy = policy_for(
+        29,
+        "mage",
+        has_food=True,
+        has_weapon=True,
+        total_quest_points=0,
+        quest_status={"status": "available", "nextquest": 0},
+    )
+
+    assert policy.policy_id == "quest-request"
+    assert policy.execution == "quest-request"
+    assert "1 total quest points" in policy.summary
+
+
+def test_live_quest_requirement_fields_remain_authoritative() -> None:
+    policy = policy_for(
+        79,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        total_quest_points=1,
+        quest_level_qp_required=0,
+        quest_level_qp_shortfall=0,
+    )
+
+    assert policy.policy_id != "quest-request"
+
+
+def test_quest_gate_policy_evidence_matches_source_level_80_boundary() -> None:
+    policy = policy_for(
+        79,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        total_quest_points=0,
+    )
+
+    assert policy.policy_id == "quest-request"
+    assert "500 total quest points are required" in policy.summary
+    assert any(
+        "500 before level 80" in evidence
+        for evidence in _QUEST_POINTS_REQUIRED_POLICY.evidence
+    )
+
+
+def test_quest_point_gate_does_not_replace_required_healer_return() -> None:
+    policy = policy_for(
+        29,
+        "mage",
+        needs_return_home=True,
+        quest_level_qp_shortfall=1,
+    )
+
+    assert policy.policy_id == "return-home"
+    assert policy.executable is True
+
+
+def test_junior_quest_shortfall_requests_suturb_quest() -> None:
+    policy = policy_for(
+        24,
+        "mage",
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        quest_status={"status": "available", "nextquest": 0},
+    )
+
+    assert policy.policy_id == "quest-request"
+    assert policy.execution == "quest-request"
+    assert policy.executable is True
+    assert "Suturb" in policy.summary
+
+
+def test_active_kill_quest_preempts_xp_frontier_until_target_is_dead() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        quest_status={
+            "active": 1,
+            "status": "active",
+            "type": "kill",
+            "mob_vnum": 4517,
+            "room_vnum": 4514,
+        },
+    )
+
+    assert policy.policy_id == "quest-target-run"
+    assert policy.execution == "quest-target-run"
+    assert "4517" in policy.summary
+
+
+def test_active_hoard_quest_acquires_digging_capability_before_target_run() -> None:
+    policy = policy_for(
+        24,
+        "warrior",
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        has_digging_capability=False,
+        quest_status={
+            "active": 1,
+            "complete": 0,
+            "status": "active",
+            "type": "hoard",
+            "object_vnum": 9001,
+            "room_vnum": 9000,
+        },
+    )
+
+    assert policy.policy_id == _QUEST_DIGGING_TOOL_POLICY.policy_id
+    assert policy.execution == "quest-digging-tool"
+    assert policy.executable is True
+    assert "room 9000" in policy.summary
+
+
+def test_active_hoard_quest_uses_existing_digging_capability() -> None:
+    policy = policy_for(
+        24,
+        "warrior",
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        has_digging_capability=True,
+        quest_status={
+            "active": 1,
+            "complete": 0,
+            "status": "active",
+            "type": "hoard",
+            "object_vnum": 9001,
+            "room_vnum": 9000,
+        },
+    )
+
+    assert policy.policy_id == "quest-target-run"
+    assert policy.execution == "quest-target-run"
+
+
+def test_completed_quest_returns_to_questmaster_for_reward() -> None:
+    policy = policy_for(
+        24,
+        "warrior",
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        quest_status={
+            "active": 1,
+            "complete": 1,
+            "status": "complete",
+            "type": "kill",
+            "mob_vnum": -1,
+        },
+    )
+
+    assert policy.policy_id == "quest-complete"
+    assert policy.execution == "quest-complete"
+
+
+def test_quest_cooldown_keeps_the_level_gate_explicitly_unavailable() -> None:
+    policy = policy_for(
+        24,
+        "mage",
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        quest_status={"status": "available", "nextquest": 15},
+    )
+
+    assert policy.policy_id == "quest-points-required"
+    assert policy.executable is False
+    assert "15 minute" in policy.summary
+
+
 def test_empty_basic_slots_select_midgaard_outfit_maintenance() -> None:
     policy = policy_for(8, "mage", needs_basic_gear=True)
 
     assert policy.policy_id == "outfit-basic-gear"
     assert policy.execution == "outfit-basic-gear"
     assert policy.executable is True
+
+
+def test_loose_sanctuary_reserve_selects_pouch_maintenance() -> None:
+    policy = policy_for(
+        17,
+        "mage",
+        has_food=True,
+        has_sanctuary_potion=True,
+        needs_combat_pouch_repack=True,
+        protection_recovery_required=False,
+    )
+
+    assert policy.policy_id == "audit-combat-pouch"
+    assert policy.execution == "audit-combat-pouch"
+    assert policy.status == "verified"
 
 
 def test_unaffordable_provisions_select_source_funding_policy() -> None:
@@ -104,6 +376,21 @@ def test_unaffordable_provisions_select_source_funding_policy() -> None:
     assert policy.policy_id == "provision-funding"
     assert policy.execution == "provision-funding"
     assert policy.segment_kill_limit == 1
+    assert policy.executable is True
+
+
+def test_affordable_flight_with_no_food_restock_before_funding() -> None:
+    policy = policy_for(
+        18,
+        "mage",
+        has_food=False,
+        needs_provision_funding=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "restock-provisions"
+    assert policy.execution == "restock"
     assert policy.executable is True
 
 
@@ -127,6 +414,19 @@ def test_excluded_provision_funding_falls_back_to_city_restock_without_food() ->
         has_food=False,
         needs_provision_funding=True,
         excluded_policy_ids=frozenset({"provision-funding"}),
+    )
+
+    assert policy.policy_id == "restock-provisions"
+    assert policy.execution == "restock"
+    assert policy.executable is True
+
+
+def test_excluded_restock_is_retried_when_character_has_no_food() -> None:
+    policy = policy_for(
+        18,
+        "mage",
+        has_food=False,
+        excluded_policy_ids=frozenset({"restock-provisions"}),
     )
 
     assert policy.policy_id == "restock-provisions"
@@ -523,6 +823,36 @@ def test_generic_protection_recovery_applies_to_a_mage() -> None:
 
     assert policy.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
     assert policy.execution == "moria-sanctuary-hunt"
+
+
+def test_mage_protection_recovery_does_not_starve_fresh_level_sixteen_probe() -> None:
+    policy = policy_for(
+        16,
+        "mage",
+        last_policy_id="source-ranked-hunt-shadow-keep-16600-16600-16",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "source-ranked-hunt-shadow-keep-16600-16600-16": {
+                "absent": True,
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+        research_absence_cooldowns={
+            "source-ranked-hunt-shadow-keep-16600-16600-16": 3,
+        },
+    )
+
+    assert policy.policy_id == "crystalmir-white-stag-probe-16-20"
+    assert policy.execution == "crystalmir-white-stag-research"
 
 
 def test_protection_recovery_uses_alternate_probe_during_moria_cooldown() -> None:
@@ -1989,6 +2319,30 @@ def test_sellable_loot_precedes_rearm_when_the_item_slots_are_full() -> None:
     assert policy.execution == "sell-loot"
 
 
+def test_new_sellable_loot_reopens_completed_liquidation_policy() -> None:
+    policy = policy_for(
+        12,
+        "warrior",
+        has_sellable_loot=True,
+        excluded_policy_ids=frozenset({"liquidate-loot"}),
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
+
+
+def test_new_finger_gap_reopens_completed_daycare_ring_policy() -> None:
+    policy = policy_for(
+        12,
+        "warrior",
+        needs_daycare_ring=True,
+        excluded_policy_ids=frozenset({"recover-daycare-ring"}),
+    )
+
+    assert policy.policy_id == "recover-daycare-ring"
+    assert policy.execution == "recover-daycare-ring"
+
+
 def test_level_ten_mage_collects_shared_fleshmonger_probe_before_hunting() -> None:
     policy = policy_for(10, "mage", has_large_sack=True)
 
@@ -2975,6 +3329,31 @@ def test_level_ten_tutorial_track_does_not_repeat_completed_scout() -> None:
 
     assert policy.status == "unavailable"
     assert not policy.executable
+
+
+@pytest.mark.parametrize(
+    "character_class",
+    ["cleric", "psionic", "shifter", "brawler", "ranger", "smithy"],
+)
+def test_level_eleven_tutorial_tracks_open_generic_source_ranked_frontier(
+    character_class: str,
+) -> None:
+    policy = policy_for(11, character_class)
+
+    assert policy.policy_id == "source-ranked-hunt-10-100"
+    assert policy.status == "research"
+    assert policy.execution == "source-ranked-hunt"
+    assert policy.minimum_level == 11
+    assert policy.maximum_level == 11
+    assert policy.executable
+    assert policy.practice_skill == {
+        "cleric": "cure light",
+        "psionic": "mind thrust",
+        "shifter": "shapeshift",
+        "brawler": "kick",
+        "ranger": "kick",
+        "smithy": "repair",
+    }[character_class]
 
 
 @pytest.mark.parametrize("character_class", ["thief"])
@@ -4296,6 +4675,28 @@ def test_viable_watchman_probe_promotes_to_a_bounded_hunt() -> None:
     assert policy.segment_kill_limit == 1
 
 
+def test_fresh_positive_watchman_probe_reopens_a_cleared_hunt() -> None:
+    policy = policy_for(
+        24,
+        "warrior",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-21-25": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+        excluded_policy_ids=frozenset(
+            {"mirror-realm-watchman-hunt-21-25"}
+        ),
+        source_ranked_fallback=True,
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-hunt-21-25"
+    assert policy.execution == "mirror-realm-watchman-hunt"
+
+
 def test_watchman_hunt_never_uses_stale_reboot_evidence() -> None:
     policy = policy_for(
         16,
@@ -5318,6 +5719,43 @@ def test_moria_sanctuary_acquisition_promotes_distinct_lord_doom_retry() -> None
         has_sanctuary_potion=True,
         has_acquired_sanctuary_potion=True,
         last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        research_results=results,
+    )
+
+    assert policy.policy_id == "solace-lord-doom-sanctuary-hunt-18-20"
+    assert policy.execution == "solace-lord-doom-hunt"
+    assert "purple sanctuary potion" in policy.summary
+
+
+def test_mage_sanctuary_recovery_promotes_distinct_lord_doom_retry() -> None:
+    results = _level_eighteen_research_outcomes()
+    results["galaxy-white-dwarf-secondary-probe-17-20"] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": "boot-1",
+    }
+    results["solace-lord-doom-hunt-18-20"] = {
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "boot_id": "boot-1",
+    }
+    results["source-ranked-sanctuary-recovery-2-100"] = {
+        "observed": True,
+        "viable": True,
+        "required_object_acquired": True,
+        "boot_id": "boot-1",
+    }
+
+    policy = policy_for(
+        18,
+        "mage",
+        has_flight=True,
+        has_sanctuary_potion=True,
+        has_acquired_sanctuary_potion=True,
+        last_policy_id="source-ranked-sanctuary-recovery-2-100",
         world_boot_id="boot-1",
         research_results=results,
     )
@@ -9506,6 +9944,94 @@ def test_live_subclass_state_releases_the_level_thirty_selection_gate() -> None:
     assert policy.policy_id != "choose-subclass-30"
 
 
+def test_active_quest_runs_before_a_quest_point_gate_is_due() -> None:
+    policy = policy_for(
+        24,
+        "warrior",
+        quest_status={
+            "active": 1,
+            "complete": 0,
+            "type": "kill",
+            "mob_vnum": 4517,
+            "room_vnum": 4514,
+        },
+        has_food=True,
+        has_weapon=True,
+    )
+
+    assert policy.policy_id == "quest-target-run"
+    assert policy.execution == "quest-target-run"
+
+
+def test_completed_quest_is_claimed_before_a_quest_point_gate_is_due() -> None:
+    policy = policy_for(
+        24,
+        "warrior",
+        quest_status={
+            "active": 1,
+            "complete": 1,
+            "type": "kill",
+            "mob_vnum": -1,
+        },
+        has_food=True,
+        has_weapon=True,
+    )
+
+    assert policy.policy_id == "quest-complete"
+    assert policy.execution == "quest-complete"
+
+
+@pytest.mark.parametrize(
+    ("character_class", "subclass"),
+    (
+        ("mage", "necromancer"),
+        ("mage", "warlock"),
+        ("cleric", "templar"),
+        ("cleric", "druid"),
+        ("thief", "ninja"),
+        ("thief", "bounty hunter"),
+        ("warrior", "thug"),
+        ("warrior", "knight"),
+        ("psionic", "infernalist"),
+        ("psionic", "witch"),
+        ("shifter", "werewolf"),
+        ("shifter", "vampire"),
+        ("brawler", "monk"),
+        ("brawler", "martial artist"),
+        ("ranger", "barbarian"),
+        ("ranger", "bard"),
+        ("smithy", "engineer"),
+        ("smithy", "runesmith"),
+    ),
+)
+def test_every_source_legal_subclass_has_a_live_level_thirty_handoff(
+    character_class: str,
+    subclass: str,
+) -> None:
+    pending = policy_for(
+        30,
+        character_class,
+        target_subclass=subclass,
+        has_food=True,
+        has_flight=True,
+        has_weapon=True,
+    )
+    active = policy_for(
+        30,
+        character_class,
+        subclass=subclass,
+        target_subclass=subclass,
+        has_food=True,
+        has_flight=True,
+        has_weapon=True,
+    )
+
+    assert pending.policy_id == "choose-subclass-30"
+    assert pending.executable
+    assert active.policy_id != "choose-subclass-30"
+    assert active.executable
+
+
 def test_requested_subclass_expires_after_level_thirty_instead_of_falling_back() -> None:
     context = ProgressionContext.from_values(
         31,
@@ -9549,3 +10075,29 @@ def test_live_subclass_mismatch_blocks_the_requested_progression_track() -> None
     assert policy.executable is False
     assert policy.execution is None
     assert "does not match" in policy.summary
+
+
+def test_level_six_exhausted_tutorial_opens_source_ranked_fallback() -> None:
+    policy = policy_for(
+        6,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        excluded_policy_ids=frozenset({"mud-school-6-10"}),
+        research_results={
+            "cult-fanatic-6-7": {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+                "absent": True,
+            }
+        },
+        world_boot_id="boot-1",
+        source_ranked_fallback=True,
+    )
+
+    assert policy.policy_id == "source-ranked-hunt-6-10"
+    assert policy.execution == "source-ranked-hunt"
+    assert policy.minimum_level == 6
+    assert policy.maximum_level == 6
+    assert "early-progression evidence band" in " ".join(policy.evidence)

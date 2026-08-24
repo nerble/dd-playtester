@@ -4,6 +4,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from .archetypes import archetype_registry
+from .quests import (
+    quest_points_required_for_advance,
+    quest_points_shortfall_for_advance,
+    questmaster_name_for_level,
+    snapshot_quest_status,
+)
 
 
 _ARCHETYPES = archetype_registry()
@@ -76,16 +82,23 @@ class ProgressionContext:
     practice_skill: str
     capabilities: frozenset[str]
     target_subclass: str | None = None
+    quest_points: int | None = None
+    total_quest_points: int | None = None
+    quest_level_qp_required: int | None = None
+    quest_level_qp_shortfall: int | None = None
+    quest_status: Mapping[str, object] | None = None
     has_large_sack: bool = False
     has_sellable_loot: bool = False
     needs_coin_deposit: bool = False
     needs_capacity_relief: bool = False
     needs_money_container_extraction: bool = False
+    needs_combat_pouch_repack: bool = False
     has_food: bool = True
     needs_provision_funding: bool = False
     has_emergency_provision_sale: bool = False
     needs_return_home: bool = False
     has_weapon: bool = True
+    has_digging_capability: bool = False
     shop_rearm_blocked_by_reputation: bool = False
     needs_basic_gear: bool = False
     needs_body_gear_recovery: bool = False
@@ -230,6 +243,7 @@ _MUD_SCHOOL_ARENA_POLICY = ProgressionPolicy(
     ),
     practice_skill=None,
     segment_kill_limit=10,
+    allow_partial_below_band=True,
 )
 
 _MUD_SCHOOL_RESEARCH_POLICY = replace(
@@ -269,6 +283,31 @@ _MUD_SCHOOL_RESEARCH_POLICY = replace(
         "DD4 source map metadata lists Moria for levels 5-15 and Old Thalos for levels 10-25.",
         "DD4 source help: reaching level 100 also requires at least 1,000 total quest points.",
     ),
+)
+
+_CULT_FANATIC_LEVEL_SIX_POLICY = ProgressionPolicy(
+    policy_id="cult-fanatic-6-7",
+    minimum_level=6,
+    maximum_level=7,
+    status="research",
+    execution="cult-fanatic-hunt",
+    summary=(
+        "Use a bounded Dragon Cult fanatic hunt after the Mud School arena "
+        "has no useful live targets."
+    ),
+    evidence=(
+        "DD4 source places mobile 9808, the fanatic monk, in the Dragon Cult "
+        "at source level 6; it is non-aggressive, unarmed, and has no special.",
+        "The source route reaches the Cult reception without entering the "
+        "adjacent hostile temple branches; the receptionist is the only "
+        "source-approved companion at the target reset.",
+        "The fanatic can wander through the Cult, so the hunt must use the "
+        "source-reachable room set rather than one fixed room.",
+        "This is research-gated until a level-6 class-tagged live kill proves "
+        "the route, consider gate, combat health bound, and healer return.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
 )
 
 _FOUNDRY_LEVEL_SIX_POLICY = ProgressionPolicy(
@@ -373,6 +412,7 @@ _DAYCARE_LEVEL_SEVEN_POLICY = ProgressionPolicy(
         "Live run 712 considered a reboot-fuzzed level-4 nanny in room 6604, killed her for 149 XP, collected her robe, potion, and food drop, and recovered at healer room 3054; blindness was not selected in that fight.",
         "Live run 790: level-7 dwarf warrior Dorrik considered and killed a nanny for 192 XP. Its cleric blindness triggered recall and healer recovery; the completed save-and-quit was recorded as a successful campaign segment.",
         "Live run 798: level-7 drow thief Kestrel killed a nanny for 69 XP, recovered an amber potion, woke to address hunger and thirst during healer recovery, and returned safely to room 3054.",
+        "Live run 8827: the route-specific Praelarran validation skipped source-known nanny sightings to isolate navigation, then followed GMCP-confirmed rooms 6603, 6605, and 6604 in order (west, south, east) before recalling and returning safely to healer room 3054. This proves the repaired locator compaction, not a new XP kill.",
     ),
     practice_skill=None,
     segment_kill_limit=2,
@@ -1644,9 +1684,12 @@ _MORIA_DEEP_SANCTUARY_THIEF_LEVEL_NINETEEN_RESEARCH_POLICY = ProgressionPolicy(
         "snake, and warrior reset branches at 4067, 4068, and 4070, but it "
         "must pass the source-known level-10 poisonous snake at 4058.",
         "This identity is restricted to thief levels 19-20 because the older "
-        "level-16-18 policy must remain reset-room-only after its live maze "
-        "hazard evidence. The deep route is required-loot research, never an "
-        "XP hunt, and promotes only after a fresh exact consider.",
+        "level-16-18 thief policy must remain reset-room-only after its live "
+        "maze hazard evidence. A separate class-gated mage recovery probe may "
+        "use the same path from level 16 because the runner requires verified "
+        "invisibility before departure. The deep route is required-loot "
+        "research, never an XP hunt, and promotes only after a fresh exact "
+        "consider.",
     ),
     practice_skill="backstab",
 )
@@ -1676,15 +1719,18 @@ _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY = ProgressionPolicy(
     status="research",
     execution="moria-deep-sanctuary-hunt",
     summary=(
-        "Acquire one source-identified sanctuary potion before entering a "
-        "source-ranked mobile whose special procedure requires protection."
+        "Acquire a source-identified sanctuary reserve before entering a "
+        "source-ranked mobile whose special procedure requires protection; "
+        "blindness-capable casters also need cure blindness training or a "
+        "second purple potion."
     ),
     evidence=(
         "The source-ranked candidate gate models the target special procedure "
         "before opening combat and requires a carried sanctuary reserve.",
         "The existing bounded Moria deep-carrier route can recover one purple "
         "sanctuary potion without turning its below-band carrier into an XP "
-        "policy.",
+        "policy; a caster-special route is not opened until its blindness "
+        "recovery reserve is also executable.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -1704,6 +1750,7 @@ _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY = ProgressionPolicy(
         "DD4 source places purple sanctuary potions on the large hobgoblin reset in Moria.",
         "The existing Moria carrier route is source-backed and uses the required-loot gate, so a below-band carrier is never promoted into ordinary XP hunting.",
         "The recovery transition is class-independent: sanctuary protects fighters, thieves, and spellcasters before the exact failed hunt is retried.",
+        "At level 16 and above, only the mage recovery path may use the deeper carrier circuit, and only with the existing bounded invisibility readiness gate; thief and other non-invisible paths remain reset-room-only until their level-19 research band.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -1939,6 +1986,24 @@ _RETURN_HOME_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_AUDIT_COMBAT_POUCH_POLICY = ProgressionPolicy(
+    policy_id="audit-combat-pouch",
+    minimum_level=2,
+    maximum_level=None,
+    status="verified",
+    execution="audit-combat-pouch",
+    summary=(
+        "Move a source-safe loose emergency potion into the worn combat pouch."
+    ),
+    evidence=(
+        "A required-loot field return can leave a recovered purple potion in "
+        "inventory before the normal recall-origin pouch audit runs.",
+        "The bounded healer-to-recall route uses only safe Midgaard rooms and "
+        "requires a confirmed pouch acknowledgement before saving.",
+    ),
+    practice_skill=None,
+)
+
 _EMPTY_MONEY_CONTAINER_POLICY = ProgressionPolicy(
     policy_id="empty-money-container",
     minimum_level=2,
@@ -1965,13 +2030,17 @@ _CHOOSE_SUBCLASS_POLICY = ProgressionPolicy(
     status="research",
     execution="choose-subclass",
     summary=(
-        "At level 30, travel to the source-backed Kerofk class teacher and "
+        "At level 30, travel to the source-reset teacher that teaches the "
+        "requested subclass and "
         "issue DD4's exact subclass change command before continuing HERO play."
     ),
     evidence=(
         "DD4 do_change accepts subclass who_name keywords only at exactly level 30.",
-        "The level-20 Kerofk trainer routes are source-registered and already "
-        "used for class-aware practice training.",
+        "The campaign resolves the teacher's exact '<subclass> base' entry "
+        "from parsed mobile teaching data rather than assuming a class trainer "
+        "can teach every subclass.",
+        "Smithy engineer and runesmith changes use Jolob in Anon's Smithy; "
+        "Kerofk's Gorn has no corresponding subclass teaching entries.",
         "The campaign waits for live Char.Base subclass state before enabling "
         "subclass-specific capabilities or policies.",
     ),
@@ -2295,6 +2364,127 @@ _UNAVAILABLE_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_QUEST_REQUEST_POLICY = ProgressionPolicy(
+    policy_id="quest-request",
+    minimum_level=1,
+    maximum_level=100,
+    status="research",
+    execution="quest-request",
+    summary=(
+        "Request a source-backed random quest from the questmaster for the "
+        "current level band before the next quest-point level gate."
+    ),
+    evidence=(
+        "DD4 GMCP Char.Quest exposes points, total_points, "
+        "level_qp_required, and level_qp_shortfall in server/src/protocol.c.",
+        "HELP QUESTMASTERS identifies Suturb in the Adventurer's Guild as the "
+        "questmaster for characters level 25 and under.",
+        "The source route from recall to Suturb's room 25306 is south, east, "
+        "up, east, north, down, down.",
+        "HELP QUESTMASTERS identifies Goldmoon near Solace for characters "
+        "over level 25; the checked-in source graph reaches her room 10024 "
+        "through a bounded route with one source-registered open door.",
+        "Ota'ar Dar's Reaver route is not treated as reachable from default "
+        "Midgaard recall until its portal/access boundary is source-verified.",
+    ),
+    practice_skill=None,
+)
+
+_QUEST_TARGET_POLICY = ProgressionPolicy(
+    policy_id="quest-target-run",
+    minimum_level=1,
+    maximum_level=100,
+    status="research",
+    execution="quest-target-run",
+    summary=(
+        "Follow the live quest target identity and complete the bounded "
+        "server-issued quest objective."
+    ),
+    evidence=(
+        "DD4 quest.c marks a kill quest complete only when the exact source "
+        "mobile VNUM dies, and object quests complete only when the exact "
+        "object VNUM is carried back to the questmaster.",
+        "Object and buried-hoard retrieval remain capability-gated until the "
+        "source-backed digging and retrieval loop is proven.",
+    ),
+    practice_skill=None,
+)
+
+_QUEST_DIGGING_TOOL_POLICY = ProgressionPolicy(
+    policy_id="quest-digging-tool",
+    minimum_level=1,
+    maximum_level=100,
+    status="research",
+    execution="quest-digging-tool",
+    summary=(
+        "Acquire a source-reset digging tool before entering a buried-hoard "
+        "quest target."
+    ),
+    evidence=(
+        "DD4 act_obj.c accepts an ITEM_DIGGER carried or worn before it "
+        "considers form- and weapon-based digging fallbacks.",
+        "grave.are resets shovel VNUM 3604 and rake VNUM 3605 on the ground "
+        "in room 3613, a source-reachable Graveyard shed from recall.",
+        "The first implementation acquires exact shovel VNUM 3604; the rake "
+        "is retained as a source-backed fallback for a later alternate-item "
+        "route.",
+    ),
+    practice_skill=None,
+)
+
+_QUEST_COMPLETE_POLICY = ProgressionPolicy(
+    policy_id="quest-complete",
+    minimum_level=1,
+    maximum_level=100,
+    status="research",
+    execution="quest-complete",
+    summary="Return to the source-backed questmaster and claim the quest reward.",
+    evidence=(
+        "DD4 quest.c awards 10-40 quest points and applies a ten-minute "
+        "post-completion delay after QUEST COMPLETE.",
+    ),
+    practice_skill=None,
+)
+
+_QUEST_ABORT_POLICY = ProgressionPolicy(
+    policy_id="quest-abort-source-safety",
+    minimum_level=1,
+    maximum_level=100,
+    status="research",
+    execution="quest-abort",
+    summary=(
+        "Return to the source-backed questmaster and abandon a generated "
+        "quest whose exact target failed source safety preflight."
+    ),
+    evidence=(
+        "DD4 quest.c implements QUEST ABORT, clears the active target, and "
+        "applies a bounded fifteen-minute abort delay.",
+        "A source safety rejection or a source-proven inaccessible quest room "
+        "may select this action; source-mirror absence remains a durable safe "
+        "stop.",
+    ),
+    practice_skill=None,
+)
+
+_QUEST_POINTS_REQUIRED_POLICY = ProgressionPolicy(
+    policy_id="quest-points-required",
+    minimum_level=30,
+    maximum_level=100,
+    status="unavailable",
+    execution=None,
+    summary=(
+        "DD4 requires additional quest points before the next level, but the "
+        "current quest state is not yet executable."
+    ),
+    evidence=(
+        "DD4 GMCP Char.Quest exposes points, total_points, "
+        "level_qp_required, and level_qp_shortfall in server/src/protocol.c.",
+        "DD4 update.c requires 1 quest point before level 30, 200 before "
+        "level 50, 500 before level 80, and 1,000 before HERO 100.",
+    ),
+    practice_skill=None,
+)
+
 _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
     policy_id="source-ranked-hunt-10-100",
     minimum_level=10,
@@ -2345,6 +2535,30 @@ _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
     ),
     practice_skill=None,
     segment_kill_limit=1,
+)
+
+
+_SOURCE_RANKED_EARLY_FALLBACK_POLICY = replace(
+    _SOURCE_RANKED_HUNT_POLICY,
+    policy_id="source-ranked-hunt-6-10",
+    minimum_level=6,
+    maximum_level=10,
+    summary=(
+        "After the tutorial and level-6 research routes are exhausted, rank "
+        "source-defined current-band mobiles through level 10 and run one "
+        "bounded, exact-target hunt."
+    ),
+    evidence=(
+        *_SOURCE_RANKED_HUNT_POLICY.evidence,
+        "This is a distinct early-progression evidence band; its live kills "
+        "must not be counted as level-10-plus or HERO proof.",
+        "Live run 8295 class-tagged Praelarran's source mobile 4406 Bearded "
+        "Lady kill for 108 XP and safe healer return after the tutorial "
+        "frontier was exhausted.",
+        "Live run 8301 class-tagged Praelarran's source mobile 4409 Bearded "
+        "Lady kill for 103 XP, and run 8302 class-tagged source mobile 1138 "
+        "Shire bull kill for 274 XP; both returned safely to healer room 3054.",
+    ),
 )
 
 
@@ -3044,7 +3258,16 @@ _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY = ProgressionPolicy(
 # The explicit research registry currently ends at level 80.  Keep later
 # HERO bands executable through the generic source-ranked frontier while their
 # area-specific routes are still being researched.
-_GENERIC_SOURCE_RANKED_LEVEL_MINIMUM = 81
+# Level 11 is the first intentional gap in the fixed class-specific registry:
+# tutorial-arena classes finish their level-10 scout, then hand off to the
+# generic source-ranked executor while later fixed bands remain authoritative.
+_GENERIC_SOURCE_RANKED_LEVEL_MINIMUM = 11
+
+# A character can exhaust the level-6 to 10 tutorial routes before reaching
+# level 10. The source catalog and live safety gates already support this
+# lower band, so allow the campaign fallback to open at level 6 without
+# changing the fixed tutorial policy ordering.
+_SOURCE_RANKED_FALLBACK_MINIMUM_LEVEL = 6
 
 
 _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY = ProgressionPolicy(
@@ -5216,22 +5439,34 @@ _POLICY_BY_ID = {
 }
 
 
+_WEAPONLESS_COMBAT_CAPABILITIES = frozenset(
+    {"unarmed-combat", "natural-combat"}
+)
+
+
 def policy_for(
     level: int | float | None,
     character_class: str,
     *,
     subclass: str | None = None,
     target_subclass: str | None = None,
+    quest_points: int | None = None,
+    total_quest_points: int | None = None,
+    quest_level_qp_required: int | None = None,
+    quest_level_qp_shortfall: int | None = None,
+    quest_status: Mapping[str, object] | None = None,
     has_large_sack: bool = False,
     has_sellable_loot: bool = False,
     needs_coin_deposit: bool = False,
     needs_capacity_relief: bool = False,
     needs_money_container_extraction: bool = False,
+    needs_combat_pouch_repack: bool = False,
     has_food: bool = True,
     needs_provision_funding: bool = False,
     has_emergency_provision_sale: bool = False,
     needs_return_home: bool = False,
     has_weapon: bool = True,
+    has_digging_capability: bool = False,
     shop_rearm_blocked_by_reputation: bool = False,
     needs_basic_gear: bool = False,
     needs_body_gear_recovery: bool = False,
@@ -5275,16 +5510,23 @@ def policy_for(
         character_class,
         subclass=subclass,
         target_subclass=target_subclass,
+        quest_points=quest_points,
+        total_quest_points=total_quest_points,
+        quest_level_qp_required=quest_level_qp_required,
+        quest_level_qp_shortfall=quest_level_qp_shortfall,
+        quest_status=quest_status,
         has_large_sack=has_large_sack,
         has_sellable_loot=has_sellable_loot,
         needs_coin_deposit=needs_coin_deposit,
         needs_capacity_relief=needs_capacity_relief,
         needs_money_container_extraction=needs_money_container_extraction,
+        needs_combat_pouch_repack=needs_combat_pouch_repack,
         has_food=has_food,
         needs_provision_funding=needs_provision_funding,
         has_emergency_provision_sale=has_emergency_provision_sale,
         needs_return_home=needs_return_home,
         has_weapon=has_weapon,
+        has_digging_capability=has_digging_capability,
         shop_rearm_blocked_by_reputation=shop_rearm_blocked_by_reputation,
         needs_basic_gear=needs_basic_gear,
         needs_body_gear_recovery=needs_body_gear_recovery,
@@ -5325,6 +5567,43 @@ def policy_for(
         last_policy_id=last_policy_id,
         last_fastwalk_abort_reason=last_fastwalk_abort_reason,
     )
+    # Brawlers and shifters can fight without a wielded primary weapon. The
+    # campaign still reports ``has_weapon`` for the shared equipment audit,
+    # but that audit must not send a weaponless natural-combat character to a
+    # shop before its first useful field segment.
+    if context.capabilities & _WEAPONLESS_COMBAT_CAPABILITIES:
+        context = replace(context, has_weapon=True)
+    if (
+        context.total_quest_points is not None
+        and (
+            context.quest_level_qp_required is None
+            or context.quest_level_qp_shortfall is None
+        )
+    ):
+        # Older campaign checkpoints may retain total QP while predating the
+        # Char.Quest fields. Reconstruct only missing values from the current
+        # source rule; live non-missing GMCP values remain authoritative.
+        source_required = quest_points_required_for_advance(context.level)
+        required = (
+            context.quest_level_qp_required
+            if context.quest_level_qp_required is not None
+            else source_required
+        )
+        shortfall = context.quest_level_qp_shortfall
+        if shortfall is None and required is not None:
+            shortfall = (
+                quest_points_shortfall_for_advance(
+                    context.level,
+                    context.total_quest_points,
+                )
+                if required == source_required
+                else max(0, required - context.total_quest_points)
+            )
+        context = replace(
+            context,
+            quest_level_qp_required=required,
+            quest_level_qp_shortfall=shortfall,
+        )
     # A research retry may carry a productive-hunt handoff, but that handoff
     # must not bypass required maintenance such as funding, food, equipment,
     # or flight recovery.
@@ -5334,6 +5613,91 @@ def policy_for(
         # do not let sanctuary or research handoffs replace a safe healer
         # return after an interrupted field segment.
         return selected
+    quest = snapshot_quest_status(context.quest_status)
+    quest_requires_action = quest.active and (
+        quest.complete or quest.needs_target_run
+    )
+    if (
+        (
+            (
+                context.quest_level_qp_shortfall is not None
+                and context.quest_level_qp_shortfall > 0
+            )
+            or quest_requires_action
+        )
+        and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
+    ):
+        required = context.quest_level_qp_required
+        shortfall = context.quest_level_qp_shortfall or 0
+        requirement = (
+            f"{required} total quest points are required"
+            if required is not None
+            else "additional quest points are required"
+        )
+        if quest.active and quest.complete:
+            return replace(
+                _QUEST_COMPLETE_POLICY,
+                minimum_level=context.level,
+                maximum_level=context.level,
+                summary=(
+                    f"DD4 reports a completed {quest.kind} quest; return to "
+                    f"the questmaster before the {shortfall}-point shortfall "
+                    "can be resolved."
+                ),
+                practice_skill=context.practice_skill,
+            )
+        if (
+            quest.kind == "hoard"
+            and quest.needs_target_run
+            and not context.has_digging_capability
+        ):
+            return replace(
+                _QUEST_DIGGING_TOOL_POLICY,
+                minimum_level=context.level,
+                maximum_level=context.level,
+                summary=(
+                    f"The active buried-hoard quest in room {quest.room_vnum} "
+                    "needs a carried digging capability; acquire the source "
+                    "shovel before attempting its exact object VNUM."
+                ),
+                practice_skill=context.practice_skill,
+            )
+        if quest.needs_target_run:
+            return replace(
+                _QUEST_TARGET_POLICY,
+                minimum_level=context.level,
+                maximum_level=context.level,
+                summary=(
+                    f"Continue the live {quest.kind} quest for target "
+                    f"{quest.mob_vnum or quest.object_vnum} in room "
+                    f"{quest.room_vnum}; {shortfall} quest point(s) remain "
+                    "before the next level gate."
+                ),
+                practice_skill=context.practice_skill,
+            )
+        if quest.nextquest > 0:
+            return replace(
+                _QUEST_POINTS_REQUIRED_POLICY,
+                minimum_level=context.level,
+                maximum_level=context.level,
+                summary=(
+                    f"DD4 reports a {shortfall}-point quest shortfall, but the "
+                    f"questmaster cooldown has {quest.nextquest} minute(s) "
+                    "remaining; preserve the checkpoint and wait."
+                ),
+                practice_skill=context.practice_skill,
+            )
+        questmaster = questmaster_name_for_level(context.level)
+        return replace(
+            _QUEST_REQUEST_POLICY,
+            minimum_level=context.level,
+            maximum_level=context.level,
+            summary=(
+                f"DD4 reports a {shortfall}-point quest shortfall; "
+                f"{requirement}. Request a random quest from {questmaster}."
+            ),
+            practice_skill=context.practice_skill,
+        )
     if (
         (context.subclass_selection_expired or context.subclass_selection_mismatch)
         and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
@@ -5390,6 +5754,16 @@ def policy_for(
         and not context.has_sanctuary_potion
         and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
     ):
+        if (
+            context.level >= 16
+            and selected.status == "research"
+            and (selected.execution or "").endswith("-research")
+        ):
+            # A fixed non-combat probe is safe to execute while the Moria
+            # reserve route is cooling down. Keep the protection requirement
+            # for combat policies, but do not let it starve the level-16+
+            # source-backed frontier probes.
+            return selected
         # Protection recovery is a shared capability gate, not a thief-only
         # progression rule. Use the safe Moria carrier route for every class
         # when a viable hunt has already reached the field safety floor.
@@ -5418,16 +5792,32 @@ def policy_for(
                 practice_skill=context.practice_skill,
             )
 
+    selected_probe_id = selected.policy_id.replace("-hunt-", "-probe-", 1)
+    fresh_probe_reopens_cleared_hunt = (
+        "-hunt-" in selected.policy_id
+        and selected.policy_id in context.excluded_policy_ids
+        and selected_probe_id not in context.excluded_policy_ids
+        and _research_result_is_viable(context, selected_probe_id)
+        and not _research_result_recorded(context, selected.policy_id)
+    )
     if (
         source_ranked_fallback
-        and context.level >= _SOURCE_RANKED_HUNT_POLICY.minimum_level
+        and context.level >= _SOURCE_RANKED_FALLBACK_MINIMUM_LEVEL
         and (
             selected.policy_id == _UNAVAILABLE_POLICY.policy_id
-            or selected.policy_id in context.excluded_policy_ids
+            or (
+                selected.policy_id in context.excluded_policy_ids
+                and not fresh_probe_reopens_cleared_hunt
+            )
         )
     ):
+        fallback_policy = (
+            _SOURCE_RANKED_EARLY_FALLBACK_POLICY
+            if context.level <= 10
+            else _SOURCE_RANKED_HUNT_POLICY
+        )
         return replace(
-            _SOURCE_RANKED_HUNT_POLICY,
+            fallback_policy,
             minimum_level=context.level,
             maximum_level=context.level,
             practice_skill=context.practice_skill,
@@ -5446,13 +5836,26 @@ def policy_for(
                 or context.needs_piercing_weapon
             )
         )
+        or (
+            selected.policy_id == _LIQUIDATE_LOOT_POLICY.policy_id
+            and context.has_sellable_loot
+        )
+        or (
+            selected.policy_id == _RECOVER_DAYCARE_RING_POLICY.policy_id
+            and context.needs_daycare_ring
+        )
     )
     if (
         selected.policy_id not in context.excluded_policy_ids
         or excluded_retry_allowed
+        or fresh_probe_reopens_cleared_hunt
         or (
             selected.policy_id == _PROVISION_FUNDING_POLICY.policy_id
             and context.needs_provision_funding
+        )
+        or (
+            selected.policy_id == _RESTOCK_POLICY.policy_id
+            and not context.has_food
         )
     ):
         return selected
@@ -5507,6 +5910,7 @@ _HANDOFF_BLOCKING_EXECUTIONS = frozenset(
         "buy-flight",
         "borrow-flight",
         "provision-funding",
+        "audit-combat-pouch",
         "choose-subclass",
     }
 )
@@ -5516,6 +5920,17 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
     selected = _select_policy(context)
     if context.has_flight:
         return selected
+    if (
+        context.can_attempt_flight_purchase
+        and not context.flight_purchase_failed
+        and not context.has_food
+        and not context.needs_return_home
+        and selected.policy_id == _PROVISION_FUNDING_POLICY.policy_id
+    ):
+        # Food is the immediate survival requirement.  When the observed
+        # flight price is already affordable, restock at the city baker before
+        # spending another field segment on a funding hunt.
+        return _RESTOCK_POLICY
     if (
         context.can_attempt_flight_purchase
         and not context.flight_purchase_failed
@@ -5655,6 +6070,8 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _PROVISION_FUNDING_POLICY
     if not context.has_food:
         return _RESTOCK_POLICY
+    if context.needs_combat_pouch_repack:
+        return _AUDIT_COMBAT_POUCH_POLICY
     if context.needs_subclass_selection:
         return replace(
             _CHOOSE_SUBCLASS_POLICY,
@@ -5684,6 +6101,35 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             practice_skill=context.practice_skill,
         )
     if normalized_level == 6:
+        if _MUD_SCHOOL_RESEARCH_POLICY.policy_id in context.excluded_policy_ids:
+            cult_result = (context.research_results or {}).get(
+                _CULT_FANATIC_LEVEL_SIX_POLICY.policy_id
+            )
+            if (
+                isinstance(cult_result, Mapping)
+                and cult_result.get("boot_id") == context.world_boot_id
+                and cult_result.get("completed_kill") is not True
+                and (
+                    cult_result.get("absent")
+                    or cult_result.get("crowded")
+                    or cult_result.get("route_hazard")
+                    or cult_result.get("viable") is False
+                )
+            ):
+                return replace(
+                    _UNAVAILABLE_POLICY,
+                    minimum_level=normalized_level,
+                    maximum_level=normalized_level,
+                    summary=(
+                        "The Dragon Cult fanatic has no fresh executable result "
+                        "for this reboot; wait for a reboot or a new source "
+                        "candidate before retrying level-six progression."
+                    ),
+                )
+            return replace(
+                _CULT_FANATIC_LEVEL_SIX_POLICY,
+                practice_skill=context.practice_skill,
+            )
         return replace(
             _MUD_SCHOOL_RESEARCH_POLICY,
             practice_skill=context.practice_skill,
@@ -7522,6 +7968,25 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             and not context.flight_purchase_failed
         ):
             return _BUY_FLIGHT_POLICY
+        if (
+            normalized_level >= 18
+            and context.has_sanctuary_potion
+            and context.last_policy_id
+            in {
+                _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
+                _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY.policy_id,
+                _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id,
+                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+            }
+            and _lord_doom_sanctuary_retry_pending(context)
+        ):
+            # The protection recovery policy is class-independent. Keep the
+            # post-failure retry available to casters and fighters as well as
+            # thieves, but only with a fresh source-verified purple reserve.
+            return replace(
+                _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY,
+                practice_skill=context.practice_skill,
+            )
         if normalized_level >= 17 and context.character_class == "thief":
             if (
                 not context.has_sanctuary_potion
@@ -7534,20 +7999,6 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                         "Acquire a source-verified purple sanctuary potion "
                         "before retrying the failed current-band hunt."
                     ),
-                    practice_skill=context.practice_skill,
-                )
-            if (
-                normalized_level >= 18
-                and context.has_sanctuary_potion
-                and context.last_policy_id
-                in {
-                    _SOLACE_LORD_DOOM_HUNT_POLICY.policy_id,
-                    _MORIA_SANCTUARY_THIEF_LEVEL_SEVENTEEN_POLICY.policy_id,
-                }
-                and _lord_doom_sanctuary_retry_pending(context)
-            ):
-                return replace(
-                    _SOLACE_LORD_DOOM_SANCTUARY_HUNT_POLICY,
                     practice_skill=context.practice_skill,
                 )
             if (
@@ -9131,6 +9582,23 @@ def _research_hunt_policy(
             policy.maximum_level is not None
             and context.level > policy.maximum_level
         ):
+            return None
+    if (
+        probe.policy_id in context.excluded_policy_ids
+        or hunt.policy_id in context.excluded_policy_ids
+    ):
+        # A cleared route family is a durable selector exclusion, not a
+        # request to replay its probe or hunt after generic source ranking
+        # temporarily empties. A fresh positive probe is newer evidence,
+        # however: it must be allowed to reopen a previously cleared hunt so
+        # a stale marker cannot suppress the next executable band.
+        fresh_probe_reopens_cleared_hunt = (
+            hunt.policy_id in context.excluded_policy_ids
+            and probe.policy_id not in context.excluded_policy_ids
+            and _research_result_is_viable(context, probe.policy_id)
+            and not _research_result_recorded(context, hunt.policy_id)
+        )
+        if not fresh_probe_reopens_cleared_hunt:
             return None
     if _research_crowd_is_active(context, probe.policy_id) or _research_crowd_is_active(
         context, hunt.policy_id

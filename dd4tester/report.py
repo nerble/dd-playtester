@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from .decisions import classify_decision
@@ -183,6 +184,280 @@ def render_markdown(report: dict[str, Any]) -> str:
 
 def render_json(report: dict[str, Any]) -> str:
     return json.dumps(report, indent=2, sort_keys=True) + "\n"
+
+
+def build_campaign_report(
+    storage: RunStorage,
+    campaign_id: int,
+    *,
+    commentary_limit: int = 40,
+) -> dict[str, Any]:
+    """Build a durable summary across every run in one campaign."""
+    if commentary_limit < 1:
+        raise ValueError("commentary_limit must be at least 1")
+
+    campaign = storage.get_campaign(campaign_id)
+    if campaign is None:
+        raise LookupError(f"No campaign with id {campaign_id}")
+
+    segments = [dict(row) for row in storage.list_campaign_segments(campaign_id)]
+    checkpoints = [
+        dict(row) for row in storage.list_campaign_checkpoints(campaign_id)
+    ]
+    initial_state = _campaign_state_from_json(
+        segments[0].get("start_state_json") if segments else None
+    )
+    if not initial_state and checkpoints:
+        initial_state = _campaign_state_from_json(checkpoints[0].get("state_json"))
+    final_state = (
+        _campaign_state_from_json(checkpoints[-1].get("state_json"))
+        if checkpoints
+        else _campaign_state_from_json(
+            segments[-1].get("end_state_json") if segments else None
+        )
+    )
+
+    run_summaries: list[dict[str, Any]] = []
+    run_ids: list[int] = []
+    kills: list[dict[str, Any]] = []
+    commentary: list[str] = []
+    character: dict[str, Any] = {}
+    death_count = 0
+    for segment in segments:
+        raw_run_id = segment.get("run_id")
+        if raw_run_id is None:
+            continue
+        run_id = int(raw_run_id)
+        if run_id in run_ids:
+            continue
+        run_ids.append(run_id)
+        run_report = build_run_report(
+            storage,
+            run_id,
+            commentary_limit=commentary_limit,
+        )
+        if not character:
+            character = dict(run_report.get("character") or {})
+        game_counts = run_report.get("evidence", {}).get("game_event_counts", {})
+        death_count += int(game_counts.get("character_died", 0) or 0)
+        commentary.extend(
+            str(item)
+            for item in run_report.get("commentary", ())
+            if str(item).strip()
+        )
+        run = run_report["run"]
+        run_summaries.append(
+            {
+                "id": run["id"],
+                "scenario_name": run["scenario_name"],
+                "status": run["status"],
+                "started_at": run["started_at"],
+                "finished_at": run["finished_at"],
+                "transcript_path": run["transcript_path"],
+                "progress": run_report["progress"],
+                "failures": run_report["failures"],
+            }
+        )
+        for kill in storage.list_mob_kills_for_run(run_id):
+            kills.append(
+                {
+                    "run_id": int(kill["run_id"]),
+                    "mob_name": kill["mob_name"],
+                    "xp_gained": kill["xp_gained"],
+                    "source_mobile_vnum": kill["source_mobile_vnum"],
+                    "source_policy_id": kill["source_policy_id"],
+                    "below_useful_band": bool(kill["below_useful_band"]),
+                    "objective_eligible": bool(kill["objective_eligible"]),
+                    "timestamp": kill["timestamp"],
+                }
+            )
+
+    unique_commentary = list(dict.fromkeys(commentary))[:commentary_limit]
+    target_level = int(campaign["target_level"])
+    final_level = _campaign_int(final_state.get("level"))
+    initial_level = _campaign_int(initial_state.get("level"))
+    final_xp = _campaign_int(final_state.get("xp"))
+    initial_xp = _campaign_int(initial_state.get("xp"))
+    totals = storage.campaign_totals(campaign_id)
+
+    return {
+        "schema": 1,
+        "campaign": dict(campaign),
+        "character": character,
+        "target": {
+            "level": target_level,
+            "reached": final_level is not None and final_level >= target_level,
+        },
+        "progress": {
+            "initial_level": initial_level,
+            "final_level": final_level,
+            "level_change": _campaign_delta(initial_level, final_level),
+            "initial_xp": initial_xp,
+            "final_xp": final_xp,
+            "xp_change": _campaign_delta(initial_xp, final_xp),
+            "quest": {
+                "points": _campaign_int(final_state.get("quest_points")),
+                "total_points": _campaign_int(
+                    final_state.get("total_quest_points")
+                ),
+                "level_required": _campaign_int(
+                    final_state.get("quest_level_qp_required")
+                ),
+                "shortfall": _campaign_int(
+                    final_state.get("quest_level_qp_shortfall")
+                ),
+            },
+            "final_room": final_state.get("room_name"),
+            "final_room_vnum": final_state.get("room_vnum"),
+            "alive": not bool(final_state.get("dead")),
+        },
+        "totals": {
+            "segments": int(totals["segment_count"]),
+            "commands": int(totals["command_count"]),
+            "duration_seconds": float(totals["duration_seconds"]),
+            "runs": len(run_ids),
+            "deaths": death_count,
+            "kills": len(kills),
+        },
+        "segments": [
+            _campaign_segment_summary(segment) for segment in segments
+        ],
+        "runs": run_summaries,
+        "kills": kills,
+        "commentary": unique_commentary,
+        "evidence": {
+            "run_ids": run_ids,
+            "checkpoint_id": checkpoints[-1]["id"] if checkpoints else None,
+            "checkpoint_count": len(checkpoints),
+        },
+    }
+
+
+def render_campaign_markdown(report: dict[str, Any]) -> str:
+    """Render the campaign report for people inspecting a HERO run."""
+    campaign = report["campaign"]
+    character = report.get("character") or {}
+    progress = report["progress"]
+    target = report["target"]
+    lines = [
+        f"# Campaign {campaign['id']}: {campaign['name']}",
+        "",
+        f"Status: **{campaign['status']}**",
+        f"Character: {_format_identity(character) if character else '-'}",
+        f"Target: level {target['level']} ({'reached' if target['reached'] else 'not reached'})",
+        f"Final location: {progress['final_room'] or '-'} ({progress['final_room_vnum'] or '-'})",
+        f"Alive at checkpoint: {'yes' if progress['alive'] else 'no'}",
+        "",
+        "## Progress",
+        "",
+        "| Measure | Initial | Final | Change |",
+        "| --- | ---: | ---: | ---: |",
+        f"| Level | {progress['initial_level'] or '-'} | {progress['final_level'] or '-'} | {progress['level_change'] if progress['level_change'] is not None else '-'} |",
+        f"| XP | {progress['initial_xp'] or '-'} | {progress['final_xp'] or '-'} | {progress['xp_change'] if progress['xp_change'] is not None else '-'} |",
+        "",
+        "Quest points: "
+        f"{progress['quest']['points'] if progress['quest']['points'] is not None else '-'} "
+        f"total; next gate "
+        f"{progress['quest']['level_required'] if progress['quest']['level_required'] is not None else '-'}; "
+        f"shortfall {progress['quest']['shortfall'] or 0}.",
+        "",
+        "## Totals",
+        "",
+        f"Segments: {report['totals']['segments']}",
+        f"Runs: {report['totals']['runs']}",
+        f"Commands: {report['totals']['commands']}",
+        f"Confirmed kills: {report['totals']['kills']}",
+        f"Deaths: {report['totals']['deaths']}",
+        "",
+        "## Kills",
+        "",
+    ]
+    if report["kills"]:
+        lines.extend(
+            "- {mob_name} (+{xp_gained} XP, run {run_id})".format(**kill)
+            for kill in report["kills"]
+        )
+    else:
+        lines.append("- None recorded.")
+    lines.extend(["", "## Commentary", ""])
+    lines.extend(f"- {item}" for item in report["commentary"])
+    if not report["commentary"]:
+        lines.append("- No representative commentary was recorded.")
+    return "\n".join(lines) + "\n"
+
+
+def write_campaign_report(
+    storage: RunStorage,
+    campaign_id: int,
+    *,
+    directory: Path | None = None,
+    commentary_limit: int = 40,
+) -> tuple[Path, Path]:
+    """Write JSON and Markdown campaign reports beside its campaign YAML."""
+    report = build_campaign_report(
+        storage,
+        campaign_id,
+        commentary_limit=commentary_limit,
+    )
+    campaign = report["campaign"]
+    output_directory = (
+        directory
+        if directory is not None
+        else Path(str(campaign["config_path"])).resolve().parent
+    )
+    output_directory.mkdir(parents=True, exist_ok=True)
+    json_path = output_directory / "hero-report.json"
+    markdown_path = output_directory / "hero-report.md"
+    json_path.write_text(render_json(report), encoding="utf-8")
+    markdown_path.write_text(
+        render_campaign_markdown(report),
+        encoding="utf-8",
+    )
+    return json_path, markdown_path
+
+
+def _campaign_state_from_json(value: Any) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value) if isinstance(value, str) else value
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return dict(parsed) if isinstance(parsed, dict) else {}
+
+
+def _campaign_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _campaign_delta(initial: int | None, final: int | None) -> int | None:
+    if initial is None or final is None:
+        return None
+    return final - initial
+
+
+def _campaign_segment_summary(segment: dict[str, Any]) -> dict[str, Any]:
+    start = _campaign_state_from_json(segment.get("start_state_json"))
+    end = _campaign_state_from_json(segment.get("end_state_json"))
+    return {
+        "id": segment["id"],
+        "sequence": segment["sequence"],
+        "phase": segment["phase"],
+        "run_id": segment["run_id"],
+        "status": segment["status"],
+        "error": segment["error"],
+        "started_at": segment["started_at"],
+        "finished_at": segment["finished_at"],
+        "command_count": segment["command_count"],
+        "duration_seconds": segment["duration_seconds"],
+        "start_level": start.get("level"),
+        "end_level": end.get("level"),
+        "start_xp": start.get("xp"),
+        "end_xp": end.get("xp"),
+    }
 
 
 def _event_from_row(row: Any) -> dict[str, Any]:

@@ -2,7 +2,11 @@ import json
 import sqlite3
 from pathlib import Path
 
-from dd4tester.storage import RunStorage, _SQLITE_BUSY_TIMEOUT_MS
+from dd4tester.storage import (
+    RunStorage,
+    _SQLITE_BUSY_TIMEOUT_MS,
+    _SQLITE_JOURNAL_MODE,
+)
 from dd4tester.transcript import TranscriptRecorder
 
 
@@ -98,6 +102,48 @@ def test_storage_uses_bounded_busy_timeout_for_shared_campaign_database(
     storage.close()
 
     assert timeout == _SQLITE_BUSY_TIMEOUT_MS
+
+
+def test_storage_uses_wal_for_shared_campaign_database(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+
+    journal_mode = storage.connection.execute(
+        "PRAGMA journal_mode"
+    ).fetchone()[0]
+    synchronous = storage.connection.execute(
+        "PRAGMA synchronous"
+    ).fetchone()[0]
+
+    storage.close()
+
+    assert journal_mode.casefold() == _SQLITE_JOURNAL_MODE.casefold()
+    assert synchronous == 1
+
+
+def test_state_snapshots_commit_their_recovery_boundary(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    storage = RunStorage(database, event_commit_interval=100)
+    run_id = storage.create_run(
+        scenario_name="campaign:Ararisa",
+        scenario_path=Path("character.yaml"),
+    )
+
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="checkpoint",
+        state={"name": "Ararisa", "level": 2},
+    )
+
+    with sqlite3.connect(database) as observer:
+        persisted = observer.execute(
+            "SELECT state_json FROM state_snapshots WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+    storage.close()
+
+    assert persisted is not None
+    assert json.loads(persisted[0]) == {"name": "Ararisa", "level": 2}
 
 
 def test_storage_replays_missing_transcript_suffix_idempotently(tmp_path) -> None:
@@ -210,6 +256,12 @@ def test_storage_lists_bounded_recent_campaign_history_in_sequence_order(
         row["phase"]
         for row in storage.list_recent_campaign_checkpoints(campaign_id, limit=2)
     ] == ["phase-2", "phase-3"]
+
+    summaries = storage.list_campaign_segment_summaries(campaign_id)
+    assert summaries[0]["sequence"] == 1
+    assert summaries[0]["phase"] == "phase-0"
+    assert "start_state_json" not in summaries[0].keys()
+    assert "end_state_json" not in summaries[0].keys()
 
     segment_id = storage.start_campaign_segment(
         campaign_id,

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import secrets
+import sqlite3
 import string
 import threading
 from contextlib import contextmanager
@@ -27,7 +28,11 @@ from .character import (
     load_character_spec,
 )
 from .dd4_catalog import CharacterCatalog, load_character_catalog
-from .credentials import save_character_password
+from .credentials import (
+    CredentialStoreError,
+    load_character_password,
+    save_character_password,
+)
 from .mudlet import MudletBridge
 from .scenario import load_yaml_mapping
 
@@ -62,7 +67,9 @@ _NAME_SYLLABLES = (
 )
 _GENERATED_PASSWORD_ALPHABET = string.ascii_letters + string.digits
 _GENERATED_PASSWORD_LENGTH = 24
+_CREDENTIAL_READ_TIMEOUT_SECONDS = 5.0
 _CREDENTIAL_WRITE_TIMEOUT_SECONDS = 5.0
+_CAMPAIGN_PROBE_TIMEOUT_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -140,8 +147,25 @@ def prepare_hero_request(
             if part
         ).replace(" ", "-")
     )
-    directory = (workspace / directory_name).resolve()
-    manifest_path = directory / "hero.json"
+    existing_manifest = (
+        _find_existing_hero_manifest(
+            workspace,
+            name,
+            target_level=target_level,
+        )
+        if request.name
+        else None
+    )
+    directory = (
+        existing_manifest.parent
+        if existing_manifest is not None
+        else (workspace / directory_name).resolve()
+    )
+    manifest_path = (
+        existing_manifest
+        if existing_manifest is not None
+        else directory / "hero.json"
+    )
     profile_path = directory / "character.yaml"
     campaign_path = directory / "campaign.yaml"
     request_mapping = _request_mapping(canonical_request)
@@ -276,13 +300,18 @@ def load_existing_hero_request(
     name: str,
     *,
     workspace: Path = DEFAULT_HERO_WORKSPACE,
+    target_level: int = 100,
 ) -> HeroRequest:
     """Load the non-secret request identity for an existing hero workspace."""
     clean_name = name.strip()
     if not clean_name:
         raise ValueError("an existing hero name is required")
-    manifest_path = (workspace / clean_name.casefold() / "hero.json").resolve()
-    if not manifest_path.is_file():
+    manifest_path = _find_existing_hero_manifest(
+        workspace,
+        clean_name,
+        target_level=target_level,
+    )
+    if manifest_path is None:
         raise ValueError(
             f"no stored hero workspace exists for {clean_name!r}; provide "
             "--race and --class to create it"
@@ -320,6 +349,78 @@ def load_existing_hero_request(
     )
 
 
+def _find_existing_hero_manifest(
+    workspace: Path,
+    name: str,
+    *,
+    target_level: int = 100,
+) -> Path | None:
+    """Find the canonical stored manifest by identity, including matrix workspaces.
+
+    A named character can legitimately have both a short validation campaign
+    and a longer HERO campaign under the same workspace root. Choose the
+    closest stored horizon that can satisfy the requested target; when all
+    stored horizons are lower, use the longest one. Equal horizons remain an
+    explicit ambiguity instead of being selected by filesystem order.
+    """
+    clean_name = name.strip().casefold()
+    if not clean_name:
+        return None
+    root = workspace.resolve()
+    if not root.is_dir():
+        return None
+    matches: list[tuple[Path, int]] = []
+    for manifest_path in root.rglob("hero.json"):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        request = manifest.get("request")
+        if not isinstance(request, dict):
+            continue
+        stored_name = str(request.get("name") or "").strip().casefold()
+        if stored_name == clean_name:
+            matches.append(
+                (
+                    manifest_path.resolve(),
+                    _stored_campaign_target_level(manifest_path),
+                )
+            )
+    if len(matches) > 1:
+        requested_target = max(int(target_level), 0)
+        eligible_targets = [
+            target for _path, target in matches if target >= requested_target
+        ]
+        selected_target = (
+            min(eligible_targets)
+            if eligible_targets
+            else max(target for _path, target in matches)
+        )
+        selected = [
+            path for path, target in matches if target == selected_target
+        ]
+        if len(selected) == 1:
+            return selected[0]
+        locations = ", ".join(str(path) for path in sorted(selected))
+        raise ValueError(
+            f"multiple stored hero workspaces with the same campaign horizon "
+            f"exist for {name!r} (target level {selected_target}): {locations}"
+        )
+    return matches[0][0] if matches else None
+
+
+def _stored_campaign_target_level(manifest_path: Path) -> int:
+    """Read a stored campaign horizon for deterministic named resume."""
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        campaign_name = str(manifest.get("campaign") or "campaign.yaml")
+        campaign_path = manifest_path.parent / campaign_name
+        mapping = load_yaml_mapping(campaign_path)
+        return int(mapping.get("target_level", 0) or 0)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return 0
+
+
 async def run_hero_request(
     request: HeroRequest,
     *,
@@ -330,6 +431,7 @@ async def run_hero_request(
     reset_retries: int | None = None,
     reset_wait: float = DEFAULT_RESET_WAIT_SECONDS,
     max_segment_runtime: float | None = None,
+    retry_stalled: bool = False,
     target_level: int = 100,
     password: str | None = None,
     remember_password: bool = False,
@@ -341,13 +443,38 @@ async def run_hero_request(
         target_level=target_level,
     )
     generated_password = False
-    if password is None and not preparation.resumed:
-        password = _generated_character_password()
-        await _save_character_password_with_timeout(
-            preparation.character.credential_name,
-            password,
+    if password is None:
+        # Explicit CLI input wins; otherwise an operator-provided environment
+        # value wins over the bounded credential lookup.  Resumes must reuse
+        # the existing password and may never silently create a replacement.
+        password = os.environ.get(preparation.character.password_env)
+        credential_name = getattr(
+            preparation.character,
+            "credential_name",
+            f"character:{(getattr(preparation.character, 'name', None) or request.name or '').casefold()}",
         )
-        generated_password = True
+        if password is None:
+            password = await _load_character_password_with_timeout(
+                credential_name,
+            )
+        if password is None:
+            if preparation.resumed and _hero_campaign_has_started(preparation):
+                character_name = getattr(
+                    preparation.character,
+                    "name",
+                    request.name or "unknown",
+                )
+                raise RuntimeError(
+                    f"no stored password for resumed hero "
+                    f"{character_name!r}; provide --password or "
+                    f"{preparation.character.password_env}"
+                )
+            password = _generated_character_password()
+            await _save_character_password_with_timeout(
+                credential_name,
+                password,
+            )
+            generated_password = True
     if remember_password:
         if password is None:
             raise ValueError("remember_password requires a plaintext password")
@@ -371,6 +498,7 @@ async def run_hero_request(
             ),
             reset_wait=reset_wait,
             max_segment_runtime=max_segment_runtime,
+            retry_stalled=retry_stalled,
         )
     return preparation, result
 
@@ -380,6 +508,96 @@ def _generated_character_password() -> str:
         secrets.choice(_GENERATED_PASSWORD_ALPHABET)
         for _ in range(_GENERATED_PASSWORD_LENGTH)
     )
+
+
+def _hero_campaign_has_started(preparation: HeroPreparation) -> bool:
+    """Keep missing credentials strict once a prepared hero has run."""
+    database = getattr(preparation.character, "database", None)
+    if database is None:
+        # Lightweight test doubles and legacy profiles cannot prove that the
+        # workspace is untouched, so preserve the conservative resume rule.
+        return True
+    database_path = Path(database)
+    if not database_path.is_absolute():
+        database_path = (Path.cwd() / database_path).resolve()
+    if not database_path.is_file():
+        return False
+    config_path = preparation.campaign_path.resolve()
+    try:
+        with sqlite3.connect(
+            database_path,
+            timeout=_CAMPAIGN_PROBE_TIMEOUT_SECONDS,
+        ) as connection:
+            connection.execute(
+                f"PRAGMA busy_timeout = {int(_CAMPAIGN_PROBE_TIMEOUT_SECONDS * 1000)}"
+            )
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM campaigns
+                WHERE config_path IN (?, ?)
+                LIMIT 1
+                """,
+                (str(config_path), str(preparation.campaign_path)),
+            ).fetchone()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).casefold():
+            return False
+        return True
+    except (OSError, sqlite3.Error):
+        # Do not generate a replacement credential when the campaign state
+        # cannot be inspected safely.
+        return True
+    return row is not None
+
+
+async def _load_character_password_with_timeout(
+    credential_name: str,
+    timeout: float = _CREDENTIAL_READ_TIMEOUT_SECONDS,
+) -> str | None:
+    """Reuse a stored password without allowing keyring access to stall."""
+    loop = asyncio.get_running_loop()
+    result: asyncio.Future[tuple[str | None, BaseException | None]] = (
+        loop.create_future()
+    )
+
+    def finish(value: str | None, failure: BaseException | None) -> None:
+        if result.done():
+            return
+        result.set_result((value, failure))
+
+    def publish(value: str | None, failure: BaseException | None) -> None:
+        try:
+            loop.call_soon_threadsafe(finish, value, failure)
+        except RuntimeError:
+            # The runner may be shutting down after the timeout fired.
+            pass
+
+    def load() -> None:
+        try:
+            value = load_character_password(credential_name)
+        except CredentialStoreError:
+            # A missing entry is the normal path for a genuinely new hero.
+            publish(None, None)
+        except BaseException as exc:
+            publish(None, exc)
+        else:
+            publish(value, None)
+
+    threading.Thread(
+        target=load,
+        name="dd4-keyring-load",
+        daemon=True,
+    ).start()
+    try:
+        value, failure = await asyncio.wait_for(result, timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError(
+            f"credential lookup for {credential_name!r} exceeded {timeout:g} seconds"
+        ) from exc
+    if failure is not None:
+        raise failure
+    return value
 
 
 async def _save_character_password_with_timeout(
@@ -433,7 +651,8 @@ def _validate_target_level(target_level: int) -> None:
 
 def _update_campaign_target(path: Path, target_level: int) -> None:
     mapping = load_yaml_mapping(path)
-    if int(mapping.get("target_level", 100)) == target_level:
+    current_target = int(mapping.get("target_level", 100))
+    if current_target >= target_level:
         return
     mapping["target_level"] = target_level
     path.write_text(_render_yaml(mapping), encoding="utf-8")

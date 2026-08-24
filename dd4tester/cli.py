@@ -44,7 +44,13 @@ from .mudlet import MudletBridge
 from .money import run_money_loop_profile
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
-from .report import build_run_report, render_json, render_markdown
+from .report import (
+    build_campaign_report,
+    build_run_report,
+    render_campaign_markdown,
+    render_json,
+    render_markdown,
+)
 from .runner import run_scenario_file
 from .starter import (
     run_ambush_research_profile,
@@ -599,10 +605,18 @@ def build_parser() -> argparse.ArgumentParser:
     hero_parser.add_argument(
         "--max-segment-runtime",
         type=float,
-        default=DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
+        default=None,
         help=(
-            "cap each live segment in seconds; default: "
-            f"{DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS:g}"
+            "optional cap for each live segment; omit it for the resumable "
+            "to-HERO runner"
+        ),
+    )
+    hero_parser.add_argument(
+        "--retry-stalled",
+        action="store_true",
+        help=(
+            "perform one bounded frontier rotation when trailing no-progress "
+            "history blocks the normal retry"
         ),
     )
     hero_parser.add_argument(
@@ -645,6 +659,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="campaign segments per character in each round, default: 1",
+    )
+    matrix_parser.add_argument(
+        "--max-segment-runtime",
+        type=float,
+        default=None,
+        help=(
+            "optional live runtime cap per character segment; use this to "
+            "rotate past a temporarily blocked campaign"
+        ),
     )
 
     matrix_coverage_parser = subcommands.add_parser(
@@ -796,6 +819,39 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=20,
         help="maximum representative commentary entries, default: 20",
+    )
+
+    campaign_report_parser = subcommands.add_parser(
+        "campaign-report",
+        help="render the durable report for a stored campaign",
+    )
+    campaign_report_parser.add_argument(
+        "campaign_id",
+        type=int,
+        help="stored campaign id",
+    )
+    campaign_report_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    campaign_report_parser.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="report format, default: markdown",
+    )
+    campaign_report_parser.add_argument(
+        "--output",
+        type=Path,
+        help="write the report to this file instead of standard output",
+    )
+    campaign_report_parser.add_argument(
+        "--commentary-limit",
+        type=int,
+        default=40,
+        help="maximum representative commentary entries, default: 40",
     )
 
     show_campaign_parser = subcommands.add_parser(
@@ -1212,6 +1268,7 @@ def main(argv: list[str] | None = None) -> int:
                 stored_request = load_existing_hero_request(
                     character_name,
                     workspace=args.workspace,
+                    target_level=args.target_level,
                 )
             request = HeroRequest(
                 name=character_name,
@@ -1263,6 +1320,7 @@ def main(argv: list[str] | None = None) -> int:
                         reset_retries=args.reset_retries,
                         reset_wait=args.reset_wait,
                         max_segment_runtime=args.max_segment_runtime,
+                        retry_stalled=args.retry_stalled,
                         target_level=args.target_level,
                         password=args.password,
                         remember_password=args.remember_password,
@@ -1359,6 +1417,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.config,
                     rounds=args.rounds,
                     segments_per_character=args.segments_per_character,
+                    max_segment_runtime=args.max_segment_runtime,
                     force_new=args.new,
                 )
             )
@@ -1418,6 +1477,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "report":
         return show_report(
             args.run_id,
+            database=args.database,
+            report_format=args.format,
+            output=args.output,
+            commentary_limit=args.commentary_limit,
+        )
+
+    if args.command == "campaign-report":
+        return show_campaign_report(
+            args.campaign_id,
             database=args.database,
             report_format=args.format,
             output=args.output,
@@ -1816,6 +1884,53 @@ def show_report(
     return 0
 
 
+def show_campaign_report(
+    campaign_id: int,
+    *,
+    database: Path,
+    report_format: str,
+    output: Path | None,
+    commentary_limit: int,
+) -> int:
+    if campaign_id < 1:
+        print("campaign_id must be at least 1", file=sys.stderr)
+        return 2
+    if commentary_limit < 1:
+        print("--commentary-limit must be at least 1", file=sys.stderr)
+        return 2
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+
+    try:
+        with RunStorage(database) as storage:
+            report = build_campaign_report(
+                storage,
+                campaign_id,
+                commentary_limit=commentary_limit,
+            )
+    except LookupError:
+        print(
+            f"No campaign with id {campaign_id} in {database.resolve()}",
+            file=sys.stderr,
+        )
+        return 1
+
+    rendered = (
+        render_json(report)
+        if report_format == "json"
+        else render_campaign_markdown(report)
+    )
+    if output is None:
+        print(rendered, end="")
+        return 0
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered, encoding="utf-8")
+    print(f"Campaign report: {output.resolve()}")
+    return 0
+
+
 def show_campaign(campaign_id: int, *, database: Path) -> int:
     if campaign_id < 1:
         print("campaign_id must be at least 1", file=sys.stderr)
@@ -1826,7 +1941,7 @@ def show_campaign(campaign_id: int, *, database: Path) -> int:
 
     with RunStorage(database) as storage:
         campaign = storage.get_campaign(campaign_id)
-        segments = storage.list_campaign_segments(campaign_id)
+        segments = storage.list_campaign_segment_summaries(campaign_id)
         checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
 
     if campaign is None:

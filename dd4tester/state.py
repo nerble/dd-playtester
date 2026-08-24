@@ -7,6 +7,23 @@ from typing import Any, Iterable
 from .observations import GameEvent
 
 
+_MAX_CHARACTER_LEVEL = 100
+
+_DIRECTION_NAMES = {
+    "n": "north",
+    "e": "east",
+    "s": "south",
+    "w": "west",
+    "u": "up",
+    "d": "down",
+}
+
+
+def _canonical_direction(value: Any) -> str:
+    normalized = str(value).casefold()
+    return _DIRECTION_NAMES.get(normalized, normalized)
+
+
 @dataclass
 class CharacterState:
     schema_version: int = field(default=1, init=False)
@@ -54,6 +71,11 @@ class CharacterState:
     affects: Any = None
     enemies: Any = None
     quests: list[dict[str, Any]] = field(default_factory=list)
+    quest_status: dict[str, Any] = field(default_factory=dict)
+    quest_points: int | None = None
+    total_quest_points: int | None = None
+    quest_level_qp_required: int | None = None
+    quest_level_qp_shortfall: int | None = None
     acquired_items: list[dict[str, Any]] = field(default_factory=list)
     last_prompt: dict[str, Any] = field(default_factory=dict)
     in_combat: bool = False
@@ -129,6 +151,24 @@ class CharacterState:
         if event.type == "progress_changed":
             incoming_level = _integer(data.get("level"), self.level)
             incoming_xp = _integer(data.get("xp"), self.xp)
+            incoming_max_xp = _integer(data.get("maxxp"), self.max_xp)
+            incoming_xp_to_next_level = _integer(
+                data.get("xptnl"),
+                self.xp_to_next_level,
+            )
+            if (
+                any(
+                    key in data
+                    for key in ("level", "lvl", "xp", "maxxp", "xptnl")
+                )
+                and not _valid_progress_values(
+                    incoming_level,
+                    incoming_xp,
+                    incoming_max_xp,
+                    incoming_xp_to_next_level,
+                )
+            ):
+                return
             if (
                 event.source == "gmcp"
                 and self.progress_source == "text"
@@ -154,8 +194,8 @@ class CharacterState:
                 self.progress_source = "gmcp"
             self.level = incoming_level
             self.xp = incoming_xp
-            self.max_xp = _integer(data.get("maxxp"), self.max_xp)
-            self.xp_to_next_level = _integer(data.get("xptnl"), self.xp_to_next_level)
+            self.max_xp = incoming_max_xp
+            self.xp_to_next_level = incoming_xp_to_next_level
             self.practice = _integer(data.get("practice"), self.practice)
             currency_names = (
                 "platinum",
@@ -178,7 +218,15 @@ class CharacterState:
             return
 
         if event.type == "level_gained":
-            self.level = _integer(data.get("level"), self.level)
+            incoming_level = _integer(data.get("level"), self.level)
+            if incoming_level is not None and not _valid_progress_values(
+                incoming_level,
+                None,
+                None,
+                None,
+            ):
+                return
+            self.level = incoming_level
             return
 
         if event.type == "posture_changed":
@@ -187,6 +235,16 @@ class CharacterState:
 
         if event.type in {"room_entered", "room_updated"}:
             previous_area = self.area
+            text_vnum = _text(data.get("vnum"))
+            if (
+                event.source == "text"
+                and text_vnum is not None
+                and self.room_vnum is not None
+                and text_vnum != str(self.room_vnum)
+            ):
+                # A delayed text room line can describe the room before a
+                # newer GMCP update. Never move a confirmed state backward.
+                return
             self.room_name = _text(data.get("name"), self.room_name)
             if event.source == "text" and "vnum" not in data:
                 # Text confirms a transition before GMCP can identify its VNUM.
@@ -219,7 +277,19 @@ class CharacterState:
                     for direction, destination in exits.items()
                 }
             elif isinstance(exits, list):
-                self.exits = {str(direction): None for direction in exits}
+                # Text room output often follows GMCP by a few milliseconds.
+                # Keep the richer GMCP destinations instead of replacing them
+                # with null placeholders from the text-only exit list.
+                known_destinations = {
+                    _canonical_direction(direction): destination
+                    for direction, destination in self.exits.items()
+                }
+                self.exits = {
+                    str(direction): known_destinations.get(
+                        _canonical_direction(direction)
+                    )
+                    for direction in exits
+                }
             return
 
         if event.type == "prompt_seen":
@@ -271,6 +341,26 @@ class CharacterState:
 
         if event.type == "quest_received":
             self.quests.append(_payload(data, keep_text=True))
+            return
+
+        if event.type == "quest_status_changed":
+            self.quest_status = _payload(data)
+            self.quest_points = _integer(
+                data.get("points"),
+                self.quest_points,
+            )
+            self.total_quest_points = _integer(
+                data.get("total_points"),
+                self.total_quest_points,
+            )
+            self.quest_level_qp_required = _integer(
+                data.get("level_qp_required"),
+                self.quest_level_qp_required,
+            )
+            self.quest_level_qp_shortfall = _integer(
+                data.get("level_qp_shortfall"),
+                self.quest_level_qp_shortfall,
+            )
             return
 
         if event.type == "combat_started":
@@ -347,6 +437,25 @@ def _number(value: Any, default: int | float | None = None) -> int | float | Non
 def _integer(value: Any, default: int | None = None) -> int | None:
     converted = _number(value, default)
     return int(converted) if converted is not None else default
+
+
+def _valid_progress_values(
+    level: int | None,
+    xp: int | None,
+    max_xp: int | None,
+    xp_to_next_level: int | None,
+) -> bool:
+    if level is not None and not 1 <= level <= _MAX_CHARACTER_LEVEL:
+        return False
+    if xp is not None and xp < 0:
+        return False
+    if max_xp is not None and max_xp < 0:
+        return False
+    if xp_to_next_level is not None and xp_to_next_level < 0:
+        return False
+    if xp is not None and max_xp is not None and max_xp < xp:
+        return False
+    return True
 
 
 def _text(value: Any, default: str | None = None) -> str | None:

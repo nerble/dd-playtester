@@ -61,6 +61,31 @@ def test_vitals_preserve_hunger_and_thirst_for_campaign_decisions() -> None:
     assert CharacterState.from_dict(state.to_dict()).hunger == -10
 
 
+def test_quest_status_snapshot_tracks_level_gate() -> None:
+    state = CharacterState()
+
+    assert state.apply(
+        GameEvent(
+            "quest_status_changed",
+            "gmcp",
+            {
+                "points": "3",
+                "total_points": "7",
+                "level_qp_required": "200",
+                "level_qp_shortfall": "193",
+                "status": "available",
+            },
+        )
+    )
+
+    assert state.quest_points == 3
+    assert state.total_quest_points == 7
+    assert state.quest_level_qp_required == 200
+    assert state.quest_level_qp_shortfall == 193
+    restored = CharacterState.from_dict(state.to_dict())
+    assert restored.quest_level_qp_shortfall == 193
+
+
 def test_text_posture_evidence_updates_position_without_gmcp_vitals() -> None:
     parser = ObservationParser()
     state = CharacterState(position=4)
@@ -104,6 +129,35 @@ def test_text_score_prevents_stale_lower_gmcp_progress_regression() -> None:
     ) is False
     assert state.xp == 229913
     assert state.xp_to_next_level == 387
+
+
+def test_state_rejects_impossible_level_and_progress_values() -> None:
+    state = CharacterState(
+        level=16,
+        xp=132332,
+        max_xp=133600,
+        xp_to_next_level=1268,
+    )
+
+    assert state.apply(
+        GameEvent("level_gained", "gmcp", {"level": "106"})
+    ) is False
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "gmcp",
+            {
+                "level": "106",
+                "xp": "98627",
+                "maxxp": "4096",
+                "xptnl": "-94531",
+            },
+        )
+    ) is False
+    assert state.level == 16
+    assert state.xp == 132332
+    assert state.max_xp == 133600
+    assert state.xp_to_next_level == 1268
 
 
 def test_experience_loss_is_preserved_as_state_evidence() -> None:
@@ -247,6 +301,69 @@ def test_text_room_transition_clears_a_stale_gmcp_vnum() -> None:
     assert state.dead is True
     assert state.in_combat is False
     assert state.combat_target is None
+
+
+def test_text_room_exits_preserve_gmcp_destinations() -> None:
+    state = CharacterState()
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "gmcp",
+            {
+                "name": "Mirrors",
+                "vnum": "19040",
+                "exits": {
+                    "n": "19039",
+                    "e": "19041",
+                    "s": "19036",
+                    "w": "19038",
+                },
+            },
+        )
+    )
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "text",
+            {
+                "name": "Mirrors",
+                "vnum": "19040",
+                "exits": ["north", "east", "south", "west"],
+            },
+        )
+    )
+
+    assert state.exits == {
+        "north": "19039",
+        "east": "19041",
+        "south": "19036",
+        "west": "19038",
+    }
+
+
+def test_delayed_text_room_cannot_move_state_backward() -> None:
+    state = CharacterState(
+        room_name="The Corner of the Wooden Path",
+        room_vnum="19091",
+        exits={"e": "19092", "s": "19090"},
+    )
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "text",
+            {
+                "name": "The Wooden Path",
+                "vnum": "19090",
+                "exits": ["north", "east", "south", "west"],
+            },
+        )
+    ) is False
+
+    assert state.room_vnum == "19091"
+    assert state.exits == {"e": "19092", "s": "19090"}
 
 
 def test_leaving_purgatory_clears_persisted_death_state() -> None:

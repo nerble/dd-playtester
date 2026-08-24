@@ -8,8 +8,11 @@ from dd4tester.report import (
     _balance_signals,
     _item_acquisition_count,
     _progress_summary,
+    build_campaign_report,
     build_run_report,
+    render_campaign_markdown,
     render_markdown,
+    write_campaign_report,
 )
 from dd4tester.storage import RunStorage
 
@@ -160,6 +163,149 @@ def test_report_cli_rejects_invalid_limit(tmp_path, capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 2
     assert "--commentary-limit must be at least 1" in captured.err
+
+
+def test_campaign_report_aggregates_runs_and_writes_hero_artifacts(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    config_path = tmp_path / "campaign.yaml"
+    config_path.write_text("target_level: 2\n", encoding="utf-8")
+
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Reportmage to HERO",
+            config_path=config_path,
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=2,
+        )
+        run_id = storage.create_run(
+            scenario_name="starter:Reportmage",
+            scenario_path=Path("scenarios/starter.yaml"),
+        )
+        storage.record_event(
+            run_id,
+            kind="run_context",
+            payload={
+                "character": {
+                    "name": "Reportmage",
+                    "race": "human",
+                    "gender": "female",
+                    "class": "mage",
+                }
+            },
+        )
+        start_state = {
+            "name": "Reportmage",
+            "level": 1,
+            "xp": 0,
+            "hp": 40,
+            "max_hp": 40,
+            "room_name": "Mud School",
+            "room_vnum": "3725",
+            "dead": False,
+        }
+        end_state = {
+            **start_state,
+            "level": 2,
+            "xp": 100,
+            "room_name": "By the Temple Altar",
+            "room_vnum": "3054",
+            "quest_points": 3,
+            "total_quest_points": 7,
+            "quest_level_qp_required": 1,
+            "quest_level_qp_shortfall": 0,
+        }
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="starter-0-2",
+            start_state=start_state,
+        )
+        storage.record_mob_kill(
+            run_id,
+            character_name="Reportmage",
+            boot_id="test-boot",
+            mob_name="tutorial wolf",
+            xp_gained=100,
+            source_mobile_vnum=3729,
+            source_policy_id="mud-school-2-6",
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=run_id,
+            end_state=end_state,
+            command_count=12,
+            duration_seconds=3.5,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=segment_id,
+            run_id=run_id,
+            phase="starter-0-2",
+            reason="segment_complete",
+            state=end_state,
+        )
+        storage.finish_run(run_id, status="success")
+        storage.finish_campaign(campaign_id, status="success")
+
+        report = build_campaign_report(storage, campaign_id)
+        json_path, markdown_path = write_campaign_report(
+            storage,
+            campaign_id,
+            directory=tmp_path / "hero-workspace",
+        )
+
+    assert report["target"] == {"level": 2, "reached": True}
+    assert report["character"]["name"] == "Reportmage"
+    assert report["progress"]["level_change"] == 1
+    assert report["progress"]["xp_change"] == 100
+    assert report["progress"]["quest"] == {
+        "points": 3,
+        "total_points": 7,
+        "level_required": 1,
+        "shortfall": 0,
+    }
+    assert report["totals"]["kills"] == 1
+    assert report["kills"][0]["source_mobile_vnum"] == 3729
+    assert json_path.is_file()
+    assert markdown_path.is_file()
+    assert "# Campaign" in markdown_path.read_text(encoding="utf-8")
+    assert "tutorial wolf (+100 XP" in render_campaign_markdown(report)
+    assert "Quest points: 3 total; next gate 1; shortfall 0." in markdown_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_campaign_report_cli_renders_json(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    config_path = tmp_path / "campaign.yaml"
+    config_path.write_text("target_level: 2\n", encoding="utf-8")
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Empty campaign",
+            config_path=config_path,
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=2,
+        )
+
+    output = tmp_path / "campaign-report.json"
+    exit_code = main(
+        [
+            "campaign-report",
+            str(campaign_id),
+            "--database",
+            str(database),
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert str(output.resolve()) in captured.out
+    rendered = json.loads(output.read_text(encoding="utf-8"))
+    assert rendered["campaign"]["name"] == "Empty campaign"
 
 
 def test_commentary_explains_an_empty_run_has_no_experience_progress() -> None:

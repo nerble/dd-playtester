@@ -9,6 +9,7 @@ from typing import Any
 
 _CAMPAIGN_EVENT_HISTORY_LIMIT = 256
 _SQLITE_BUSY_TIMEOUT_MS = 30_000
+_SQLITE_JOURNAL_MODE = "WAL"
 
 
 class RunStorage:
@@ -33,10 +34,17 @@ class RunStorage:
             timeout=_SQLITE_BUSY_TIMEOUT_MS / 1000,
         )
         self.connection.row_factory = sqlite3.Row
-        self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.execute(
             f"PRAGMA busy_timeout = {_SQLITE_BUSY_TIMEOUT_MS}"
         )
+        # WAL lets campaign readers and checkpoint writers coexist while a
+        # different character is recording a long live segment.  The busy
+        # timeout remains bounded because SQLite still serializes writers.
+        self.connection.execute(
+            f"PRAGMA journal_mode = {_SQLITE_JOURNAL_MODE}"
+        )
+        self.connection.execute("PRAGMA synchronous = NORMAL")
+        self.connection.execute("PRAGMA foreign_keys = ON")
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
@@ -360,6 +368,12 @@ class RunStorage:
                 state,
                 timestamp=snapshot_timestamp,
             )
+        # State snapshots are the recovery boundary for live campaigns. Do
+        # not keep their write transaction open until another protocol event
+        # or final cleanup, because another character may need to checkpoint
+        # while this one remains connected.
+        self.connection.commit()
+        self._events_since_commit = 0
         return snapshot_id
 
     def _record_character_acquired_items(
@@ -1232,6 +1246,18 @@ class RunStorage:
         )
         self.connection.commit()
 
+    def update_campaign_name(self, campaign_id: int, name: str) -> None:
+        """Synchronize a campaign's display name with its YAML contract."""
+        self.connection.execute(
+            """
+            UPDATE campaigns
+            SET name = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (name, _now(), campaign_id),
+        )
+        self.connection.commit()
+
     def finish_campaign(
         self,
         campaign_id: int,
@@ -1466,6 +1492,23 @@ class RunStorage:
             FROM campaign_checkpoints
             WHERE campaign_id = ?
             ORDER BY id
+            """,
+            (campaign_id,),
+        )
+        return list(cursor.fetchall())
+
+    def list_campaign_segment_summaries(
+        self,
+        campaign_id: int,
+    ) -> list[sqlite3.Row]:
+        """Return display fields without loading large checkpoint states."""
+        cursor = self.connection.execute(
+            """
+            SELECT sequence, phase, status, run_id, command_count,
+                   duration_seconds, error
+            FROM campaign_segments
+            WHERE campaign_id = ?
+            ORDER BY sequence
             """,
             (campaign_id,),
         )

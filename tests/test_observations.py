@@ -159,6 +159,80 @@ def test_first_login_room_info_enriches_text_room_before_duplicate_guard() -> No
     ) == []
 
 
+def test_gmcp_room_refreshes_exits_after_text_identifies_a_transition() -> None:
+    parser = ObservationParser()
+
+    parser.feed_gmcp(
+        'Room.Info {"name":"The Temple Of Midgaard","vnum":"3001",'
+        '"exits":{"n":"3054","s":"3005"}}'
+    )
+    parser.feed_gmcp(
+        'Room.Info {"name":"The Temple Square","vnum":"3005",'
+        '"exits":{"n":"3001"}}'
+    )
+    text_events = parser.feed_text(
+        "The Temple Of Midgaard\n[Exits: north south up]\n"
+    )
+    assert text_events[0].data["vnum"] == "3001"
+
+    room = parser.feed_gmcp(
+        'Room.Info {"name":"The Temple Of Midgaard","vnum":"3001",'
+        '"exits":{"n":"3054","s":"3005","u":"3725"}}'
+    )
+
+    assert [event.type for event in room] == ["room_updated"]
+    assert room[0].data["exits"] == {
+        "n": "3054",
+        "s": "3005",
+        "u": "3725",
+    }
+
+
+def test_foreign_immortal_gmcp_snapshot_is_ignored_for_bound_character() -> None:
+    parser = ObservationParser(expected_character_name="Aeloria")
+
+    parser.feed_gmcp(
+        'Char.Base {"name":"Aeloria","race":"Human",'
+        '"class":"Mage","subclass":"none","sex":"1"}'
+    )
+    parser.feed_gmcp(
+        'Room.Info {"name":"By the Temple Altar","vnum":"3054",'
+        '"arrival":{"kind":"login"}}'
+    )
+    parser.feed_gmcp(
+        'Char.Worth {"level":"16","xp":"132332",'
+        '"maxxp":"133600","xptnl":"1268"}'
+    )
+
+    assert parser.feed_gmcp(
+        "Room.Info {\"name\":\"Owl's dungeon\",\"vnum\":\"78\","
+        '\"arrival\":{\"kind\":\"immortal\"}}'
+    ) == []
+    assert parser.feed_gmcp(
+        'Char.Base {"name":"Owl","race":"Human",'
+        '"class":"Warrior","subclass":"none","sex":"1"}'
+    ) == []
+    assert parser.feed_gmcp(
+        'Char.Worth {"level":"106","xp":"98627",'
+        '"maxxp":"4096","xptnl":"-94531"}'
+    ) == []
+    assert parser.feed_gmcp(
+        'Char.Vitals {"hp":"4555","maxhp":"4555",'
+        '"mana":"4882","maxmana":"4400","move":"600","maxmove":"600"}'
+    ) == []
+
+    parser.feed_gmcp(
+        'Char.Base {"name":"Aeloria","race":"Human",'
+        '"class":"Mage","subclass":"none","sex":"1"}'
+    )
+    progress = parser.feed_gmcp(
+        'Char.Worth {"level":"16","xp":"132333",'
+        '"maxxp":"133600","xptnl":"1267"}'
+    )
+    assert progress[0].type == "progress_changed"
+    assert progress[0].data["xp"] == "132333"
+
+
 def test_complete_dd4_prompt_is_not_held_behind_gmcp_only_traffic() -> None:
     parser = ObservationParser()
 
@@ -268,6 +342,46 @@ def test_gmcp_observations_track_changes_without_duplicate_events() -> None:
         "previous": 2,
     }
     assert duplicate == []
+
+
+def test_gmcp_quest_snapshot_tracks_points_and_deduplicates() -> None:
+    parser = ObservationParser()
+
+    message = (
+        'Char.Quest {"active":"0","status":"available",'
+        '"type":"none","complete":"0","countdown":"0",'
+        '"nextquest":"0","points":"3","total_points":"7",'
+        '"level_qp_required":"200","level_qp_shortfall":"193"}'
+    )
+
+    events = parser.feed_gmcp(message)
+
+    assert [event.type for event in events] == ["quest_status_changed"]
+    assert events[0].data["points"] == "3"
+    assert events[0].data["level_qp_shortfall"] == "193"
+    assert parser.feed_gmcp(message) == []
+
+
+def test_text_room_recovers_known_exit_vnum_when_gmcp_omits_it() -> None:
+    parser = ObservationParser()
+
+    parser.feed_gmcp(
+        'Room.Info {"name":"Main Street","vnum":"3012",'
+        '"exits":{"south":"3033"}}'
+    )
+    parser.feed_gmcp(
+        'Room.Info {"name":"The Magic Shop","vnum":"3033",'
+        '"exits":{"s":"3012"}}'
+    )
+
+    events = parser.feed_text(
+        "Main Street\n"
+        "[Exits: north east south west]\n"
+    )
+
+    room = next(event for event in events if event.type == "room_entered")
+    assert room.data["name"] == "Main Street"
+    assert room.data["vnum"] == "3012"
 
 
 def test_gmcp_non_json_payload_is_preserved() -> None:

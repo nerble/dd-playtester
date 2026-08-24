@@ -145,6 +145,7 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
             "--remember-password",
             "--target-level",
             "30",
+            "--retry-stalled",
         ]
     )
 
@@ -158,7 +159,9 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
     )
     assert request.name == "Valora"
     assert captured_request["options"]["reset_retries"] is None
+    assert captured_request["options"]["max_segment_runtime"] is None
     assert captured_request["options"]["target_level"] == 30
+    assert captured_request["options"]["retry_stalled"] is True
     assert captured_request["options"]["password"] == "command-line-secret"
     assert captured_request["options"]["remember_password"] is True
     captured = capsys.readouterr()
@@ -481,7 +484,7 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
     assert "Level: 2" in captured.out
 
 
-def test_campaign_command_uses_short_default_reset_wait(
+def test_campaign_command_uses_source_backed_default_reset_wait(
     tmp_path, monkeypatch
 ) -> None:
     config = tmp_path / "campaign.yaml"
@@ -494,7 +497,7 @@ def test_campaign_command_uses_short_default_reset_wait(
     monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
 
     assert main(["campaign", str(config)]) == 0
-    assert captured_options["reset_wait"] == 30.0
+    assert captured_options["reset_wait"] == 180.0
 
 
 def test_campaign_command_passes_per_segment_runtime_cap(tmp_path, capsys, monkeypatch) -> None:
@@ -1381,7 +1384,10 @@ def test_matrix_cli_reports_each_character_without_hiding_incomplete_work(
     capsys,
     monkeypatch,
 ) -> None:
+    captured_kwargs: dict[str, object] = {}
+
     async def fake_run_matrix_file(*_args, **_kwargs):
+        captured_kwargs.update(_kwargs)
         return MatrixResult(
             "Mage Thief Warrior",
             10,
@@ -1411,6 +1417,8 @@ def test_matrix_cli_reports_each_character_without_hiding_incomplete_work(
             "2",
             "--segments-per-character",
             "3",
+            "--max-segment-runtime",
+            "180",
         ]
     )
 
@@ -1420,6 +1428,7 @@ def test_matrix_cli_reports_each_character_without_hiding_incomplete_work(
     assert "mage\tAeloria\tmage\t10\tsuccess\t1\t-" in captured.out
     assert "thief\tKestrel\tthief\t8\tblocked\t2\tawaiting policy evidence" in captured.out
     assert "warrior\tDorrik\twarrior\t10\tsuccess\t3\t-" in captured.out
+    assert captured_kwargs["max_segment_runtime"] == 180
 
 
 def test_configure_matrix_passwords_reports_status_without_secrets(

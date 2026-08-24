@@ -48,3 +48,20 @@ def test_source_caster_profiles_expose_status_effects_from_special_c() -> None:
         "dispel magic",
     )
     assert "blindness" in source_special_profile("spec_cast_mage").status_effects
+
+
+def test_undead_special_effects_follow_source_level_gates() -> None:
+    assert source_special_status_effects("spec_cast_undead", level=8) == (
+        "curse",
+        "strength drain",
+    )
+    assert source_special_status_effects("spec_cast_undead", level=14) == (
+        "curse",
+        "strength drain",
+        "blindness",
+        "poison",
+    )
+    assert source_special_status_effects("spec_cast_undead", level=19)[-2:] == (
+        "energy drain",
+        "harm",
+    )

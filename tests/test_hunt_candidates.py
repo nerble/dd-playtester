@@ -33,6 +33,8 @@ from dd4tester.hunt_candidates import (
     source_mobile_search_rooms,
     source_route_movement_cost,
     source_route_requires_flight,
+    source_subclass_teacher_route,
+    source_subclass_teacher_skill,
     WEAR_HOLD,
 )
 
@@ -367,6 +369,122 @@ def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
     assert (area.objects[202].load_level_min, area.objects[202].load_level_max) == (
         1,
         4,
+    )
+
+
+def test_area_parser_captures_mobile_program_attack_commands(tmp_path: Path) -> None:
+    area_file = tmp_path / "scripted.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+scripted guard~
+the scripted guard~
+A scripted guard is here.~
+It reacts to intruders.~
+0 0 0 S
+5 0 0 0d0+0 0d0+0
+0 0
+8 8 0
+>greet_prog 100~
+    say Seize the intruder!
+    mpforce guard mpkill $n
+~
+|
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+
+    area = parse_area_file(area_file, include_objects=False)
+
+    program = area.mobiles[100].programs[0]
+    assert program.trigger == "greet_prog"
+    assert program.condition == "100"
+    assert program.commands == (
+        "say Seize the intruder!",
+        "mpforce guard mpkill $n",
+    )
+    assert area.mobiles[100].attack_programs == (program,)
+
+
+def test_area_parser_captures_mobile_teaching_entries(tmp_path: Path) -> None:
+    area_file = tmp_path / "teacher.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+teacher guildmaster~
+the teacher~
+A teacher is here.~
+The teacher studies a ledger.~
+0 0 0 S
+5 0 0 0d0+0 0d0+0
+0 0
+8 8 0
+& 20 'teacher base'
+& 30 'engineer base'
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+
+    mobile = parse_area_file(area_file, include_objects=False).mobiles[100]
+
+    assert mobile.teaching_percent("engineer base") == 30
+    assert mobile.teaches("teacher base")
+    assert not mobile.teaches("runesmith base")
+
+
+def test_source_subclass_teacher_route_uses_anon_blacksmith_for_smithy() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    route = source_subclass_teacher_route(
+        world,
+        "engineer",
+        character_class="smithy",
+        preferred_mobile_vnums=(31002,),
+    )
+
+    assert route is not None
+    assert route.mobile_vnum == 31002
+    assert route.room_vnum == 31041
+    assert route.keyword == "jolob"
+    assert route.steps[0][0] == "3001"
+    assert route.steps[-1] == ("31040", "west", "31041")
+    assert source_subclass_teacher_skill("engineer") == "engineer base"
+    assert world.mobiles[30259].teaches("teacher base")
+    assert not world.mobiles[30259].teaches("engineer base")
+    assert world.mobiles[31002].teaches("engineer base")
+
+
+def test_source_mobile_attack_program_is_a_candidate_hard_gate() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=17,
+            character_max_hp=209,
+            include_xp_only=True,
+            include_all_areas=True,
+        )
+        if candidate.mobile_vnum == 9413 and candidate.room_vnum == 9419
+    )
+
+    assert candidate.status == "reject"
+    assert (
+        "source mobile program can initiate an unmodeled attack"
+        in candidate.autonomy_rejections
     )
 
 
@@ -988,6 +1106,53 @@ def test_candidate_ranking_can_include_explicit_safe_level_ceiling_probe() -> No
     assert len(probe) == 1
     assert probe[0].estimated_level_range == (4, 8)
     assert probe[0].estimated_peak_round_damage < 100
+
+
+def test_candidate_ranking_accepts_a_quest_band_ceiling_only_when_requested() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "quest target",
+                "a quest target",
+                9,
+                0,
+                0,
+                "frontier.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Quest room", "frontier.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+
+    ordinary = rank_hunt_candidates(
+        world,
+        character_level=5,
+        include_xp_only=True,
+        include_all_areas=True,
+        character_max_hp=100,
+        include_level_ceiling_candidates=True,
+    )
+    quest = rank_hunt_candidates(
+        world,
+        character_level=5,
+        include_xp_only=True,
+        include_all_areas=True,
+        character_max_hp=100,
+        include_level_ceiling_candidates=True,
+        level_ceiling_offset=4,
+    )
+
+    assert ordinary == []
+    assert [candidate.mobile_vnum for candidate in quest] == [100]
 
 
 def test_candidate_ranking_marks_source_shopkeepers_as_non_xp_targets() -> None:
@@ -1835,6 +2000,45 @@ def test_noncombat_special_route_crowd_does_not_block_target(monkeypatch) -> Non
     assert not any(
         "large below-band aggressive crowd" in rejection
         for rejection in candidate.autonomy_rejections
+    )
+
+
+def test_noncombat_target_special_is_autonomous_safe(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "secretary",
+                "the secretary",
+                12,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Office", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+        mobile_specials={100: ("spec_cast_hooker",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=16,
+        include_xp_only=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert "target special: spec_cast_hooker" in candidate.hazards
+    assert "target has special procedure spec_cast_hooker" not in (
+        candidate.autonomy_rejections
     )
 
 

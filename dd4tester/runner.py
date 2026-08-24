@@ -222,14 +222,17 @@ class ScenarioRunner:
         if result.text:
             self._text_buffer += result.text
             record("response", {"text": result.text})
-            self._record_game_events(
-                self.observation_parser.feed_text(result.text),
-                record,
-            )
         for message in result.gmcp_messages:
             record("gmcp", {"message": message})
             self._record_game_events(
                 self.observation_parser.feed_gmcp(message),
+                record,
+            )
+        if result.text:
+            # Prefer the structured room snapshot when text and GMCP share a
+            # read; text can arrive a few milliseconds behind the transition.
+            self._record_game_events(
+                self.observation_parser.feed_text(result.text),
                 record,
             )
         for negotiation in result.negotiations:

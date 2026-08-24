@@ -62,6 +62,25 @@ def test_mage_prefers_stronger_damage_gateway_over_spell_reinforcement() -> None
     assert choices[0].utility == "damage-gateway"
 
 
+def test_level_sixteen_mage_learns_faerie_fire_as_a_damage_debuff() -> None:
+    choices = plan_training(
+        "mage",
+        _listing(
+            "evocation magiks: 36%    chill touch: 36%    magic missile: 36%    "
+            "protective magiks: 44%    armor: 30%    illusion magiks: 36%    "
+            "invis: 42%    alteration magiks: 36%    fly: 48%",
+            "faerie fire: 0%",
+            physical=2,
+            intellectual=4,
+        ),
+        character_level=16,
+    )
+
+    assert [choice.skill for choice in choices] == ["faerie fire"]
+    assert choices[0].utility == "damage"
+    assert "armor class" in choices[0].reason
+
+
 def test_warrior_spends_each_practice_type_on_combat_value() -> None:
     choices = plan_training(
         "warrior",

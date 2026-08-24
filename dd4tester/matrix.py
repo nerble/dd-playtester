@@ -322,6 +322,7 @@ async def run_matrix_file(
     *,
     rounds: int = 1,
     segments_per_character: int = 1,
+    max_segment_runtime: float | None = None,
     force_new: bool = False,
     campaign_runner: CampaignFileRunner = run_campaign_file,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
@@ -330,6 +331,8 @@ async def run_matrix_file(
         raise ValueError("rounds must be positive")
     if segments_per_character < 1:
         raise ValueError("segments_per_character must be positive")
+    if max_segment_runtime is not None and max_segment_runtime <= 0:
+        raise ValueError("max_segment_runtime must be positive")
     spec = load_matrix_spec(path)
     latest: dict[str, MatrixEntryResult] = {}
 
@@ -339,10 +342,15 @@ async def run_matrix_file(
             if previous is not None and previous.level >= spec.target_level:
                 continue
             try:
+                campaign_kwargs: dict[str, object] = {
+                    "force_new": force_new and round_index == 0,
+                    "segments": segments_per_character,
+                }
+                if max_segment_runtime is not None:
+                    campaign_kwargs["max_segment_runtime"] = max_segment_runtime
                 result = await campaign_runner(
                     entry.campaign_path,
-                    force_new=force_new and round_index == 0,
-                    segments=segments_per_character,
+                    **campaign_kwargs,
                 )
             except Exception as error:
                 latest[entry.entry_id] = MatrixEntryResult(

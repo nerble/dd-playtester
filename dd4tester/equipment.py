@@ -27,6 +27,7 @@ APPLY_CRIT = 50
 APPLY_SWIFTNESS = 51
 ITEM_LIGHT = 1
 ITEM_WEAPON = 5
+ITEM_DIGGER = 6
 ITEM_PAINT = 28
 ITEM_FOOD = 19
 ITEM_NODROP = 1 << 7
@@ -38,6 +39,7 @@ ITEM_BOW = 1 << 30
 ITEM_CURSED = 1 << 61
 PIERCING_DAMAGE_TYPES = frozenset({2, 11})
 BLUNT_DAMAGE_TYPES = frozenset({6, 7, 8})
+DIGGING_DAMAGE_TYPES = frozenset({5, 14, 17})
 
 # ``str_app`` from DD4 const.c. Values are (to-hit, to-damage).
 _STR_APP = (
@@ -242,6 +244,10 @@ def normalize_room_item_name(value: str) -> str:
 def item_category(item: ObjectSource) -> str | None:
     if item.item_type == ITEM_LIGHT:
         return "light"
+    # DD4 marks bows as wieldable in the object prototype, but the live
+    # equipment model gives them the separate ranged-weapon slot.
+    if item.extra_flags & ITEM_BOW:
+        return "ranged_weapon"
     for bit, category in _WEAR_CATEGORIES.items():
         if item.wear_flags & (1 << bit):
             return category
@@ -263,6 +269,20 @@ def is_blunt_weapon(item: ObjectSource) -> bool:
         item.item_type == ITEM_WEAPON
         and len(item.values) > 3
         and item.values[3] in BLUNT_DAMAGE_TYPES
+    )
+
+
+def is_digging_tool(item: ObjectSource) -> bool:
+    """Mirror DD4's ITEM_DIGGER capability for ``do_dig``."""
+    return item.item_type == ITEM_DIGGER
+
+
+def is_digging_weapon(item: ObjectSource) -> bool:
+    """Mirror DD4's scoop, claw, and rake weapon fallback for ``do_dig``."""
+    return (
+        item.item_type == ITEM_WEAPON
+        and len(item.values) > 3
+        and item.values[3] in DIGGING_DAMAGE_TYPES
     )
 
 

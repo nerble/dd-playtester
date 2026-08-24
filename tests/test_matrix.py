@@ -34,6 +34,20 @@ def test_repository_matrix_covers_requested_contrasting_classes() -> None:
     assert all(entry.campaign.character.subclass for entry in spec.entries)
 
 
+def test_repository_full_validation_matrix_declares_all_source_legal_pairs() -> None:
+    spec = load_matrix_spec(Path("matrices/level-10-all-race-class.yaml"))
+    coverage = matrix_coverage(
+        Path("matrices/level-10-all-race-class.yaml"),
+        catalog=load_character_catalog(),
+    )
+
+    assert spec.target_level == 10
+    assert len(spec.entries) == coverage.legal_pair_count
+    assert coverage.missing_pairs == ()
+    assert coverage.missing_classes == ()
+    assert coverage.observed_sexes == ("female", "male")
+
+
 def test_matrix_coverage_reports_missing_source_legal_pairs(tmp_path) -> None:
     matrix_path = _write_matrix(tmp_path)
     catalog = load_character_catalog()
@@ -157,6 +171,38 @@ def test_matrix_runs_round_robin_and_continues_after_one_failure(tmp_path) -> No
         ("warrior", True, 3),
     ]
     assert calls[-1] == ("thief", False, 3)
+
+
+def test_matrix_passes_bounded_segment_runtime_to_campaigns(tmp_path) -> None:
+    matrix_path = _write_matrix(tmp_path)
+    observed: list[dict[str, object]] = []
+
+    async def fake_campaign_runner(path, **kwargs):
+        observed.append({"path": Path(path).stem, **kwargs})
+        return CampaignResult(
+            campaign_id=len(observed),
+            status="success",
+            checkpoint_id=None,
+            message=None,
+            state={"level": 10},
+        )
+
+    result = asyncio.run(
+        run_matrix_file(
+            matrix_path,
+            max_segment_runtime=180,
+            campaign_runner=fake_campaign_runner,
+        )
+    )
+
+    assert result.status == "success"
+    assert [item["path"] for item in observed] == ["mage", "thief", "warrior"]
+    assert all(item["max_segment_runtime"] == 180 for item in observed)
+
+
+def test_matrix_rejects_non_positive_segment_runtime(tmp_path) -> None:
+    with pytest.raises(ValueError, match="max_segment_runtime must be positive"):
+        asyncio.run(run_matrix_file(tmp_path / "matrix.yaml", max_segment_runtime=0))
 
 
 def test_matrix_rejects_repeated_classes(tmp_path) -> None:

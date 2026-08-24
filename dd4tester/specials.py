@@ -59,6 +59,17 @@ WEAK_EXTRA_ATTACK_SPECIALS = frozenset(
 WEAK_DIRECT_DAMAGE_SPECIALS = frozenset({"spec_cast_judge"})
 """Weak specials with a source-bounded direct damage spell."""
 
+POST_OBJECTIVE_HAZARD_SPECIALS = frozenset(
+    {
+        *WEAK_DEBILITATING_SPECIALS,
+        *WEAK_DIRECT_DAMAGE_SPECIALS,
+        "spec_cast_cleric",
+        "spec_cast_mage",
+        "spec_cast_undead",
+    }
+)
+"""Audited specials that make a below-band post-kill pursuer unsafe."""
+
 _STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
     # special.c chooses blindness without a level gate, then adds curse and
     # dispel magic to the higher-level cleric spell pool.
@@ -70,6 +81,20 @@ _STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
         "weaken",
         "dispel magic",
         "energy drain",
+    ),
+    # spec_cast_undead selects from a level-gated spell table only after the
+    # player is already fighting the mobile. The unparameterized profile is
+    # intentionally the union of every possible late-level effect; callers
+    # with a source level bound should use source_special_status_effects(...,
+    # level=...) for the narrower set.
+    "spec_cast_undead": (
+        "curse",
+        "strength drain",
+        "blindness",
+        "poison",
+        "energy drain",
+        "harm",
+        "gate",
     ),
 }
 
@@ -164,6 +189,8 @@ def source_special_profile(name: str) -> SourceSpecialProfile:
         risk = "conditional-combat"
     elif normalized in ECONOMIC_SPECIALS:
         risk = "economic"
+    elif normalized in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS:
+        risk = "combat-only"
     elif normalized in WEAK_DEBILITATING_SPECIALS:
         risk = "debilitating"
     elif normalized in WEAK_EXTRA_ATTACK_SPECIALS:
@@ -190,10 +217,39 @@ def source_special_profile(name: str) -> SourceSpecialProfile:
     )
 
 
-def source_special_status_effects(name: str) -> tuple[str, ...]:
-    """Return source-audited status effects a special may apply."""
+def source_special_status_effects(
+    name: str,
+    *,
+    level: int | None = None,
+) -> tuple[str, ...]:
+    """Return source-audited effects, narrowed by a caster level when known.
 
-    return source_special_profile(name).status_effects
+    ``spec_cast_undead`` loops until it selects a spell whose minimum level is
+    met. Keeping that table here prevents a level-12 undead mobile from being
+    treated as if it could already energy-drain, harm, or gate.
+    """
+
+    normalized = str(name).strip().casefold()
+    if normalized != "spec_cast_undead" or level is None:
+        return source_special_profile(normalized).status_effects
+    try:
+        caster_level = max(0, int(level))
+    except (TypeError, ValueError):
+        return source_special_profile(normalized).status_effects
+    effects = ["curse"]
+    if caster_level >= 6:
+        effects.append("strength drain")
+    if caster_level >= 9:
+        effects.append("blindness")
+    if caster_level >= 12:
+        effects.append("poison")
+    if caster_level >= 15:
+        effects.append("energy drain")
+    if caster_level >= 18:
+        effects.append("harm")
+    if caster_level >= 20:
+        effects.append("gate")
+    return tuple(effects)
 
 
 def source_special_xp_bonus(name: str) -> int:

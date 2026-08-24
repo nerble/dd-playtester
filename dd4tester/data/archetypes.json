@@ -144,7 +144,7 @@
     "vampire": {"base_class": "shifter", "available": true, "capabilities": ["vampirism"]},
     "barbarian": {"base_class": "ranger", "available": true, "capabilities": ["berserking"]},
     "bard": {"base_class": "ranger", "available": true, "capabilities": ["performance"]},
-    "engineer": {"base_class": "smithy", "available": false, "capabilities": ["engineering"]},
-    "runesmith": {"base_class": "smithy", "available": false, "capabilities": ["rune-crafting"]}
+    "engineer": {"base_class": "smithy", "available": true, "capabilities": ["engineering"]},
+    "runesmith": {"base_class": "smithy", "available": true, "capabilities": ["rune-crafting"]}
   }
 }

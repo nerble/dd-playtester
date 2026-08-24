@@ -110,6 +110,10 @@ _DIRECTIONS = {
     5: "down",
 }
 _TILDE_VALUE = re.compile(r"(-?\d+)")
+_MOBILE_TEACHING = re.compile(
+    r"^\s*&\s*(?P<percent>\d+)\s+'(?P<skill>[^']+)'\s*$",
+    re.IGNORECASE,
+)
 
 # This mirrors ``movement_loss`` in DD4's ``server/src/act_move.c``.  Keep
 # source route cost separate from command count: terrain, not the direction
@@ -128,6 +132,15 @@ _MAX_SOURCE_ROUTE_DETOUR_STEPS = 20
 
 
 @dataclass(frozen=True)
+class MobileProgram:
+    """One source mobile-program trigger and its executable commands."""
+
+    trigger: str
+    condition: str = ""
+    commands: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class MobileSource:
     vnum: int
     keywords: str
@@ -138,6 +151,8 @@ class MobileSource:
     area_file: str
     room_description: str = ""
     affected_flags: int = 0
+    programs: tuple[MobileProgram, ...] = ()
+    teachings: tuple[tuple[str, int], ...] = ()
 
     @property
     def aggressive(self) -> bool:
@@ -173,6 +188,38 @@ class MobileSource:
         return self.confused or (
             not self.sentinel and not self.dies_if_master_gone
         )
+
+    @property
+    def attack_programs(self) -> tuple[MobileProgram, ...]:
+        """Return programs that can initiate or reinforce autonomous combat."""
+        triggers = {
+            "all_greet_prog",
+            "bribe_prog",
+            "fight_prog",
+            "greet_prog",
+            "rand_prog",
+        }
+        return tuple(
+            program
+            for program in self.programs
+            if program.trigger in triggers
+            and any(
+                re.search(r"\bmpkill\b", command, re.IGNORECASE)
+                for command in program.commands
+            )
+        )
+
+    def teaching_percent(self, skill: str) -> int:
+        """Return the highest source teaching percentage for ``skill``."""
+        target = " ".join(str(skill).casefold().split())
+        return max(
+            (percent for name, percent in self.teachings if name == target),
+            default=0,
+        )
+
+    def teaches(self, skill: str, *, minimum_percent: int = 1) -> bool:
+        """Return whether the mobile can teach a source-named skill."""
+        return self.teaching_percent(skill) >= minimum_percent
 
 
 @dataclass(frozen=True)
@@ -288,6 +335,20 @@ class WorldSource:
     container_contents: dict[int, list[int]] = field(default_factory=dict)
     mobile_specials: dict[int, tuple[str, ...]] = field(default_factory=dict)
     shopkeepers: set[int] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class SourceTeacherRoute:
+    """A source-reset teacher and the route to its reset room."""
+
+    mobile_vnum: int
+    room_vnum: int
+    room_name: str
+    keyword: str
+    source_skill: str
+    steps: tuple[tuple[str, str, str], ...]
+    open_before: tuple[tuple[str, str], ...] = ()
+    wanders: bool = False
 
 
 @dataclass(frozen=True)
@@ -574,11 +635,17 @@ def rank_hunt_candidates(
     include_below_band: bool = False,
     character_max_hp: int | None = None,
     include_level_ceiling_candidates: bool = False,
+    level_ceiling_offset: int | None = None,
     include_all_areas: bool = False,
     required_loot_object_vnums: Collection[int] = (),
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
+    if level_ceiling_offset is not None and level_ceiling_offset < 0:
+        raise ValueError("level_ceiling_offset must not be negative")
+    effective_level_ceiling_offset = (
+        1 if level_ceiling_offset is None else int(level_ceiling_offset)
+    )
     kill_counts = {
         _normalize_name(name): count for name, count in (boot_kill_counts or {}).items()
     }
@@ -630,7 +697,8 @@ def rank_hunt_candidates(
             include_level_ceiling_candidates
             and character_max_hp is not None
             and character_max_hp > 0
-            and mobile.level == character_level + 1
+            and character_level < mobile.level
+            and mobile.level <= character_level + effective_level_ceiling_offset
         )
         if (
             (mobile.level > character_level and not level_ceiling_candidate)
@@ -797,6 +865,7 @@ def rank_hunt_candidates(
             # finish an unavoidable trivial interruption rather than flee.
             companion_is_trivial = companion_is_below_band or (
                 not companion_specials
+                and not companion.attack_programs
                 and (
                     not companion.aggressive
                     and companion_level_range[1] <= character_level
@@ -812,9 +881,21 @@ def rank_hunt_candidates(
                 companion.aggressive
                 or companion_level_range[1] > character_level
                 or companion_specials
+                or companion.attack_programs
             ):
                 dangerous = True
-                autonomy_rejections.append("target room has a dangerous reset companion")
+                if companion.attack_programs:
+                    hazards.append(
+                        "source-backed companion attack program: "
+                        f"{companion.short_description}"
+                    )
+                    autonomy_rejections.append(
+                        "target room has a program-triggered attacker"
+                    )
+                else:
+                    autonomy_rejections.append(
+                        "target room has a dangerous reset companion"
+                    )
 
         for path_room in path_rooms[:-1]:
             for path_reset in resets_by_room.get(path_room, ()):
@@ -918,6 +999,18 @@ def rank_hunt_candidates(
             hazards.append("source mobile costs fame when killed")
             dangerous = True
             autonomy_rejections.append("source mobile costs fame when killed")
+        if mobile.attack_programs:
+            triggers = ", ".join(
+                program.trigger for program in mobile.attack_programs
+            )
+            hazards.append(
+                "source mobile program can initiate combat "
+                f"({triggers})"
+            )
+            dangerous = True
+            autonomy_rejections.append(
+                "source mobile program can initiate an unmodeled attack"
+            )
         if mobile.aggressive:
             hazards.append("target is aggressive")
             # The requested mobile's own reset room is a valid destination.
@@ -955,7 +1048,10 @@ def rank_hunt_candidates(
             autonomy_rejections.append("source peak round can exceed character HP")
         for special in world.mobile_specials.get(mobile.vnum, ()):
             hazards.append(f"target special: {special}")
-            autonomy_rejections.append(f"target has special procedure {special}")
+            if special not in SAFE_NONCOMBAT_SPECIALS:
+                autonomy_rejections.append(
+                    f"target has special procedure {special}"
+                )
         source_value = sum(item.source_cost for item in sellable)
         score = (
             100
@@ -1057,6 +1153,67 @@ def _section_ranges(lines: list[str]) -> dict[str, tuple[int, int]]:
     return ranges
 
 
+def _parse_mobile_programs(
+    lines: list[str],
+    start: int,
+    end: int,
+) -> tuple[MobileProgram, ...]:
+    """Parse the command bodies attached to one mobile prototype."""
+    programs: list[MobileProgram] = []
+    trigger: str | None = None
+    condition = ""
+    commands: list[str] = []
+
+    def finish() -> None:
+        if trigger is not None:
+            programs.append(
+                MobileProgram(
+                    trigger=trigger,
+                    condition=condition,
+                    commands=tuple(commands),
+                )
+            )
+
+    for line in lines[start:end]:
+        stripped = line.strip()
+        if stripped.startswith(">"):
+            finish()
+            commands.clear()
+            header = stripped[1:].strip()
+            parts = header.split(None, 1)
+            trigger = parts[0].casefold() if parts else None
+            condition = parts[1].rstrip("~").strip() if len(parts) > 1 else ""
+            continue
+        if stripped == "~":
+            continue
+        if stripped == "|":
+            finish()
+            trigger = None
+            condition = ""
+            commands.clear()
+            continue
+        if trigger is not None and stripped:
+            commands.append(stripped)
+    finish()
+    return tuple(programs)
+
+
+def _parse_mobile_teachings(
+    lines: list[str],
+    start: int,
+    end: int,
+) -> tuple[tuple[str, int], ...]:
+    """Parse the source ``& percent 'skill'`` entries on one mobile."""
+    teachings: list[tuple[str, int]] = []
+    for line in lines[start:end]:
+        match = _MOBILE_TEACHING.match(line)
+        if match is None:
+            continue
+        skill = " ".join(match.group("skill").casefold().split())
+        teachings.append((skill, int(match.group("percent"))))
+    return tuple(teachings)
+
+
 def _parse_mobiles(
     lines: list[str],
     bounds: tuple[int, int] | None,
@@ -1094,6 +1251,7 @@ def _parse_mobiles(
             # mobile records. Skip them unless their expected numeric header is present.
             index = _next_vnum_marker(lines, index, end)
             continue
+        record_end = _next_vnum_marker(lines, index, end)
         mobiles[vnum] = MobileSource(
             vnum=vnum,
             keywords=_clean_text(keywords),
@@ -1104,8 +1262,10 @@ def _parse_mobiles(
             area_file=area_file,
             room_description=_clean_text(room_description),
             affected_flags=_parse_bits(flag_parts[1]),
+            programs=_parse_mobile_programs(lines, index, record_end),
+            teachings=_parse_mobile_teachings(lines, index, record_end),
         )
-        index = _next_vnum_marker(lines, index, end)
+        index = record_end
     return mobiles
 
 
@@ -1611,6 +1771,113 @@ def _route_hazard_rooms(
     return blocked
 
 
+def _source_route_hazard_rejections(
+    world: WorldSource,
+    path_rooms: Collection[int],
+    *,
+    character_level: int,
+) -> tuple[str, ...]:
+    """Return source-backed combat hazards on a route, including its endpoint.
+
+    Ordinary hunt candidates already perform this analysis while ranking a
+    mobile. Retrieve and hoard quests have no mobile target to rank, so they
+    need the same fixed-room and reachable-wanderer checks before walking to
+    an object.
+    """
+    if character_level < 1:
+        raise ValueError("character_level must be at least 1")
+    path_room_set = set(path_rooms)
+    resets_by_room = _resets_by_room(world)
+    rejections: list[str] = []
+    for room_vnum in path_room_set:
+        for reset in resets_by_room.get(room_vnum, ()):
+            mobile = world.mobiles.get(reset.mobile_vnum)
+            if mobile is None or _source_mobile_has_safe_noncombat_special(
+                world,
+                mobile.vnum,
+            ):
+                continue
+            if mobile.attack_programs:
+                rejections.append(
+                    "route includes program-triggered attacker: "
+                    f"{mobile.short_description} in room {room_vnum}"
+                )
+            if not mobile.aggressive:
+                continue
+            maximum_level = _mobile_level_range(mobile.level)[1]
+            if maximum_level > character_level:
+                rejections.append(
+                    "route crosses a higher-level aggressive reset: "
+                    f"{mobile.short_description} in room {room_vnum}"
+                )
+            elif maximum_level > character_level - 5:
+                rejections.append(
+                    "route crosses an aggressive reset inside the useful "
+                    f"XP band: {mobile.short_description} in room {room_vnum}"
+                )
+            elif reset.maximum_count > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY:
+                rejections.append(
+                    "route crosses a large below-band aggressive crowd: "
+                    f"{mobile.short_description} in room {room_vnum}"
+                )
+
+    for mobile, reset in _wandering_aggressors(world):
+        if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
+            continue
+        if reset.room_vnum in path_room_set:
+            continue
+        reachable = set(
+            _wanderer_reachable_rooms(world, mobile, reset.room_vnum)
+        )
+        if path_room_set.isdisjoint(reachable):
+            continue
+        maximum_level = _mobile_level_range(mobile.level)[1]
+        if maximum_level > character_level:
+            rejections.append(
+                "a higher-level aggressive wanderer can reach the route: "
+                f"{mobile.short_description}"
+            )
+        elif maximum_level > character_level - 5:
+            rejections.append(
+                "an aggressive wanderer inside the useful XP band can reach "
+                f"the route: {mobile.short_description}"
+            )
+    return tuple(dict.fromkeys(rejections))
+
+
+def source_safe_route_to_room(
+    world: WorldSource,
+    room_vnum: int,
+    *,
+    character_level: int,
+) -> tuple[tuple[str, ...], tuple[int, ...], int] | None:
+    """Return a source-safe route to a quest object room, if one exists."""
+    direct = _shortest_paths_from(world.rooms, RECALL_VNUM).get(room_vnum)
+    if direct is None:
+        return None
+    resets_by_room = _resets_by_room(world)
+    blocked_rooms = _route_hazard_rooms(
+        world,
+        resets_by_room,
+        character_level=character_level,
+    ) - {room_vnum}
+    safe = _shortest_paths_from(
+        world.rooms,
+        RECALL_VNUM,
+        blocked_rooms=blocked_rooms,
+    ).get(room_vnum)
+    selected = direct
+    if safe is not None and len(safe[0]) <= len(direct[0]) + _MAX_SOURCE_ROUTE_DETOUR_STEPS:
+        selected = safe
+    if _source_route_hazard_rejections(
+        world,
+        selected[1],
+        character_level=character_level,
+    ):
+        return None
+    return selected
+
+
 def _source_mobile_has_safe_noncombat_special(
     world: WorldSource,
     mobile_vnum: int,
@@ -1675,6 +1942,114 @@ def _shortest_paths_from(
                 ),
             )
     return paths
+
+
+_SUBCLASS_SOURCE_SKILL_ALIASES = {
+    "bounty hunter": "bounty base",
+    "necromancer": "necro base",
+    "martial artist": "artist base",
+}
+
+
+def source_subclass_teacher_skill(subclass: str) -> str:
+    """Return the source ``do_change`` teaching entry for a subclass."""
+    normalized = " ".join(str(subclass).casefold().split())
+    return _SUBCLASS_SOURCE_SKILL_ALIASES.get(
+        normalized,
+        f"{normalized} base",
+    )
+
+
+def source_subclass_teacher_route(
+    world: WorldSource,
+    subclass: str,
+    *,
+    character_class: str | None = None,
+    origin: int = RECALL_VNUM,
+    preferred_mobile_vnums: Collection[int] = (),
+) -> SourceTeacherRoute | None:
+    """Find a source-reset teacher that can perform a level-30 change.
+
+    The server's ``do_change`` checks the teacher's learned subclass skill in
+    the current room.  Area-file names and nearby NPC descriptions are not
+    enough evidence, so this resolver requires both the exact teaching entry
+    and a source-reset route from the normal Midgaard recall room.
+    """
+    source_skill = source_subclass_teacher_skill(subclass)
+    preferred = {int(vnum) for vnum in preferred_mobile_vnums}
+    class_skill = (
+        f"{' '.join(str(character_class).casefold().split())} base"
+        if character_class
+        else None
+    )
+    paths = _shortest_paths_from(world.rooms, origin)
+    candidates: list[tuple[tuple[int, int, int, int], SourceTeacherRoute]] = []
+    resets_by_mobile: dict[int, list[MobReset]] = {}
+    for reset in world.mob_resets:
+        resets_by_mobile.setdefault(reset.mobile_vnum, []).append(reset)
+    for mobile in world.mobiles.values():
+        if not mobile.teaches("teacher base") or not mobile.teaches(source_skill):
+            continue
+        class_fit = 0 if class_skill and mobile.teaches(class_skill) else 1
+        for reset in resets_by_mobile.get(mobile.vnum, ()):
+            path = paths.get(reset.room_vnum)
+            if path is None:
+                continue
+            commands, rooms, _closed_doors = path
+            directions = tuple(
+                command
+                for command in commands
+                if not command.casefold().startswith("open ")
+            )
+            if len(directions) != len(rooms) - 1:
+                continue
+            steps: list[tuple[str, str, str]] = []
+            open_before: list[tuple[str, str]] = []
+            for origin_vnum, destination_vnum, direction in zip(
+                rooms,
+                rooms[1:],
+                directions,
+            ):
+                exit_source = world.rooms[origin_vnum].exits.get(direction)
+                if exit_source is None or exit_source.destination != destination_vnum:
+                    steps = []
+                    break
+                origin_text = str(origin_vnum)
+                destination_text = str(destination_vnum)
+                steps.append((origin_text, direction, destination_text))
+                if exit_source.closed:
+                    open_before.append((origin_text, direction))
+            if not steps and rooms[0] != rooms[-1]:
+                continue
+            keyword = (
+                mobile.keywords.split()[0]
+                if mobile.keywords
+                else mobile.short_description
+            )
+            route = SourceTeacherRoute(
+                mobile_vnum=mobile.vnum,
+                room_vnum=reset.room_vnum,
+                room_name=world.rooms[reset.room_vnum].name,
+                keyword=keyword,
+                source_skill=source_skill,
+                steps=tuple(steps),
+                open_before=tuple(open_before),
+                wanders=mobile.wanders,
+            )
+            candidates.append(
+                (
+                    (
+                        0 if mobile.vnum in preferred else 1,
+                        class_fit,
+                        len(commands),
+                        mobile.vnum,
+                    ),
+                    route,
+                )
+            )
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0])[1]
 
 
 def source_route_movement_cost(

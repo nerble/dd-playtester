@@ -91,6 +91,23 @@ _SCORE_CURRENCY = re.compile(
 _TARGETMODE_DESCRIPTION = re.compile(
     r"^\s*\[#(?P<target_id>\d+)\]\s*(?P<description>.*)$"
 )
+_FOREIGN_GMCP_SNAPSHOT_PACKAGES = frozenset(
+    {
+        "char.base",
+        "char.vitals",
+        "char.status",
+        "char.stats",
+        "char.worth",
+        "char.affect",
+        "char.items",
+        "char.items.add",
+        "char.equipment",
+        "char.worn",
+        "char.enemies",
+        "char.quest",
+        "char.config",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -106,7 +123,7 @@ class GameEvent:
 class ObservationParser:
     """Convert raw MUD text and GMCP messages into deterministic game events."""
 
-    def __init__(self) -> None:
+    def __init__(self, expected_character_name: str | None = None) -> None:
         self._pending_text = ""
         self._health: int | float | None = None
         self._level: int | None = None
@@ -114,9 +131,18 @@ class ObservationParser:
         self._previous_line: str | None = None
         self._room_name: str | None = None
         self._room_vnum: str | None = None
+        self._known_room_vnums_by_name: dict[str, set[str]] = {}
+        self._last_room_exits: dict[str, str] = {}
         self._gmcp_snapshots: dict[str, Any] = {}
         self._discarding_duplicate_login_snapshot = False
         self._discarded_duplicate_snapshot_messages = 0
+        self.expected_character_name = _normalized_name(expected_character_name)
+        self._discarding_foreign_snapshot = False
+        self._discarded_foreign_snapshot_messages = 0
+
+    def set_expected_character_name(self, name: str | None) -> None:
+        """Bind this parser to the character that owns the connection."""
+        self.expected_character_name = _normalized_name(name)
 
     def feed_text(self, text: str) -> list[GameEvent]:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
@@ -147,14 +173,45 @@ class ObservationParser:
         self._previous_line = None
         self._room_name = None
         self._room_vnum = None
+        self._known_room_vnums_by_name.clear()
+        self._last_room_exits = {}
         self._gmcp_snapshots.clear()
         self._discarding_duplicate_login_snapshot = False
         self._discarded_duplicate_snapshot_messages = 0
+        self._discarding_foreign_snapshot = False
+        self._discarded_foreign_snapshot_messages = 0
 
     def feed_gmcp(self, message: str) -> list[GameEvent]:
         package, separator, body = message.partition(" ")
         payload = self._decode_gmcp_body(body) if separator else None
         normalized = package.casefold()
+        if normalized == "room.info" and self._is_foreign_immortal_arrival(payload):
+            self._begin_foreign_snapshot()
+            return []
+        if normalized == "char.base" and isinstance(payload, dict):
+            observed_name = _normalized_name(payload.get("name"))
+            if (
+                self.expected_character_name is not None
+                and observed_name is not None
+                and observed_name != self.expected_character_name
+            ):
+                self._begin_foreign_snapshot()
+                return []
+            if (
+                self._discarding_foreign_snapshot
+                and observed_name == self.expected_character_name
+            ):
+                self._discarding_foreign_snapshot = False
+                self._discarded_foreign_snapshot_messages = 0
+        if (
+            self._discarding_foreign_snapshot
+            and normalized in _FOREIGN_GMCP_SNAPSHOT_PACKAGES
+        ):
+            self._discarded_foreign_snapshot_messages += 1
+            if self._discarded_foreign_snapshot_messages >= 16:
+                self._discarding_foreign_snapshot = False
+                self._discarded_foreign_snapshot_messages = 0
+            return []
         if normalized in {
             "char.items",
             "char.items.add",
@@ -260,6 +317,7 @@ class ObservationParser:
             "char.vitals": "vitals_changed",
             "char.stats": "stats_changed",
             "char.worth": "progress_changed",
+            "char.quest": "quest_status_changed",
             "char.affect": "affects_changed",
             "char.items": "inventory_changed",
             "char.equipment": "equipment_changed",
@@ -289,6 +347,25 @@ class ObservationParser:
             )
 
         return events
+
+    def _begin_foreign_snapshot(self) -> None:
+        self._discarding_foreign_snapshot = True
+        self._discarded_foreign_snapshot_messages = 0
+
+    def _is_foreign_immortal_arrival(self, payload: Any) -> bool:
+        if self.expected_character_name is None or not isinstance(payload, dict):
+            return False
+        arrival = payload.get("arrival")
+        if not isinstance(arrival, dict):
+            return False
+        if str(arrival.get("kind", "")).casefold() != "immortal":
+            return False
+        incoming_vnum = str(payload.get("vnum", "")).strip()
+        return bool(
+            self._room_vnum
+            and incoming_vnum
+            and incoming_vnum != self._room_vnum
+        )
 
     def _parse_line(self, line: str) -> list[GameEvent]:
         text = line.strip()
@@ -466,11 +543,29 @@ class ObservationParser:
         data = self._gmcp_data(package, payload)
         name = str(payload.get("name", "")).strip() if isinstance(payload, dict) else ""
         vnum = str(payload.get("vnum", "")).strip() if isinstance(payload, dict) else ""
+        normalized_name = name.casefold()
+        if normalized_name and vnum:
+            self._known_room_vnums_by_name.setdefault(normalized_name, set()).add(vnum)
+        previous_room_exits = self._last_room_exits
+        exits = data.get("exits")
+        if isinstance(exits, dict):
+            self._last_room_exits = {
+                str(direction): str(destination)
+                for direction, destination in exits.items()
+                if str(destination).strip()
+            }
+        else:
+            self._last_room_exits = {}
         same_room = bool(name and self._same_room(name, vnum))
         enriches_room = bool(same_room and vnum and not self._room_vnum)
         if same_room and not enriches_room:
             if vnum:
                 self._room_vnum = vnum
+            # Text may identify the new room first. A following GMCP packet
+            # with exits is still the authoritative room refresh, not a
+            # duplicate snapshot to discard.
+            if not previous_room_exits and isinstance(exits, dict) and exits:
+                return GameEvent("room_updated", "gmcp", data)
             return None
         self._room_name = name.casefold() or None
         self._room_vnum = vnum or None
@@ -486,12 +581,32 @@ class ObservationParser:
     ) -> GameEvent | None:
         if self._same_room(name, ""):
             return None
+        inferred_vnum = self._infer_text_room_vnum(name)
         self._room_name = name.casefold()
-        self._room_vnum = None
+        self._room_vnum = inferred_vnum
+        self._last_room_exits = {}
         data: dict[str, Any] = {"name": name, "text": text}
         if exits is not None:
             data["exits"] = exits
+        if inferred_vnum is not None:
+            data["vnum"] = inferred_vnum
         return GameEvent("room_entered", "text", data)
+
+    def _infer_text_room_vnum(self, name: str) -> str | None:
+        """Recover a text-only room from an unambiguous known exit edge."""
+        normalized_name = name.casefold()
+        edge_candidates = {
+            destination
+            for destination in self._last_room_exits.values()
+            if destination
+            in self._known_room_vnums_by_name.get(normalized_name, set())
+        }
+        if len(edge_candidates) == 1:
+            return next(iter(edge_candidates))
+        known_vnums = self._known_room_vnums_by_name.get(normalized_name, set())
+        if len(known_vnums) == 1:
+            return next(iter(known_vnums))
+        return None
 
     def _same_room(self, name: str, vnum: str) -> bool:
         if self._room_name != name.casefold():
@@ -605,3 +720,10 @@ class ObservationParser:
 def _room_title(text: str) -> str:
     """Drop a prompt that DD4 can concatenate with the next room header."""
     return _DD4_PROMPT.sub("", text).strip()
+
+
+def _normalized_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().casefold()
+    return normalized or None

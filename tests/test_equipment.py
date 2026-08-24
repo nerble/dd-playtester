@@ -12,6 +12,8 @@ from dd4tester.equipment import (
     item_keyword,
     is_bow,
     is_capacity_infrastructure,
+    is_digging_tool,
+    is_digging_weapon,
     is_piercing_weapon,
     normalize_item_name,
     plan_stance_swaps,
@@ -90,7 +92,72 @@ def test_bow_detection_uses_dd4_item_bow_extra_flag() -> None:
     )
 
     assert is_bow(bow)
+    assert item_category(bow) == "ranged_weapon"
     assert not is_bow(ordinary_weapon)
+
+
+def test_digging_capabilities_mirror_source_item_and_weapon_types() -> None:
+    shovel = ObjectSource(
+        3604,
+        "shovel",
+        "a shovel",
+        6,
+        (25, 16, 39, 83),
+        30,
+    )
+    scoop_weapon = ObjectSource(
+        1,
+        "scoop",
+        "a scoop",
+        5,
+        (0, 2, 4, 5),
+        100,
+    )
+    sword = ObjectSource(
+        2,
+        "sword",
+        "a sword",
+        5,
+        (0, 2, 4, 1),
+        100,
+    )
+
+    assert is_digging_tool(shovel)
+    assert not is_digging_weapon(shovel)
+    assert is_digging_weapon(scoop_weapon)
+    assert not is_digging_weapon(sword)
+
+
+def test_stance_planner_keeps_primary_weapon_with_ranged_bow() -> None:
+    bow = ObjectSource(
+        1,
+        "bow",
+        "a short bow",
+        5,
+        (0, 2, 4, 4),
+        100,
+        wear_flags=1 | (1 << 13),
+        extra_flags=1 << 30,
+    )
+    dagger = ObjectSource(
+        2,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+
+    removals, additions = plan_stance_swaps(
+        [],
+        [dagger, bow],
+        STANCE_RECOVERY,
+    )
+
+    assert dagger not in removals
+    assert bow not in removals
+    assert additions == []
 
 
 def test_weapon_type_detection_matches_dd4_stun_and_backstab_checks() -> None:
