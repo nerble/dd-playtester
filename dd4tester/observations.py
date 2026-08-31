@@ -30,6 +30,10 @@ _DD4_PROMPT = re.compile(
     r"(?:\s+\[(?P<area>[^\]]+)\])?\s*>",
     re.IGNORECASE,
 )
+_INCOMPLETE_PROMPT = re.compile(
+    r"^\s*<[^>\n]*\b(?:hp|health|hit|hits|mana|move|moves|mv)\b[^>\n]*$",
+    re.IGNORECASE,
+)
 _OUTGOING_COMBAT = re.compile(
     r"\bYou (?:attack|engage) (?P<target>.+?)(?:[.!]|$)",
     re.IGNORECASE,
@@ -88,6 +92,26 @@ _SCORE_CURRENCY = re.compile(
     r"Copper:\s+(?P<copper>\d+)\b",
     re.IGNORECASE,
 )
+_RECALL_LIST_HEADER = re.compile(
+    r"^Recall points currently available \(indexed by number\):$",
+    re.IGNORECASE,
+)
+_RECALL_POINT = re.compile(
+    r"^\s*(?P<index>\d+)\s+(?P<active>\*)?\s*"
+    r"(?P<name>.+?)\s+\((?P<area>[^()]+)\)"
+    r"(?:\s+\(\d+\))?\s*$",
+    re.IGNORECASE,
+)
+_RECALL_SELECTION = re.compile(
+    r"^Setting recall to point\s+(?P<index>\d+)\s+"
+    r"\((?P<name>[^)]+)\)\s*$",
+    re.IGNORECASE,
+)
+_RECALL_SELECTION_FAILURE = re.compile(
+    r"^Cannot access point\s+(?P<requested>\d+),\s+"
+    r"defaulting to\s+(?P<index>\d+)\s+\((?P<name>[^)]+)\)\s*$",
+    re.IGNORECASE,
+)
 _TARGETMODE_DESCRIPTION = re.compile(
     r"^\s*\[#(?P<target_id>\d+)\]\s*(?P<description>.*)$"
 )
@@ -129,6 +153,10 @@ class ObservationParser:
         self._level: int | None = None
         self._dead = False
         self._previous_line: str | None = None
+        self._recall_list_active = False
+        self._recall_list_saw_point = False
+        self._recall_list_saw_blank = False
+        self._recall_list_points: dict[int, dict[str, Any]] = {}
         self._room_name: str | None = None
         self._room_vnum: str | None = None
         self._known_room_vnums_by_name: dict[str, set[str]] = {}
@@ -163,6 +191,10 @@ class ObservationParser:
     def flush_text(self) -> list[GameEvent]:
         if not self._pending_text:
             return []
+        # Telnet can split a prompt between reads. A quiet read between the
+        # fragments must not turn the first half into a completed text line.
+        if _INCOMPLETE_PROMPT.fullmatch(self._pending_text):
+            return []
         line = self._pending_text
         self._pending_text = ""
         return self._parse_line(line)
@@ -171,6 +203,10 @@ class ObservationParser:
         """Discard connection-scoped parsing state before a reconnect."""
         self._pending_text = ""
         self._previous_line = None
+        self._recall_list_active = False
+        self._recall_list_saw_point = False
+        self._recall_list_saw_blank = False
+        self._recall_list_points.clear()
         self._room_name = None
         self._room_vnum = None
         self._known_room_vnums_by_name.clear()
@@ -370,9 +406,67 @@ class ObservationParser:
     def _parse_line(self, line: str) -> list[GameEvent]:
         text = line.strip()
         if not text:
-            return []
+            if self._recall_list_active and not self._recall_list_saw_point:
+                if self._recall_list_saw_blank:
+                    return self._finish_recall_list()
+                self._recall_list_saw_blank = True
+                return []
+            return self._finish_recall_list()
 
-        events: list[GameEvent] = []
+        events = self._finish_recall_list_if_needed(text)
+        if _RECALL_LIST_HEADER.fullmatch(text):
+            self._recall_list_active = True
+            self._recall_list_saw_point = False
+            self._recall_list_saw_blank = False
+            self._recall_list_points.clear()
+            self._previous_line = text
+            return events
+
+        point_match = _RECALL_POINT.fullmatch(text)
+        if self._recall_list_active and point_match is not None:
+            point = {
+                "index": int(point_match.group("index")),
+                "active": bool(point_match.group("active")),
+                "name": point_match.group("name").strip(),
+                "area": point_match.group("area").strip(),
+            }
+            self._recall_list_points[point["index"]] = point
+            self._recall_list_saw_point = True
+            self._previous_line = text
+            return events
+
+        selection = _RECALL_SELECTION.fullmatch(text)
+        if selection is not None:
+            events.append(
+                GameEvent(
+                    "recall_selection_changed",
+                    "text",
+                    {
+                        "current": int(selection.group("index")),
+                        "name": selection.group("name").strip(),
+                        "text": text,
+                    },
+                )
+            )
+        else:
+            selection_failure = _RECALL_SELECTION_FAILURE.fullmatch(text)
+            if selection_failure is not None:
+                events.append(
+                    GameEvent(
+                        "recall_selection_changed",
+                        "text",
+                        {
+                            "current": int(selection_failure.group("index")),
+                            "requested": int(
+                                selection_failure.group("requested")
+                            ),
+                            "name": selection_failure.group("name").strip(),
+                            "fallback": True,
+                            "text": text,
+                        },
+                    )
+                )
+
         posture = _POSTURE.match(text)
         if posture is not None:
             message = posture.group(0).casefold()
@@ -539,6 +633,47 @@ class ObservationParser:
         self._previous_line = text
         return events
 
+    def _finish_recall_list_if_needed(self, text: str) -> list[GameEvent]:
+        if not self._recall_list_active:
+            return []
+        if _RECALL_POINT.fullmatch(text) is not None:
+            return []
+        if _RECALL_LIST_HEADER.fullmatch(text):
+            return []
+        if not self._recall_list_saw_point:
+            # A prompt or other response after the header closes an empty
+            # list. Preserve that observation so the caller can make one
+            # bounded purchase decision instead of waiting for another event.
+            return self._finish_recall_list()
+        return self._finish_recall_list()
+
+    def _finish_recall_list(self) -> list[GameEvent]:
+        if not self._recall_list_active:
+            return []
+        points = [
+            self._recall_list_points[index]
+            for index in sorted(self._recall_list_points)
+        ]
+        current = next(
+            (
+                int(point["index"])
+                for point in points
+                if point.get("active")
+            ),
+            0,
+        )
+        self._recall_list_active = False
+        self._recall_list_saw_point = False
+        self._recall_list_saw_blank = False
+        self._recall_list_points.clear()
+        return [
+            GameEvent(
+                "recall_points_changed",
+                "text",
+                {"points": points, "current": current},
+            )
+        ]
+
     def _room_event(self, package: str, payload: Any) -> GameEvent | None:
         data = self._gmcp_data(package, payload)
         name = str(payload.get("name", "")).strip() if isinstance(payload, dict) else ""
@@ -590,6 +725,7 @@ class ObservationParser:
             data["exits"] = exits
         if inferred_vnum is not None:
             data["vnum"] = inferred_vnum
+            data["vnum_inferred"] = True
         return GameEvent("room_entered", "text", data)
 
     def _infer_text_room_vnum(self, name: str) -> str | None:

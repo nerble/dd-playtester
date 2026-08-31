@@ -7,12 +7,17 @@ from dd4tester.hunt_candidates import _shortest_paths_from, load_world_source
 from dd4tester.quests import (
     GOLDMOON_QUESTMASTER_ROUTE_FROM_RECALL,
     QUESTMASTER_ROUTE_FROM_RECALL,
+    recall_origins_from_state,
+    recall_point_for_index,
+    recall_point_for_name,
+    recall_points_for_purchase,
     quest_mobile_is_source_eligible,
     quest_object_keyword,
     quest_points_required_for_advance,
     quest_points_shortfall_for_advance,
     quest_target_maximum_level_offset,
     questmaster_route_for_level,
+    next_recall_point_to_buy,
     snapshot_quest_status,
 )
 
@@ -75,6 +80,56 @@ def test_quest_point_gates_match_update_source(
 def test_quest_point_shortfall_is_never_negative() -> None:
     assert quest_points_shortfall_for_advance(29, 0) == 1
     assert quest_points_shortfall_for_advance(29, 3) == 0
+
+
+def test_recall_point_registry_matches_source_slots_and_destinations() -> None:
+    points = recall_points_for_purchase()
+
+    assert len(points) == 15
+    assert points[0].index == 2
+    assert points[0].cost == 1000
+    assert points[0].room_vnum == 28003
+    assert points[0].name == "Draagdim"
+    assert recall_point_for_index(1) is None
+    assert recall_point_for_index(14).name == "Ota'ar Dar"
+    assert recall_point_for_name("Ota'ar Dar").index == 14
+    assert recall_point_for_name("unknown") is None
+
+
+def test_recall_origins_from_state_keeps_only_source_known_destinations() -> None:
+    assert recall_origins_from_state(
+        {
+            "recall_points": [
+                {"index": 2, "name": "Draagdim"},
+                {"index": 999, "name": "unknown"},
+            ],
+            "current_recall": 12,
+        }
+    ) == {0: 3001, 2: 28003, 12: 21500}
+
+
+def test_next_recall_point_to_buy_prefers_the_most_valuable_missing_point() -> None:
+    point = next_recall_point_to_buy(
+        [{"index": 2}, {"index": 9}],
+        600,
+        character_level=25,
+    )
+
+    assert point is not None
+    assert point.index == 4
+    assert point.cost == 500
+    assert point.name == "Anon"
+
+
+def test_next_recall_point_to_buy_requires_a_live_list_and_level_25() -> None:
+    assert (
+        next_recall_point_to_buy(None, 1000, character_level=25)
+        is None
+    )
+    assert (
+        next_recall_point_to_buy([], 1000, character_level=24)
+        is None
+    )
 
 
 @pytest.mark.parametrize(

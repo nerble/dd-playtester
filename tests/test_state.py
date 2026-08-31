@@ -86,6 +86,47 @@ def test_quest_status_snapshot_tracks_level_gate() -> None:
     assert restored.quest_level_qp_shortfall == 193
 
 
+def test_recall_state_tracks_available_points_and_selected_index() -> None:
+    state = CharacterState()
+
+    assert state.apply(
+        GameEvent(
+            "recall_points_changed",
+            "text",
+            {
+                "current": 2,
+                "points": [
+                    {
+                        "index": 0,
+                        "active": False,
+                        "name": "Default recall",
+                        "area": "Temple of Midgaard",
+                    },
+                    {
+                        "index": 2,
+                        "active": True,
+                        "name": "Draagdim",
+                        "area": "Draagdim",
+                    },
+                ],
+            },
+        )
+    )
+    assert state.current_recall == 2
+    assert state.recall_points[1]["name"] == "Draagdim"
+    assert state.recall_points_observed is True
+
+    assert state.apply(
+        GameEvent(
+            "recall_selection_changed",
+            "text",
+            {"current": 0, "fallback": True},
+        )
+    )
+    assert state.current_recall == 0
+    assert CharacterState.from_dict(state.to_dict()).recall_points == state.recall_points
+
+
 def test_text_posture_evidence_updates_position_without_gmcp_vitals() -> None:
     parser = ObservationParser()
     state = CharacterState(position=4)
@@ -161,7 +202,18 @@ def test_state_rejects_impossible_level_and_progress_values() -> None:
 
 
 def test_experience_loss_is_preserved_as_state_evidence() -> None:
-    state = CharacterState(level=24, xp=365893)
+    state = CharacterState(
+        level=24,
+        xp=365893,
+        max_xp=366100,
+        xp_to_next_level=207,
+        progress={
+            "level": 24,
+            "xp": 365893,
+            "maxxp": 366100,
+            "xptnl": 207,
+        },
+    )
 
     assert state.apply(
         GameEvent(
@@ -173,11 +225,22 @@ def test_experience_loss_is_preserved_as_state_evidence() -> None:
 
     assert state.xp_loss_observed is True
     assert state.xp_loss_total == 385
+    assert state.xp == 365508
+    assert state.max_xp == 366100
+    assert state.xp_to_next_level == 592
+    assert state.progress["xp"] == 365508
+    assert state.progress["xptnl"] == 592
     assert CharacterState.from_dict(state.to_dict()).xp_loss_total == 385
 
 
-def test_explicit_experience_loss_allows_following_gmcp_regression() -> None:
-    state = CharacterState(level=24, xp=365486, progress_source="text")
+def test_corrected_gmcp_snapshot_does_not_double_count_textual_loss() -> None:
+    state = CharacterState(
+        level=24,
+        xp=365893,
+        max_xp=366100,
+        xp_to_next_level=207,
+        progress_source="text",
+    )
 
     assert state.apply(
         GameEvent(
@@ -190,13 +253,62 @@ def test_explicit_experience_loss_allows_following_gmcp_regression() -> None:
         GameEvent(
             "progress_changed",
             "gmcp",
-            {"level": "24", "xp": "365437", "xptnl": "663"},
+            {"level": "24", "xp": "365508", "xptnl": "592"},
         )
     )
 
-    assert state.xp == 365437
-    assert state.xp_to_next_level == 663
+    assert state.xp == 365508
+    assert state.xp_to_next_level == 592
+    assert state.xp_loss_total == 385
     assert state.progress_source == "gmcp"
+
+
+def test_gmcp_snapshot_before_textual_loss_does_not_double_subtract() -> None:
+    state = CharacterState(
+        level=24,
+        xp=365893,
+        max_xp=366100,
+        xp_to_next_level=207,
+        progress_source="gmcp",
+    )
+
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "gmcp",
+            {"level": "24", "xp": "365508", "xptnl": "592"},
+        )
+    )
+    assert state.apply(
+        GameEvent(
+            "experience_lost",
+            "text",
+            {"xp": 385, "text": "You recall from combat! You lose 385 exp."},
+        )
+    )
+
+    assert state.xp == 365508
+    assert state.xp_to_next_level == 592
+    assert state.progress["xp"] == 365508
+    assert state.progress["xptnl"] == 592
+    assert state.xp_loss_total == 385
+
+
+def test_textual_loss_updates_checkpoint_without_followup_worth_packet() -> None:
+    parser = ObservationParser()
+    state = replay_events(
+        parser.feed_text(
+            "You are level 24, have 364415 experience and need 1685 to level.\n"
+            "You flee from combat! You lose 385 exp.\n"
+        )
+    )
+
+    assert state.level == 24
+    assert state.xp == 364030
+    assert state.max_xp == 366100
+    assert state.xp_to_next_level == 2070
+    assert state.xp_loss_observed is True
+    assert state.xp_loss_total == 385
 
 
 def test_observed_death_allows_a_real_progress_regression() -> None:
@@ -364,6 +476,30 @@ def test_delayed_text_room_cannot_move_state_backward() -> None:
 
     assert state.room_vnum == "19091"
     assert state.exits == {"e": "19092", "s": "19090"}
+
+
+def test_inferred_text_room_transition_can_replace_stale_gmcp_vnum() -> None:
+    state = CharacterState(
+        room_name="A crevice",
+        room_vnum="137",
+        area="Gremlin Lair",
+    )
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "text",
+            {
+                "name": "The Temple Of Midgaard",
+                "vnum": "3001",
+                "vnum_inferred": True,
+                "exits": ["north", "south", "up"],
+            },
+        )
+    )
+
+    assert state.room_name == "The Temple Of Midgaard"
+    assert state.room_vnum == "3001"
 
 
 def test_leaving_purgatory_clears_persisted_death_state() -> None:

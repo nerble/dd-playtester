@@ -22,6 +22,22 @@ primary behavior adapter. Mudlet and Windows VM automation are separate
 visibility and lifecycle validation boundaries. AI decision-making remains out
 of scope until deterministic behavior is replayable.
 
+## Documentation Synchronization
+
+When a CLI command, output format, storage path, credential flow, runtime
+limit, or operator workflow changes, update `README.md` in the same work unit.
+Keep examples runnable from the repository root, include the relevant
+PowerShell commands and paths, and refresh the current test/live status without
+turning checkpoints or research probes into progression claims.
+
+At level 25 and above, remote field routes may use only recall points observed
+in the live `recall list`. If a source-registered point is missing and the
+observed spendable quest-point balance can afford it, acquire the most valuable
+missing point at the correct questmaster, refresh ownership, and restore the
+default recall before healer recovery. Acquisition and remote-origin routing
+remain research evidence until a fresh live run confirms both the purchase and
+the return sequence.
+
 For the public hero entry point, honor an explicit password and the process
 environment before reading character:<name> from the credential store. Make
 credential reads and writes bounded. Reuse an existing stored character
@@ -45,6 +61,22 @@ an explicit source peak-damage bound. Consider-only research probes and stops
 with that source bound retain their existing behavior; a level-legal target is
 not automatically a viable target when its live hit-point pool can outlast
 the character's damage window.
+
+Direct fame-recovery stops that carry a protected source incoming bound and
+still return a durability warning require a character-specific live damage
+window probe before spending another combat reserve. Allow at most three
+positive target-HP samples or 12 seconds, require at least 10% of the target's
+observed maximum HP in damage, and withdraw before emergency potion handling
+when that threshold is not met. Record the bounded no-kill result as research;
+do not promote it to progression evidence or replay it blindly.
+
+DD4's `fight.c` allows ordinary visible NPCs, not only `ACT_AGGRESSIVE` mobs,
+to join a PC-versus-mobile fight. Different prototypes have a 1-in-8 join
+chance and the same prototype always joins, within the source level window;
+`update.c` can also let aggressive mobiles initiate independently. Never treat
+non-aggressive or no-special status alone as a trivial companion. Only source
+non-interaction, the explicit below-band rule, or a proven level-window
+exclusion may remove a bystander from the combat hazard set.
 
 Quest progression is now an explicit observed gate. DD4 `Char.Quest` snapshots
 are deduplicated, persisted in campaign state, rendered in reports, and feed
@@ -86,6 +118,31 @@ routes are researched. This is a research handoff, not verified progression
 evidence; retain all live source, route, consider, health, resource, and
 healer-return gates.
 
+The fixed registry also contains the research-status
+`mahntor-rock-toad-warrior-circuit-16-18` continuation. It is available only
+to warriors at levels 16-18 after positive class-tagged Mahn-Tor level-13-to-15
+evidence, and it uses the existing circuit executor with source mobile 2303,
+the conservative 140-damage peak bound, exact live `consider`, crowd, health,
+movement, encumbrance, and healer-return gates. Run 10906 supplied warrior
+evidence at level 15; it does not prove the new level-16 band, and the policy
+must remain `research` until a fresh level-16 warrior result is recorded.
+
+The same registry now carries
+`mahntor-rock-toad-warrior-circuit-19-20` as a separate research-status
+continuation. It is available only to warriors at levels 19-20 after a positive
+result from the level-16-to-18 policy; it inherits the same source mobile,
+140-damage peak bound, live `consider`, crowd, health, movement, encumbrance,
+and healer-return gates. This is a policy handoff, not level-19 or level-20
+progression proof; each band still requires a fresh live result.
+
+The level-30 subclass combat boundary now consumes live-known capabilities for
+safe single-target actions and self-protection: druid `bark skin`, monk
+`mental barrier`/`displacement`, barbarian `berserk`, vampire `suck`, and
+martial-artist `atemi`/`kansetsu`. Berserk is one-use per target; targeted
+actions use the existing between-round cooldown. Area-wide spells, forms,
+songs, turrets, runes, and other lifecycle-sensitive abilities remain
+research-gated until their target, resource, and expiry policies exist.
+
 The level-30 subclass handoff is source-capability-gated. Parse mobile teaching
 entries from the read-only area files and require `teacher base`, the exact
 `<subclass> base` entry, a source reset, and a source route from recall before
@@ -115,9 +172,22 @@ a blocked policy indefinitely.
 When a current-reboot source policy's latest bounded result is incomplete and
 its latest objective delta is negative, block it from ordinary retry even if
 the boot kill count is below three. An explicit XP-loss record remains under
-the protection-recovery contract: allow only its one appropriate protected
-retry when a sanctuary reserve exists, then quarantine it after a second loss.
-This prevents retryable metadata from outranking fresh safe routes.
+the protection-recovery contract: the normal retry requires a sanctuary
+reserve, and a second loss quarantines the route. If the source-verified
+sanctuary route is current-reboot absent or cooling and no reserve is
+available, one distinct `protection-recovery-ordinary` fallback may reopen
+only a fresh, source-safe, special-free, no-flight target in the useful band
+with exactly one prior nonfatal loss and source peak damage at or below 50%
+of maximum HP. It starts at 95% health, is recorded before execution, and is
+quarantined after another failure; a positive objective kill clears the
+protection hold. This does not bypass absence, crowd, route, consider,
+resource, source-identity, or cooldown evidence.
+
+The ordinary fallback target does not need its own earlier loss record: the
+current protection hold's exact one-loss evidence authorizes a fresh candidate.
+Persisted attempted policy ids must rotate out, and a second loss on the hold's
+source route must close the fallback rather than being treated as a new one-loss
+allowance.
 
 Source-ranked runtime, locator, and watchdog route boundaries carry a
 `retryable_failure` marker as well as their bounded cooldown. Policy revision
@@ -181,6 +251,12 @@ The same rule applies to crowd waits: a current-band crowd remains a hard live
 stop, but a prior-band crowd must never suppress an independent current-band
 candidate.
 
+When below-band evidence includes both a source mobile key and a recorded target
+identity, suppress only the candidate whose normalized target identity matches
+that evidence. Preserve key-only legacy records as authoritative for backward
+compatibility, but never let a mismatched target name suppress an otherwise
+independent source-backed candidate.
+
 After the clean current-band and audited-special pools are exhausted, the
 selector may open one research-status dynamic-wanderer probe only after the
 normal no-progress threshold. Its sole autonomy rejection must be the source
@@ -213,6 +289,19 @@ useful-XP floor (`character_level - 5`). Check both `hazards` and legacy
 this gate because an aggressive mobile can enter combat before live `consider`
 returns.
 
+DD4's `update.c` skips a plain `ACT_AGGRESSIVE` mobile when the player is more
+than ten levels above the mobile's highest source-fuzzed level. Route-crowd
+filters may use that cutoff to reopen a large low-level plain aggressive crowd,
+but mobile attack programs and non-safe specials remain hard hazards regardless
+of level. The audited special set currently admits `spec_assassin` only with a
+blindness reserve and no aggressive pre-entry target, `spec_cast_druid` only
+through source level 14 before fear, and `spec_cast_psionicist` only through
+source level 13 before energy drain; later variants remain research-only. The
+source audit records `spec_demon` spell gates through level 50, including
+curse, energy drain, hold, hex, and fire breath, but the strong procedure
+remains research-only until its combat and escape effects have an executable
+policy.
+
 Source area files may attach `greet_prog`, `fight_prog`, or `rand_prog` mobile
 programs that issue `mpkill` directly or through `mpforce`. The candidate
 parser records those commands and hard-rejects the scripted mobile or any
@@ -233,6 +322,16 @@ roughly three-minute reset interval when no player is in the area; the runner
 has already returned the character to healer room 3054 before waiting. Keep
 the wait bounded and opt-in for capped live invocations. Do not lower it back
 to a short arbitrary delay merely to make a retry appear active.
+When an automatic retry is reached, open one bounded maintenance-only
+`world-time` run to issue `time`, persist the live reboot marker, and return to
+the healer before replanning. Direct `--retry-stalled` is not reboot evidence
+and must not trigger this probe.
+Persist `after_segment_id` on each funding reset-history record. Startup repair
+must use that boundary to rebuild only post-reset current-boot attempts and
+liquidation evidence; for legacy records without the marker, locate the first
+segment carrying the exact reset snapshot and infer the preceding boundary.
+Older reboot history remains auditable, but pre-reset current-boot failures must
+not be rehydrated as active funding blockers.
 When a multi-segment invocation reaches its requested segment count, return the
 last durable result before entering another reset wait. Preserve the explicit
 one-segment reset-retry behavior, but never make a completed multi-segment
@@ -276,6 +375,27 @@ until the expected identity returns. Reject impossible progress (level above
 HERO, negative XP-to-next-level, or a next-level threshold below current XP)
 before it reaches state or campaign success. A quarantined checkpoint may
 suppress same-XP live snapshots until one clean segment completes.
+Every adapter `read_available` call also has a 250ms outer bound, independent
+of the longer policy inactivity timer. Record `read_available_timeout`, close
+and reconnect at most three times, and preserve the durable healer checkpoint
+if the adapter itself blocks while reading or processing Telnet negotiation.
+Every transport close is cancellation-aware and bounded to five seconds. An
+interrupted worker must release its connection and storage handles promptly;
+recover interrupted run records before starting another live rotation, and do
+not leave duplicate campaign workers behind.
+
+Source-ranked candidate selection must compute the full source-room graph once
+per distinct recall origin, then reuse that result for every candidate sharing
+the origin. Keep synchronous source preparation and graph selection inside an
+observable bounded startup path; repeated candidate analysis must not consume
+the live segment budget or become an unreported hang.
+
+Telnet text prompts may be split across reads, including a quiet read between
+the numeric prompt body and its room suffix. Keep an incomplete `<... hits ...
+mana ... move` fragment buffered through quiet reads and parse it only after
+the closing prompt arrives; never let a partial prompt strand `command_in_flight`
+until the segment cap. The parser and runner regressions cover this ordering,
+and run 10149 reproduced it live while run 10150 validated the repair.
 
 Moria sanctuary recovery is class-gated at the lower frontier: a level-16+
 mage may use the source-room deep carrier circuit only through the existing
@@ -290,11 +410,22 @@ Required-loot field endpoints must resolve source-special profiles for every
 observed bystander before starting combat. If a non-target mobile has an
 audited post-objective hazard such as `spec_poison`, record transient crowd
 evidence naming the source-registered preflight hazard and recall while still
-out of combat; do not let the
-below-band required-loot exception treat that mobile as harmless. Keep the
-late post-objective guard for hazards that arrive after combat begins, and do
-not apply the pre-entry gate to ordinary XP hunts unless their policy carries
-the required-loot exception.
+out of combat. The sole target-first exception is the Moria deep sanctuary
+route's exact source mobile 4053: when the large hobgoblin carrier is visible,
+4053 is source-proven below the useful-XP floor and has not engaged, defer the
+poisoner until after the carrier. An engaged, ambiguous, or higher-band hazard
+still stops the route; keep the late post-objective guard for hazards that
+arrive after combat begins. Do not apply this exception to ordinary XP hunts.
+At a source-registered required-loot reset room, if only source-known
+below-band hostiles are reported and no combat exchange is observed, recall
+before combat whenever recall is legal. A live `Char.Enemies` packet alone is
+not an exchange; once attack text or combat state is authoritative, preserve
+the existing bounded flee-and-return path.
+If that pre-combat interruption is an exact source-known below-band endpoint
+miss and a later source-approved carrier location remains, allow one bounded
+recall to healer room 3054 and restart from the next location. Keep the
+one-restart limit and retain the hazard evidence; a second interruption or
+any engaged, ambiguous, or higher-band hazard remains a hard stop.
 
 Every source-identified field endpoint also applies the room-prose crowd gate
 before `Char.Enemies` is populated. A source-indexed useful-band bystander in
@@ -307,6 +438,12 @@ combat-capable procedures. A productive candidate with only a safe special
 such as `spec_fido` may use one existing sanctuary reserve after a single
 XP-loss record, provided it has no other autonomy rejection. Combat specials,
 extra rejections, and second-loss records remain quarantined.
+When that reserve route is unavailable or cooling, the same protection hold
+permits up to three separately recorded ordinary fallback probes under the
+low-peak, current-band, no-special, no-flight conditions above; each probe
+uses an elevated 95% departure health gate, rotates to a distinct policy, and
+cannot be replayed. A failed combat exchange closes the fallback; an absent,
+crowded, or route-only probe consumes only its distinct-policy allowance.
 Audited `spec_cast_cleric` and `spec_cast_mage` routes can blind before or
 during combat. If sanctuary is not already active, require persisted `cure
 blindness` training or two verified purple potions: one for the sanctuary
@@ -371,10 +508,200 @@ post-flee audit settle, then recall; this prevents DD4's level-scaled recall
 loss from interrupting corpse extraction. Keep the guard narrow to required-
 loot routes so audited ordinary hazard routes retain their explicit policy.
 
-**Current live update (2026-08-24):** Praelarran is level 13 at 78,152 XP at
-checkpoint 28988; Dorrik is level 24 at 363,330 XP at checkpoint 28574;
-Aeloria is level 18 at 165,613 XP; Kestrel is level 24 at 336,913 XP; and
-Velnor is level 6 at 15,471 XP at checkpoint 28565. Runs 9478-9479 created
+Ordinary source-ranked field hunts treat source-known below-useful-band transit
+attackers as one unavoidable defensive encounter: if several arrive together,
+choose one, finish that current fight, quarantine the route, and return
+immediately without adopting another incidental attacker. Funding and
+required-loot routes remain explicit exceptions when the below-band kill is
+needed to acquire coins or a declared item. The runner records the single-fight
+boundary separately from objective progression evidence.
+
+Source `spec_guard` and `spec_sahuagin_guard` procedures are combat-joining
+hazards even though they are not `ACT_AGGRESSIVE`: DD4's `special.c` allows them
+to attack an NPC already fighting the player. Source-ranked endpoint preflight
+therefore rejects a route when such a guard can reach the exact target room,
+using the same level-band and crowd gates as other combat hazards. The guard
+classification is endpoint-only because a transit guard cannot join until a
+fight has started; it must not make every route through a city area unavailable.
+
+Mob-loaded loot has a runtime sale value even when its area prototype cost is
+zero. DD4's `E`/`G` resets call `create_object`, whose `db.c` formula
+`number_fuzzy(10) * number_fuzzy(level) + number_range(1, 20)` has a ten-copper
+minimum; direct ground `O`/`I` resets do not receive that value. Funding
+selection may therefore accept a source-backed, releasable mobile drop using
+that conservative floor, but must still reject zero-cost ground loot and must
+not resolve an ambiguous duplicate name into a positive static prototype.
+
+After a funding attempt records no kill, do not immediately replay an
+unproductive candidate. Rotate to another source-safe candidate; an earlier
+same-reboot carrier with any accumulated observed sale proceeds may be reused,
+including partial proceeds. This exception preserves usable progress while
+preventing no-kill loops when the latest candidate has produced nothing, and
+the latest-attempt marker must remain candidate- and reboot-scoped.
+
+Treat a textual DD4 `experience_lost` event as numeric progress evidence, not
+only as an audit flag. Subtract its positive amount from known XP immediately,
+increase XP-to-next-level by the same amount while preserving the level
+threshold, and update the embedded progress snapshot. A later authoritative
+`Char.Worth` packet must reconcile to that value without subtracting the loss a
+second time. Checkpoints must not retain pre-loss XP merely because DD4 omitted
+an immediate Worth packet.
+
+**Current live update (2026-08-31, latest):** Kestrel is level 24 at 336,686 XP
+with 29,414 XP to level 25, safely in healer room 3054 at checkpoint 32946.
+Run 10929 reached the Circus ticket clerk under sanctuary; Kestrel's thief
+damage output was too low for the clerk's 1,093 HP pool, so the run withdrew
+with a net 298-XP loss after consuming both combat-pouch potions. Policy
+revision 185 adds a bounded three-sample or 12-second damage-output probe for
+direct fame targets whose `consider` response warns of unusual durability,
+before another emergency potion is used. Run 10930 then checked the Moria
+sanctuary reserve and stopped before combat when the source poison snake and
+warrior preceded the exact carrier. No death occurred and no level progress was
+recorded. The probe is offline-verified and awaits fresh live fame evidence.
+Kestrel remains blocked by -12 fame, no flight, and no current verified
+combat-pouch reserve. The reboot remains `Fri Aug 14 00:15:48 2026`; the full
+offline suite passes 3,204 tests. This is safety and executable-boundary
+evidence, not level-25, subclass, or HERO proof.
+
+**Earlier current live update (2026-08-31):** Praelarran is level 15 at 106,876 XP in
+healer room 3054 at the latest checkpoint 32926, with 7,924 XP to level 16. Run
+10915 rotated to the independent Haon Dor Shargugh route, encountered one
+source-known below-band brown bear in transit, earned 80 incidental XP, then
+aborted and quarantined the route safely. Run 10916 checked the next
+Wyvern-area endpoint and found its exact target absent. Run 10917 checked all
+three configured centaur endpoint rooms (1711, 1714, and 1715), found the exact
+elder centaur absent at each, and returned without combat. No loss or death
+occurred; no current sanctuary reserve is available and the protection marker
+remains active. The reset-aware retry then ran 10918, reopened the
+source-verified Moria sanctuary route, found its exact carrier absent, and
+returned safely without XP change, loss, or death. Run 10919 retried the
+source-registered room-4064 circuit, found the carrier absent again, and
+recorded one unavoidable below-band warrior for 80 incidental XP before a safe
+return. Run 10920 checked one source-ranked centaur endpoint and found it absent;
+run 10921 completed the three-room centaur absence sweep without combat or XP
+change. Run 10922 then completed the reset-aware Moria retry: the exact
+sanctuary carrier was absent at room 4064, so the character recalled and quit
+safely with no combat, loss, or death. No objective kill occurred. The full
+offline suite passes 3,197 tests. Campaign 30 is ready for the next
+reboot-aware retry; this is level-15 continuation and level-16 research-handoff
+evidence, not level-16, level-30, subclass, or HERO proof. Earlier
+level-15 evidence follows. Runs
+10847-10848 safely exercised the
+repaired source-ranked timeout rotation. Runs 10849-10850 completed bounded
+funding maintenance; run 10851 exposed a 985-XP loss on a low-band Haon route
+with several source-reachable attackers. The funding selector now rejects
+low-band routes with multiple static or wandering attackers. Run 10852 then
+selected Katrina the Shepherd through the repaired selector, added 50 XP, and
+returned safely to healer room 3054 with no loss or death. The multi-attacker
+branch is offline-verified and awaits a fresh route-specific live validation.
+Run 10853 performed the bounded Wyvern capacity probe; its source-registered
+centaur guard was absent, so it returned without combat, XP change, loss, or
+death. Run 10854 then retried Moria sanctuary recovery after its bounded reset
+wait; the carrier was absent and two source-registered orcs reached room 4064
+before target confirmation. The old path fled and cost 167 XP, but returned
+safely. The source-reset endpoint preflight now recalls before an unstarted
+exchange; this repair is offline-verified and awaits a fresh Moria live
+validation. Run 10855 selected the source-ranked Haon Dor Shargugh endpoint,
+confirmed its absence with `where`, and returned safely without combat or
+further XP loss. Run 10856 then completed a source-ranked centaur route with
+all three candidate rooms absent and no combat. Run 10857 then checked the
+next bounded provision-funding endpoint; the source-selected Circus Midget was
+absent, so it returned safely without combat, XP change, loss, or death. Run
+10858 followed the next source-selected Ambush funding route; the fanatical
+goblin guard was absent, but two source-known below-band goblin lieutenants were
+unavoidable transit attackers and yielded 120 incidental XP before the runner
+returned safely. No XP loss or death occurred. Praelarran is now checkpointed
+at 32636.
+Runs 10839-10841 completed the preceding bounded
+sanctuary-recovery, Magic Shop, and Wyvern checks without combat. Kestrel is
+level 24 at 336,894 XP in
+healer room 3054 at checkpoint 32584. Runs 10817-10818 acquired and tested the
+source-backed Moria sanctuary reserve and Mirror Realm research route without
+loss. Run 10819 reached the source Beast and exposed a mixed consider response:
+DD4 said both "looks like an easy kill" and "built like a tank". The old parser
+entered combat and paid one 385-XP recall loss while returning safely. Run
+10820 re-read the authoritative GMCP Worth snapshot and repaired the durable
+checkpoint. Run 10821 then killed the source large hobgoblin for 110 XP and
+returned safely with a purple reserve; runs 10822-10823 completed cure-critical
+and venison-reserve maintenance without combat or XP change. Run 10825 reached
+the source-registered Circus ticket clerk, received the same durability warning,
+and correctly refused combat with no XP change. Run 10842 reached the Mirror
+Realm moose, rejected its source-confirmed tank-like response before combat,
+and returned safely without XP change. Run 10843 attempted the light-blue
+flight-potion purchase, but the Magic Shop refused service because of negative
+fame; the runner returned without pretending flight was acquired. Run 10844
+performed the bounded `time` probe and found no new MUD reboot marker, so the
+campaign remains safely parked. Serevian then completed
+bounded funding rotations: run 10826 inspected the Midget endpoint without a
+kill, run 10830 killed Uburz for 50 XP, and runs 10833 and 10836 killed Ushog
+for 123 and 146 XP after unavoidable 10-XP Olog transit encounters. Runs 10831,
+10834, and 10837 liquidated the resulting gear; all rotations returned safely
+with no loss or death. The source-ranked consider
+parser now treats that warning as unsupported without an explicit source peak
+bound; the state reducer also reconciles GMCP-before-text and text-before-GMCP
+loss ordering.
+The Moria locator-backed required-loot sweep remains offline-verified and
+awaits a fresh carrier-bearing live result. Run 10813 live-validated the
+ordinary one-below-band-transit-fight quarantine, recording 150 incidental XP
+without an objective kill, loss, or death. This is not progression proof.
+Aeloria is level 18 at 165,361 XP at checkpoint 32481, Serevian is level 11 at
+49,938 XP at checkpoint 32571 after the productive funding rotations, and its
+next source-safe funding candidate is unavailable for the current reboot.
+The current catalog-smoke Vergalcoror campaign (19) is level 8 at 30,800 XP at
+checkpoint 32594 after runs 10827-10829 completed safe liquidation, return-home,
+and a Circus route; run 10845 reached the Daycare ring but withdrew before the
+exact target because the old wrinkled nanny was a source-registered endpoint
+hazard. The older validation campaign (9) remains at checkpoint 32546. The current MUD reboot remains
+`Fri Aug 14 00:15:48 2026`;
+the source mirror is clean at `7996722`, and the full offline suite passes
+3,189 tests. This is continuation and safety evidence, not level-30, subclass,
+or HERO proof. Campaign 8 is ready at checkpoint 32584; run 10842 rejected the
+Mirror Realm moose before combat and run 10843 attempted flight but the Magic
+Shop refused service because of negative fame, so no flight was acquired. Run
+10844 found no new reboot marker; negative fame still blocks the
+Magic Shop, and the reboot-local cure-critical/fame recovery boundary still
+defers the next field selection.
+The latest durable checkpoint is full in healer room 3054; the historical run
+10819 loss remains quarantined and has not been replayed.
+
+Object-only source-food and required-loot stops must never call mobile-target
+matching with an empty target. A food stop may accept exactly the registered
+below-band transit-crowd exception only when its exact source object is
+available, no route or endpoint hard hazard is present, and no additional
+autonomy rejection applies. Runtime exact-object, crowd, health, resource,
+recall, and healer-return gates remain authoritative; the guard is covered by
+offline regression tests and live runs 10787-10801.
+
+At levels 21 and above, the combination of protection recovery and negative
+fame may admit a source-registered observation-only research probe when
+sanctuary and city service are unavailable, but any viable combat promotion
+must still return to the relevant sanctuary and reputation gates before a kill
+is authorized.
+
+When a long-running HERO invocation exhausts every current-reboot source-ranked
+candidate, checkpoint `awaiting_area_reset` and keep the campaign `ready` so its
+bounded reset retry can resume. A capped invocation must retain the explicit
+`awaiting_policy`/blocked result for operator inspection; neither path may open
+a segment without a fresh source-safe candidate or erase absence, crowd,
+consider, protection, route, or cooldown evidence.
+The source mirror remains clean at revision `7996722`. This is continuation,
+liveness, and early-band evidence, not level-10, subclass, or HERO proof.
+
+Bounded funding messages identify the exact target as completed, absent, or
+attempted. A current protection marker also prevents unrelated crowd text from
+masking an empty source-safe frontier, and a verified combat-pouch sanctuary
+reserve now reaches the selector as usable protection; existing loss, reset,
+and cooldown gates remain authoritative.
+
+If a source-known below-band transit attacker interrupts a distant class-trainer
+route, the starter emits a `training_deferred` event and returns without a
+second trainer pass. The campaign stores that decision with level, reboot, and
+source-refresh scoping; a later level, reboot, or source update must reassess
+training rather than treating the deferral as permanent.
+
+### Historical live continuation detail
+
+Runs 9478-9479 created
 Serevian, a fresh human male thief, through live creation and recovery. Runs
 9515-9519 completed bounded maintenance without loss or death. Run 9520 then
 killed six Mud School opponents for 444 XP, run 9521 added 216 XP through five
@@ -401,31 +728,84 @@ XP and checkpoint 28951, full in healer room 3054. Runs 9614 and 9615 then
 tested another Circus route and the Dwarven Daycare route safely without
 forcing combat; the latest Serevian checkpoint is 28948. Praelarran run 9598
 added 502 XP through Fleshmonger, and runs 9626-9628 added another 450 XP
-through the current-band pool. His latest checkpoint is 28988; he is level 13
-at 78,152 XP, full HP and 155/176 mana in healer room 3054. This is
-tutorial continuation evidence, not HERO proof. Runs 9480-9481 completed Praelarran's
+through the current-band pool. His latest pre-repair field checkpoint was
+29331; runs 9798-9802 then completed bounded sanctuary, secretary, Shadow Keep,
+crowd, and Ambush continuations without death or XP loss. Run 9799 killed
+source mobile 3142 for 269 objective XP and run 9802 killed source mobile 4512
+for 338 objective XP. Praelarran is safely level 14 at 94,450 XP in healer
+room 3054 at checkpoint 29475, 3,650 XP short of level 15. Runs
+9681-9682 crossed level 14 and completed liquidation. Run 9686 exposed a
+text-only `The Temple Square` room header without a GMCP VNUM; the runner
+cleared stale identity and aborted safely. `StarterPolicy` now resolves unique
+source-backed Midgaard room names when GMCP omits the VNUM. Run 9687 crossed
+the repaired handoff but paid a 148-XP health-floor withdrawal; run 9689 then
+completed a clean 288-XP archer route. Runs 9690-9692 then added 665 XP through
+Haon, Shadow Keep, and Plains North with no loss or death; the campaign is ready
+at the next source-ranked boundary. Runs 9699-9701 then added 80 XP through Haon,
+Shadow Keep, and Midgaard without loss or death; the campaign is ready again at
+the next source-ranked boundary. Runs 9702-9704 then added 601 XP through Shire,
+Shadow Keep, and Fleshmonger without loss or death. Runs 9705-9707 then completed liquidation,
+return-home, and sanctuary recovery without changing XP or recording loss or death.
+Runs 9708-9710 then added 411 XP through Shire, Haon, and Shadow Keep without
+loss or death. Runs 9711-9713 then added 607 XP through Shire and Shadow Keep
+and completed provision restock without loss or death.
+Runs 9714-9716 then added 271 XP through Fleshmonger and completed safe return
+and liquidation. Runs 9717-9719 then added 130 incidental XP without a
+source-objective kill and completed safe healer recovery. Runs 9720-9722 then added
+620 XP, including a source-objective Shire kill, without loss or death. Runs 9723-9725 then added 316 XP through Shire and completed Fleshmonger and Dwarven Daycare segments without loss or death. Runs 9726-9728 then added 378 XP, including a source-objective Shire kill and safe sanctuary recovery. Runs 9729-9734 then added 496 XP; run 9733 killed source mobile 4512, The vile goblin, for 346 objective XP, with the remainder incidental transit XP. Runs 9735-9740 then added 437 XP; run 9736 killed source mobile 4512 for 50 objective XP, run 9737 killed source mobile 139, Sir Durok of EAT, for 377 objective XP, and run 9735's 10 XP drunk was incidental. Runs 9741-9746 then added 1,047 XP; run 9741 killed source mobile 4512 for 307 objective XP, run 9743 killed source mobile 139, Sir Durok of EAT, for 396 objective XP, and run 9744 killed the goblin lieutenant incidentally for 80 XP and source mobile 4512 for 264 objective XP. Runs 9747-9752 then added 1,079 XP; run 9748 killed source mobile 139, Sir Durok of EAT, for 431 objective XP, run 9750 killed source mobile 4512 for 50 objective XP, and run 9751 killed source mobile 139 for 488 objective XP, with 110 incidental XP alongside them. Praelarran is alive and loss-free in healer room 3054 with no stalled segment or orphan worker, and is 6,225 XP below level 15. This is level-14 continuation evidence, not level-15, subclass, or HERO proof. Runs 9480-9481 completed Praelarran's
 liquidation and healer return without XP change. Run 9482 added 437 source XP
 from Shire; run 9483 found sanctuary recovery absent; run 9484 rejected a
 crowded secretary route without combat; run 9485 withdrew at the hard health
 floor with 34 incidental XP and no loss; and run 9486 added 452 objective XP
 from the Shire receptionist. Runs 9487-9488 safely recorded Circus and Moria
-no-target probes. Praelarran is now 8,200 XP below level 14. The public HERO
+no-target probes. Praelarran is now 6,225 XP below level 15. The public HERO
 credential boundary now allows an untouched prepared workspace to generate its
 first stored password, while an already-recorded campaign stays strict about
 missing credentials.
+Run 9757 then reproduced a Gremlin Lair recall-recovery hazard: the first
+recall reached Temple room 3001, but stale GMCP identity discarded the
+following inferred text room event and a second recall cost 148 XP. No death or
+objective kill was recorded. Revision 174 now accepts the authoritative room
+transition and persists the route as a retryable current-reboot hazard. Run
+9758 converted the failed checkpoint during startup migration and completed
+safe return-home; Praelarran is 6,373 XP below level 15. Treat this as the
+authoritative current status; the longer run block below is historical.
+Runs 9759-9788 then added 1,507 objective XP across five source-matched kills,
+plus bounded incidental combat and maintenance. Run 9787 reached the
+120-second field cap and recovered cleanly; run 9790 recorded a 148-XP
+Gizmo-route recall loss without a death or objective kill, and run 9791
+restored full healer state. Runs 9792 and 9795 then recorded separate -148 XP
+losses on the Fleshmonger and Moria routes; their one-loss quarantines held,
+and run 9797 completed flight maintenance. Runs 9798-9802 then exercised
+bounded sanctuary recovery and source-ranked fallback rotation: Moria's carrier
+was absent, Shadow Keep was absent after incidental wandering combat, the
+secretary yielded 269 objective XP before its crowd repeat was skipped, and the
+vile goblin yielded 338 objective XP after live consider passed. The selector
+now prefers recent productive routes over low-fuzz fresh candidates; the full
+offline suite passes 3,013 tests. Praelarran is 3,650 XP below level 15.
 The source-ranked selector may accept a source-proven noncombat special when
 the parser emits no autonomy-rejection string, as well as the legacy synthetic
 rejection form. This representation rule does not bypass special-safety,
 source-identity, consider, health, resource, or recovery gates. The complete
-offline suite passes 3,008 tests. Maintenance policies may reopen after a
+offline suite passes 3,012 tests. Maintenance policies may reopen after a
 historical completion marker when the corresponding live need is newly
 observed; this remains bounded by the need flag and normal safety gates. These
 are continuation proofs, not level-13, subclass, or HERO evidence. The longer
 block below is historical context.
 
-Latest live continuation anchor for 2026-08-24: Praelarran is level 13 at
-78,152 XP (checkpoint 28988) and is safely in healer room 3054; Serevian is
-level 6 at 15,124 XP (checkpoint 28948) and is also safely in healer room 3054;
+Historical live continuation anchor for 2026-08-25: Praelarran is level 15 at
+104,227 XP, checkpoint 30224, and safely in healer room 3054. The last
+productive run was 10036; the subsequent empty-funding invocation is now a
+ready `provision_funding_unavailable` checkpoint rather than a failed campaign.
+Aeloria is level 18 at 165,613 XP, checkpoint 30219, and Serevian is level 6 at
+15,268 XP, checkpoint 30222; both are safely in healer room 3054. The full
+offline suite passes 3,031 tests, only the Discord streamer remains outside
+the normal shell, and no campaign worker is running. This is live continuation
+and liveness evidence; no subclass or HERO proof is claimed.
+
+Historical campaign anchors:
+Serevian is
+level 6 at 15,268 XP (checkpoint 30222) and is also safely in healer room 3054;
 Aeloria is
 level 18 at 165,613 XP (checkpoint 27725); Dorrik is level 24 at 363,330 XP
 (checkpoint 28574); Kestrel is level 24 at 336,913 XP (checkpoint 26810);
@@ -434,7 +814,7 @@ Velnor is level 6 at 15,471 XP (checkpoint 28565; cure light trained);
 Fenanallor is level 4 at 7,771 XP (checkpoint 27767 after runs 9128-9129;
 shoot trained).
 No DD4Tester worker is running, and
-the full offline suite passes 3,008 tests. The Telnet read path now reduces
+the full offline suite passes 3,031 tests. The Telnet read path now reduces
 authoritative GMCP room transitions before same-read text, and startup
 reconciliation preserves the newest maintenance-attempt level. Runs 9109-9110 requested a live
 Suturb retrieve quest, then exposed a non-kill quest route that followed a raw
@@ -736,9 +1116,9 @@ route gates; the actual advancement thresholds remain the `update.c` values
 unsafe active quest or source-proven inaccessible quest room now selects a
 bounded `quest abort` return to its registered questmaster, then preserves
 DD4's cooldown before a replacement request. The generic selector and executor
-share a two-level reset-fuzz allowance for nominal current-level gas and
-any-breath specials when source damage, sanctuary, and health reserves are
-proven; lower nominal targets retain the ordinary ceiling.
+keep gas-bearing breath forms research-gated even when damage, sanctuary, and
+health reserves are proven; lightning breath retains its separate
+source-bounded path and lower nominal targets retain the ordinary ceiling.
 The generated-quest candidate path now also mirrors `quest.c`'s nominal target
 ceilings of +4, +9, +14, and +19 by level band. This wider level allowance is
 never applied to ordinary hunts and remains behind the shared source route,
@@ -4244,7 +4624,8 @@ the retry is silent, close the exact worker, checkpoint or mark the segment,
 and continue useful local work. Kill only the exact worker PID and never touch
 the Discord streamer.
 The CLI defaults every live `campaign` and `hero` segment to a 180-second
-StarterBot cap plus 45 seconds of cleanup grace; keep that default unless a
+StarterBot cap plus a 60-second local setup budget and 45 seconds of cleanup
+grace; keep that default unless a
 bounded probe explicitly overrides it. A shell or app timeout must never be
 the first cleanup mechanism. If an interrupted source-ranked worker is
 reconciled without an objective kill, mark that exact reboot/level route as a
@@ -4254,8 +4635,10 @@ more time than the segment's own runtime cap so the runner can recall, save,
 and quit cleanly. The StarterBot deadline is a safe-return boundary: request it
 once, trust either the local combat flag or a live GMCP enemy list, recall or
 flee until combat is gone, recover at healer room 3054, then stand, save, and
-quit. Cold source-catalog loading happens before the outer live-session timer;
-the StarterBot clock itself starts at the beginning of the run and includes
+quit. Cold source-catalog loading happens before the outer live-session timer.
+The launcher uses a separate bounded local setup allowance, and its outer task
+deadline only catches its own expiry; nested transport timeouts remain distinct.
+The StarterBot clock itself starts at the beginning of the run and includes
 local setup, and the cleanup phase has a 25-second hard limit. It must produce
 a controlled checkpoint rather than leave a socket or process hanging.
 

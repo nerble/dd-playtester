@@ -28,6 +28,59 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     assert "success" in captured.out
 
 
+def test_show_hunt_candidates_reuses_persisted_recall_origins(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="starter",
+            scenario_path=Path("scenarios/starter.yaml"),
+        )
+        storage.record_state_snapshot(
+            run_id,
+            source_event_id=None,
+            reason="prompt_seen",
+            state={
+                "name": "Ararisa",
+                "level": 25,
+                "recall_points": [{"index": 2, "name": "Draagdim"}],
+                "current_recall": 2,
+            },
+        )
+        storage.finish_run(run_id, status="success")
+
+    captured_origins: list[dict[int, int] | None] = []
+
+    def fake_rank(*args, **kwargs):
+        captured_origins.append(kwargs["recall_origins"])
+        return []
+
+    monkeypatch.setattr(dd4tester.cli, "rank_hunt_candidates", fake_rank)
+
+    exit_code = main(
+        [
+            "show-hunt-candidates",
+            "--level",
+            "25",
+            "--source",
+            str(source),
+            "--database",
+            str(database),
+            "--all-areas",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured_origins == [{0: 3001, 2: 28003}]
+    assert "Recall origins: 0 Default recall, 2 Draagdim" in captured.out
+
+
 def test_hero_prepare_only_builds_source_validated_campaign(tmp_path, capsys) -> None:
     source = tmp_path / "const.c"
     source.write_text(
@@ -1278,6 +1331,7 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert "Character max HP: unknown" in captured.out
     assert "fuzzed_levels\tbase_hp\tpeak_round\troom" in captured.out
     assert "mobility\tsearch_rooms\tsource_level" in captured.out
+    assert "move_cost\tflight_cost\trequires_flight" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
     assert "autonomy_rejections" in captured.out
     assert "caution\t" in captured.out

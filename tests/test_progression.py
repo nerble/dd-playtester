@@ -6,6 +6,7 @@ from dd4tester.progression import (
     ProgressionPolicy,
     _QUEST_DIGGING_TOOL_POLICY,
     _QUEST_POINTS_REQUIRED_POLICY,
+    _RECALL_POINT_POLICY,
     _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
     _caster_hunt_requires_sanctuary_replenishment,
     _research_hunt_policy,
@@ -243,6 +244,36 @@ def test_junior_quest_shortfall_requests_suturb_quest() -> None:
     assert policy.execution == "quest-request"
     assert policy.executable is True
     assert "Suturb" in policy.summary
+
+
+def test_affordable_remote_recall_point_preempts_the_level_25_frontier() -> None:
+    policy = policy_for(
+        25,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        recall_points_observed=True,
+        needs_recall_point=True,
+    )
+
+    assert policy.policy_id == _RECALL_POINT_POLICY.policy_id
+    assert policy.execution == "recall-point-acquire"
+    assert policy.status == "research"
+
+
+def test_level_25_audits_unknown_recall_ownership_before_buying() -> None:
+    policy = policy_for(
+        25,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        quest_points=1000,
+        recall_points_observed=False,
+    )
+
+    assert policy.policy_id == "audit-recall-points"
+    assert policy.execution == "recall-list-audit"
+    assert policy.status == "verified"
 
 
 def test_active_kill_quest_preempts_xp_frontier_until_target_is_dead() -> None:
@@ -825,6 +856,72 @@ def test_generic_protection_recovery_applies_to_a_mage() -> None:
     assert policy.execution == "moria-sanctuary-hunt"
 
 
+def test_thief_protection_recovery_allows_safe_frontier_probe() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-probe-21-25"
+    assert policy.execution == "mirror-realm-watchman-research"
+    assert policy.segment_kill_limit is None
+
+
+def test_protection_recovery_reopens_fresh_probe_after_stale_hunt_clear() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        world_boot_id="boot-2",
+        last_policy_id="source-ranked-food-reserve-2-100-thalos-5217-5219-24",
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+        research_results={
+            "mirror-realm-watchman-probe-21-25": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+        excluded_policy_ids=frozenset(
+            {"mirror-realm-watchman-hunt-21-25"}
+        ),
+    )
+
+    assert policy.policy_id == "mirror-realm-watchman-probe-21-25"
+    assert policy.execution == "mirror-realm-watchman-research"
+    assert policy.segment_kill_limit is None
+
+
+def test_low_level_ordinary_loss_does_not_force_moria_sanctuary_route() -> None:
+    policy = policy_for(
+        6,
+        "thief",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == "mud-school-6-10"
+    assert policy.execution == "arena"
+
+
+def test_low_level_hard_health_loss_still_requires_sanctuary() -> None:
+    policy = policy_for(
+        6,
+        "thief",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        protection_recovery_hard_health=True,
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
 def test_mage_protection_recovery_does_not_starve_fresh_level_sixteen_probe() -> None:
     policy = policy_for(
         16,
@@ -853,6 +950,75 @@ def test_mage_protection_recovery_does_not_starve_fresh_level_sixteen_probe() ->
 
     assert policy.policy_id == "crystalmir-white-stag-probe-16-20"
     assert policy.execution == "crystalmir-white-stag-research"
+
+
+def test_hard_health_protection_recovery_does_not_starve_level_fifteen_probe() -> None:
+    policy = policy_for(
+        15,
+        "warrior",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        protection_recovery_hard_health=True,
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == "dwarven-nobleman-probe-12-15"
+    assert policy.execution == "dwarven-nobleman-research"
+    assert policy.segment_kill_limit is None
+
+
+def test_level_fifteen_viable_probe_still_requires_sanctuary_for_combat() -> None:
+    policy = policy_for(
+        15,
+        "warrior",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        protection_recovery_hard_health=True,
+        has_sanctuary_potion=False,
+        research_results={
+            "dwarven-nobleman-probe-12-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+                "completed_kill": False,
+            }
+        },
+    )
+
+    assert policy.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_fifteen_protection_recovery_respects_cooled_sanctuary_route() -> None:
+    policy = policy_for(
+        15,
+        "warrior",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        protection_recovery_hard_health=True,
+        has_sanctuary_potion=False,
+        research_results={
+            "dwarven-nobleman-probe-12-15": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            },
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id: {
+                "boot_id": "boot-1",
+                "absent": True,
+                "observed": False,
+                "viable": False,
+            },
+        },
+        research_absence_cooldowns={
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id: 3,
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.execution is None
+    assert "cooldown" in policy.summary
 
 
 def test_protection_recovery_uses_alternate_probe_during_moria_cooldown() -> None:
@@ -2569,6 +2735,19 @@ def test_thief_selects_thalos_intermediate_upgrade_after_blocked_forest() -> Non
     assert policy.segment_kill_limit == 1
 
 
+def test_thief_skips_intermediate_upgrade_when_source_is_not_safe() -> None:
+    policy = policy_for(
+        15,
+        "thief",
+        needs_intermediate_piercing_weapon_upgrade=True,
+        intermediate_piercing_weapon_upgrade_source_safe=False,
+        needs_piercing_weapon_upgrade=True,
+        has_flight=True,
+    )
+
+    assert policy.policy_id == "forest-bear-claws-upgrade-10-29"
+
+
 def test_thalos_intermediate_failure_respects_shared_upgrade_cooldown() -> None:
     policy = policy_for(
         15,
@@ -2763,7 +2942,7 @@ def test_level_ten_thief_does_not_repeat_completed_cook_probe() -> None:
     )
 
     assert policy.policy_id == "fleshmonger-cook-10-11"
-    assert policy.status == "verified"
+    assert policy.status == "research"
     assert policy.execution == "fleshmonger-cook-hunt"
     assert policy.segment_kill_limit == 1
     assert policy.executable
@@ -2784,7 +2963,7 @@ def test_level_ten_thief_repeats_productive_verified_cook_hunt() -> None:
     )
 
     assert policy.policy_id == "fleshmonger-cook-10-11"
-    assert policy.status == "verified"
+    assert policy.status == "research"
     assert "Live run 1425" in " ".join(policy.evidence)
 
 
@@ -2917,7 +3096,7 @@ def test_level_ten_thief_promotes_productive_combined_rotation() -> None:
     )
 
     assert policy.policy_id == "fleshmonger-thief-rotation-10-11"
-    assert policy.status == "verified"
+    assert policy.status == "research"
     assert policy.execution == "fleshmonger-thief-rotation-research"
     assert policy.segment_kill_limit == 2
     assert "Live runs 1433, 1436, and 1438" in " ".join(policy.evidence)
@@ -2973,7 +3152,7 @@ def test_level_ten_thief_uses_revalidated_unambiguous_cook() -> None:
     )
 
     assert policy.policy_id == "fleshmonger-cook-identity-10-11"
-    assert policy.status == "verified"
+    assert policy.status == "research"
     assert policy.execution == "fleshmonger-cook-hunt"
     assert policy.segment_kill_limit == 1
     assert "Live run 1443" in " ".join(policy.evidence)
@@ -6069,7 +6248,7 @@ def test_level_nineteen_absent_moria_cooldown_opens_deep_recovery_probe() -> Non
     assert promoted.segment_kill_limit == 1
 
 
-def test_level_twenty_three_protection_fallback_rejects_expired_rock_toads() -> None:
+def test_level_twenty_three_protection_fallback_uses_safe_frontier_probe() -> None:
     moria_policy_id = "moria-sanctuary-thief-17-20"
     policy = policy_for(
         23,
@@ -6090,10 +6269,85 @@ def test_level_twenty_three_protection_fallback_rejects_expired_rock_toads() -> 
         research_absence_cooldowns={moria_policy_id: 3},
     )
 
-    assert policy.status == "unavailable"
-    assert policy.execution is None
-    assert policy.executable is False
+    assert policy.policy_id == "mirror-realm-watchman-probe-21-25"
+    assert policy.execution == "mirror-realm-watchman-research"
+    assert policy.status == "research"
+    assert policy.segment_kill_limit is None
     assert "mahntor-rock-toad" not in policy.summary.casefold()
+
+
+def test_level_twenty_four_thief_uses_generic_deep_sanctuary_recovery() -> None:
+    exhausted_frontier = frozenset(
+        {
+            "moria-sanctuary-thief-17-20",
+            "mirror-realm-watchman-probe-21-25",
+            "mirror-realm-watchman-hunt-21-25",
+            "mirror-realm-gardener-probe-21-25",
+            "mirror-realm-gardener-hunt-21-25",
+        }
+    )
+    policy = policy_for(
+        24,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        protection_recovery_required=True,
+        last_policy_id="moria-sanctuary-thief-17-20",
+        world_boot_id="boot-1",
+        excluded_policy_ids=exhausted_frontier,
+    )
+
+    assert policy.policy_id == "source-ranked-sanctuary-recovery-2-100"
+    assert policy.execution == "moria-sanctuary-hunt"
+    assert policy.minimum_level == 24
+    assert policy.maximum_level == 24
+
+
+def test_generic_deep_sanctuary_recovery_reopens_after_crowd_cooldown() -> None:
+    policy_id = "source-ranked-sanctuary-recovery-2-100"
+    exhausted_frontier = frozenset(
+        {
+            policy_id,
+            "mirror-realm-watchman-probe-21-25",
+            "mirror-realm-watchman-hunt-21-25",
+            "mirror-realm-gardener-probe-21-25",
+            "mirror-realm-gardener-hunt-21-25",
+        }
+    )
+    result = {
+        "observed": False,
+        "viable": False,
+        "crowded": True,
+        "boot_id": "boot-1",
+    }
+
+    deferred = policy_for(
+        24,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        protection_recovery_required=True,
+        world_boot_id="boot-1",
+        research_results={policy_id: result},
+        research_crowd_cooldowns={policy_id: 1},
+        excluded_policy_ids=exhausted_frontier,
+    )
+    assert deferred.status == "unavailable"
+    assert deferred.execution is None
+
+    reopened = policy_for(
+        24,
+        "thief",
+        has_flight=True,
+        has_sanctuary_potion=False,
+        protection_recovery_required=True,
+        world_boot_id="boot-1",
+        research_results={policy_id: result},
+        research_crowd_cooldowns={policy_id: 0},
+        excluded_policy_ids=exhausted_frontier,
+    )
+    assert reopened.policy_id == policy_id
+    assert reopened.execution == "moria-sanctuary-hunt"
 
 
 def test_below_band_deep_probe_promotes_required_loot_hunt() -> None:
@@ -8217,6 +8471,135 @@ def test_level_sixteen_thief_uses_proven_toad_after_both_probes_reject() -> None
     assert policy.execution == "mahntor-rock-toad-circuit"
     assert policy.status == "verified"
     assert policy.segment_kill_limit == 2
+
+
+def test_level_sixteen_warrior_uses_class_tagged_toad_continuation() -> None:
+    frontier_results = {
+        "mirror-realm-watchman-probe-16-20": {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        },
+        "crystalmir-white-stag-probe-16-20": {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        },
+        "shadow-keep-undead-soldier-probe-16-20": {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        },
+    }
+    policy = policy_for(
+        16,
+        "warrior",
+        last_policy_id="shadow-keep-undead-soldier-probe-16-20",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"mahntor-rock-toad-circuit-13-15": 436},
+        research_results=frontier_results,
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-warrior-circuit-16-18"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.status == "research"
+    assert policy.practice_skill == "kick"
+    assert policy.segment_kill_limit == 2
+
+    protected_policy = policy_for(
+        16,
+        "warrior",
+        last_policy_id="shadow-keep-undead-soldier-probe-16-20",
+        world_boot_id="boot-1",
+        has_sanctuary_potion=True,
+        policy_xp_deltas={"mahntor-rock-toad-circuit-13-15": 436},
+        research_results=frontier_results,
+    )
+
+    assert protected_policy.policy_id == "mahntor-rock-toad-warrior-circuit-16-18"
+    assert protected_policy.segment_kill_limit == 1
+
+
+def test_level_sixteen_warrior_does_not_borrow_unproven_toad_evidence() -> None:
+    policy = policy_for(
+        16,
+        "warrior",
+        last_policy_id="shadow-keep-undead-soldier-probe-16-20",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-watchman-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "crystalmir-white-stag-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "shadow-keep-undead-soldier-probe-16-20": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.policy_id != "mahntor-rock-toad-warrior-circuit-16-18"
+
+
+def test_level_nineteen_warrior_requires_positive_earlier_toad_evidence() -> None:
+    frontier_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-19-20",
+            "mirror-realm-watchman-probe-16-20",
+            "crystalmir-white-stag-probe-16-20",
+            "shadow-keep-undead-soldier-probe-16-20",
+            "galaxy-white-dwarf-probe-17-20",
+            "galaxy-red-supergiant-probe-17-20",
+            "hightower-jailor-probe-17-20",
+            "galaxy-horsehead-nebula-probe-18-20",
+            "galaxy-white-dwarf-secondary-probe-17-20",
+            "solace-lord-doom-probe-18-20",
+        )
+    }
+
+    policy = policy_for(
+        19,
+        "warrior",
+        last_policy_id="solace-lord-doom-probe-18-20",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-warrior-circuit-16-18": 500,
+        },
+        research_results=frontier_results,
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-warrior-circuit-19-20"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.status == "research"
+    assert policy.practice_skill == "kick"
+    assert policy.segment_kill_limit == 2
+
+    unproven = policy_for(
+        19,
+        "warrior",
+        last_policy_id="solace-lord-doom-probe-18-20",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-circuit-13-15": 436,
+        },
+        research_results=frontier_results,
+    )
+
+    assert unproven.policy_id != "mahntor-rock-toad-warrior-circuit-19-20"
+    assert unproven.status == "unavailable"
 
 
 def test_level_sixteen_thief_tries_bardoosh_once_after_empty_toads() -> None:

@@ -44,6 +44,7 @@ from .mudlet import MudletBridge
 from .money import run_money_loop_profile
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
+from .quests import recall_origins_from_state, recall_point_for_index
 from .report import (
     build_campaign_report,
     build_run_report,
@@ -1645,11 +1646,13 @@ def show_hunt_candidates(
     boot_id: str | None = None
     kill_counts: Counter[str] = Counter()
     character_max_hp: int | None = None
+    recall_origins: dict[int, int] | None = None
     if database.exists():
         with RunStorage(database) as storage:
             boot_id = storage.latest_boot_id()
             latest_state = storage.get_latest_character_state(character)
             if latest_state is not None:
+                recall_origins = recall_origins_from_state(latest_state)
                 stored_level = latest_state.get("level")
                 raw_max_hp = latest_state.get("max_hp")
                 if (
@@ -1673,6 +1676,7 @@ def show_hunt_candidates(
         include_xp_only=include_xp_only,
         character_max_hp=character_max_hp,
         include_all_areas=include_all_areas,
+        recall_origins=recall_origins,
     )
     if autonomous_safe_only:
         candidates = [candidate for candidate in candidates if candidate.autonomous_safe]
@@ -1681,10 +1685,20 @@ def show_hunt_candidates(
     print(f"Character: {character}, level {level}")
     print(f"Character max HP: {character_max_hp or 'unknown'}")
     print(f"Current reboot: {boot_id or 'unknown'}")
+    if recall_origins:
+        origin_names = []
+        for index in sorted(recall_origins):
+            point = recall_point_for_index(index)
+            origin_names.append(
+                f"{index} {point.name if point is not None else 'source point'}"
+            )
+        print("Recall origins: " + ", ".join(origin_names))
     print(
         "status\tscore\tarea\ttarget\tmobility\tsearch_rooms\t"
         "source_level\tfuzzed_levels\t"
-        "base_hp\tpeak_round\troom\troute\troom_spawns\tspawn_limit\t"
+        "base_hp\tpeak_round\troom\trecall_origin\troute\t"
+        "move_cost\tflight_cost\trequires_flight\t"
+        "room_spawns\tspawn_limit\t"
         "boot_kills\tloot\thazards\tautonomy_rejections"
     )
     for candidate in candidates[:limit]:
@@ -1755,7 +1769,11 @@ def show_hunt_candidates(
                     f"{candidate.estimated_base_hp_range[1]}",
                     str(candidate.estimated_peak_round_damage),
                     f"{candidate.room_vnum} {candidate.room_name}",
+                    str(candidate.route_origin_recall_index),
                     ";".join(candidate.route),
+                    str(candidate.estimated_move_cost),
+                    str(candidate.estimated_flying_move_cost),
+                    "yes" if candidate.requires_flight else "no",
                     str(candidate.room_spawn_count),
                     str(candidate.source_spawn_limit),
                     str(candidate.boot_kills),

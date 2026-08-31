@@ -120,6 +120,157 @@ QUEST_DIGGING_TOOL_FALLBACK_OBJECT_VNUM = 3605
 QUEST_DIGGING_TOOL_ROOM_VNUM = 3613
 QUEST_DIGGING_TOOL_KEYWORD = "shovel"
 
+# Source: server/src/quest.c and server/src/merc.h.  The command index is the
+# same as the persistent pfile slot, so it is the stable identifier used by
+# ``recall set <index>`` and by the server's recall array.  Slot 1 is reserved
+# for clan recall and is intentionally absent from this purchase table.
+DEFAULT_RECALL_POINT = "default"
+QUEST_RECALL_POINTS = (
+    # index, quest point cost, destination room, purchase name
+    (2, 1000, 28003, "Draagdim"),
+    (10, 1000, 3101, "Midgaard"),
+    (12, 900, 21500, "Demondium"),
+    (3, 800, 30050, "Krondor"),
+    (4, 500, 31000, "Anon"),
+    (5, 500, 29153, "Freeport"),
+    (6, 500, 18835, "Dahij"),
+    (16, 500, 28503, "Omu"),
+    (13, 400, 1313, "HighTower"),
+    (14, 400, 27347, "Ota'ar Dar"),
+    (15, 400, 16084, "Underdark"),
+    (7, 300, 30234, "Kerofk"),
+    (11, 250, 12167, "Westreen"),
+    (8, 200, 10201, "Solace"),
+    (9, 100, 601, "Ofcol"),
+)
+
+
+@dataclass(frozen=True)
+class RecallPoint:
+    """One source-defined usable or purchasable recall destination."""
+
+    index: int
+    cost: int
+    room_vnum: int
+    name: str
+
+
+_DEFAULT_RECALL_POINT = RecallPoint(
+    index=0,
+    cost=0,
+    room_vnum=3001,
+    name="Default recall",
+)
+_QUEST_RECALL_POINT_OBJECTS = tuple(
+    RecallPoint(index=index, cost=cost, room_vnum=room_vnum, name=name)
+    for index, cost, room_vnum, name in QUEST_RECALL_POINTS
+)
+_RECALL_POINTS_BY_INDEX = {
+    point.index: point
+    for point in (_DEFAULT_RECALL_POINT, *_QUEST_RECALL_POINT_OBJECTS)
+}
+
+
+def recall_points_for_purchase() -> tuple[RecallPoint, ...]:
+    """Return the fifteen destinations offered by ``quest list``."""
+    return _QUEST_RECALL_POINT_OBJECTS
+
+
+def recall_point_for_index(index: int) -> RecallPoint | None:
+    """Return the source destination for a ``recall set`` index."""
+    try:
+        normalized_index = int(index)
+    except (TypeError, ValueError):
+        return None
+    return _RECALL_POINTS_BY_INDEX.get(normalized_index)
+
+
+def recall_origins_from_state(state: Mapping[str, Any]) -> dict[int, int]:
+    """Return source-known recall origins recorded by a live character state."""
+    origins = {0: _DEFAULT_RECALL_POINT.room_vnum}
+    raw_points = state.get("recall_points")
+    if isinstance(raw_points, (list, tuple)):
+        for raw_point in raw_points:
+            if not isinstance(raw_point, Mapping):
+                continue
+            try:
+                index = int(raw_point.get("index"))
+            except (TypeError, ValueError):
+                continue
+            point = recall_point_for_index(index)
+            if point is not None:
+                origins[index] = point.room_vnum
+    try:
+        current_recall = int(state.get("current_recall", 0) or 0)
+    except (TypeError, ValueError):
+        current_recall = 0
+    point = recall_point_for_index(current_recall)
+    if point is not None:
+        origins[current_recall] = point.room_vnum
+    return origins
+
+
+def _normalize_recall_name(value: Any) -> str:
+    return " ".join(
+        str(value).replace("\u2019", "'").casefold().split()
+    )
+
+
+def recall_point_for_name(name: str) -> RecallPoint | None:
+    """Return a source destination by its command or live-list name."""
+    normalized = _normalize_recall_name(name)
+    if normalized == _normalize_recall_name(_DEFAULT_RECALL_POINT.name):
+        return _DEFAULT_RECALL_POINT
+    for point in _QUEST_RECALL_POINT_OBJECTS:
+        if normalized == _normalize_recall_name(point.name):
+            return point
+    return None
+
+
+def next_recall_point_to_buy(
+    available_points: Any,
+    quest_points: Any,
+    *,
+    character_level: int,
+) -> RecallPoint | None:
+    """Choose the most valuable affordable remote recall after level 25.
+
+    The live ``recall list`` is the ownership proof.  Keep quest points for
+    ordinary progression until the character can buy a meaningful remote
+    origin; among affordable points, prefer the highest-cost destination so
+    a small balance is not spent on a low-band convenience point.
+    """
+    if character_level < QUESTMASTER_MAX_LEVEL:
+        return None
+    if not isinstance(available_points, (list, tuple)):
+        return None
+    owned: set[int] = set()
+    for raw_point in available_points:
+        if not isinstance(raw_point, Mapping):
+            continue
+        try:
+            index = int(raw_point.get("index"))
+        except (TypeError, ValueError):
+            continue
+        if recall_point_for_index(index) is not None:
+            owned.add(index)
+    try:
+        spendable = int(quest_points)
+    except (TypeError, ValueError):
+        return None
+    if spendable < 0:
+        return None
+    affordable = [
+        point
+        for point in _QUEST_RECALL_POINT_OBJECTS
+        if point.index not in owned and point.cost <= spendable
+    ]
+    return max(
+        affordable,
+        key=lambda point: (point.cost, -point.index),
+        default=None,
+    )
+
 
 def quest_points_required_for_advance(level: int) -> int:
     """Return DD4's source-defined total quest points for the next level."""

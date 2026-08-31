@@ -56,7 +56,7 @@
       "strategy": "Build the nature chain from bark skin into wither and the stronger ray attacks while retaining inherited cleric healing.",
       "practice_policy": "Raise nature skills in staged prerequisite steps and buy each immediately useful spell as it appears.",
       "highest_value_skills": ["nature skills", "bark skin", "wither", "moonray", "sunray"],
-      "automation_gaps": ["Nature buffs and area attacks need target-count, friendly-fire, expiry, and recast policies."],
+      "automation_gaps": ["Bark skin is maintained as a safe self-protection effect; moonray and sunray remain area-wide weather, crowd, and expiry research."],
       "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: druid nature spells"]
     },
     "ninja": {
@@ -112,28 +112,28 @@
       "strategy": "Build passive attacks first, then use the short armed-combat gateway to disarm while blood-fed lunge attacks remain deferred.",
       "practice_policy": "Raise armed combat knowledge to 20% and second attack, then continue armed combat knowledge to 75% and learn disarm. Preserve vampyre practices until suck and lunge are operational.",
       "highest_value_skills": ["armed combat knowledge", "second attack", "disarm", "vampyre skills", "suck", "lunge", "fast healing"],
-      "automation_gaps": ["Blood feeding, lunge, shadow and bat forms, sunlight, and race-specific recovery need a vampire controller."],
+      "automation_gaps": ["Suck is available as a bounded organic-target strike; lunge, shadow and bat forms, sunlight, and race-specific recovery still need a vampire controller."],
       "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/skill.c: do_suck", "server/src/fight.c: do_lunge"]
     },
     "monk": {
       "strategy": "Add a short psionic damage chain to the inherited brawler attack engine without diluting physical passive damage.",
       "practice_policy": "Improve mind thrust, then raise matter control disciplines for agitation; keep physical practices on inherited brawler priorities.",
       "highest_value_skills": ["mind thrust", "matter control disciplines", "agitation", "mental barrier"],
-      "automation_gaps": ["Monk defensive disciplines need generic pre-hunt casting, expiry, and mana-reserve handling."],
+      "automation_gaps": ["Mental barrier and displacement are maintained when known; higher monk disciplines still need expiry and mana-reserve policies."],
       "source_refs": ["server/src/pre_reqs/pre_req-monk.c", "server/src/magic.c: spell_mind_thrust, spell_agitation, and defensive disciplines"]
     },
     "martial artist": {
       "strategy": "Build a deterministic martial strike chain, then unlock combinations after individual attacks are dependable.",
       "practice_policy": "Raise martial arts for atemi first; stage later strikes and combination moves only as the combat controller learns their timing.",
       "highest_value_skills": ["martial arts", "atemi", "kansetsu", "combination moves", "combo", "fast healing"],
-      "automation_gaps": ["Strike selection and combos need position, anatomy, trauma, sequencing, and command-lag policies."],
+      "automation_gaps": ["Atemi and kansetsu are repeatable single-target actions; combination moves still need position, anatomy, trauma, sequencing, and command-lag policies."],
       "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: do_atemi and do_combo"]
     },
     "barbarian": {
       "strategy": "Stack enhanced damage and fourth attack on the ranger melee engine, with berserk and fast healing extending field output.",
       "practice_policy": "Raise armed combat knowledge for enhanced damage and the fourth-attack chain; add fast healing before optional control skills.",
       "highest_value_skills": ["armed combat knowledge", "enhanced damage", "fourth attack", "fast healing", "knowledge", "berserk"],
-      "automation_gaps": ["Berserk needs rage, withdrawal, expiry, and post-combat recovery handling."],
+      "automation_gaps": ["Berserk now has a one-use-per-target combat hook; rage, withdrawal, expiry, and post-combat recovery still need dedicated policies."],
       "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/fight.c: one_hit, multi_hit, and do_berserk"]
     },
     "bard": {
@@ -180,7 +180,7 @@
     ],
     "druid": [
       {"skill": "nature skills", "source_skill": "group nature", "type": "intellectual", "target": 40, "utility": "mitigation-gateway", "reason": "unlocks bark skin", "source_refs": ["server/src/pre_reqs/pre_req-druid.c"]},
-      {"skill": "bark skin", "type": "intellectual", "target": 55, "utility": "mitigation", "reason": "adds a nature defense and satisfies the wither chain", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: spell_bark_skin"]},
+      {"skill": "bark skin", "type": "intellectual", "target": 55, "utility": "mitigation", "reason": "adds a nature defense and satisfies the wither chain", "automated": true, "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: spell_bark_skin"]},
       {"skill": "nature skills", "source_skill": "group nature", "type": "intellectual", "target": 55, "utility": "damage-gateway", "reason": "reaches the wither prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-druid.c"]},
       {"skill": "wither", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds a nature-linked offensive spell", "source_refs": ["server/src/pre_reqs/pre_req-druid.c", "server/src/magic.c: spell_wither"]},
       {"skill": "nature skills", "source_skill": "group nature", "type": "intellectual", "target": 80, "utility": "damage-gateway", "reason": "reaches the moonray prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-druid.c"]},
@@ -252,7 +252,7 @@
       {"skill": "disarm", "type": "physical", "target": 60, "utility": "control", "reason": "actively removes an opponent's wielded weapon, reducing weapon damage and weapon-dependent control", "source_refs": ["server/area/helpfile.are: HELP DISARM", "server/src/pre_reqs/pre_req-vampire.c: disarm prerequisites", "server/src/fight.c: do_disarm and disarm"]},
       {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery after its subclass gate", "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/update.c: hit_gain"]},
       {"skill": "vampyre skills", "source_skill": "group vampyre", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "unlocks suck and transfix", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-vampire.c"]},
-      {"skill": "suck", "type": "physical", "target": 70, "utility": "sustain-gateway", "reason": "feeds the vampire and reaches the lunge prerequisite", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/skill.c: do_suck"]},
+      {"skill": "suck", "type": "physical", "target": 70, "utility": "sustain-gateway", "reason": "feeds the vampire and reaches the lunge prerequisite", "automated": true, "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/skill.c: do_suck"]},
       {"skill": "lunge", "type": "physical", "target": 60, "utility": "damage", "reason": "adds a vampire combat attack", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-vampire.c", "server/src/fight.c: do_lunge"]}
     ],
     "monk": [
@@ -260,13 +260,13 @@
       {"skill": "matter control disciplines", "source_skill": "group matter", "type": "intellectual", "target": 45, "utility": "damage-gateway", "reason": "reaches the agitation prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-monk.c"]},
       {"skill": "agitation", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds another direct psionic combat option", "source_refs": ["server/src/pre_reqs/pre_req-monk.c", "server/src/magic.c: spell_agitation"]},
       {"skill": "mental defense disciplines", "source_skill": "group mentald", "type": "intellectual", "target": 50, "utility": "mitigation-gateway", "reason": "unlocks mental barrier", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-monk.c"]},
-      {"skill": "mental barrier", "type": "intellectual", "target": 45, "utility": "mitigation", "reason": "reduces incoming combat pressure", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-monk.c", "server/src/magic.c: spell_mental_barrier"]}
+      {"skill": "mental barrier", "type": "intellectual", "target": 45, "utility": "mitigation", "reason": "reduces incoming combat pressure", "automated": true, "source_refs": ["server/src/pre_reqs/pre_req-monk.c", "server/src/magic.c: spell_mental_barrier"]}
     ],
     "martial artist": [
       {"skill": "martial arts", "source_skill": "group arts", "type": "intellectual", "target": 40, "utility": "damage-gateway", "reason": "unlocks atemi", "source_refs": ["server/src/pre_reqs/pre_req-artist.c"]},
-      {"skill": "atemi", "type": "physical", "target": 60, "utility": "damage", "reason": "is the first subclass martial strike and opens kansetsu", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: do_atemi"]},
+      {"skill": "atemi", "type": "physical", "target": 60, "utility": "damage", "reason": "is the first subclass martial strike and opens kansetsu", "automated": true, "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: do_atemi"]},
       {"skill": "martial arts", "source_skill": "group arts", "type": "intellectual", "target": 60, "utility": "damage-gateway", "reason": "completes the kansetsu group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-artist.c"]},
-      {"skill": "kansetsu", "type": "physical", "target": 45, "utility": "damage", "reason": "continues the martial strike chain", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: martial strike handling"]},
+      {"skill": "kansetsu", "type": "physical", "target": 45, "utility": "damage", "reason": "continues the martial strike chain", "automated": true, "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: martial strike handling"]},
       {"skill": "combination moves", "source_skill": "group combos", "type": "intellectual", "target": 65, "utility": "damage-gateway", "reason": "unlocks the first combination move", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-artist.c"]},
       {"skill": "combo", "type": "physical", "target": 45, "utility": "damage", "reason": "chains learned martial attacks into a combat sequence", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/skill.c: do_combo"]},
       {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery", "source_refs": ["server/src/pre_reqs/pre_req-artist.c", "server/src/update.c: hit_gain"]}
@@ -277,7 +277,7 @@
       {"skill": "fourth attack", "type": "physical", "target": 50, "utility": "damage", "reason": "adds another automatic attack after inherited attack gates are met", "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/fight.c: multi_hit"]},
       {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery ticks", "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/update.c: hit_gain"]},
       {"skill": "knowledge", "source_skill": "group knowledge", "type": "intellectual", "target": 75, "utility": "damage-gateway", "reason": "unlocks berserk", "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c"]},
-      {"skill": "berserk", "type": "physical", "target": 45, "utility": "damage", "reason": "provides a combat damage mode when its risks are controlled", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/fight.c: do_berserk"]}
+      {"skill": "berserk", "type": "physical", "target": 45, "utility": "damage", "reason": "provides a combat damage mode when its risks are controlled", "automated": true, "source_refs": ["server/src/pre_reqs/pre_req-barbarian.c", "server/src/fight.c: do_berserk"]}
     ],
     "bard": [
       {"skill": "musicianship", "source_skill": "group music", "type": "intellectual", "target": 75, "utility": "damage-gateway", "reason": "unlocks chant of battle and song of flight", "source_refs": ["server/src/pre_reqs/pre_req-bard.c"]},

@@ -40,6 +40,16 @@ CONDITIONAL_COMBAT_SPECIALS = frozenset(
 )
 """Zero-bonus specials that can attack players with criminal/clan flags."""
 
+COMBAT_JOINING_SPECIALS = frozenset(
+    {"spec_guard", "spec_sahuagin_guard"}
+)
+"""Specials that can join a fight before they are fighting themselves.
+
+``special.c`` makes these guards attack an NPC that is already fighting a
+player, so their source presence can turn an otherwise isolated hunt into a
+multi-enemy fight even without ``ACT_AGGRESSIVE``.
+"""
+
 ECONOMIC_SPECIALS = frozenset({"spec_thief"})
 """Specials that can remove a bounded amount of carried currency."""
 
@@ -96,6 +106,32 @@ _STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
         "harm",
         "gate",
     ),
+    # The druid table adds fear at source level 15; its lower-level direct
+    # spell set is bounded separately by the campaign selector.
+    "spec_cast_druid": ("fear",),
+    # The psionicist table adds energy drain at 14 and disintegrate at 35;
+    # both are intentionally outside the autonomous special audit for now.
+    "spec_cast_psionicist": ("energy drain", "disintegrate"),
+    # spec_demon selects from a source-level-gated spell table only after the
+    # player is already fighting.  Keep the full late-level union here; the
+    # bounded helper below narrows it for a known mobile level.
+    "spec_demon": (
+        "curse",
+        "chill touch",
+        "burning hands",
+        "strength drain",
+        "energy drain",
+        "hold",
+        "wither",
+        "hellfire",
+        "gate",
+        "hex",
+        "fire breath",
+    ),
+    # The assassin special only reaches this combat branch after the player
+    # has engaged the mobile, but its dirt kick can blind and its trip/circle
+    # choices can disrupt the fight or add one extra ordinary hit.
+    "spec_assassin": ("blindness", "trip"),
 }
 
 _ZERO_BONUS_SPECIALS = frozenset(
@@ -230,12 +266,49 @@ def source_special_status_effects(
     """
 
     normalized = str(name).strip().casefold()
-    if normalized != "spec_cast_undead" or level is None:
+    if normalized not in {
+        "spec_cast_undead",
+        "spec_cast_druid",
+        "spec_cast_psionicist",
+        "spec_demon",
+    } or level is None:
         return source_special_profile(normalized).status_effects
     try:
         caster_level = max(0, int(level))
     except (TypeError, ValueError):
         return source_special_profile(normalized).status_effects
+    if normalized == "spec_cast_druid":
+        return ("fear",) if caster_level >= 15 else ()
+    if normalized == "spec_cast_psionicist":
+        effects: list[str] = []
+        if caster_level >= 14:
+            effects.append("energy drain")
+        if caster_level >= 35:
+            effects.append("disintegrate")
+        return tuple(effects)
+    if normalized == "spec_demon":
+        effects = ["curse"]
+        if caster_level >= 3:
+            effects.append("chill touch")
+        if caster_level >= 5:
+            effects.append("burning hands")
+        if caster_level >= 12:
+            effects.append("strength drain")
+        if caster_level >= 15:
+            effects.append("energy drain")
+        if caster_level >= 18:
+            effects.append("hold")
+        if caster_level >= 20:
+            effects.append("wither")
+        if caster_level >= 25:
+            effects.append("hellfire")
+        if caster_level >= 30:
+            effects.append("gate")
+        if caster_level >= 40:
+            effects.append("hex")
+        if caster_level >= 50:
+            effects.append("fire breath")
+        return tuple(effects)
     effects = ["curse"]
     if caster_level >= 6:
         effects.append("strength drain")

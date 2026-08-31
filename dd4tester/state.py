@@ -76,6 +76,9 @@ class CharacterState:
     total_quest_points: int | None = None
     quest_level_qp_required: int | None = None
     quest_level_qp_shortfall: int | None = None
+    recall_points: list[dict[str, Any]] = field(default_factory=list)
+    recall_points_observed: bool = False
+    current_recall: int = 0
     acquired_items: list[dict[str, Any]] = field(default_factory=list)
     last_prompt: dict[str, Any] = field(default_factory=dict)
     in_combat: bool = False
@@ -97,6 +100,14 @@ class CharacterState:
     def from_dict(cls, data: dict[str, Any]) -> "CharacterState":
         accepted = {item.name for item in fields(cls) if item.init}
         values = {key: deepcopy(value) for key, value in data.items() if key in accepted}
+        if (
+            "recall_points_observed" not in values
+            and isinstance(values.get("recall_points"), list)
+            and values["recall_points"]
+        ):
+            # Older checkpoints only persisted the parsed list. Its presence
+            # is sufficient evidence that the live recall command completed.
+            values["recall_points_observed"] = True
         return cls(**values)
 
     def _content(self) -> dict[str, Any]:
@@ -144,11 +155,82 @@ class CharacterState:
 
         if event.type == "experience_lost":
             self.xp_loss_observed = True
-            amount = _integer(data.get("xp"), 0) or 0
+            amount = max(0, _integer(data.get("xp"), 0) or 0)
             self.xp_loss_total += amount
+            if amount == 0:
+                return
+
+            # A single DD4 response can contain the authoritative GMCP
+            # Char.Worth packet before the textual recall/flee message. In
+            # that ordering the packet has already applied this loss; only
+            # the evidence counters need updating here.
+            pending = getattr(self, "_pending_progress_loss", None)
+            if pending is not None:
+                pending_amount, previous_xp, previous_xptnl, incoming_xptnl = (
+                    pending
+                )
+                if pending_amount == amount:
+                    if (
+                        previous_xp is not None
+                        and self.xp != previous_xp - amount
+                    ):
+                        self.xp = max(0, (self.xp or previous_xp) - amount)
+                    if (
+                        previous_xptnl is not None
+                        and self.xp_to_next_level == incoming_xptnl
+                        and incoming_xptnl == previous_xptnl
+                    ):
+                        self.xp_to_next_level += amount
+                    if isinstance(self.progress, dict):
+                        progress = dict(self.progress)
+                        progress_xp = _integer(progress.get("xp"))
+                        if (
+                            previous_xp is not None
+                            and progress_xp != previous_xp - amount
+                        ):
+                            progress["xp"] = max(
+                                0,
+                                (progress_xp or previous_xp) - amount,
+                            )
+                        progress_xptnl = _integer(progress.get("xptnl"))
+                        if (
+                            previous_xptnl is not None
+                            and progress_xptnl == incoming_xptnl
+                            and incoming_xptnl == previous_xptnl
+                        ):
+                            progress["xptnl"] = progress_xptnl + amount
+                        self.progress = progress
+                    self._pending_progress_loss = None
+                    return
+            self._pending_progress_loss = None
+
+            # DD4 can report the loss in text without following it with a
+            # Char.Worth packet. Keep the durable progress snapshot accurate
+            # instead of waiting for the next reconnect to correct the XP.
+            known_xp = self.xp
+            if known_xp is None and isinstance(self.progress, dict):
+                known_xp = _integer(self.progress.get("xp"))
+            if known_xp is not None:
+                self.xp = max(0, known_xp - amount)
+
+            if self.xp_to_next_level is not None:
+                self.xp_to_next_level += amount
+
+            if isinstance(self.progress, dict):
+                progress = dict(self.progress)
+                progress_xp = _integer(progress.get("xp"))
+                if progress_xp is not None:
+                    progress["xp"] = max(0, progress_xp - amount)
+                progress_xptnl = _integer(progress.get("xptnl"))
+                if progress_xptnl is not None:
+                    progress["xptnl"] = progress_xptnl + amount
+                self.progress = progress
             return
 
         if event.type == "progress_changed":
+            previous_level = self.level
+            previous_xp = self.xp
+            previous_xptnl = self.xp_to_next_level
             incoming_level = _integer(data.get("level"), self.level)
             incoming_xp = _integer(data.get("xp"), self.xp)
             incoming_max_xp = _integer(data.get("maxxp"), self.max_xp)
@@ -196,6 +278,21 @@ class CharacterState:
             self.xp = incoming_xp
             self.max_xp = incoming_max_xp
             self.xp_to_next_level = incoming_xp_to_next_level
+            if (
+                not self.xp_loss_observed
+                and previous_xp is not None
+                and incoming_xp is not None
+                and incoming_level == previous_level
+                and incoming_xp < previous_xp
+            ):
+                self._pending_progress_loss = (
+                    previous_xp - incoming_xp,
+                    previous_xp,
+                    previous_xptnl,
+                    incoming_xp_to_next_level,
+                )
+            else:
+                self._pending_progress_loss = None
             self.practice = _integer(data.get("practice"), self.practice)
             currency_names = (
                 "platinum",
@@ -241,6 +338,7 @@ class CharacterState:
                 and text_vnum is not None
                 and self.room_vnum is not None
                 and text_vnum != str(self.room_vnum)
+                and data.get("vnum_inferred") is not True
             ):
                 # A delayed text room line can describe the room before a
                 # newer GMCP update. Never move a confirmed state backward.
@@ -361,6 +459,24 @@ class CharacterState:
                 data.get("level_qp_shortfall"),
                 self.quest_level_qp_shortfall,
             )
+            return
+
+        if event.type == "recall_points_changed":
+            points = data.get("points")
+            if isinstance(points, list):
+                self.recall_points = deepcopy(points)
+            self.recall_points_observed = True
+            self.current_recall = _integer(
+                data.get("current"),
+                self.current_recall,
+            ) or 0
+            return
+
+        if event.type == "recall_selection_changed":
+            self.current_recall = _integer(
+                data.get("current"),
+                self.current_recall,
+            ) or 0
             return
 
         if event.type == "combat_started":

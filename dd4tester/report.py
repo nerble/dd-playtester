@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -48,6 +49,7 @@ def build_run_report(
     duration_seconds = _duration_seconds(run["started_at"], run["finished_at"])
     confirmed_kills = _completed_kills(events)
     sales = [dict(sale) for sale in storage.list_loot_sales_for_run(run_id)]
+    sale_rejections = _sale_rejections_from_events(events)
 
     progress = _progress_summary(
         initial_state,
@@ -58,6 +60,7 @@ def build_run_report(
         decisions,
         confirmed_kills,
         sales,
+        sale_rejections,
     )
     failures = _failures(run, game_event_counts)
     balance_signals = _balance_signals(progress, game_event_counts)
@@ -129,6 +132,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Quests received: {progress['quests_received']}  ",
         f"Training: {_format_training(progress['training'])}  ",
         f"Loot sales: {_format_sales(progress['loot_sales'])}",
+        f"Loot sale refusals: {_format_sale_rejections(progress['loot_sale_rejections'])}",
         "",
         "## Decision Analysis",
         "",
@@ -220,6 +224,7 @@ def build_campaign_report(
     run_summaries: list[dict[str, Any]] = []
     run_ids: list[int] = []
     kills: list[dict[str, Any]] = []
+    sale_rejections: list[dict[str, Any]] = []
     commentary: list[str] = []
     character: dict[str, Any] = {}
     death_count = 0
@@ -271,6 +276,12 @@ def build_campaign_report(
                     "timestamp": kill["timestamp"],
                 }
             )
+        for rejection in run_report["progress"].get(
+            "loot_sale_rejections", ()
+        ):
+            sale_rejection = dict(rejection)
+            sale_rejection["run_id"] = run_id
+            sale_rejections.append(sale_rejection)
 
     unique_commentary = list(dict.fromkeys(commentary))[:commentary_limit]
     target_level = int(campaign["target_level"])
@@ -324,6 +335,7 @@ def build_campaign_report(
         ],
         "runs": run_summaries,
         "kills": kills,
+        "sale_rejections": sale_rejections,
         "commentary": unique_commentary,
         "evidence": {
             "run_ids": run_ids,
@@ -379,6 +391,18 @@ def render_campaign_markdown(report: dict[str, Any]) -> str:
         )
     else:
         lines.append("- None recorded.")
+    if report.get("sale_rejections"):
+        lines.extend(["", "## Sale Rejections", ""])
+        for rejection in report["sale_rejections"]:
+            item = rejection.get("item_description", "item")
+            shop = (
+                rejection.get("shop_name")
+                or rejection.get("shopkeeper")
+                or "shopkeeper"
+            )
+            lines.append(
+                f"- {item} was refused by {shop} (run {rejection['run_id']})."
+            )
     lines.extend(["", "## Commentary", ""])
     lines.extend(f"- {item}" for item in report["commentary"])
     if not report["commentary"]:
@@ -494,6 +518,7 @@ def _progress_summary(
     decisions: list[dict[str, Any]],
     confirmed_kills: list[dict[str, Any]],
     sales: list[dict[str, Any]],
+    sale_rejections: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     health_samples = [
         _fraction(snapshot["state"].get("hp"), snapshot["state"].get("max_hp"))
@@ -523,6 +548,7 @@ def _progress_summary(
         "quests_received": game_event_counts["quest_received"],
         "training": _training_summary(game_events),
         "loot_sales": _sales_summary(sales),
+        "loot_sale_rejections": list(sale_rejections or ()),
     }
 
 
@@ -613,6 +639,19 @@ def _balance_signals(
                 "detail": (
                     f"Sold {sales['count']} item(s) for {sales['coins']} coins "
                     f"through {shops}."
+                ),
+            }
+        )
+
+    sale_rejections = progress["loot_sale_rejections"]
+    if sale_rejections:
+        signals.append(
+            {
+                "name": "loot sale refusals",
+                "severity": "warning",
+                "detail": (
+                    f"{len(sale_rejections)} item offer(s) were refused by "
+                    "a safe shopkeeper."
                 ),
             }
         )
@@ -828,6 +867,66 @@ def _format_confirmed_kills(kills: list[dict[str, Any]]) -> str:
     return ", ".join(entries) or "none"
 
 
+_SALE_REJECTION_LINE = re.compile(
+    r"^\s*(?P<shop>[^\r\n]+?)\s+looks uninterested in\s+"
+    r"(?P<item>[^\.\r\n]+?)\.\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _sale_rejections_from_events(
+    events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Summarize refused shop offers from structured or legacy events."""
+    rejections: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add(record: dict[str, Any]) -> None:
+        item = str(record.get("item_description") or "").strip()
+        shop_room = str(record.get("shop_room_vnum") or "").strip()
+        shop = str(record.get("shop_name") or record.get("shopkeeper") or "").strip()
+        key = (item.casefold(), shop_room, shop.casefold())
+        if not item or key in seen:
+            return
+        seen.add(key)
+        rejections.append(
+            {
+                key_name: value
+                for key_name, value in {
+                    "item_keyword": record.get("item_keyword"),
+                    "item_description": item,
+                    "shopkeeper": record.get("shopkeeper"),
+                    "shop_name": record.get("shop_name"),
+                    "shop_room_vnum": record.get("shop_room_vnum"),
+                    "reason": record.get("reason") or "shopkeeper refused item",
+                }.items()
+                if value is not None
+            }
+        )
+
+    for event in events:
+        payload = event["payload"]
+        if event["kind"] == "state":
+            for record in payload.get("sale_rejections") or ():
+                if isinstance(record, dict):
+                    add(record)
+            continue
+        if event["kind"] != "response":
+            continue
+        text = payload.get("text") if isinstance(payload, dict) else None
+        if not isinstance(text, str):
+            continue
+        for match in _SALE_REJECTION_LINE.finditer(text.replace("\r", "")):
+            add(
+                {
+                    "item_description": match.group("item").strip(),
+                    "shopkeeper": match.group("shop").strip(),
+                    "reason": "shopkeeper refused item",
+                }
+            )
+    return rejections
+
+
 def _sales_summary(sales: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "count": len(sales),
@@ -848,6 +947,12 @@ def _format_sales(sales: dict[str, Any]) -> str:
     if not sales["count"]:
         return "none"
     return f"{sales['count']} item(s) for {sales['coins']} coins"
+
+
+def _format_sale_rejections(rejections: list[dict[str, Any]]) -> str:
+    if not rejections:
+        return "none"
+    return f"{len(rejections)} item offer(s) refused"
 
 
 def _format_training(training: dict[str, list[dict[str, Any]]]) -> str:

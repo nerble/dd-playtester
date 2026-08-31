@@ -51,6 +51,21 @@ def test_text_observations_handle_split_chunks_and_unterminated_prompts() -> Non
     assert parser.flush_text() == []
 
 
+def test_split_prompt_survives_a_quiet_read_between_telnet_chunks() -> None:
+    parser = ObservationParser()
+
+    assert parser.feed_text("<60/100 hits 20/20 mana 10/10 move") == []
+    assert parser.flush_text() == []
+
+    events = parser.feed_text(" [Midgaard]>")
+
+    assert [event.type for event in events] == [
+        "prompt_seen",
+        "health_changed",
+    ]
+    assert events[0].data["area"] == "Midgaard"
+
+
 def test_text_observations_track_sleep_and_wake_posture() -> None:
     parser = ObservationParser()
 
@@ -362,6 +377,80 @@ def test_gmcp_quest_snapshot_tracks_points_and_deduplicates() -> None:
     assert parser.feed_gmcp(message) == []
 
 
+def test_text_recall_list_is_emitted_as_one_durable_snapshot() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "Recall points currently available (indexed by number):\n"
+        "\n"
+        " 0   Default recall (Temple of Midgaard)\n"
+        " 2 * Draagdim (Draagdim) (28003)\n"
+        "14   Ota'ar Dar (Ota'ar Dar)\n"
+        "\n"
+    )
+
+    assert [event.type for event in events] == ["recall_points_changed"]
+    assert events[0].data == {
+        "points": [
+            {
+                "index": 0,
+                "active": False,
+                "name": "Default recall",
+                "area": "Temple of Midgaard",
+            },
+            {
+                "index": 2,
+                "active": True,
+                "name": "Draagdim",
+                "area": "Draagdim",
+            },
+            {
+                "index": 14,
+                "active": False,
+                "name": "Ota'ar Dar",
+                "area": "Ota'ar Dar",
+            },
+        ],
+        "current": 2,
+    }
+
+
+def test_text_empty_recall_list_is_still_an_observed_snapshot() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "Recall points currently available (indexed by number):\n"
+        "\n"
+        "<100/100 hits 100/100 mana 100/100 moves>"
+    )
+
+    recall_events = [
+        event for event in events if event.type == "recall_points_changed"
+    ]
+    assert len(recall_events) == 1
+    assert recall_events[0].data == {"points": [], "current": 0}
+
+
+def test_text_recall_selection_records_success_and_fallback() -> None:
+    parser = ObservationParser()
+
+    selected = parser.feed_text("Setting recall to point 2 (Draagdim)\n")
+    fallback = parser.feed_text(
+        "Cannot access point 14, defaulting to 0 (Temple of Midgaard)\n"
+    )
+
+    assert selected[0].type == "recall_selection_changed"
+    assert selected[0].data["current"] == 2
+    assert fallback[0].type == "recall_selection_changed"
+    assert fallback[0].data == {
+        "current": 0,
+        "requested": 14,
+        "name": "Temple of Midgaard",
+        "fallback": True,
+        "text": "Cannot access point 14, defaulting to 0 (Temple of Midgaard)",
+    }
+
+
 def test_text_room_recovers_known_exit_vnum_when_gmcp_omits_it() -> None:
     parser = ObservationParser()
 
@@ -382,6 +471,7 @@ def test_text_room_recovers_known_exit_vnum_when_gmcp_omits_it() -> None:
     room = next(event for event in events if event.type == "room_entered")
     assert room.data["name"] == "Main Street"
     assert room.data["vnum"] == "3012"
+    assert room.data["vnum_inferred"] is True
 
 
 def test_gmcp_non_json_payload_is_preserved() -> None:

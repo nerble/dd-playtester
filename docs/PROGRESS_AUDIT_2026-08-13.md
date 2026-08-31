@@ -19,6 +19,235 @@ route evidence, resource and recovery evidence, and offline regression tests.
 
 ## Current Evidence
 
+- Updated 2026-08-29 (latest): Run 10412 exposed a source-assistance boundary
+  that the earlier candidate model missed: the Fleshmonger cook's boy is an
+  ordinary visible NPC within DD4's join window and entered the live fight,
+  causing a bounded 80-XP loss. The candidate parser now mirrors `fight.c` and
+  `update.c`, so ordinary non-aggressive/no-special companions are no longer
+  assumed harmless; the cook and thief-rotation policies are research-only
+  until fresh evidence is gathered. Runs 10413-10414 added 198 XP through safe
+  recovery and a source-ranked Ultima/Katrina route. Runs 10420-10422 tested
+  Circus absence and the Foundry funding loop: Ushog yielded 100 XP, and run
+  10418 sold the recovered jerkin and boots for 14 copper. Serevian is safely
+  level 9 at 36,229 XP in healer room 3054 (campaign checkpoint 31375),
+  3,471 XP short of level 10, with 109 copper-equivalent and no death. Runs
+  10423-10431 continued bounded funding rotation; the latest no-kill Ushog
+  attempt was not replayed. Run 10432 rotated to Katrina, found her absent
+  after a bounded `where` refresh, and returned safely. The funding selector
+  now blocks an unproductive immediate retry while preserving reuse of a prior
+  carrier with partial observed proceeds. The
+  funding estimator now mirrors DD4's positive dynamic cost for mob-loaded
+  `E`/`G` loot while preserving the zero-cost ground and duplicate-name guards.
+  The full offline suite passes 3,073 tests. This is source-safety,
+  continuation, and liveness evidence, not level-10, subclass, or HERO proof.
+
+- Earlier 2026-08-29: Run 10185 exposed a trainer-route resume defect in
+  Dorrik's level-24 campaign: a source-known carnivorous grass interrupted the
+  distant class-trainer journey, and the incomplete-training state retraced the
+  route before returning with a 385-XP loss. Revision 175 adds a same-segment
+  guard plus a level/reboot/source-scoped `training_deferred` marker; the
+  source-refresh path clears that marker. Runs 10186 and 10190 returned Dorrik
+  safely to healer room 3054 at 363,925 XP (checkpoint 30698). Dorrik's
+  productive-repeat host probe then completed safely but failed live consider,
+  leaving the current-reboot frontier unavailable. The campaign runner now
+  preserves that exhausted frontier as a ready `awaiting_area_reset`
+  checkpoint for long-running invocations, while capped invocations retain the
+  explicit blocked result and never open a segment without a fresh candidate.
+  Serevian's interrupted run was recovered; runs 10199-10334 added 583 XP
+  across the latest six-segment rotation, including Dwarven Daycare and Circus
+  kills, with one bounded -1 XP Ultima loss and no death. Runs 10336-10338
+  exposed a Shire endpoint guard-special join and one bounded 58-XP loss; source
+  preflight now classifies DD4's `spec_guard` and `spec_sahuagin_guard` at the
+  endpoint where they can join combat. Runs 10339-10360 then completed bounded
+  Moria, Gnome, Cult, Daycare, Circus, and New Ofcol routes, crossing Serevian
+  to level 9 and continuing safely without another loss or death. Serevian is
+  now level 9 at 34,753 XP in healer room 3054 (campaign checkpoint 31270),
+  4,947 XP short of level 10. Runs 10392-10394 added 333 XP through bounded
+  Moria, Cult, and Moria routes without death or XP loss. The new
+  source-derived level-10 trainer resolver uses the known Midgaard reset room
+  as a class identity anchor when teacher skills overlap; the existing route
+  table remains a fallback when the source mirror is unavailable. The guard
+  repair, trainer resolver, and prior recovery fixes are covered by the full
+  offline suite, which passes 3,070 tests.
+  Dorrik's live verification returned ready at checkpoint 31104, level 24, with
+  the field-reset wait persisted. This is continuation and liveness evidence,
+  not level-25, level-30, subclass, or HERO proof.
+
+- Updated 2026-08-28: Runs 10060-10071 continued Dorrik's level-24 campaign
+  through bounded return-home, source-ranked, liquidation, and recovery work.
+  Run 10065 supplied live evidence for an opportunistic-attacker ordering edge:
+  before the final repair, more than one below-band transit interruption could
+  be adopted by an ordinary hunt. The repaired dispatcher now finishes one
+  unavoidable source-known below-band fight, quarantines the route, and returns
+  without continuing the incidental circuit. Dorrik is safely at 364,345 XP in
+  healer room 3054 at checkpoint 30349; the direct post-repair live check awaits
+  a fresh field reset, and the current sanctuary-recovery cooldown remains
+  authoritative. Aeloria is level 18 at 165,613 XP (checkpoint 30219), Kestrel
+  is level 24 at 336,913 XP (checkpoint 30231), Praelarran remains level 15 at
+  104,227 XP (checkpoint 30224), and Serevian is level 6 at 16,050 XP
+  (checkpoint 30468) after runs 10114-10123 added 774 XP through bounded
+  early-band rotations. Vergalcoror is level 8 at 29,941 XP (checkpoint 30493)
+  after runs 10084-10135 added 3,437 XP through bounded class-validation
+  routes. Bounded funding output
+  names the exact target result and
+  current protection markers cannot hide an empty source-safe frontier behind
+  crowd text. The campaign suite passes 944 tests and the complete offline suite
+  passes 3,034 tests. This proves liveness and reset-aware continuation, not
+  subclass or HERO progression.
+
+- Updated 2026-08-25: Runs 9853-9976 continued Praelarran's level-15 campaign
+  with source-ranked kills and bounded maintenance. Run 9853 killed Bardoosh
+  for 477 objective XP; runs 9858, 9866, 9867, 9869, and 9872 added 515, 472,
+  342, 352, and 352 objective XP respectively. Run 9891 supplied a bounded
+  60-XP funding kill from source mobile 1710, and run 9896 used the verified
+  sanctuary reserve to kill source mobile 2303, the Rock Toad, for 564
+  objective XP before consuming a free severed head and returning safely. Run
+  9900 added 70 incidental XP and recovered a goblin-lieutenant leg; runs 9906
+  and 9910 supplied clean funding kills for 50 and 60 XP with saleable gear.
+  Run 9913 then killed a source-confirmed valley elf sentry and scout for 130
+  XP and recovered seven items before a safe return. Run 9921 killed the
+  source-confirmed Moria orc for 70 XP without loss. Run 9922 killed a
+  dustdigger and dark dwarf for 70 and 50 XP, but an unapproved giant sand worm
+  joined and the resulting recovery cost 214 XP; Praelarran survived and the
+  exact route's risk evidence is retained. Runs 9870, 9873, 9882, and 9886
+  recorded earlier bounded below-band or combat-risk losses without death;
+  absence and crowd gates remained active. Run 9923 then reached the
+  120-second cap after killing a drider, dervish, and three dustdiggers for
+  223 net XP; the watchdog withdrew before disconnect and returned Praelarran
+  to the healer at 168/342 HP with no death. Run 9925 then reached the
+  120-second cap after unexpected combat pressure, recorded 98 incidental XP,
+  and withdrew at the shared health floor after reaching 14% health; it
+  returned safely with no death. Runs 9932 and 9939 completed reset-gated
+  sanctuary audits without duplicate field runs or source kills. Run 9940
+  completed a safe no-target centaur route with stance auditing and no XP
+  change. Runs 9941-9945 then completed bounded source-ranked, funding,
+  liquidation, and healer-return maintenance. Run 9946 killed the
+  source-ranked Midgaard secretary for 385 XP; run 9947 found the Haon
+  Shargugh absent and stopped safely. Runs 9948-9949 supplied another 428 XP
+  through source-ranked Midgaard and Shadow Keep kills, and run 9950 completed
+  flight maintenance. Run 9952 then killed an incidental warrior during a
+  Moria sanctuary-recovery probe but ended at a 60-XP net loss without death;
+  run 9953 completed a bounded Shadow Keep probe. Runs 9954 and 9956 then
+  supplied 607 XP through source-ranked Midgaard secretary kills, while run
+  9955 found no Shadow Keep target. Runs 9963-9964 then supplied 855 XP
+  through sanctuary-reserve acquisition and a Miden-nir Rock Toad kill, while
+  run 9965 completed flight maintenance. Praelarran is now level 15 at 104,149
+  XP (run 9965, checkpoint 29951), safely in healer room 3054 with 342/342 HP,
+  189/189 mana, and 264/290 movement. The full offline suite passes 3,014
+  tests. Runs 9966-9968 then supplied 50 XP through a Shadow Keep result and
+  two bounded probes. Run 9969 waited safely for Moria without combat, and
+  runs 9970-9975 recorded bounded Midgaard, Haon, Shadow Keep, Wyvern, and New
+  Ofcol routes; no death occurred. Run 9976 killed the source-ranked Midgaard
+  secretary for 351 XP after bounded combat pressure and returned full to the
+  healer. Praelarran is now level 15 at 104,770 XP (run 9976, checkpoint
+  30005), safely in healer room 3054 with 342/342 HP, 189/189 mana, and
+  290/290 movement. The full offline suite passes 3,014 tests. This is
+  continuation evidence, not subclass or HERO proof.
+
+- Updated 2026-08-25: Runs 9841-9848 continued Praelarran's level-14 campaign
+  through a protected-retry audit, funding, healer, liquidation, restock, and
+  Shadow Keep absence boundary. Run 9841 found source mobile 4515, Bardoosh,
+  viable but withdrew at the 40% health floor without using the carried
+  sanctuary reserve; the checkpoint recorded one current-reboot protection
+  loss and no death. Run 9843 then killed source mobile 6000, John the
+  Lumberjack, for the required 60-XP funding drop and resumed cleanly after a
+  bounded runtime cap. Run 9849 consumed the verified purple potion before
+  killing source mobile 1706, a ranger, for 458 objective XP without loss or
+  death. Run 9850 killed the source-registered large hobgoblin for a required
+  223-XP sanctuary reserve, crossed Praelarran to level 15, raised maximum
+  health to 342 and mana to 189, and returned safely to healer room 3054 at
+  checkpoint 29611. The full offline suite remains 3,013 tests. This is live
+  level-15 continuation evidence, not subclass or HERO proof.
+
+- Updated 2026-08-25: Runs 9798-9802 continued Praelarran's level-14 campaign
+  from checkpoint 29455 to checkpoint 29475 without death or XP loss. Moria's
+  sanctuary carrier was absent; run 9799 killed source mobile 3142 for 269
+  objective XP; run 9800 safely recorded an absent Shadow Keep target with 170
+  incidental wandering-goblin XP; run 9801 skipped a crowded secretary repeat;
+  and run 9802 killed source mobile 4512 for 338 objective XP after a live
+  useful-band consider. Praelarran is level 14 at 94,450 XP, 3,650 XP short
+  of level 15, safely checkpointed in healer room 3054. The selector now
+  prefers a recent productive route over a fresh low-fuzz candidate; the
+  focused campaign module passes 932 tests and the full suite passes 3,013
+  tests. This remains level-14 continuation and selector-repair evidence, not
+  level-15, subclass, or HERO proof.
+
+- Updated 2026-08-25: Runs 9759-9788 continued Praelarran's level-14
+  source-ranked rotation and added 1,507 objective XP across five
+  source-matched kills, with safe maintenance and bounded incidental combat
+  between them. Run 9787 reached the 120-second field cap and returned him
+  alive for healer recovery. Run 9790 then recorded a 148-XP recall loss on
+  the Gizmo route without an objective kill or death; run 9791 completed the
+  safe healer return. Praelarran is level 14 at 93,789 XP, 4,311 XP short of
+  level 15, full on health and movement in healer room 3054 at checkpoint
+  29438. This is live level-14 continuation and route-loss evidence, not
+  subclass or HERO completion evidence.
+
+- Updated 2026-08-25: Runs 9792 and 9795 exercised separate level-14
+  Fleshmonger and Moria routes; each recorded a bounded -148 XP recall loss
+  without an objective kill or death. The current-reboot loss ledger retained
+  one-loss quarantines for both exact policies, and alternate routes continued
+  safely through run 9797. Praelarran is level 14 at 93,603 XP, 4,497 XP
+  short of level 15, full on health and movement in healer room 3054 at
+  checkpoint 29455. This remains live level-14 continuation and risk-policy
+  evidence, not subclass or HERO completion evidence.
+
+- Updated 2026-08-25: Run 9757 reproduced a real level-14 Gremlin Lair
+  recall-recovery defect. Recall reached Temple room 3001, but stale GMCP
+  identity caused the following inferred text room event to be discarded; the
+  repeated recall cost 148 XP without a death or objective kill. Revision 174
+  now permits an authoritative text room event with an inferred source VNUM to
+  replace stale GMCP identity, and startup reconciliation persists the exact
+  source-ranked route as a retryable current-reboot hazard. Run 9758 converted
+  the failed checkpoint and completed safe return-home. Praelarran is level 14
+  at 91,727 XP, 6,373 XP short of level 15, full on health and movement in
+  healer room 3054. The focused campaign/state/observation suite passes 977
+  tests; the full suite passes 3,012 tests after this repair. This is repair and
+  level-14 continuation evidence, not subclass or HERO completion evidence.
+
+- Updated 2026-08-25: Praelarran crossed from level 13 to level 14 in run 9681
+  and completed liquidation in run 9682. Run 9686 exposed a real level-14
+  handoff defect: DD4 emitted the text-only `The Temple Square` room header
+  without GMCP VNUM, so stale room identity was cleared and the runner aborted
+  safely. `StarterPolicy` now resolves unique source-backed Midgaard room names
+  when GMCP omits the VNUM. Focused parser/starter/state coverage passes 1,191
+  tests, campaign/HERO/CLI coverage passes 1,005, and the full offline suite
+  passes 3,009 tests. Run 9687 live-validated the repaired transition but
+  withdrew at the 32% health floor and paid 148 XP; run 9689 then killed the
+  source-matched level-14 archer route for 288 XP and returned safely with no
+  new loss or death. Runs 9690-9692 then added 665 XP through Haon, Shadow Keep,
+  and Plains North without loss or death. Runs 9699-9701 then added 80 XP
+  through Haon, Shadow Keep, and Midgaard without loss or death. Runs 9702-9704
+  then added 601 XP through Shire, Shadow Keep, and Fleshmonger without loss
+  or death. Runs 9705-9707 then completed liquidation, return-home, and
+  sanctuary recovery without changing XP or recording loss or death. Runs
+  9708-9710 then added 411 XP through Shire, Haon, and Shadow Keep without
+  loss or death. Runs 9711-9713 then added 607 XP through Shire and Shadow Keep
+  and completed provision restock without loss or death. Runs 9714-9716 then
+  added 271 XP through Fleshmonger and completed safe return and liquidation.
+  Runs 9717-9719 then added 130 incidental XP without a source-objective kill
+  and completed safe healer recovery. Runs 9720-9722 then added 620 XP,
+  including a source-objective Shire kill, without loss or death. Runs 9723-9725
+  then added 316 XP through Shire and completed Fleshmonger and Dwarven Daycare
+  segments without loss or death. Runs 9726-9728 then added 378 XP, including a
+  source-objective Shire kill and safe sanctuary recovery. Runs 9729-9734 then
+  added 496 XP; run 9733 killed source mobile 4512, The vile goblin, for 346
+  objective XP, with the remainder incidental transit XP. Runs 9735-9740 then
+  added 437 XP; run 9736 killed source mobile 4512 for 50 objective XP, run
+  9737 killed source mobile 139, Sir Durok of EAT, for 377 objective XP, and
+  run 9735's 10 XP drunk was incidental. Runs 9741-9746 then added 1,047 XP;
+  run 9741 killed source mobile 4512 for 307 objective XP, run 9743 killed
+  source mobile 139, Sir Durok of EAT, for 396 objective XP, and run 9744
+  killed the goblin lieutenant incidentally for 80 XP and source mobile 4512
+  for 264 objective XP. Runs 9747-9752 then added 1,079 XP; run 9748 killed
+  source mobile 139, Sir Durok of EAT, for 431 objective XP, run 9750 killed
+  source mobile 4512 for 50 objective XP, and run 9751 killed source mobile 139
+  for 488 objective XP, with 110 incidental XP alongside them. At that earlier
+  checkpoint Praelarran was level 14 at 91,875 XP in healer room 3054. The
+  later 148-XP recall loss and safe migration are recorded in the current entry
+  above. This historical batch remains level-14 continuation and repair
+  evidence, not level-15, subclass, or HERO completion evidence.
+
 - Updated 2026-08-24: Runs 9626-9628 added 450 XP through Praelarran's
   source-ranked current-band routes and completed safe liquidation. He is level
   13 at 78,152 XP in healer room 3054 at checkpoint 28988, with full HP,

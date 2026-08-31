@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 
 from .archetypes import archetype_registry
 from .quests import (
+    QUESTMASTER_MAX_LEVEL,
     quest_points_required_for_advance,
     quest_points_shortfall_for_advance,
     questmaster_name_for_level,
@@ -22,6 +23,7 @@ _FIELD_RESOURCE_ABORT_PREFIX = (
 _FIELD_CROWD_ABORT_PREFIX = (
     "field combat aborted after unapproved attacker "
 )
+_PROTECTION_RECOVERY_HARD_HEALTH_TRIGGER = "hard_health_floor"
 _NOBLEMAN_APPROACH_INTERRUPT_ABORT = (
     "unexpected combat interrupted fastwalk 'dwarven nobleman' before its objective"
 )
@@ -87,6 +89,10 @@ class ProgressionContext:
     quest_level_qp_required: int | None = None
     quest_level_qp_shortfall: int | None = None
     quest_status: Mapping[str, object] | None = None
+    # ``None`` preserves the legacy library-call contract; campaign resumes
+    # pass an explicit boolean once recall ownership is part of live state.
+    recall_points_observed: bool | None = None
+    needs_recall_point: bool = False
     has_large_sack: bool = False
     has_sellable_loot: bool = False
     needs_coin_deposit: bool = False
@@ -108,6 +114,7 @@ class ProgressionContext:
     needs_war_dog_collar: bool = False
     needs_foundry_set_circlet: bool = False
     needs_intermediate_piercing_weapon_upgrade: bool = False
+    intermediate_piercing_weapon_upgrade_source_safe: bool = True
     intermediate_piercing_weapon_upgrade_attempted: bool = False
     needs_piercing_weapon_upgrade: bool = False
     piercing_weapon_upgrade_attempted: bool = False
@@ -118,6 +125,7 @@ class ProgressionContext:
     has_sanctuary_potion: bool = False
     has_acquired_sanctuary_potion: bool = False
     protection_recovery_required: bool = False
+    protection_recovery_hard_health: bool = False
     has_flight: bool = True
     can_attempt_flight_purchase: bool = False
     flight_purchase_failed: bool = False
@@ -699,19 +707,20 @@ _FLESHMONGER_COOK_POLICY = ProgressionPolicy(
     policy_id="fleshmonger-cook-10-11",
     minimum_level=10,
     maximum_level=11,
-    status="verified",
+    status="research",
     execution="fleshmonger-cook-hunt",
     summary=(
-        "Attack the ordinal-selected adult Fleshmonger cook after a live "
+        "Research the ordinal-selected adult Fleshmonger cook after a live "
         "consider check, then return to the healer."
     ),
     evidence=(
         "DD4 source revision 0482387 places one non-aggressive source-level-8 cook without a special procedure in room 9403.",
-        "The source-level-6 cook's boy is the only reset bystander and is treated as trivial rather than a reason to abandon a viable target.",
+        "DD4 violence_update considers ordinary visible NPCs as possible combat joiners; the source-level-6 cook's boy can therefore join a level-9 or level-10 player's fight after fuzzy loading.",
         "Live run 1424 used `consider 2.cook`, received the exact-level perfect-match branch, and found Kestrel slightly healthier.",
         "Live run 1425 killed the adult cook for 696 XP; the boy did not join, and Kestrel recalled at 75/154 hit points.",
         "Run 1425 recovered to full health and movement, saved, and quit in healer room 3054.",
-        "The cook carries whites and a wooden spoon; the one-kill policy retains full-health departure, crowd, consider, withdrawal, and healer-return gates.",
+        "Live run 10412 killed the cook at level 9, then the boy joined with the source combat message, forcing an 80-XP flee loss; the old no-join observation is not reusable safety evidence.",
+        "The source-aware one-kill route now treats the boy as a material companion and retains full-health departure, crowd, consider, withdrawal, and healer-return gates while fresh evidence is collected.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -802,7 +811,7 @@ _FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY = ProgressionPolicy(
         "most two independently gated fights before returning to the healer."
     ),
     evidence=(
-        "DD4 source revision 0482387 places isolated source-level-10 guards in rooms 9400 and 9401, and the source-level-8 adult cook with one trivial helper in room 9403.",
+        "DD4 source revision 0482387 places isolated source-level-10 guards in rooms 9400 and 9401, and the source-level-8 adult cook with one ordinary combat-capable helper in room 9403.",
         "Live run 1419 killed the north guard for 423 XP and returned with 112/154 hit points after recovering from a disarm.",
         "Live run 1425 killed the adult cook for 696 XP; its source-level-6 helper did not join, and Kestrel recalled at 75/154 hit points.",
         "Live runs 1421 and 1427 found individual targets absent, showing why one route should inspect all three rather than pay recall travel for a single reset.",
@@ -816,6 +825,8 @@ _FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY = ProgressionPolicy(
         "Live run 1454 admitted a reset-level-11, 169-HP north guard through the generic perfect-match consider branch, then withdrew at 41/154 HP for only 69 net XP after flee cost; v6 limits both guard stops to live targets no higher than the character.",
         "Live run 1455 proved DD4 exposes the exact target level only after combat starts; v7 enforces the same ceiling on the first Char.Enemies combat snapshot and withdraws immediately when that reveals an over-ceiling target.",
         "Live run 1456 confirmed first-snapshot withdrawal prevented injury but still cost 74 net XP; v8 uses the source-defined do_consider health comparison to skip healthier guards before combat while retaining the live-level fallback.",
+        "Source review of fight.c shows ordinary visible NPCs may join an existing player fight when their fuzzy level falls within the source window; the cook's boy is therefore not a trivial rotation bystander.",
+        "Live run 10412 confirmed that boundary: the boy joined immediately after the cook died and caused an 80-XP flee loss, so the prior one-reboot rotation proof is retired pending a fresh isolated route.",
         "Each stop retains exact-target, crowd, live-consider, health, disarm, withdrawal, and healer-return handling; the research circuit stops after two kills.",
     ),
     practice_skill=None,
@@ -825,9 +836,9 @@ _FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY = ProgressionPolicy(
 _FLESHMONGER_THIEF_ROTATION_POLICY = replace(
     _FLESHMONGER_THIEF_ROTATION_RESEARCH_POLICY,
     policy_id="fleshmonger-thief-rotation-10-11",
-    status="verified",
+    status="research",
     summary=(
-        "Repeat the evidenced Fleshmonger guard-and-kitchen rotation while "
+        "Research the evidenced Fleshmonger guard-and-kitchen rotation while "
         "its latest segment remains productive."
     ),
     evidence=(
@@ -1949,6 +1960,45 @@ _RESTOCK_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_RECALL_POINT_POLICY = ProgressionPolicy(
+    policy_id="acquire-recall-point",
+    minimum_level=25,
+    maximum_level=100,
+    status="research",
+    execution="recall-point-acquire",
+    summary=(
+        "Spend an affordable quest-point balance on a source-registered "
+        "remote recall point needed for late-band route access."
+    ),
+    evidence=(
+        "DD4 quest.c sells fifteen remote recall points from the active "
+        "questmaster and charges the spendable quest-point balance.",
+        "The campaign selects only a point observed as missing in the live "
+        "recall list and never infers ownership from character name.",
+        "The selected source destination becomes an origin for source-ranked "
+        "candidate routes; return trips restore default recall first.",
+    ),
+    practice_skill=None,
+)
+
+_RECALL_POINT_AUDIT_POLICY = ProgressionPolicy(
+    policy_id="audit-recall-points",
+    minimum_level=25,
+    maximum_level=100,
+    status="verified",
+    execution="recall-list-audit",
+    summary=(
+        "Read the live recall list before deciding whether a remote origin "
+        "must be purchased."
+    ),
+    evidence=(
+        "DD4 quest.c exposes recall ownership through the read-only `recall list` command.",
+        "An empty persisted list is ambiguous until that command has completed, so the audit is a separate bounded maintenance step.",
+        "The follow-up purchase policy is allowed only after the observed list proves a source-registered point is missing and affordable.",
+    ),
+    practice_skill=None,
+)
+
 _PROVISION_FUNDING_POLICY = ProgressionPolicy(
     policy_id="provision-funding",
     minimum_level=2,
@@ -2274,14 +2324,17 @@ _THALOS_LONG_DAGGER_UPGRADE_POLICY = ProgressionPolicy(
     evidence=(
         "DD4 source revision d7cb330 defines object 5252 as a 2d5 piercing "
         "long slim dagger with +1 hitroll and +1 damroll.",
-        "Twenty source-level-9 lamia resets carry object 5252 in Old Thalos; "
-        "the nearest carrier resets alone in room 5203.",
+        "The current DD4 source has twenty separate lamia resets, each with "
+        "maximum count 20 and object 5252; the carrier is therefore not "
+        "source-isolated to one live instance.",
         "The official Thalos fastwalk reaches room 5200. Rooms 5201 and 5202 "
         "are empty transit rooms, followed by three reversible westward moves "
         "to the isolated carrier.",
-        "Lamia mobile 5201 is aggressive and stay-area but has no special "
-        "procedure. The required-loot action remains exact-target, live-"
-        "consider gated, crowd gated, and capped at one kill.",
+        "Lamia mobile 5201 is aggressive, stay-area, and wandering, with no "
+        "special procedure. An aggressive wanderer can enter before consider, "
+        "so this route is not selected automatically until source-safe "
+        "isolation evidence exists; explicit probes retain exact-target, "
+        "live-consider, crowd, and one-kill gates.",
         "The intermediate tier has an independent three-productive-segment "
         "retry cooldown, so it can run while the rarer Forest tier is cooling "
         "down without becoming an immediate retry loop of its own.",
@@ -2523,8 +2576,11 @@ _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
         "remain research-gated. Every permitted special retains exact-target, "
         "single-mobile, live-consider, elevated-health, one-kill, disabling-"
         "affect withdrawal, and healer-recovery boundaries. Existing source-"
-        "bounded mage, cleric, breath, and guard paths remain explicit; other "
-        "moderate, strong, and boss tiers remain research-gated.",
+        "bounded mage, cleric, lightning-breath, and guard paths remain "
+        "explicit; gas-bearing breath variants (`spec_breath_gas` and the "
+        "random gas branch of `spec_breath_any`) remain research-gated until "
+        "poison-safe recovery is executable. Other moderate, strong, and boss "
+        "tiers remain research-gated.",
         "Live run 3087 verified the wandering locator against forest mobile "
         "18007: `where man` placed the medicine man in River bed, a source-"
         "excluded route with aggressive wanderers, so the bot recalled without "
@@ -3285,8 +3341,10 @@ _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY = ProgressionPolicy(
         "The circuit visits each source reset independently and skips a room "
         "when TARGETMODE finds a duplicate or unknown bystander. The normal "
         "continuation health floor and source peak bound remain active.",
-        "This policy is research-gated: positive thief evidence is not copied "
-        "into mage, warrior, or another class without a live class-tagged run.",
+        "This policy remains research-gated for each class without a live "
+        "class-tagged run. Run 10906 supplies the separate warrior continuation "
+        "through level 18, but does not promote this shared policy for mage or "
+        "another class.",
     ),
     practice_skill=None,
     segment_kill_limit=2,
@@ -3300,6 +3358,118 @@ def _configured_mahntor_rock_toad_circuit_for_shared_class(
     """Apply the shared route cap without borrowing thief-only evidence."""
     return replace(
         _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY,
+        practice_skill=context.practice_skill,
+        segment_kill_limit=1 if context.has_sanctuary_potion else 2,
+    )
+
+
+_MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY = replace(
+    _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY,
+    policy_id="mahntor-rock-toad-warrior-circuit-16-18",
+    minimum_level=16,
+    maximum_level=18,
+    status="research",
+    summary=(
+        "Use the class-proven Mahn-Tor Rock Toad circuit as a bounded warrior "
+        "continuation through level 18 after the higher-band probes reject."
+    ),
+    evidence=(
+        *_MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY.evidence,
+        "Live run 10906 proved the exact Mahn-Tor route for Praelarran, a "
+        "Human Warrior: one isolated source mobile 2303 Rock Toad was "
+        "considered and killed for 436 XP, then the character returned safely "
+        "to healer room 3054.",
+        "This continuation is deliberately research-gated until a fresh "
+        "level-16 warrior result confirms the source-fuzzed level window. The "
+        "runner still applies exact target identity, live consider, crowd, "
+        "route, health, movement, encumbrance, and healer-return gates.",
+        "The source-level-14 Rock Toad has a conservative level-12-to-16 "
+        "range, so level 16 is the first level at which this continuation can "
+        "be tested without assuming useful XP at levels 17 or 18; any `diff "
+        "<= -5` or `diff <= -10` consider result remains a terminal exclusion.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=2,
+    allow_partial_below_band=True,
+)
+
+
+_MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_NINETEEN_POLICY = replace(
+    _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY,
+    policy_id="mahntor-rock-toad-warrior-circuit-19-20",
+    minimum_level=19,
+    maximum_level=20,
+    summary=(
+        "Use the source-legal Mahn-Tor Rock Toad circuit as a bounded warrior "
+        "continuation through level 20 after positive level-16-to-18 work."
+    ),
+    evidence=(
+        *_MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY.evidence,
+        "The source-level-14 Rock Toad can load as high as level 16. At "
+        "warrior levels 19 and 20 its best possible live roll is still only "
+        "three or four levels below the character, so each exact live "
+        "consider remains the authoritative useful-XP gate.",
+        "This later continuation requires a positive result from the separate "
+        "warrior level-16-to-18 policy. No level-19 or level-20 combat result "
+        "is implied until a fresh live run records one.",
+    ),
+)
+
+
+def _configured_mahntor_rock_toad_warrior_continuation(
+    context: ProgressionContext,
+) -> ProgressionPolicy | None:
+    """Open the warrior continuation only after prior class-tagged progress."""
+    if not (
+        context.character_class == "warrior"
+        and 16 <= context.level <= 20
+    ):
+        return None
+    later_band = context.level >= 19
+    policy = (
+        _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_NINETEEN_POLICY
+        if later_band
+        else _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY
+    )
+    policy_id = policy.policy_id
+    if policy_id in context.excluded_policy_ids:
+        return None
+    completed = context.policy_xp_deltas or {}
+    current_xp = completed.get(policy_id)
+    try:
+        if current_xp is not None and int(current_xp) <= 0:
+            return None
+        if later_band:
+            prior_xp = int(
+                completed.get(
+                    _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY.policy_id,
+                    0,
+                )
+                or 0
+            )
+        else:
+            prior_xp = max(
+                int(
+                    completed.get(
+                        _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY.policy_id,
+                        0,
+                    )
+                    or 0
+                ),
+                int(
+                    completed.get(
+                        _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY.policy_id,
+                        0,
+                    )
+                    or 0
+                ),
+            )
+    except (TypeError, ValueError):
+        return None
+    if prior_xp <= 0:
+        return None
+    return replace(
+        policy,
         practice_skill=context.practice_skill,
         segment_kill_limit=1 if context.has_sanctuary_potion else 2,
     )
@@ -5455,6 +5625,8 @@ def policy_for(
     quest_level_qp_required: int | None = None,
     quest_level_qp_shortfall: int | None = None,
     quest_status: Mapping[str, object] | None = None,
+    recall_points_observed: bool | None = None,
+    needs_recall_point: bool = False,
     has_large_sack: bool = False,
     has_sellable_loot: bool = False,
     needs_coin_deposit: bool = False,
@@ -5476,6 +5648,7 @@ def policy_for(
     needs_war_dog_collar: bool = False,
     needs_foundry_set_circlet: bool = False,
     needs_intermediate_piercing_weapon_upgrade: bool = False,
+    intermediate_piercing_weapon_upgrade_source_safe: bool = True,
     intermediate_piercing_weapon_upgrade_attempted: bool = False,
     needs_piercing_weapon_upgrade: bool = False,
     piercing_weapon_upgrade_attempted: bool = False,
@@ -5486,6 +5659,7 @@ def policy_for(
     has_sanctuary_potion: bool = False,
     has_acquired_sanctuary_potion: bool = False,
     protection_recovery_required: bool = False,
+    protection_recovery_hard_health: bool = False,
     has_flight: bool = True,
     can_attempt_flight_purchase: bool = False,
     flight_purchase_failed: bool = False,
@@ -5515,6 +5689,8 @@ def policy_for(
         quest_level_qp_required=quest_level_qp_required,
         quest_level_qp_shortfall=quest_level_qp_shortfall,
         quest_status=quest_status,
+        recall_points_observed=recall_points_observed,
+        needs_recall_point=needs_recall_point,
         has_large_sack=has_large_sack,
         has_sellable_loot=has_sellable_loot,
         needs_coin_deposit=needs_coin_deposit,
@@ -5538,6 +5714,9 @@ def policy_for(
         needs_intermediate_piercing_weapon_upgrade=(
             needs_intermediate_piercing_weapon_upgrade
         ),
+        intermediate_piercing_weapon_upgrade_source_safe=(
+            intermediate_piercing_weapon_upgrade_source_safe
+        ),
         intermediate_piercing_weapon_upgrade_attempted=(
             intermediate_piercing_weapon_upgrade_attempted
         ),
@@ -5550,6 +5729,7 @@ def policy_for(
         has_sanctuary_potion=has_sanctuary_potion,
         has_acquired_sanctuary_potion=has_acquired_sanctuary_potion,
         protection_recovery_required=protection_recovery_required,
+        protection_recovery_hard_health=protection_recovery_hard_health,
         has_flight=has_flight,
         can_attempt_flight_purchase=can_attempt_flight_purchase,
         flight_purchase_failed=flight_purchase_failed,
@@ -5725,11 +5905,19 @@ def policy_for(
         )
     if (
         context.character_class == "thief"
-        and context.level >= 17
+        and 17 <= context.level <= 20
         and context.protection_recovery_required
         and not context.has_sanctuary_potion
         and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
     ):
+        if (
+            context.level >= 21
+            and _is_observation_only_research_policy(selected)
+        ):
+            # A safe research probe can refresh the current frontier while a
+            # sanctuary replacement is cooling down. Keep all combat and
+            # objective-hunt policies behind the protection requirement.
+            return selected
         # A failed current-band hunt creates a real protection requirement.
         # Run the existing sanctuary recovery frontier before ordinary
         # research ordering can select a different unprotected hunt.
@@ -5749,24 +5937,44 @@ def policy_for(
                 practice_skill=context.practice_skill,
         )
         return _moria_sanctuary_wait_policy(context)
+    low_level_ordinary_loss_can_rotate = (
+        context.protection_recovery_required
+        and context.level < 9
+        and not context.protection_recovery_hard_health
+    )
     if (
         context.protection_recovery_required
+        and not low_level_ordinary_loss_can_rotate
         and not context.has_sanctuary_potion
         and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
     ):
         if (
-            context.level >= 16
-            and selected.status == "research"
-            and (selected.execution or "").endswith("-research")
+            context.level >= 15
+            and _is_observation_only_research_policy(selected)
         ):
-            # A fixed non-combat probe is safe to execute while the Moria
-            # reserve route is cooling down. Keep the protection requirement
-            # for combat policies, but do not let it starve the level-16+
-            # source-backed frontier probes.
+            # A fixed observation-only probe is safe to execute while the
+            # Moria reserve route is cooling down. Keep the protection
+            # requirement for combat policies, but do not let it starve the
+            # source-backed level-15 frontier probes.
             return selected
         # Protection recovery is a shared capability gate, not a thief-only
         # progression rule. Use the safe Moria carrier route for every class
         # when a viable hunt has already reached the field safety floor.
+        if (
+            _research_crowd_is_active(
+                context,
+                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+            )
+            or _research_absence_cooldown_active(
+                context,
+                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+            )
+        ):
+            # A current-reboot crowd or absence result is a real field
+            # boundary. Do not turn the deep route into an immediate replay;
+            # the campaign reset controller will retry it after the bounded
+            # cooldown has been consumed.
+            return _source_ranked_sanctuary_recovery_wait_policy(context)
         return replace(
             _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
             minimum_level=context.level,
@@ -5830,6 +6038,7 @@ def policy_for(
         )
         or (
             selected.policy_id == _THALOS_LONG_DAGGER_UPGRADE_POLICY.policy_id
+            and context.intermediate_piercing_weapon_upgrade_source_safe
             and context.shop_rearm_blocked_by_reputation
             and (
                 not context.has_weapon
@@ -5912,6 +6121,7 @@ _HANDOFF_BLOCKING_EXECUTIONS = frozenset(
         "provision-funding",
         "audit-combat-pouch",
         "choose-subclass",
+        "recall-point-acquire",
     }
 )
 
@@ -6033,6 +6243,7 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         and context.shop_rearm_blocked_by_reputation
         and context.character_class == "thief"
         and 10 <= normalized_level <= 29
+        and context.intermediate_piercing_weapon_upgrade_source_safe
         and (
             not context.has_weapon
             or context.needs_intermediate_piercing_weapon_upgrade
@@ -6070,6 +6281,13 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _PROVISION_FUNDING_POLICY
     if not context.has_food:
         return _RESTOCK_POLICY
+    if (
+        normalized_level >= QUESTMASTER_MAX_LEVEL
+        and context.recall_points_observed is False
+    ):
+        return _RECALL_POINT_AUDIT_POLICY
+    if context.needs_recall_point:
+        return _RECALL_POINT_POLICY
     if context.needs_combat_pouch_repack:
         return _AUDIT_COMBAT_POUCH_POLICY
     if context.needs_subclass_selection:
@@ -6143,6 +6361,7 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
     if (
         thief_weapon_upgrade_band
         and context.needs_intermediate_piercing_weapon_upgrade
+        and context.intermediate_piercing_weapon_upgrade_source_safe
         and not context.intermediate_piercing_weapon_upgrade_attempted
     ):
         return replace(
@@ -9017,6 +9236,11 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
                 historical_policy,
                 practice_skill=context.practice_skill,
             )
+        warrior_toad_policy = _configured_mahntor_rock_toad_warrior_continuation(
+            context
+        )
+        if warrior_toad_policy is not None:
+            return warrior_toad_policy
         return replace(
             _UNAVAILABLE_POLICY,
             minimum_level=16,
@@ -9598,7 +9822,19 @@ def _research_hunt_policy(
             and _research_result_is_viable(context, probe.policy_id)
             and not _research_result_recorded(context, hunt.policy_id)
         )
-        if not fresh_probe_reopens_cleared_hunt:
+        fresh_protection_observation_probe = (
+            context.protection_recovery_required
+            and context.level >= 21
+            and _is_observation_only_research_policy(probe)
+            and hunt.policy_id in context.excluded_policy_ids
+            and probe.policy_id not in context.excluded_policy_ids
+            and not _research_result_recorded(context, probe.policy_id)
+            and not _research_result_recorded(context, hunt.policy_id)
+        )
+        if not (
+            fresh_probe_reopens_cleared_hunt
+            or fresh_protection_observation_probe
+        ):
             return None
     if _research_crowd_is_active(context, probe.policy_id) or _research_crowd_is_active(
         context, hunt.policy_id
@@ -9750,6 +9986,16 @@ def _moria_absent_cooldown_alternate_policy(
     return None
 
 
+def _is_observation_only_research_policy(policy: ProgressionPolicy) -> bool:
+    """Identify research entries that never authorize an objective kill."""
+    return (
+        policy.status == "research"
+        and policy.execution is not None
+        and policy.execution.endswith("-research")
+        and policy.segment_kill_limit is None
+    )
+
+
 def _moria_deep_required_loot_hunt_pending(
     context: ProgressionContext,
 ) -> bool:
@@ -9804,6 +10050,24 @@ def _moria_sanctuary_wait_policy(
             "a reboot supplies the carrier, or new evidence is registered."
         ),
         evidence=evidence,
+        practice_skill=context.practice_skill,
+    )
+
+
+def _source_ranked_sanctuary_recovery_wait_policy(
+    context: ProgressionContext,
+) -> ProgressionPolicy:
+    """Defer the generic deep recovery route behind its reboot cooldown."""
+    return replace(
+        _UNAVAILABLE_POLICY,
+        minimum_level=context.level,
+        maximum_level=context.level,
+        summary=(
+            "The source-ranked sanctuary recovery route has a current-reboot "
+            "crowd or absence cooldown; preserve the healer checkpoint and "
+            "retry only after the bounded reset wait or a new reboot."
+        ),
+        evidence=_SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.evidence,
         practice_skill=context.practice_skill,
     )
 

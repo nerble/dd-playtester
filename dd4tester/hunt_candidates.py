@@ -11,16 +11,25 @@ from pathlib import Path
 from typing import Callable, Collection, Iterable, Mapping
 
 from .fastwalks import FASTWALKS, MAP_ROUTES
-from .specials import SAFE_NONCOMBAT_SPECIALS, source_special_profile
+from .specials import (
+    COMBAT_JOINING_SPECIALS,
+    SAFE_NONCOMBAT_SPECIALS,
+    source_special_profile,
+)
 
 
 ACT_SENTINEL = 1 << 1
 ACT_AGGRESSIVE = 1 << 5
 ACT_STAY_AREA = 1 << 6
+ACT_WIZINVIS_MOB = 1 << 16
 ACT_IS_FAMOUS = 1 << 14
 ACT_LOSE_FAME = 1 << 15
 ACT_DIE_IF_MASTER_GONE = 1 << 21
 ACT_NO_EXPERIENCE = 1 << 24
+ACT_NO_FIGHT = 1 << 26
+
+AFF_BLIND = 1 << 0
+AFF_NON_CORPOREAL = 1 << 28
 
 ROOM_NO_MOB = 1 << 2
 EX_WALL = 128
@@ -394,6 +403,8 @@ class HuntCandidate:
     ground_loot_object_vnums: tuple[int, ...] = ()
     is_coin_stash: bool = False
     is_food_stash: bool = False
+    route_origin_recall_index: int = 0
+    route_origin_room_vnum: int = RECALL_VNUM
 
     @property
     def autonomous_safe(self) -> bool:
@@ -638,6 +649,7 @@ def rank_hunt_candidates(
     level_ceiling_offset: int | None = None,
     include_all_areas: bool = False,
     required_loot_object_vnums: Collection[int] = (),
+    recall_origins: Mapping[int, int] | None = None,
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -656,7 +668,20 @@ def rank_hunt_candidates(
     resets_by_room = _resets_by_room(world)
     candidate_area_files = None if include_all_areas else set(LOW_LEVEL_AREA_FILES)
     wandering_aggressors = _wandering_aggressors(world)
-    recall_paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
+    recall_origin_rooms: dict[int, int] = {0: RECALL_VNUM}
+    for raw_index, raw_room_vnum in (recall_origins or {}).items():
+        try:
+            index = int(raw_index)
+            room_vnum = int(raw_room_vnum)
+        except (TypeError, ValueError):
+            continue
+        if index < 0 or room_vnum not in world.rooms:
+            continue
+        recall_origin_rooms[index] = room_vnum
+    recall_paths_by_origin = {
+        index: _shortest_paths_from(world.rooms, room_vnum)
+        for index, room_vnum in recall_origin_rooms.items()
+    }
     wanderer_reachability = {
         (mobile.vnum, reset.room_vnum): _wanderer_reachable_rooms(
             world,
@@ -674,11 +699,62 @@ def rank_hunt_candidates(
         resets_by_room,
         character_level=character_level,
     )
-    safe_recall_paths = _shortest_paths_from(
-        world.rooms,
-        RECALL_VNUM,
-        blocked_rooms=route_hazard_rooms - {RECALL_VNUM},
-    )
+    safe_recall_paths_by_origin = {
+        index: _shortest_paths_from(
+            world.rooms,
+            room_vnum,
+            blocked_rooms=route_hazard_rooms - {room_vnum},
+        )
+        for index, room_vnum in recall_origin_rooms.items()
+    }
+
+    def path_from_recall_origin(
+        room_vnum: int,
+    ) -> tuple[tuple[str, ...], tuple[int, ...], int, int, int] | None:
+        """Choose a source route from an observed recall point.
+
+        Prefer a route that avoids source-identified hazards, then the
+        shortest route.  The default recall point remains the only option
+        unless the caller has supplied a live-observed recall list.
+        """
+        choices: list[
+            tuple[
+                tuple[int, int, int, int],
+                tuple[tuple[str, ...], tuple[int, ...], int],
+                int,
+            ]
+        ] = []
+        for index, paths in recall_paths_by_origin.items():
+            direct = paths.get(room_vnum)
+            if direct is None:
+                continue
+            selected = direct
+            if route_hazard_rooms.intersection(direct[1][:-1]):
+                safe = safe_recall_paths_by_origin[index].get(room_vnum)
+                if (
+                    safe is not None
+                    and len(safe[0]) <= len(direct[0]) + _MAX_SOURCE_ROUTE_DETOUR_STEPS
+                ):
+                    selected = safe
+            has_route_hazard = bool(
+                route_hazard_rooms.intersection(selected[1][:-1])
+            )
+            choices.append(
+                (
+                    (
+                        int(has_route_hazard),
+                        len(selected[0]),
+                        selected[2],
+                        index,
+                    ),
+                    selected,
+                    index,
+                )
+            )
+        if not choices:
+            return None
+        _, selected, index = min(choices, key=lambda item: item[0])
+        return (*selected, index, recall_origin_rooms[index])
     ranked: list[HuntCandidate] = []
 
     for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
@@ -781,18 +857,10 @@ def rank_hunt_candidates(
         ):
             continue
 
-        path = recall_paths.get(reset.room_vnum)
-        if path is None:
+        path_choice = path_from_recall_origin(reset.room_vnum)
+        if path_choice is None:
             continue
-        route, path_rooms, closed_doors = path
-        if route_hazard_rooms.intersection(path_rooms[:-1]):
-            safe_path = safe_recall_paths.get(reset.room_vnum)
-            if (
-                safe_path is not None
-                and len(safe_path[0])
-                <= len(route) + _MAX_SOURCE_ROUTE_DETOUR_STEPS
-            ):
-                route, path_rooms, closed_doors = safe_path
+        route, path_rooms, closed_doors, route_origin_recall_index, route_origin_room_vnum = path_choice
         estimated_move_cost = source_route_movement_cost(
             world,
             path_rooms,
@@ -859,12 +927,18 @@ def rank_hunt_candidates(
             companion_is_below_band = (
                 companion_level_range[1] <= character_level - 5
             )
+            companion_can_join = source_mobile_can_join_player_fight(
+                world,
+                companion,
+                character_level=character_level,
+            )
             # A source-proven below-band mobile cannot make this useful-band
             # target an unsafe crowd.  This remains true when its special is
             # capable of a bounded nuisance effect; the field runner must
             # finish an unavoidable trivial interruption rather than flee.
             companion_is_trivial = companion_is_below_band or (
-                not companion_specials
+                not companion_can_join
+                and not companion_specials
                 and not companion.attack_programs
                 and (
                     not companion.aggressive
@@ -896,11 +970,30 @@ def rank_hunt_candidates(
                     autonomy_rejections.append(
                         "target room has a dangerous reset companion"
                     )
+            elif companion_can_join:
+                dangerous = True
+                hazards.append(
+                    "source-backed companion may join player combat: "
+                    f"{companion.short_description}"
+                )
+                autonomy_rejections.append(
+                    "target room has a source-capable assisting companion"
+                )
+                autonomy_rejections.append(
+                    "target room has a dangerous reset companion"
+                )
 
         for path_room in path_rooms[:-1]:
             for path_reset in resets_by_room.get(path_room, ()):
                 hazard = world.mobiles.get(path_reset.mobile_vnum)
-                if hazard is None or not hazard.aggressive:
+                if hazard is None or not _source_mobile_is_combat_hazard(
+                    world,
+                    hazard,
+                ):
+                    continue
+                # A combat-joining guard only reacts after a fight starts;
+                # transit rooms are not combat targets for this candidate.
+                if not hazard.aggressive:
                     continue
                 if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
                     hazards.append(
@@ -908,14 +1001,35 @@ def rank_hunt_candidates(
                         f"{hazard.short_description}"
                     )
                     continue
-                hazards.append(
-                    f"route: {hazard.short_description} L{hazard.level} in {path_room}"
+                hazard_kind = (
+                    "route"
+                    if hazard.aggressive
+                    else "route combat-joining special"
                 )
+                hazards.append(
+                    f"{hazard_kind}: {hazard.short_description} "
+                    f"L{hazard.level} in {path_room}"
+                )
+                if hazard.attack_programs:
+                    hazards.append(
+                        "source-backed route attack program: "
+                        f"{hazard.short_description}"
+                    )
+                    dangerous = True
+                    autonomy_rejections.append(
+                        "route crosses a program-triggered attacker"
+                    )
                 hazard_level_max = _mobile_level_range(hazard.level)[1]
+                hazard_noun = (
+                    "aggressive reset"
+                    if hazard.aggressive
+                    else "combat-joining special"
+                )
+                hazard_article = "an" if hazard.aggressive else "a"
                 if hazard_level_max > character_level:
                     dangerous = True
                     autonomy_rejections.append(
-                        "route crosses a higher-level aggressive reset"
+                        f"route crosses a higher-level {hazard_noun}"
                     )
                 elif hazard_level_max > character_level - 5:
                     if _bounded_borderline_route_aggressor(
@@ -930,43 +1044,67 @@ def rank_hunt_candidates(
                         )
                     else:
                         autonomy_rejections.append(
-                            "route crosses an aggressive reset inside the useful XP band"
+                            f"route crosses {hazard_article} {hazard_noun} "
+                            "inside the useful XP band"
                         )
                 elif (
                     path_reset.maximum_count
                     > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
+                    and _source_aggressive_reset_can_reach_character(
+                        world,
+                        hazard,
+                        character_level=character_level,
+                    )
                 ):
                     hazards.append(
-                        "route crosses a large below-band aggressive reset "
+                        "route crosses a large below-band "
+                        f"{'aggressive' if hazard.aggressive else 'combat-joining'} reset "
                         f"(up to {path_reset.maximum_count} mobiles)"
                     )
                     dangerous = True
                     autonomy_rejections.append(
-                        "route crosses a large below-band aggressive crowd"
+                        "route crosses a large below-band "
+                        f"{'aggressive' if hazard.aggressive else 'combat-joining'} crowd"
                     )
 
         path_room_set = set(path_rooms)
         for hazard, hazard_reset in wandering_aggressors:
             if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
                 continue
+            hazard_rooms = (
+                path_room_set
+                if hazard.aggressive
+                else {path_rooms[-1]}
+            )
             if (
                 hazard.vnum == mobile.vnum
-                or hazard_reset.room_vnum in path_room_set
-                or path_room_set.isdisjoint(
+                or hazard_reset.room_vnum in hazard_rooms
+                or hazard_rooms.isdisjoint(
                     wanderer_reachability[
                         (hazard.vnum, hazard_reset.room_vnum)
                     ]
                 )
             ):
                 continue
+            hazard_kind = (
+                "reachable wanderer"
+                if hazard.aggressive
+                else "reachable combat-joining special"
+            )
             hazards.append(
-                f"reachable wanderer: {hazard.short_description} L{hazard.level}"
+                f"{hazard_kind}: {hazard.short_description} L{hazard.level}"
             )
             hazard_level_max = _mobile_level_range(hazard.level)[1]
+            hazard_noun = (
+                "aggressive wanderer"
+                if hazard.aggressive
+                else "combat-joining special"
+            )
+            hazard_article = "an" if hazard.aggressive else "a"
             if hazard_level_max > character_level:
                 dangerous = True
                 autonomy_rejections.append(
-                    "a higher-level aggressive wanderer can reach the route"
+                    f"a higher-level {hazard_noun} can reach the route"
                 )
             elif hazard_level_max > character_level - 5:
                 if _bounded_borderline_route_aggressor(
@@ -981,7 +1119,8 @@ def rank_hunt_candidates(
                     )
                 else:
                     autonomy_rejections.append(
-                        "an aggressive wanderer inside the useful XP band can reach the route"
+                        f"{hazard_article} {hazard_noun} inside the useful XP band "
+                        "can reach the route"
                     )
 
         if closed_doors:
@@ -1124,6 +1263,8 @@ def rank_hunt_candidates(
                 estimated_move_cost=estimated_move_cost,
                 estimated_flying_move_cost=estimated_flying_move_cost,
                 requires_flight=requires_flight,
+                route_origin_recall_index=route_origin_recall_index,
+                route_origin_room_vnum=route_origin_room_vnum,
             )
         )
 
@@ -1757,14 +1898,26 @@ def _route_hazard_rooms(
     for room_vnum, resets in resets_by_room.items():
         for reset in resets:
             mobile = world.mobiles.get(reset.mobile_vnum)
-            if mobile is None or not mobile.aggressive:
+            if mobile is None or not _source_mobile_is_combat_hazard(
+                world,
+                mobile,
+            ):
                 continue
             if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
                 continue
             level_max = _mobile_level_range(mobile.level)[1]
             if (
                 level_max > character_level - 5
-                or reset.maximum_count > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
+                or mobile.attack_programs
+                or (
+                    reset.maximum_count
+                    > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
+                    and _source_aggressive_reset_can_reach_character(
+                        world,
+                        mobile,
+                        character_level=character_level,
+                    )
+                )
             ):
                 blocked.add(room_vnum)
                 break
@@ -1786,7 +1939,9 @@ def _source_route_hazard_rejections(
     """
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
-    path_room_set = set(path_rooms)
+    path_room_sequence = tuple(path_rooms)
+    path_room_set = set(path_room_sequence)
+    target_room_vnum = path_room_sequence[-1] if path_room_sequence else None
     resets_by_room = _resets_by_room(world)
     rejections: list[str] = []
     for room_vnum in path_room_set:
@@ -1802,47 +1957,163 @@ def _source_route_hazard_rejections(
                     "route includes program-triggered attacker: "
                     f"{mobile.short_description} in room {room_vnum}"
                 )
-            if not mobile.aggressive:
+            if not _source_mobile_is_combat_hazard(world, mobile):
+                continue
+            if not mobile.aggressive and room_vnum != target_room_vnum:
                 continue
             maximum_level = _mobile_level_range(mobile.level)[1]
+            hazard_noun = (
+                "aggressive reset"
+                if mobile.aggressive
+                else "combat-joining special"
+            )
+            hazard_article = "an" if mobile.aggressive else "a"
             if maximum_level > character_level:
                 rejections.append(
-                    "route crosses a higher-level aggressive reset: "
+                    f"route crosses a higher-level {hazard_noun}: "
                     f"{mobile.short_description} in room {room_vnum}"
                 )
             elif maximum_level > character_level - 5:
                 rejections.append(
-                    "route crosses an aggressive reset inside the useful "
+                    f"route crosses {hazard_article} {hazard_noun} inside the useful "
                     f"XP band: {mobile.short_description} in room {room_vnum}"
                 )
             elif reset.maximum_count > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY:
                 rejections.append(
-                    "route crosses a large below-band aggressive crowd: "
+                    "route crosses a large below-band "
+                    f"{'aggressive' if mobile.aggressive else 'combat-joining'} crowd: "
                     f"{mobile.short_description} in room {room_vnum}"
                 )
 
     for mobile, reset in _wandering_aggressors(world):
         if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
             continue
-        if reset.room_vnum in path_room_set:
+        hazard_rooms = (
+            path_room_set
+            if mobile.aggressive
+            else ({target_room_vnum} if target_room_vnum is not None else set())
+        )
+        if reset.room_vnum in hazard_rooms:
             continue
         reachable = set(
             _wanderer_reachable_rooms(world, mobile, reset.room_vnum)
         )
-        if path_room_set.isdisjoint(reachable):
+        if hazard_rooms.isdisjoint(reachable):
             continue
         maximum_level = _mobile_level_range(mobile.level)[1]
+        hazard_noun = (
+            "aggressive wanderer"
+            if mobile.aggressive
+            else "combat-joining special"
+        )
+        hazard_article = "an" if mobile.aggressive else "a"
         if maximum_level > character_level:
             rejections.append(
-                "a higher-level aggressive wanderer can reach the route: "
+                f"a higher-level {hazard_noun} can reach the route: "
                 f"{mobile.short_description}"
             )
         elif maximum_level > character_level - 5:
             rejections.append(
-                "an aggressive wanderer inside the useful XP band can reach "
+                f"{hazard_article} {hazard_noun} inside the useful XP band can reach "
                 f"the route: {mobile.short_description}"
             )
     return tuple(dict.fromkeys(rejections))
+
+
+def source_safe_route_to_room_with_origin(
+    world: WorldSource,
+    room_vnum: int,
+    *,
+    character_level: int,
+    recall_origins: Mapping[int, int] | None = None,
+) -> tuple[tuple[str, ...], tuple[int, ...], int, int, int] | None:
+    """Return a source-safe route and its observed recall origin.
+
+    Quest destinations are normally planned from Midgaard recall.  Once a
+    live ``recall list`` has established another destination, that point is a
+    valid route origin too.  The caller still controls which origins are
+    trusted; an omitted mapping deliberately means default recall only.
+    """
+    return _source_safe_route_to_room_from_origins(
+        world,
+        room_vnum,
+        character_level=character_level,
+        recall_origins=recall_origins,
+    )
+
+
+def _source_safe_route_to_room_from_origins(
+    world: WorldSource,
+    room_vnum: int,
+    *,
+    character_level: int,
+    recall_origins: Mapping[int, int] | None,
+) -> tuple[tuple[str, ...], tuple[int, ...], int, int, int] | None:
+    """Return the best source-safe route from the supplied recall points."""
+    recall_origin_rooms: dict[int, int] = {0: RECALL_VNUM}
+    for raw_index, raw_room_vnum in (recall_origins or {}).items():
+        try:
+            index = int(raw_index)
+            origin_room_vnum = int(raw_room_vnum)
+        except (TypeError, ValueError):
+            continue
+        if index < 0 or origin_room_vnum not in world.rooms:
+            continue
+        recall_origin_rooms[index] = origin_room_vnum
+
+    resets_by_room = _resets_by_room(world)
+    blocked_rooms = _route_hazard_rooms(
+        world,
+        resets_by_room,
+        character_level=character_level,
+    ) - {room_vnum}
+    choices: list[
+        tuple[
+            tuple[int, int, int, int],
+            tuple[tuple[str, ...], tuple[int, ...], int],
+            int,
+            int,
+        ]
+    ] = []
+    for index, origin_room_vnum in recall_origin_rooms.items():
+        direct = _shortest_paths_from(world.rooms, origin_room_vnum).get(
+            room_vnum
+        )
+        if direct is None:
+            continue
+        safe = _shortest_paths_from(
+            world.rooms,
+            origin_room_vnum,
+            blocked_rooms=blocked_rooms,
+        ).get(room_vnum)
+        selected = direct
+        if (
+            safe is not None
+            and len(safe[0])
+            <= len(direct[0]) + _MAX_SOURCE_ROUTE_DETOUR_STEPS
+        ):
+            selected = safe
+        if _source_route_hazard_rejections(
+            world,
+            selected[1],
+            character_level=character_level,
+        ):
+            continue
+        choices.append(
+            (
+                (len(selected[0]), selected[2], index, origin_room_vnum),
+                selected,
+                index,
+                origin_room_vnum,
+            )
+        )
+    if not choices:
+        return None
+    _, selected, index, origin_room_vnum = min(
+        choices,
+        key=lambda item: item[0],
+    )
+    return (*selected, index, origin_room_vnum)
 
 
 def source_safe_route_to_room(
@@ -1852,30 +2123,15 @@ def source_safe_route_to_room(
     character_level: int,
 ) -> tuple[tuple[str, ...], tuple[int, ...], int] | None:
     """Return a source-safe route to a quest object room, if one exists."""
-    direct = _shortest_paths_from(world.rooms, RECALL_VNUM).get(room_vnum)
-    if direct is None:
-        return None
-    resets_by_room = _resets_by_room(world)
-    blocked_rooms = _route_hazard_rooms(
+    selected = source_safe_route_to_room_with_origin(
         world,
-        resets_by_room,
+        room_vnum,
         character_level=character_level,
-    ) - {room_vnum}
-    safe = _shortest_paths_from(
-        world.rooms,
-        RECALL_VNUM,
-        blocked_rooms=blocked_rooms,
-    ).get(room_vnum)
-    selected = direct
-    if safe is not None and len(safe[0]) <= len(direct[0]) + _MAX_SOURCE_ROUTE_DETOUR_STEPS:
-        selected = safe
-    if _source_route_hazard_rejections(
-        world,
-        selected[1],
-        character_level=character_level,
-    ):
+    )
+    if selected is None:
         return None
-    return selected
+    commands, path_rooms, closed_doors, _, _ = selected
+    return commands, path_rooms, closed_doors
 
 
 def _source_mobile_has_safe_noncombat_special(
@@ -1890,6 +2146,53 @@ def _source_mobile_has_safe_noncombat_special(
         and source_special_profile(special).xp_bonus == 0
         for special in specials
     )
+
+
+def _source_mobile_has_combat_joining_special(
+    world: WorldSource,
+    mobile_vnum: int,
+) -> bool:
+    """Return whether source special code can join another mobile's fight."""
+    return any(
+        str(special).strip().casefold() in COMBAT_JOINING_SPECIALS
+        for special in world.mobile_specials.get(mobile_vnum, ())
+    )
+
+
+def _source_mobile_is_combat_hazard(
+    world: WorldSource,
+    mobile: MobileSource,
+) -> bool:
+    """Return whether a source mobile can add combat before being attacked."""
+    return mobile.aggressive or _source_mobile_has_combat_joining_special(
+        world,
+        mobile.vnum,
+    )
+
+
+def _source_aggressive_reset_can_reach_character(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int,
+) -> bool:
+    """Mirror DD4's level cutoff for an aggressive mobile's attack pass.
+
+    ``update.c`` skips an aggressive mobile when the player is more than ten
+    levels above it. Use the highest possible fuzzy mobile level so a route
+    is reopened only when every source-backed load is harmless by that rule.
+    Mobile programs and non-safe specials are separate source behavior and
+    remain route hazards regardless of the level cutoff.
+    """
+    if not mobile.aggressive:
+        return False
+    if mobile.attack_programs:
+        return True
+    if world.mobile_specials.get(mobile.vnum) and not (
+        _source_mobile_has_safe_noncombat_special(world, mobile.vnum)
+    ):
+        return True
+    return character_level <= _mobile_level_range(mobile.level)[1] + 10
 
 
 def _shortest_paths_from(
@@ -1950,6 +2253,30 @@ _SUBCLASS_SOURCE_SKILL_ALIASES = {
     "martial artist": "artist base",
 }
 
+_CLASS_SOURCE_TEACHER_SKILLS = {
+    "mage": "evocation magiks",
+    "cleric": "healing magiks",
+    "thief": "detect hidden",
+    "warrior": "inner force",
+    "psionic": "invis",
+    "shifter": "morphing knowledge",
+    "brawler": "pugilism knowledge",
+    "ranger": "archery knowledge",
+    "smithy": "weaponsmithing",
+}
+
+_CLASS_SOURCE_TEACHER_KEYWORDS = {
+    "mage": "guildmaster",
+    "cleric": "guildmaster",
+    "thief": "guildmaster",
+    "warrior": "guildmaster",
+    "psionic": "guildmaster",
+    "shifter": "guildmaster",
+    "brawler": "guildmaster",
+    "ranger": "ranger",
+    "smithy": "craftsman",
+}
+
 
 def source_subclass_teacher_skill(subclass: str) -> str:
     """Return the source ``do_change`` teaching entry for a subclass."""
@@ -1960,38 +2287,83 @@ def source_subclass_teacher_skill(subclass: str) -> str:
     )
 
 
-def source_subclass_teacher_route(
+def source_class_teacher_skill(character_class: str) -> str | None:
+    """Return the source skill that identifies a level-10 class teacher."""
+    normalized = " ".join(str(character_class).casefold().split())
+    return _CLASS_SOURCE_TEACHER_SKILLS.get(normalized)
+
+
+def _source_teacher_route(
     world: WorldSource,
-    subclass: str,
+    source_skill: str,
     *,
     character_class: str | None = None,
     origin: int = RECALL_VNUM,
     preferred_mobile_vnums: Collection[int] = (),
+    preferred_room_vnum: int | None = None,
+    preferred_keywords: Collection[str] = (),
+    allowed_area_files: Collection[str] = (),
 ) -> SourceTeacherRoute | None:
-    """Find a source-reset teacher that can perform a level-30 change.
+    """Find a source-reset teacher that can teach one source skill.
 
-    The server's ``do_change`` checks the teacher's learned subclass skill in
-    the current room.  Area-file names and nearby NPC descriptions are not
-    enough evidence, so this resolver requires both the exact teaching entry
-    and a source-reset route from the normal Midgaard recall room.
+    Both level-10 practice and level-30 subclass changes use the same source
+    representation: a teacher skill, a mobile reset, and a route from recall.
+    Optional area and keyword filters keep a broad source snapshot from
+    selecting a distant higher-tier teacher for an early class handoff.
     """
-    source_skill = source_subclass_teacher_skill(subclass)
     preferred = {int(vnum) for vnum in preferred_mobile_vnums}
+    preferred_rooms = (
+        {int(preferred_room_vnum)}
+        if preferred_room_vnum is not None
+        else set()
+    )
+    preferred_keyword_set = {
+        " ".join(str(keyword).casefold().split())
+        for keyword in preferred_keywords
+    }
+    allowed_areas = {
+        Path(str(area_file)).name.casefold()
+        for area_file in allowed_area_files
+    }
     class_skill = (
         f"{' '.join(str(character_class).casefold().split())} base"
         if character_class
         else None
     )
-    paths = _shortest_paths_from(world.rooms, origin)
+    route_rooms = (
+        {
+            room_vnum: room
+            for room_vnum, room in world.rooms.items()
+            if Path(str(room.area_file)).name.casefold() in allowed_areas
+        }
+        if allowed_areas
+        else world.rooms
+    )
+    paths = _shortest_paths_from(route_rooms, origin)
     candidates: list[tuple[tuple[int, int, int, int], SourceTeacherRoute]] = []
     resets_by_mobile: dict[int, list[MobReset]] = {}
     for reset in world.mob_resets:
         resets_by_mobile.setdefault(reset.mobile_vnum, []).append(reset)
     for mobile in world.mobiles.values():
+        if (
+            allowed_areas
+            and Path(str(mobile.area_file)).name.casefold() not in allowed_areas
+        ):
+            continue
         if not mobile.teaches("teacher base") or not mobile.teaches(source_skill):
             continue
         class_fit = 0 if class_skill and mobile.teaches(class_skill) else 1
         for reset in resets_by_mobile.get(mobile.vnum, ()):
+            if (
+                allowed_areas
+                and (
+                    reset.room_vnum not in route_rooms
+                    or reset.room_vnum not in world.rooms
+                )
+            ):
+                continue
+            if preferred_rooms and reset.room_vnum not in preferred_rooms:
+                continue
             path = paths.get(reset.room_vnum)
             if path is None:
                 continue
@@ -2021,7 +2393,22 @@ def source_subclass_teacher_route(
                     open_before.append((origin_text, direction))
             if not steps and rooms[0] != rooms[-1]:
                 continue
-            keyword = (
+            keywords = tuple(
+                " ".join(keyword.casefold().split())
+                for keyword in (
+                    *mobile.keywords.split(),
+                    *mobile.short_description.split(),
+                )
+            )
+            preferred_keyword = next(
+                (
+                    keyword
+                    for keyword in preferred_keyword_set
+                    if keyword in keywords
+                ),
+                None,
+            )
+            keyword = preferred_keyword or (
                 mobile.keywords.split()[0]
                 if mobile.keywords
                 else mobile.short_description
@@ -2050,6 +2437,52 @@ def source_subclass_teacher_route(
     if not candidates:
         return None
     return min(candidates, key=lambda item: item[0])[1]
+
+
+def source_subclass_teacher_route(
+    world: WorldSource,
+    subclass: str,
+    *,
+    character_class: str | None = None,
+    origin: int = RECALL_VNUM,
+    preferred_mobile_vnums: Collection[int] = (),
+) -> SourceTeacherRoute | None:
+    """Find a source-reset teacher that can perform a level-30 change.
+
+    The server's ``do_change`` checks the teacher's learned subclass skill in
+    the current room.  Area-file names and nearby NPC descriptions are not
+    enough evidence, so this resolver requires both the exact teaching entry
+    and a source-reset route from the normal Midgaard recall room.
+    """
+    return _source_teacher_route(
+        world,
+        source_subclass_teacher_skill(subclass),
+        character_class=character_class,
+        origin=origin,
+        preferred_mobile_vnums=preferred_mobile_vnums,
+    )
+
+
+def source_class_teacher_route(
+    world: WorldSource,
+    character_class: str,
+    *,
+    origin: int = RECALL_VNUM,
+    preferred_room_vnum: int | None = None,
+) -> SourceTeacherRoute | None:
+    """Find the source-backed Midgaard teacher for a base class."""
+    normalized = " ".join(str(character_class).casefold().split())
+    source_skill = source_class_teacher_skill(normalized)
+    if source_skill is None:
+        return None
+    return _source_teacher_route(
+        world,
+        source_skill,
+        origin=origin,
+        preferred_room_vnum=preferred_room_vnum,
+        preferred_keywords=(_CLASS_SOURCE_TEACHER_KEYWORDS[normalized],),
+        allowed_area_files=("midgaard.are",),
+    )
 
 
 def source_route_movement_cost(
@@ -2193,6 +2626,39 @@ def _mobile_level_range(source_level: int) -> tuple[int, int]:
     return max(1, source_level - 2), source_level + 2
 
 
+def source_mobile_can_join_player_fight(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int | None = None,
+) -> bool:
+    """Mirror the source conditions for an NPC joining a player fight.
+
+    ``violence_update`` considers every visible, ordinary NPC in the room,
+    not only mobiles with ``ACT_AGGRESSIVE``.  The source level window in that
+    function is player level minus three through plus six; a source range is
+    eligible when any fuzzy load can fall inside it.  ``ACT_NO_FIGHT`` is not
+    excluded because DD4 still puts that mobile into combat and permits
+    effects such as fireshield.
+    """
+    if mobile.vnum in world.shopkeepers:
+        return False
+    if not mobile.keywords.strip():
+        return False
+    if mobile.act_flags & ACT_WIZINVIS_MOB:
+        return False
+    if mobile.affected_flags & (AFF_BLIND | AFF_NON_CORPOREAL):
+        return False
+    if character_level is not None:
+        minimum_level, maximum_level = _mobile_level_range(mobile.level)
+        if (
+            maximum_level < character_level - 3
+            or minimum_level > character_level + 6
+        ):
+            return False
+    return True
+
+
 def _route_preflight_metadata(
     world: WorldSource,
     route: tuple[str, ...],
@@ -2284,14 +2750,45 @@ def _mobile_critical_hit_damage(level: int, *, wielding: bool) -> int:
     return _mobile_normal_hit_damage(level, wielding=wielding) * 2
 
 
+def mobile_sanctuary_peak_round_damage(
+    level: int,
+    *,
+    wielding: bool,
+    dual_wielding: bool,
+) -> int:
+    """Return a source upper bound after DD4 sanctuary mitigation.
+
+    ``fight.c`` halves each ordinary strike before the critical multiplier is
+    applied, so integer division belongs inside the attack loop rather than
+    on the completed raw round total.
+    """
+    unarmed_hit = _mobile_normal_hit_damage(level, wielding=False) // 2
+    weapon_hit = _mobile_normal_hit_damage(level, wielding=True) // 2
+    cycle_damage = weapon_hit if wielding else unarmed_hit
+    if dual_wielding:
+        cycle_damage += weapon_hit
+    possible_attacks = 5 + int(level >= 20)
+    return cycle_damage * possible_attacks
+
+
+def mobile_sanctuary_critical_hit_damage(
+    level: int,
+    *,
+    wielding: bool,
+) -> int:
+    """Return one critical-hit upper bound after sanctuary mitigation."""
+    return (_mobile_normal_hit_damage(level, wielding=wielding) // 2) * 2
+
+
 def _wandering_aggressors(
     world: WorldSource,
 ) -> tuple[tuple[MobileSource, MobReset], ...]:
+    """Return wandering mobiles that can add combat to a route or endpoint."""
     return tuple(
         (mobile, reset)
         for reset in world.mob_resets
         if (mobile := world.mobiles.get(reset.mobile_vnum)) is not None
-        and mobile.aggressive
+        and _source_mobile_is_combat_hazard(world, mobile)
         and mobile.wanders
     )
 
@@ -2362,49 +2859,113 @@ def _rank_direct_ground_stashes(
         for path_room_vnum in path_rooms:
             for reset in resets_by_room.get(path_room_vnum, ()):
                 mobile = world.mobiles.get(reset.mobile_vnum)
-                if mobile is None or not mobile.aggressive:
+                if mobile is None or not _source_mobile_is_combat_hazard(
+                    world,
+                    mobile,
+                ):
                     continue
+                if not mobile.aggressive and path_room_vnum != room_vnum:
+                    continue
+                hazard_kind = (
+                    "route"
+                    if mobile.aggressive
+                    else "route combat-joining special"
+                )
                 hazards.append(
-                    f"route: {mobile.short_description} L{mobile.level} "
+                    f"{hazard_kind}: {mobile.short_description} L{mobile.level} "
                     f"in {path_room_vnum}"
                 )
                 hazard_level_max = _mobile_level_range(mobile.level)[1]
+                hazard_noun = (
+                    "aggressive reset"
+                    if mobile.aggressive
+                    else "combat-joining special"
+                )
+                hazard_article = "an" if mobile.aggressive else "a"
                 if hazard_level_max > character_level:
-                    rejections.append("route crosses a higher-level aggressive reset")
+                    rejections.append(
+                        f"route crosses a higher-level {hazard_noun}"
+                    )
                 elif hazard_level_max > character_level - 5:
                     rejections.append(
-                        "route crosses an aggressive reset inside the useful XP band"
+                        f"route crosses {hazard_article} {hazard_noun} "
+                        "inside the useful XP band"
+                    )
+                elif (
+                    mobile.aggressive
+                    and reset.maximum_count
+                    > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
+                ):
+                    # A below-band pack can still consume the whole funding
+                    # segment before the character reaches the stash.
+                    hazards.append(
+                        "route crosses a large below-band aggressive reset: "
+                        f"{mobile.short_description} L{mobile.level} in "
+                        f"{path_room_vnum} (up to {reset.maximum_count} mobiles)"
+                    )
+                    rejections.append(
+                        "route crosses a large below-band aggressive crowd"
                     )
         # A wandering aggressor can enter a path room even when its reset
         # room is elsewhere. Keep below-band transit hazards as cautionary
         # evidence: the runner can finish an unavoidable source-proven trivial
         # interruption without treating it as an XP target.
         for mobile_vnum, mobile in world.mobiles.items():
-            if not mobile.aggressive or not mobile.wanders:
+            if not _source_mobile_is_combat_hazard(world, mobile) or not mobile.wanders:
                 continue
+            hazard_rooms = (
+                path_room_set
+                if mobile.aggressive
+                else {room_vnum}
+            )
             reachable = set(source_mobile_search_rooms(world, mobile_vnum))
-            if path_room_set.isdisjoint(reachable):
+            if hazard_rooms.isdisjoint(reachable):
                 continue
+            hazard_kind = (
+                "reachable wanderer"
+                if mobile.aggressive
+                else "reachable combat-joining special"
+            )
             hazards.append(
-                f"reachable wanderer: {mobile.short_description} L{mobile.level}"
+                f"{hazard_kind}: {mobile.short_description} L{mobile.level}"
             )
             hazard_level_max = _mobile_level_range(mobile.level)[1]
+            hazard_noun = (
+                "aggressive wanderer"
+                if mobile.aggressive
+                else "combat-joining special"
+            )
+            hazard_article = "an" if mobile.aggressive else "a"
             if hazard_level_max > character_level:
                 rejections.append(
-                    "a higher-level aggressive wanderer can reach the route"
+                    f"a higher-level {hazard_noun} can reach the route"
                 )
             elif hazard_level_max > character_level - 5:
                 rejections.append(
-                    "an aggressive wanderer inside the useful XP band can reach the route"
+                    f"{hazard_article} {hazard_noun} inside the useful XP band "
+                    "can reach the route"
                 )
         for reset in resets_by_room.get(room_vnum, ()):
             mobile = world.mobiles.get(reset.mobile_vnum)
-            if mobile is None or not mobile.aggressive:
+            if mobile is None or not _source_mobile_is_combat_hazard(
+                world,
+                mobile,
+            ):
                 continue
-            hazards.append(
-                f"stash room has aggressive reset: {mobile.short_description}"
-            )
-            rejections.append("stash room has an aggressive reset")
+            if mobile.aggressive:
+                hazards.append(
+                    f"stash room has aggressive reset: "
+                    f"{mobile.short_description}"
+                )
+                rejections.append("stash room has an aggressive reset")
+            else:
+                hazards.append(
+                    "stash room has combat-joining special: "
+                    f"{mobile.short_description}"
+                )
+                rejections.append(
+                    "stash room has a combat-joining special"
+                )
 
         keywords = tuple(dict.fromkeys(object_keyword(item) for item in ground_objects))
         if closed_doors:

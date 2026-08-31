@@ -52,6 +52,13 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
             {"item": "a metal buckler", "shop": "Leather Shop", "coins": 10}
         ],
     }
+    assert report["progress"]["loot_sale_rejections"] == [
+        {
+            "item_description": "a patched leather jerkin",
+            "shopkeeper": "The armourer",
+            "reason": "shopkeeper refused item",
+        }
+    ]
     assert report["character"] == {
         "name": "Reportmage",
         "race": "human",
@@ -87,6 +94,7 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     assert "Character: Reportmage, female, human, mage (warlock)" in markdown
     assert "Confirmed kills: tutorial wolf (+75 XP)" in markdown
     assert "Loot sales: 1 item(s) for 10 coins" in markdown
+    assert "Loot sale refusals: 1 item offer(s) refused" in markdown
     assert "Training: accepted magic missile; rejected kick" in markdown
     assert "**critical - health pressure:** Health reached 10% of maximum." in markdown
 
@@ -344,6 +352,14 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
             "objective": {"level": 2},
         },
         timestamp="2026-07-17T23:59:58+00:00",
+    )
+    storage.record_event(
+        run_id,
+        kind="response",
+        payload={
+            "text": "The armourer looks uninterested in a patched leather jerkin.\n"
+        },
+        timestamp="2026-07-17T23:59:59+00:00",
     )
     initial_event = storage.record_event(
         run_id,

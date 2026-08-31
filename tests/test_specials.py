@@ -1,4 +1,5 @@
 from dd4tester.specials import (
+    COMBAT_JOINING_SPECIALS,
     CONDITIONAL_COMBAT_SPECIALS,
     ECONOMIC_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
@@ -34,6 +35,8 @@ def test_special_profiles_distinguish_behavioral_risk() -> None:
 def test_special_classification_sets_are_explicit() -> None:
     assert "spec_cast_orb" in SAFE_NONCOMBAT_SPECIALS
     assert "spec_clan_guard" in CONDITIONAL_COMBAT_SPECIALS
+    assert "spec_guard" in COMBAT_JOINING_SPECIALS
+    assert "spec_sahuagin_guard" in COMBAT_JOINING_SPECIALS
     assert "spec_thief" in ECONOMIC_SPECIALS
     assert "spec_cast_undead" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
     assert "spec_kungfu_poison" in WEAK_DEBILITATING_SPECIALS
@@ -48,6 +51,34 @@ def test_source_caster_profiles_expose_status_effects_from_special_c() -> None:
         "dispel magic",
     )
     assert "blindness" in source_special_profile("spec_cast_mage").status_effects
+    assert source_special_status_effects("spec_assassin") == (
+        "blindness",
+        "trip",
+    )
+    assert source_special_status_effects("spec_cast_druid", level=14) == ()
+    assert source_special_status_effects("spec_cast_druid", level=15) == (
+        "fear",
+    )
+    assert source_special_status_effects("spec_cast_psionicist", level=13) == ()
+    assert source_special_status_effects("spec_cast_psionicist", level=35) == (
+        "energy drain",
+        "disintegrate",
+    )
+    assert source_special_status_effects("spec_demon", level=14) == (
+        "curse",
+        "chill touch",
+        "burning hands",
+        "strength drain",
+    )
+    assert source_special_status_effects("spec_demon", level=19)[-2:] == (
+        "energy drain",
+        "hold",
+    )
+    assert source_special_status_effects("spec_demon", level=50)[-3:] == (
+        "gate",
+        "hex",
+        "fire breath",
+    )
 
 
 def test_undead_special_effects_follow_source_level_gates() -> None:

@@ -42,6 +42,8 @@ class Fastwalk:
     route_preflight_target: str | None = None
     route_preflight_hard_hazard: bool = False
     route_hard_hazard_targets: tuple[str, ...] = ()
+    route_origin_recall_index: int = 0
+    route_origin_room_vnum: int = 3001
 
     @property
     def commands(self) -> tuple[str, ...]:

@@ -4,7 +4,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Collection, Mapping
+
+
+_HEALER_TO_MARKET_SQUARE = ("south", "south", "south")
+_SHOP_SUFFIXES_FROM_MARKET_SQUARE = {
+    "3010": ("east", "north"),
+    "3011": ("east", "east", "north"),
+    "3020": ("west", "south"),
+    "3033": ("west", "west", "north"),
+    "3034": ("east", "south"),
+    "3035": ("south", "west", "west", "north"),
+}
 
 
 @dataclass(frozen=True)
@@ -16,6 +27,14 @@ class SafeShop:
     route_from_mage_lab: tuple[str, ...]
 
     @property
+    def route_from_healer(self) -> tuple[str, ...]:
+        """Return the source route from the safe Midgaard healer room."""
+        suffix = _SHOP_SUFFIXES_FROM_MARKET_SQUARE.get(self.room_vnum)
+        if suffix is None:
+            raise ValueError(f"no healer-origin route for shop {self.room_vnum}")
+        return _HEALER_TO_MARKET_SQUARE + suffix
+
+    @property
     def route_to_mage_lab(self) -> tuple[str, ...]:
         opposites = {
             "north": "south",
@@ -24,6 +43,16 @@ class SafeShop:
             "west": "east",
         }
         return tuple(opposites[command] for command in reversed(self.route_from_mage_lab))
+
+    @property
+    def route_to_healer(self) -> tuple[str, ...]:
+        opposites = {
+            "north": "south",
+            "east": "west",
+            "south": "north",
+            "west": "east",
+        }
+        return tuple(opposites[command] for command in reversed(self.route_from_healer))
 
 
 # Source: server/area/midgaard.are #SHOPS. Each room has ROOM_SAFE, and each
@@ -147,6 +176,7 @@ def safe_shop_for_item(
     *,
     item_type: int | None = None,
     item_value: int | None = None,
+    excluded_shop_rooms: Collection[str] | None = None,
 ) -> SafeShop | None:
     """Choose the best compatible safe shop after known duplicate penalties."""
     words = set(re.findall(r"[a-z]+", description.casefold()))
@@ -161,7 +191,10 @@ def safe_shop_for_item(
             else None
         )
     compatible = [
-        shop for shop in SAFE_MIDGAARD_SHOPS if shop.item_type == item_type
+        shop
+        for shop in SAFE_MIDGAARD_SHOPS
+        if shop.item_type == item_type
+        and shop.room_vnum not in {str(room) for room in (excluded_shop_rooms or ())}
     ]
     keyword = sale_keyword(description)
     counts = sale_counts or {}
