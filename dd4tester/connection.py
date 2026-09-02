@@ -2,9 +2,44 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Awaitable, Protocol, TypeVar
 
 from .telnet import TelnetNegotiation, TelnetNegotiator
+
+
+_T = TypeVar("_T")
+
+
+def _consume_task_result(task: asyncio.Task[object]) -> None:
+    try:
+        task.result()
+    except BaseException:
+        pass
+
+
+async def _await_hard_bounded(
+    awaitable: Awaitable[_T],
+    *,
+    timeout: float,
+    operation: str,
+) -> _T:
+    """Bound an adapter await without waiting for resistant cancellation."""
+    task = asyncio.create_task(awaitable)
+    try:
+        done, _pending = await asyncio.wait(
+            (task,),
+            timeout=max(0.01, timeout),
+        )
+    except BaseException:
+        if not task.done():
+            task.cancel()
+            task.add_done_callback(_consume_task_result)
+        raise
+    if not done:
+        task.cancel()
+        task.add_done_callback(_consume_task_result)
+        raise TimeoutError(f"{operation} exceeded its {timeout:g} second bound")
+    return task.result()
 
 
 @dataclass
@@ -60,9 +95,10 @@ class TelnetConnection:
         self.closed = False
 
     async def connect(self) -> None:
-        self.reader, self.writer = await asyncio.wait_for(
+        self.reader, self.writer = await _await_hard_bounded(
             asyncio.open_connection(self.host, self.port),
             timeout=self.timeout,
+            operation="Telnet connection",
         )
         self.closed = False
 
@@ -70,13 +106,21 @@ class TelnetConnection:
         if self.writer is None:
             raise RuntimeError("Telnet connection is not open")
         self.writer.write((command + "\n").encode(self.encoding))
-        await asyncio.wait_for(self.writer.drain(), timeout=self.timeout)
+        await _await_hard_bounded(
+            self.writer.drain(),
+            timeout=self.timeout,
+            operation="Telnet command send",
+        )
 
     async def read_available(self, timeout: float = 0.25) -> ReadResult:
         if self.reader is None or self.writer is None or self.closed:
             return ReadResult()
         try:
-            raw = await asyncio.wait_for(self.reader.read(4096), timeout=timeout)
+            raw = await _await_hard_bounded(
+                self.reader.read(4096),
+                timeout=timeout,
+                operation="Telnet read",
+            )
         except TimeoutError:
             return ReadResult()
 
@@ -88,7 +132,11 @@ class TelnetConnection:
         for response in chunk.responses:
             self.writer.write(response)
         if chunk.responses:
-            await asyncio.wait_for(self.writer.drain(), timeout=self.timeout)
+            await _await_hard_bounded(
+                self.writer.drain(),
+                timeout=self.timeout,
+                operation="Telnet negotiation send",
+            )
 
         return ReadResult(
             text=chunk.data.decode(self.encoding, errors="replace"),
@@ -119,6 +167,10 @@ class TelnetConnection:
             return
         self.writer.close()
         try:
-            await asyncio.wait_for(self.writer.wait_closed(), timeout=self.timeout)
+            await _await_hard_bounded(
+                self.writer.wait_closed(),
+                timeout=min(5.0, self.timeout),
+                operation="Telnet connection close",
+            )
         except (ConnectionError, TimeoutError):
             pass

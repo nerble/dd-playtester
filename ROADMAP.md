@@ -14,42 +14,269 @@ headlessly or through a visible Mudlet client in a Windows virtual machine.
 
 ## Latest Continuation
 
-**Latest Aeloria continuation (2026-08-31):** Aeloria remains a level-18
+**Protection-loss accounting and Dorrik continuation (2026-09-02):** The
+Telnet adapter and StarterBot now hard-bound connection, read, negotiation,
+command-write, and close awaits without waiting on cancellation-resistant
+tasks. A final `quit` send timeout closes the already-saved session locally
+instead of reopening authentication or holding the process. The `--progress`
+option reports bounded campaign attempts while durable SQLite evidence remains
+authoritative. Run 11364 exposed that partial combat XP could mask a 419-XP
+loss with a net-positive segment; the campaign now compares the durable XP-loss
+counter as well as net XP and repairs historical segments on startup. Run
+11365 then selected sanctuary recovery instead of replaying Highlander, leaving
+Dorrik level 25 at 374,233 XP in healer room 3054 at checkpoint 34135. No
+character has reached HERO, and no level-25-to-100 progression claim is
+implied. The full offline suite now passes 3,290 tests.
+
+**Latest field-risk result (2026-09-02):** Highlander is now quarantined with
+`loss_count=2` and a hard-health protection marker. The next bounded invocation
+replayed the existing database evidence, refused that route, completed the
+sanctuary recovery boundary, and returned without a new loss or death. This is
+a confirmed liveness and safety repair, not level-26 or HERO progression proof.
+
+**Healer-origin liquidation hazard repair (2026-09-02):** Live run 11202
+exposed a source-scripted level-2 Midgaard drunk (mobile 3064) on Temple
+Square: a generic loot sale crossed the room, triggered its `greet_prog`, and
+caused an 88-XP flee loss before the campaign safely checkpointed
+`segment_utility_abort`. The starter now applies one source-backed preflight to
+all healer-origin city-shop liquidations: capable characters cast invisibility
+and remain hidden until the shop; other classes locate the drunk with a bounded
+`where` check and stop safely if the hazard cannot be classified. Subsequent
+reset-enabled and ordinary rotations completed cleanly and advanced Vergalcoror
+from 39,832 to 44,592 XP, including a latest reset-enabled batch that added
+807 XP after one bounded field-reset wait.
+This repairs a liveness and safety blocker, but the character remains level 10
+and no subclass or HERO progression proof is claimed.
+The full offline suite passes 3,290 tests after the repair and the CLI now
+reports each bounded attempt when invoked with `--progress`.
+
+**Kestrel fame boundary (2026-09-02):** A bounded level-24 rotation recorded
+100 incidental XP, then preserved a cumulative 385-XP fame-recovery loss and a
+later 120-second segment cap while returning Kestrel safely to healer room
+3054. The route remains quarantined pending fresh protection/fame evidence;
+this is not level-25 or HERO proof.
+
+**Flight-funding ground fallback (2026-09-02):** When a stocked character is
+blocked because the current reboot has exhausted safe funding targets for an
+affordable flight purchase, the campaign now preflights the independent
+source-ranked no-flight frontier and hands it to the normal selector for
+persistence and dispatch. Funding markers remain intact for a later reboot,
+while the fallback can earn ordinary XP immediately. The campaign and starter
+suites pass 2,287 tests, and the full offline suite now passes 3,279. Two
+bounded live rotations plus a third continuation completed 36 segments cleanly,
+moving Vergalcoror from 36,046 to 39,832 XP and crossing the level-10 threshold
+with no death or XP-loss event. This is level-10 continuation evidence, not
+subclass or HERO proof.
+
+**Source-ranked movement gate repair (2026-09-01):** The source-ranked
+candidate selector now receives the loaded `WorldSource` when applying its
+movement gate. A route longer than the current movement pool is admitted only
+when the source route planner proves an audited `no_mob` waypoint split; the
+field runner then sleeps and resumes each leg under the existing health,
+consider, crowd, and healer-return rules. The focused selector tests and full
+offline suite pass 3,278 tests. Live run 11074 exercised the split route to the
+Kerofk gravedigger, reached the exact endpoint, and correctly rejected its
+below-band live `consider` without combat or XP loss. The route repair is live
+validated, but it is not level-25 or HERO progression proof.
+
+**Live rotation status (2026-09-01):** Kestrel is safely checkpointed at level
+24 and 334,938 XP after runs 11074-11076; the gravedigger route was below-band,
+the food reserve was replenished, and the Moria sanctuary carrier was absent.
+Aeloria is level 18 and Serevian level 11. All three workers closed cleanly;
+the next executable work is to rotate after a new reboot or independent
+source-safe target, while preserving the current cooldown and protection
+evidence. No character has reached HERO yet.
+
+**Reconnect authentication gate (2026-09-01):** A live bounded run exposed a
+race where a quiet recovery check could be sent into DD4's login prompt after
+the socket reconnected. The starter now clears authenticated/in-world state on
+every close and waits for the expected name/password/entry handshake or an
+explicit reconnect banner before resuming healer return or field policy. The
+regression and full offline suite pass. Run 11074 also completed a fresh
+reconnect-capable field segment without an authentication race; the next
+bounded run must still exercise a reconnect during actual combat or recovery.
+
+**Negative-fame frontier and probe repair (2026-09-01):** Kestrel remains level
+24 at 334,938 XP and fame -12 in healer room 3054. Run 11061 live-validated the
+damage-window accounting against the Mirror Realm moose: the opener was
+included, but the target lost only 30 of 949 HP, so the bot withdrew safely
+after a 385-XP loss. Runs 11062-11065 completed bounded Moria reserve, food,
+sanctuary, and return-home maintenance without recovering another purple
+reserve. The cure-critical selector now rejects a carrier whose source reset
+can load more than two same-prototype mobiles; run 11066 selected the remaining
+two-capacity Moria orc carrier, found its potion absent this reboot, and returned
+safely without combat, loss, or death. The selector still keeps unsuitable
+targets quarantined and does not fall back to ordinary below-band XP during
+negative fame recovery. Campaign tests pass 1,058, the starter suite passes
+1,221, and the full offline suite passes 3,272. No level-25, subclass, or HERO
+proof is claimed; a genuinely executable fame target is still required.
+
+**Reserve-carrier capacity gate (2026-09-01):** Source-backed cure-critical
+and other recovery carriers may use only a one- or two-capacity reset and at
+most two reset entries at the endpoint. A source reset with capacity three or
+more is excluded even when its live room appears empty, because DD4 can load
+same-prototype assistants before the client can establish isolation. The rule
+is covered offline and live-validated by run 11066 through the rotated
+two-capacity endpoint; the potion's current-reboot absence remains research
+evidence rather than a progression claim.
+
+**Bounded unprotected fame recovery (2026-09-01):** Source-ranked fame
+recovery now permits a clean, unarmed, one-capacity target without sanctuary
+when the source raw peak-round and critical-hit bounds are both strictly below
+the character's maximum HP. The exact-target, isolated, live-consider, and
+three-sample/12-second damage-window gates remain in force; candidates with
+specials, armed targets, route hazards, or any other autonomy rejection remain
+excluded, while source-peak-only candidates still require sanctuary. Offline
+coverage passes 3,272 tests. Kestrel's current reboot has no executable target
+for this branch because the only clean fame candidate, Sosivia, costs 456
+ground movement against 380 available; this is reusable policy support, not
+live progression evidence.
+
+**Source-audited transit recovery (2026-09-01):** Long source-ranked routes
+can now be divided at audited `no_mob` rooms when the full path exceeds the
+character's movement pool. The runner recovers before each long leg, preserves
+the exact target suffix, and retains the complete outbound path for bounded
+return if recall fails. Closed-door commands are reversed on return. This is
+covered by offline route-planning and runner regressions; no new live
+progression claim is made until Kestrel completes a fresh fame attempt.
+
+**Damage-window baseline repair (2026-09-01):** A fame fight can produce its
+first `Char.Enemies` HP snapshot only after the opening backstab or attack. The
+starter now starts the bounded probe before that opener and, only when no
+pre-opener enemy snapshot existed, uses the first exact target's source/live
+`maxhp` as its initial baseline. This preserves the three-sample/12-second and
+10-percent gates, includes opening damage in the measurement, and never infers
+a full-health baseline from a multiple-enemy snapshot. The regression suite
+reproduces the live moose sequence; run 11058 confirmed the resulting failure
+was genuine low damage rather than omitted opener damage.
+
+**Source-ranked combat readiness (2026-09-01):** The source candidate ranker
+now consumes the durable class and trained-skill state restored by campaign
+checkpoints. It records the active starter combat capabilities and applies a
+small target-specific tie-breaker for near-band damage actions, armed-target
+disarm control, and defensive reserves. This does not change promising,
+caution, or reject status, and it cannot bypass live consider, crowd, route,
+health, resource, or damage-window gates. The `show-hunt-candidates` report
+now exposes the readiness label and bonus. No live progression claim is made by
+this ranking change.
+
+**Moria rotated-stop reentry (2026-09-01):** Live run 10952 reached the
+official Moria endpoint, then exposed that the bounded healer rotation
+advanced to a source VNUM stop without replaying the source route from the
+endpoint. The starter now carries that preceding route as a one-use reentry
+leg before checking live GMCP exits. Focused Moria coverage passes, while a
+fresh live segment is still required before this route is treated as verified
+progression. Run 10954 exercised the prefix replay and reached room 4064, then
+exposed the missing 4064-to-4063-to-4058 waypoint bridge; run 10955 selected a
+food-reserve maintenance segment instead. Run 10958 completed a bounded reset
+wait and `time` probe without finding a new DD4 reboot marker. Startup then
+corrected six legacy source-hunt loss records from an inflated count of 16 to
+one loss per exact policy, based on durable segment history, without overriding
+the current sanctuary cooldown or other safety gates. Run 10960 then completed
+the repaired Moria reentry bridge, reached the large hobgoblin carrier,
+recovered the purple sanctuary potion and head, and returned safely after the
+required source-known below-band kill for 100 XP. This validates the route and
+recovery boundary, not level-25 progression. Run 10961 then verified the source
+cure-critical reserve route and returned safely without level progress. The
+waypoint repair is now live-validated.
+
+**Latest Aeloria continuation (2026-09-01):** Aeloria remains a level-18
 Human Mage at 165,794 XP, 11,856 XP short of level 19, safely checkpointed in
-healer room 3054. Run 10934 produced a real 433-XP Shadow Keep kill; runs
-10935-10944 completed bounded maintenance and Moria recovery without another
-loss or death. Run 10945 completed the source-backed Moria `where` sweep across
-rooms 4064-4071, found no confirmed sanctuary carrier, and returned safely to
-sleep at the healer. The latest code now allows one bounded healer restart at
+healer room 3054 at checkpoint 33030. Run 10934 produced a real 433-XP Shadow
+Keep kill; runs 10935-10945 completed bounded maintenance and Moria recovery
+without another loss or death. Run 10946 performed the bounded `time` probe
+after the reset wait, found no new DD4 reboot marker, and returned safely to the
+healer. The required-loot recovery code allows one bounded healer restart at
 the next source-approved carrier location after a pre-combat below-band
-interruption; the live run did not encounter that exact branch. Offline
-coverage is clean at 3,207 tests. Aeloria is still level 18, so no level-19,
-subclass, or HERO proof is claimed.
+interruption; no live run has triggered that exact branch. Offline coverage is
+clean at 3,233 tests. Aeloria is still level 18, so no level-19, subclass, or
+HERO proof is claimed.
 
-**Current live update (2026-08-31, latest):** Kestrel is level 24 at 336,686 XP
-with 29,414 XP to level 25, safely in healer room 3054 at checkpoint 32946.
-Run 10929 reached the source-registered Circus ticket clerk under sanctuary;
-Kestrel's thief damage output was too low for the clerk's 1,093 HP pool, so the
-run withdrew with a net 298-XP loss after consuming both combat-pouch potions.
-Policy revision 185 adds a bounded three-sample or 12-second damage-output
-probe for direct fame targets whose live `consider` response warns of unusual
-durability. Run 10930 then checked the Moria sanctuary reserve and stopped
-before combat when the source poison snake and warrior preceded the exact
-carrier. No death occurred and no level progress was recorded. The probe is
-offline-verified and awaits fresh live fame evidence. Kestrel remains blocked
-by -12 fame, no flight, and no current verified combat-pouch reserve. The
-reboot is still `Fri Aug 14 00:15:48 2026`; the full offline suite passes 3,207
-tests. This is safety and executable-boundary evidence, not level-25, subclass,
-or HERO proof.
+**Sanctuary quaff confirmation (2026-09-01):** DD4's `do_quaff` extracts a
+potion even when `spell_sanctuary` reports that the character is already
+affected. The starter now records the reserve debit before issuing the command,
+tracks the target-level attempt, and will not spend a second sanctuary potion
+while a stale Char.Affect snapshot still lacks sanctuary. Explicit
+non-consuming quaff refusals restore the ledgers. Focused and full offline
+coverage pass, while a live potion-required fight is still needed to validate
+the timing branch.
 
-**Latest Praelarran continuation (2026-08-31):** Praelarran remains a level-15
-Human Warrior at 106,876 XP, with 7,924 XP to level 16, safely checkpointed in
-healer room 3054 at checkpoint 32960. Run 10932 retried the source-verified
-Moria sanctuary route after its bounded reset wait and found both carrier
-resets absent. It returned with full HP and movement without combat, XP loss,
-or death. The original wyvern route has a second current-reboot loss, so the
-ordinary low-peak fallback correctly stayed closed; fresh level-16 combat
-evidence remains outstanding.
+**Moria poison-gate repair (2026-09-01):** Live run 11014 showed that a
+locator-confirmed carrier in a remote Moria room could incorrectly authorize
+the fixed room-4058 `spec_poison` snake as a route gate. Kestrel failed the
+route-gate consider for 50 XP, killed the level-10-fuzzed snake, was poisoned,
+and paid a further 385-XP combat-recall loss before reaching the carrier. The
+active Moria stop construction no longer configures that generic route gate.
+The exact 4053 exception remains only for
+a carrier visible in the same room; otherwise the pre-combat source hazard
+causes a bounded recall or reset wait. Run 11016 then live-validated the repair:
+source-known warrior crowds caused safe pre-combat withdrawal before target
+confirmation, with no poison, loss, or death. The focused Moria tests and full
+confirmation, with no poison, loss, or death. The required-loot endpoint now
+uses complete source aggression/program/special maps to ignore only mobiles
+that cannot initiate or join at the current level; run 11021 confirmed that
+4051 is ignorable at level 24 while sentinel 4050 remains blocked. The deep
+sanctuary probe now has a source-audited large-cave detour around room 4062;
+the maze branch remains research-gated. The focused Moria tests and full
+offline suite pass.
+
+**Current live update (2026-09-01, latest):** Kestrel remains level 24 at
+335,293 XP with 30,807 XP to level 25, safely in healer room 3054 at
+checkpoint 33274. Run 11057 found the source cure-critical gnome target absent.
+Run 11058 validated the repaired Circus damage-window probe, counted the
+opening attack, measured 36 damage against 1,093 target HP, and lost 385 XP on
+withdrawal. Run 11059 rotated to Mirror Realm and withdrew before combat when
+the last purple reserve was unavailable. Run 11060 completed the Moria
+sanctuary-reserve circuit, recovered one purple potion from the
+source-registered large hobgoblin, and returned safely to healer room 3054. The
+current reboot remains `Fri Aug 14 00:15:48 2026`; negative fame, protection
+recovery, and reserve boundaries remain active. The campaign suite passes 1,057,
+the starter suite passes 1,221, and the full offline suite passes 3,270 tests.
+This is level-24 route and recovery evidence, not level-25, subclass, or HERO
+proof.
+
+Training policy note: live `practice` output is authoritative for current
+skill percentages. Historical accepted or rejected events are migration
+evidence only. A same-level, same-reboot regression schedules one
+progression-route trainer refresh that clears stale practice, deferred-type,
+and trainer-cap filters; the refresh is consumed once, preserves live route
+hazards, and is never replayed after it has been attempted. A trainer-only
+no-op may be reopened once, and one rejection-only follow-up may receive one
+alternate-skill refresh. The durable deficit snapshot is refreshed from the
+latest live skill levels when the segment closes.
+
+**Latest Praelarran continuation (2026-09-01):** Praelarran remains a level-15
+Human Warrior at 106,709 XP, with 8,091 XP to level 16, safely checkpointed in
+healer room 3054 at checkpoint 33028. Runs 10947-10949 completed bounded
+flight and source-ranked endpoint checks without progression or death. Run
+10950 retried the source-verified Moria sanctuary route after its bounded reset
+wait; the carrier was absent at room 4064 and source mobile 4056, a wandering
+orc, engaged before endpoint confirmation. The bot followed the authoritative
+post-engagement flee rule, lost 167 XP, recalled, and recovered safely. The
+ordinary low-peak fallback remains closed; fresh level-16 combat evidence is
+outstanding. This is live safety and continuation evidence, not level-16,
+level-30, subclass, or HERO proof.
+
+The same continuation exposed a liveness bookkeeping gap: a worker can leave a
+campaign marked `running` after opening it but before creating its next segment.
+`recover-runs` now reopens only such campaigns without a running segment, after
+the operator confirms no worker remains, while preserving checkpoints. It also
+respects the existing OS-backed campaign lease, leaving a live worker untouched
+during the brief window before its first segment is recorded. Focused and full
+offline coverage validates the repair.
+
+The source audit now exposes a reusable `rank_resource_sources` report and the
+`show-resource-sources` CLI. It maps sanctuary, healing, flight, and
+non-poisonous food objects to exact reset rooms, distinguishes shop stock from
+mob carriers and ground resets, and carries the existing route and hazard
+annotations into the inspection output. This is source research and planning
+evidence only; it does not claim that a reset is currently live. Starter
+checkpoints also retain observed skill names and percentages across maintenance
+segments, allowing a trained protective or cure spell to satisfy an executable
+reserve gate without inventing a capability. Startup repair reconstructs those
+accepted capabilities from a bounded event-ledger history for older checkpoints,
+then supplies them to the resumed StarterPolicy before field decisions, so
+reconnecting does not discard skills learned before the fields existed.
 
 **Earlier current live update (2026-08-31):** Praelarran is level 15 at 106,876 XP in
 healer room 3054 at the latest checkpoint 32926, with 7,924 XP to level 16. Run
@@ -2044,6 +2271,13 @@ level-30 evidence are still required before promotion. See
 [`docs/PROGRESS_AUDIT_2026-08-13.md`](docs/PROGRESS_AUDIT_2026-08-13.md) for the
 current architecture assessment and definition of done; the 2026-08-12 audit
 remains the historical record.
+
+The reporting foundation now preserves the configured persona across the full
+path from HERO request to profile, run context, and campaign report. Title,
+backstory, and optional personality are non-secret durable metadata; they do
+not alter deterministic decisions or count as progression evidence. The next
+progression blocker remains fresh, executable evidence beyond the current
+level-13 boundary.
 
 ## Character-Independent Autonomy Cycle 34 - 2026-08-16
 

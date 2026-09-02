@@ -12,7 +12,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 from .campaign import (
     DEFAULT_RESET_WAIT_SECONDS,
@@ -195,6 +195,13 @@ def prepare_hero_request(
             raise ValueError(f"hero workspace is incomplete: {directory}")
         _update_campaign_target(campaign_path, target_level)
         character = load_character_spec(profile_path)
+        if character.personality is None and resumed_request.personality is not None:
+            # Older profiles kept the personality only in the manifest and
+            # appended it to the generated description.
+            character = replace(
+                character,
+                personality=resumed_request.personality,
+            )
         _initialize_mudlet_bridge(resumed_request)
         return HeroPreparation(
             resumed_request,
@@ -213,6 +220,11 @@ def prepare_hero_request(
             f"{character.description} In company, {name} is {personality}."
         )
         character = CharacterSpec.from_mapping(character_mapping)
+
+    # Freeze generated identity text into the profile so future loader changes
+    # cannot silently rewrite a character's established persona.
+    character_mapping["title"] = character.title
+    character_mapping["description"] = character.description
 
     directory.mkdir(parents=True, exist_ok=False)
     profile_path.write_text(_render_yaml(character_mapping), encoding="utf-8")
@@ -432,6 +444,7 @@ async def run_hero_request(
     reset_wait: float = DEFAULT_RESET_WAIT_SECONDS,
     max_segment_runtime: float | None = None,
     retry_stalled: bool = False,
+    progress_callback: Callable[[str], None] | None = None,
     target_level: int = 100,
     password: str | None = None,
     remember_password: bool = False,
@@ -499,6 +512,7 @@ async def run_hero_request(
             reset_wait=reset_wait,
             max_segment_runtime=max_segment_runtime,
             retry_stalled=retry_stalled,
+            progress_callback=progress_callback,
         )
     return preparation, result
 
@@ -698,6 +712,8 @@ def _profile_mapping(request: HeroRequest) -> dict[str, Any]:
     }
     if request.subclass:
         mapping["subclass"] = request.subclass
+    if request.personality:
+        mapping["personality"] = request.personality
     if request.transport == "mudlet":
         assert request.mudlet_directory is not None
         mapping["transport"] = "mudlet"

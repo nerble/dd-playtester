@@ -4,7 +4,9 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Collection
+
+from .lease import CampaignLease, CampaignLeaseBusyError, campaign_lease_path
 
 
 _CAMPAIGN_EVENT_HISTORY_LIMIT = 256
@@ -472,6 +474,66 @@ class RunStorage:
         self.connection.commit()
         self._invalidate_campaign_history()
         return int(segments.rowcount), int(campaigns.rowcount)
+
+    def recover_orphaned_campaigns(self, *, reason: str) -> int:
+        """Make running campaigns without a running segment resumable.
+
+        A worker can be interrupted after opening a campaign but before it
+        creates its next segment.  In that narrow window there is no segment
+        for ``fail_interrupted_campaign_segments`` to repair, leaving the
+        campaign display stuck at ``running`` even though its lease is gone.
+        The CLI calls this after the operator has checked for live workers.
+        """
+        candidates = self.connection.execute(
+            """
+            SELECT id, config_path
+            FROM campaigns
+            WHERE status = 'running'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM campaign_segments
+                  WHERE campaign_segments.campaign_id = campaigns.id
+                    AND campaign_segments.status = 'running'
+              )
+            """
+        ).fetchall()
+        recovered = 0
+        for candidate in candidates:
+            lease = CampaignLease(
+                campaign_lease_path(
+                    self.path,
+                    Path(str(candidate["config_path"])),
+                )
+            )
+            try:
+                lease.acquire()
+            except CampaignLeaseBusyError:
+                # A live worker can briefly exist between campaign creation
+                # and its first segment insert. Leave that worker's campaign
+                # untouched; the next recovery pass can revisit it.
+                continue
+            try:
+                cursor = self.connection.execute(
+                    """
+                    UPDATE campaigns
+                    SET status = 'ready', error = ?, updated_at = ?
+                    WHERE id = ?
+                      AND status = 'running'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM campaign_segments
+                          WHERE campaign_segments.campaign_id = campaigns.id
+                            AND campaign_segments.status = 'running'
+                      )
+                    """,
+                    (reason, _now(), candidate["id"]),
+                )
+                self.connection.commit()
+                recovered += int(cursor.rowcount)
+            finally:
+                lease.release()
+        self._invalidate_campaign_history()
+        return recovered
 
     def recover_interrupted_campaign_segments(
         self,
@@ -1543,6 +1605,29 @@ class RunStorage:
         rows.reverse()
         self._recent_campaign_segments_cache[cache_key] = rows
         return list(rows)
+
+    def list_campaign_segments_for_phases(
+        self,
+        campaign_id: int,
+        phases: Collection[str],
+    ) -> list[sqlite3.Row]:
+        """Return all durable segments for a bounded set of phase ids."""
+        phase_values = tuple(dict.fromkeys(str(phase) for phase in phases if phase))
+        if not phase_values:
+            return []
+        placeholders = ", ".join("?" for _ in phase_values)
+        cursor = self.connection.execute(
+            f"""
+            SELECT id, campaign_id, sequence, phase, run_id, started_at,
+                   finished_at, status, start_state_json, end_state_json,
+                   command_count, duration_seconds, error
+            FROM campaign_segments
+            WHERE campaign_id = ? AND phase IN ({placeholders})
+            ORDER BY sequence
+            """,
+            (campaign_id, *phase_values),
+        )
+        return list(cursor.fetchall())
 
     def list_recent_campaign_checkpoints(
         self,

@@ -146,6 +146,7 @@ class CharacterSpec:
     title: str = ""
     description: str = ""
     credential_name: str = ""
+    personality: str | None = None
     subclass: str | None = None
     colour: bool = True
     max_attribute_rolls: int = 1
@@ -267,6 +268,17 @@ class CharacterSpec:
         if any(character in description for character in ("\r", "\n", "~")):
             raise ValueError("description must be a single line without tildes")
 
+        raw_personality = data.get("personality")
+        personality = None
+        if raw_personality is not None:
+            personality = " ".join(str(raw_personality).strip().split())
+            if not personality:
+                personality = None
+            elif len(personality) > 180:
+                raise ValueError("personality must not exceed 180 characters")
+            elif any(character in personality for character in ("\r", "\n", "~")):
+                raise ValueError("personality must be a single line without tildes")
+
         max_attribute_rolls = int(data.get("max_attribute_rolls", 1))
         if max_attribute_rolls < 1 or max_attribute_rolls > 20:
             raise ValueError("max_attribute_rolls must be between 1 and 20")
@@ -315,6 +327,7 @@ class CharacterSpec:
             character_class=character_class,
             title=title,
             description=description,
+            personality=personality,
             subclass=subclass,
             colour=bool(data.get("colour", True)),
             max_attribute_rolls=max_attribute_rolls,

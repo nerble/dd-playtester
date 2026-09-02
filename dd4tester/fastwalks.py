@@ -44,6 +44,12 @@ class Fastwalk:
     route_hard_hazard_targets: tuple[str, ...] = ()
     route_origin_recall_index: int = 0
     route_origin_room_vnum: int = 3001
+    # A route may be split at source-audited no-mob rooms for movement
+    # recovery. Keep the complete outbound path available if recall fails
+    # after the route has been shortened to its first leg.
+    return_commands: tuple[str, ...] = ()
+    # Only source-validated routes may reverse their closed-door commands.
+    return_commands_allow_open: bool = False
 
     @property
     def commands(self) -> tuple[str, ...]:

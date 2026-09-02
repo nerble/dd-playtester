@@ -73,6 +73,34 @@ def test_profile_accepts_explicit_character_description() -> None:
     assert spec.description.startswith("Rulemage keeps")
 
 
+def test_profile_accepts_explicit_personality() -> None:
+    spec = CharacterSpec.from_mapping(
+        {
+            "name": "Rulemage",
+            "race": "human",
+            "gender": "female",
+            "class": "mage",
+            "personality": "  patient,  observant, and dryly funny  ",
+        }
+    )
+
+    assert spec.personality == "patient, observant, and dryly funny"
+
+
+@pytest.mark.parametrize("personality", ["x" * 181, "a ~ personality"])
+def test_profile_rejects_invalid_personality(personality: str) -> None:
+    with pytest.raises(ValueError, match="personality"):
+        CharacterSpec.from_mapping(
+            {
+                "name": "Rulemage",
+                "race": "human",
+                "gender": "female",
+                "class": "mage",
+                "personality": personality,
+            }
+        )
+
+
 @pytest.mark.parametrize("description", ["", "two\nlines", "a tilde ~ here"])
 def test_profile_rejects_invalid_character_description(description: str) -> None:
     with pytest.raises(ValueError, match="description"):

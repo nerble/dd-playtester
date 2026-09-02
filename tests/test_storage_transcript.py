@@ -262,6 +262,13 @@ def test_storage_lists_bounded_recent_campaign_history_in_sequence_order(
     assert summaries[0]["phase"] == "phase-0"
     assert "start_state_json" not in summaries[0].keys()
     assert "end_state_json" not in summaries[0].keys()
+    assert [
+        row["phase"]
+        for row in storage.list_campaign_segments_for_phases(
+            campaign_id,
+            ["phase-3", "phase-1", "phase-3"],
+        )
+    ] == ["phase-1", "phase-3"]
 
     segment_id = storage.start_campaign_segment(
         campaign_id,

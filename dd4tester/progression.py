@@ -113,6 +113,7 @@ class ProgressionContext:
     needs_daycare_ring: bool = False
     needs_war_dog_collar: bool = False
     needs_foundry_set_circlet: bool = False
+    needs_training_repair: bool = False
     needs_intermediate_piercing_weapon_upgrade: bool = False
     intermediate_piercing_weapon_upgrade_source_safe: bool = True
     intermediate_piercing_weapon_upgrade_attempted: bool = False
@@ -1932,12 +1933,13 @@ _BANK_EXCESS_COIN_POLICY = ProgressionPolicy(
     status="verified",
     execution="bank-excess-coins",
     summary=(
-        "Deposit a critically encumbering coin hoard and retain one gold coin "
-        "as a compact working reserve."
+        "Deposit a critically encumbering or source-thief-exposed coin hoard "
+        "and retain one gold coin as a compact working reserve."
     ),
     evidence=(
         "DD4 source revision d7cb330: calc_coin_weight charges one carry unit per ten individual coins, regardless of denomination.",
         "DD4 source do_deposit accepts `deposit all`, clears carried denominations, and immediately recalculates coin weight.",
+        "DD4 source special.c spec_thief uses total_coins_char and can remove up to 20 percent of carried coin value; bank exposed hoards before selecting an otherwise safe thief-special route.",
         "DD4 source do_withdraw accepts `withdraw 1 gold`; the safe Midgaard bank is room 3007, one east of Market Square.",
         "Live run 2053 started at 161/170 carry weight with 240 individual "
         "coins and incorrectly lodged a silver circlet before banking. Coin "
@@ -2032,6 +2034,27 @@ _RETURN_HOME_POLICY = ProgressionPolicy(
     summary="Leave an interrupted tutorial or field room and recover at the Midgaard healer.",
     evidence=(
         "The starter runner has a source-backed return route from Mud School rooms to healer room 3054.",
+    ),
+    practice_skill=None,
+)
+
+_TRAINING_DEFICIT_REPAIR_POLICY = ProgressionPolicy(
+    policy_id="training-deficit-repair-10-100",
+    minimum_level=10,
+    maximum_level=100,
+    status="verified",
+    execution="training-deficit-repair",
+    summary=(
+        "Refresh the live class-priority training plan once at the source-"
+        "registered trainer before spending another combat segment."
+    ),
+    evidence=(
+        "DD4 act_info.c makes the live `practice` listing authoritative for "
+        "known skills, available practice types, and teacher caps.",
+        "The campaign's class and subclass priority graph is source-referenced "
+        "and the trainer route is resolved from the checked-in area files.",
+        "This is bounded maintenance evidence; it does not count as an XP or "
+        "level-progression result.",
     ),
     practice_skill=None,
 )
@@ -5647,6 +5670,7 @@ def policy_for(
     needs_daycare_ring: bool = False,
     needs_war_dog_collar: bool = False,
     needs_foundry_set_circlet: bool = False,
+    needs_training_repair: bool = False,
     needs_intermediate_piercing_weapon_upgrade: bool = False,
     intermediate_piercing_weapon_upgrade_source_safe: bool = True,
     intermediate_piercing_weapon_upgrade_attempted: bool = False,
@@ -5711,6 +5735,7 @@ def policy_for(
         needs_daycare_ring=needs_daycare_ring,
         needs_war_dog_collar=needs_war_dog_collar,
         needs_foundry_set_circlet=needs_foundry_set_circlet,
+        needs_training_repair=needs_training_repair,
         needs_intermediate_piercing_weapon_upgrade=(
             needs_intermediate_piercing_weapon_upgrade
         ),
@@ -5903,6 +5928,10 @@ def policy_for(
             evidence=_CHOOSE_SUBCLASS_POLICY.evidence,
             practice_skill=context.practice_skill,
         )
+    if selected.execution == "training-deficit-repair":
+        # A live skill deficit is safe to repair at a teacher, but required
+        # quests and an exact level-30 subclass handoff remain ahead of it.
+        return selected
     if (
         context.character_class == "thief"
         and 17 <= context.level <= 20
@@ -6313,6 +6342,13 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _RECOVER_FOUNDRY_SET_CIRCLET_POLICY
     if context.needs_war_dog_collar:
         return _RECOVER_WAR_DOG_COLLAR_POLICY
+    if context.needs_training_repair:
+        return replace(
+            _TRAINING_DEFICIT_REPAIR_POLICY,
+            minimum_level=normalized_level,
+            maximum_level=normalized_level,
+            practice_skill=context.practice_skill,
+        )
     if normalized_level < 6:
         return replace(
             _MUD_SCHOOL_ARENA_POLICY,

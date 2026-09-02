@@ -11,6 +11,7 @@ from typing import Any
 from .campaign import (
     DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
     DEFAULT_RESET_WAIT_SECONDS,
+    CampaignResult,
     run_campaign_file,
 )
 from .character import load_character_spec
@@ -31,6 +32,7 @@ from .hero import (
 from .hunt_candidates import (
     load_world_source,
     rank_hunt_candidates,
+    rank_resource_sources,
     source_mobile_search_rooms,
 )
 from .matrix import (
@@ -407,6 +409,55 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="show only candidates eligible for a source-backed probe-to-hunt policy",
     )
+    resource_sources_parser = subcommands.add_parser(
+        "show-resource-sources",
+        help="list source-backed healing, food, sanctuary, and flight resources",
+    )
+    resource_sources_parser.add_argument("--level", type=int, required=True)
+    resource_sources_parser.add_argument(
+        "--effect",
+        choices=(
+            "all",
+            "sanctuary",
+            "healing",
+            "recovery",
+            "flight",
+            "fly",
+            "levitation",
+            "travel",
+            "food",
+        ),
+        default="all",
+        help="resource effect to inspect, default: all",
+    )
+    resource_sources_parser.add_argument(
+        "--character",
+        default="Ararisa",
+        help="character name used for current state and recall origins, default: Ararisa",
+    )
+    resource_sources_parser.add_argument(
+        "--source",
+        type=Path,
+        default=Path("runs/dd4-source/server/area"),
+        help="path to the DD4 server area directory",
+    )
+    resource_sources_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    resource_sources_parser.add_argument(
+        "--limit",
+        type=int,
+        default=40,
+        help="maximum placements to show, default: 40",
+    )
+    resource_sources_parser.add_argument(
+        "--all-areas",
+        action="store_true",
+        help="analyse every area file instead of the conservative starter-area set",
+    )
     arena_research_parser.add_argument(
         "--target-level",
         type=int,
@@ -489,6 +540,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--retry-stalled",
         action="store_true",
         help="retry a watchdog-stalled segment instead of honoring its stall budget",
+    )
+    campaign_parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="print bounded attempt start and completion progress to stderr",
     )
 
     hero_parser = subcommands.add_parser(
@@ -619,6 +675,11 @@ def build_parser() -> argparse.ArgumentParser:
             "perform one bounded frontier rotation when trailing no-progress "
             "history blocks the normal retry"
         ),
+    )
+    hero_parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="print bounded attempt start and completion progress to stderr",
     )
     hero_parser.add_argument(
         "--prepare-only",
@@ -932,6 +993,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_campaign_progress(message: str) -> None:
+    """Keep long bounded campaign attempts visibly alive for operators."""
+    print(f"Progress: {message}", file=sys.stderr, flush=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1201,6 +1267,17 @@ def main(argv: list[str] | None = None) -> int:
             autonomous_safe_only=args.autonomous_safe_only,
         )
 
+    if args.command == "show-resource-sources":
+        return show_resource_sources(
+            args.source,
+            level=args.level,
+            effect=args.effect,
+            character=args.character,
+            database=args.database,
+            limit=args.limit,
+            include_all_areas=args.all_areas,
+        )
+
     if args.command == "configure-login":
         try:
             configure_login(args.credential_name)
@@ -1232,6 +1309,9 @@ def main(argv: list[str] | None = None) -> int:
                     reset_wait=args.reset_wait,
                     max_segment_runtime=args.max_segment_runtime,
                     retry_stalled=args.retry_stalled,
+                    progress_callback=(
+                        _print_campaign_progress if args.progress else None
+                    ),
                 )
             )
         except Exception as exc:
@@ -1322,6 +1402,9 @@ def main(argv: list[str] | None = None) -> int:
                         reset_wait=args.reset_wait,
                         max_segment_runtime=args.max_segment_runtime,
                         retry_stalled=args.retry_stalled,
+                        progress_callback=(
+                            _print_campaign_progress if args.progress else None
+                        ),
                         target_level=args.target_level,
                         password=args.password,
                         remember_password=args.remember_password,
@@ -1569,6 +1652,7 @@ def recover_runs(database: Path, *, reason: str) -> int:
         bound_segments = storage.bind_unlinked_campaign_runs()
         recovered = storage.fail_interrupted_runs(reason=reason)
         segments, campaigns = storage.fail_interrupted_campaign_segments(reason=reason)
+        orphaned_campaigns = storage.recover_orphaned_campaigns(reason=reason)
     print(f"Database: {database.resolve()}")
     print(
         f"Replayed {repaired_events} transcript event(s) across "
@@ -1579,6 +1663,10 @@ def recover_runs(database: Path, *, reason: str) -> int:
     print(
         f"Marked {segments} interrupted campaign segment(s) "
         f"across {campaigns} campaign(s) as failed."
+    )
+    print(
+        f"Returned {orphaned_campaigns} orphaned campaign(s) without a "
+        "running segment to ready."
     )
     return 0
 
@@ -1647,12 +1735,31 @@ def show_hunt_candidates(
     kill_counts: Counter[str] = Counter()
     character_max_hp: int | None = None
     recall_origins: dict[int, int] | None = None
+    character_class: str | None = None
+    character_subclass: str | None = None
+    recorded_known_skills: tuple[str, ...] = ()
     if database.exists():
         with RunStorage(database) as storage:
             boot_id = storage.latest_boot_id()
             latest_state = storage.get_latest_character_state(character)
             if latest_state is not None:
                 recall_origins = recall_origins_from_state(latest_state)
+                raw_class = latest_state.get("character_class")
+                if isinstance(raw_class, str) and raw_class.strip():
+                    character_class = raw_class.strip()
+                raw_subclass = latest_state.get("subclass")
+                if isinstance(raw_subclass, str) and raw_subclass.strip():
+                    character_subclass = raw_subclass.strip()
+                raw_known_skills = latest_state.get("campaign_known_skills")
+                if isinstance(raw_known_skills, str):
+                    recorded_known_skills = (raw_known_skills,)
+                elif isinstance(
+                    raw_known_skills,
+                    (list, tuple, set, frozenset),
+                ):
+                    recorded_known_skills = tuple(
+                        str(skill) for skill in raw_known_skills
+                    )
                 stored_level = latest_state.get("level")
                 raw_max_hp = latest_state.get("max_hp")
                 if (
@@ -1669,20 +1776,29 @@ def show_hunt_candidates(
                         boot_id=boot_id,
                     )
                 )
-    candidates = rank_hunt_candidates(
-        world,
-        character_level=level,
-        boot_kill_counts=kill_counts,
-        include_xp_only=include_xp_only,
-        character_max_hp=character_max_hp,
-        include_all_areas=include_all_areas,
-        recall_origins=recall_origins,
-    )
+    rank_kwargs: dict[str, Any] = {
+        "character_level": level,
+        "boot_kill_counts": kill_counts,
+        "include_xp_only": include_xp_only,
+        "character_max_hp": character_max_hp,
+        "include_all_areas": include_all_areas,
+        "recall_origins": recall_origins,
+    }
+    if recorded_known_skills and character_class:
+        rank_kwargs.update(
+            {
+                "character_class": character_class,
+                "character_subclass": character_subclass,
+                "known_skills": recorded_known_skills,
+            }
+        )
+    candidates = rank_hunt_candidates(world, **rank_kwargs)
     if autonomous_safe_only:
         candidates = [candidate for candidate in candidates if candidate.autonomous_safe]
 
     print(f"Source: {source.resolve()}")
     print(f"Character: {character}, level {level}")
+    print(f"Character class: {character_class or 'unknown'}")
     print(f"Character max HP: {character_max_hp or 'unknown'}")
     print(f"Current reboot: {boot_id or 'unknown'}")
     if recall_origins:
@@ -1699,7 +1815,8 @@ def show_hunt_candidates(
         "base_hp\tpeak_round\troom\trecall_origin\troute\t"
         "move_cost\tflight_cost\trequires_flight\t"
         "room_spawns\tspawn_limit\t"
-        "boot_kills\tloot\thazards\tautonomy_rejections"
+        "boot_kills\tloot\thazards\tautonomy_rejections\t"
+        "combat_readiness\tcombat_bonus"
     )
     for candidate in candidates[:limit]:
         mobile = world.mobiles.get(candidate.mobile_vnum)
@@ -1780,9 +1897,140 @@ def show_hunt_candidates(
                     loot or "-",
                     "; ".join(candidate.hazards) or "-",
                     "; ".join(candidate.autonomy_rejections) or "-",
+                    candidate.combat_readiness,
+                    str(candidate.combat_readiness_bonus),
                 ]
             )
         )
+    return 0
+
+
+def show_resource_sources(
+    source: Path,
+    *,
+    level: int,
+    effect: str,
+    character: str,
+    database: Path,
+    limit: int,
+    include_all_areas: bool = False,
+) -> int:
+    if level < 1:
+        print("--level must be at least 1", file=sys.stderr)
+        return 2
+    if limit < 1:
+        print("--limit must be at least 1", file=sys.stderr)
+        return 2
+    try:
+        world = load_world_source(source, include_all_areas=include_all_areas)
+    except (OSError, ValueError) as exc:
+        print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
+        return 1
+
+    boot_id: str | None = None
+    character_max_hp: int | None = None
+    recall_origins: dict[int, int] | None = None
+    if database.exists():
+        with RunStorage(database) as storage:
+            boot_id = storage.latest_boot_id()
+            latest_state = storage.get_latest_character_state(character)
+            if latest_state is not None:
+                recall_origins = recall_origins_from_state(latest_state)
+                stored_level = latest_state.get("level")
+                raw_max_hp = latest_state.get("max_hp")
+                if (
+                    stored_level == level
+                    and isinstance(raw_max_hp, (int, float))
+                    and raw_max_hp > 0
+                ):
+                    character_max_hp = int(raw_max_hp)
+
+    try:
+        placements = rank_resource_sources(
+            world,
+            character_level=level,
+            effect=effect,
+            character_max_hp=character_max_hp,
+            include_all_areas=include_all_areas,
+            recall_origins=recall_origins,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    item_type_names = {
+        2: "scroll",
+        3: "wand",
+        4: "staff",
+        5: "weapon",
+        9: "armour",
+        10: "potion",
+        15: "container",
+        19: "food",
+        20: "money",
+    }
+
+    def clean(value: object) -> str:
+        return " ".join(str(value).replace("\t", " ").split())
+
+    def room_label(room_vnum: int, room_name: str) -> str:
+        return f"{room_vnum} {clean(room_name)}"
+
+    print(f"Source: {source.resolve()}")
+    print(f"Character: {character}, level {level}")
+    print(f"Character max HP: {character_max_hp or 'unknown'}")
+    print(f"Current reboot: {boot_id or 'unknown'}")
+    if recall_origins:
+        origin_names = []
+        for index in sorted(recall_origins):
+            point = recall_point_for_index(index)
+            origin_names.append(
+                f"{index} {point.name if point is not None else 'source point'}"
+            )
+        print("Recall origins: " + ", ".join(origin_names))
+    print(
+        "effect\tstatus\tobject_vnum\tobject\ttype\tsource_kind\t"
+        "source_mobile\treset_room\tarea\tcount\tsource_levels\t"
+        "route_origin\troute\thazards\tautonomy_rejections"
+    )
+    for placement in placements[:limit]:
+        source_mobile = (
+            f"{placement.source_mobile_vnum} {clean(placement.source_mobile)}"
+            if placement.source_mobile_vnum is not None
+            else "-"
+        )
+        minimum, maximum = placement.source_level_range
+        source_levels = (
+            f"{minimum}-{maximum}"
+            if minimum or maximum
+            else "unknown"
+        )
+        route_origin = str(placement.route_origin_recall_index)
+        print(
+            "\t".join(
+                (
+                    placement.effect,
+                    placement.status,
+                    str(placement.object_vnum),
+                    clean(placement.object_description),
+                    item_type_names.get(placement.item_type, str(placement.item_type)),
+                    placement.source_kind,
+                    source_mobile,
+                    room_label(placement.room_vnum, placement.room_name),
+                    placement.area_file,
+                    str(placement.maximum_count),
+                    source_levels,
+                    route_origin,
+                    ";".join(placement.route) or "-",
+                    "; ".join(clean(value) for value in placement.hazards) or "-",
+                    "; ".join(
+                        clean(value) for value in placement.autonomy_rejections
+                    )
+                    or "-",
+                )
+            )
+        )
+    print(f"Placements shown: {min(limit, len(placements))} of {len(placements)}")
     return 0
 
 

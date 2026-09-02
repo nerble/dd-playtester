@@ -32,6 +32,14 @@ class _SlowWriter:
         return None
 
 
+class _CancellationResistantWriter(_SlowWriter):
+    async def drain(self) -> None:
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            await asyncio.sleep(0.2)
+
+
 def test_telnet_command_send_has_a_transport_timeout() -> None:
     connection = TelnetConnection("mud", 8888, timeout=0.01)
     writer = _SlowWriter()
@@ -41,6 +49,17 @@ def test_telnet_command_send_has_a_transport_timeout() -> None:
         asyncio.run(connection.send_command("west"))
 
     assert writer.written == [b"west\n"]
+
+
+def test_telnet_command_send_does_not_wait_for_resistant_drain() -> None:
+    connection = TelnetConnection("mud", 8888, timeout=0.01)
+    writer = _CancellationResistantWriter()
+    connection.writer = writer
+
+    with pytest.raises(TimeoutError, match="Telnet command send exceeded"):
+        asyncio.run(connection.send_command("quit"))
+
+    assert writer.written == [b"quit\n"]
 
 
 def test_telnet_negotiates_gmcp_and_captures_payload() -> None:

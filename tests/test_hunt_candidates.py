@@ -7,6 +7,7 @@ from dd4tester.fastwalks import route_named
 from dd4tester.hunt_candidates import (
     ACT_AGGRESSIVE,
     ACT_DIE_IF_MASTER_GONE,
+    ACT_LOSE_FAME,
     ACT_SENTINEL,
     AFF_CONFUSION,
     ITEM_FOOD,
@@ -23,6 +24,8 @@ from dd4tester.hunt_candidates import (
     money_value,
     castable_spell_names,
     potion_spell_names,
+    rank_resource_sources,
+    source_combat_readiness,
     _route_preflight_metadata,
     _mobile_critical_hit_damage,
     _mobile_peak_round_damage,
@@ -105,6 +108,162 @@ def test_required_consumable_can_rank_a_carrier_without_saleable_loot() -> None:
 
     assert candidate.mobile_vnum == 100
     assert candidate.loot == ("a black potion",)
+
+
+def test_resource_source_report_keeps_carrier_and_ground_paths_distinct() -> None:
+    sanctuary = ObjectSource(
+        50,
+        "potion purple",
+        "a purple potion",
+        10,
+        (17,),
+        500,
+        value_strings=("17", "cure blindness", "sanctuary", ""),
+    )
+    bread = ObjectSource(
+        51,
+        "bread",
+        "a loaf of bread",
+        ITEM_FOOD,
+        (5, 0, 0, 0),
+        2,
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guardian",
+                "a quiet guardian",
+                5,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            )
+        },
+        objects={50: sanctuary, 51: bread},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 3002, 0, -1)},
+            ),
+            3002: RoomSource(
+                3002,
+                "resource room",
+                "test.are",
+                exits={"north": ExitSource("north", 3001, 0, -1)},
+            ),
+        },
+        mob_resets=[MobReset(100, 3002, 1, (50,))],
+        room_object_resets=[RoomObjectReset(51, 3002, 1)],
+    )
+
+    placements = rank_resource_sources(
+        world,
+        character_level=5,
+        effect="all",
+        include_all_areas=True,
+    )
+
+    assert {
+        (placement.effect, placement.object_vnum, placement.source_kind)
+        for placement in placements
+    } == {
+        ("sanctuary", 50, "mob-carried"),
+        ("healing", 50, "mob-carried"),
+        ("food", 51, "ground-reset"),
+    }
+    carried = next(placement for placement in placements if placement.object_vnum == 50)
+    ground = next(placement for placement in placements if placement.object_vnum == 51)
+    assert carried.room_vnum == ground.room_vnum == 3002
+    assert carried.route == ground.route == ("south",)
+    assert carried.source_mobile_vnum == 100
+    assert ground.source_mobile_vnum is None
+
+
+def test_resource_source_report_orders_live_risk_statuses() -> None:
+    safe_potion = ObjectSource(
+        50,
+        "potion purple",
+        "a purple potion",
+        10,
+        (17,),
+        500,
+        value_strings=("17", "sanctuary", "", ""),
+    )
+    dangerous_potion = ObjectSource(
+        51,
+        "potion red",
+        "a red potion",
+        10,
+        (17,),
+        500,
+        value_strings=("17", "sanctuary", "", ""),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guardian",
+                "a quiet guardian",
+                5,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+            101: MobileSource(
+                101,
+                "aggressor",
+                "a poisoned guardian",
+                5,
+                ACT_SENTINEL | ACT_LOSE_FAME,
+                0,
+                "test.are",
+            ),
+        },
+        objects={50: safe_potion, 51: dangerous_potion},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={
+                    "south": ExitSource("south", 3002, 0, -1),
+                    "east": ExitSource("east", 3003, 0, -1),
+                },
+            ),
+            3002: RoomSource(
+                3002,
+                "resource room",
+                "test.are",
+                exits={"north": ExitSource("north", 3001, 0, -1)},
+            ),
+            3003: RoomSource(
+                3003,
+                "dangerous resource room",
+                "test.are",
+                exits={"west": ExitSource("west", 3001, 0, -1)},
+            ),
+        },
+        mob_resets=[
+            MobReset(100, 3002, 1, (50,)),
+            MobReset(101, 3003, 1, (51,)),
+        ],
+        mobile_specials={101: ("spec_poison",)},
+    )
+
+    placements = rank_resource_sources(
+        world,
+        character_level=5,
+        effect="sanctuary",
+        include_all_areas=True,
+    )
+
+    assert [(placement.object_vnum, placement.status) for placement in placements] == [
+        (50, "promising"),
+        (51, "reject"),
+    ]
 
 
 def test_ranker_uses_a_live_observed_remote_recall_origin() -> None:
@@ -2631,3 +2790,68 @@ def test_candidate_ranking_rejects_a_mobile_holding_a_castable_staff(
         candidate.autonomy_rejections
     )
     assert not candidate.autonomous_safe
+
+
+def test_source_combat_readiness_is_a_soft_target_specific_hint() -> None:
+    unassessed = source_combat_readiness(
+        character_level=18,
+        character_class="thief",
+        target_level_range=(15, 19),
+    )
+    ready = source_combat_readiness(
+        character_level=18,
+        character_class="thief",
+        known_skills=("Backstab", "Second Attack", "Disarm"),
+        target_level_range=(15, 19),
+        equipped_weapon_count=1,
+    )
+    unarmed_ready = source_combat_readiness(
+        character_level=18,
+        character_class="thief",
+        known_skills=("backstab", "second attack", "disarm"),
+        target_level_range=(15, 19),
+    )
+
+    assert unassessed == ("unassessed", 0)
+    assert ready[0] == "direct=backstab; passive=second attack; control=disarm"
+    assert ready[1] > unarmed_ready[1] > 0
+
+
+def test_candidate_ranking_records_known_class_combat_readiness() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "frontier target",
+                "a frontier target",
+                15,
+                0,
+                0,
+                "frontier.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Frontier room", "frontier.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=18,
+        character_class="thief",
+        known_skills=("backstab", "second attack"),
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+
+    assert candidate.status == "promising"
+    assert candidate.combat_readiness == "direct=backstab; passive=second attack"
+    assert candidate.combat_readiness_bonus > 0
+    assert candidate.autonomous_safe

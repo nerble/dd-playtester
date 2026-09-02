@@ -101,6 +101,55 @@ def test_hero_uses_segment_budget_for_default_reset_retries(
     assert captured["retry_stalled"] is False
 
 
+def test_hero_forwards_progress_callback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": True,
+            "character": type(
+                "Character",
+                (),
+                {"password_env": "DD4_VALORA_PASSWORD"},
+            )(),
+        },
+    )()
+
+    async def fake_campaign(path, **options):
+        captured["path"] = path
+        captured.update(options)
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 8})
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    progress = lambda _message: None
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            segments=1,
+            progress_callback=progress,
+            password="test-password",
+        )
+    )
+
+    assert captured["progress_callback"] is progress
+
+
 def test_hero_forwards_explicit_retry_stalled_rotation(
     tmp_path: Path,
     monkeypatch,
@@ -627,10 +676,12 @@ def test_prepare_hero_request_writes_resumable_secret_free_configuration(
     assert not prepared.resumed
     assert prepared.character.name == "Valora"
     assert prepared.character.subclass == "warlock"
+    assert prepared.character.personality == request.personality
     assert "dryly funny" in prepared.character.description
-    assert load_character_spec(prepared.profile_path).description == (
-        prepared.character.description
-    )
+    loaded_profile = load_character_spec(prepared.profile_path)
+    assert loaded_profile.title == prepared.character.title
+    assert loaded_profile.description == prepared.character.description
+    assert loaded_profile.personality == request.personality
     assert load_campaign_spec(prepared.campaign_path).target_level == 100
     manifest_text = prepared.manifest_path.read_text(encoding="utf-8")
     manifest = json.loads(manifest_text)
@@ -646,6 +697,7 @@ def test_prepare_hero_request_writes_resumable_secret_free_configuration(
     assert resumed.resumed
     assert resumed.directory == prepared.directory
     assert resumed.character.description == prepared.character.description
+    assert resumed.character.personality == request.personality
 
     resumed_without_optional_identity = prepare_hero_request(
         HeroRequest(

@@ -139,6 +139,55 @@ _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY = 4
 # effectively cross-world journey.
 _MAX_SOURCE_ROUTE_DETOUR_STEPS = 20
 
+# These are the active combat commands selected by the deterministic starter
+# controller.  Keep this list aligned with the source-backed action branches in
+# ``starter.py`` and the class training analysis; it is a ranking hint, not a
+# replacement for live consider, health, crowd, or route gates.
+_SOURCE_DIRECT_COMBAT_ACTIONS = {
+    "mage": ("chill touch", "magic missile"),
+    "cleric": ("cause critical", "cause serious", "cause light"),
+    "thief": ("circle", "knife toss", "backstab"),
+    "warrior": ("stun", "kick"),
+    "psionic": ("psychic crush", "mind thrust"),
+    "shifter": (),
+    "brawler": ("punch",),
+    "ranger": ("shoot", "kick"),
+    "smithy": (),
+}
+_SOURCE_SUBCLASS_COMBAT_ACTIONS = {
+    "barbarian": ("berserk",),
+    "vampire": ("suck",),
+    "martial artist": ("atemi", "kansetsu"),
+    "necromancer": ("harm",),
+    "druid": ("wither",),
+    "knight": ("flamestrike",),
+    "monk": ("agitation", "mind thrust"),
+}
+_SOURCE_PASSIVE_COMBAT_SKILLS = (
+    "second attack",
+    "third attack",
+    "enhanced damage",
+    "enhanced hit",
+    "counterbalance",
+)
+_SOURCE_CONTROL_COMBAT_SKILLS = (
+    "disarm",
+    "grip",
+    "stun",
+)
+_SOURCE_DEFENSIVE_COMBAT_SKILLS = (
+    "armor",
+    "sanctuary",
+    "mental barrier",
+    "displacement",
+    "shield block",
+    "dodge",
+    "parry",
+    "fast healing",
+    "weaponchain",
+    "summon familiar",
+)
+
 
 @dataclass(frozen=True)
 class MobileProgram:
@@ -387,6 +436,8 @@ class HuntCandidate:
     estimated_min_peak_round_damage: int = 0
     estimated_critical_hit_damage: int = 0
     autonomy_rejections: tuple[str, ...] = ()
+    combat_readiness: str = "unassessed"
+    combat_readiness_bonus: int = 0
     specials: tuple[str, ...] = ()
     route_preflight_room_vnum: str | None = None
     route_preflight_command: str | None = None
@@ -410,6 +461,56 @@ class HuntCandidate:
     def autonomous_safe(self) -> bool:
         """Whether source evidence permits a live probe-to-hunt policy."""
         return not self.autonomy_rejections
+
+
+@dataclass(frozen=True)
+class ResourcePlacement:
+    """One source-backed location where a recovery resource can appear."""
+
+    effect: str
+    object_vnum: int
+    object_keywords: str
+    object_description: str
+    item_type: int
+    source_kind: str
+    source_mobile_vnum: int | None
+    source_mobile: str
+    room_vnum: int
+    room_name: str
+    area_file: str
+    maximum_count: int
+    source_level_range: tuple[int, int]
+    status: str
+    route: tuple[str, ...] = ()
+    route_origin_recall_index: int = 0
+    hazards: tuple[str, ...] = ()
+    autonomy_rejections: tuple[str, ...] = ()
+
+
+_RESOURCE_EFFECT_SPELLS = {
+    "sanctuary": frozenset({"sanctuary"}),
+    "healing": frozenset(
+        {
+            "cure blindness",
+            "cure critical",
+            "cure light",
+            "cure poison",
+            "cure serious",
+            "heal",
+            "power heal",
+            "refresh",
+        }
+    ),
+    "flight": frozenset({"fly", "levitation"}),
+}
+_RESOURCE_EFFECT_ALIASES = {
+    "cure": "healing",
+    "recovery": "healing",
+    "fly": "flight",
+    "levitation": "flight",
+    "travel": "flight",
+}
+_RESOURCE_EFFECT_ORDER = ("sanctuary", "healing", "flight", "food")
 
 
 def money_value(values: Iterable[int]) -> int:
@@ -440,6 +541,277 @@ def potion_spell_names(item: ObjectSource) -> tuple[str, ...]:
     if item.item_type != ITEM_POTION:
         return ()
     return _encoded_spell_names(item)
+
+
+def resource_effects_for_object(
+    item: ObjectSource,
+    *,
+    effect: str = "all",
+) -> tuple[str, ...]:
+    """Return recovery effects supported by one source object.
+
+    ``food`` is deliberately limited to the same positive, non-poisonous
+    direct-food rule used by :func:`rank_food_stashes`.  Spell effects are
+    read from the source-encoded potion, scroll, wand, or staff values.
+    """
+    normalized = " ".join(str(effect).casefold().split())
+    normalized = _RESOURCE_EFFECT_ALIASES.get(normalized, normalized)
+    valid_effects = set(_RESOURCE_EFFECT_SPELLS) | {"food"}
+    if normalized != "all" and normalized not in valid_effects:
+        choices = ", ".join(("all", *_RESOURCE_EFFECT_ORDER))
+        raise ValueError(f"unknown resource effect {effect!r}; choose {choices}")
+
+    effects: list[str] = []
+    if (
+        item.item_type == ITEM_FOOD
+        and item.values
+        and item.values[0] > 0
+        and (len(item.values) < 4 or item.values[3] == 0)
+        and normalized in {"all", "food"}
+    ):
+        effects.append("food")
+    spell_names = set(potion_spell_names(item)) | set(castable_spell_names(item))
+    for name in _RESOURCE_EFFECT_ORDER:
+        if name == "food" or (normalized not in {"all", name}):
+            continue
+        if spell_names.intersection(_RESOURCE_EFFECT_SPELLS[name]):
+            effects.append(name)
+    return tuple(effects)
+
+
+def rank_resource_sources(
+    world: WorldSource,
+    *,
+    character_level: int,
+    effect: str = "all",
+    character_max_hp: int | None = None,
+    include_all_areas: bool = False,
+    recall_origins: Mapping[int, int] | None = None,
+) -> list[ResourcePlacement]:
+    """List source resource placements with routes and hazard evidence.
+
+    The report keeps shop stock, mob-carried objects, and direct ground resets
+    distinct.  A matching hunt or ground-stash candidate contributes the same
+    route, status, and hazard annotations used by campaign selection; a
+    source placement without a current-level candidate remains visible as
+    ``source-only`` rather than being silently discarded.
+    """
+    if character_level < 1:
+        raise ValueError("character_level must be at least 1")
+    # Validate the effect once even when the source contains no objects.
+    normalized_effect = " ".join(str(effect).casefold().split())
+    normalized_effect = _RESOURCE_EFFECT_ALIASES.get(
+        normalized_effect,
+        normalized_effect,
+    )
+    if normalized_effect != "all":
+        resource_effects_for_object(
+            ObjectSource(0, "", "", 0, (), 0),
+            effect=normalized_effect,
+        )
+    allowed_areas = None if include_all_areas else set(LOW_LEVEL_AREA_FILES)
+    selected_objects = tuple(
+        sorted(
+            (
+                item
+                for item in world.objects.values()
+                if resource_effects_for_object(
+                    item,
+                    effect=normalized_effect,
+                )
+            ),
+            key=lambda item: (item.vnum, item.short_description),
+        )
+    )
+    if not selected_objects:
+        return []
+    selected_vnums = {item.vnum for item in selected_objects}
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=character_level,
+        include_xp_only=True,
+        include_below_band=True,
+        character_max_hp=character_max_hp,
+        include_all_areas=include_all_areas,
+        required_loot_object_vnums=selected_vnums,
+        recall_origins=recall_origins,
+    )
+    candidates_by_source = {
+        (candidate.mobile_vnum, candidate.room_vnum): candidate
+        for candidate in candidates
+    }
+    direct_candidates = _rank_direct_ground_stashes(
+        world,
+        character_level=character_level,
+        include_all_areas=include_all_areas,
+        object_filter=lambda item: item.vnum in selected_vnums,
+        object_value=lambda _item: 1,
+        object_keyword=_food_object_keyword,
+        target="resource stash",
+    )
+    direct_by_room = {
+        candidate.room_vnum: candidate for candidate in direct_candidates
+    }
+    direct_paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
+    object_by_vnum = {item.vnum: item for item in selected_objects}
+
+    def fallback_mobile_hazards(mobile: MobileSource) -> tuple[str, ...]:
+        hazards: list[str] = []
+        if mobile.aggressive:
+            hazards.append("source mobile is aggressive")
+        if mobile.vnum in world.shopkeepers:
+            hazards.append("source mobile is a shopkeeper")
+        for special in world.mobile_specials.get(mobile.vnum, ()):
+            hazards.append(f"source special: {special}")
+        if mobile.attack_programs:
+            hazards.append("source mobile has a combat-triggering program")
+        return tuple(dict.fromkeys(hazards))
+
+    def item_level_range(item: ObjectSource) -> tuple[int, int]:
+        minimum = item.load_level_min or item.level
+        maximum = item.load_level_max or item.level
+        return minimum, maximum
+
+    placements: list[ResourcePlacement] = []
+    placement_keys: set[tuple[int, str, int | None, int, int]] = set()
+
+    def append_placement(
+        item: ObjectSource,
+        *,
+        source_kind: str,
+        source_mobile_vnum: int | None,
+        source_mobile: str,
+        room: RoomSource,
+        maximum_count: int,
+        source_level_range: tuple[int, int],
+        candidate: HuntCandidate | None,
+    ) -> None:
+        placement_key = (
+            item.vnum,
+            source_kind,
+            source_mobile_vnum,
+            room.vnum,
+            maximum_count,
+        )
+        if placement_key in placement_keys:
+            return
+        placement_keys.add(placement_key)
+        if candidate is None:
+            path = direct_paths.get(room.vnum)
+            route = path[0] if path is not None else ()
+            status = "source-only"
+            route_origin = 0
+            hazards = ()
+            autonomy_rejections = ()
+            if source_mobile_vnum is not None:
+                mobile = world.mobiles.get(source_mobile_vnum)
+                if mobile is not None:
+                    hazards = fallback_mobile_hazards(mobile)
+        else:
+            route = candidate.route
+            status = candidate.status
+            route_origin = candidate.route_origin_recall_index
+            hazards = candidate.hazards
+            autonomy_rejections = candidate.autonomy_rejections
+        for effect_name in resource_effects_for_object(
+            item,
+            effect=normalized_effect,
+        ):
+            placements.append(
+                ResourcePlacement(
+                    effect=effect_name,
+                    object_vnum=item.vnum,
+                    object_keywords=item.keywords,
+                    object_description=item.short_description,
+                    item_type=item.item_type,
+                    source_kind=source_kind,
+                    source_mobile_vnum=source_mobile_vnum,
+                    source_mobile=source_mobile,
+                    room_vnum=room.vnum,
+                    room_name=room.name,
+                    area_file=room.area_file,
+                    maximum_count=maximum_count,
+                    source_level_range=source_level_range,
+                    status=status,
+                    route=route,
+                    route_origin_recall_index=route_origin,
+                    hazards=tuple(dict.fromkeys(hazards)),
+                    autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
+                )
+            )
+
+    for reset in world.mob_resets:
+        room = world.rooms.get(reset.room_vnum)
+        mobile = world.mobiles.get(reset.mobile_vnum)
+        if (
+            room is None
+            or mobile is None
+            or (allowed_areas is not None and room.area_file not in allowed_areas)
+        ):
+            continue
+        matching_vnums = selected_vnums.intersection(reset.object_vnums)
+        for object_vnum in sorted(matching_vnums):
+            item = object_by_vnum[object_vnum]
+            equipped = any(
+                equipped_vnum == object_vnum
+                for _wear_location, equipped_vnum in reset.equipment
+            )
+            source_kind = (
+                "shop-stock"
+                if mobile.vnum in world.shopkeepers
+                else "mob-equipped"
+                if equipped
+                else "mob-carried"
+            )
+            append_placement(
+                item,
+                source_kind=source_kind,
+                source_mobile_vnum=mobile.vnum,
+                source_mobile=mobile.short_description,
+                room=room,
+                maximum_count=reset.maximum_count,
+                source_level_range=_mobile_level_range(mobile.level),
+                candidate=candidates_by_source.get((mobile.vnum, room.vnum)),
+            )
+
+    for reset in world.room_object_resets:
+        room = world.rooms.get(reset.room_vnum)
+        item = object_by_vnum.get(reset.object_vnum)
+        if (
+            room is None
+            or item is None
+            or (allowed_areas is not None and room.area_file not in allowed_areas)
+        ):
+            continue
+        append_placement(
+            item,
+            source_kind="ground-reset",
+            source_mobile_vnum=None,
+            source_mobile="",
+            room=room,
+            maximum_count=reset.maximum_count,
+            source_level_range=item_level_range(item),
+            candidate=direct_by_room.get(room.vnum),
+        )
+
+    status_order = {
+        "promising": 0,
+        "caution": 1,
+        "source-only": 2,
+        "reject": 3,
+    }
+    return sorted(
+        placements,
+        key=lambda placement: (
+            _RESOURCE_EFFECT_ORDER.index(placement.effect),
+            status_order.get(placement.status, 4),
+            len(placement.route),
+            placement.room_vnum,
+            placement.object_vnum,
+            placement.source_kind,
+        ),
+    )
 
 
 @lru_cache(maxsize=4)
@@ -640,6 +1012,9 @@ def rank_hunt_candidates(
     world: WorldSource,
     *,
     character_level: int,
+    character_class: str | None = None,
+    character_subclass: str | None = None,
+    known_skills: Collection[str] = (),
     boot_kill_counts: Mapping[str, int] | None = None,
     boot_kill_counts_by_mobile_vnum: Mapping[int, int] | None = None,
     include_xp_only: bool = False,
@@ -1191,6 +1566,16 @@ def rank_hunt_candidates(
                 autonomy_rejections.append(
                     f"target has special procedure {special}"
                 )
+        combat_readiness, combat_readiness_bonus = source_combat_readiness(
+            character_level=character_level,
+            character_class=character_class,
+            character_subclass=character_subclass,
+            known_skills=known_skills,
+            target_level_range=level_range,
+            equipped_weapon_count=len(equipped_weapons),
+            character_max_hp=character_max_hp,
+            peak_round_damage=peak_round_damage,
+        )
         source_value = sum(item.source_cost for item in sellable)
         score = (
             100
@@ -1204,6 +1589,7 @@ def rank_hunt_candidates(
             - max(mobile.alignment, 0) / 25
             - len(hazards) * 4
             - len(equipped_weapons) * 24
+            + combat_readiness_bonus
         )
         status = "reject" if dangerous else "caution" if hazards else "promising"
         if mobile.alignment > 0 and status == "promising":
@@ -1251,6 +1637,8 @@ def rank_hunt_candidates(
                 estimated_min_peak_round_damage=minimum_peak_round_damage,
                 estimated_critical_hit_damage=critical_hit_damage,
                 autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
+                combat_readiness=combat_readiness,
+                combat_readiness_bonus=combat_readiness_bonus,
                 specials=world.mobile_specials.get(mobile.vnum, ()),
                 route_preflight_room_vnum=route_preflight_room_vnum,
                 route_preflight_command=route_preflight_command,
@@ -3267,6 +3655,107 @@ def _normalize_name(value: str) -> str:
     while words and words[0] in {"a", "an", "the"}:
         words.pop(0)
     return " ".join(words)
+
+
+def _normalize_skill_name(value: object) -> str:
+    return " ".join(str(value).casefold().split())
+
+
+def source_combat_readiness(
+    *,
+    character_level: int,
+    character_class: str | None,
+    character_subclass: str | None = None,
+    known_skills: Collection[str] = (),
+    target_level_range: tuple[int, int],
+    equipped_weapon_count: int = 0,
+    character_max_hp: int | None = None,
+    peak_round_damage: int = 0,
+) -> tuple[str, int]:
+    """Return a deterministic combat hint and target-specific score bonus.
+
+    The hint only describes commands already selected by the starter's
+    source-backed controller.  The bonus is deliberately small and only
+    changes ordering within the existing status tier: it rewards a known
+    direct action more for a near-band target, lets known disarm reduce the
+    armed-target penalty, and gives known protection a small credit near the
+    source damage bound.  It never changes a candidate's safety status.
+    """
+    normalized_class = (
+        _normalize_skill_name(character_class) if character_class else ""
+    )
+    if not normalized_class:
+        return "unassessed", 0
+    if isinstance(known_skills, str):
+        raw_skills: Collection[str] = (known_skills,)
+    else:
+        raw_skills = known_skills or ()
+    skills = {
+        _normalize_skill_name(skill)
+        for skill in raw_skills
+        if str(skill).strip()
+    }
+    if not skills:
+        return "unassessed", 0
+
+    subclass = (
+        _normalize_skill_name(character_subclass)
+        if character_subclass
+        else ""
+    )
+    direct = tuple(
+        dict.fromkeys(
+            skill
+            for skill in (
+                *_SOURCE_SUBCLASS_COMBAT_ACTIONS.get(subclass, ()),
+                *_SOURCE_DIRECT_COMBAT_ACTIONS.get(normalized_class, ()),
+            )
+            if skill in skills
+        )
+    )
+    passive = tuple(
+        skill for skill in _SOURCE_PASSIVE_COMBAT_SKILLS if skill in skills
+    )
+    control = tuple(
+        skill for skill in _SOURCE_CONTROL_COMBAT_SKILLS if skill in skills
+    )
+    defensive = tuple(
+        skill for skill in _SOURCE_DEFENSIVE_COMBAT_SKILLS if skill in skills
+    )
+    labels = []
+    if direct:
+        labels.append("direct=" + ",".join(direct))
+    if passive:
+        labels.append("passive=" + ",".join(passive))
+    if control:
+        labels.append("control=" + ",".join(control))
+    if defensive:
+        labels.append("defense=" + ",".join(defensive))
+    if not labels:
+        return "no mapped action", 0
+
+    # A source target's upper fuzzed level is the available deterministic
+    # proxy for combat pressure. Keep this a tie-breaker, never a viability
+    # decision: live consider and the runner's damage window remain final.
+    target_pressure = max(
+        1,
+        min(4, target_level_range[1] - character_level + 4),
+    )
+    bonus = 0
+    if direct:
+        bonus += min(12, len(direct) * (2 + target_pressure))
+    if passive:
+        bonus += min(6, len(passive) * max(1, target_pressure // 2))
+    if equipped_weapon_count and "disarm" in control:
+        bonus += min(12, equipped_weapon_count * 6)
+    if (
+        defensive
+        and character_max_hp is not None
+        and character_max_hp > 0
+        and peak_round_damage >= character_max_hp * 0.5
+    ):
+        bonus += min(5, len(defensive) * 2)
+    return "; ".join(labels), bonus
 
 
 def _source_mobile_identity(

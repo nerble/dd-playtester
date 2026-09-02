@@ -147,6 +147,10 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "Notable choices:",
     ]
+    persona_lines = _persona_lines(character)
+    if persona_lines:
+        character_index = lines.index(f"Character: {identity}") + 1
+        lines[character_index:character_index] = persona_lines
     notable_decisions = report["decision_analysis"]["notable_decisions"]
     lines.extend(
         f"- **{decision['category']}:** {decision['reason']}"
@@ -384,6 +388,11 @@ def render_campaign_markdown(report: dict[str, Any]) -> str:
         "## Kills",
         "",
     ]
+    persona_lines = _persona_lines(character)
+    if persona_lines and character:
+        character_line = f"Character: {_format_identity(character)}"
+        character_index = lines.index(character_line) + 1
+        lines[character_index:character_index] = persona_lines
     if report["kills"]:
         lines.extend(
             "- {mob_name} (+{xp_gained} XP, run {run_id})".format(**kill)
@@ -1036,6 +1045,20 @@ def _format_identity(character: dict[str, Any]) -> str:
     if subclass:
         parts[-1] = f"{parts[-1]} ({subclass})"
     return ", ".join(parts)
+
+
+def _persona_lines(character: dict[str, Any]) -> list[str]:
+    """Render optional persona metadata without changing legacy reports."""
+    lines: list[str] = []
+    for label, key in (
+        ("Title", "title"),
+        ("Description", "description"),
+        ("Personality", "personality"),
+    ):
+        value = character.get(key)
+        if value:
+            lines.append(f"{label}: {value}")
+    return lines
 
 
 def _count_line(label: str, counts: dict[str, int]) -> str:

@@ -65,6 +65,9 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
         "gender": "female",
         "class": "mage",
         "subclass": "warlock",
+        "title": "the Procedurally Curious",
+        "description": "Reportmage keeps a brass astrolabe and distrusts shortcuts.",
+        "personality": "patient, observant, and dryly funny",
     }
 
     assert report["decision_analysis"]["category_counts"] == {
@@ -92,6 +95,8 @@ def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) ->
     assert "## Balance Signals" in markdown
     assert "## Decision Analysis" in markdown
     assert "Character: Reportmage, female, human, mage (warlock)" in markdown
+    assert "Title: the Procedurally Curious" in markdown
+    assert "Personality: patient, observant, and dryly funny" in markdown
     assert "Confirmed kills: tutorial wolf (+75 XP)" in markdown
     assert "Loot sales: 1 item(s) for 10 coins" in markdown
     assert "Loot sale refusals: 1 item offer(s) refused" in markdown
@@ -198,6 +203,9 @@ def test_campaign_report_aggregates_runs_and_writes_hero_artifacts(tmp_path) -> 
                     "race": "human",
                     "gender": "female",
                     "class": "mage",
+                    "title": "the Procedurally Curious",
+                    "description": "Reportmage keeps a brass astrolabe and distrusts shortcuts.",
+                    "personality": "patient, observant, and dryly funny",
                 }
             },
         )
@@ -277,6 +285,9 @@ def test_campaign_report_aggregates_runs_and_writes_hero_artifacts(tmp_path) -> 
     assert json_path.is_file()
     assert markdown_path.is_file()
     assert "# Campaign" in markdown_path.read_text(encoding="utf-8")
+    assert "Personality: patient, observant, and dryly funny" in render_campaign_markdown(
+        report
+    )
     assert "tutorial wolf (+100 XP" in render_campaign_markdown(report)
     assert "Quest points: 3 total; next gate 1; shortfall 0." in markdown_path.read_text(
         encoding="utf-8"
@@ -348,6 +359,9 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
                 "gender": "female",
                 "class": "mage",
                 "subclass": "warlock",
+                "title": "the Procedurally Curious",
+                "description": "Reportmage keeps a brass astrolabe and distrusts shortcuts.",
+                "personality": "patient, observant, and dryly funny",
             },
             "objective": {"level": 2},
         },

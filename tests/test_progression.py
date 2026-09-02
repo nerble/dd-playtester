@@ -155,6 +155,24 @@ def test_required_funding_preempts_a_productive_hunt_handoff() -> None:
     assert policy.execution == "provision-funding"
 
 
+def test_training_repair_preempts_fame_and_flight_frontier_after_food() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        has_food=True,
+        has_weapon=True,
+        has_flight=False,
+        flight_purchase_failed=True,
+        flight_loan_attempted=True,
+        protection_recovery_required=True,
+        needs_training_repair=True,
+    )
+
+    assert policy.policy_id == "training-deficit-repair-10-100"
+    assert policy.execution == "training-deficit-repair"
+    assert policy.status == "verified"
+
+
 def test_post_25_quest_point_shortfall_uses_goldmoon_route() -> None:
     policy = policy_for(
         29,

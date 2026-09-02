@@ -4,6 +4,8 @@ from pathlib import Path
 import dd4tester.cli
 from dd4tester.campaign import CampaignResult
 from dd4tester.cli import main
+from dd4tester.lease import CampaignLease, campaign_lease_path
+from dd4tester.hunt_candidates import ResourcePlacement
 from dd4tester.matrix import (
     MatrixCredentialResult,
     MatrixEntryResult,
@@ -348,6 +350,101 @@ def test_recover_runs_marks_orphaned_records(tmp_path, capsys) -> None:
         assert storage.list_campaign_segments(campaign_id)[0]["status"] == "failed"
 
 
+def test_recover_runs_reopens_campaign_left_running_before_segment_creation(
+    tmp_path,
+    capsys,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Praelarran to HERO",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="source-ranked-hunt-test",
+            reason="segment_complete",
+            state={"name": "Praelarran", "level": 15, "xp": 1000},
+        )
+        storage.connection.execute(
+            "UPDATE campaigns SET status = 'running' WHERE id = ?",
+            (campaign_id,),
+        )
+        storage.connection.commit()
+
+    exit_code = main(
+        [
+            "recover-runs",
+            "--database",
+            str(database),
+            "--reason",
+            "orphaned campaign worker",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Returned 1 orphaned campaign(s) without a running segment to ready." in captured.out
+    with RunStorage(database) as storage:
+        campaign = storage.get_campaign(campaign_id)
+        checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+
+    assert campaign is not None
+    assert campaign["status"] == "ready"
+    assert campaign["error"] == "orphaned campaign worker"
+    assert checkpoint is not None
+    assert checkpoint["phase"] == "source-ranked-hunt-test"
+
+
+def test_recover_runs_leaves_campaign_with_active_lease_untouched(
+    tmp_path,
+    capsys,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    config_path = tmp_path / "campaign.yaml"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Praelarran to HERO",
+            config_path=config_path,
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        storage.connection.execute(
+            "UPDATE campaigns SET status = 'running' WHERE id = ?",
+            (campaign_id,),
+        )
+        storage.connection.commit()
+
+    lease = CampaignLease(campaign_lease_path(database, config_path))
+    lease.acquire()
+    try:
+        exit_code = main(
+            [
+                "recover-runs",
+                "--database",
+                str(database),
+                "--reason",
+                "active worker still owns lease",
+            ]
+        )
+    finally:
+        lease.release()
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Returned 0 orphaned campaign(s) without a running segment to ready." in captured.out
+    with RunStorage(database) as storage:
+        campaign = storage.get_campaign(campaign_id)
+
+    assert campaign is not None
+    assert campaign["status"] == "running"
+    assert campaign["error"] is None
+
+
 def test_arena_research_passes_kill_limit_to_runner(tmp_path, capsys, monkeypatch) -> None:
     captured_args: dict[str, object] = {}
 
@@ -535,6 +632,21 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
     assert "Campaign 4 blocked" in captured.out
     assert "Checkpoint: 9" in captured.out
     assert "Level: 2" in captured.out
+
+
+def test_campaign_progress_option_reports_to_stderr(tmp_path, capsys, monkeypatch) -> None:
+    config = tmp_path / "campaign.yaml"
+
+    async def fake_campaign(path: Path, **kwargs) -> CampaignResult:
+        assert path == config
+        kwargs["progress_callback"]("attempt started")
+        return CampaignResult(4, "ready", 9, "checkpointed", {"level": 2, "xp": 100})
+
+    monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
+
+    assert main(["campaign", str(config), "--progress"]) == 0
+    captured = capsys.readouterr()
+    assert "Progress: attempt started" in captured.err
 
 
 def test_campaign_command_uses_source_backed_default_reset_wait(
@@ -1338,6 +1450,64 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert "the dangerous guard" in captured.out
     assert "reachable wanderer: a cellar rat L3" in captured.out
     assert "a cellar rat\t3\t1-5" not in captured.out
+
+
+def test_show_resource_sources_reports_exact_object_and_hazards(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    placement = ResourcePlacement(
+        effect="sanctuary",
+        object_vnum=4050,
+        object_keywords="potion purple",
+        object_description="a purple potion",
+        item_type=10,
+        source_kind="mob-carried",
+        source_mobile_vnum=4055,
+        source_mobile="the large hobgoblin",
+        room_vnum=4064,
+        room_name="The tunnel",
+        area_file="moria.are",
+        maximum_count=2,
+        source_level_range=(8, 12),
+        status="reject",
+        route=("south", "east"),
+        hazards=("target reset permits up to 2 matching mobiles in the room",),
+        autonomy_rejections=("target reset capacity exceeds one",),
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "load_world_source",
+        lambda _source, *, include_all_areas: object(),
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "rank_resource_sources",
+        lambda _world, **_kwargs: [placement],
+    )
+
+    exit_code = main(
+        [
+            "show-resource-sources",
+            "--level",
+            "18",
+            "--effect",
+            "sanctuary",
+            "--source",
+            str(tmp_path / "area"),
+            "--database",
+            str(tmp_path / "missing.sqlite3"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "effect\tstatus\tobject_vnum\tobject" in captured.out
+    assert "sanctuary\treject\t4050\ta purple potion\tpotion" in captured.out
+    assert "4055 the large hobgoblin" in captured.out
+    assert "4064 The tunnel" in captured.out
+    assert "target reset capacity exceeds one" in captured.out
 
 
 def test_show_hunt_candidates_ignores_hp_from_a_different_level(
