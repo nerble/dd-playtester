@@ -9,6 +9,7 @@ from dd4tester.hunt_candidates import (
     ACT_DIE_IF_MASTER_GONE,
     ACT_LOSE_FAME,
     ACT_SENTINEL,
+    ACT_UNDEAD,
     AFF_CONFUSION,
     ITEM_FOOD,
     ITEM_MONEY,
@@ -682,6 +683,32 @@ The teacher studies a ledger.~
     assert mobile.teaching_percent("engineer base") == 30
     assert mobile.teaches("teacher base")
     assert not mobile.teaches("runesmith base")
+
+
+def test_area_parser_captures_source_undead_marker(tmp_path: Path) -> None:
+    area_file = tmp_path / "undead.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+undead guardian~
+the undead guardian~
+An undead guardian stands here.~
+~
+32|1073741824 0 0 S
+5 0 0 0d0+0 0d0+0
+0 0
+8 8 0
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+
+    area = parse_area_file(area_file, include_objects=False)
+
+    assert area.mobiles[100].act_flags & ACT_UNDEAD
+    assert area.mobiles[100].undead is True
 
 
 def test_source_subclass_teacher_route_uses_anon_blacksmith_for_smithy() -> None:
@@ -1841,6 +1868,46 @@ def test_candidate_ranking_keeps_an_isolated_aggressive_target_in_risk_pool(
     assert candidate.status == "caution"
     assert candidate.autonomous_safe
     assert "target is aggressive" in candidate.hazards
+
+
+def test_candidate_ranking_rejects_aggressive_target_below_useful_fuzz_floor(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guard",
+                "an aggressive guard",
+                12,
+                ACT_AGGRESSIVE,
+                -500,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Guard post", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=16,
+        include_xp_only=True,
+    )
+
+    assert candidate.estimated_level_range == (10, 14)
+    assert candidate.status == "reject"
+    assert not candidate.autonomous_safe
+    assert "target is aggressive" in candidate.hazards
+    assert "target is aggressive" in candidate.autonomy_rejections
 
 
 def test_candidate_ranking_excludes_wanderer_behind_reset_closed_door(

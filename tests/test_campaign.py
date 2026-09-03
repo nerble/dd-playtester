@@ -10,6 +10,7 @@ from dd4tester.campaign import (
     _CAMPAIGN_METADATA_REPAIRED_REASON,
     _CAMPAIGN_RESEARCH_RESET_WAIT_REASON,
     _CAMPAIGN_POLICY_REVISION,
+    _SHADOW_GROVE_ROUTE_HAZARD_KEY,
     _TRAINING_SKILL_REGRESSION_KEY,
     CampaignResult,
     CampaignRunner,
@@ -30,6 +31,7 @@ from dd4tester.campaign import (
     _campaign_below_band_policy_ids,
     _campaign_below_band_sightings,
     _campaign_has_shadow_grove_route_hazard,
+    _repair_shadow_grove_route_hazard,
     _campaign_has_item,
     _campaign_segment_end_state,
     _campaign_flight_purchase_failed,
@@ -291,6 +293,7 @@ from dd4tester.progression import (
     _SOURCE_RANKED_CURE_CRITICAL_RESERVE_POLICY,
     _SOURCE_RANKED_FOOD_RESERVE_POLICY,
     _SOURCE_RANKED_HUNT_POLICY,
+    _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY,
     _PROVISION_FUNDING_POLICY,
     policy_for,
 )
@@ -300,6 +303,7 @@ from dd4tester.starter import (
     FieldHuntStop,
     StarterRuntimeCapReached,
     ambush_exterior_hunt_stops,
+    moria_sanctuary_potion_hunt_stops,
 )
 from dd4tester.storage import RunStorage
 
@@ -4371,7 +4375,7 @@ def test_policy_revision_reopens_retryable_fame_routes_for_protected_bound() -> 
     state = {
             # Revision 185 introduced the fame-bound repair; later revisions
             # add targeted Mirror Guardian revalidations below.
-            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION - 3,
+            "campaign_policy_revision": 184,
         "world_boot_id": "boot-1",
         "campaign_research_results": {
             circus_id: {
@@ -4422,7 +4426,7 @@ def test_policy_revision_reopens_stale_mirror_guardian_drunk_return_route() -> N
     )
     refreshed = _refresh_policy_revision(
         {
-            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION - 2,
+            "campaign_policy_revision": 185,
             "world_boot_id": "boot-1",
             "level": 25,
             "campaign_last_policy": policy_id,
@@ -4475,7 +4479,7 @@ def test_policy_revision_reopens_stale_mirror_guardian_grass_return_route() -> N
     )
     refreshed = _refresh_policy_revision(
         {
-            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION - 1,
+            "campaign_policy_revision": 186,
             "world_boot_id": "boot-1",
             "level": 25,
             "campaign_last_policy": policy_id,
@@ -24022,6 +24026,81 @@ def test_generic_galaxy_dynamic_hazard_quarantines_shared_shadow_grove_route() -
     assert _source_ranked_fallback_needed(state, sibling) is True
 
 
+def test_live_shadow_grove_hazard_survives_current_revision_refresh() -> None:
+    policy = ProgressionPolicy(
+        policy_id="galaxy-white-dwarf-probe-17-20",
+        minimum_level=17,
+        maximum_level=20,
+        status="research",
+        execution="galaxy-white-dwarf-research",
+        summary="shared route probe",
+        evidence=(),
+        practice_skill=None,
+    )
+
+    merged = _merge_campaign_research_result(
+        {
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
+        },
+        {
+            "level": 17,
+            "world_boot_id": "boot-1",
+            "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
+            "campaign_last_policy": policy.policy_id,
+            "campaign_fastwalk_abort_reason": (
+                "unexpected combat interrupted a no-combat field probe"
+            ),
+        },
+        policy=policy,
+    )
+
+    refreshed = _refresh_policy_revision(merged)
+
+    assert _SHADOW_GROVE_ROUTE_HAZARD_KEY in refreshed
+    assert _campaign_has_shadow_grove_route_hazard(refreshed) is True
+    assert refreshed["campaign_research_results"][policy.policy_id][
+        "route_hazard"
+    ] == "unexpected combat interrupted a no-combat field probe"
+
+
+def test_shadow_grove_hazard_repair_reconstructs_lost_result_from_segments() -> None:
+    policy_id = "galaxy-white-dwarf-probe-17-20"
+    end_state = {
+        "level": 17,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": policy_id,
+        "campaign_fastwalk_abort_reason": (
+            "unexpected combat interrupted a no-combat field probe"
+        ),
+    }
+
+    repaired = _repair_shadow_grove_route_hazard(
+        {
+            "level": 17,
+            "world_boot_id": "boot-1",
+            "campaign_last_policy": policy_id,
+        },
+        [
+            {
+                "sequence": 1,
+                "phase": policy_id,
+                "start_state_json": json.dumps({"world_boot_id": "boot-1"}),
+                "end_state_json": json.dumps(end_state),
+            }
+        ],
+    )
+
+    assert repaired[_SHADOW_GROVE_ROUTE_HAZARD_KEY] == {
+        "boot_id": "boot-1",
+        "policy_id": policy_id,
+        "route_hazard": "unexpected combat interrupted a no-combat field probe",
+        "source": "campaign_segment_history",
+    }
+    assert repaired["campaign_research_results"][policy_id][
+        "route_hazard"
+    ] == "unexpected combat interrupted a no-combat field probe"
+
+
 def test_absent_reset_target_replaces_stale_viability_with_temporary_marker() -> None:
     policy = ProgressionPolicy(
         policy_id="soldier-probe",
@@ -26065,6 +26144,25 @@ def test_sanctuary_recovery_retryable_failure_waits_for_reset() -> None:
             }
         },
         "campaign_research_absence_cooldowns": {policy_id: 3},
+    }
+
+    assert _campaign_should_await_research_reset(state) is True
+
+
+def test_sanctuary_recovery_crowd_waits_for_reset() -> None:
+    policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    state = {
+        "campaign_last_policy": policy_id,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            policy_id: {
+                "observed": False,
+                "viable": False,
+                "crowded": True,
+                "boot_id": "boot-1",
+            }
+        },
+        "campaign_research_crowd_cooldowns": {policy_id: 3},
     }
 
     assert _campaign_should_await_research_reset(state) is True
@@ -33723,6 +33821,75 @@ def test_warrior_rock_toad_continuation_dispatch_carries_source_metadata(
     assert captured["fastwalk_kill_limit"] == 2
 
 
+def test_cleared_positive_warrior_continuation_stays_a_live_fallback() -> None:
+    policy = _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY
+
+    assert not _source_ranked_fallback_needed(
+        {
+            "level": 16,
+            "world_boot_id": "boot-1",
+            "campaign_last_policy": "source-ranked-hunt-haon-6115-6100-16",
+            "campaign_cleared_research_policies": [
+                policy.policy_id,
+                "source-ranked-hunt-haon-6115-6100-16",
+            ],
+            "campaign_productive_policy_history": {
+                "boot_id": "boot-1",
+                "policy_ids": [policy.policy_id],
+            },
+            "campaign_research_results": {
+                "source-ranked-hunt-haon-6115-6100-16": {
+                    "boot_id": "boot-1",
+                    "absent": True,
+                    "observed": False,
+                    "viable": False,
+                },
+            },
+        },
+        policy,
+        policy_xp_deltas={
+            policy.policy_id: 381,
+            "mahntor-rock-toad-circuit-13-15": 849,
+        },
+    )
+
+
+def test_positive_warrior_continuation_survives_last_policy_guard() -> None:
+    policy = _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY
+
+    assert not _source_ranked_fallback_needed(
+        {
+            "level": 16,
+            "world_boot_id": "boot-1",
+            "campaign_last_policy": policy.policy_id,
+            "campaign_last_productive_policy": (
+                "source-ranked-hunt-shadow-keep-16600-16600-16"
+            ),
+            "campaign_cleared_research_policies": [policy.policy_id],
+            "campaign_productive_policy_history": {
+                "boot_id": "boot-1",
+                "policy_ids": [policy.policy_id],
+            },
+            "campaign_research_absence_cooldowns": {
+                "source-ranked-hunt-shadow-keep-16600-16600-16": 3,
+            },
+            "campaign_research_results": {
+                "source-ranked-hunt-shadow-keep-16600-16600-16": {
+                    "boot_id": "boot-1",
+                    "absent": True,
+                    "observed": False,
+                    "viable": False,
+                },
+            },
+        },
+        policy,
+        policy_xp_deltas={
+            policy.policy_id: 357,
+            "mahntor-rock-toad-circuit-13-15": 849,
+        },
+    )
+
+
 def test_shared_rock_toad_hunt_dispatch_tries_each_reset_once(
     tmp_path,
     monkeypatch,
@@ -38394,7 +38561,10 @@ def test_campaign_school_accessory_recovery_uses_bounded_tutorial_stops(
         "copper bracer",
         "copper bracer",
         "snowy white stone",
+        "iron key",
     )
+    assert lizardman.selective_loot_keywords == ("bracer",)
+    assert gladiator.selective_loot_keywords == ("bracer", "stone", "key")
     assert exit_stop.actions[-3:] == ("down", "down", "north")
     assert all(
         stop.allow_below_band_for_required_loot
@@ -39677,6 +39847,53 @@ def test_level_sixteen_mage_sanctuary_recovery_uses_invisible_deep_moria_probe(
         "eat pie",
         "drink skin",
     )
+
+
+def test_level_seventeen_live_deep_moria_policy_uses_safe_reset_route(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                config_path,
+                {"level": 17, "xp": 144_726},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY,
+            current_state={
+                "level": 17,
+                "max_hp": 300,
+                "world_boot_id": "boot-1",
+            },
+            source_world=world,
+            character_level=17,
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    assert stops == moria_sanctuary_potion_hunt_stops(
+        safe_reset_only=True,
+    )
+    assert all(stop.route_vnums == () for stop in stops)
 
 
 def test_level_ten_thief_moria_fallback_does_not_require_mage_invisibility(

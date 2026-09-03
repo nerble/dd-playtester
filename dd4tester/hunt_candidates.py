@@ -27,6 +27,7 @@ ACT_LOSE_FAME = 1 << 15
 ACT_DIE_IF_MASTER_GONE = 1 << 21
 ACT_NO_EXPERIENCE = 1 << 24
 ACT_NO_FIGHT = 1 << 26
+ACT_UNDEAD = 1 << 30
 
 AFF_BLIND = 1 << 0
 AFF_NON_CORPOREAL = 1 << 28
@@ -223,6 +224,11 @@ class MobileSource:
     @property
     def stay_area(self) -> bool:
         return bool(self.act_flags & ACT_STAY_AREA)
+
+    @property
+    def undead(self) -> bool:
+        """Return DD4's source-level undead marker for this mobile."""
+        return bool(self.act_flags & ACT_UNDEAD)
 
     @property
     def confused(self) -> bool:
@@ -456,6 +462,7 @@ class HuntCandidate:
     is_food_stash: bool = False
     route_origin_recall_index: int = 0
     route_origin_room_vnum: int = RECALL_VNUM
+    undead: bool = False
 
     @property
     def autonomous_safe(self) -> bool:
@@ -1527,11 +1534,14 @@ def rank_hunt_candidates(
             )
         if mobile.aggressive:
             hazards.append("target is aggressive")
-            # The requested mobile's own reset room is a valid destination.
-            # Keep the aggression as a risk signal for scoring and live
-            # consider/isolation gates, but do not reject an otherwise
-            # isolated target before the runner can weigh reward against the
-            # source-derived peak-damage bound.
+            # Aggressive mobiles can enter combat as soon as their reset room
+            # loads, before live consider can reject a below-band fuzzy load.
+            # Mark that case as a hard pre-entry rejection.  This must happen
+            # here, before bounded capacity or other research pools can treat
+            # the same target as probeable.
+            if level_range[0] < character_level - 5:
+                dangerous = True
+                autonomy_rejections.append("target is aggressive")
         if equipped_weapons:
             weapon_names = ", ".join(
                 item.short_description for item in equipped_weapons
@@ -1646,6 +1656,7 @@ def rank_hunt_candidates(
                 route_preflight_level_range=route_preflight_level_range,
                 route_preflight_hard_hazard=route_preflight_hard_hazard,
                 route_hard_hazard_targets=route_hard_hazard_targets,
+                undead=mobile.undead,
                 sentinel=mobile.sentinel,
                 stay_area=mobile.stay_area,
                 estimated_move_cost=estimated_move_cost,

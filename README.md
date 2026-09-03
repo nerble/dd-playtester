@@ -48,6 +48,160 @@ python -m pytest -q tests/test_campaign.py -k protection_recovery
 python -m dd4tester --help
 ```
 
+## Current Status
+
+As of 2026-09-03, the full offline suite passes 3,359 tests. Praelarran is a
+level-17 Human Warrior at 149,410 XP, safely checkpointed in healer room 3054
+at checkpoint 36132, with 5,040 XP to level 18 and a verified dagger wielded.
+Run 11844 live-validated recovery from the final Mud School corpse: the bot
+dropped a duplicate bracer to make room, recovered the iron key, unlocked and
+opened the northern exit, reached the healer, slept, saved, and quit. This is
+safe continuation evidence, not level-18, subclass, or HERO proof.
+Runs 11847-11848 live-validated exact object-selector food recovery and added
+180 XP. Runs 11849-11851 completed liquidation, restocking, and flight
+maintenance safely. Runs 11852-11857 completed sanctuary recovery, Shadow
+Keep, Bird Spider, and Queen Spider rotations, adding 1,323 XP without death;
+the character ended back at healer room 3054. These are current-band
+continuation results, not level-18, subclass, or HERO proof.
+The following reset-aware pass waited through the bounded area-reset window,
+then completed sanctuary recovery and Shadow Keep safely; a Dwarven Home
+check also returned without XP. The current-reboot cooldown was respected and
+the character remained at the healer between every segment.
+The latest bounded funding rotation correctly distinguished food from flight
+funding: one pie and a full water skin were present, but the purse held only
+36 copper-equivalent against the current 90-copper flight minimum. The
+source-ranked Midget attempt was absent and quarantined for this reboot rather
+than replayed.
+The next funding kill added 90 XP and produced two saleable drops, but its
+liquidation was safely deferred after three bounded checks found the known
+Midgaard drunk route hazard. The loot remains carried for a later safe shop
+attempt.
+The following three money-loop attempts added 190 XP in total and left the
+character fully recovered. The purse is now 39 copper-equivalent, leaving a
+51-copper shortfall before the current flight purchase can be attempted.
+The most recent funding rotation added another 140 XP and left full combat
+resources, but hunger is now 5 with one pie remaining; food recovery is the
+next survival gate if the character cannot buy provisions before leaving town.
+The latest funding segment added 50 XP and produced two gold, two silver, and
+ten copper, bringing the purse to 230 copper-equivalent and reopening the
+current flight purchase gate. Two pies are now carried.
+The latest three-segment pass then added 240 XP through sanctuary recovery and
+Shadow Keep, and completed a sanctuary-reserve check without XP. Praelarran
+remains alive and fully recovered at healer room 3054 with two pies and 223
+copper-equivalent; no flight-required route was forced during that pass.
+The following pass entered the buy-flight policy but did not acquire flight:
+the live Magic Shop transcript contained no purchase command because the
+source-backed Midgaard drunk hazard blocked the route. The Dwarven servant
+segment still added 80 XP and the character returned safely to the healer.
+The next ground rotation returned safely from Shadow Keep and then reached the
+current-reboot funding boundary: no source-safe money target remained, so the
+campaign checkpointed instead of replaying exhausted routes. The next retry
+will use the bounded area-reset wait to reopen fresh evidence.
+After that reset wait, the Midget route reopened as fresh evidence and added
+30 XP, bringing the purse to 235 copper-equivalent. The character is fully
+recovered, but hunger is 2 with two pies, so food maintenance now takes
+precedence over another field segment.
+The subsequent bounded pass added 20 XP and recovered cash from a money
+container, ending at 282 copper-equivalent with one pie and full resources.
+The next invocation can retry the flight purchase without another funding
+expedition.
+The retry then observed a 104-copper flight price but correctly held the
+purchase behind the three-segment blocked-shop cooldown; no source-safe
+funding target remained in that reboot. The character stayed at the healer
+with one pie and full combat resources while the cooldown awaits productive
+ground progress.
+The following reset-aware continuation waited through the configured 180-second
+area-reset window, completed Moria sanctuary and Shadow Keep checks without
+XP, then reopened the source-ranked Midget funding route and added 30 XP. The
+latest durable checkpoint is 36124 at 149,380 XP; the purse is 2 gold, 2
+silver, and 118 copper, and the blocked-shop flight cooldown has aged to two
+steps. This remains continuation evidence, not level-18, subclass, or HERO
+proof.
+The next ordinary rotation inspected the source money container without XP,
+then completed two source-ranked Midget funding kills for another 30 XP. The
+latest checkpoint is 36132 at 149,410 XP, with 172 copper plus 2 gold and 2
+silver; the blocked-shop cooldown is down to one step. The character remains
+safe at the Healer while the flight purchase is re-evaluated.
+Runs 11737-11743 completed the level-16 Mahn-Tor handoff, maintenance, and
+Bardoosh frontier, reaching level 17 without death or XP loss. Runs 11744-11749
+added 1,152 XP from Bird Spider, Bardoosh, Wyvern ranger, and Mahn-Tor routes.
+Runs 11750-11752 added 370 XP from the Wyvern ranger; liquidation completed
+once and then deferred after three bounded checks found the source-backed
+Midgaard drunk hazard. Run 11753 exposed a delayed wield-result bug in rearm;
+run 11754 live-validated the repair. Runs 11755-11757 added 1,071 XP from
+Bardoosh and Bird Spider, with flight maintenance and healer returns. Runs
+11758-11760 added 820 XP from Mahn-Tor and Bardoosh, with clean liquidation.
+Runs 11761-11763 added 880 XP from Bird Spider and Bardoosh, with clean
+liquidation. Runs 11764-11766 added 876 XP from Mahn-Tor and Bardoosh, with
+clean liquidation. Runs 11767-11769 added 900 XP from Bird Spider and
+Bardoosh, with clean flight maintenance and healer returns. The selector is
+executing real level-17 combat rather than replaying stale research. Run 11776
+correctly quarantined the Shadow Grove no-combat probe after an unexpected
+combat interruption and recorded a 1,040 XP loss without death; the startup
+repair now reconstructs that current-reboot hazard from segment history. Run
+11779 selected the independent Bardoosh route and added 531 XP, checkpointing
+cleanly at healer. Run 11780 selected the independent Wyvern ranger route and
+added 336 XP; run 11781 deferred liquidation after three bounded checks found
+the same source-backed drunk hazard. Run 11790 live-validated duplicate-armour
+capacity relief, pie restock, and healer return; run 11792 completed
+liquidation, and run 11793 added 589 XP from Bardoosh without loss. Runs
+11796-11797 added 843 XP from Bird Spider and Bardoosh, with run 11798
+completing liquidation. Runs 11799-11801 added 411 XP from the Shadow Keep
+probe and Bardoosh, with clean liquidation. Runs 11802-11804 added 438 XP
+from Bird Spider and 328 XP from the Wyvern ranger; the intervening repeat
+checks returned safely without XP. Runs 11805-11808 added 904 XP from two
+Wyvern ranger kills and the Shadow Keep circuit, with clean liquidation and
+healer returns. Runs 11809-11814 added 298 XP from the Wyvern ranger; the
+Dwarven Home check returned safely without XP. Runs 11815-11816 safely stopped
+at the Bakery after exposing the remaining full-capacity edge. The capacity
+releaser now recognizes source-identified equipment illegal for the current
+class; run 11817 live-validated dropping and sacrificing the Warrior's long
+bow, buying a pie, and returning to healer. Its 30 XP change was incidental
+drunk-crossing XP, not progression credit. This remains continuation evidence,
+not subclass or HERO proof. Run 11818 completed a clean Dwarven giant check;
+run 11819 added 501 XP from the Wyvern ranger. Run 11820 exposed an unsafe
+level-17 deep Moria transit after the carrier was absent, recorded 624 XP of
+bounded flee/recall loss without death, and returned safely to the healer. The
+source graph now gates that deep route and limits lower-level recovery to the
+safe reset room. Runs 11821-11823 completed restock, added 440 XP from the
+Wyvern ranger, and bought flight without entering the quarantined Moria route.
+Runs 11824-11828 then added 494 XP from Bird Spider and 80 XP from the Eastern
+Desert nomad commander; a partial Wyvern exchange in run 11825 cost 208 XP,
+run 11826 rearmed the dagger, and run 11827 returned safely without XP. The
+five-segment pass produced a net 497 XP from the prior anchor. This remains
+continuation evidence, not subclass or HERO proof.
+
+Campaign policy revision 189 prevents a stale positive research result from
+reopening a source-ranked route after an XP loss: one loss requires a carried
+sanctuary reserve, and a second loss quarantines the route for the reboot.
+It also prioritizes the class-tagged warrior Mahn-Tor continuation at level 16
+before generic research probes, and preserves that handoff after a generic
+research miss when the required sanctuary reserve is executable. A sanctuary
+resource route is now quarantined after two failed same-reboot attempts, so a
+stalled recovery cannot consume the progression loop indefinitely.
+Protection-recovery markers are scoped to the character level that incurred
+the hard-health withdrawal. A later level retains the marker for audit but may
+select a fresh current-level source candidate, preventing an old unavailable
+sanctuary route from freezing the next band.
+The emergency provision selector now suppresses its city-sale shortcut while
+the shared shop hazard is active, keeping a foodless character in the explicit
+funding loop so capacity relief and safe return happen before field travel.
+The shared city-shop hazard now also blocks optional flight purchases until its
+bounded cooldown clears, so flight funding cannot reopen a known unsafe shop
+crossing.
+No-recall recovery also resynchronizes at a known Midgaard waypoint after a
+flee advances the character beyond the command cursor, preventing stale maze
+commands from sending a returned character into the Cartography Store loop.
+Source candidate construction now records the same aggressive-target gate in
+`autonomy_rejections`; legacy capacity-only checkpoints are checked again before
+they can be reused.
+
+The read-only DD4 source mirror was refreshed to revision
+`4d68421e67295cca1c04923d18273ca48a6476ce`. The source parser now preserves
+the new `ACT_UNDEAD` marker in candidate inspection and checkpoints. It is
+reported as metadata only because the current source uses it for inspection,
+not as an autonomous combat hazard.
+
 ## Usage
 
 Run commands from the repository root. In PowerShell, leave the virtual
@@ -317,15 +471,17 @@ class-independent blindness-reserve gate: when sanctuary is the opener, the
 character must carry two verified purple potions or have persisted `cure
 blindness` capability. This protects warriors, clerics, thieves, and mages
 alike; it is not a mage-only exception.
-Moria sanctuary recovery is class-aware: level-16+ mages may use the deeper
-source-room carrier circuit only after the bounded invisibility readiness gate.
-Thieves and other non-invisible classes keep the safer reset-room route until
-level 19. From level 19 onward, the deep required-loot sweep is available to
-every class; non-mages do not need invisibility, but the route still requires
-the live high-health, exact-carrier, crowd, and healer-return gates. At the
-current level-24 frontier, the deep probe checks room 4064 and then follows a
-source-audited cross-area detour to the large-cave-side carrier rooms, avoiding
-the borderline sentinel in room 4062. The maze branch remains gated until its
+Moria sanctuary recovery is now source-graph gated at execution time. At the
+checked-in source revision, the deep route to room 4152 is not source-safe
+below level 20, so lower-level recovery inspects only the room-4064 reset and
+withdraws if the carrier has wandered; the shallow stop can require one or two
+exact purple potions. From level 20 onward, the deep required-loot sweep is
+available to every class; mages still use the bounded invisibility readiness
+gate, and every class retains the live high-health, exact-carrier, crowd, and
+healer-return gates. At the current level-24 frontier, the deep probe checks
+room 4064 and then follows a source-audited cross-area detour to the
+large-cave-side carrier rooms, avoiding the borderline sentinel in room 4062.
+The maze branch remains gated until its
 poison and aggression evidence is safe for the character's level. A
 current-reboot crowd or absence result defers the sweep until its bounded reset
 cooldown is consumed rather than replaying the route immediately. When the
@@ -393,7 +549,7 @@ level-100 autonomous campaign running visibly through Mudlet in a virtual machin
 The current architecture and evidence audit is in
 [docs/PROGRESS_AUDIT_2026-08-13.md](docs/PROGRESS_AUDIT_2026-08-13.md).
 
-## Current status
+## Historical status
 
 **Live continuation (2026-09-02):** Dorrik is a level-25 dwarf warrior at
 377,925 XP, safely checkpointed in healer room 3054 at checkpoint 34567. The
@@ -494,7 +650,7 @@ ground route costs 456 movement against 380 available, and flight-required
 alternatives remain unavailable or source-hazardous. No live progression claim
 is made for this new branch.
 
-**Latest Praelarran continuation (2026-09-01):** Praelarran remains a level-15
+**Historical Praelarran continuation (2026-09-01):** Praelarran was a level-15
 Human Warrior at 106,709 XP, with 8,091 XP to level 16, safely checkpointed in
 healer room 3054 at checkpoint 33028. Runs 10947-10949 completed bounded flight
 and source-ranked
@@ -2698,25 +2854,45 @@ and 160 incidental transit XP. Dorrik finished fully recovered at healer room
 3054 with 123,437 XP, 10,163 from level 17.
 
 The live DD4 checkout used for the current audit is
-`7996722bc43508cc3773c48f8d79e3d07d68e5e4`. The packaged
+`4d68421e67295cca1c04923d18273ca48a6476ce`. The packaged
 prerequisite and training snapshots remain pinned evidence from `f703daa`, and
 the fallback character catalog is pinned to `0482387`; source-sensitive policy
 changes must record both the live checkout and snapshot revisions.
 
-### Current status (2026-09-02)
+### Current status (2026-09-03)
 
-The full offline suite passes 3,331 tests. The source-ranked long-route repair
-now separates the healer departure gate from later movement legs: Kestrel's
-Kerofk route needs 73 movement to depart, then recovers at audited no-mob
-waypoints before entering the target suffix. This is covered by focused and
-full-suite tests. One live reset wait completed without a new DD4 boot, so the
-route remains correctly quarantined rather than being replayed as proof.
+The full offline suite passes 3,340 tests. The source-ranked long-route repair
+separates the healer departure gate from later movement legs: Kestrel's Kerofk
+route needs 73 movement to depart, then recovers at audited no-mob waypoints
+before entering the target suffix. A new repair also preserves the official
+outbound route cursor after an allowed harmless transit fight, instead of
+asking the endpoint planner to reconstruct the route from the interruption
+room. Both repairs are covered by focused and full-suite tests.
 
-Kestrel is safely at level 24 and 334,688 XP in `runs/heroes/kestrel`; Serevian
-is level 11 at 49,938 XP, and Praelarran is level 15 at 106,709 XP. Their latest
-segments were safe, but did not add XP: the former rejected below-band Circus
-targets and the latter completed ring maintenance. No character has reached
-HERO; the next productive Kestrel attempt is preserved for a fresh reboot.
+Dorrik is safely at level 25 with 378,748 XP in `runs/heroes/dorrik`, 29,302 XP
+from level 26. Runs 11493, 11495, 11498, 11499, and 11513 supplied durable
+XP-loss evidence from weak damage windows; runs 11496, 11497, and 11504 correctly
+recorded crowded, absent, or below-band endpoints without claiming progression.
+Run 11504 live-validated looting and route resumption after an incidental city
+attack. Run 11507 then exposed two source-known below-band transit attackers on
+the Kerofk route; the starter now allows up to three sequential, isolated,
+special-free transit fights on source-ranked routes, with focused coverage and
+the full suite passing. Run 11510 killed the exact Mirror Realm fisherman for
+1,718 objective XP and returned safely. Run 11513 reached the exact Ki-Rin
+endpoint but withdrew at the 32% health floor after the target proved healthier
+than Dorrik, recording a 419-XP loss; the protection hold remained active and
+the subsequent Moria recovery probe stopped safely without a target. The
+current protection boundary requires sanctuary for a high-peak armed target
+when disarm is not known. An unarmed one-level source-ceiling probe also now
+requires its source HP ceiling to fit within current maximum HP unless a
+protected path is available, based on the Ki-Rin loss evidence.
+Kestrel is level 24 at 334,688 XP, Serevian level 11 at 49,938 XP, and
+Praelarran is level 15 at 108,488 XP at checkpoint 34856. Praelarran's latest
+live segment completed the exact Mahn-Tor circuit for 592 objective XP and
+returned safely; the earlier segment supplied the route-resume failure
+evidence and added only incidental XP. No character has reached HERO; this
+remains executable
+level-15-to-30 readiness and evidence work, not level-100 proof.
 
 The `hero` command is a resumable execution boundary, not a claim that HERO is
 already solved. It checkpoints and stops when the selected class and level band

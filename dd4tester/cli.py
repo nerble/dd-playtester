@@ -1816,7 +1816,7 @@ def show_hunt_candidates(
         "move_cost\tflight_cost\trequires_flight\t"
         "room_spawns\tspawn_limit\t"
         "boot_kills\tloot\thazards\tautonomy_rejections\t"
-        "combat_readiness\tcombat_bonus"
+        "combat_readiness\tcombat_bonus\tundead"
     )
     for candidate in candidates[:limit]:
         mobile = world.mobiles.get(candidate.mobile_vnum)
@@ -1899,6 +1899,7 @@ def show_hunt_candidates(
                     "; ".join(candidate.autonomy_rejections) or "-",
                     candidate.combat_readiness,
                     str(candidate.combat_readiness_bonus),
+                    "yes" if candidate.undead else "no",
                 ]
             )
         )

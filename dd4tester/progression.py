@@ -2180,6 +2180,7 @@ _RECOVER_SCHOOL_WRIST_FLOAT_POLICY = ProgressionPolicy(
     evidence=(
         "DD4 school.are equips the level-2 lizardman in room 3720 with object 3713, a copper bracer.",
         "DD4 school.are equips the level-1 gladiator in room 3722 with another copper bracer and object 3721, a wisdom-boosting snowy white floating stone.",
+        "DD4 school.are also loads object 3714, an iron key, on the gladiator; the key is required to unlock the northern exit from room 3722.",
         "The route begins at Midgaard recall, passes only tutorial rooms, and recalls after the two bounded required-loot kills.",
     ),
     practice_skill=None,
@@ -3393,8 +3394,9 @@ _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY = replace(
     maximum_level=18,
     status="research",
     summary=(
-        "Use the class-proven Mahn-Tor Rock Toad circuit as a bounded warrior "
-        "continuation through level 18 after the higher-band probes reject."
+        "Use the class-proven Mahn-Tor Rock Toad circuit as the first bounded "
+        "warrior continuation through level 18 after positive level-13-to-15 "
+        "class-tagged evidence."
     ),
     evidence=(
         *_MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY.evidence,
@@ -3410,6 +3412,9 @@ _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY = replace(
         "range, so level 16 is the first level at which this continuation can "
         "be tested without assuming useful XP at levels 17 or 18; any `diff "
         "<= -5` or `diff <= -10` consider result remains a terminal exclusion.",
+        "Once the prerequisite class-tagged result exists, the fixed registry "
+        "prioritizes this warrior continuation before generic level-16 research "
+        "probes so live time advances the requested class track first.",
     ),
     practice_skill=None,
     segment_kill_limit=2,
@@ -3455,10 +3460,19 @@ def _configured_mahntor_rock_toad_warrior_continuation(
         else _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY
     )
     policy_id = policy.policy_id
-    if policy_id in context.excluded_policy_ids:
-        return None
     completed = context.policy_xp_deltas or {}
     current_xp = completed.get(policy_id)
+    repeatable_positive_result = (
+        policy_id in context.productive_policy_ids
+        and current_xp is not None
+    )
+    if repeatable_positive_result:
+        try:
+            repeatable_positive_result = int(current_xp) > 0
+        except (TypeError, ValueError):
+            repeatable_positive_result = False
+    if policy_id in context.excluded_policy_ids and not repeatable_positive_result:
+        return None
     try:
         if current_xp is not None and int(current_xp) <= 0:
             return None
@@ -6088,6 +6102,15 @@ def policy_for(
         or excluded_retry_allowed
         or fresh_probe_reopens_cleared_hunt
         or (
+            selected.policy_id
+            in {
+                _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY.policy_id,
+                _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_NINETEEN_POLICY.policy_id,
+            }
+            and selected.policy_id in context.productive_policy_ids
+            and (context.policy_xp_deltas or {}).get(selected.policy_id, 0) > 0
+        )
+        or (
             selected.policy_id == _PROVISION_FUNDING_POLICY.policy_id
             and context.needs_provision_funding
         )
@@ -8223,6 +8246,14 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             and not context.flight_purchase_failed
         ):
             return _BUY_FLIGHT_POLICY
+        warrior_toad_policy = _configured_mahntor_rock_toad_warrior_continuation(
+            context
+        )
+        if warrior_toad_policy is not None:
+            # A positive class-tagged level-13-to-15 result is the strongest
+            # available continuation signal for a warrior at level 16. Keep
+            # generic research probes behind this executable class track.
+            return warrior_toad_policy
         if (
             normalized_level >= 18
             and context.has_sanctuary_potion

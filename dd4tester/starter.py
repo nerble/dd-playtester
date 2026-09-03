@@ -30,6 +30,7 @@ from .equipment import (
     is_blunt_weapon,
     is_bow,
     is_disposable_food,
+    is_releasable_funding_item,
     is_piercing_weapon,
     is_strength_penalty_ring,
     item_category,
@@ -45,6 +46,7 @@ from .equipment import (
 )
 from .fastwalks import Fastwalk, route_named
 from .hunt_candidates import (
+    ITEM_ARMOR,
     ITEM_CONTAINER,
     ITEM_POTION,
     ObjectSource,
@@ -110,6 +112,15 @@ _COMBAT_SAFE_POTION_SPELLS = (
     "sanctuary",
     *_COMBAT_HEALING_POTION_SPELLS,
 )
+# The final Mud School opponent carries several objects, but only these
+# rewards are required to finish the tutorial and open its exit.
+_FINAL_TUTORIAL_REQUIRED_ITEMS = (
+    "copper bracer",
+    "copper bracer",
+    "snowy white stone",
+    "iron key",
+)
+_FINAL_TUTORIAL_SELECTIVE_LOOT_KEYWORDS = ("bracer", "stone", "key")
 _TARGET_SELECTOR_PREFIX = re.compile(
     r"^\s*\[#(?P<target_id>\d+)\]\s*",
     re.MULTILINE,
@@ -1288,6 +1299,10 @@ _FIELD_FINISH_OPPONENT_RATIO = 0.35
 # may be finished once more when its exact source profile is harmless.  This
 # keeps DD4's flee XP penalty from outweighing a bounded defensive kill.
 _FIELD_MAX_BELOW_BAND_RETURN_FIGHTS = 2
+# A source-ranked route can cross several individually audited, harmless
+# below-band mobiles before reaching its useful target. Keep that allowance
+# bounded so a route cannot turn into an incidental low-XP circuit.
+_FIELD_MAX_SOURCE_RANKED_TRANSIT_FIGHTS = 3
 # A source-identified, unarmed lower-level target may receive one extra
 # between-round action when the observed one-hit reserve still covers it.
 _FIELD_AGGRESSIVE_FINISH_HEALTH_RATIO = 0.50
@@ -1945,6 +1960,7 @@ class StarterPolicy:
         self.fastwalk_targetmode_configured = urgent_food_acquisition
         self.fastwalk_container_audited = urgent_food_acquisition
         self.fastwalk_junk_disposal_attempted: set[str] = set()
+        self.required_loot_capacity_relief_keyword: str | None = None
         self.fastwalk_concealment_attempted: set[str] = set()
         self.fastwalk_mitigation_attempted: set[str] = set()
         self.nested_container_extractions: set[tuple[str, str]] = set()
@@ -2127,6 +2143,9 @@ class StarterPolicy:
         self.course_started = False
         self.course_complete = False
         self.tutorial_abort_step = 0
+        self.tutorial_autoloot_configured = False
+        self.tutorial_autoloot_restore_pending = False
+        self.tutorial_loot_keyword_index = 0
         self.visited_course_rooms: set[str] = set()
         self.room_query_counts: dict[str, int] = {}
         self.current_room: str | None = None
@@ -2305,6 +2324,7 @@ class StarterPolicy:
         self.city_rearm_purchase_selector: str | None = None
         self.city_rearm_purchase_result: str | None = None
         self.city_rearm_wield_result: str | None = None
+        self.city_rearm_direct_wield_keyword: str | None = None
         self.city_rearm_equipment_audit_seen = False
         self.city_rearm_observed_wield_vnum: int | None = None
         self.city_rearm_capacity_item: str | None = None
@@ -2452,6 +2472,7 @@ class StarterPolicy:
         self.body_part_eat_rejected = False
         self.disarmed_weapon_keyword: str | None = None
         self.disarm_recovery_step = 0
+        self.disarm_recovery_failed = False
         self.disarm_capacity_relief_keyword: str | None = None
         self.disarm_capacity_relief_attempted = False
         self.primary_weapon_lost = False
@@ -2880,7 +2901,15 @@ class StarterPolicy:
                 )
             ):
                 self.city_rearm_purchase_result = "rejected"
-        if self.city_rearm and self.city_rearm_step in {3, 5}:
+        direct_city_rearm_wield_pending = (
+            self.city_rearm
+            and self.city_rearm_step == 0
+            and self.city_rearm_direct_wield_attempted
+        )
+        if self.city_rearm and (
+            self.city_rearm_step in {3, 5}
+            or direct_city_rearm_wield_pending
+        ):
             if "you wield " in recent:
                 self.city_rearm_wield_result = "wielded"
             elif any(
@@ -2889,6 +2918,7 @@ class StarterPolicy:
                     "you do not have that item",
                     "you don't have that item",
                     "it is too heavy for you to wield",
+                    "you cannot use ",
                     "you already wield two weapons",
                     "you can't wear, wield, or hold that",
                     "your profession prohibits wearing anything in that location",
@@ -3619,6 +3649,7 @@ class StarterPolicy:
                 else None
             )
             self.disarm_recovery_step = 1
+            self.disarm_recovery_failed = False
             self.primary_weapon_lost = True
             self.primary_weapon_observed = False
             self.gear_applied_stance = None
@@ -3646,10 +3677,24 @@ class StarterPolicy:
                     "you don't have that item",
                 )
             ):
-                # Do not leave the combat loop waiting for a get response that
-                # the game has already rejected. Campaign-level rearm remains
-                # responsible for replacing a weapon that is truly gone.
+                # A bystander or the target may have taken the dropped weapon.
+                # Continuing unarmed can turn a recoverable disarm into an
+                # avoidable death, so leave combat and let the campaign-level
+                # rearm policy replace the weapon if it is truly gone.
                 self.disarm_recovery_step = 0
+                self.disarm_recovery_failed = True
+                self.primary_weapon_lost = True
+                self.primary_weapon_observed = False
+                self.return_home = True
+                self.fastwalk_abort_reason = (
+                    "combat disarm weapon could not be recovered"
+                )
+                if self.fastwalk_route is not None:
+                    self.fastwalk_hunt_stop_skipped = True
+                    self.fastwalk_returning = True
+                    self.fastwalk_emergency_recall_pending = True
+                else:
+                    self.utility_emergency_recall_pending = True
         profession_prohibits_location = (
             "your profession prohibits wearing anything in that location" in recent
         )
@@ -4256,6 +4301,14 @@ class StarterPolicy:
                 self.fastwalk_route_gate_source_vnum
                 or self.active_target_mobile_vnum
             )
+            intercepted_objective_kill = bool(
+                self.fastwalk_requested_target is not None
+                and self.active_target is not None
+                and _targets_match(
+                    self.active_target,
+                    self.fastwalk_requested_target,
+                )
+            )
             if defeated_target and completed_source_stop is not None:
                 self.fastwalk_target_absent = False
                 self.fastwalk_target_present_observed = True
@@ -4272,9 +4325,12 @@ class StarterPolicy:
                     # Let the ordinary field-stop flow equip required loot
                     # and issue the bounded return command itself.
                     self.fastwalk_field_intercept_active = False
-                else:
-                    # Outbound interceptions have no completed field stop to
-                    # drive the recall. Preserve it through corpse cleanup.
+                elif completed_source_stop is not None or intercepted_objective_kill:
+                    # A registered source target intercepted before its
+                    # endpoint is still an objective kill; preserve the
+                    # route's normal post-loot return behavior. An unrelated
+                    # incidental attacker must instead resume the saved
+                    # outbound cursor after the ordinary loot gate.
                     self.fastwalk_recall_after_loot = True
             if self.current_room and (self.active_target or was_in_combat):
                 if self.fastwalk_route is not None:
@@ -6303,6 +6359,16 @@ class StarterPolicy:
         if blindness_recovery is not None:
             return blindness_recovery
 
+        if self.disarm_recovery_failed:
+            # Do not let a generic equipment audit consume the recovery turn.
+            # The missing weapon is an active combat failure and must exit the
+            # field before campaign rearm maintenance can run.
+            recovery_pending, recovery = self._combat_disarm_recovery_decision(
+                state
+            )
+            if recovery_pending:
+                return recovery
+
         if self.spec.title and not self.title_configured:
             self.title_configured = True
             return BotDecision(
@@ -6787,6 +6853,17 @@ class StarterPolicy:
                 self.fastwalk_abort_reason = None
                 self.fastwalk_attack_started = False
                 self.combat_active = False
+                if (
+                    self.fastwalk_route is not None
+                    and not self.fastwalk_arrival_observed
+                    and self.fastwalk_outbound_index
+                    < len(self.fastwalk_route.commands)
+                ):
+                    # A transit fight can interrupt the official outbound
+                    # path before its endpoint. Resume that path first; the
+                    # destination-guided hunt planner only knows how to move
+                    # between registered hunt-stop rooms.
+                    return self._fastwalk_research_decision(state)
                 return self._fastwalk_hunt_plan_decision(state)
             # The unavoidable defensive fight has ended. Return before the
             # route cursor can issue another waypoint or hunt command.
@@ -7383,7 +7460,14 @@ class StarterPolicy:
                     )
                     self.fastwalk_transit_below_band_return_pending = True
                     resume_after_fight = bool(
-                        not self.fastwalk_transit_below_band_resume_used
+                        (
+                            not self.fastwalk_transit_below_band_resume_used
+                            or (
+                                self._fastwalk_allows_multiple_below_band_transit_fights()
+                                and self.fastwalk_transit_below_band_fight_count
+                                <= _FIELD_MAX_SOURCE_RANKED_TRANSIT_FIGHTS
+                            )
+                        )
                         and len(live_enemies) == 1
                         and not self.needs_food
                         and not self.needs_drink
@@ -7401,10 +7485,21 @@ class StarterPolicy:
                     self.fastwalk_returning = not resume_after_fight
                     self.fastwalk_emergency_recall_pending = not resume_after_fight
                     if resume_after_fight:
-                        self.fastwalk_abort_reason = (
-                            "field hunt continuing after one bounded harmless "
-                            f"below-band transit attacker {self.active_target!r}"
-                        )
+                        if (
+                            self._fastwalk_allows_multiple_below_band_transit_fights()
+                            and self.fastwalk_transit_below_band_fight_count > 1
+                        ):
+                            self.fastwalk_abort_reason = (
+                                "field hunt continuing after bounded harmless "
+                                "below-band transit attacker "
+                                f"#{self.fastwalk_transit_below_band_fight_count} "
+                                f"{self.active_target!r}"
+                            )
+                        else:
+                            self.fastwalk_abort_reason = (
+                                "field hunt continuing after one bounded harmless "
+                                f"below-band transit attacker {self.active_target!r}"
+                            )
                     else:
                         self.fastwalk_abort_reason = (
                             "field hunt aborted after one unavoidable below-band "
@@ -9171,6 +9266,12 @@ class StarterPolicy:
         state: CharacterState,
     ) -> tuple[bool, BotDecision | None]:
         """Recover a dropped weapon before any continued combat action."""
+        if self.disarm_recovery_failed:
+            self.disarm_recovery_failed = False
+            return True, BotDecision(
+                "flee",
+                "withdraw after the dropped weapon could not be recovered",
+            )
         if self.disarm_recovery_step == 0:
             return False, None
         if self.disarm_recovery_step == 1:
@@ -11753,6 +11854,15 @@ class StarterPolicy:
             )
         )
 
+    def _fastwalk_allows_multiple_below_band_transit_fights(self) -> bool:
+        """Recognize source-ranked routes with an audited transit allowance."""
+        return bool(
+            self.fastwalk_route is not None
+            and self.fastwalk_route.name.casefold().startswith(
+                "source-ranked hunt "
+            )
+        )
+
     def _below_band_return_enemy_is_harmless(
         self,
         enemy: Mapping[str, Any],
@@ -11897,6 +12007,7 @@ class StarterPolicy:
             self.city_rearm_purchase_selector = None
             self.city_rearm_purchase_result = None
             self.city_rearm_wield_result = None
+            self.city_rearm_direct_wield_keyword = None
             self.city_rearm_equipment_audit_seen = False
             self.city_rearm_observed_wield_vnum = None
             self.city_rearm_capacity_item = None
@@ -12079,12 +12190,26 @@ class StarterPolicy:
                     self.city_rearm_route_index = len(returning)
                     return finish_at_healer()
                 if (
+                    self.city_rearm_direct_wield_attempted
+                    and self.city_rearm_wield_result is None
+                ):
+                    # The wield acknowledgement can arrive after the prompt
+                    # that follows it. Do not issue a capacity command while
+                    # that result is still ambiguous; a delayed rejection
+                    # would otherwise be attributed to the next command.
+                    return None
+                if (
                     preferred_weapon is not None
                     and not self.city_rearm_direct_wield_attempted
                 ):
                     self.city_rearm_direct_wield_attempted = True
+                    self.city_rearm_direct_wield_keyword = item_command_keyword(
+                        preferred_weapon,
+                        self._state_weapons(state),
+                    )
+                    self.city_rearm_wield_result = None
                     return BotDecision(
-                        f"wield {item_command_keyword(preferred_weapon, self._state_weapons(state))}",
+                        f"wield {self.city_rearm_direct_wield_keyword}",
                         "make the class-preferred carried weapon the primary weapon",
                     )
             else:
@@ -12144,7 +12269,17 @@ class StarterPolicy:
                     f"{shop_keyword} rearm"
                 )
                 return None
-            if maximum_weight - carry_weight < required_free_weight:
+            carry_count = _state_stat(state, "carry_num")
+            maximum_count = _state_stat(state, "maxcarry_num")
+            item_capacity_full = (
+                carry_count is not None
+                and maximum_count is not None
+                and maximum_count - carry_count < 1
+            )
+            if (
+                maximum_weight - carry_weight < required_free_weight
+                or item_capacity_full
+            ):
                 keyword = _sellable_inventory_keyword(
                     state.inventory,
                     self.gear_catalog,
@@ -12169,10 +12304,18 @@ class StarterPolicy:
         if self.city_rearm_capacity_item is not None:
             carry_weight = _state_stat(state, "carry_wt")
             maximum_weight = _state_stat(state, "maxcarry_wt")
+            carry_count = _state_stat(state, "carry_num")
+            maximum_count = _state_stat(state, "maxcarry_num")
+            item_capacity_full = (
+                carry_count is not None
+                and maximum_count is not None
+                and maximum_count - carry_count < 1
+            )
             if (
                 carry_weight is None
                 or maximum_weight is None
                 or maximum_weight - carry_weight < required_free_weight
+                or item_capacity_full
             ):
                 self.failure = (
                     f"donating {self.city_rearm_capacity_item} did not free "
@@ -12848,7 +12991,7 @@ class StarterPolicy:
                 self.city_restock_capacity_relief_pending = True
                 return BotDecision(
                     f"sacrifice {self.city_restock_capacity_relief_keyword}",
-                    "sacrifice the dropped duplicate paint consumable in the safe bakery",
+                    "sacrifice the dropped duplicate expendable item in the safe bakery",
                 )
             if self.insufficient_funds and not self.restock_borrow_complete:
                 self.restock_borrowing = True
@@ -12925,6 +13068,8 @@ class StarterPolicy:
                 "inventory",
                 "audit carried items before a capacity-limited food purchase",
             )
+        if self.city_restock_capacity_relief_pending:
+            return None
         food_keyword = _inventory_food_keyword(
             state.inventory,
             self.gear_catalog,
@@ -12942,6 +13087,8 @@ class StarterPolicy:
         expendable_keyword = _capacity_relief_inventory_keyword(
             state.inventory,
             self.gear_catalog,
+            character_class=self.spec.character_class,
+            subclass=self.spec.subclass,
         )
         if (
             not self.city_restock_capacity_relief_attempted
@@ -12953,7 +13100,7 @@ class StarterPolicy:
             self.city_restock_capacity_relief_step = 1
             return BotDecision(
                 f"drop {expendable_keyword}",
-                "discard one duplicate source-identified paint consumable to free "
+                "discard one duplicate source-identified expendable item to free "
                 "capacity for a fresh reserve",
             )
         self.failure = "no carry capacity remained for one essential pie"
@@ -14037,12 +14184,44 @@ class StarterPolicy:
             self.fastwalk_recall_started = True
             self.fastwalk_outbound_index = len(self.fastwalk_route.commands)
             self.fastwalk_arrival_observed = True
-            self.fastwalk_hunt_stop_index = len(self.fastwalk_hunt_stops) - 1
-            self.fastwalk_hunt_move_index = len(
-                self.fastwalk_hunt_stops[-1].route
+            final_exit_stop_index = len(self.fastwalk_hunt_stops) - 1
+            final_loot_stop_index = final_exit_stop_index - 1
+            final_loot_stop = (
+                self.fastwalk_hunt_stops[final_loot_stop_index]
+                if final_loot_stop_index >= 0
+                else None
             )
-            self.fastwalk_hunt_looked = True
-            self.fastwalk_hunt_action_index = exit_action_indexes[room_key]
+            observed_targets = self.room_targets.get(room_key, [])
+            resume_final_fight = bool(
+                room_key == "3722"
+                and final_loot_stop is not None
+                and final_loot_stop.target is not None
+                and self._missing_required_carried_or_worn_items(
+                    state,
+                    final_loot_stop.required_items,
+                )
+                and any(
+                    _stop_target_matches(
+                        target,
+                        final_loot_stop.target,
+                        final_loot_stop,
+                    )
+                    for target in observed_targets
+                )
+            )
+            if resume_final_fight:
+                self.fastwalk_hunt_stop_index = final_loot_stop_index
+                self.fastwalk_hunt_move_index = len(final_loot_stop.route)
+                self.fastwalk_hunt_looked = True
+                self.fastwalk_hunt_action_index = len(final_loot_stop.actions)
+                self.fastwalk_selective_loot_index = 0
+            else:
+                self.fastwalk_hunt_stop_index = final_exit_stop_index
+                self.fastwalk_hunt_move_index = len(
+                    self.fastwalk_hunt_stops[-1].route
+                )
+                self.fastwalk_hunt_looked = True
+                self.fastwalk_hunt_action_index = exit_action_indexes[room_key]
 
         if (
             self.fastwalk_returning
@@ -14142,6 +14321,7 @@ class StarterPolicy:
             and not required_loot_cleanup_blocked
         ):
             selective_loot_keywords: tuple[str, ...] = ()
+            current_stop: FieldHuntStop | None = None
             if (
                 self.fastwalk_selective_loot
                 and self.fastwalk_last_kill_target is not None
@@ -14179,15 +14359,33 @@ class StarterPolicy:
                     self.fastwalk_selective_loot_index
                     < len(selective_loot_keywords)
                 ):
-                    keyword = selective_loot_keywords[
-                        self.fastwalk_selective_loot_index
-                    ]
-                    self.fastwalk_selective_loot_index += 1
-                    return BotDecision(
-                        f"get all.{keyword} corpse",
-                        "collect one source-approved drop while leaving the "
-                        "known cursed object in the corpse",
-                    )
+                    required_loot_missing = None
+                    if current_stop is not None and current_stop.required_items:
+                        required_loot_missing = (
+                            self._missing_required_carried_or_worn_items(
+                                state,
+                                current_stop.required_items,
+                            )
+                        )
+                    while self.fastwalk_selective_loot_index < len(
+                        selective_loot_keywords
+                    ):
+                        keyword = selective_loot_keywords[
+                            self.fastwalk_selective_loot_index
+                        ]
+                        self.fastwalk_selective_loot_index += 1
+                        if (
+                            required_loot_missing is not None
+                            and not any(
+                                keyword.casefold() in item.casefold()
+                                for item in required_loot_missing
+                            )
+                        ):
+                            continue
+                        return BotDecision(
+                            f"get all.{keyword} corpse",
+                            "collect only a still-missing source-approved drop",
+                        )
                 if selective_loot_keywords:
                     self.fastwalk_loot_step = 1
                 else:
@@ -16687,6 +16885,23 @@ class StarterPolicy:
             )
         )
         if (
+            self.fastwalk_selective_loot
+            and not self.fastwalk_autoloot_configured
+            and current_stop is not None
+            and current_stop.target is not None
+            and current_stop.selective_loot_keywords
+            and self.fastwalk_hunt_move_index >= route_length
+            and self.fastwalk_hunt_action_index >= len(current_stop.actions)
+            and self.fastwalk_pursuit_direction is None
+            and not self.pending_loot_rooms
+            and not self.fastwalk_hunt_stop_killed
+        ):
+            self.fastwalk_autoloot_configured = True
+            return BotDecision(
+                "config -autoloot",
+                "disable automatic corpse looting before a selective field hunt",
+            )
+        if (
             current_stop is not None
             and current_stop.target is not None
             and current_stop.allow_below_band_for_required_loot
@@ -16801,6 +17016,24 @@ class StarterPolicy:
                 "recall",
                 "end the field circuit while recovery reserves remain",
             )
+
+        if (
+            current_stop is not None
+            and current_stop.target is not None
+            and current_stop.required_items
+            and current_stop.allow_below_band_for_required_loot
+            and route_complete
+            and self._at_registered_source_reset_room(state, current_stop)
+        ):
+            capacity = self._required_loot_capacity_decision(
+                state,
+                current_stop.required_items,
+                context=f"{current_stop.target} route",
+            )
+            if capacity is not None:
+                return capacity
+            if self.failure is not None:
+                return None
 
         arrival_refresh = self._fastwalk_arrival_target_refresh_decision(
             state,
@@ -17568,8 +17801,17 @@ class StarterPolicy:
                     continue
                 self.fastwalk_required_item_attempts.add(attempt_key)
                 self.fastwalk_pending_required_item_vnum = required.vnum
+                selector = _target_selector_match(line)
+                command_keyword = (
+                    f"#{selector.group('target_id')}"
+                    if selector is not None
+                    else item_command_keyword(
+                        required,
+                        self.gear_catalog.objects.values(),
+                    )
+                )
                 return BotDecision(
-                    f"get {item_command_keyword(required, self.gear_catalog.objects.values())}",
+                    f"get {command_keyword}",
                     "collect the source-required field item already lying here",
                 )
         return None
@@ -18375,6 +18617,83 @@ class StarterPolicy:
                 f"fill an empty {category} slot from carried gear before field departure",
             )
         return None
+
+    def _required_loot_capacity_decision(
+        self,
+        state: CharacterState,
+        required_items: tuple[str, ...],
+        *,
+        context: str,
+    ) -> BotDecision | None:
+        """Make room for source-required loot without discarding protected gear."""
+        missing = self._missing_required_carried_or_worn_items(
+            state,
+            required_items,
+        )
+        if not missing:
+            self.required_loot_capacity_relief_keyword = None
+            return None
+        carry_count = _state_stat(state, "carry_num")
+        maximum_count = _state_stat(state, "maxcarry_num")
+        if carry_count is None or maximum_count is None:
+            # Small offline policy callers may not provide item-count GMCP;
+            # retain their existing behavior and let the live server decide.
+            return None
+        required_slots = max(1, len(missing))
+        if maximum_count - carry_count >= required_slots:
+            self.required_loot_capacity_relief_keyword = None
+            return None
+        pending_keyword = self.required_loot_capacity_relief_keyword
+        if pending_keyword is not None:
+            if not _has_inventory_item(state.inventory, pending_keyword):
+                self.required_loot_capacity_relief_keyword = None
+            elif any(
+                marker in self.last_response.casefold()
+                for marker in (
+                    "you can't find",
+                    "you cannot find",
+                    "you don't have",
+                    "you do not have",
+                    "you can't let go",
+                )
+            ):
+                self.failure = (
+                    f"{context} capacity relief could not dispose of "
+                    f"{pending_keyword}"
+                )
+                return None
+            elif any(
+                marker in self.last_response.casefold()
+                for marker in ("you sacrifice", "you donate")
+            ):
+                self.failure = (
+                    f"{context} capacity relief did not free an item slot"
+                )
+                return None
+            else:
+                return None
+        keyword = _sellable_inventory_keyword(
+            state.inventory,
+            self.gear_catalog,
+            worn_descriptions=tuple(
+                item.short_description for item in self.gear_worn
+            ),
+            character_class=self.spec.character_class,
+            subclass=self._active_training_subclass(state),
+        )
+        if keyword is None:
+            self.failure = (
+                f"{context} needs {required_slots} free item slot(s), "
+                "but no disposable carried equipment was available"
+            )
+            return None
+        self.required_loot_capacity_relief_keyword = keyword
+        selector = _inventory_selector_for_keyword(state.inventory, keyword)
+        command_keyword = selector or keyword
+        return BotDecision(
+            f"drop {command_keyword}",
+            f"free item capacity for the source-required {context} loot",
+        )
 
     def _fastwalk_junk_disposal_decision(
         self,
@@ -21159,6 +21478,22 @@ class StarterPolicy:
             self.magic_shop_drunk_preflight_buffer = ""
         if self.cursed_sale_keyword is not None:
             return self._cursed_sale_recovery_decision(state)
+        if self.liquidation_resupply_return_pending:
+            # A provisions detour can interrupt the fixed shop return cursor
+            # after it has already crossed the city. Re-enter through the
+            # healer route instead of applying that stale cursor in the Mud
+            # School or another unrelated room.
+            if room_vnum == "3054":
+                self._reset_liquidation_after_resupply()
+                return None
+            home = self._return_home_decision(state)
+            if home is not None:
+                return home
+            self.failure = (
+                "liquidation provisions detour did not reach healer room 3054 "
+                f"from {state.room_name!r} ({room_vnum})"
+            )
+            return None
         if (
             self.shop_visibility_rejected
             or (
@@ -22174,6 +22509,21 @@ class StarterPolicy:
                 )
             self.prompt_ready = False
             return None
+        healer_direction = _MIDGAARD_HEALER_ROUTES.get(room_vnum or "")
+        if (
+            self.return_home_recovery_commands is not None
+            and healer_direction is not None
+        ):
+            # Flee can move the character past the room expected by a fixed
+            # no-recall return cursor.  Once a known Midgaard waypoint is
+            # observed, discard that stale cursor and follow the direct
+            # healer route from the room actually reached.
+            self.return_home_recovery_commands = None
+            self.return_home_recovery_index = 0
+            return BotDecision(
+                healer_direction,
+                "resynchronize the interrupted return at the Midgaard healer route",
+            )
         if self.return_home_recovery_commands is not None:
             if room_vnum == "3054":
                 self.utility_abort_reason = None
@@ -22536,6 +22886,26 @@ class StarterPolicy:
             and not self.fastwalk_world_cache_post_complete
         ):
             return None
+        if self.training_only and self._needs_fastwalk_training(state):
+            class_trainer = self._level_ten_class_trainer(state)
+            if (
+                class_trainer is not None
+                and self._class_trainer_at_state(state, class_trainer)
+            ):
+                # A distant class trainer can be a source-safe room, but
+                # waiting for the ordinary movement floor there prevents the
+                # trainer listing from ever being requested. Training is the
+                # objective of this bounded run; use the healer after the
+                # listing, not before it.
+                self.waiting_for_move = False
+                self.waiting_for_heal = False
+                self.health_check_due = None
+                if _is_sleeping(state):
+                    return BotDecision(
+                        "stand",
+                        "wake at the class trainer before requesting practice",
+                    )
+                return None
         if (
             self.urgent_food_acquisition
             and self.fastwalk_route is not None
@@ -23239,6 +23609,12 @@ class StarterPolicy:
                 )
 
         if state.room_vnum == "3723" or room_name == "victory":
+            if self.tutorial_autoloot_restore_pending:
+                self.tutorial_autoloot_restore_pending = False
+                return BotDecision(
+                    "config +autoloot",
+                    "restore normal corpse looting after the tutorial gate",
+                )
             if self.room_query_counts.get(key, 0) == 0:
                 self.room_query_counts[key] = 1
                 return BotDecision(
@@ -23379,36 +23755,105 @@ class StarterPolicy:
                         "look",
                         "confirm whether the final tutorial gladiator has reset",
                     )
-                self.utility_abort_reason = (
-                    "final tutorial gladiator absent; saved and quit for "
-                    "an area-reset retry"
-                )
-                self.tutorial_abort_step = 1
-                self.stage = "saving"
+                if "corpse of a gladiator" in self.last_response.casefold():
+                    # A reconnect can lose the in-memory defeated-target flag
+                    # while the corpse remains in the no-recall final room.
+                    # Recover its required key before considering a respawn.
+                    self.cleared_training_rooms.add(key)
+                    self.post_kill_steps.setdefault(key, 0)
+                else:
+                    self.utility_abort_reason = (
+                        "final tutorial gladiator absent; saved and quit for "
+                        "an area-reset retry"
+                    )
+                    self.tutorial_abort_step = 1
+                    self.stage = "saving"
+                    return BotDecision(
+                        "save",
+                        "checkpoint safely after finding the tutorial depleted",
+                    )
+            if key not in self.cleared_training_rooms:
+                target = targets[0]
+            else:
+                target = None
+            if target is None:
+                pass
+            elif not self.tutorial_autoloot_configured:
+                self.tutorial_autoloot_configured = True
                 return BotDecision(
-                    "save",
-                    "checkpoint safely after finding the tutorial depleted",
+                    "config -autoloot",
+                    "disable automatic corpse looting before the final tutorial fight",
                 )
-            target = targets[0]
-            self.combat_active = True
-            self.active_target = target
-            self.between_round_action_issued = False
-            return self._combat_opener_decision(
-                target,
-                "defeat the final tutorial gladiator",
-                state=state,
-            )
+            else:
+                capacity = self._required_loot_capacity_decision(
+                    state,
+                    _FINAL_TUTORIAL_REQUIRED_ITEMS,
+                    context="final tutorial",
+                )
+                if capacity is not None:
+                    return capacity
+                if self.failure is not None:
+                    return BotDecision(
+                        "save",
+                        "stop before the final tutorial fight when required-loot capacity is unavailable",
+                    )
+                self.combat_active = True
+                self.active_target = target
+                self.between_round_action_issued = False
+                return self._combat_opener_decision(
+                    target,
+                    "defeat the final tutorial gladiator",
+                    state=state,
+                )
 
         step = self.post_kill_steps.get(key, 0)
+        if step == 1 and self._missing_required_carried_or_worn_items(
+            state,
+            _FINAL_TUTORIAL_REQUIRED_ITEMS,
+        ):
+            # Legacy checkpoints may have advanced past the old get-all step
+            # after the key was refused by a full inventory.
+            step = 0
+            self.post_kill_steps[key] = 0
+        if step == 0:
+            missing = self._missing_required_carried_or_worn_items(
+                state,
+                _FINAL_TUTORIAL_REQUIRED_ITEMS,
+            )
+            while self.tutorial_loot_keyword_index < len(
+                _FINAL_TUTORIAL_SELECTIVE_LOOT_KEYWORDS
+            ):
+                keyword = _FINAL_TUTORIAL_SELECTIVE_LOOT_KEYWORDS[
+                    self.tutorial_loot_keyword_index
+                ]
+                self.tutorial_loot_keyword_index += 1
+                if not any(
+                    keyword.casefold() in item.casefold() for item in missing
+                ):
+                    continue
+                return BotDecision(
+                    f"get all.{keyword} corpse",
+                    "collect only a still-missing final tutorial reward",
+                )
+            self.tutorial_loot_keyword_index = 0
+            # The wear command is issued here; keep the legacy step cursor
+            # aligned so the next call starts at unlock rather than wearing
+            # the same items twice.
+            self.post_kill_steps[key] = 2
+            return BotDecision(
+                "wear all",
+                "equip the required final tutorial rewards",
+            )
         commands = (
-            ("get all corpse", "loot the gladiator's key and equipment"),
             ("wear all", "equip the final tutorial rewards"),
             ("unlock north", "unlock the final tutorial door with the key"),
             ("open north", "open the unlocked final tutorial door"),
             ("north", "leave final combat"),
         )
-        index = min(step, len(commands) - 1)
+        index = min(step - 1, len(commands) - 1)
         self.post_kill_steps[key] = step + 1
+        if index == len(commands) - 1:
+            self.tutorial_autoloot_restore_pending = True
         command, reason = commands[index]
         return BotDecision(command, reason)
 
@@ -28830,7 +29275,7 @@ def school_accessory_hunt_route() -> Fastwalk:
 
 
 def school_wrist_float_hunt_stops() -> tuple[FieldHuntStop, ...]:
-    """Acquire two copper bracers and the gladiator's floating stone."""
+    """Acquire the school gear and the iron key needed to leave the arena."""
     return (
         FieldHuntStop((), actions=("enter portal",)),
         FieldHuntStop(
@@ -28847,6 +29292,7 @@ def school_wrist_float_hunt_stops() -> tuple[FieldHuntStop, ...]:
             required_items=("copper bracer",),
             exact_target=True,
             allow_below_band_for_required_loot=True,
+            selective_loot_keywords=("bracer",),
         ),
         FieldHuntStop(
             (),
@@ -28859,9 +29305,11 @@ def school_wrist_float_hunt_stops() -> tuple[FieldHuntStop, ...]:
                 "copper bracer",
                 "copper bracer",
                 "snowy white stone",
+                "iron key",
             ),
             exact_target=True,
             allow_below_band_for_required_loot=True,
+            selective_loot_keywords=("bracer", "stone", "key"),
         ),
         FieldHuntStop(
             (),
@@ -29288,9 +29736,13 @@ def moria_sanctuary_potion_consider_stops() -> tuple[FieldHuntStop, ...]:
 def moria_sanctuary_potion_hunt_stops(
     *,
     safe_reset_only: bool = False,
+    required_potion_count: int = 1,
 ) -> tuple[FieldHuntStop, ...]:
     """Hunt the carrier, optionally restricting the search to room 4064."""
+    if required_potion_count < 1:
+        raise ValueError("required_potion_count must be positive")
     reset_room = moria_sanctuary_potion_consider_stops()[0]
+    required_items = ("purple potion",) * required_potion_count
     if safe_reset_only:
         # Below the deep-route level gate, following a wandering carrier into
         # Moria's maze can turn a recovery errand into an unrelated fight.
@@ -29299,7 +29751,10 @@ def moria_sanctuary_potion_hunt_stops(
             FieldHuntStop(
                 reset_room.route,
                 reset_room.target,
-                required_items=("purple potion", *reset_room.required_items),
+                required_items=(
+                    *required_items,
+                    *reset_room.required_items,
+                ),
                 allowed_bystanders=reset_room.allowed_bystanders,
                 trivial_bystanders=reset_room.trivial_bystanders,
                 minimum_health_ratio=_FIELD_HIGH_RISK_START_HEALTH_RATIO,
@@ -29326,7 +29781,10 @@ def moria_sanctuary_potion_hunt_stops(
                 reset_room.abort_if_where_location_unknown
             ),
             preserve_where_route_waypoints=reset_room.preserve_where_route_waypoints,
-            required_items=("purple potion", *reset_room.required_items),
+            required_items=(
+                *required_items,
+                *reset_room.required_items,
+            ),
             allowed_bystanders=reset_room.allowed_bystanders,
             trivial_bystanders=reset_room.trivial_bystanders,
             minimum_health_ratio=_FIELD_HIGH_RISK_START_HEALTH_RATIO,
@@ -30957,22 +31415,47 @@ def _inventory_food_keywords(
 def _capacity_relief_inventory_keyword(
     value: Any,
     gear_catalog: GearCatalog | None = None,
+    *,
+    character_class: str | None = None,
+    subclass: str | None = None,
 ) -> str | None:
-    """Return a source keyword for one duplicate, non-food paint consumable."""
+    """Return a source keyword for one safe inventory capacity relief item."""
     if gear_catalog is None:
         return None
     descriptions = _inventory_descriptions(value)
     duplicate_counts = Counter(normalize_item_name(description) for description in descriptions)
     for description in descriptions:
         normalized = normalize_item_name(description)
-        if duplicate_counts[normalized] <= 1:
-            continue
         item = gear_catalog.match(description)
-        if item is None or item.item_type != ITEM_PAINT:
+        if item is None:
             continue
-        if protects_from_sale(item) or is_capacity_infrastructure(item):
+        unusable_for_character = bool(
+            character_class is not None
+            and not character_can_use_item(
+                item,
+                character_class=character_class,
+                subclass=subclass,
+            )
+        )
+        if duplicate_counts[normalized] <= 1 and not unusable_for_character:
             continue
-        return item_command_keyword(item)
+        if (
+            not is_releasable_funding_item(item)
+            or (protects_from_sale(item) and not unusable_for_character)
+            or is_capacity_infrastructure(item)
+        ):
+            continue
+        if item.item_type == ITEM_PAINT:
+            return item_command_keyword(item)
+        # Preserve all consumables and all combat/infrastructure equipment;
+        # duplicate plain armour is the one safe broadening needed when a
+        # loot-heavy character reaches the city's item-count ceiling.
+        if item.item_type == ITEM_ARMOR:
+            return item_command_keyword(item)
+        if unusable_for_character:
+            # A source-marked bow or lance that this character cannot use is
+            # safe to dispose of even when it is the only carried copy.
+            return item_command_keyword(item)
     return None
 
 
@@ -31477,6 +31960,15 @@ def _sellable_inventory_keyword(
 
 def _inventory_descriptions(value: Any) -> list[str]:
     return [description for description, _ in _inventory_entries(value)]
+
+
+def _inventory_selector_for_keyword(value: Any, keyword: str) -> str | None:
+    """Return DD4's exact item selector when inventory exposes one."""
+    needle = keyword.casefold()
+    for description, selector in _inventory_entries(value):
+        if selector is not None and needle in description.casefold():
+            return selector
+    return None
 
 
 def _loose_inventory_entries(value: str) -> list[tuple[str, str | None]]:

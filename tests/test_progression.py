@@ -970,6 +970,21 @@ def test_mage_protection_recovery_does_not_starve_fresh_level_sixteen_probe() ->
     assert policy.execution == "crystalmir-white-stag-research"
 
 
+def test_warrior_level_sixteen_prioritizes_class_tagged_toad_continuation() -> None:
+    policy = policy_for(
+        16,
+        "warrior",
+        has_flight=True,
+        policy_xp_deltas={
+            "mahntor-rock-toad-kill-research-13-15": 849,
+        },
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-warrior-circuit-16-18"
+    assert policy.execution == "mahntor-rock-toad-circuit"
+    assert policy.status == "research"
+
+
 def test_hard_health_protection_recovery_does_not_starve_level_fifteen_probe() -> None:
     policy = policy_for(
         15,
@@ -8565,6 +8580,28 @@ def test_level_sixteen_warrior_does_not_borrow_unproven_toad_evidence() -> None:
 
     assert policy.status == "unavailable"
     assert policy.policy_id != "mahntor-rock-toad-warrior-circuit-16-18"
+
+
+def test_level_sixteen_warrior_repeats_positive_cleared_continuation() -> None:
+    policy = policy_for(
+        16,
+        "warrior",
+        last_policy_id="source-ranked-hunt-haon-6115-6100-16",
+        world_boot_id="boot-1",
+        policy_xp_deltas={
+            "mahntor-rock-toad-circuit-13-15": 849,
+            "mahntor-rock-toad-warrior-circuit-16-18": 381,
+        },
+        productive_policy_ids=frozenset(
+            {"mahntor-rock-toad-warrior-circuit-16-18"}
+        ),
+        excluded_policy_ids=frozenset(
+            {"mahntor-rock-toad-warrior-circuit-16-18"}
+        ),
+    )
+
+    assert policy.policy_id == "mahntor-rock-toad-warrior-circuit-16-18"
+    assert policy.execution == "mahntor-rock-toad-circuit"
 
 
 def test_level_nineteen_warrior_requires_positive_earlier_toad_evidence() -> None:
