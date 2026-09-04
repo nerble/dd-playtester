@@ -56,12 +56,14 @@ from .hunt_candidates import (
     source_mobile_can_join_player_fight,
     source_mobile_search_rooms,
     source_safe_route_to_room_with_origin,
+    source_route_hazard_rejections,
     source_subclass_teacher_route,
     source_route_movement_cost,
     source_route_requires_flight,
 )
 from .lease import CampaignLease, campaign_lease_path
 from .progression import (
+    _BORROW_FLIGHT_POLICY,
     _BUY_FLIGHT_POLICY,
     _FAME_RECOVERY_CIRCUS_POLICY,
     _FAME_RECOVERY_LOTUS_POLICY,
@@ -617,6 +619,9 @@ _GHOST_TOWN_RETRIEVER_POLICY_ID = "ghost-town-retriever-probe-77-80"
 _RESEARCH_ABSENCE_COOLDOWN_KEY = "campaign_research_absence_cooldowns"
 _RESEARCH_CROWD_COOLDOWN_KEY = "campaign_research_crowd_cooldowns"
 _SOURCE_RANKED_CROWD_ATTEMPTS_KEY = "campaign_source_ranked_crowd_attempts"
+_SOURCE_CAPACITY_RESET_WAIT_KEY = (
+    "campaign_source_ranked_capacity_reset_wait"
+)
 _CLEARED_RESEARCH_POLICIES_KEY = "campaign_cleared_research_policies"
 _EXPLICIT_RESEARCH_RETRY_KEY = "campaign_explicit_research_retry_policies"
 _DEFAULT_RESEARCH_CROWD_COOLDOWN = 3
@@ -680,6 +685,9 @@ _SOURCE_RANKED_TIMEOUT_POLICIES_KEY = (
 _SOURCE_RANKED_TIMEOUT_REVALIDATION_FIELD = "revalidation_attempted"
 _SOURCE_RANKED_TIMEOUT_REVALIDATION_COUNT_FIELD = "revalidation_attempts"
 _SOURCE_RANKED_TIMEOUT_REVALIDATION_MAX_ATTEMPTS = 2
+_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY = (
+    "campaign_source_ranked_partial_timeout_retry"
+)
 _SOURCE_SPECIAL_LEVEL_CEILING_REPAIR_KEY = (
     "campaign_source_special_level_ceiling_repair_revision"
 )
@@ -1284,6 +1292,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     _BELOW_BAND_SIGHTINGS_KEY,
     _RESEARCH_ABSENCE_COOLDOWN_KEY,
     _RESEARCH_CROWD_COOLDOWN_KEY,
+    _SOURCE_CAPACITY_RESET_WAIT_KEY,
     _CLEARED_RESEARCH_POLICIES_KEY,
     _EXPLICIT_RESEARCH_RETRY_KEY,
     "campaign_research_results",
@@ -1326,6 +1335,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY,
     _SOURCE_RANKED_XP_LOSS_POLICIES_KEY,
     _SOURCE_RANKED_TIMEOUT_POLICIES_KEY,
+    _SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY,
     "campaign_xp_loss_total",
     _PROTECTION_RECOVERY_KEY,
     _PROTECTION_RECOVERY_ORDINARY_FALLBACK_KEY,
@@ -1403,6 +1413,8 @@ def _synchronize_source_revision(
     state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
     state.pop(_SOURCE_RANKED_XP_LOSS_POLICIES_KEY, None)
     state.pop(_SOURCE_RANKED_TIMEOUT_POLICIES_KEY, None)
+    state.pop(_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY, None)
+    state.pop(_SOURCE_CAPACITY_RESET_WAIT_KEY, None)
     # A trainer-route hazard is source-derived too; do not carry its deferral
     # across a source refresh where the route may have changed.
     state.pop(_FASTWALK_TRAINING_ROUTE_HAZARD_KEY, None)
@@ -1534,10 +1546,19 @@ class CampaignResult:
     @property
     def ready_for_next_segment(self) -> bool:
         message = (self.message or "").casefold()
-        return bool(
-            self.status == "ready"
-            and "checkpointed for the next verified segment" in message
-            and not self.awaiting_area_reset
+        if self.status != "ready" or self.awaiting_area_reset:
+            return False
+        # These outcomes have already returned the character to a durable
+        # checkpoint and explicitly leave policy rotation safe to resume.
+        return any(
+            marker in message
+            for marker in (
+                "checkpointed for the next verified segment",
+                "checkpointed for resumption",
+                "campaign rotation will continue",
+                "campaign rotation resumed",
+                "segment deferred after a bounded city-shop route hazard",
+            )
         )
 
     @property
@@ -3901,12 +3922,16 @@ def _source_ranked_fallback_needed(
     }:
         # Sanctuary acquisition is a recovery transition. Let its own
         # required-loot route complete before generic ranking is reconsidered,
-        # but do not replay the same reboot-scoped miss while its cooldown is
-        # active. An ordinary safe target may still make progress meanwhile.
+        # but do not replay the same reboot-scoped miss while its cooldown or
+        # fatal exhaustion marker is active. An ordinary safe target may still
+        # make progress meanwhile.
         if policy.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id:
-            return _research_retry_cooldown_active(
-                state,
-                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+            sanctuary_policy_id = (
+                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+            )
+            return (
+                _research_retry_cooldown_active(state, sanctuary_policy_id)
+                or _research_fatal_failure_active(state, sanctuary_policy_id)
             )
     if _protection_recovery_required(state):
         # Keep registered recovery probes ahead of generic ranking, but let an
@@ -4330,6 +4355,10 @@ class CampaignRunner:
             )
             campaign_id, state = self._open_campaign(storage)
             campaign_segments = _runtime_campaign_segments(storage, campaign_id)
+            campaign_checkpoints = _runtime_campaign_checkpoints(
+                storage,
+                campaign_id,
+            )
             self._boot_capacity_research_mobile_keys = (
                 _source_capacity_research_mobile_keys_from_segments(
                     campaign_segments,
@@ -4416,6 +4445,11 @@ class CampaignRunner:
             state = _repair_source_ranked_circuit_absence_history(
                 state,
                 campaign_segments,
+            )
+            state = _repair_source_capacity_reset_wait(
+                state,
+                campaign_segments,
+                campaign_checkpoints,
             )
             if int(state.get("campaign_policy_revision", 0)) < 155:
                 state = _repair_source_ranked_partial_absence_history(
@@ -4508,6 +4542,10 @@ class CampaignRunner:
                 state,
                 campaign_segments,
             )
+            state = _repair_source_ranked_partial_timeout_retry(
+                state,
+                campaign_segments,
+            )
             if self.reset_wait_completed:
                 state = _rearm_source_ranked_timeout_revalidation_after_reset(
                     state
@@ -4535,6 +4573,9 @@ class CampaignRunner:
                         and checkpoint["segment_id"] is not None
                         else None
                     ),
+                )
+                reset_wait_state = _arm_source_capacity_research_after_reset(
+                    reset_wait_state
                 )
                 reset_wait_state_changed = reset_wait_state != state
                 state = reset_wait_state
@@ -4643,6 +4684,14 @@ class CampaignRunner:
                 if not preserve_fame_recovery_rotation:
                     state = _retry_current_crowded_research_policy(state)
                 if not self._policy_for_state(state).executable:
+                    if (
+                        self.refresh_world_on_reset
+                        and self.reset_wait_completed
+                        and self.segment_runner is None
+                    ):
+                        state = _preserve_source_capacity_entitlement_for_maintenance(
+                            state
+                        )
                     state = _retry_any_pending_absent_research_policy(state)
             retry_state_changed = state != retry_state_before_policy
             policy = self._policy_for_state(state)
@@ -4655,6 +4704,9 @@ class CampaignRunner:
                 # A reset wait is only useful if the next live invocation can
                 # learn whether DD4 actually rebooted. Keep the probe
                 # maintenance-only so it cannot dilute progression evidence.
+                state = _preserve_source_capacity_entitlement_for_maintenance(
+                    state
+                )
                 policy = _WORLD_TIME_PROBE_POLICY
             selected_candidate = state.get(_SOURCE_RANKED_CANDIDATE_KEY)
             selected_target = (
@@ -5415,12 +5467,22 @@ class CampaignRunner:
                 }
             )
         candidates = rank_hunt_candidates(world, **rank_kwargs)
-        if self._boot_capacity_research_mobile_keys:
+        capacity_reset_retry_available = _source_capacity_reset_wait_available(
+            state,
+            automatic_reset_wait=self.reset_wait_completed,
+        )
+        if (
+            self._boot_capacity_research_mobile_keys
+            and not capacity_reset_retry_available
+        ):
             # Capacity research is a source-prototype probe, not a reason to
             # walk to every multi-instance reset for the same mobile in one
             # reboot. Keep an independently safe single-instance reset for
             # that mobile available; otherwise one failed capacity probe can
-            # hide the only ordinary progression route.
+            # hide the only ordinary progression route. The automatic reset
+            # retry is the one bounded exception: its reset_wait_completed
+            # marker authorizes one fresh probe after the wait has aged the
+            # reboot-local evidence.
             candidates = [
                 candidate
                 for candidate in candidates
@@ -5432,6 +5494,16 @@ class CampaignRunner:
                 or not _source_ranked_capacity_research_candidate(
                     candidate,
                     character_level=level,
+                )
+                or _source_ranked_partial_timeout_retry_candidate_allowed(
+                    candidate,
+                    state,
+                    character_level=level,
+                    character_max_hp=(
+                        int(max_hp)
+                        if isinstance(max_hp, (int, float)) and max_hp > 0
+                        else None
+                    ),
                 )
             ]
         if _campaign_has_shadow_grove_route_hazard(state):
@@ -5672,7 +5744,20 @@ class CampaignRunner:
             if selected is not None
             else None
         )
-        if (
+        selected_partial_timeout_retry = bool(
+            selected is not None
+            and _source_ranked_partial_timeout_retry_candidate_allowed(
+                selected,
+                state,
+                character_level=level,
+                character_max_hp=(
+                    int(max_hp)
+                    if isinstance(max_hp, (int, float)) and max_hp > 0
+                    else None
+                ),
+            )
+        )
+        if not selected_partial_timeout_retry and (
             selected is None
             or not selected.autonomous_safe
             or selected_status == "retryable"
@@ -5712,8 +5797,22 @@ class CampaignRunner:
                 if repeated is not None:
                     selected = repeated
                     selected_status = "productive"
+        selected_partial_timeout_retry = bool(
+            selected is not None
+            and _source_ranked_partial_timeout_retry_candidate_allowed(
+                selected,
+                state,
+                character_level=level,
+                character_max_hp=(
+                    int(max_hp)
+                    if isinstance(max_hp, (int, float)) and max_hp > 0
+                    else None
+                ),
+            )
+        )
         if (
-            state.get("affects") is not None
+            not selected_partial_timeout_retry
+            and state.get("affects") is not None
             and not any(
                 _state_has_active_affect(state.get("affects"), effect)
                 for effect in ("fly", "levitation")
@@ -5806,12 +5905,20 @@ class CampaignRunner:
                     ),
                 ):
                     continue
-                if _source_ranked_result_status(
+                fallback_result_status = _source_ranked_result_status(
                     candidate,
                     state,
                     character_level=level,
                     allow_cooldown_retry=False,
-                ) != "fresh":
+                )
+                if fallback_result_status != "fresh" and not (
+                    fallback_result_status == "productive"
+                    and _source_ranked_protection_recovery_productive_result_allowed(
+                        candidate,
+                        state,
+                        character_level=level,
+                    )
+                ):
                     continue
                 if not _source_ranked_candidate_in_current_band(
                     candidate,
@@ -5832,6 +5939,7 @@ class CampaignRunner:
                 fallback = _select_source_ranked_hunt_candidate(
                     fallback_candidates,
                     state=state,
+                    world=world,
                     character_level=level,
                     character_max_hp=(
                         int(max_hp)
@@ -5901,6 +6009,13 @@ class CampaignRunner:
                     )
                 ),
             }
+        if selected is not None:
+            _consume_source_capacity_reset_wait(
+                state,
+                selected,
+                character_level=level,
+                automatic_reset_wait=self.reset_wait_completed,
+            )
         if selected is not None:
             _record_source_ranked_protection_recovery_retry(
                 state,
@@ -6628,6 +6743,28 @@ class CampaignRunner:
                         practice_skill=selected.practice_skill,
                     )
                     flight_funding_ground_fallback = True
+                elif (
+                    state.get(_FLIGHT_FUNDING_RETRY_KEY)
+                    and not can_attempt_flight_purchase
+                    and not state.get("campaign_flight_loan_attempted")
+                    and not state.get("magic_shop_purchase_failed")
+                    and not magic_shop_route_cooldown_active
+                ):
+                    # A small, unavoidable flight shortfall should use the
+                    # single bounded bank-loan route once the audited funding
+                    # pool is exhausted, rather than repeating empty hunts.
+                    state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+                    return replace(
+                        _BORROW_FLIGHT_POLICY,
+                        minimum_level=_level(state),
+                        maximum_level=_level(state),
+                        summary=(
+                            "No source-safe funding target remains for the "
+                            "current reboot; use the one bounded bank loan "
+                            "to cover the observed flight shortfall."
+                        ),
+                        practice_skill=selected.practice_skill,
+                    )
         urgent_fullness = _urgent_food_fullness_requirement(state)
         urgent_food_required = bool(
             urgent_fullness
@@ -7235,6 +7372,14 @@ class CampaignRunner:
                     state,
                     _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
                 )
+                or (
+                    _protection_recovery_required(state)
+                    and not _state_has_sanctuary_reserve(state)
+                    and _research_fatal_failure_active(
+                        state,
+                        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                    )
+                )
             )
             def select_source_candidate(
                 *,
@@ -7690,9 +7835,15 @@ class CampaignRunner:
                         _protection_recovery_required(state)
                         and not _state_has_sanctuary_reserve(state)
                     ):
-                        if _research_retry_cooldown_active(
-                            state,
-                            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                        if (
+                            _research_retry_cooldown_active(
+                                state,
+                                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                            )
+                            or _research_fatal_failure_active(
+                                state,
+                                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                            )
                         ):
                             return replace(
                                 _SOURCE_RANKED_HUNT_POLICY,
@@ -7707,8 +7858,9 @@ class CampaignRunner:
                                 summary=(
                                     "Protection recovery is required, but the "
                                     "sanctuary route is on a current-reboot "
-                                    "cooldown and no independent source-safe "
-                                    "current-band route is available."
+                                    "cooldown or has a terminal failure; no "
+                                    "independent source-safe current-band route "
+                                    "is available."
                                 ),
                                 practice_skill=selected.practice_skill,
                             )
@@ -7839,9 +7991,15 @@ class CampaignRunner:
                 _protection_recovery_required(state)
                 and not _state_has_sanctuary_reserve(state)
             ):
-                if _research_retry_cooldown_active(
-                    state,
-                    _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                if (
+                    _research_retry_cooldown_active(
+                        state,
+                        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                    )
+                    or _research_fatal_failure_active(
+                        state,
+                        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                    )
                 ):
                     return replace(
                         _SOURCE_RANKED_HUNT_POLICY,
@@ -7855,9 +8013,9 @@ class CampaignRunner:
                         execution=None,
                         summary=(
                             "Protection recovery is required, but the sanctuary "
-                            "route is on a current-reboot cooldown and no "
-                            "independent source-safe current-band route is "
-                            "available."
+                            "route is on a current-reboot cooldown or has a "
+                            "terminal failure; no independent source-safe "
+                            "current-band route is available."
                         ),
                         practice_skill=selected.practice_skill,
                     )
@@ -8764,6 +8922,22 @@ class CampaignRunner:
                         character_level=_level(state),
                     ),
                 )
+            if (
+                source_ranked_hunt_candidate is not None
+                and _source_ranked_partial_timeout_retry_candidate_allowed(
+                    source_ranked_hunt_candidate,
+                    state,
+                    character_level=_level(state),
+                )
+            ):
+                # Consume the exact one-shot continuation before opening the
+                # socket so an interrupted worker cannot plan it twice.
+                state = dict(state)
+                partial_retry = dict(
+                    state[_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY]
+                )
+                partial_retry["attempted"] = True
+                state[_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY] = partial_retry
         elif policy.execution == "source-ranked-cure-critical-reserve":
             source_consumable_candidate = (
                 self._selected_source_consumable_candidate
@@ -8838,6 +9012,10 @@ class CampaignRunner:
                     }
                 )
                 state[_TRAINING_DEFICIT_REPAIR_KEY] = deficit_marker
+        # Objective kills are emitted by the live runner for this segment and
+        # must never be inherited from the previous checkpoint. Durable kill
+        # evidence remains in mob_kills and campaign_research_results.
+        state = _clear_stale_segment_kill_metadata(state)
         segment_id = storage.start_campaign_segment(
             campaign_id,
             phase=policy.policy_id,
@@ -8950,15 +9128,17 @@ class CampaignRunner:
                     storage.get_latest_character_state(self.spec.character.name)
                     or state
                 )
-                latest_state = {
-                    **state,
-                    **_campaign_segment_end_state(
-                        state,
-                        latest_character_state,
-                        execution=policy.execution,
-                        policy_id=policy.policy_id,
-                    ),
-                }
+                # The live character snapshot is authoritative for this
+                # interrupted segment. The segment start already carries the
+                # sticky campaign metadata that must survive a cap; merging
+                # the whole prior state here would resurrect stale kill and
+                # fastwalk observations from the preceding segment.
+                latest_state = _campaign_segment_end_state(
+                    state,
+                    latest_character_state,
+                    execution=policy.execution,
+                    policy_id=policy.policy_id,
+                )
                 if policy.execution not in _MAINTENANCE_EXECUTIONS:
                     latest_state["campaign_last_policy"] = policy.policy_id
                 if policy.execution == "borrow-flight":
@@ -9009,6 +9189,26 @@ class CampaignRunner:
                             (
                                 "fastwalk_consider_outcomes",
                                 "campaign_fastwalk_consider_outcomes",
+                            ),
+                            (
+                                "fastwalk_target_absent",
+                                "campaign_fastwalk_target_absent",
+                            ),
+                            (
+                                "fastwalk_target_present_observed",
+                                "campaign_fastwalk_target_present_observed",
+                            ),
+                            (
+                                "fastwalk_crowded",
+                                "campaign_fastwalk_crowded",
+                            ),
+                            (
+                                "fastwalk_unattackable_target",
+                                "campaign_fastwalk_unattackable_target",
+                            ),
+                            (
+                                "fastwalk_target_vnum_mismatch",
+                                "campaign_fastwalk_target_vnum_mismatch",
                             ),
                             (
                                 "fastwalk_source_consider_outcomes",
@@ -9092,6 +9292,115 @@ class CampaignRunner:
                         error=str(exc),
                     )
                 boundary_xp_delta = _xp_delta(state, latest_state)
+                if (
+                    policy.execution == "source-ranked-hunt"
+                    and not boundary_objective_kills
+                ):
+                    latest_state = _merge_protection_recovery_metadata(
+                        latest_state,
+                        policy=policy,
+                        xp_delta=boundary_xp_delta,
+                        previous=state,
+                        loss_event_id=segment_id,
+                    )
+                elif (
+                    policy.status == "research"
+                    and policy.execution != "source-ranked-hunt"
+                    and (
+                        str(policy.execution or "").endswith("-hunt")
+                        or policy.execution
+                        in {
+                            "fame-recovery-circus",
+                            "fame-recovery",
+                            "fame-recovery-lotus",
+                        }
+                    )
+                ):
+                    # Static research hunts use the same durable failure and
+                    # protection semantics as generated source hunts when a
+                    # controlled cap interrupts them before a kill.
+                    latest_state = _merge_campaign_research_result(
+                        state,
+                        latest_state,
+                        policy=policy,
+                    )
+                    latest_state = _merge_protection_recovery_metadata(
+                        latest_state,
+                        policy=policy,
+                        xp_delta=boundary_xp_delta,
+                        previous=state,
+                        loss_event_id=segment_id,
+                    )
+                if (
+                    isinstance(boundary_objective_kills, list)
+                    and boundary_objective_kills
+                ):
+                    # A controlled cap can fire after combat and before the
+                    # normal RunResult path. Preserve the confirmed kill so
+                    # progress, protection recovery, and source rotation use
+                    # the same evidence as a normally completed segment.
+                    latest_state["campaign_completed_kills"] = list(
+                        boundary_objective_kills
+                    )
+                    latest_state["campaign_objective_kills"] = list(
+                        boundary_objective_kills
+                    )
+                    latest_state["campaign_last_policy"] = policy.policy_id
+                    latest_state["campaign_policy_revision"] = (
+                        _CAMPAIGN_POLICY_REVISION
+                    )
+                    if policy.execution and policy.execution.endswith("-hunt"):
+                        source_kill_policy_ids = (
+                            _source_ranked_kill_policy_ids(
+                                boundary_objective_kills
+                            )
+                            if policy.execution == "source-ranked-hunt"
+                            else ()
+                        )
+                        productive_policy_ids = (
+                            source_kill_policy_ids or (policy.policy_id,)
+                        )
+                        latest_state[_LAST_PRODUCTIVE_POLICY_KEY] = (
+                            productive_policy_ids[-1]
+                        )
+                        if boundary_xp_delta > 0:
+                            latest_state = _with_productive_policy_history(
+                                latest_state,
+                                policy_ids=productive_policy_ids,
+                                boot_id=(
+                                    latest_state.get("world_boot_id")
+                                    or self._boot_id
+                                ),
+                            )
+                    if policy.execution == "source-ranked-hunt":
+                        latest_state = (
+                            _clear_source_ranked_timeout_after_productive_kill(
+                                latest_state,
+                                objective_kills=boundary_objective_kills,
+                                xp_delta=boundary_xp_delta,
+                            )
+                        )
+                        latest_state = _merge_source_ranked_circuit_kill_results(
+                            latest_state,
+                            boundary_objective_kills,
+                            primary_policy_id=policy.policy_id,
+                        )
+                        latest_state = _clear_completed_source_ranked_dispatch(
+                            latest_state,
+                            boundary_objective_kills,
+                        )
+                    latest_state = _merge_campaign_research_result(
+                        state,
+                        latest_state,
+                        policy=policy,
+                    )
+                    latest_state = _merge_protection_recovery_metadata(
+                        latest_state,
+                        policy=policy,
+                        xp_delta=boundary_xp_delta,
+                        previous=state,
+                        loss_event_id=segment_id,
+                    )
                 if (
                     not boundary_objective_kills
                     and boundary_xp_delta < 0
@@ -14570,6 +14879,35 @@ async def _run_policy_segment(
                 )
             )
         )
+        deep_hunt_stops = (
+            moria_deep_sanctuary_potion_hunt_stops()
+            if deep_recovery
+            else ()
+        )
+        if deep_recovery and source_world is None:
+            source_directory = Path("runs/dd4-source/server/area")
+            if source_directory.is_dir():
+                source_world = load_world_source(
+                    source_directory,
+                    include_all_areas=True,
+                )
+        deep_route_source_safe = True
+        if deep_recovery and source_world is not None and character_level is not None:
+            deep_route_source_safe = bool(
+                source_safe_route_to_room_with_origin(
+                    source_world,
+                    4152,
+                    character_level=character_level,
+                    require_no_combat_hazards=True,
+                )
+                is not None
+                and not source_route_hazard_rejections(
+                    source_world,
+                    tuple(int(room) for room in deep_hunt_stops[1].route_vnums),
+                    character_level=character_level,
+                    require_no_combat_hazards=True,
+                )
+            )
         return await starter_runner(
             objective_level=policy.maximum_level or 10,
             fastwalk_route=route_named("moria"),
@@ -14579,10 +14917,12 @@ async def _run_policy_segment(
                 else ()
             ),
             fastwalk_hunt_stops=(
-                moria_deep_sanctuary_potion_hunt_stops()
-                if deep_recovery
+                deep_hunt_stops
+                if deep_recovery and deep_route_source_safe
                 else moria_sanctuary_potion_hunt_stops(
-                    safe_reset_only=(character_level or 0) < 19,
+                    safe_reset_only=(
+                        deep_recovery or (character_level or 0) < 19
+                    ),
                 )
             ),
             fastwalk_train_before_departure=True,
@@ -14608,16 +14948,30 @@ async def _run_policy_segment(
             and _state_has_sanctuary_reserve(current_state)
             and not _state_has_blindness_recovery_reserve(current_state)
         )
-        deep_route_source_safe = (
-            source_world is None
-            or character_level is None
-            or source_safe_route_to_room_with_origin(
-                source_world,
-                4152,
-                character_level=character_level,
+        deep_hunt_stops = (
+            moria_deep_sanctuary_potion_hunt_stops(
+                required_potion_count=2 if double_purple_reserve else 1
             )
-            is not None
+            if deep_hunt
+            else moria_deep_sanctuary_potion_research_stops()
         )
+        deep_route_source_safe = True
+        if source_world is not None and character_level is not None:
+            deep_route_source_safe = bool(
+                source_safe_route_to_room_with_origin(
+                    source_world,
+                    4152,
+                    character_level=character_level,
+                    require_no_combat_hazards=True,
+                )
+                is not None
+                and not source_route_hazard_rejections(
+                    source_world,
+                    tuple(int(room) for room in deep_hunt_stops[1].route_vnums),
+                    character_level=character_level,
+                    require_no_combat_hazards=True,
+                )
+            )
         if not deep_route_source_safe:
             # The deep carrier route is a level-gated source route.  At lower
             # levels the shortest safe graph has no path to room 4152, so only
@@ -14662,13 +15016,7 @@ async def _run_policy_segment(
             objective_level=policy.maximum_level or 20,
             fastwalk_route=route_named("moria"),
             fastwalk_origin_actions=("get all.pie", "eat pie", "drink skin"),
-            fastwalk_hunt_stops=(
-                moria_deep_sanctuary_potion_hunt_stops(
-                    required_potion_count=2 if double_purple_reserve else 1
-                )
-                if deep_hunt
-                else moria_deep_sanctuary_potion_research_stops()
-            ),
+            fastwalk_hunt_stops=deep_hunt_stops,
             fastwalk_kill_limit=policy.segment_kill_limit,
             fastwalk_train_before_departure=True,
             fastwalk_require_invisibility=(
@@ -17988,7 +18336,7 @@ def _source_ranked_hunt_stops(
                 source_mobile_vnum=candidate.mobile_vnum,
                 maximum_target_count=1,
                 require_isolated=True,
-                consider_only=capacity_research,
+                consider_only=False,
                 minimum_health_ratio=(
                     0.95
                     if candidate.specials or protection_fallback_active
@@ -18357,7 +18705,7 @@ def _source_ranked_hunt_stops(
                     else 0.0
                 ),
                 minimum_health_ratio=minimum_health_ratio,
-                consider_only=capacity_research,
+                consider_only=False,
                 require_sanctuary=(
                     require_sanctuary
                     or (
@@ -18441,7 +18789,7 @@ def _source_ranked_hunt_stops(
                 else 0.0
             ),
             minimum_health_ratio=minimum_health_ratio,
-            consider_only=capacity_research,
+            consider_only=False,
             require_sanctuary=(
                 require_sanctuary
                 or (
@@ -18789,6 +19137,14 @@ def _source_ranked_area_circuit_candidates(
             state,
         )
         or not _source_ranked_fixed_single_reset(selected, world)
+        or (
+            not _state_has_sanctuary_reserve(state)
+            and _source_ranked_candidate_requires_sanctuary_for_state(
+                selected,
+                state,
+                character_level=character_level,
+            )
+        )
     ):
         return ()
     max_hp = state.get("max_hp")
@@ -18810,6 +19166,14 @@ def _source_ranked_area_circuit_candidates(
             )
             or not candidate.autonomous_safe
             or not _source_ranked_fixed_single_reset(candidate, world)
+            or (
+                not _state_has_sanctuary_reserve(state)
+                and _source_ranked_candidate_requires_sanctuary_for_state(
+                    candidate,
+                    state,
+                    character_level=character_level,
+                )
+            )
         ):
             continue
         status = _source_ranked_result_status(
@@ -18908,6 +19272,15 @@ def _source_ranked_preferred_area_circuit(
             selected,
             *ranked_candidates[:_SOURCE_RANKED_AREA_CIRCUIT_PRIMARY_SCAN_LIMIT],
         ):
+            if (
+                not _state_has_sanctuary_reserve(state)
+                and _source_ranked_candidate_requires_sanctuary_for_state(
+                    candidate,
+                    state,
+                    character_level=character_level,
+                )
+            ):
+                continue
             policy_id = _source_ranked_policy_id(
                 candidate,
                 character_level=character_level,
@@ -19007,6 +19380,14 @@ def _source_ranked_preferred_area_circuit(
             )
             or not candidate.autonomous_safe
             or not _source_ranked_fixed_single_reset(candidate, world)
+            or (
+                not _state_has_sanctuary_reserve(state)
+                and _source_ranked_candidate_requires_sanctuary_for_state(
+                    candidate,
+                    state,
+                    character_level=character_level,
+                )
+            )
         ):
             continue
         status = _source_ranked_result_status(
@@ -19811,9 +20192,217 @@ def _source_capacity_research_mobile_keys_from_segments(
         else:
             kills = end.get("completed_kills")
         if isinstance(kills, (list, tuple)) and kills:
+            # A later objective kill is stronger evidence than an earlier
+            # consider-only capacity probe.  Reopen this source mobile while
+            # retaining any subsequent failed probe as the latest boundary.
+            blocked.discard((area_file, mobile_vnum))
             continue
         blocked.add((area_file, mobile_vnum))
     return frozenset(blocked)
+
+
+def _source_capacity_research_candidate_record(record: object) -> bool:
+    """Return whether a persisted candidate is a capacity-only probe."""
+    if not isinstance(record, Mapping):
+        return False
+    try:
+        source_spawn_limit = int(record.get("source_spawn_limit") or 0)
+    except (TypeError, ValueError):
+        source_spawn_limit = 0
+    rejections = record.get("autonomy_rejections") or ()
+    if isinstance(rejections, str):
+        rejections = (rejections,)
+    return bool(
+        source_spawn_limit > 1
+        and "target reset capacity exceeds one" in rejections
+    )
+
+
+def _source_capacity_reset_wait_available(
+    state: Mapping[str, Any],
+    *,
+    automatic_reset_wait: bool = False,
+) -> bool:
+    """Return whether one automatic reset has opened a capacity probe."""
+    boot_id = state.get("world_boot_id")
+    marker = state.get(_SOURCE_CAPACITY_RESET_WAIT_KEY)
+    if isinstance(marker, Mapping) and marker.get("boot_id") == boot_id:
+        return marker.get("consumed") is not True
+    return bool(automatic_reset_wait and boot_id is not None)
+
+
+def _arm_source_capacity_research_after_reset(
+    state: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist one capacity-probe entitlement after an automatic wait."""
+    boot_id = state.get("world_boot_id")
+    if boot_id is None:
+        return dict(state)
+    armed = dict(state)
+    armed[_SOURCE_CAPACITY_RESET_WAIT_KEY] = {
+        "boot_id": boot_id,
+        "consumed": False,
+        "reason": "automatic area reset wait completed",
+    }
+    return armed
+
+
+def _preserve_source_capacity_entitlement_for_maintenance(
+    state: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Keep a reset-aged capacity probe armed through world-time maintenance."""
+    marker = state.get(_SOURCE_CAPACITY_RESET_WAIT_KEY)
+    if not (
+        isinstance(marker, Mapping)
+        and marker.get("boot_id") == state.get("world_boot_id")
+        and marker.get("consumed") is True
+        and marker.get("reason") == "capacity probe dispatched"
+    ):
+        return dict(state)
+    preserved = _arm_source_capacity_research_after_reset(dict(state))
+    if _source_capacity_research_candidate_record(
+        preserved.get(_SOURCE_RANKED_CANDIDATE_KEY)
+    ):
+        preserved.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+    return preserved
+
+
+def _repair_source_capacity_reset_wait(
+    state: Mapping[str, Any],
+    segments: Collection[Mapping[str, Any]],
+    checkpoints: Collection[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Recover an unconsumed automatic reset entitlement after a restart."""
+    def row_value(row: object, key: str) -> Any:
+        if isinstance(row, Mapping):
+            return row.get(key)
+        try:
+            return row[key]  # type: ignore[index]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    boot_id = state.get("world_boot_id")
+    if boot_id is None:
+        return dict(state)
+    marker = state.get(_SOURCE_CAPACITY_RESET_WAIT_KEY)
+    if (
+        isinstance(marker, Mapping)
+        and marker.get("boot_id") == boot_id
+    ):
+        return dict(state)
+
+    reset_boundary: int | None = None
+    for raw_checkpoint in checkpoints:
+        reason = row_value(raw_checkpoint, "reason")
+        if reason != _CAMPAIGN_RESEARCH_RESET_WAIT_REASON:
+            continue
+        raw_state = row_value(raw_checkpoint, "state_json")
+        if not isinstance(raw_state, str):
+            continue
+        try:
+            checkpoint_state = json.loads(raw_state)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(checkpoint_state, Mapping):
+            continue
+        if checkpoint_state.get("world_boot_id") != boot_id:
+            continue
+        raw_boundary = row_value(raw_checkpoint, "segment_id")
+        try:
+            reset_boundary = int(raw_boundary) if raw_boundary is not None else 0
+        except (TypeError, ValueError):
+            reset_boundary = 0
+
+    if reset_boundary is None:
+        repaired = dict(state)
+        if marker is not None:
+            repaired.pop(_SOURCE_CAPACITY_RESET_WAIT_KEY, None)
+        return repaired
+
+    consumed = False
+    consumed_policy_id = ""
+    for raw_segment in segments:
+        try:
+            segment_id = int(row_value(raw_segment, "id") or 0)
+        except (TypeError, ValueError):
+            segment_id = 0
+        if segment_id <= reset_boundary:
+            continue
+        end_state: Mapping[str, Any] = {}
+        start_state: Mapping[str, Any] = {}
+        for field, target in (
+            ("end_state_json", "end"),
+            ("start_state_json", "start"),
+        ):
+            raw_state = row_value(raw_segment, field)
+            if not isinstance(raw_state, str):
+                continue
+            try:
+                parsed = json.loads(raw_state)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if target == "end" and isinstance(parsed, Mapping):
+                end_state = parsed
+            elif target == "start" and isinstance(parsed, Mapping):
+                start_state = parsed
+        segment_boot_id = end_state.get("world_boot_id") or start_state.get(
+            "world_boot_id"
+        )
+        if segment_boot_id != boot_id:
+            continue
+        for segment_state in (start_state, end_state):
+            candidate_record = segment_state.get(_SOURCE_RANKED_CANDIDATE_KEY)
+            if not _source_capacity_research_candidate_record(candidate_record):
+                continue
+            consumed = True
+            consumed_policy_id = str(
+                segment_state.get("campaign_last_policy") or ""
+            )
+            break
+        if consumed:
+            break
+
+    repaired = dict(state)
+    repaired[_SOURCE_CAPACITY_RESET_WAIT_KEY] = {
+        "boot_id": boot_id,
+        "consumed": consumed,
+        "reason": "reconstructed from automatic area reset wait",
+    }
+    if consumed_policy_id:
+        repaired[_SOURCE_CAPACITY_RESET_WAIT_KEY]["policy_id"] = (
+            consumed_policy_id
+        )
+    return repaired
+
+
+def _consume_source_capacity_reset_wait(
+    state: dict[str, Any],
+    candidate: HuntCandidate,
+    *,
+    character_level: int,
+    automatic_reset_wait: bool = False,
+) -> None:
+    """Consume the reset entitlement when a capacity probe is dispatched."""
+    if not _source_ranked_capacity_research_candidate(
+        candidate,
+        character_level=character_level,
+    ) or not _source_capacity_reset_wait_available(
+        state,
+        automatic_reset_wait=automatic_reset_wait,
+    ):
+        return
+    boot_id = state.get("world_boot_id")
+    if boot_id is None:
+        return
+    state[_SOURCE_CAPACITY_RESET_WAIT_KEY] = {
+        "boot_id": boot_id,
+        "consumed": True,
+        "policy_id": _source_ranked_policy_id(
+            candidate,
+            character_level=character_level,
+        ),
+        "reason": "capacity probe dispatched",
+    }
 
 
 def _source_mobile_xp_from_segments(
@@ -20021,6 +20610,29 @@ def _source_ranked_target_tokens(candidate: HuntCandidate) -> frozenset[str]:
     return identity_tokens
 
 
+def _source_ranked_crowd_attempts_exhausted(
+    state: Mapping[str, Any],
+    policy_id: str,
+) -> bool:
+    """Use durable crowd attempts when the transient result was aged out."""
+    if not policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX):
+        return False
+    attempts = state.get(_SOURCE_RANKED_CROWD_ATTEMPTS_KEY) or {}
+    record = attempts.get(policy_id) if isinstance(attempts, Mapping) else None
+    if not (
+        isinstance(record, Mapping)
+        and record.get("boot_id") == state.get("world_boot_id")
+    ):
+        return False
+    try:
+        return (
+            int(record.get("count") or 0)
+            >= _SOURCE_RANKED_CROWD_ROTATION_THRESHOLD
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 def _source_ranked_result_status(
     candidate: HuntCandidate,
     state: Mapping[str, Any],
@@ -20183,6 +20795,14 @@ def _source_ranked_result_status(
                 cooldown_active = True
         else:
             retryable = True
+    if _source_ranked_crowd_attempts_exhausted(
+        state,
+        candidate_policy_id,
+    ):
+        # The crowd result may have been aged out during productive work, but
+        # the durable same-reboot attempt count still forbids replaying the
+        # crowded source route.
+        cooldown_active = True
     if not matching_results:
         # Metadata repair can preserve a reboot-local cooldown after the
         # result payload that created it has been cleared. Treat that marker
@@ -20557,6 +21177,14 @@ def _select_source_ranked_hunt_candidate(
                 or frontier_retry_in_band
             ),
         )
+        partial_timeout_retry_in_band = (
+            _source_ranked_partial_timeout_retry_candidate_allowed(
+                candidate,
+                state,
+                character_level=character_level,
+                character_max_hp=character_max_hp,
+            )
+        )
         protected_peak_probe_in_band = (
             _source_ranked_protected_peak_probe_in_current_band(
                 candidate,
@@ -20596,6 +21224,7 @@ def _select_source_ranked_hunt_candidate(
                         candidate_policy_id in allow_repeated_policy_ids
                     ),
                 )
+                or partial_timeout_retry_in_band
             )
             level_ceiling_probe_in_band = (
                 _source_ranked_level_ceiling_probe_in_current_band(
@@ -20859,6 +21488,30 @@ def _select_source_ranked_hunt_candidate(
                     and candidate_policy_id(candidate) == revalidation_policy_id
                 ):
                     return candidate
+    partial_timeout_retry_choices = [
+        candidate
+        for pool in pools
+        for candidate, _status in pool
+        if _source_ranked_partial_timeout_retry_candidate_allowed(
+            candidate,
+            state,
+            character_level=character_level,
+            character_max_hp=character_max_hp,
+        )
+    ]
+    if partial_timeout_retry_choices:
+        # This is an exact, one-use continuation of a clean live exchange.
+        # Prefer it before normal last-policy and no-progress rotation, while
+        # keeping the source identity and all live gates unchanged.
+        return max(
+            partial_timeout_retry_choices,
+            key=lambda candidate: (
+                float(candidate.estimated_level_range[1]),
+                candidate.score,
+                -len(candidate.route),
+                candidate.source_value,
+            ),
+        )
     # Exhaust the fully source-safe current-band progress pool before opening
     # fresh special-procedure research. A fresh research record is useful, but
     # it must not displace a verified route that can actually earn XP.
@@ -21668,6 +22321,16 @@ def _source_ranked_candidate_requires_sanctuary_for_state(
     character_level: int,
 ) -> bool:
     """Bind a carried sanctuary reserve only to the hunt that needs it."""
+    if _source_ranked_partial_timeout_retry_candidate_allowed(
+        candidate,
+        state,
+        character_level=character_level,
+        allow_attempted=True,
+    ):
+        # A clean, isolated partial-timeout retry has its own source damage
+        # bound and is deliberately allowed to use the one recorded attempt
+        # without consuming the exhausted sanctuary reserve.
+        return False
     if _source_ranked_candidate_requires_sanctuary(candidate):
         return True
     if _SOURCE_PEAK_DAMAGE_REJECTION in candidate.autonomy_rejections:
@@ -21813,7 +22476,10 @@ def _source_ranked_capacity_research_candidate(
     which may make the mobiles assist each other before the client can issue
     ``consider``.  Keep research narrow: no more than two source reset
     entries, no more than four total possible instances, and no other source
-    rejection.  The live stop still requires exactly one visible target.
+    rejection.  The live stop still requires exactly one visible target; once
+    that isolation and the live consider gate pass, the bounded stop may fight
+    for useful XP while retaining research status until another reboot proves
+    the reset behavior.
     """
     if _source_ranked_aggressive_target_below_useful_floor(
         candidate,
@@ -23020,6 +23686,110 @@ def _repair_source_ranked_timeout_history(
     return updated
 
 
+def _repair_source_ranked_partial_timeout_retry(
+    state: Mapping[str, Any],
+    campaign_segments: Collection[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Recover one clean partial-timeout retry from durable segment history."""
+    existing = state.get(_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY)
+    if (
+        isinstance(existing, Mapping)
+        and existing.get("boot_id") == state.get("world_boot_id")
+        and existing.get("level") in {None, _level(state)}
+    ):
+        if existing.get("attempted") is True:
+            policy_id = str(existing.get("policy_id") or "")
+            for raw_segment in reversed(campaign_segments):
+                segment = dict(raw_segment)
+                if str(segment.get("phase") or "") != policy_id:
+                    continue
+                try:
+                    start = json.loads(
+                        segment.get("start_state_json") or "{}"
+                    )
+                    end = json.loads(segment.get("end_state_json") or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if not isinstance(start, Mapping) or not isinstance(
+                    end, Mapping
+                ):
+                    continue
+                start_marker = start.get(
+                    _SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY
+                )
+                abort_reason = str(
+                    end.get("campaign_fastwalk_abort_reason") or ""
+                )
+                if not (
+                    isinstance(start_marker, Mapping)
+                    and start_marker.get("attempted") is True
+                    and start_marker.get("policy_id") == policy_id
+                    and start.get("world_boot_id")
+                    == state.get("world_boot_id")
+                    and end.get("world_boot_id") == state.get("world_boot_id")
+                    and _level(start) == _level(state)
+                    and _level(end) == _level(state)
+                    and not _segment_objective_kills(None, segment)
+                    and _FIELD_REQUIRED_SANCTUARY_ABORT_FRAGMENT
+                    in abort_reason
+                ):
+                    continue
+                repaired = dict(state)
+                repaired[_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY] = {
+                    **dict(existing),
+                    "attempted": False,
+                    "rearmed_after_segment_id": segment.get("id"),
+                }
+                return repaired
+        return dict(state)
+    boot_id = state.get("world_boot_id")
+    character_level = _level(state)
+    if boot_id is None or character_level <= 0:
+        return dict(state)
+    for raw_segment in reversed(campaign_segments):
+        segment = dict(raw_segment)
+        phase = str(segment.get("phase") or "")
+        if not phase.startswith(_SOURCE_RANKED_POLICY_PREFIX):
+            continue
+        try:
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+            continue
+        if (
+            start.get("world_boot_id") != boot_id
+            or end.get("world_boot_id") != boot_id
+            or _level(start) != character_level
+            or _level(end) != character_level
+            or _segment_objective_kills(None, segment)
+        ):
+            continue
+        policy = ProgressionPolicy(
+            policy_id=phase,
+            minimum_level=character_level,
+            maximum_level=character_level,
+            status="research",
+            execution="source-ranked-hunt",
+            summary="recovered partial-timeout retry",
+            evidence=(),
+            practice_skill=None,
+        )
+        record = _source_ranked_partial_timeout_retry_record(
+            start,
+            end,
+            policy=policy,
+            xp_delta=_xp_delta(start, end),
+            loss_event_id=segment.get("id"),
+        )
+        if record is not None:
+            repaired = dict(state)
+            repaired[_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY] = record
+            return repaired
+    return dict(state)
+
+
 def _source_ranked_candidate_blocked_by_timeout(
     candidate: HuntCandidate,
     state: Mapping[str, Any],
@@ -23320,6 +24090,235 @@ def _source_ranked_protection_recovery_fallback_candidate_allowed(
     return True
 
 
+def _source_ranked_protection_recovery_productive_result_allowed(
+    candidate: HuntCandidate,
+    state: Mapping[str, Any],
+    *,
+    character_level: int,
+) -> bool:
+    """Allow one already-proven, low-frequency fallback route.
+
+    A fresh candidate is preferred, but current-reboot evidence can exhaust
+    every fresh option while leaving one safe route with fewer than three
+    kills. Reusing that route is bounded by its positive live result and the
+    ordinary fallback marker; it must not reopen an absent, crowded, or
+    low-reward target.
+    """
+    try:
+        if int(candidate.boot_kills) >= 3:
+            return False
+    except (TypeError, ValueError):
+        return False
+    policy_id = _source_ranked_policy_id(
+        candidate,
+        character_level=character_level,
+    )
+    result = _campaign_research_results(state).get(policy_id)
+    if not isinstance(result, Mapping):
+        return False
+    if result.get("boot_id") != state.get("world_boot_id"):
+        return False
+    if not (
+        result.get("observed") is True
+        and result.get("consider_viable") is True
+        and result.get("viable") is True
+        and result.get("completed_kill") is True
+    ):
+        return False
+    if any(
+        result.get(key)
+        for key in (
+            "absent",
+            "crowded",
+            "crowd_exhausted",
+            "route_hazard",
+            "unattackable",
+            "target_vnum_mismatch",
+        )
+    ) or result.get("low_reward") is True:
+        return False
+    if "max_objective_kill_xp" in result:
+        try:
+            if (
+                int(result.get("max_objective_kill_xp") or 0)
+                < _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
+            ):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def _source_ranked_partial_timeout_retry_candidate_allowed(
+    candidate: HuntCandidate,
+    state: Mapping[str, Any],
+    *,
+    character_level: int,
+    character_max_hp: int | None = None,
+    allow_attempted: bool = False,
+) -> bool:
+    """Allow the one recorded retry for a clean partial-timeout route."""
+    marker = state.get(_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY)
+    if not isinstance(marker, Mapping) or (
+        marker.get("attempted") is True and not allow_attempted
+    ):
+        return False
+    if marker.get("boot_id") != state.get("world_boot_id"):
+        return False
+    if marker.get("level") not in {None, character_level}:
+        return False
+    if _source_ranked_policy_id(
+        candidate,
+        character_level=character_level,
+    ) != str(marker.get("policy_id") or ""):
+        return False
+    try:
+        marker_mobile_vnum = int(marker.get("mobile_vnum") or 0)
+    except (TypeError, ValueError):
+        marker_mobile_vnum = 0
+    try:
+        marker_room_vnum = int(marker.get("room_vnum") or 0)
+    except (TypeError, ValueError):
+        marker_room_vnum = 0
+    if (
+        marker_mobile_vnum <= 0
+        or candidate.mobile_vnum != marker_mobile_vnum
+        or marker_room_vnum <= 0
+        or candidate.room_vnum != marker_room_vnum
+        or candidate.area_file != str(marker.get("area_file") or "")
+    ):
+        return False
+    if not _source_ranked_capacity_research_candidate(
+        candidate,
+        character_level=character_level,
+    ):
+        return False
+    if candidate.specials or candidate.equipped_weapons:
+        return False
+    if candidate.route_preflight_hard_hazard or candidate.route_hard_hazard_targets:
+        return False
+    if character_max_hp is None:
+        raw_max_hp = state.get("max_hp")
+        if isinstance(raw_max_hp, (int, float)) and raw_max_hp > 0:
+            character_max_hp = int(raw_max_hp)
+    if character_max_hp is None or character_max_hp <= 0:
+        return False
+    try:
+        source_peak = int(candidate.estimated_peak_round_damage)
+        source_critical = int(candidate.estimated_critical_hit_damage)
+    except (TypeError, ValueError):
+        return False
+    # This is deliberately tighter than the ordinary protected fallback:
+    # one clean, unarmed route whose source damage is comfortably below the
+    # character's HP ceiling gets one more bounded exchange after a timeout.
+    if not (
+        source_peak > 0
+        and source_peak * 5 < character_max_hp * 2
+        and source_critical > 0
+        and source_critical * 2 < character_max_hp
+    ):
+        return False
+    return True
+
+
+def _source_ranked_partial_timeout_retry_record(
+    previous: Mapping[str, Any],
+    current: Mapping[str, Any],
+    *,
+    policy: ProgressionPolicy,
+    xp_delta: int,
+    loss_event_id: Any = None,
+) -> dict[str, Any] | None:
+    """Record one clean target retry after a bounded partial timeout."""
+    if (
+        policy.execution != "source-ranked-hunt"
+        or policy.status != "research"
+        or xp_delta >= 0
+        or current.get("campaign_objective_kills")
+        or current.get("dead")
+        or current.get("campaign_died_during_segment")
+    ):
+        return None
+    abort_reason = str(current.get("campaign_fastwalk_abort_reason") or "")
+    if "runtime boundary" not in abort_reason:
+        return None
+    if current.get("campaign_fastwalk_target_present_observed") is not True:
+        return None
+    consider_outcomes = current.get("campaign_fastwalk_consider_outcomes")
+    if not (
+        isinstance(consider_outcomes, Mapping)
+        and any(value is True for value in consider_outcomes.values())
+    ):
+        return None
+    if any(
+        current.get(key)
+        for key in (
+            "campaign_fastwalk_target_absent",
+            "campaign_fastwalk_crowded",
+            "campaign_fastwalk_route_preflight_hazard_observed",
+            "campaign_fastwalk_target_vnum_mismatch",
+            "campaign_fastwalk_unattackable_target",
+        )
+    ):
+        return None
+    if current.get("campaign_fastwalk_route_hazards"):
+        return None
+    raw_hp = current.get("hp")
+    raw_max_hp = current.get("max_hp")
+    if not (
+        isinstance(raw_hp, (int, float))
+        and isinstance(raw_max_hp, (int, float))
+        and raw_max_hp > 0
+        and raw_hp / raw_max_hp >= 0.9
+    ):
+        return None
+    candidate = _source_ranked_candidate_from_record(
+        previous.get(_SOURCE_RANKED_CANDIDATE_KEY),
+        source_revision=previous.get(_SOURCE_REVISION_KEY),
+    )
+    if candidate is None or not _source_ranked_capacity_research_candidate(
+        candidate,
+        character_level=_level(previous),
+    ):
+        return None
+    if candidate.specials or candidate.equipped_weapons:
+        return None
+    if candidate.route_preflight_hard_hazard or candidate.route_hard_hazard_targets:
+        return None
+    if candidate.estimated_peak_round_damage * 5 >= int(raw_max_hp) * 2:
+        return None
+    if (
+        candidate.estimated_critical_hit_damage <= 0
+        or candidate.estimated_critical_hit_damage * 2 >= int(raw_max_hp)
+    ):
+        return None
+    existing = current.get(_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY)
+    if (
+        isinstance(existing, Mapping)
+        and existing.get("boot_id") == current.get("world_boot_id")
+        and existing.get("level") in {None, _level(current)}
+        and existing.get("attempted") is True
+    ):
+        return None
+    return {
+        "boot_id": current.get("world_boot_id"),
+        "level": _level(current),
+        "policy_id": policy.policy_id,
+        "area_file": candidate.area_file,
+        "mobile_vnum": candidate.mobile_vnum,
+        "room_vnum": candidate.room_vnum,
+        "source_peak_round_damage": candidate.estimated_peak_round_damage,
+        "source_critical_hit_damage": candidate.estimated_critical_hit_damage,
+        "xp_delta": xp_delta,
+        "loss_event_id": loss_event_id,
+        "reason": (
+            "one clean unarmed partial-timeout retry; live target was isolated, "
+            "considered viable, and ended above 90% character HP"
+        ),
+        "attempted": False,
+    }
+
+
 def _source_ranked_candidate_blocked_by_protection_recovery(
     candidate: HuntCandidate,
     state: Mapping[str, Any],
@@ -23333,6 +24332,16 @@ def _source_ranked_candidate_blocked_by_protection_recovery(
         candidate,
         character_level=character_level,
     )
+    if _source_ranked_partial_timeout_retry_candidate_allowed(
+        candidate,
+        state,
+        character_level=character_level,
+        character_max_hp=character_max_hp,
+    ):
+        # The marker is created only after a clean isolated exchange and is
+        # consumed at the segment boundary; do not let the normal loss and
+        # timeout quarantines hide its one allowed continuation.
+        return False
     retry_marker = state.get(_PROTECTION_RECOVERY_RETRY_KEY)
     if (
         isinstance(retry_marker, Mapping)
@@ -24336,6 +25345,19 @@ def _select_provision_funding_candidate(
         and last_attempt.get("candidate_key") is not None
     ):
         last_attempted = str(last_attempt["candidate_key"])
+        # Legacy checkpoints can retain the candidate in the bounded attempt
+        # list without the terminal absence/crowd marker. The durable latest
+        # attempt is authoritative for that candidate until the next reboot.
+        if (
+            last_attempt.get("completed_kill") is not True
+            and last_attempt.get(_PROVISION_FUNDING_UNAVAILABLE_KEY)
+            in _PROVISION_FUNDING_UNAVAILABLE_REASONS
+        ):
+            attempted.add(last_attempted)
+            if last_attempted not in attempt_order:
+                attempt_order.append(last_attempted)
+            failed_attempts.add(last_attempted)
+            unavailable_attempts.add(last_attempted)
 
     funding_requirement_active = bool(
         state.get(_PROVISION_FUNDING_REQUIRED_KEY)
@@ -24400,6 +25422,17 @@ def _select_provision_funding_candidate(
 
     def funding_eligible_candidate(candidate: HuntCandidate) -> bool:
         candidate_key = _provision_funding_candidate_key(candidate)
+        if (
+            candidate.requires_flight
+            and state.get("affects") is not None
+            and not any(
+                _state_has_active_affect(state.get("affects"), effect)
+                for effect in ("fly", "levitation")
+            )
+        ):
+            # Funding is a means to acquire flight, so it cannot select a
+            # route whose own water or EX_WALL transition already requires it.
+            return False
         if candidate_key in {
             str(value)
             for value in (
@@ -26042,6 +27075,24 @@ def _segment_objective_kills(
     if not _execution_records_objective_kills(execution):
         return []
     try:
+        run_id = segment["run_id"]
+    except (KeyError, IndexError, TypeError):
+        run_id = None
+    if storage is not None and run_id is not None:
+        try:
+            durable_kills = _objective_kills_for_execution(
+                storage,
+                int(run_id),
+                execution=execution,
+            )
+        except (TypeError, ValueError):
+            durable_kills = None
+        if durable_kills is not None:
+            # The terminal event and mob_kills table describe this run. They
+            # take precedence over a checkpoint end-state that may have
+            # inherited the preceding segment's transient kill ledger.
+            return durable_kills
+    try:
         end_state = json.loads(segment["end_state_json"] or "{}")
     except (TypeError, json.JSONDecodeError):
         end_state = {}
@@ -26053,14 +27104,16 @@ def _segment_objective_kills(
             return objective_kills
     if storage is None:
         return None
-    run_id = segment["run_id"]
     if run_id is None:
         return None
-    return _objective_kills_for_execution(
-        storage,
-        int(run_id),
-        execution=execution,
-    )
+    try:
+        return _objective_kills_for_execution(
+            storage,
+            int(run_id),
+            execution=execution,
+        )
+    except (TypeError, ValueError):
+        return None
 
 
 def _clear_non_objective_maintenance_kills(
@@ -26073,6 +27126,14 @@ def _clear_non_objective_maintenance_kills(
     phase = str(checkpoint["phase"] or "")
     if _execution_records_objective_kills(phase):
         return state
+    updated = dict(state)
+    updated.pop("campaign_completed_kills", None)
+    updated.pop("campaign_objective_kills", None)
+    return updated
+
+
+def _clear_stale_segment_kill_metadata(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep one segment's objective kill ledger separate from the next one."""
     updated = dict(state)
     updated.pop("campaign_completed_kills", None)
     updated.pop("campaign_objective_kills", None)
@@ -26287,6 +27348,11 @@ def _reconcile_maintenance_fastwalk_state(
         return dict(current)
 
     updated = dict(current)
+    provision_target_absent = (
+        execution == "provision-funding"
+        and current.get("campaign_fastwalk_target_absent") is True
+        and current.get("campaign_fastwalk_target_present_observed") is not True
+    )
     abort_reason = str(updated.get("campaign_fastwalk_abort_reason") or "")
     previous_abort_reason = str(
         previous.get("campaign_fastwalk_abort_reason") or ""
@@ -26378,6 +27444,22 @@ def _reconcile_maintenance_fastwalk_state(
         "campaign_fastwalk_unattackable_target",
     )
     for key in fastwalk_keys:
+        if provision_target_absent and key in {
+            "campaign_fastwalk_target_absent",
+            "campaign_fastwalk_target_present_observed",
+            "campaign_fastwalk_consider_outcomes",
+            _SOURCE_CONSIDER_OUTCOMES_KEY,
+            _SOURCE_BELOW_BAND_SIGHTINGS_KEY,
+            _SOURCE_ABSENT_SIGHTINGS_KEY,
+            _SOURCE_PRESENT_SIGHTINGS_KEY,
+            "campaign_fastwalk_below_band_targets",
+            "campaign_fastwalk_target_vnum_mismatch",
+            "campaign_fastwalk_unattackable_target",
+        }:
+            # Funding routes have an explicit endpoint check. Keep that
+            # current absence evidence instead of restoring a previous field
+            # hunt's target-present flag into the funding checkpoint.
+            continue
         if key in previous:
             if key == "campaign_fastwalk_abort_reason":
                 previous_reason = str(previous[key] or "")
@@ -27069,6 +28151,14 @@ def _campaign_segment_end_state(
             merged.pop(_SHOP_REARM_REPUTATION_BLOCKED_KEY, None)
     if not current.get("world_boot_id") and previous.get("world_boot_id"):
         merged["world_boot_id"] = previous["world_boot_id"]
+    partial_timeout_retry = merged.get(
+        _SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY
+    )
+    if isinstance(partial_timeout_retry, Mapping) and (
+        partial_timeout_retry.get("boot_id") != merged.get("world_boot_id")
+        or partial_timeout_retry.get("level") not in {None, _level(merged)}
+    ):
+        merged.pop(_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY, None)
     frontier_retry = merged.get(_SOURCE_RANKED_FRONTIER_RETRY_KEY)
     if (
         isinstance(frontier_retry, Mapping)
@@ -27944,11 +29034,39 @@ def _repair_sanctuary_resource_acquisition_history(
         if attempt_count < _SANCTUARY_RESOURCE_MAX_ATTEMPTS:
             continue
         result = results.get(policy_id)
-        if not (
-            isinstance(result, Mapping)
-            and result.get("boot_id") == boot_id
-            and result.get("required_object_acquired") is not True
-            and result.get("fatal_failure") is not True
+        if not isinstance(result, Mapping):
+            # Older checkpoints can retain the durable attempt counter while
+            # losing the transient research result. The counter is still
+            # authoritative: reconstruct a terminal result so startup cannot
+            # reopen the same exhausted carrier route.
+            latest_segment = latest_by_policy.get(policy_id)
+            if latest_segment is not None:
+                try:
+                    latest_end = json.loads(
+                        latest_segment.get("end_state_json") or "{}"
+                    )
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    latest_end = {}
+                if (
+                    isinstance(latest_end, Mapping)
+                    and latest_end.get("world_boot_id") == boot_id
+                ):
+                    latest_result = _campaign_research_results(latest_end).get(
+                        policy_id
+                    )
+                    if isinstance(latest_result, Mapping):
+                        result = latest_result
+            if not isinstance(result, Mapping):
+                result = {
+                    "observed": False,
+                    "viable": False,
+                    "completed_kill": False,
+                    "boot_id": boot_id,
+                }
+        if (
+            result.get("boot_id") != boot_id
+            or result.get("required_object_acquired") is True
+            or result.get("fatal_failure") is True
         ):
             continue
         fatal_result = dict(result)
@@ -28847,6 +29965,12 @@ def _merge_protection_recovery_metadata(
             updated,
             policy_ids=source_kill_policy_ids,
         )
+        partial_retry = updated.get(_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY)
+        if (
+            isinstance(partial_retry, Mapping)
+            and partial_retry.get("policy_id") in source_kill_policy_ids
+        ):
+            updated.pop(_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY, None)
         retry_marker = updated.get(_PROTECTION_RECOVERY_RETRY_KEY)
         if (
             isinstance(retry_marker, Mapping)
@@ -28911,6 +30035,17 @@ def _merge_protection_recovery_metadata(
                 xp_delta=xp_delta,
                 loss_event_id=loss_event_id,
             )
+    partial_timeout_retry = _source_ranked_partial_timeout_retry_record(
+        previous,
+        updated,
+        policy=policy,
+        xp_delta=xp_delta,
+        loss_event_id=loss_event_id,
+    )
+    if partial_timeout_retry is not None:
+        updated[_SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY] = (
+            partial_timeout_retry
+        )
     outcomes = updated.get("campaign_fastwalk_consider_outcomes")
     viable = isinstance(outcomes, Mapping) and any(
         value is True for value in outcomes.values()
@@ -29586,6 +30721,24 @@ def _merge_campaign_research_result(
                     current_result.pop("retryable_failure", None)
                     absence_cooldowns.pop(policy.policy_id, None)
                 results[policy.policy_id] = current_result
+        if sanctuary_resource_route and not resource_acquisition:
+            previous_result = _campaign_research_results(previous).get(
+                policy.policy_id
+            )
+            if (
+                isinstance(previous_result, Mapping)
+                and previous_result.get("fatal_failure") is True
+                and previous_result.get("boot_id")
+                == current.get("world_boot_id")
+                and previous_result.get("completed_kill") is not True
+            ):
+                # A terminal resource result cannot be downgraded by a later
+                # maintenance or retry segment that failed to acquire the
+                # required object. A fresh reboot or successful acquisition
+                # must be the event that reopens this route.
+                results[policy.policy_id] = dict(previous_result)
+                absence_cooldowns.pop(policy.policy_id, None)
+                crowd_cooldowns.pop(policy.policy_id, None)
         if recorded_current_result:
             cleared_research_policies.discard(policy.policy_id)
     if results:
@@ -30899,6 +32052,18 @@ def _clear_absent_research_results(
             retained[policy_id] = result
             continue
         if (
+            result.get("fatal_failure") is True
+            and result.get("boot_id") == state.get("world_boot_id")
+        ):
+            # Terminal evidence is stronger than a reset-wait cooldown. Keep
+            # the exhausted route blocked until a reboot or successful
+            # resource acquisition changes the underlying fact.
+            retained[policy_id] = result
+            cooldowns.pop(policy_id, None)
+            crowd_cooldowns.pop(policy_id, None)
+            cleared_research_policies.discard(policy_id)
+            continue
+        if (
             result.get("consider_viable") is False
             and result.get("boot_id") == state.get("world_boot_id")
         ):
@@ -31834,6 +32999,10 @@ def _retry_current_absent_research_policy(
     retried.pop(_POLICY_HANDOFF_KEY, None)
     current_group = _research_absence_retry_group(policy_id)
     results = dict(_campaign_research_results(state))
+    protection_recovery_blocks_handoff = (
+        _protection_recovery_required(state)
+        and not _state_has_sanctuary_reserve(state)
+    )
     productive_policy_id = state.get(_LAST_PRODUCTIVE_POLICY_KEY)
     productive_result = (
         results.get(productive_policy_id)
@@ -31848,10 +33017,11 @@ def _retry_current_absent_research_policy(
         and productive_result.get("observed") is True
         and productive_result.get("viable") is True
         and productive_result.get("completed_kill") is True
+        and not protection_recovery_blocks_handoff
     )
     historical_handoff = (
         None
-        if productive_handoff
+        if productive_handoff or protection_recovery_blocks_handoff
         else _historical_productive_handoff_policy_id(
             state,
             current_group=current_group,
@@ -32110,6 +33280,8 @@ def _source_ranked_crowd_policy_exhausted(
     """Return whether a current-reboot source crowd is already exhausted."""
     if not policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX):
         return False
+    if _source_ranked_crowd_attempts_exhausted(state, policy_id):
+        return True
     result = _campaign_research_results(state).get(policy_id)
     return (
         isinstance(result, Mapping)

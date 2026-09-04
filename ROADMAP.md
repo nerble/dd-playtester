@@ -14,6 +14,102 @@ headlessly or through a visible Mudlet client in a Windows virtual machine.
 
 ## Latest Continuation
 
+**Strict recovery-route gate (2026-09-04):** The full offline suite now passes
+3,410 tests. Praelarran is level 19 at 197,920 XP, checkpoint 37334, safely in
+healer room 3054 with full health and movement, no active flight, and a current
+protection-recovery marker. Runs 12185-12189 recovered a sanctuary potion,
+restocked, tested an independent Mirror Realm watchman, and rearmed the
+warrior's dagger. Run 12190 exposed a real Moria failure boundary: the deep
+required-loot search crossed source-reachable aggressive Warrior and Mage
+mobiles and lost 768 XP before a safe healer return. The runner now validates
+the exact deep route with a strict source no-combat gate; without that proof it
+uses only the shallow room-4064 check or returns a bounded safe result. Runs
+12191 and 12193 then added confirmed Secretary and Dwarven giant kills for 910
+and 568 XP; run 12192 rotated safely through Shire without XP. This removes a
+concrete recovery blocker, but does not claim level-20, subclass, or HERO
+progression. The next executable work is a fresh current-band hunt or a
+source-proven recovery route, followed by level-20 and subclass validation.
+
+**Runtime-cap evidence and sanctuary recovery (2026-09-04):** The full
+offline suite passes 3,408 tests. Run 12176 exposed a route-return bug in which
+a dynamic Shadow Grove hazard caused five repeated flee/recall attempts and a
+1,280-XP loss. The starter now recognizes the grove as a randomized no-recall
+maze during emergency return and follows live GMCP exits to its stable entrance
+instead of issuing doomed recalls. Run 12177 live-validated that return path
+without loss or death. Run 12178 completed a safe Solace research probe, and
+run 12179 completed one source-matched Solace Lord Doom kill for 1,273 XP
+without loss. Run 12180 exposed an armed-target runtime-cap failure: Lord Doom
+disarmed the warrior twice and the bounded withdrawal cost 256 XP. The runner
+now requires sanctuary for that static hunt, builds cap checkpoints from the
+fresh live snapshot, and keeps objective kills scoped to the current segment.
+Startup repair also prefers terminal events or durable mob-kill rows over a
+stale segment end-state. Run 12181 safely deferred a no-flight worm route, run
+12182 stopped at the source-backed shop hazard, and run 12183 recovered a
+purple sanctuary potion from the Moria large hobgoblin for 100 XP. Run 12184
+found Lord Doom, then safely returned after sanctuary expired; its old 27%
+combat floor still cost 256 XP, so armed Lord Doom hunts now use an explicit
+40% combat floor while preserving a bounded near-death finishing action.
+Praelarran is level 19 at 196,904 XP, checkpoint 37304, safely in healer room
+3054 with 260/440 health, 294/330 movement, no active flight, and a current
+protection-recovery marker. No level-20, subclass, or HERO proof is implied.
+
+**Capacity-history, bounded-timeout, and endpoint repair (2026-09-04):** A
+clean isolated source-ranked target
+that reaches a bounded runtime cap with negative XP but remains above 90%
+health now receives one exact, source-damage-bounded retry. Startup reconstructs
+that entitlement from SQLite, and an older pre-combat sanctuary-abort is
+re-armed only when the segment proves that no attack was issued. Run 12157/
+segment 11709 exposed a live cursor race against the giant purple sand worm;
+run 12158 rotated safely to an independent Solace route. Run 12159 then
+exposed an unnecessary 38-room sweep after `where` found a target only in a
+source-known room without a safe relocation route; the runner now stops at that
+source boundary. Run 12160 safely skipped Haglik after live `consider`, run
+12161 completed liquidation, and run 12162 exposed a second endpoint race:
+Arachnos Guardian arrived in a source-registered adjacent stop before the
+fastwalk cursor advanced, causing a 306-XP escape loss. Run 12163 selected
+Dwarven Home, returned safely, and added 90 XP, moving the checkpoint to 37234
+without validating Arachnos. Run 12164 found the Lemmings Smithy below the
+useful band at its live source stop and returned safely without XP change. It
+also observed the new MUD boot `Fri Sep 4 06:19:51 2026`, resetting reboot-local
+candidate and item-limit history; checkpoint 37238 is ready. The starter now adopts
+an exact live source VNUM in any registered stop, including a field-circuit
+future stop, while retaining consider, crowd, damage, resource, and
+healer-return gates. Run 12165 then practised enhanced damage with the class
+trainer and returned safely. Run 12166 reached the mirror-realm watchman
+endpoint, considered live mobile 9983, declined the field gates, and returned
+safely without XP change. Run 12167 completed the Crystalmir white-stag probe
+with the same safe no-XP outcome. Praelarran is level 19 at 195,116 XP,
+checkpoint 37249, in healer room 3054 with full health and move and active
+flight. Run 12168 then stopped at the source-backed `where drunk` preflight
+instead of crossing Temple Square for a flight purchase; no purchase was
+claimed, and checkpoint 37252 is safely recovered. The
+repair is offline-validated. Run 12169 marked Haglik below-band after live
+`consider` and returned safely; checkpoint 37256 is current. The next work is
+a bounded live Arachnos validation. Run 12170 then reached the bounded Solace
+Secretary field cap, returned safely without loss, and added 110 incidental XP
+without an accepted objective kill. Praelarran is level 19 at 195,226 XP,
+checkpoint 37260, in healer room 3054 with full health and move and active
+flight. Run 12171 then considered the Dwarven nobleman, classified it
+below-band, and returned safely at the runtime boundary without XP change;
+checkpoint 37264 is ready. Run 12172 then completed two source-matched Dwarven
+giant objective kills for 897 and 832 XP, adding 1,729 XP without loss. Praelarran
+is level 19 at 196,955 XP, checkpoint 37268, in healer room 3054 with full
+health, 163/330 movement, and no active flight. No level-20, subclass, or HERO
+proof is implied. Run 12173 completed the Moria sanctuary-reserve attempt
+safely without acquiring the potion; a below-band drunk supplied 10 incidental
+XP, not an objective kill, and checkpoint 37271 is ready.
+Run 12174 sold the four giant drops through the Leather Shop, leaving 38 silver
+and 45 copper and 131/600 carry weight; checkpoint 37274 is safe.
+Run 12175 bought flight at the observed 131-copper price; flight is active, the
+balance is 29 silver and 4 copper, and checkpoint 37277 is safe.
+
+Earlier in this cycle, the capacity-history repair reopened the Dwarven giant
+route after a later objective kill superseded an older no-kill capacity probe;
+the reset-aged entitlement was preserved through the maintenance-only
+`world-time` probe. The current-reboot sanctuary route remains terminal after
+its bounded attempts, so future selection must continue to honor independent
+source, live-consider, crowd, route, health, and healer-return gates.
+
 **Protection-loss accounting and Dorrik continuation (2026-09-02):** The
 Telnet adapter and StarterBot now hard-bound connection, read, negotiation,
 command-write, and close awaits without waiting on cancellation-resistant

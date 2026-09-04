@@ -50,9 +50,161 @@ python -m dd4tester --help
 
 ## Current Status
 
-As of 2026-09-03, the full offline suite passes 3,359 tests. Praelarran is a
-level-17 Human Warrior at 149,410 XP, safely checkpointed in healer room 3054
-at checkpoint 36132, with 5,040 XP to level 18 and a verified dagger wielded.
+As of 2026-09-04, the full offline suite passes 3,410 tests, including the
+terminal sanctuary-recovery, capacity-history, bounded-timeout retry,
+protection-aware circuit, delayed-GMCP endpoint, source-safe locator,
+armed-target combat-floor, and strict recovery-route repairs. Praelarran is a
+level-19 Human Warrior at 197,920 XP, with 5,380 XP to level 20. Checkpoint
+37334 is in healer room 3054 after a safe return, with full health and
+movement, no active flight, and a current protection-recovery marker.
+
+Runs 12176-12189 preserved the Shadow Grove return repair, a clean Lord Doom
+kill, a source-backed sanctuary recovery, a bounded watchman withdrawal, and
+rearming after a live disarm. Run 12190 then found a real Moria recovery hazard:
+the required-loot search crossed source-reachable aggressive Warrior and Mage
+mobiles and lost 768 XP before returning safely. The recovery planner now uses
+a strict source no-combat proof for the actual deep route; when that proof is
+absent it falls back to the shallow room-4064 check or stops safely, rather
+than treating ordinary below-band tolerance as recovery permission. Run 12191
+confirmed a 910-XP Secretary kill and run 12193 confirmed a 568-XP Dwarven
+giant kill, both with safe healer returns. Run 12192 was a clean no-XP Shire
+rotation. No level-20, subclass, or HERO proof is claimed.
+
+Runtime-cap recovery is deliberately narrow: source and live safety gates still
+apply, while the checkpoint is built from the current live snapshot and the
+runner's terminal event. Objective kills are transient per segment; startup
+repair trusts terminal events or durable mob-kill rows over a stale segment
+end-state, so partial combat cannot masquerade as a confirmed kill.
+
+Runs 12073 and 12074 reopened the previously quarantined Dwarven giant route
+after a later objective kill superseded an older no-kill capacity probe. The
+two exact isolated kills added 594 and 714 XP respectively; run 12075 then
+completed liquidation and run 12076 added another 754 objective XP, all with
+safe healer returns. Run 12072 still records the bounded city-shop hazard
+from the source-backed Midgaard drunk. Run 12077 refreshed flight maintenance,
+and runs 12078-12080 added 471, 497, and 596 exact objective XP through
+Secretary and Dwarven giant routes. Run 12081 reached its bounded cap without a
+kill; runs 12082-12083 added 554 and 372 exact Secretary XP. The sanctuary
+recovery route remains terminal for the current reboot after its bounded
+attempts. The reset retry found no new MUD reboot; the repaired handoff kept
+the reset-aged Dwarven capacity entitlement armed through that maintenance
+probe for the next field invocation. This is level-18 continuation evidence,
+not level-19, subclass, or HERO proof.
+
+Run 12034 live-validated the repaired protection-recovery fallback with a 674
+XP Secretary-area result. Runs 12038, 12039, 12041, and 12043 then recorded
+four more exact Secretary kills for 445, 602, 576, and 392 XP respectively,
+each with a safe healer return; the positive kills cleared the protection hold.
+Run 12036 acquired and observed a live flight affect. Runs 12037 and 12042
+found the Queen Spider endpoint crowded, while run 12040 recorded the Moria
+sanctuary carrier absent. Run 12045 exposed a legacy-checkpoint edge case where
+the two-attempt counter survived but its result payload did not; startup repair
+now reconstructs the terminal result. Run 12046 validated that repair by
+selecting the independent Secretary route and recording a 665-XP kill with a
+safe healer return. These are level-18 continuation results, not level-19,
+subclass, or HERO proof.
+
+Runs 12010-12012 exercised the current funding frontier: the Dwarven giant was
+present and easy by live `consider`, the Midget was absent, and the Dwarven
+servant was correctly rejected as non-corporeal after its live attack refusal;
+the servant run's 170 XP came from incidental transit kills, not its target.
+Runs 12013, 12015, 12018, 12020, and 12022 completed real guard kills for 480
+objective XP plus incidental transit XP, with safe healer returns. Runs
+12014, 12016, 12019, and 12021 liquidated the patched jerkin drops. The MUD's
+bank-loan rule reduced the observed eight-coin sale to four coins received,
+so the campaign remains in funding rather than claiming flight acquisition.
+These are fresh level-18 continuation and safety results, not level-19,
+subclass, or HERO proof.
+Runs 11979-11981 then completed a clean rotation: Wyvern returned with no XP
+change, Dwarven Home added 80 XP, and flight maintenance completed without a
+loss. Runs 11982-11984 added 170 incidental XP from unavoidable transit kills,
+1,030 objective XP from the Arachnos guardian, and no liquidation XP change;
+the guardian route reached the runtime boundary after its kill. Run 11985
+rearmed the primary weapon and added 30 incidental XP from a source-known
+drunk, leaving all wear slots populated at checkpoint 36513. Run 11986
+reselected the Arachnos route for live repair validation, but an intervening
+source-known drunk and the guardian's partial damage caused a bounded
+withdrawal at 50/416 HP; it added 51 net XP, no objective kill, and did not
+validate the cap-after-kill repair. The intervening liquidation maintenance
+completed safely. Run 11988 then killed the lemming smithy (mobile 29953) for
+672 objective XP, and checkpoint 36522 preserved that kill in campaign state.
+Runs 11989-11991 then added a 628-XP Secretary objective kill, clean Moria
+recovery, and a 765-XP repeat Lemmings Smithy objective kill. The runtime-cap
+evidence repair is covered by the offline suite but still needs a fresh live
+run that both kills and reaches the controlled cap.
+Runs 11992-11994 then preserved a blocked liquidation boundary, a Secretary
+runtime-cap return without a kill, and a live below-band Lemmings result; all
+three returned safely without new XP loss. Checkpoint 36538 is the current
+level-18 rotation boundary.
+Runs 11995-11997 repeated the known liquidation boundary, completed flight
+maintenance, and returned through liquidation without XP change or loss. The
+latest durable checkpoint is 36543; the next invocation obtained a fresh
+Queen Spider field decision. Run 11998 recorded a live crowded stop at
+checkpoint 36547 without XP change or loss, so the next candidate must be
+independent of that crowd result.
+Run 11999 completed the bounded restock route; hunger 39, thirst 47, movement
+319, weapon state, and empty wear-slot checks were all healthy at checkpoint
+36549. The next field decision can proceed without a provision or equipment
+maintenance blocker.
+Run 12000 selected the independent Essabella route but intercepted it below the
+95% field-health gate, so the target was not attacked; a below-band goblin
+guard supplied 110 incidental XP. The sanctuary recovery gate then remained on
+its current-reboot cooldown and checkpoint 36553 stopped safely. Run 12001
+exercised the automatic reset retry and exposed a live Moria pre-entry gap: the
+scan named source mobile 4056, an aggressive orc one room below room 4064, but
+the old allow-list did not classify it before entry. The first recall failed and
+the second recall cost 232 XP; Praelarran stayed alive and returned to the
+Healer at checkpoint 36556. This is a safety reproduction, not progression
+proof. The source-aware scan repair is covered by the offline suite and needs a
+fresh live validation before the route is trusted again. Runs 12002-12004
+then completed a clean Dwarven giant check, a clean Queen Spider check, and
+the expected protection-recovery unavailable checkpoint, all without XP change,
+death, or additional loss. The next invocation uses the configured automatic
+reset wait to obtain fresh sanctuary evidence.
+Runs 11967-11968 completed level-18 training-deficit repair and flight
+maintenance. Run 11969 tested the Eastern Desert giant purple sand worm
+frontier and added 90 incidental XP; run 11971 tested Bardoosh and added 90
+incidental XP; run 11973 completed the source-ranked Wyvern ranger objective
+for 440 XP, and run 11974 liquidated successfully. These are fresh level-18
+continuation results, not subclass or HERO proof.
+Run 11958 live-validated a source-ranked Bird Spider objective kill (mobile
+6310, room 6342) for 369 XP and returned to the Healer at the segment boundary
+without adding an XP loss. This is level-17 continuation evidence, not
+level-18, subclass, or HERO proof for that run.
+Runs 11959-11961 live-validated the new multi-segment continuation behavior:
+the blocked loot-sale attempt checkpointed, the same invocation selected an
+independent Dwarven giant route, then completed the sanctuary-reserve pass.
+The Dwarven and sanctuary segments added no XP, but all returned safely and
+the wrapper did not stop after the recoverable shop hazard.
+Runs 11934 and 11936 added 277 and 554 XP from the same independently
+source-ranked Bird Spider policy. Run 11935 completed the repaired Dwarven
+route without XP change or loss. Run 11937 live-validated the Moria
+pre-entry scan: `scan down` ran from room 4020 before room 4064, the scan
+found no warrior 4051, and the route safely acquired the purple potion after
+two bounded endpoint kills. The specific hazard-blocking branch remains
+research-gated until that warrior appears in a live scan.
+Run 11938 added 80 XP from the Shadow Keep route, and run 11939 completed a
+clean sanctuary-reserve probe without XP change. Run 11940 exposed a combat
+throughput failure against the Shire Thain: sanctuary expired while the
+target remained at 80 percent, producing a 73-XP loss; that source policy is
+now quarantined. Runs 11941-11942 completed flight and Moria maintenance
+without XP, run 11943's protected Wyvern retry added 494 XP, and runs
+11945-11946 added 70 XP through source-backed funding. The character remains
+alive and fully recovered; the loss history is preserved rather than hidden.
+Run 11932 exposed the remaining Moria timing bug: two source-registered
+warriors entered room 4064 before the endpoint hazard gate ran, costing 208 XP.
+The repair now scans the immediate destination before the final entry and
+recalls when that scan finds a known wandering hazard; its focused and full
+offline tests pass.
+Runs 11924-11925 validated the repaired frontier rotation: a crowded Queen
+Spider route withdrew without an objective kill, then the Bird Spider route
+completed an objective kill for 566 XP. Run 11926 refreshed flight at the
+observed 104-copper price. Run 11927 correctly recorded that no independent
+source-safe target remained while protection recovery was pending. Run 11928
+rechecked the exact Moria sanctuary carrier after the bounded reset wait; it
+was absent, so the character returned to the Healer without claiming a purple
+potion or progression proof. The protection marker remains active and the
+campaign is ready for the next fresh source or reboot boundary.
 Run 11844 live-validated recovery from the final Mud School corpse: the bot
 dropped a duplicate bracer to make room, recovered the iron key, unlocked and
 opened the northern exit, reached the healer, slept, saved, and quit. This is
@@ -122,6 +274,28 @@ then completed two source-ranked Midget funding kills for another 30 XP. The
 latest checkpoint is 36132 at 149,410 XP, with 172 copper plus 2 gold and 2
 silver; the blocked-shop cooldown is down to one step. The character remains
 safe at the Healer while the flight purchase is re-evaluated.
+The subsequent ordinary and reset-aware rotations produced no additional XP:
+the source-ranked money container was empty, the remaining funding candidates
+were exhausted, and the refreshed Moria, Shadow Keep, and funding checks all
+returned safely. The latest checkpoint is 36151; the 104-copper flight price
+remains observed, but the shared shop route still has one cooldown step. The
+campaign is intentionally paused at the Healer until a reset supplies fresh
+funding evidence.
+The next reset-aware rotation restocked food, added 20 XP through the Midget
+funding route, and then reached the buy-flight policy. The live `where drunk`
+preflight found the shared Midgaard shop hazard, so no purchase command was
+issued and the character returned safely to the Healer. The latest checkpoint
+is 36160 at 149,430 XP; the observed flight price is 104 copper and the route
+cooldown has reset to three steps. This is continuation and route-safety
+evidence, not flight acquisition or level-18/HERO proof.
+The following bounded rotation completed safely at checkpoint 36174. Moria
+and funding maintenance added no XP, while the Shadow Keep route recorded a
+30-XP incidental kill of the source-scripted drunk before returning to the
+Healer; it did not count as an objective kill. Source analysis now records
+that program as route risk, hard-rejects deterministic program attackers, and
+keeps probabilistic wandering hazards visible without suppressing the entire
+level frontier. This is continuation evidence only, not level-18 or HERO
+proof. The full offline suite passes 3,362 tests.
 Runs 11737-11743 completed the level-16 Mahn-Tor handoff, maintenance, and
 Bardoosh frontier, reaching level 17 without death or XP loss. Runs 11744-11749
 added 1,152 XP from Bird Spider, Bardoosh, Wyvern ranger, and Mahn-Tor routes.
@@ -496,6 +670,15 @@ At the registered room 4064 endpoint, source-known below-band hostiles without
 an observed combat exchange trigger recall before combat when recall is legal;
 once an exchange has begun, the existing bounded flee-and-return path remains
 authoritative.
+For the lower-level Moria required-loot stop, the predecessor room 4020 is
+scanned with the exact destination direction before entering room 4064. The
+scan resolves one-room mobile reports against source VNUMs, so the explicit
+warrior (mobile 4051) and any other source-identified combat-capable bystander
+block entry while the exact carrier remains exempt. A clear scan permits the
+normal exact carrier, crowd, and combat gates to continue; an empty or delayed
+scan is inconclusive and takes the same safe return path. Run 12001 reproduced
+the missing-orc case live; the source-aware classification repair is covered
+by the 3,380-test offline suite and awaits fresh live validation.
 
 The public HERO command accepts `--retry-stalled` for one bounded source-frontier
 rotation when only trailing no-progress history blocks selection. It never

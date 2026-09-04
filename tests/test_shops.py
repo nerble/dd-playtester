@@ -1,7 +1,13 @@
 from pathlib import Path
 
 from dd4tester.hunt_candidates import parse_area_file
-from dd4tester.shops import SAFE_MIDGAARD_SHOPS, safe_shop_for_item, sale_keyword
+from dd4tester.shops import (
+    SAFE_MIDGAARD_SHOPS,
+    alternate_safe_shop_for_item,
+    safe_shop_for_item,
+    safe_shop_route_drunk_rooms,
+    sale_keyword,
+)
 
 
 def _follow_source_route(area, start: int, route: tuple[str, ...]) -> int:
@@ -47,6 +53,44 @@ def test_safe_shop_selection_prefers_margin_within_verified_safe_routes() -> Non
     assert weapon is not None
     assert weapon.name == "Weapon Shop"
     assert weapon.payout_percent == 40
+
+
+def test_source_shop_routes_identify_their_distinct_drunk_hazards() -> None:
+    armoury = next(shop for shop in SAFE_MIDGAARD_SHOPS if shop.room_vnum == "3020")
+    leather = next(shop for shop in SAFE_MIDGAARD_SHOPS if shop.room_vnum == "3035")
+
+    assert "main street" in safe_shop_route_drunk_rooms(armoury)
+    assert "main street" not in safe_shop_route_drunk_rooms(leather)
+    assert "poor alley" in safe_shop_route_drunk_rooms(leather)
+
+
+def test_alternate_safe_shop_avoids_observed_drunk_route() -> None:
+    armoury = next(shop for shop in SAFE_MIDGAARD_SHOPS if shop.room_vnum == "3020")
+
+    alternate = alternate_safe_shop_for_item(
+        "a patched leather jerkin",
+        current_shop=armoury,
+        observed_locations=("Main Street",),
+        item_type=9,
+        item_value=77,
+    )
+
+    assert alternate is not None
+    assert alternate.room_vnum == "3035"
+
+
+def test_alternate_safe_shop_stops_when_every_buyer_crosses_hazard() -> None:
+    armoury = next(shop for shop in SAFE_MIDGAARD_SHOPS if shop.room_vnum == "3020")
+
+    alternate = alternate_safe_shop_for_item(
+        "a patched leather jerkin",
+        current_shop=armoury,
+        observed_locations=("Temple Square",),
+        item_type=9,
+        item_value=77,
+    )
+
+    assert alternate is None
 
 
 def test_safe_shop_selection_accounts_for_recorded_duplicate_penalties() -> None:

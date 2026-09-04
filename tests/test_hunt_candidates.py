@@ -43,6 +43,7 @@ from dd4tester.hunt_candidates import (
     source_mobile_search_rooms,
     source_route_movement_cost,
     source_route_requires_flight,
+    source_route_hazard_rejections,
     source_safe_route_to_room,
     source_safe_route_to_room_with_origin,
     source_class_teacher_route,
@@ -341,6 +342,53 @@ def test_source_safe_quest_route_uses_a_live_observed_remote_recall_origin() -> 
     )
 
     assert selected == (("east",), (28003, 28004), 0, 2, 28003)
+
+
+def test_strict_source_route_rejects_reachable_moria_combat_hazards() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    path = (
+        4064,
+        4020,
+        4027,
+        4026,
+        4019,
+        4015,
+        4014,
+        4013,
+        4012,
+        4016,
+        4023,
+        4022,
+        4021,
+        4115,
+        4114,
+        4109,
+        4106,
+        4103,
+        4104,
+        4152,
+    )
+
+    warrior = world.mobiles[4106]
+    assert warrior.aggressive is True
+    assert warrior.wanders is True
+    hazards = source_route_hazard_rejections(
+        world,
+        path,
+        character_level=19,
+        require_no_combat_hazards=True,
+    )
+
+    assert any("the Warrior" in hazard for hazard in hazards)
+    assert source_safe_route_to_room_with_origin(
+        world,
+        4152,
+        character_level=19,
+        require_no_combat_hazards=True,
+    ) is None
 
 
 def test_source_route_movement_cost_follows_core_terrain_and_flight_rules() -> None:
@@ -798,6 +846,29 @@ def test_source_mobile_attack_program_is_a_candidate_hard_gate() -> None:
         "source mobile program can initiate an unmodeled attack"
         in candidate.autonomy_rejections
     )
+
+
+def test_non_corporeal_source_mobile_is_a_candidate_hard_gate() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=18,
+            character_max_hp=416,
+            include_xp_only=True,
+            include_all_areas=True,
+        )
+        if candidate.mobile_vnum == 20505 and candidate.room_vnum == 20508
+    )
+
+    assert candidate.status == "reject"
+    assert "source mobile is non-corporeal" in candidate.hazards
+    assert "source mobile is non-corporeal" in candidate.autonomy_rejections
 
 
 def test_money_value_converts_all_coin_denominations() -> None:
@@ -2592,6 +2663,144 @@ def test_autonomous_filter_keeps_route_program_hazard_above_aggro_cutoff(
     assert not candidate.autonomous_safe
     assert "route crosses a program-triggered attacker" in (
         candidate.autonomy_rejections
+    )
+
+
+def test_autonomous_filter_blocks_nonaggressive_route_program_hazard(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 25, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "drunk",
+                "the route drunk",
+                3,
+                0,
+                0,
+                "target.are",
+                programs=(
+                    MobileProgram(
+                        "greet_prog",
+                        "100",
+                        ("mpkill $n",),
+                    ),
+                ),
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Street", "target.are"),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    [candidate] = [
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=25,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    ]
+
+    assert not candidate.autonomous_safe
+    assert "route crosses a program-triggered attacker" in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_autonomous_filter_blocks_wandering_nonaggressive_program_hazard(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 25, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "drunk",
+                "the wandering drunk",
+                3,
+                0,
+                0,
+                "target.are",
+                programs=(
+                    MobileProgram(
+                        "greet_prog",
+                        "100",
+                        ("mpforce drunk mpkill $n",),
+                    ),
+                ),
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Street", "target.are"),
+            7002: RoomSource(7002, "Target room", "target.are"),
+            7003: RoomSource(7003, "Inn", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7003, 1, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+    world.rooms[7001].exits["east"] = ExitSource("east", 7003, 0, -1)
+    world.rooms[7003].exits["west"] = ExitSource("west", 7001, 0, -1)
+
+    [candidate] = [
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=25,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    ]
+
+    assert not candidate.autonomous_safe
+    assert "route crosses a program-triggered attacker" in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_probabilistic_wandering_program_remains_explicit_route_risk() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=17,
+        include_xp_only=True,
+        include_level_ceiling_candidates=True,
+        level_ceiling_offset=9,
+        include_all_areas=True,
+        character_max_hp=500,
+        recall_origins={0: 3001},
+    )
+
+    assert any(
+        candidate.autonomous_safe
+        and "reachable program attacker: the drunk L2" in candidate.hazards
+        for candidate in candidates
     )
 
 

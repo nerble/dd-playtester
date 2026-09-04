@@ -378,10 +378,18 @@ class CharacterState:
                 # Text room output often follows GMCP by a few milliseconds.
                 # Keep the richer GMCP destinations instead of replacing them
                 # with null placeholders from the text-only exit list.
-                known_destinations = {
-                    _canonical_direction(direction): destination
-                    for direction, destination in self.exits.items()
-                }
+                cached_destinations = data.get("exit_destinations")
+                if isinstance(cached_destinations, dict):
+                    known_destinations = {
+                        _canonical_direction(direction): _text(destination)
+                        for direction, destination in cached_destinations.items()
+                        if _text(destination) is not None
+                    }
+                else:
+                    known_destinations = {
+                        _canonical_direction(direction): destination
+                        for direction, destination in self.exits.items()
+                    }
                 self.exits = {
                     str(direction): known_destinations.get(
                         _canonical_direction(direction)

@@ -4243,7 +4243,9 @@ _SOLACE_LORD_DOOM_HUNT_POLICY = replace(
         *_SOLACE_LORD_DOOM_RESEARCH_POLICY.evidence,
         "The hunt repeats consider immediately before combat and preserves the "
         "exact-target, sole-mobile, armed-target, health, and healer-return "
-        "gates.",
+        "gates. Because Lord Doom is armed, the executable hunt also requires "
+        "a source-verified sanctuary reserve unless a future capability-aware "
+        "policy proves a trained disarm path safe.",
     ),
     segment_kill_limit=1,
 )
@@ -6003,14 +6005,21 @@ def policy_for(
         # Protection recovery is a shared capability gate, not a thief-only
         # progression rule. Use the safe Moria carrier route for every class
         # when a viable hunt has already reached the field safety floor.
+        sanctuary_recovery_policy_id = (
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+        )
         if (
             _research_crowd_is_active(
                 context,
-                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                sanctuary_recovery_policy_id,
             )
             or _research_absence_cooldown_active(
                 context,
-                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                sanctuary_recovery_policy_id,
+            )
+            or _research_fatal_failure_active(
+                context,
+                sanctuary_recovery_policy_id,
             )
         ):
             # A current-reboot crowd or absence result is a real field
@@ -9839,6 +9848,20 @@ def _research_absence_cooldown_active(
     return False
 
 
+def _research_fatal_failure_active(
+    context: ProgressionContext,
+    policy_id: str,
+) -> bool:
+    """Keep a terminal current-reboot result blocked at this level."""
+    result = (context.research_results or {}).get(policy_id)
+    return bool(
+        isinstance(result, Mapping)
+        and result.get("fatal_failure") is True
+        and result.get("boot_id") == context.world_boot_id
+        and result.get("completed_kill") is not True
+    )
+
+
 def _highland_keeper_frontier_ready(context: ProgressionContext) -> bool:
     """Open the Highland fallback only after the current-band frontier is known."""
     required = (
@@ -10125,15 +10148,24 @@ def _source_ranked_sanctuary_recovery_wait_policy(
     context: ProgressionContext,
 ) -> ProgressionPolicy:
     """Defer the generic deep recovery route behind its reboot cooldown."""
+    terminal = _research_fatal_failure_active(
+        context,
+        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+    )
+    summary = (
+        "The source-ranked sanctuary recovery route has a terminal failure "
+        "for this level and reboot; preserve the healer checkpoint until a "
+        "new reboot or fresh evidence changes the boundary."
+        if terminal
+        else "The source-ranked sanctuary recovery route has a current-reboot "
+        "crowd or absence cooldown; preserve the healer checkpoint and "
+        "retry only after the bounded reset wait or a new reboot."
+    )
     return replace(
         _UNAVAILABLE_POLICY,
         minimum_level=context.level,
         maximum_level=context.level,
-        summary=(
-            "The source-ranked sanctuary recovery route has a current-reboot "
-            "crowd or absence cooldown; preserve the healer checkpoint and "
-            "retry only after the bounded reset wait or a new reboot."
-        ),
+        summary=summary,
         evidence=_SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.evidence,
         practice_skill=context.practice_skill,
     )

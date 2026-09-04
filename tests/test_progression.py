@@ -7,6 +7,7 @@ from dd4tester.progression import (
     _QUEST_DIGGING_TOOL_POLICY,
     _QUEST_POINTS_REQUIRED_POLICY,
     _RECALL_POINT_POLICY,
+    _POLICY_BY_ID,
     _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
     _caster_hunt_requires_sanctuary_replenishment,
     _research_hunt_policy,
@@ -1052,6 +1053,31 @@ def test_level_fifteen_protection_recovery_respects_cooled_sanctuary_route() -> 
     assert policy.status == "unavailable"
     assert policy.execution is None
     assert "cooldown" in policy.summary
+
+
+def test_protection_recovery_waits_on_terminal_sanctuary_route() -> None:
+    policy = policy_for(
+        18,
+        "warrior",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+        research_results={
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id: {
+                "boot_id": "boot-1",
+                "fatal_failure": True,
+                "level": 18,
+                "observed": False,
+                "viable": False,
+            },
+        },
+        excluded_policy_ids=frozenset(_POLICY_BY_ID),
+        source_ranked_fallback=True,
+    )
+
+    assert policy.status == "unavailable"
+    assert policy.execution is None
+    assert "terminal" in policy.summary
 
 
 def test_protection_recovery_uses_alternate_probe_during_moria_cooldown() -> None:

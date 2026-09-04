@@ -474,6 +474,31 @@ def test_text_room_recovers_known_exit_vnum_when_gmcp_omits_it() -> None:
     assert room.data["vnum_inferred"] is True
 
 
+def test_text_rooms_keep_room_scoped_gmcp_destinations_after_combined_move() -> None:
+    parser = ObservationParser()
+
+    parser.feed_gmcp(
+        'Room.Info {"name":"Narrow north-south path","vnum":"6508",'
+        '"exits":{"n":"6509","s":"6507"}}'
+    )
+    parser.feed_gmcp(
+        'Room.Info {"name":"Narrow path","vnum":"6507",'
+        '"exits":{"n":"6508","w":"6506"}}'
+    )
+
+    events = parser.feed_text(
+        "Narrow north-south path\n"
+        "[Exits: north south]\n"
+        "\n"
+        "Narrow path\n"
+        "[Exits: north west]\n"
+    )
+    rooms = [event for event in events if event.type == "room_entered"]
+
+    assert rooms[0].data["exit_destinations"] == {"n": "6509", "s": "6507"}
+    assert rooms[1].data["exit_destinations"] == {"n": "6508", "w": "6506"}
+
+
 def test_gmcp_non_json_payload_is_preserved() -> None:
     parser = ObservationParser()
 

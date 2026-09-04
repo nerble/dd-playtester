@@ -455,6 +455,44 @@ def test_text_room_exits_preserve_gmcp_destinations() -> None:
     }
 
 
+def test_inferred_text_rooms_use_their_own_cached_gmcp_destinations() -> None:
+    state = CharacterState(
+        room_vnum="6507",
+        exits={"n": "6508", "w": "6506"},
+    )
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "text",
+            {
+                "name": "Narrow north-south path",
+                "vnum": "6508",
+                "vnum_inferred": True,
+                "exits": ["north", "south"],
+                "exit_destinations": {"n": "6509", "s": "6507"},
+            },
+        )
+    )
+    assert state.exits == {"north": "6509", "south": "6507"}
+
+    assert state.apply(
+        GameEvent(
+            "room_entered",
+            "text",
+            {
+                "name": "Narrow path",
+                "vnum": "6507",
+                "vnum_inferred": True,
+                "exits": ["north", "west"],
+                "exit_destinations": {"n": "6508", "w": "6506"},
+            },
+        )
+    )
+    assert state.room_vnum == "6507"
+    assert state.exits == {"north": "6508", "west": "6506"}
+
+
 def test_delayed_text_room_cannot_move_state_backward() -> None:
     state = CharacterState(
         room_name="The Corner of the Wooden Path",

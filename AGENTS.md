@@ -39,6 +39,11 @@ attempt's start and completion, checkpoint, level, and XP to stderr. Keep the
 final result on stdout and preserve the same bounded segment, reset-wait, lease,
 and cleanup behavior; progress output is observability, never a substitute for
 durable SQLite evidence.
+`run_campaign_file` also continues a multi-segment invocation after an explicit
+recoverable route-hazard checkpoint, including a bounded city-shop deferral,
+route quarantine, or runtime-cap resumption. It still stops for an
+`awaiting_area_reset`, unavailable, blocked, or failed result, so continuation
+cannot turn a reboot wait or safety boundary into a retry loop.
 For capped invocations, also emit explicit markers before and after cold local
 source-catalog preparation so setup latency is visible; these markers do not
 consume the live segment budget or count as progression evidence.
@@ -158,6 +163,43 @@ The sanctuary resource route itself is quarantined after two failed
 same-reboot attempts, preventing a persistent recovery hazard from replaying
 indefinitely. Run 11702 live-validated the continuation selection and its
 425-XP Mahn-Tor result after the level-16 generic frontier was exhausted.
+The attempt counter is durable evidence: startup repair must reconstruct a
+terminal sanctuary result when a legacy checkpoint retains the two-attempt
+counter but omits the result payload, so the selector cannot reopen the same
+exhausted route. The terminal result must still preserve the normal bounded
+independent recovery fallback.
+Terminal same-reboot sanctuary failures must survive reset-wait aging; only a
+new reboot or successful acquisition may reopen an exhausted resource route.
+Durable source-ranked capacity history is ordered evidence: a later objective
+kill reopens that source mobile after an older no-kill capacity probe, while a
+newer failed probe can quarantine it again. Reuse still requires exact live
+isolation, consider, route, health, resource, and healer-return gates.
+A clean isolated, unarmed source-ranked target that reaches a bounded runtime
+cap with negative XP but ends above 90% health may receive one exact retry when
+strict source peak and critical bounds fit the current HP ceiling. Persist the
+entitlement in campaign state, consume it before the segment opens, and never
+let it bypass live target, consider, crowd, route, resource, or healer-return
+gates. Startup may re-arm only a legacy segment that aborted before combat
+because the old runner incorrectly required sanctuary; preserve that segment
+as evidence and do not retry a genuine combat loss or a second timeout.
+Static research hunts with armed targets must carry the same sanctuary reserve
+requirement before combat; a static policy must not bypass the candidate-level
+armed-target gate. A controlled runtime cap must build its checkpoint from the
+fresh live character snapshot and terminal event, not by merging the previous
+checkpoint wholesale. Clear transient objective-kill fields before each new
+segment. During startup repair, when a segment has a run id, prefer its
+terminal objective-kill event or durable `mob_kills` rows over the segment
+end-state; inherited kill metadata must never hide an XP loss or promote a
+failed hunt.
+For the armed Lord Doom hunt, sanctuary expiry must still be evaluated against
+the live matchup rather than triggering an unconditional flee: the policy uses
+a 40% combat-health floor, but may take one bounded finishing action when the
+opponent is nearly defeated and the live damage reserve covers that exchange.
+When the current observed flight price is unaffordable, food is secure, source
+funding and no-flight fallback have no executable candidate, the shop route is
+not blocked, and no loan was attempted, use one bounded bank-loan handoff
+before repeating empty funding hunts. Preserve the loan marker and never
+repeat that handoff in the same campaign and reboot.
 The emergency provision selector suppresses its city-sale shortcut while the
 shared shop hazard is active. A foodless character therefore stays in the
 explicit provision-funding loop, where capacity relief is applied before the
@@ -185,9 +227,118 @@ below `character_level - 5`, record `target is aggressive` in
 run before capacity or other research pools; legacy capacity-only candidate
 records must be checked by the same gate before reuse.
 
-Current live anchor (2026-09-03): campaign 30, Praelarran, human warrior,
-  checkpoint 36132, level 17, 149410 XP, healer room 3054, with 5040 XP to
-  level 18 and a verified dagger wielded. Runs 11737-11743 completed the level-
+Source candidate construction also hard-rejects a mobile with DD4's
+`AFF_NON_CORPOREAL` flag: `fight.c` refuses attacks against that form, so a
+sellable drop cannot make it a funding target. Capacity-only research remains
+research evidence, but after exact live isolation and a safe live `consider`,
+its bounded target stop may execute a fight; this does not promote the reset
+capacity to verified progression evidence. Funding startup repair treats the
+durable latest attempt as authoritative for legacy checkpoints whose bounded
+attempt list omitted an `absent` or `crowded` marker.
+
+Current live anchor (2026-09-04): campaign 30, Praelarran, human warrior,
+checkpoint 37334, level 19, 197920 XP, 5380 XP to level 20, healer room 3054,
+full health and movement, no active flight, and a current protection-recovery
+marker. The full offline suite passes 3410 tests. Runs 12185-12189 recovered a
+purple sanctuary potion, restocked, tested an independent Mirror Realm
+watchman, and rearmed the warrior's dagger. Run 12190 exposed a real Moria
+recovery hazard: the deep required-loot search crossed source-reachable
+aggressive Warrior and Mage mobiles and lost 768 XP before a safe healer
+return. Runs 12191 and 12193 then confirmed Secretary and Dwarven giant kills
+for 910 and 568 XP, while 12192 completed a safe Shire rotation. The strict
+recovery-route repair is now offline-validated; no level-20, subclass, or HERO
+proof is implied.
+
+Historical live anchor (superseded 2026-09-04): campaign 30, Praelarran, human warrior,
+  checkpoint 36642, level 18, 159206 XP, healer room 3054, with 18444 XP to
+  level 19 and a long sword wielded. Flight is not active; the observed price
+  is 104 copper and the current carried balance is 85 copper-value. The latest
+  checkpoint is fully recovered. Runs 11982-11984 added 170 incidental XP and
+  1030 objective XP before the runtime-cap checkpoint; run 11985 restored the
+  primary weapon with 30 incidental XP. Run 11986 reselected the Arachnos
+  route, but withdrew at 50/416 HP after a source-known drunk interruption,
+  adding 51 net XP and no objective kill; this did not validate the
+  cap-after-kill repair. The intervening liquidation completed safely, and run
+  11988 killed the lemming smithy (mobile 29953) for 672 objective XP. Runs
+  11989-11991 then added a 628-XP Secretary objective kill, clean Moria
+  recovery, and a 765-XP repeat Lemmings Smithy objective kill. The protection
+  hold remains attached to the failed Lord Doom policy, and a fresh live run
+  that both kills and reaches the controlled cap is still required.
+  Runs 11992-11994 then recorded a blocked liquidation boundary, a Secretary
+  runtime-cap return without a kill, and a live below-band Lemmings result;
+  all three returned safely without new XP loss. The next level-18 rotation
+  must select an independent source-ranked candidate.
+  Runs 11995-11997 then repeated the known liquidation boundary, completed
+  flight maintenance, and returned through liquidation without XP change or
+  loss. The next invocation must obtain a fresh field decision rather than
+  repeat maintenance indefinitely. Run 11998 then selected Queen Spider and
+  recorded a live crowded stop without XP change or loss; the next candidate
+  must be independent of that crowd result.
+  Run 11999 completed restock safely; hunger 39, thirst 47, movement 319,
+  weapon state, and empty wear-slot checks were healthy. The next field
+  decision can proceed without a provision or equipment maintenance blocker.
+  Run 12000 selected Essabella but intercepted the target below the 95%
+  field-health gate; a below-band goblin guard added 110 incidental XP. The
+  sanctuary recovery gate remained on its current-reboot cooldown, so
+  checkpoint 36553 stopped safely and the next attempt used the bounded reset
+  wait. Run 12001 then exposed a live Moria pre-entry gap: `scan down` named
+  source mobile 4056, an aggressive orc one room below room 4064, but the old
+  allow-list did not classify it before entry. The first recall failed and the
+  second recall cost 232 XP; Praelarran remained alive and returned to the
+  Healer at checkpoint 36556. The source-aware scan repair is offline-verified
+  and awaits fresh live validation; this is a safety reproduction, not
+  progression proof. Runs 12002-12004 then completed clean Dwarven giant and
+  Queen Spider checks followed by the expected protection-recovery unavailable
+  checkpoint, all without XP change, death, or additional loss. The next
+  invocation uses the configured automatic reset wait for fresh sanctuary
+  evidence.
+  Run 11975 completed the Shadow Keep circuit without XP change. Run 11976
+  completed the Solace Lord Doom research probe without XP change. Run 11977
+  tested the corresponding hunt: Lord Doom disarmed the warrior and the bot
+  withdrew at 60/416 HP after partial damage, recording the 34-XP loss and
+  quarantining the policy. Run 11978 safely recovered through Moria and killed
+  the below-band orc for 100 incidental XP. This is fresh level-18 safety and
+  recovery evidence, not subclass or HERO proof.
+  Runs 11979-11981 then completed a clean rotation: Wyvern returned with no XP
+  change, Dwarven Home added 80 XP, and flight maintenance completed without a
+  loss. Run 11985 rearmed the primary weapon and left all wear slots populated.
+  Run 11958 live-validated a source-ranked Bird Spider objective kill (mobile
+  6310, room 6342) for 369 XP and returned safely at the segment boundary
+  without adding an XP loss.
+  Runs 11959-11961 live-validated that a recoverable city-shop route hazard
+  now advances a two-segment invocation to an independent Dwarven giant
+  route and then the sanctuary-reserve pass; both later segments returned
+  safely, with no XP change. This is continuation evidence only, not
+  subclass or HERO proof.
+  Runs 11934 and 11936 added 277 and 554 XP from the same independent policy;
+  run 11935 completed the repaired Dwarven route without XP change or loss.
+  Run 11937 live-validated the Moria pre-entry scan: `scan down` ran from room
+  4020 before room 4064, found no warrior 4051, and the route acquired the
+  purple potion after two bounded endpoint kills. The specific hazard-blocking
+  branch remains research-gated until that warrior appears in a live scan.
+  Run 11938 added 80 XP from Shadow Keep, run 11939 completed a clean
+  sanctuary-reserve probe without XP, and run 11940 exposed a 73-XP Shire
+  Thain combat-throughput loss after sanctuary expired with the target at 80
+  percent; that source policy is now quarantined. Runs 11941-11942 completed
+  flight and Moria maintenance without XP, run 11943's protected Wyvern retry
+  added 494 XP, and runs 11945-11946 added 70 XP through source-backed
+  funding. The character remains alive and fully recovered; preserve the loss
+  history instead of treating it as progression.
+  Run 11932 exposed the remaining Moria timing bug: two source-registered
+  warriors entered room 4064 before the endpoint hazard gate and cost 208 XP.
+  The repair now scans the immediate destination before final entry; focused
+  and full offline tests pass.
+  Runs 11924-11925 validated the
+  repaired frontier rotation: a crowded Queen Spider route withdrew without
+  an objective kill, then the Bird Spider route completed an objective kill
+  for 566 XP. Run 11926 refreshed flight at the observed 104-copper price.
+  Run 11927 correctly recorded that no independent source-safe target remained
+  while protection recovery was pending. Run 11928 rechecked the exact Moria
+  sanctuary carrier after the bounded reset wait; it was absent, so the
+  character returned to the Healer without claiming a purple potion or
+  progression proof. The protection marker remains active and the campaign is
+  ready for the next fresh source or reboot boundary. Runs 11737-11743
+  completed the level-
 16 Mahn-Tor handoff, maintenance, and Bardoosh frontier, reaching level 17
 without death or XP loss. Runs 11744-11749 added 1152 XP from Bird Spider,
 Bardoosh, Wyvern ranger, and Mahn-Tor routes. Runs 11750-11752 added 370 XP
@@ -317,6 +468,28 @@ then completed two source-ranked Midget funding kills for another 30 XP. The
 latest checkpoint is 36132 at 149410 XP, with 172 copper plus 2 gold and 2
 silver; the blocked-shop cooldown is down to one step. The character remains
 safe at the Healer while the flight purchase is re-evaluated.
+The subsequent ordinary and reset-aware rotations produced no additional XP:
+the source-ranked money container was empty, the remaining funding candidates
+were exhausted, and the refreshed Moria, Shadow Keep, and funding checks all
+returned safely. The latest checkpoint is 36151; the 104-copper flight price
+remains observed, but the shared shop route still has one cooldown step. The
+campaign is intentionally paused at the Healer until a reset supplies fresh
+funding evidence.
+The next reset-aware rotation restocked food, added 20 XP through the Midget
+funding route, and then reached the buy-flight policy. The live `where drunk`
+preflight found the shared Midgaard shop hazard, so no purchase command was
+issued and the character returned safely to the Healer. The latest checkpoint
+is 36160 at 149430 XP; the observed flight price is 104 copper and the route
+cooldown has reset to three steps. This is continuation and route-safety
+evidence, not flight acquisition or level-18/HERO proof.
+The following bounded rotation completed safely at checkpoint 36174. Moria
+and funding maintenance added no XP, while the Shadow Keep route recorded a
+30-XP incidental kill of the source-scripted drunk before returning to the
+Healer; it did not count as an objective kill. Source analysis now records
+that program as route risk, hard-rejects deterministic program attackers, and
+keeps probabilistic wandering hazards visible without suppressing the entire
+level frontier. This is continuation evidence only, not level-18 or HERO
+proof. The full offline suite passes 3362 tests.
 
 The final tutorial controller disables autoloot before the gladiator fight and
 selectively retrieves only the source-required bracers, stone, and iron key.
@@ -546,13 +719,15 @@ its latest objective delta is negative, block it from ordinary retry even if
 the boot kill count is below three. An explicit XP-loss record remains under
 the protection-recovery contract: the normal retry requires a sanctuary
 reserve, and a second loss quarantines the route. If the source-verified
-sanctuary route is current-reboot absent or cooling and no reserve is
-available, one distinct `protection-recovery-ordinary` fallback may reopen
-only a fresh, source-safe, special-free, no-flight target in the useful band
-with exactly one prior nonfatal loss and source peak damage at or below 50%
-of maximum HP. It starts at 95% health, is recorded before execution, and is
-quarantined after another failure; a positive objective kill clears the
-protection hold. Count an explicit increase in the durable `xp_loss_total`
+sanctuary route is current-reboot absent, cooling, or terminally exhausted and
+no reserve is available, one distinct `protection-recovery-ordinary` fallback
+may reopen
+only a fresh or already-productive, source-safe, special-free, no-flight target
+in the useful band. Reuse of an already-productive target requires an exact
+current-reboot positive live result, fewer than three boot kills, and source
+peak damage at or below 50% of maximum HP. It starts at 95% health, is
+recorded before execution, and is quarantined after another failure; a positive
+objective kill clears the protection hold. Count an explicit increase in the durable `xp_loss_total`
 counter as a loss even when partial combat XP makes the segment's net XP
 positive. Startup repair and live segment finalization must use that event
 evidence so a route cannot evade second-loss quarantine through partial XP.
@@ -575,6 +750,12 @@ must remain quarantined until a fresh source-safe attempt confirms a kill.
 The starter's own runtime boundary raises a distinct controlled-cap signal;
 do not collapse it into the transport's `asyncio.TimeoutError`. Campaign
 handling must checkpoint that segment as ready and preserve its run evidence.
+If the cap occurs after a confirmed objective kill, promote the terminal run
+kill into campaign state, productive-policy history, research evidence, and
+protection-recovery reconciliation before checkpointing. A kill recorded only
+in the transcript must not be treated as a no-kill timeout or lost from the
+next policy selection. The new boundary regression is offline-verified; a
+fresh live cap-after-kill run is still required before calling it live proof.
 Any decision wait must be clipped to the field deadline, and once the boundary
 is requested the loop must wake immediately for safe healer return, save, and
 quit. The outer process timeout remains a last-resort liveness guard, not the
@@ -705,7 +886,12 @@ false stall and can repeatedly select the same unavailable route.
 When an automatic retry is reached, open one bounded maintenance-only
 `world-time` run to issue `time`, persist the live reboot marker, and return to
 the healer before replanning. Direct `--retry-stalled` is not reboot evidence
-and must not trigger this probe.
+and must not trigger this probe. If source selection temporarily consumes the
+reset-aged capacity entitlement while constructing a non-executable research
+policy, the maintenance probe must re-arm that entitlement and discard the
+transient source candidate; only an actually dispatched field segment may
+consume it. This prevents the mandatory `time` check from spending the one
+capacity-isolation retry before the next invocation reaches the target.
 Persist `after_segment_id` on each funding reset-history record. Startup repair
 must use that boundary to rebuild only post-reset current-boot attempts and
 liquidation evidence; for legacy records without the marker, locate the first
@@ -783,16 +969,40 @@ the closing prompt arrives; never let a partial prompt strand `command_in_flight
 until the segment cap. The parser and runner regressions cover this ordering,
 and run 10149 reproduced it live while run 10150 validated the repair.
 
-Moria sanctuary recovery is source-graph gated at execution time. At the
-checked-in source revision, the deep route to room 4152 is not source-safe
-below level 20, so lower-level recovery inspects only the room-4064 reset and
-withdraws if the carrier has wandered; the shallow stop can require one or two
-exact purple potions. From level 20 onward, the deep carrier circuit is
-available to every class; mages still use the bounded `cast invis` readiness
+When one DD4 response contains text for both the room being left and the room
+being entered, keep GMCP exit destinations scoped to each inferred room VNUM.
+Text-only direction lists may refresh labels, but must not replace a known
+destination with `None` or mix the prior room's exits into the new room. This
+is required for locator-derived routes, where a lost destination can turn an
+otherwise safe live endpoint into a false route failure.
+
+Moria sanctuary recovery is source-graph gated at execution time. The deep
+route to room 4152 is selected only when a strict source check proves that the
+actual executed path has no reachable aggressive, scripted, or combat-special
+mobile. Ordinary source-ranked routing may tolerate a below-band bystander for
+an XP hunt, but that tolerance must never authorize a required-loot recovery
+route. Run 12190 proved the distinction live: Moria's wandering Warrior from
+room 4113 and Mage from room 4114 remained reachable on the deep path and the
+route incurred 768 XP of loss. When strict proof is absent, lower-level
+recovery inspects only the room-4064 reset and withdraws if the carrier has
+wandered; if the shallow stop is also unavailable, return a bounded safe result
+and preserve the evidence. Mages still use the bounded `cast invis` readiness
 gate and every class retains the required-loot, health, consider, crowd, and
 healer-return checks. Separately, the blindness-reserve handoff for audited
 caster specials is class-independent: sanctuary as the opener requires
 persisted `cure blindness` or two verified purple potions for every class.
+When a required-loot endpoint can be entered by a source-identified wandering
+hazard, the stop must issue one bounded `scan <direction>` from the immediate
+predecessor before the final entry command. Resolve one-room scan reports by
+target and direction against the destination-room source VNUMs; for Moria,
+the explicit warrior mobile 4051 and any other source-identified mobile that
+the source-safe bystander rules classify as combat-capable block entry to room
+4064. The exact source carrier is exempt from this bystander check. Record a
+current-reboot crowd and retryable route result, recall, and skip the endpoint
+when that hazard is reported. A clear scan permits the normal exact-carrier,
+crowd, consider, health, resource, and healer-return gates; an empty or
+delayed scan is inconclusive and must recall. This pre-entry check does not
+replace the endpoint gate after the room has been entered.
 
 Required-loot field endpoints must resolve source-special profiles for every
 observed bystander before starting combat. If a non-target mobile has an
@@ -3486,6 +3696,11 @@ two matching mobiles, it may enter research rotation: live TARGETMODE output
 must prove exactly one source-matched target before consider or combat. Never
 relax this exception for special procedures, aggression, companions, route
 hazards, or larger reset capacities.
+Keep a failed capacity probe quarantined for the current reboot. Only the
+automatic retry after the bounded area-reset wait may reopen a fresh probe for
+that source mobile; an explicit `--retry-stalled` request must rotate or wait
+instead. The exact-one isolation, live consider, route, health, and return
+gates still apply after reopening.
 For a fixed capacity-two prototype with separate source reset rooms, tag each
 stop with its own reset-room policy identity and permit at most two total kills
 across the circuit. Retain the exact-one live TARGETMODE gate in every room;

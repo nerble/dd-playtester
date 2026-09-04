@@ -160,6 +160,7 @@ class ObservationParser:
         self._room_name: str | None = None
         self._room_vnum: str | None = None
         self._known_room_vnums_by_name: dict[str, set[str]] = {}
+        self._known_room_exits_by_vnum: dict[str, dict[str, str]] = {}
         self._last_room_exits: dict[str, str] = {}
         self._gmcp_snapshots: dict[str, Any] = {}
         self._discarding_duplicate_login_snapshot = False
@@ -210,6 +211,7 @@ class ObservationParser:
         self._room_name = None
         self._room_vnum = None
         self._known_room_vnums_by_name.clear()
+        self._known_room_exits_by_vnum.clear()
         self._last_room_exits = {}
         self._gmcp_snapshots.clear()
         self._discarding_duplicate_login_snapshot = False
@@ -689,6 +691,10 @@ class ObservationParser:
                 for direction, destination in exits.items()
                 if str(destination).strip()
             }
+            if vnum and self._last_room_exits:
+                self._known_room_exits_by_vnum[vnum] = dict(
+                    self._last_room_exits
+                )
         else:
             self._last_room_exits = {}
         same_room = bool(name and self._same_room(name, vnum))
@@ -723,6 +729,13 @@ class ObservationParser:
         data: dict[str, Any] = {"name": name, "text": text}
         if exits is not None:
             data["exits"] = exits
+        if inferred_vnum is not None:
+            known_exits = self._known_room_exits_by_vnum.get(inferred_vnum)
+            if known_exits:
+                # A single text read can contain the previous and current
+                # room. Carry the matching GMCP destinations with each text
+                # room so state application cannot mix their exits.
+                data["exit_destinations"] = dict(known_exits)
         if inferred_vnum is not None:
             data["vnum"] = inferred_vnum
             data["vnum_inferred"] = True

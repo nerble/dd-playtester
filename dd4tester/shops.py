@@ -130,6 +130,64 @@ SAFE_MIDGAARD_SHOPS = (
     ),
 )
 
+# The source route from healer room 3054 to the Leather Shop uses the Temple
+# Square, Market Square, Common Square, and the two Poor Alley rooms.  The
+# other registered buyers use Main Street on the way out.  Keep the source
+# room names here so a wandering greet-program mobile can block only the
+# route that would actually cross it.
+_MIDGAARD_DRUNK_ROUTE_ROOMS_BY_SHOP = {
+    "3010": frozenset(
+        {
+            "temple square",
+            "market square",
+            "main street",
+            "general store",
+        }
+    ),
+    "3011": frozenset(
+        {
+            "temple square",
+            "market square",
+            "main street",
+            "weapon shop",
+        }
+    ),
+    "3020": frozenset(
+        {
+            "temple square",
+            "market square",
+            "main street",
+            "armoury",
+        }
+    ),
+    "3033": frozenset(
+        {
+            "temple square",
+            "market square",
+            "main street",
+            "magic shop",
+        }
+    ),
+    "3034": frozenset(
+        {
+            "temple square",
+            "market square",
+            "main street",
+            "jeweller's shop",
+        }
+    ),
+    "3035": frozenset(
+        {
+            "temple square",
+            "market square",
+            "common square",
+            "eastern end of poor alley",
+            "poor alley",
+            "leather shop",
+        }
+    ),
+}
+
 _ARMOUR_WORDS = {
     "armour",
     "armor",
@@ -218,6 +276,46 @@ def safe_shop_for_item(
         ),
         default=None,
     )
+
+
+def safe_shop_route_drunk_rooms(shop: SafeShop) -> frozenset[str]:
+    """Return source room names crossed by a shop's healer-origin route."""
+    return _MIDGAARD_DRUNK_ROUTE_ROOMS_BY_SHOP.get(
+        shop.room_vnum,
+        frozenset(),
+    )
+
+
+def alternate_safe_shop_for_item(
+    description: str,
+    sale_counts: Mapping[tuple[str, str], int] | None = None,
+    *,
+    current_shop: SafeShop,
+    observed_locations: Collection[str],
+    item_type: int | None = None,
+    item_value: int | None = None,
+) -> SafeShop | None:
+    """Choose another compatible buyer whose route avoids observed hazards."""
+    blocked_rooms = {
+        " ".join(str(location).casefold().split()).removeprefix("the ")
+        for location in observed_locations
+    }
+    excluded_rooms = {current_shop.room_vnum}
+    while True:
+        candidate = safe_shop_for_item(
+            description,
+            sale_counts,
+            item_type=item_type,
+            item_value=item_value,
+            excluded_shop_rooms=excluded_rooms,
+        )
+        if candidate is None:
+            return None
+        if not blocked_rooms.intersection(
+            safe_shop_route_drunk_rooms(candidate)
+        ):
+            return candidate
+        excluded_rooms.add(candidate.room_vnum)
 
 
 def sale_keyword(description: str) -> str:
