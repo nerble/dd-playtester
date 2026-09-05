@@ -3343,6 +3343,11 @@ _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY = ProgressionPolicy(
 # generic source-ranked executor while later fixed bands remain authoritative.
 _GENERIC_SOURCE_RANKED_LEVEL_MINIMUM = 11
 
+# Fixed research bands are bounded probes, not a progression ceiling. Once a
+# character is level 21 or higher and its registered band is exhausted, the
+# campaign runner may open the reusable source-ranked frontier.
+_DYNAMIC_SOURCE_FRONTIER_MINIMUM_LEVEL = 21
+
 # A character can exhaust the level-6 to 10 tutorial routes before reaching
 # level 10. The source catalog and live safety gates already support this
 # lower band, so allow the campaign fallback to open at level 6 without

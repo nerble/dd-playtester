@@ -90,20 +90,24 @@ python -m dd4tester --help
 
 ## Current Status
 
-As of 2026-09-05, the full offline suite passes 3,531 tests. The latest live
-anchor is Kestrel, a level-24 Drow Thief at 333,918 XP, checkpoint 37973, safely
-in healer room 3054 after run 12358. The run reached the source-identified
+As of 2026-09-05, the full offline suite passes 3,533 tests. The latest live
+anchor is Kestrel, a level-24 Drow Thief at 333,918 XP, checkpoint 37978, safely
+in healer room 3054 after run 12360. Run 12360 selected the dynamic source-ranked
+Kerofk gravedigger route, reached Ambush, and returned at the controlled
+120-second field boundary with no XP change or objective kill. Run 12359 acquired
+source-verified food at the live Haon endpoint after the prior bounded failure;
+the preceding run reached the source-identified
 Solace Secretary and live `consider` accepted it, but the target remained much
 healthier than Kestrel; the bounded attempt recalled at a 385-XP loss before a
 kill. This is failure evidence, not level-25, subclass, or HERO proof.
 
-Run 12355 successfully acquired source-verified food at the live endpoint of a
-Haon route. Run 12356 correctly rejected the live Old Treant as below the
+Run 12355 and run 12359 successfully acquired source-verified food at the live
+endpoint of a Haon route. Run 12356 correctly rejected the live Old Treant as below the
 useful XP band without combat. The source-ranked selector now closes its
 unprotected HP-fuzz exception after any current-level reboot loss, and the
 starter rejects a fuzzy target as soon as its live GMCP HP exceeds the audited
-action budget. These repairs are offline-verified; fresh post-reboot live
-validation remains required.
+action budget. The dynamic level-21 handoff is now live-validated through a
+bounded no-kill route; fresh target and progression validation remains required.
 
 Praelarran remains a level-20 Human Warrior at 224,053 XP, checkpoint 37939,
 safely in healer room 3054. Aeloria remains level 18 at 159,305 XP, checkpoint
@@ -693,10 +697,17 @@ Source candidate construction now records the same aggressive-target gate in
 they can be reused.
 
 The read-only DD4 source mirror was refreshed to revision
-`64f65c7586c3e0dd9efdd84b2b0d798dc7e3b63a`. The source parser now preserves
-the new `ACT_UNDEAD` marker in candidate inspection and checkpoints. It is
-reported as metadata only because the current source uses it for inspection,
-not as an autonomous combat hazard.
+`6b6624fab18a8367aaaa4f4883e12f749704e7f6`. The source parser preserves the
+`ACT_UNDEAD` marker in candidate inspection and checkpoints. The refreshed
+source also applies resistance categories to ordinary weapon attacks and
+suppresses immunity-blocked trip/disarm attempts; resistance remains live
+combat evidence rather than an assumed target property.
+
+From level 21 onward, fixed research bands are bounded probes rather than a
+hard progression ceiling. After a registered band is exhausted or excluded,
+the campaign runner opens the reusable source-ranked frontier at the current
+level, while retaining the same source, live `consider`, crowd, route, health,
+resource, damage-window, and healer-return gates.
 
 ## Usage
 

@@ -6362,6 +6362,35 @@ def test_level_twenty_four_thief_uses_generic_deep_sanctuary_recovery() -> None:
     assert policy.maximum_level == 24
 
 
+def test_exhausted_level_twenty_one_band_opens_dynamic_source_frontier() -> None:
+    exhausted_results = {
+        policy_id: {
+            "observed": True,
+            "viable": False,
+            "boot_id": "boot-1",
+        }
+        for policy_id in (
+            "mirror-realm-watchman-probe-21-25",
+            "mirror-realm-watchman-hunt-21-25",
+            "mirror-realm-gardener-probe-21-25",
+            "mirror-realm-gardener-hunt-21-25",
+        )
+    }
+    policy = policy_for(
+        24,
+        "thief",
+        world_boot_id="boot-1",
+        research_results=exhausted_results,
+        excluded_policy_ids=frozenset(exhausted_results),
+        source_ranked_fallback=True,
+    )
+
+    assert policy.policy_id == "source-ranked-hunt-10-100"
+    assert policy.execution == "source-ranked-hunt"
+    assert policy.minimum_level == 24
+    assert policy.maximum_level == 24
+
+
 def test_generic_deep_sanctuary_recovery_reopens_after_crowd_cooldown() -> None:
     policy_id = "source-ranked-sanctuary-recovery-2-100"
     exhausted_frontier = frozenset(

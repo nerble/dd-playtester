@@ -48002,6 +48002,51 @@ def test_campaign_opens_executable_source_ranked_fallback_at_unregistered_level(
     assert state[_SOURCE_RANKED_CANDIDATE_KEY]["mobile_vnum"] == 8100
 
 
+def test_campaign_passes_dynamic_frontier_flag_at_level_twenty_one_and_above(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    observed: dict[str, object] = {}
+
+    def capture_policy_for(*args, **kwargs):
+        observed["source_ranked_fallback"] = kwargs.get(
+            "source_ranked_fallback"
+        )
+        return policy_for(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        capture_policy_for,
+    )
+    state = {
+        "level": 24,
+        "world_boot_id": "boot-1",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "room_flags": ["safe", "healing"],
+        "hp": 334,
+        "max_hp": 334,
+        "mana": 289,
+        "max_mana": 283,
+        "move": 320,
+        "max_move": 380,
+        "affects": [],
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a buffalo water skin"},
+        ]],
+        "campaign_empty_equipment_categories": [],
+        "campaign_has_weapon": True,
+        "campaign_stalled_segments": 0,
+    }
+
+    runner._policy_for_state(state)
+
+    assert observed["source_ranked_fallback"] is True
+
+
 def test_campaign_opens_source_ranked_fallback_after_level_ten_frontier_exhausts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

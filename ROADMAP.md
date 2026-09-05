@@ -35,7 +35,7 @@ including maintenance/losses, and validate trainer/subclass handoffs before
 adding distant level bands. Static template coverage is not executable or
 live progression proof.
 
-Final validation: 3,531 offline tests pass. Autonomous runs 12336-12342
+Final validation: 3,533 offline tests pass. Autonomous runs 12336-12342
 returned safely; run 12336 added 232 net XP during research without an
 objective kill, run 12337 made no combat attempt, run 12338 recorded a 298-XP
 net loss, run 12339 made no XP change, run 12341 recorded a 125-XP calibration
@@ -51,23 +51,27 @@ Aeloria's death and route losses remain evidence, and no level-19 or HERO proof
 is claimed.
 
 The latest Kestrel continuation is the active engineering anchor: checkpoint
-37973, level 24, 333,918 XP, safely in healer room 3054 after run 12358. Run
-12355 acquired source food at the live Haon endpoint; run 12356 rejected a
+37978, level 24, 333,918 XP, safely in healer room 3054 after run 12360. Runs
+12355 and 12359 acquired source food at the live Haon endpoint; run 12356 rejected a
 below-band Old Treant without combat; run 12358 reached the Solace Secretary,
 which passed live `consider` but outlasted the thief's audited action budget
 and cost 385 XP. The selector now closes unprotected HP-fuzz probes after any
 current-level reboot loss, and the live controller rejects a fuzzy target whose
-GMCP HP exceeds its source action budget. These repairs still need fresh
-post-reboot live validation and do not constitute level-25 or HERO proof.
+GMCP HP exceeds its source action budget. The runner now opens a dynamic
+source-ranked frontier at level 21 and above after the registered band is
+exhausted, without bypassing its safety gates. Run 12360 live-validated that
+handoff through a bounded Kerofk gravedigger route; it returned from Ambush at
+the field boundary with no XP change or objective kill. These repairs still
+need fresh post-reboot target validation and do not constitute level-25 or HERO proof.
 
 **Astra strategy reassessment (2026-09-05):** The full offline suite passes
-3,531 tests. Praelarran is level 20 at 224,053 XP and checkpoint 37939 after
+3,533 tests. Praelarran is level 20 at 224,053 XP and checkpoint 37939 after
 the bounded post-run resume, safely in healer room 3054. Aeloria is level 18 at 159,305 XP and
 checkpoint 37924,
 also safely at the Healer. Kestrel is level 24 at 333,918 XP and checkpoint
-37973 after bounded live continuation; negative fame still blocks city service.
+37978 after bounded live continuation; negative fame still blocks city service.
 Runs 12346-12347 confirmed the refusal and safe healer return, and runs
-12355-12358 supplied the latest food, below-band, and HP-fuzz evidence. Run
+12355-12360 supplied the latest food, below-band, HP-fuzz, and frontier evidence. Run
 12341 showed that source spell output must be
 checked against the entire expected incoming fight, not just one peak round;
 its Secretary route is quarantined after a 125-XP calibration loss. The next

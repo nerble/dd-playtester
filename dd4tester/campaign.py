@@ -69,6 +69,7 @@ from .lease import CampaignLease, campaign_lease_path
 from .progression import (
     _BORROW_FLIGHT_POLICY,
     _BUY_FLIGHT_POLICY,
+    _DYNAMIC_SOURCE_FRONTIER_MINIMUM_LEVEL,
     _FAME_RECOVERY_CIRCUS_POLICY,
     _FAME_RECOVERY_LOTUS_POLICY,
     _FAME_RECOVERY_POLICY,
@@ -431,7 +432,7 @@ _SOURCE_COMBAT_OUTPUT_MIN_HEALTH_RESERVE_RATIO = (
 )
 _SACK_VAULT_ITEMS_KEY = "campaign_sack_vault_items"
 _SACK_VAULT_RECLAIM_LEVEL_KEY = "campaign_sack_vault_reclaim_attempted_level"
-_CAMPAIGN_POLICY_REVISION = 190
+_CAMPAIGN_POLICY_REVISION = 191
 _MUD_SCHOOL_PARTIAL_BAND_POLICY_IDS = frozenset(
     {"mud-school-2-6", "mud-school-6-10"}
 )
@@ -6687,6 +6688,9 @@ class CampaignRunner:
                 else None
             ),
             handoff_policy_id=handoff_policy_id,
+            source_ranked_fallback=(
+                _level(state) >= _DYNAMIC_SOURCE_FRONTIER_MINIMUM_LEVEL
+            ),
         )
         flight_funding_ground_fallback = False
         if (

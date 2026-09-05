@@ -12,14 +12,18 @@ integration test. No character has yet proved creation-to-HERO.
 
 ### Latest Live Finding
 
-The Astra re-audit continued Kestrel's level-24 Drow Thief campaign. Run
-12355 acquired source-verified food at the live Haon endpoint. Run 12356
+The Astra re-audit continued Kestrel's level-24 Drow Thief campaign. Run 12360
+then exercised the newly wired dynamic frontier: it selected the source-ranked
+Kerofk gravedigger route, reached Ambush, and returned safely at the controlled
+120-second field boundary with no XP change or objective kill. Runs
+12355 and 12359 acquired source-verified food at the live Haon endpoint. Run 12356
 reached the source-identified Old Treant but live `consider` classified it as
 below the useful XP band, so it stopped without combat. Run 12358 reached the
 Solace Secretary: live `consider` accepted the target, but the target's GMCP
 maximum was 523 HP while the thief's audited recurring action budget was 300
-damage. The bounded run recalled at a 385-XP loss before a kill and left
-checkpoint 37973 at 333,918 XP in healer room 3054. This is failure evidence,
+damage. The bounded run recalled at a 385-XP loss before a kill; run 12359 then
+returned Kestrel to checkpoint 37978 at 333,918 XP in healer room 3054. This is
+failure evidence,
 not level-25, subclass, or HERO proof.
 
 The repair closes the unprotected HP-fuzz exception after any current-level
@@ -34,6 +38,19 @@ The latest saved states are Praelarran, warrior, level 20, Aeloria, mage,
 level 18, and Kestrel, thief, level 24. Serevian remains a stored thief
 campaign at level 11. Work should follow these actual frontiers rather than
 the static HERO template count.
+
+The source-ranked frontier now has an explicit level-21 handoff. Fixed bands
+remain useful for bounded research and class-specific evidence, but once a
+registered band is exhausted the campaign runner can rank a new source target
+at the live character level. This is the reusable path needed for later HERO
+bands: it still requires exact source identity, live `consider`, crowd and
+route checks, damage-window admission, resources, and healer return.
+
+The read-only DD4 source mirror is refreshed to revision
+`6b6624fab18a8367aaaa4f4883e12f749704e7f6`. The current source applies
+resistance categories to ordinary weapon attacks and suppresses immunity-
+blocked trip/disarm attempts. The planner records this as source context, but
+still requires live target evidence before relying on resistance in a fight.
 
 Run 12342 completed a bounded Praelarran sanctuary-recovery segment without
 XP change. The following bounded hero resume checkpointed at 37939 after the
@@ -54,7 +71,7 @@ food and coin ranking now carries that source hazard as a bounded `where drunk`
 preflight: an observed drunk on a crossed room or an inconclusive locator
 still forces a safe return, while an observed off-route drunk permits the
 resource run. Safe `spec_fido` mobiles are also excluded from route-crowd
-rejections. The full offline suite passes 3,531 tests.
+rejections. The full offline suite passes 3,533 tests.
 
 The controller audit also found a live command-contract defect: DD4 registers
 the repeatable skill as `knife toss`, while the between-round path sent only
@@ -95,7 +112,7 @@ sanctuary-recovery pass with no XP change. Run 12341 selected Solace Secretary
 as a bounded caster calibration. The live target loaded at 321 HP; two
 burning-hands exchanges dealt 77 while Aeloria took 60, and the probe withdrew
 at 117/218 HP. She returned safely, but the route netted a 125-XP loss and is
-quarantined. The complete offline suite passes 3,531 tests.
+quarantined. The complete offline suite passes 3,533 tests.
 
 The training repair is also live-confirmed. An accepted lesson now forces one
 bounded post-lesson practice listing, and Aeloria's durable capability state

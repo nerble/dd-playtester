@@ -268,12 +268,15 @@ not enough for a high-HP target that can outlast the character's damage window;
 sanctuary-backed or armed paths retain their separate protection gates.
 
 The current read-only DD4 source baseline is
-`64f65c7586c3e0dd9efdd84b2b0d798dc7e3b63a` (refreshed 2026-09-05). It names
+`6b6624fab18a8367aaaa4f4883e12f749704e7f6` (refreshed 2026-09-05). It names
 `ACT_UNDEAD` as bit 30 and marks the chapel skeleton accordingly. Preserve that
 flag through `MobileSource`, candidate inspection, and checkpoint serialization,
 but do not classify undead mobiles as combat hazards from that marker alone;
 the current source uses it for identity and inspection, while special
-procedures remain the executable risk signal.
+procedures remain the executable risk signal. The refreshed `fight.c` also
+applies resistance categories to ordinary weapon attacks and suppresses
+immunity-blocked trip/disarm attempts; keep those as source-audited planning
+metadata and continue requiring live combat evidence for target resistance.
 
 A source-identified mobile with a source-audited transit-hazard procedure is a
 hard route hazard even when it is not flagged aggressive or running an attack
@@ -360,6 +363,14 @@ purchase cannot reopen a known unsafe healer-origin shop crossing. The focused
 regression keeps the ground source-ranked route selected until that hazard
 ages or a fresh reboot clears it.
 
+Policy revision 191 wires the existing generic source-ranked fallback into the
+campaign runner from level 21 onward. Registered level bands remain first-class
+bounded research and executable routes; once the current band is exhausted or
+excluded by evidence, the runner can rank a fresh source candidate at the
+character's actual level instead of turning the static registry into a hard
+progression ceiling. All live target, consider, crowd, route, health, resource,
+damage-window, and healer-return gates still apply.
+
 The unprotected HP-fuzz exception is a single empirical opportunity, not a
 general fallback: it is closed after any current-reboot XP loss at the current
 character level. A fresh candidate must then use sanctuary or wait for a new
@@ -389,12 +400,15 @@ durable latest attempt as authoritative for legacy checkpoints whose bounded
 attempt list omitted an `absent` or `crowded` marker.
 
 Latest reassessment anchor (2026-09-05): Kestrel, Drow thief, is checkpointed
-at 37973, level 24, 333918 XP, safely at healer room 3054 after run 12358.
+at 37978, level 24, 333918 XP, safely at healer room 3054 after run 12360.
 The source-ranked Solace Secretary passed live `consider` but outlasted the
 thief's audited action budget and cost 385 XP before a kill. Runs 12355-12356
 also validated live food endpoint collection and below-band target rejection.
+Run 12360 live-selected the dynamic Kerofk gravedigger route, reached Ambush,
+and returned safely at the controlled 120-second field boundary with no XP
+change or objective kill. This validates bounded handoff execution only.
 Praelarran remains checkpoint 37939 at level 20 and Aeloria checkpoint 37924 at
-level 18; both are safely at the Healer. The complete suite passes 3531 tests.
+level 18; both are safely at the Healer. The complete suite passes 3533 tests.
 These are continuation and failure-safety results, not level-25, subclass, or
 HERO proof. The new HP-fuzz and live-budget repairs are offline-verified and
 await fresh post-reboot live validation.
