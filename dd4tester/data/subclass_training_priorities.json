@@ -102,10 +102,10 @@
       "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/magic.c: spell_summon_familiar and spell_animate_dead"]
     },
     "werewolf": {
-      "strategy": "Use normal-form passive attacks and fast healing until a wolf-form controller can exploit wolfbite and ravage safely.",
-      "practice_policy": "Prioritize armed combat knowledge, second attack, and fast healing; defer wolf form and form attacks until equipment transitions are safe.",
+      "strategy": "Use normal-form passive attacks and fast healing until the bounded wolf-form controller can replace held weapons with source-created natural weapons and run wolfbite or ravage.",
+      "practice_policy": "Train morph and wolf form as soon as the live teacher offers them, then improve wolfbite and ravage while retaining the inherited armed-combat and recovery priorities.",
       "highest_value_skills": ["armed combat knowledge", "second attack", "fast healing", "wolf form", "wolfbite", "ravage"],
-      "automation_gaps": ["Wolf forms need equipment transition, rage, lunar-state, natural-weapon, and return-to-normal policies."],
+      "automation_gaps": ["The werewolf form controller covers wolf entry and its two direct attacks; rage, lunar-state changes, hunt, astral sidestep, and endgame lycanthropy still need source-bounded lifecycle policies."],
       "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_wolfbite and do_ravage", "server/src/fight.c: werewolf rage"]
     },
     "vampire": {
@@ -238,12 +238,13 @@
       {"skill": "animate dead", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "turns a corpse into another combat follower", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/magic.c: spell_animate_dead"]}
     ],
     "werewolf": [
+      {"skill": "morph", "source_skill": "morph", "type": "physical", "target": 1, "utility": "form-gateway", "reason": "enables the source-defined morph command used to enter wolf form", "source_refs": ["server/src/pre_reqs/pre_req-shifter.c", "server/src/const.c: skill_table morph", "server/src/sft.c: do_morph" ]},
       {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 50, "utility": "damage-gateway", "reason": "reaches the second-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c"]},
       {"skill": "second attack", "type": "physical", "target": 45, "utility": "damage", "reason": "adds an automatic attack in compatible forms", "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/fight.c: multi_hit"]},
       {"skill": "fast healing", "type": "physical", "target": 45, "utility": "sustain", "reason": "passively increases hit-point recovery ticks", "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/update.c: hit_gain"]},
-      {"skill": "wolf form", "source_skill": "form wolf", "type": "intellectual", "target": 50, "utility": "damage-gateway", "reason": "unlocks wolfbite", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: wolf form"]},
-      {"skill": "wolfbite", "type": "physical", "target": 50, "utility": "damage", "reason": "adds a wolf-form attack and opens ravage", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_wolfbite"]},
-      {"skill": "ravage", "type": "physical", "target": 45, "utility": "damage", "reason": "adds a stronger wolf-form attack", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_ravage"]}
+      {"skill": "wolf form", "source_skill": "form wolf", "type": "intellectual", "target": 70, "utility": "damage-gateway", "reason": "reaches both the wolfbite and ravage form-proficiency gates", "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_morph"]},
+      {"skill": "wolfbite", "type": "physical", "target": 50, "utility": "damage", "reason": "adds a level-scaled wolf-form attack and opens ravage", "automated": true, "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_wolfbite"]},
+      {"skill": "ravage", "type": "physical", "target": 45, "utility": "damage", "reason": "adds a bounded multi-hit wolf-form attack", "automated": true, "source_refs": ["server/src/pre_reqs/pre_req-werewolf.c", "server/src/sft.c: do_ravage"]}
     ],
     "vampire": [
       {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 20, "utility": "damage-gateway", "reason": "reaches the second-attack prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-vampire.c"]},

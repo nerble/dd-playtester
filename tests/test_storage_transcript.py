@@ -92,6 +92,30 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert run_sales[0]["id"] == sale_id
 
 
+def test_storage_finds_latest_campaign_checkpoint_for_character(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Aeloria to HERO",
+            config_path=Path("runs/heroes/aeloria/campaign.yaml"),
+            character_profile_path=Path("runs/heroes/aeloria/character.yaml"),
+            target_level=100,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="source-ranked-hunt-test",
+            reason="segment_complete",
+            state={"name": "Aeloria", "campaign_known_skills": ["armor"]},
+        )
+
+        campaign = storage.get_latest_campaign_for_character("aeloria")
+
+    assert campaign is not None
+    assert campaign["id"] == campaign_id
+
+
 def test_storage_uses_bounded_busy_timeout_for_shared_campaign_database(
     tmp_path,
 ) -> None:

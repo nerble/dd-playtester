@@ -6323,6 +6323,21 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         and context.has_emergency_provision_sale
     ):
         return _LIQUIDATE_LOOT_POLICY
+    if (
+        context.needs_training_repair
+        and context.has_food
+        and not context.can_attempt_flight_purchase
+    ):
+        # A fed character that cannot yet afford the observed flight price can
+        # improve its combat output at the trainer before spending another
+        # field segment on funding.  Keep the immediate survival, recovery,
+        # equipment, and affordable-flight gates above this bounded audit.
+        return replace(
+            _TRAINING_DEFICIT_REPAIR_POLICY,
+            minimum_level=normalized_level,
+            maximum_level=normalized_level,
+            practice_skill=context.practice_skill,
+        )
     if context.needs_provision_funding and context.has_sellable_loot:
         # Convert carried drops before launching another field funding hunt.
         # This is especially important after an unaffordable flight purchase:

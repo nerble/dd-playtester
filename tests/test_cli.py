@@ -30,6 +30,46 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     assert "success" in captured.out
 
 
+def test_autonomy_audit_can_compare_all_base_classes(capsys) -> None:
+    exit_code = main(
+        [
+            "autonomy-audit",
+            "--race",
+            "human",
+            "--sex",
+            "female",
+            "--all-classes",
+            "--target-level",
+            "100",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.count("Request: human/female") == 9
+    assert "Combat automation: partial" in captured.out
+    assert "shifter:" in captured.out
+
+
+def test_autonomy_audit_rejects_subclass_with_all_classes(capsys) -> None:
+    exit_code = main(
+        [
+            "autonomy-audit",
+            "--race",
+            "human",
+            "--sex",
+            "female",
+            "--all-classes",
+            "--subclass",
+            "werewolf",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "cannot be combined" in captured.err
+
+
 def test_show_hunt_candidates_reuses_persisted_recall_origins(
     tmp_path,
     capsys,
@@ -1562,6 +1602,85 @@ def test_show_hunt_candidates_ignores_hp_from_a_different_level(
     assert exit_code == 0
     assert captured_max_hp == [None]
     assert "Character max HP: unknown" in captured.out
+
+
+def test_show_hunt_candidates_uses_durable_campaign_capabilities(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    fixture = Path(__file__).parent / "fixtures" / "hunt_area.are"
+    (source / "foundry.are").write_text(
+        fixture.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Aeloria to HERO",
+            config_path=Path("runs/heroes/aeloria/campaign.yaml"),
+            character_profile_path=Path("runs/heroes/aeloria/character.yaml"),
+            target_level=100,
+        )
+        run_id = storage.create_run(
+            scenario_name="starter",
+            scenario_path=Path("scenarios/starter.yaml"),
+        )
+        storage.record_state_snapshot(
+            run_id,
+            source_event_id=None,
+            reason="prompt_seen",
+            state={
+                "name": "Aeloria",
+                "level": 18,
+                "max_hp": 218,
+                "character_class": "Mage",
+            },
+        )
+        storage.finish_run(run_id, status="success")
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=run_id,
+            phase="source-ranked-hunt-test",
+            reason="segment_complete",
+            state={
+                "name": "Aeloria",
+                "campaign_known_skills": ["burning hands"],
+                "campaign_known_skill_levels": {"burning hands": 31},
+            },
+        )
+
+    captured_kwargs: dict[str, object] = {}
+
+    def capture_rank(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return []
+
+    monkeypatch.setattr(dd4tester.cli, "rank_hunt_candidates", capture_rank)
+
+    exit_code = main(
+        [
+            "show-hunt-candidates",
+            "--level",
+            "18",
+            "--character",
+            "Aeloria",
+            "--source",
+            str(source),
+            "--database",
+            str(database),
+            "--include-xp-only",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured_kwargs["known_skills"] == ("burning hands",)
+    assert captured_kwargs["known_skill_levels"] == {"burning hands": 31}
+    assert "Character class: Mage" in captured.out
 
 
 def test_configure_login_command_uses_named_credential(capsys, monkeypatch) -> None:

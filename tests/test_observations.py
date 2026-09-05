@@ -115,6 +115,7 @@ def test_text_flee_reports_authoritative_experience_loss() -> None:
     assert [event.type for event in events] == ["experience_lost"]
     assert events[0].data == {
         "xp": 385,
+        "partial_xp": 7,
         "text": (
             "You flee from combat! You lose 385 exp. "
             "However, you damaged your opponent sufficiently for 7 experience."

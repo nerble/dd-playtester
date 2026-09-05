@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from dd4tester.archetypes import archetype_registry
 from dd4tester.prerequisites import known_skills, load_snapshot
 from dd4tester.training import (
@@ -62,11 +64,39 @@ def test_mage_prefers_stronger_damage_gateway_over_spell_reinforcement() -> None
     assert choices[0].utility == "damage-gateway"
 
 
+@pytest.mark.parametrize("level, expected", [(9, []), (10, ["evocation magiks"]), (18, ["evocation magiks"])])
+def test_mage_upgrades_damage_gateway_at_class_teacher(level, expected) -> None:
+    choices = plan_training(
+        "mage",
+        _listing(
+            "magic missile: 36%    chill touch: 36%    evocation magiks: 36%",
+            "", physical=0, intellectual=4,
+        ),
+        character_level=level,
+    )
+    assert [choice.skill for choice in choices] == expected
+    if choices:
+        assert choices[0].target_percent == 45
+
+
+def test_mage_buys_unlocked_damage_spell_before_optional_utility() -> None:
+    choices = plan_training(
+        "mage",
+        _listing(
+            "magic missile: 36%    chill touch: 36%    evocation magiks: 53%",
+            "burning hands: 0%    faerie fire: 0%", physical=0, intellectual=1,
+        ),
+        character_level=18,
+    )
+    assert [choice.skill for choice in choices] == ["burning hands"]
+
+
 def test_level_sixteen_mage_learns_faerie_fire_as_a_damage_debuff() -> None:
     choices = plan_training(
         "mage",
         _listing(
-            "evocation magiks: 36%    chill touch: 36%    magic missile: 36%    "
+            "evocation magiks: 53%    chill touch: 36%    magic missile: 36%    "
+            "burning hands: 35%    "
             "protective magiks: 44%    armor: 30%    illusion magiks: 36%    "
             "invis: 42%    alteration magiks: 36%    fly: 48%",
             "faerie fire: 0%",

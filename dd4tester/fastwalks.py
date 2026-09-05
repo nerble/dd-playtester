@@ -41,6 +41,10 @@ class Fastwalk:
     route_preflight_command: str | None = None
     route_preflight_target: str | None = None
     route_preflight_hard_hazard: bool = False
+    # Normalized room names on this route where a probabilistic preflight
+    # target is unsafe.  A live `where` result outside these rooms permits
+    # the route to continue while the ordinary combat gates remain active.
+    route_preflight_route_room_names: tuple[str, ...] = ()
     route_hard_hazard_targets: tuple[str, ...] = ()
     route_origin_recall_index: int = 0
     route_origin_room_vnum: int = 3001

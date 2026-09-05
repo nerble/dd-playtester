@@ -294,6 +294,46 @@ def test_gmcp_snapshot_before_textual_loss_does_not_double_subtract() -> None:
     assert state.xp_loss_total == 385
 
 
+def test_gmcp_snapshot_with_partial_combat_xp_does_not_double_subtract() -> None:
+    state = CharacterState(
+        level=20,
+        xp=219785,
+        max_xp=230300,
+        xp_to_next_level=10515,
+        progress_source="gmcp",
+    )
+
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "gmcp",
+            {"level": "20", "xp": "219584", "xptnl": "10716"},
+        )
+    )
+    assert state.apply(
+        GameEvent(
+            "experience_lost",
+            "text",
+            {
+                "xp": 270,
+                "partial_xp": 69,
+                "text": (
+                    "You flee from combat! You lose 270 exp. "
+                    "However, you damaged your opponent sufficiently for "
+                    "69 experience."
+                ),
+            },
+        )
+    )
+
+    assert state.xp == 219584
+    assert state.xp_to_next_level == 10716
+    assert state.progress["xp"] == 219584
+    assert state.progress["xptnl"] == 10716
+    assert state.xp_loss_observed is True
+    assert state.xp_loss_total == 270
+
+
 def test_textual_loss_updates_checkpoint_without_followup_worth_packet() -> None:
     parser = ObservationParser()
     state = replay_events(

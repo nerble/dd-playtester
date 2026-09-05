@@ -25,6 +25,74 @@ primary behavior adapter. Mudlet and Windows VM automation are separate
 visibility and lifecycle validation boundaries. AI decision-making remains out
 of scope until deterministic behavior is replayable.
 
+## Strategy And Runtime Priorities
+
+Run `python -m dd4tester autonomy-audit --race ... --sex ... --class ...` or
+`python -m dd4tester autonomy-audit --race ... --sex ... --all-classes` when
+inspecting coverage. This is a static template/status inventory, not proof that
+every character can execute the registered path. It reports combat automation
+status and declared gaps separately from training priorities; a skill listed at
+`0%` is not an executable capability. Choose engineering work from actual
+current character levels and failed/live outcomes; the audit's first declared
+gap must not reset an already advanced character's frontier. Follow
+`docs/REASSESSMENT_2026-09-05.md`: measure net XP per elapsed time including
+maintenance, improve trained damage/protection and multikill journeys, and
+extend policy bands in step with live characters.
+
+Authenticated Purgatory recovery must preempt stale route, acknowledgement,
+and logout work. Shared combat survival limits must run before route-specific
+combat, including below-band transit fights. Preserve source-gated finishing
+attacks and usable healing reserves; do not globally raise flee thresholds to
+repair an ordering bug. Telnet GMCP can duplicate the primary opponent while
+another mobile attacks: corroborating combat text must prevent false isolation,
+while duplicates alone and source-known harmless bystanders remain tolerated.
+Outer-timeout results must checkpoint the latest run snapshot and retain failed
+status, never reuse an old healthy snapshot or inherited objective kills.
+
+Generic route preparation consumes capabilities, with source-legal, trained,
+and currently usable states distinguished. Validate spell upgrades from live
+practice listings before casting them. Preserve current trainer limits and
+practice budgets, and add cross-class replay tests for shared runtime changes.
+The runtime must apply the same positive-proficiency rule to openers,
+mitigation, between-round attacks, and subclass actions. Keep the all-class
+audit honest: registered templates and declared gaps are planning data until
+replay-backed live evidence proves a class or subclass route.
+
+Source-ranked combat may use `SourceCombatOutput` only for formulas audited in
+the checked-in DD4 source. The conservative action budget, source expected
+incoming-round estimate, incoming-peak ratio, health reserve, and mana reserve
+are admission gates for a bounded live probe, not progression proof. Carry the
+action and source reference into `FieldHuntStop`; at runtime, require a
+current-room enemy HP snapshot when the source HP ceiling exceeds the player's
+max HP, then retain live `consider`, health, crowd, resource, and damage-window
+gates. A live projection that cannot preserve the field reserve must quarantine
+the route after the bounded withdrawal. Unmodeled physical output remains
+unassessed and must not be admitted by a guessed damage value. Action-budgeted
+output does not require a caster mana reserve, but it still consumes the live
+between-round cooldown.
+The current subclass extensions include source-audited direct spells:
+`harm` for necromancer, `wither` for druid, `flamestrike` for knight, and
+`agitation` for monk, plus action-budgeted `atemi` for martial artists and
+`wolfbite`/`ravage` for werewolves. Base brawler `punch` is also modeled.
+Pass both base class and live subclass to the estimator; never let a spell or
+skill learned by one subclass authorize another subclass's route. These
+formulas remain bounded probe evidence, not proof of a live kill.
+
+The werewolf controller may issue `morph wolf` only from an observed normal
+form, with positive observed `morph` and `wolf form` proficiency and at least
+100 mana, matching `sft.c` and the `wolf form` minimum-mana table. It then
+issues `wolfbite` or `ravage` only from an observed wolf/direwolf form. Form
+equipment changes are live state, so no static form estimate may bypass the
+ordinary equipment, target, health, or return gates.
+
+The straight-shifter controller may issue `morph snake` only from an observed
+normal form with live-known `morph` and `snake form`, observed form proficiency
+at least 20%, and the source-calculated form mana cost. It is a lifecycle
+fallback, not a natural-weapon damage estimate. A returning straight shifter
+must restore normal form in healer room 3054 before equipment or sale work;
+unknown or subclass-specific forms remain untouched until their own policy is
+audited.
+
 ## Documentation Synchronization
 
 When a CLI command, output format, storage path, credential flow, runtime
@@ -47,6 +115,14 @@ cannot turn a reboot wait or safety boundary into a retry loop.
 For capped invocations, also emit explicit markers before and after cold local
 source-catalog preparation so setup latency is visible; these markers do not
 consume the live segment budget or count as progression evidence.
+
+At campaign startup, compare a character checkpoint's `world_boot_id` with the
+newest reboot marker observed in the shared SQLite `runs` ledger. If the ledger
+has a newer marker, schedule exactly one maintenance-only `world-time-probe`
+before selecting reboot-scoped cooldowns or route evidence, including for a
+bounded invocation. The shared marker only triggers revalidation; the live DD4
+`time` response is the authoritative reboot proof, and the probe must never
+replay a field route.
 
 When flight funding is required but no safe funding candidate remains in the
 current reboot, a stocked character may preflight one independent
@@ -78,10 +154,11 @@ progression proof. Successful StarterBot checkpoints persist the observed
 `campaign_known_skills` and `campaign_known_skill_levels`; maintenance merges
 those capabilities forward, and startup repair must reconstruct them from a
 bounded history of accepted training events for legacy checkpoints and supply
-them to the resumed StarterPolicy before field decisions. A trained
-sanctuary or cure spell may count as the corresponding executable reserve only
-when the live practice listing
-actually observed it.
+them to the resumed StarterPolicy before field decisions. Every accepted
+lesson must request one bounded trainer-listing refresh before another lesson or
+field decision, so the durable percentage cannot lag the acknowledgement. A
+trained sanctuary or cure spell may count as the corresponding executable
+reserve only when the live practice listing actually observed it.
 
 At level 25 and above, remote field routes may use only recall points observed
 in the live `recall list`. If a source-registered point is missing and the
@@ -115,6 +192,58 @@ near-band damage action, known disarm against an armed target, or a defensive
 reserve near the source peak, but they must never change a candidate's safety
 status or bypass live consider, crowd, route, health, resource, and damage
 window gates. Missing or legacy skill state must remain `unassessed`.
+The `show-hunt-candidates` inspection command must overlay the newest named
+campaign checkpoint onto the latest raw character snapshot, so durable skills,
+skill percentages, subclass, and recall ownership are not lost when a live
+snapshot contains only GMCP character fields.
+
+An audited hard route preflight hazard is never waived because its source level
+is below the ordinary XP band. Shadow Guardians are the concrete example:
+their source level is low, but their special damage can still make a transit
+route unsafe. Preflight must stop before the waypoint, persist the hazard, and
+quarantine the route for the current reboot. After a successful emergency flee,
+discard stale GMCP enemy state and enter the bounded return path directly;
+never issue a second flee from the same stale snapshot. `Char.Enemies` is also
+room-scoped: invalidate it on an observed room transition and trust it again
+only after a fresh snapshot for the current room. Combat flags and explicit
+attacker text remain authoritative when a packet-ordering gap exists.
+
+Direct food and coin stashes may carry one source-identified probabilistic
+program attacker as a route-origin `where` preflight. Compare its normalized
+live locations with the normalized source room names crossed by the route;
+continue only when it is off-route. A present target or an inconclusive locator
+is a hard return-home boundary. Deterministic program attackers and multiple
+unresolved program attackers remain source rejections. Preserve this metadata
+through candidate serialization and every generated `Fastwalk` route.
+
+Equipment planning must distinguish worn gear from usable held resources. DD4
+potions (`ITEM_POTION`), food (`ITEM_FOOD`), and drink containers
+(`ITEM_DRINK_CONTAINER`) can be holdable objects, but they are not wear-slot
+gear; exclude them from equipment audits while retaining them for consumption,
+water, and emergency-combat planning. Recovery score probes may remain while
+sleeping; only commands that require an awake position should wake the
+character, and Midgaard healer recovery belongs in room 3054.
+
+Source combat output may include ordinary weapon strikes only when the current
+structured equipment snapshot, or an unambiguous legacy checkpoint, identifies
+the primary `WEAR_WIELD` source object. Apply the source object's `one_hit` damage range,
+live damroll, observed enhancement percentages, and conditional `multi_hit`
+follow-up chances. Hit chance, temporary affects, target armor, and resistances
+remain live evidence; an unknown or ambiguous weapon must stay `unassessed`.
+Carry the source reference into the field stop and preserve the existing live
+consider, health, resource, route, and damage-window gates.
+The same output contract covers the deterministic between-round `kick` and
+`knife toss` actions, weighting their source level roll by the observed skill
+percentage. `knife toss` must be issued with its complete registered command
+name; the shorthand `knife` is not a DD4 command and must never be emitted by
+the controller. `circle` and `backstab` require the observed primary source
+weapon whose damage type is
+2 (`stab`) or 11 (`pierce`), and applies its source 1.5x damage modifier plus
+the observed `second circle` chance. A trained thief's source-matched
+`backstab` may contribute once to the opening budget, with its source
+proficiency and multiplier, but must never be treated as a recurring damage
+action. These estimates are planning metadata, not kill proof; keep live
+target HP, hit chance, temporary state, and damage-window checks authoritative.
 
 DD4's `do_quaff` extracts a potion after spell execution, including when
 `spell_sanctuary` reports that the character is already affected. Debit a
@@ -139,14 +268,28 @@ not enough for a high-HP target that can outlast the character's damage window;
 sanctuary-backed or armed paths retain their separate protection gates.
 
 The current read-only DD4 source baseline is
-`4d68421e67295cca1c04923d18273ca48a6476ce` (refreshed 2026-09-03). It names
+`64f65c7586c3e0dd9efdd84b2b0d798dc7e3b63a` (refreshed 2026-09-05). It names
 `ACT_UNDEAD` as bit 30 and marks the chapel skeleton accordingly. Preserve that
 flag through `MobileSource`, candidate inspection, and checkpoint serialization,
 but do not classify undead mobiles as combat hazards from that marker alone;
 the current source uses it for identity and inspection, while special
 procedures remain the executable risk signal.
 
-Policy revision 189 adds a repeatability guard for stale source-ranked results:
+A source-identified mobile with a source-audited transit-hazard procedure is a
+hard route hazard even when it is not flagged aggressive or running an attack
+program. The current transit hazards are direct out-of-combat attackers,
+economic theft, and unknown procedures; preserve the source classification for
+all 62 special names found in the area files. Combat-only procedures may be
+crossed while no fight is underway, conditional guards are safe for an ordinary
+unflagged character, and an aggressive mobile carrying a combat-only procedure
+remains hazardous because its normal attack can start that procedure. Target
+rooms still apply the separate live isolation, consider, protection, and
+special-procedure gates. Plain below-band aggressive bystanders on ordinary XP
+routes retain the existing DD4 cutoff and tolerance rules, but a target's
+source-fuzzed level still triggers the exact `target is aggressive` rejection
+gate.
+
+Policy revision 190 adds a repeatability guard for stale source-ranked results:
 after one current-reboot XP loss, a route may repeat only with a carried
 sanctuary reserve; after a second loss, it stays quarantined for that reboot.
 This guard is evidence hygiene as well as safety control, and must not be
@@ -216,6 +359,15 @@ The optional-flight branch must honor the shared
 purchase cannot reopen a known unsafe healer-origin shop crossing. The focused
 regression keeps the ground source-ranked route selected until that hazard
 ages or a fresh reboot clears it.
+
+The unprotected HP-fuzz exception is a single empirical opportunity, not a
+general fallback: it is closed after any current-reboot XP loss at the current
+character level. A fresh candidate must then use sanctuary or wait for a new
+reboot. When a fuzzy target reaches combat, the starter also compares its live
+GMCP maximum HP with the audited source action budget and withdraws immediately
+if the target cannot be defeated inside that budget. This preserves measured
+live `consider` as the authority on the loaded level while preventing a
+nominally useful but overlarge target from consuming more XP.
 No-recall recovery must resynchronize when a successful flee advances the
 character beyond the fixed return cursor. Once a known Midgaard healer-route
 waypoint is observed, clear the stale cursor and follow the direct route to
@@ -236,18 +388,186 @@ capacity to verified progression evidence. Funding startup repair treats the
 durable latest attempt as authoritative for legacy checkpoints whose bounded
 attempt list omitted an `absent` or `crowded` marker.
 
-Current live anchor (2026-09-04): campaign 30, Praelarran, human warrior,
-checkpoint 37334, level 19, 197920 XP, 5380 XP to level 20, healer room 3054,
-full health and movement, no active flight, and a current protection-recovery
-marker. The full offline suite passes 3410 tests. Runs 12185-12189 recovered a
+Latest reassessment anchor (2026-09-05): Kestrel, Drow thief, is checkpointed
+at 37973, level 24, 333918 XP, safely at healer room 3054 after run 12358.
+The source-ranked Solace Secretary passed live `consider` but outlasted the
+thief's audited action budget and cost 385 XP before a kill. Runs 12355-12356
+also validated live food endpoint collection and below-band target rejection.
+Praelarran remains checkpoint 37939 at level 20 and Aeloria checkpoint 37924 at
+level 18; both are safely at the Healer. The complete suite passes 3531 tests.
+These are continuation and failure-safety results, not level-25, subclass, or
+HERO proof. The new HP-fuzz and live-budget repairs are offline-verified and
+await fresh post-reboot live validation.
+Run 12327 died and exposed survival-priority, duplicated GMCP, and timeout
+snapshot failures; run 12328 recovered the corpse. Run 12335 exposed a hard
+Shadow Grove preflight hazard and two stale-snapshot flee losses totalling 464
+XP. Runs 12336-12337 then returned safely: one clean research pass added 232
+net XP without an objective kill, and the following hunt stopped before combat
+because no executable sanctuary reserve was available. The accepted mage
+training refresh is live-validated, including `burning hands: 31`. Run 12338
+also showed that an unprotected source-ranked target must fit its audited HP
+ceiling, not merely its nominal level or per-round damage bound; the 298-XP
+net loss is retained and that route is quarantined. Run 12339 completed
+sanctuary recovery safely with no XP change. The death and route losses remain
+evidence. Run 12341 then calibrated the source-backed Secretary probe: two
+burning-hands exchanges dealt 77 while Aeloria took 60, and the bounded
+withdrawal lost 125 XP. The route is quarantined. The complete suite passes
+3531 tests.
+
+Current warrior anchor (2026-09-05): campaign 30, Praelarran, human warrior,
+checkpoint 37939, level 20, 224053 XP, healer room 3054. Run 12342 completed
+a bounded sanctuary-recovery check without XP change; the next bounded resume
+confirmed the same current-reboot cooldown and awaits the field-area reset. The
+offline suite passes 3531 tests, including shared combat priority, death recovery, fresh
+timeout snapshots, mage training, and static-audit labeling. Run 12282 exposed the
+Sentinel Gap tree-sprite
+route's rock-crab `spec_breath_gas` hazard after an incidental 110-XP Toede
+kill; the bounded return cost 270 XP, net -160, and that policy is quarantined.
+Run 12283 then retried sanctuary recovery after one bounded reset wait, found
+source mobile 4056 blocking the Moria required-loot endpoint, and returned
+safely without a potion or progression claim. Run 12284 selected the newly
+unblocked Eastern Desert worm route, completed one objective kill for 585 XP,
+and returned safely to healer room 3054 without death, flee, or XP loss. Run
+12285 then completed a bounded provision-funding sweep that recorded the Midget
+as absent without claiming XP. Run 12286 moved to Katrina the Shepherd, added
+60 XP, and returned safely to the healer. Run 12287 then liquidated the
+resulting loot and returned safely with XP unchanged. Run 12288 completed a
+source-backed patrolling-guard funding kill for 100 XP, run 12289 liquidated
+safely, and run 12290 killed the source-ranked Dwarven giant for 499 XP with a
+full healer return. Runs 12291 and 12292 then killed a Dwarven thief for 982 XP
+and a Dwarven giant for 535 XP, both with safe healer returns. Run 12293 then
+recorded a 320-XP Dwarven Home withdrawal and quarantined that policy; runs
+12294 and 12295 recovered 472 and 558 XP from fresh Dwarven giant kills. Run
+12296 added 539 objective XP and 30 incidental XP before a safe return; run
+12297 completed without an objective kill, and run 12298 completed sanctuary
+recovery with 100 XP. Run 12299 quarantined the Goblin Caves Sentry after DD4
+reported a 270-XP flee loss and 69 partial combat XP. Its GMCP worth packet
+recorded the authoritative net result of 219584 XP; the old segment snapshot
+at 219314 had applied the full loss twice. The parser now retains partial XP
+evidence and the full suite covers the repair. Run 12300 found the Moria
+sanctuary endpoint absent and returned safely without a potion or objective
+XP. Runs 12301-12305 continued safe funding and maintenance, adding 100, 60,
+and 90 XP from source-ranked guard targets; the intervening sale route remained
+bounded by the shared shop hazard. Runs 12307-12308 then killed Dwarven giants
+for 495 and 472 XP. Runs 12309-12311 completed liquidation, flight maintenance,
+and another safe sanctuary check; run 12312 rejected the crowded White Stag
+route without XP. Runs 12313-12314 then added 693 XP from the Arachnos guardian
+and 609 XP from the Eastern Desert worm, and run 12316 added another 580 XP
+from the guardian. Run 12317 rechecked Moria safely but still found the source
+orc blocking the sanctuary endpoint. Runs 12318 and 12320 added 110 and 529 XP
+from fresh source-ranked targets; runs 12319 and 12325 deferred liquidation at
+the shared Temple Square shop hazard, and run 12321 added 100 XP from funding.
+Runs 12322 and 12324 completed safe maintenance, while run 12323 added 531 XP
+from a Dwarven giant. Run 12326 found no safe current-reboot funding target for
+the patrolling guard and checkpointed without claiming progression. Praelarran
+is now checkpointed at 37891 with 224053 XP. Protection recovery remains
+governed by the existing live gates; no level-21, subclass, or HERO proof is
+implied.
+Runs 12266-12271 confirmed the shared Temple Square shop boundary, recorded
+the Midget as absent, added 50, 70, 60, and 40 XP from fresh funding targets,
+and acquired useful gear including the yellow-and-green ring and Katrina's
+sword. Persist latest sale amounts separately from cumulative proceeds, prefer
+source-known coin carriers when flight funding is short, and age a temporary
+city-shop cooldown after productive funding kills. Runs 12185-12189 recovered a
 purple sanctuary potion, restocked, tested an independent Mirror Realm
 watchman, and rearmed the warrior's dagger. Run 12190 exposed a real Moria
 recovery hazard: the deep required-loot search crossed source-reachable
 aggressive Warrior and Mage mobiles and lost 768 XP before a safe healer
 return. Runs 12191 and 12193 then confirmed Secretary and Dwarven giant kills
-for 910 and 568 XP, while 12192 completed a safe Shire rotation. The strict
-recovery-route repair is now offline-validated; no level-20, subclass, or HERO
-proof is implied.
+for 910 and 568 XP, while 12192 completed a safe Shire rotation. Run 12194
+bought flight at the observed reboot-local price; run 12195 killed the Eastern
+Desert worm for 841 objective XP but lost 256 XP to a drider during the
+no-recall return; run 12196 liquidated the loot and returned safely. Run 12197
+reached the Solace administration corridor three rooms short of its endpoint
+at a bounded 120-second cap without making a progression claim. Run 12198
+killed the Eastern Desert worm for 767 objective XP and live-validated the
+recovery repair: after exiting to room 5007 it recalled without a pursuer, flee,
+XP loss, or death. Run 12202 repeated the repaired worm route, adding 20
+incidental XP and 875 objective XP with another safe no-recall return. No
+level-20, subclass, or HERO proof is implied. Run 12204 added 90 incidental XP
+from a drider, rejected the unsuitable nomad leader after live `consider`, and
+returned safely through the repaired no-recall route. Run 12205 sold the drider
+dagger at the weapon shop; run 12206 bought and quaffed the reboot-local
+light-blue flight potion for 131 copper and returned to the healer. Flight is
+active for the next field segment. Run 12207 killed The guardian in Arachnos
+for 1091 objective XP and returned safely through the repaired no-recall route.
+Run 12210 retried the worm, earned 426 partial XP, withdrew at 75/440 HP, and
+paid a 256-XP flee loss before returning safely. Preserve this route-loss
+evidence and rotate away from the exhausted worm policy. Run 12211 then killed
+The guardian for 715 objective XP and returned safely through the repaired
+no-recall route, leaving 96 XP to level 20. Run 12212 crossed level 20 with a
+665-XP Secretary kill; DD4 awarded 24 hitpoints, 7 mana, 10 movement, 2
+physical practices, and 1 intellectual practice. Level-20 trainer and subclass
+evidence is now the next live gate; no subclass or HERO proof is implied. Run
+12213 trained strength at the Kerofk Captain, raised enhanced damage to 61% and
+unarmed combat knowledge to 59%, and returned with 587 objective XP plus 480
+incidental XP from below-band transit mobs. Run 12214 killed the Old Treant for
+1167 objective XP, dropped and sacrificed its arm, sacrificed the corpse, and
+returned safely through the repaired no-recall route. Run 12215 restored the
+light-blue flight reserve, run 12216 completed a bounded Mirror Realm probe
+without XP, and run 12217 killed two live Secretaries for 1841 objective XP
+before returning safely. Run 12220 killed another Old Treant for 1198 objective
+XP and returned safely through the repaired no-recall route. Runs 12221 and
+12222 completed bounded Mirror Realm and Solace no-kill rotations without
+unsafe combat. Run 12223 killed the level-20 giant purple sand worm for 534
+objective XP, recovered a pink potion, exited the no-recall room, and recalled
+safely without flee, death, or XP loss. Run 12224 completed bounded flight
+maintenance with no XP change and left the character safely checkpointed for
+the next target selection. Run 12225 reached the Mahn-Tor Old Treant route but
+encountered an unexpected dark ethereal knight at the bloody intersection. The
+bot withdrew at 75/464 HP, received 293 partial XP, paid a 270-XP flee loss,
+and returned safely; the resulting net gain was 23 XP. Treat that route as
+concrete hazard evidence, not an objective kill. The next executable work is
+continued level-20 progression toward level 21, followed by fresh trainer and
+subclass validation; no level-21 or HERO proof is implied. Run 12226 completed
+the bounded Moria sanctuary-recovery segment with no XP change and left a safe
+healer checkpoint for the next independent target. Run 12227 killed an
+incidental city drunk for 10 XP and the level-20 giant purple sand worm for 630
+objective XP, recovered a pink potion, and returned safely through the no-recall
+boundary without XP loss or death. Run 12228 completed safely but found the
+Shadow Keep Undead Soldier route crowded, including a multi-mobile underwater
+room, so it did not execute the exact isolated target stop or claim XP. Run
+12229 safely rejected the Crystal White Stag route after reaching an Ambush
+clearing with a wounded goblin and the Forest foothills without finding an
+isolated target; it claimed no XP. Run 12230 then killed the giant purple sand
+worm for 589 objective XP and returned safely through the no-recall boundary
+without flee, death, or XP loss. Its potion, wand, and bow drops hit the
+carrying limit, so the next maintenance pass must liquidate or discard loot
+safely. Run 12231 completed a bounded Mirror Realm young-boy attempt safely
+without converting the research target into an isolated kill or claiming XP.
+Run 12232 killed the giant purple sand worm for 778 objective XP, then reached
+the runtime boundary while checking the healer checkpoint; the kill was
+reconciled, but the segment failed after connection-inactivity retries. The
+safe-healer cleanup predicate now trusts the live room and enemy state even
+when the policy combat flag is stale, covered by the full offline suite. Run
+12233 then recovered the character to healer room 3054 at full health but hit a
+separate silent equipment-audit acknowledgement boundary; it changed no XP and
+remains a startup-recovery failure, not a progression claim. Runs 12234-12235
+completed bounded flight-purchase and healer-recovery attempts; run 12235
+confirmed live `where drunk` hazards at Main Street and Eastern End of Poor
+Alley, so the shared shop route remains blocked. Run 12236 safely completed the
+Mirror Realm watchman research probe, and run 12237 restocked provisions. Run
+12238 killed a source-verified dwarven thief for 1043 objective XP; run 12239's
+Moria sanctuary-recovery route recorded 90 XP from a large hobgoblin while
+restoring resources. Run 12240 encountered the Shadow Keep watchman with
+sanctuary active, was disarmed, recovered its sword, and withdrew at 22% health
+after a bounded fight, losing 128 XP; quarantine that policy. Run 12241 safely
+probed the Shadow Keep undead-soldier route, and run 12242 completed Moria
+sanctuary recovery with 100 XP, ending at full health and movement in healer
+room 3054. Runs 12243-12245 then completed a bounded Moria recovery, selected
+the source-ranked Goblin Caves Sentry, and withdrew after sanctuary expired at
+34% health following two live disarms; the route lost 270 XP but dealt 287
+partial damage XP and is now quarantined. The follow-up rearm bought and
+wielded a source-backed dagger and saved in healer room 3054. The current
+checkpoint is safe at level 20; no level-21 or HERO progression is claimed.
+Runs 12246-12248 then completed a bounded Thain rotation, exposed a funding
+route that attacked an armed Mirror Realm young man and lost 270 XP while
+earning 214 partial XP, and safely skipped the below-band Circus Midget. The
+source audit confirmed that Mirror Realm mobile 19005 carries a knife and
+3,280 copper. Funding selection must honor the ordinary armed-target sanctuary
+gate; the regression is covered by the full suite. The next live funding
+candidate is the lower-peak Miden-nir guard, and remains maintenance rather
+than progression evidence.
 
 Historical live anchor (superseded 2026-09-04): campaign 30, Praelarran, human warrior,
   checkpoint 36642, level 18, 159206 XP, healer room 3054, with 18444 XP to
@@ -1091,8 +1411,14 @@ after a failed combat-recall message, set a route-local failure marker and do
 not issue another recall on the next prompt while the same enemy remains. Take
 one bounded flee or registered no-recall recovery path, audit the post-flee
 room, and permit another recall only after that intervening escape state changes
-or fails. Clear the marker on confirmed room arrival or death; never turn a
-failed recall into an immediate recall loop.
+or fails. DD4 also answers `God has forsaken you.` when recall is refused by a
+no-recall room. When the live room flags at command issue included
+`no_recall`, preserve a separate no-recall refusal marker, follow the live
+return exits, and retry recall once the character reaches a different legal
+room with no combat or enemies; never pay a flee penalty for that room
+constraint. A refusal from a legal room remains a failed combat-recall case.
+Clear both markers on confirmed room arrival or death; never turn a failed
+recall into an immediate recall loop.
 
 All character campaigns share `runs/dd4tester.sqlite3`. `RunStorage` uses a
 bounded 30-second SQLite busy timeout so overlapping rotations wait for a

@@ -3,10 +3,14 @@ from dd4tester.specials import (
     CONDITIONAL_COMBAT_SPECIALS,
     ECONOMIC_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
+    TRANSIT_HAZARD_SPECIALS,
+    TRANSIT_SAFE_COMBAT_JOINING_SPECIALS,
     TRANSIT_SAFE_COMBAT_ONLY_SPECIALS,
+    TRANSIT_SAFE_RELOCATION_SPECIALS,
     WEAK_DEBILITATING_SPECIALS,
     WEAK_DIRECT_DAMAGE_SPECIALS,
     WEAK_EXTRA_ATTACK_SPECIALS,
+    source_special_is_transit_safe,
     source_special_profile,
     source_special_status_effects,
     source_special_xp_bonus,
@@ -39,6 +43,9 @@ def test_special_classification_sets_are_explicit() -> None:
     assert "spec_sahuagin_guard" in COMBAT_JOINING_SPECIALS
     assert "spec_thief" in ECONOMIC_SPECIALS
     assert "spec_cast_undead" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_guard" in TRANSIT_SAFE_COMBAT_JOINING_SPECIALS
+    assert "spec_spectral_minion" in TRANSIT_SAFE_RELOCATION_SPECIALS
+    assert "spec_assassin" in TRANSIT_HAZARD_SPECIALS
     assert "spec_kungfu_poison" in WEAK_DEBILITATING_SPECIALS
     assert "spec_cast_judge" in WEAK_DIRECT_DAMAGE_SPECIALS
     assert "spec_bloodsucker" in WEAK_EXTRA_ATTACK_SPECIALS
@@ -96,3 +103,12 @@ def test_undead_special_effects_follow_source_level_gates() -> None:
         "energy drain",
         "harm",
     )
+
+
+def test_transit_special_audit_distinguishes_route_and_combat_risk() -> None:
+    assert source_special_is_transit_safe("spec_cast_mage")
+    assert source_special_is_transit_safe("spec_executioner")
+    assert source_special_is_transit_safe("spec_guard")
+    assert not source_special_is_transit_safe("spec_thief")
+    assert not source_special_is_transit_safe("spec_assassin")
+    assert not source_special_is_transit_safe("spec_unknown")

@@ -26,7 +26,114 @@ protection, and cooldown evidence remain hard stops. Equal-horizon matrix
 workspace matches remain explicit errors and can be disambiguated with
 `--workspace`.
 
-## Latest Live State
+## Astra Reassessment
+
+The latest Astra pass follows the actual Kestrel level-24 frontier. Run 12355
+successfully acquired source food at the live Haon endpoint, and run 12356
+stopped before combat when the live Old Treant was below the useful XP band.
+Run 12358 reached the Solace Secretary, which passed `consider` but reported
+523 live HP against a 300-damage audited thief action budget; the bounded run
+recalled with a 385-XP loss before a kill. The latest checkpoint is 37973 at
+333,918 XP in healer room 3054. This is failure and calibration evidence, not
+level-25, subclass, or HERO proof.
+
+The repair closes the unprotected source HP-fuzz exception after any
+current-level reboot loss. If a fuzzy target still reaches combat, the live
+controller compares GMCP maximum HP with the audited action budget and flees
+before continuing when the target cannot fit inside that budget. The source
+nominal level is used only to prevent a false static below-band deadlock;
+live `consider`, room isolation, and the damage window remain authoritative.
+
+Follow [the measured reassessment](REASSESSMENT_2026-09-05.md). Static template
+coverage describes planned dispatch, not executable progression for every
+character. `autonomy-audit` is an inventory; actual class frontiers, losses,
+damage throughput, and maintenance cost determine the next engineering work.
+
+Shared emergency precedence must outrank route-specific actions. Purgatory
+recovery invalidates old command acknowledgements and logout intentions.
+Combat survival checks apply to every field branch, including incidental
+below-band opponents, while retaining healing and bounded finishing attacks.
+Contradictory combat text supplements duplicated primary-enemy GMCP data.
+Source-audited hard route preflight hazards are absolute even when their
+nominal source level is below the ordinary XP band. A successful emergency
+flee discards stale enemy state and goes directly to safe return, preventing a
+second flee penalty. Outer timeouts reconcile fresh run snapshots but remain
+failed results.
+The replay tests in `tests/test_combat_priority.py` cover the run-12327 failure
+across mage, thief, and warrior without character-name branches.
+
+Capability selection must distinguish source legality, live-trained skills,
+and executable resources. The next mage damage tier now has both a budgeted
+training path and a known-skill-gated repeated cast. Every accepted training
+lesson triggers one bounded trainer-listing refresh before the next decision,
+so the durable percentage reflects the teacher rather than the acknowledgement.
+Training alone cannot establish a protection or damage improvement until the
+live outcome is measured. AI decisions and Mudlet/VM visibility remain separate
+validation boundaries.
+
+The capability audit now reports combat automation separately from training
+priorities and combines base/subclass gaps. The runtime also requires a positive
+observed proficiency for opener, mitigation, between-round, and subclass-action
+commands; legacy checkpoints without percentage data retain their prior
+known-skill behavior. This keeps static registration useful for planning without
+mistaking a newly listed `0%` skill for a command the bot can safely execute.
+
+The same source-output gate now covers the direct level-30 subclass spells
+`harm`, `wither`, `flamestrike`, and `agitation`, with exact subclass ownership
+and `magic.c` formula references. It also covers the existing deterministic
+physical controllers for brawler `punch`, martial artist `atemi`, werewolf
+`wolfbite`/`ravage`, learned warrior/ranger `kick`, learned thief `knife toss`,
+learned thief `circle` with a source-identified piercing weapon, and ordinary
+weapon strikes. A trained thief's source-matched `backstab` is carried once as
+an opener and never as a recurring action. Learned-percent actions are weighted
+by their observed proficiency. Campaign admission may use those estimates only
+alongside the existing health-reserve, live-consider, and damage-window checks;
+mana is a gate for spell output, while physical actions consume a live
+between-round action window. Kick, knife toss, and circle budgets include the
+automatic
+weapon cycle that continues alongside the between-round command; a thief
+backstab is an optional one-shot opener only.
+
+The source-ranked frontier now also has a narrow source-output exception to the
+raw source HP-ceiling guard. `SourceCombatOutput` mirrors audited single-target
+spell formulas from `magic.c` and the player side of weapon `one_hit`/
+`multi_hit` in `fight.c`; it records minimum, planning-average, maximum,
+resource-cost, conservative damage, and a source reference. Weapon output is
+created only from an observed wielded source object plus observed score and
+skill state. A candidate may avoid sanctuary only when the conservative action
+budget, source incoming peak, expected incoming damage across the projected
+fight, and relevant resource reserve fit. Spell output requires mana; physical
+output requires its live between-round and damage-window evidence. The field
+stop carries that evidence and requires a live enemy HP snapshot plus the
+existing damage-window probe when source fuzz exceeds player HP. Missing or
+ambiguous weapon state remains unassessed. Source-ranked inspection also
+overlays the newest named campaign checkpoint, so durable capabilities are visible even
+when the latest raw character snapshot omits campaign fields. Run 12341
+calibrated the Secretary route: two burning-hands exchanges dealt 77 while
+Aeloria took 60, and the bounded withdrawal lost 125 XP. That route is
+quarantined, and the tightened offline selector now requires sanctuary for the
+146-425 HP matchup; the worm remains sanctuary-gated. This is calibration and
+safety evidence, not live progression.
+
+The latest bounded Praelarran continuation is level 20, checkpoint 37939, XP
+224,053, in healer room 3054. Run 12342 stopped cleanly after no safe
+current-reboot sanctuary-recovery target remained; the bounded resume then
+confirmed the same cooldown and is awaiting the field-area reset. Kestrel is
+now checkpointed at 37973, level 24, at 333,918 XP, safely in healer room
+3054; negative fame keeps city service behind the cure-critical reserve
+cooldown. No level-21, level-25, subclass, or HERO proof is implied.
+
+Aeloria's latest checkpoint is 37924 at level 18, 159,305 XP, safely at the
+Healer after the hard Shadow Grove hazard, Lord Doom research, the worm route
+loss, and the Secretary caster calibration. Run 12336 added 232 net XP without
+an objective kill; run 12337 correctly stopped before an armed hunt without
+sanctuary; run 12338 recorded a 298-XP net loss when a same-band high-HP worm
+exceeded the mage's source HP ceiling; run 12339 completed sanctuary recovery
+with no XP change; and run 12341 recorded a 125-XP calibration loss before a
+safe healer return. The earlier death and route losses remain failure evidence.
+The current offline suite passes 3,531 tests.
+
+## Historical Live State
 
 Praelarran, a human warrior, is level 15 at 105,868 XP, safely in healer room
 3054 at checkpoint 32776. Run 10893 reached source mobile 6317 and observed

@@ -29,6 +29,8 @@ ITEM_LIGHT = 1
 ITEM_WEAPON = 5
 ITEM_DIGGER = 6
 ITEM_PAINT = 28
+ITEM_POTION = 10
+ITEM_DRINK_CONTAINER = 17
 ITEM_FOOD = 19
 ITEM_NODROP = 1 << 7
 ITEM_NOREMOVE = 1 << 12
@@ -40,6 +42,10 @@ ITEM_CURSED = 1 << 61
 PIERCING_DAMAGE_TYPES = frozenset({2, 11})
 BLUNT_DAMAGE_TYPES = frozenset({6, 7, 8})
 DIGGING_DAMAGE_TYPES = frozenset({5, 14, 17})
+
+_NON_EQUIPMENT_TYPES = frozenset(
+    {ITEM_POTION, ITEM_DRINK_CONTAINER, ITEM_FOOD}
+)
 
 # ``str_app`` from DD4 const.c. Values are (to-hit, to-damage).
 _STR_APP = (
@@ -472,6 +478,11 @@ def character_can_use_item(
     if item.extra_flags & ITEM_BOW and normalized_class != "ranger":
         return False
     return True
+
+
+def is_equipment_object(item: ObjectSource) -> bool:
+    """Exclude consumables that DD4 marks as holdable from gear planning."""
+    return item.item_type not in _NON_EQUIPMENT_TYPES
 
 
 def is_capacity_infrastructure(item: ObjectSource) -> bool:

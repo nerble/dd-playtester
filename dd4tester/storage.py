@@ -1269,6 +1269,27 @@ class RunStorage:
         )
         return cursor.fetchone()
 
+    def get_latest_campaign_for_character(
+        self,
+        character_name: str,
+    ) -> sqlite3.Row | None:
+        """Return the newest campaign checkpoint for a named character."""
+        cursor = self.connection.execute(
+            """
+            SELECT c.id, c.name, c.config_path, c.character_profile_path,
+                   c.target_level, c.started_at, c.updated_at, c.status,
+                   c.error
+            FROM campaigns AS c
+            JOIN campaign_checkpoints AS checkpoint
+              ON checkpoint.campaign_id = c.id
+            WHERE lower(json_extract(checkpoint.state_json, '$.name')) = ?
+            ORDER BY checkpoint.id DESC
+            LIMIT 1
+            """,
+            (character_name.casefold(),),
+        )
+        return cursor.fetchone()
+
     def list_campaigns(self, *, limit: int = 20) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """

@@ -86,6 +86,11 @@ _XP_LOSS = re.compile(
     r"\bYou lose\s+(?P<xp>\d+)\s+exp(?:erience)?\b",
     re.IGNORECASE,
 )
+_XP_PARTIAL_GAIN = re.compile(
+    r"\bdamaged your opponent sufficiently for\s+(?P<xp>\d+)\s+"
+    r"experience\b",
+    re.IGNORECASE,
+)
 _SCORE_CURRENCY = re.compile(
     r"\bCoin:\s+Platinum:\s+(?P<platinum>\d+)\s+"
     r"Gold:\s+(?P<gold>\d+)\s+Silver:\s+(?P<silver>\d+)\s+"
@@ -606,11 +611,21 @@ class ObservationParser:
 
         xp_loss = _XP_LOSS.search(text)
         if xp_loss:
+            loss_data = {
+                "xp": int(xp_loss.group("xp")),
+                "text": text,
+            }
+            partial_gain = _XP_PARTIAL_GAIN.search(text)
+            if partial_gain:
+                # DD4 reports the full flee loss and any combat XP earned
+                # before the withdrawal in the same response.  The GMCP
+                # worth packet reflects their net effect.
+                loss_data["partial_xp"] = int(partial_gain.group("xp"))
             events.append(
                 GameEvent(
                     "experience_lost",
                     "text",
-                    {"xp": int(xp_loss.group("xp")), "text": text},
+                    loss_data,
                 )
             )
 

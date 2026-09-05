@@ -8,6 +8,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .autonomy import (
+    audit_all_base_classes,
+    audit_hero_request,
+    audit_json,
+    render_autonomy_audit,
+)
 from .campaign import (
     DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
     DEFAULT_RESET_WAIT_SECONDS,
@@ -123,7 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     return_home_parser = subcommands.add_parser(
         "return-home",
-        help="recall an interrupted character and return safely to its guild",
+        help="recover an interrupted character or corpse and return to the Midgaard Healer",
     )
     return_home_parser.add_argument(
         "profile",
@@ -694,6 +700,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--source",
         type=Path,
         help="DD4 const.c or source directory; defaults to the local source checkout",
+    )
+
+    autonomy_parser = subcommands.add_parser(
+        "autonomy-audit",
+        help="audit a race/class request against the executable policy graph",
+    )
+    autonomy_parser.add_argument("--race", required=True)
+    autonomy_parser.add_argument(
+        "--sex",
+        required=True,
+        help="cosmetic DD4 creation sex: male, female, or neuter",
+    )
+    autonomy_class = autonomy_parser.add_mutually_exclusive_group(required=True)
+    autonomy_class.add_argument("--class", dest="character_class")
+    autonomy_class.add_argument(
+        "--all-classes",
+        action="store_true",
+        help="audit every source-legal base class for this identity",
+    )
+    autonomy_parser.add_argument("--subclass")
+    autonomy_parser.add_argument("--target-level", type=int, default=100)
+    autonomy_parser.add_argument(
+        "--source",
+        type=Path,
+        help="DD4 const.c or source directory; defaults to the bundled catalog",
+    )
+    autonomy_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable audit JSON",
     )
 
     matrix_parser = subcommands.add_parser(
@@ -1589,6 +1625,46 @@ def main(argv: list[str] | None = None) -> int:
             to_level=args.to_level,
         )
 
+    if args.command == "autonomy-audit":
+        try:
+            if args.all_classes:
+                if args.subclass:
+                    raise ValueError("--subclass cannot be combined with --all-classes")
+                audits = audit_all_base_classes(
+                    race=args.race,
+                    sex=args.sex,
+                    target_level=args.target_level,
+                    source=args.source,
+                )
+            else:
+                audits = (
+                    audit_hero_request(
+                        race=args.race,
+                        sex=args.sex,
+                        character_class=args.character_class,
+                        subclass=args.subclass,
+                        target_level=args.target_level,
+                        source=args.source,
+                    ),
+                )
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f"Autonomy audit failed: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            if args.all_classes:
+                print(
+                    json.dumps(
+                        [audit.to_mapping() for audit in audits],
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+            else:
+                print(audit_json(audits[0]), end="")
+        else:
+            print("\n".join(render_autonomy_audit(audit).rstrip() for audit in audits))
+        return 0
+
     if args.command == "show-prereqs":
         return show_prereqs(
             args.character_class,
@@ -1738,10 +1814,30 @@ def show_hunt_candidates(
     character_class: str | None = None
     character_subclass: str | None = None
     recorded_known_skills: tuple[str, ...] = ()
+    recorded_known_skill_levels: dict[str, int] = {}
     if database.exists():
         with RunStorage(database) as storage:
             boot_id = storage.latest_boot_id()
             latest_state = storage.get_latest_character_state(character)
+            latest_state = dict(latest_state or {})
+            campaign = storage.get_latest_campaign_for_character(character)
+            if campaign is not None:
+                checkpoint = storage.get_latest_campaign_checkpoint(
+                    int(campaign["id"])
+                )
+                if checkpoint is not None:
+                    try:
+                        checkpoint_state = json.loads(checkpoint["state_json"])
+                    except (TypeError, json.JSONDecodeError):
+                        checkpoint_state = {}
+                    if isinstance(checkpoint_state, dict):
+                        for key, value in checkpoint_state.items():
+                            if key.startswith("campaign_") or key in {
+                                "character_class",
+                                "subclass",
+                                "recall_origins",
+                            }:
+                                latest_state[key] = value
             if latest_state is not None:
                 recall_origins = recall_origins_from_state(latest_state)
                 raw_class = latest_state.get("character_class")
@@ -1760,6 +1856,15 @@ def show_hunt_candidates(
                     recorded_known_skills = tuple(
                         str(skill) for skill in raw_known_skills
                     )
+                raw_known_skill_levels = latest_state.get(
+                    "campaign_known_skill_levels"
+                )
+                if isinstance(raw_known_skill_levels, dict):
+                    for skill, value in raw_known_skill_levels.items():
+                        try:
+                            recorded_known_skill_levels[str(skill)] = int(value)
+                        except (TypeError, ValueError):
+                            continue
                 stored_level = latest_state.get("level")
                 raw_max_hp = latest_state.get("max_hp")
                 if (
@@ -1790,6 +1895,7 @@ def show_hunt_candidates(
                 "character_class": character_class,
                 "character_subclass": character_subclass,
                 "known_skills": recorded_known_skills,
+                "known_skill_levels": recorded_known_skill_levels,
             }
         )
     candidates = rank_hunt_candidates(world, **rank_kwargs)

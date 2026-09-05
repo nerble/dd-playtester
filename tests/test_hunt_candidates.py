@@ -21,15 +21,18 @@ from dd4tester.hunt_candidates import (
     ObjectSource,
     RoomSource,
     RoomObjectReset,
+    SourceCombatOutput,
     WorldSource,
     money_value,
     castable_spell_names,
     potion_spell_names,
     rank_resource_sources,
     source_combat_readiness,
+    source_combat_output_estimate,
     _route_preflight_metadata,
     _mobile_critical_hit_damage,
     _mobile_peak_round_damage,
+    mobile_expected_round_damage,
     mobile_sanctuary_critical_hit_damage,
     mobile_sanctuary_peak_round_damage,
     load_object_sources,
@@ -389,6 +392,179 @@ def test_strict_source_route_rejects_reachable_moria_combat_hazards() -> None:
         character_level=19,
         require_no_combat_hazards=True,
     ) is None
+
+
+def test_real_source_route_rejects_a_reachable_transit_hazard_special() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    [candidate] = [
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=20,
+            include_xp_only=True,
+            include_all_areas=True,
+        )
+        if candidate.mobile_vnum == 18506
+    ]
+
+    assert not candidate.autonomous_safe
+    assert "a non-safe special mobile can reach the route" in (
+        candidate.autonomy_rejections
+    )
+    assert any("Fewmaster Toede" in hazard for hazard in candidate.hazards)
+    assert any("rock crab" in hazard for hazard in candidate.hazards)
+
+
+@pytest.mark.parametrize(
+    "special",
+    ("spec_cast_mage", "spec_executioner", "spec_guard"),
+)
+def test_source_noninitiating_special_allows_fixed_transit(
+    monkeypatch,
+    special: str,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "target",
+                "the target",
+                15,
+                0,
+                0,
+                "target.are",
+            ),
+            200: MobileSource(
+                200,
+                "bystander",
+                "the source bystander",
+                30,
+                ACT_SENTINEL,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Transit", "target.are"),
+            7002: RoomSource(7002, "Target", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+        mobile_specials={200: (special,)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=20,
+        include_xp_only=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert not any(
+        "non-safe special mobile" in rejection
+        for rejection in candidate.autonomy_rejections
+    )
+
+
+def test_source_assassin_special_remains_a_fixed_transit_hazard(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 15, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "assassin",
+                "the source assassin",
+                8,
+                ACT_SENTINEL,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Transit", "target.are"),
+            7002: RoomSource(7002, "Target", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+        mobile_specials={200: ("spec_assassin",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=20,
+        include_xp_only=True,
+    )
+
+    assert not candidate.autonomous_safe
+    assert "route crosses a non-safe special mobile" in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_aggressive_gas_breath_special_remains_a_transit_hazard(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 15, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "rock crab",
+                "the aggressive rock crab",
+                8,
+                ACT_AGGRESSIVE | ACT_SENTINEL,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Transit", "target.are"),
+            7002: RoomSource(7002, "Target", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+        mobile_specials={200: ("spec_breath_gas",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=20,
+        include_xp_only=True,
+    )
+
+    assert not candidate.autonomous_safe
+    assert "route crosses a non-safe special mobile" in (
+        candidate.autonomy_rejections
+    )
 
 
 def test_source_route_movement_cost_follows_core_terrain_and_flight_rules() -> None:
@@ -1160,6 +1336,132 @@ def test_rank_food_stashes_promotes_safe_food_and_excludes_poison() -> None:
     assert candidates[0].loot == ("a rabbit roast",)
 
 
+def test_rank_food_stashes_ignores_safe_fido_route_crowd() -> None:
+    world = WorldSource(
+        objects={
+            100: ObjectSource(
+                100,
+                "rabbit roast wabbit",
+                "a rabbit roast",
+                ITEM_FOOD,
+                (24, 0, 0, 0),
+                0,
+            ),
+        },
+        mobiles={
+            200: MobileSource(
+                200,
+                "fido dog",
+                "the beastly fido",
+                0,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(
+                7001,
+                "Fido street",
+                "target.are",
+                exits={"north": ExitSource("north", 7002, 0, -1)},
+            ),
+            7002: RoomSource(7002, "Food room", "target.are"),
+        },
+        mob_resets=[MobReset(200, 7001, 15, ())],
+        room_object_resets=[RoomObjectReset(100, 7002)],
+        mobile_specials={200: ("spec_fido",)},
+    )
+
+    [candidate] = rank_food_stashes(
+        world,
+        character_level=15,
+        include_all_areas=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert candidate.route == ("north", "north")
+    assert any("noncombat route special" in hazard for hazard in candidate.hazards)
+    assert "route crosses a large below-band aggressive crowd" not in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_rank_food_stashes_preflights_probabilistic_route_program() -> None:
+    world = WorldSource(
+        objects={
+            100: ObjectSource(
+                100,
+                "bread loaf",
+                "a bread loaf",
+                ITEM_FOOD,
+                (30, 0, 0, 0),
+                0,
+            ),
+        },
+        mobiles={
+            200: MobileSource(
+                200,
+                "drunk man",
+                "the drunk",
+                2,
+                0,
+                0,
+                "target.are",
+                programs=(
+                    MobileProgram(
+                        "greet_prog",
+                        "10",
+                        ("mpkill $n",),
+                    ),
+                ),
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(
+                7001,
+                "Fido street",
+                "target.are",
+                exits={"north": ExitSource("north", 7002, 0, -1)},
+            ),
+            7002: RoomSource(7002, "Food room", "target.are"),
+        },
+        mob_resets=[MobReset(200, 7001, 1, ())],
+        room_object_resets=[RoomObjectReset(100, 7002)],
+    )
+
+    [candidate] = rank_food_stashes(
+        world,
+        character_level=15,
+        include_all_areas=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert candidate.status == "caution"
+    assert candidate.autonomy_rejections == ()
+    assert candidate.route_preflight_room_vnum == "3001"
+    assert candidate.route_preflight_command == "where drunk"
+    assert candidate.route_preflight_target == "the drunk"
+    assert candidate.route_preflight_hard_hazard is True
+    assert candidate.route_preflight_route_room_names == (
+        "recall",
+        "fido street",
+        "food room",
+    )
+
+
 def test_candidate_ranking_values_mixed_denominations_on_mobile_loot() -> None:
     world = WorldSource(
         mobiles={
@@ -1426,6 +1728,19 @@ def test_armed_mobile_damage_keeps_ordinary_peak_separate_from_critical_burst() 
         dual_wielding=False,
     ) == 180
     assert _mobile_critical_hit_damage(14, wielding=True) == 72
+
+
+def test_mobile_expected_round_damage_mirrors_npc_follow_up_chances() -> None:
+    assert mobile_expected_round_damage(
+        18,
+        wielding=False,
+        dual_wielding=False,
+    ) == 36
+    assert mobile_expected_round_damage(
+        20,
+        wielding=False,
+        dual_wielding=False,
+    ) == 48
 
 
 def test_sanctuary_mobile_damage_halves_each_strike_before_round_totals() -> None:
@@ -2798,8 +3113,9 @@ def test_probabilistic_wandering_program_remains_explicit_route_risk() -> None:
     )
 
     assert any(
-        candidate.autonomous_safe
-        and "reachable program attacker: the drunk L2" in candidate.hazards
+        "reachable program attacker: the drunk L2" in candidate.hazards
+        and "a non-safe special mobile can reach the route"
+        in candidate.autonomy_rejections
         for candidate in candidates
     )
 
@@ -3087,10 +3403,411 @@ def test_source_combat_readiness_is_a_soft_target_specific_hint() -> None:
         known_skills=("backstab", "second attack", "disarm"),
         target_level_range=(15, 19),
     )
+    level_filtered = source_combat_readiness(
+        character_level=18,
+        character_class="thief",
+        known_skills=("backstab", "second attack", "disarm"),
+        known_skill_levels={"backstab": 0},
+        target_level_range=(15, 19),
+    )
 
     assert unassessed == ("unassessed", 0)
     assert ready[0] == "direct=backstab; passive=second attack; control=disarm"
     assert ready[1] > unarmed_ready[1] > 0
+    assert "backstab" not in level_filtered[0]
+
+
+def test_source_combat_output_uses_the_audited_mage_formula() -> None:
+    output = source_combat_output_estimate(
+        character_level=18,
+        character_class="Mage",
+        known_skills=("burning hands", "magic missile"),
+        known_skill_levels={"burning hands": 31},
+    )
+
+    assert output == SourceCombatOutput(
+        action="burning hands",
+        minimum_damage=14,
+        expected_damage=51,
+        maximum_damage=74,
+        resource="mana",
+        resource_cost=15,
+        conservative_damage=40,
+        source_reference="magic.c:spell_burning_hands",
+    )
+
+
+@pytest.mark.parametrize(
+    ("character_class", "character_subclass", "skill", "expected"),
+    [
+        (
+            "mage",
+            "necromancer",
+            "harm",
+            SourceCombatOutput(
+                action="harm",
+                minimum_damage=50,
+                expected_damage=75,
+                maximum_damage=100,
+                resource="mana",
+                resource_cost=35,
+                conservative_damage=60,
+                source_reference="magic.c:spell_harm",
+            ),
+        ),
+        (
+            "cleric",
+            "druid",
+            "wither",
+            SourceCombatOutput(
+                action="wither",
+                minimum_damage=60,
+                expected_damage=165,
+                maximum_damage=270,
+                resource="mana",
+                resource_cost=20,
+                conservative_damage=132,
+                source_reference="magic.c:spell_wither",
+            ),
+        ),
+        (
+            "warrior",
+            "knight",
+            "flamestrike",
+            SourceCombatOutput(
+                action="flamestrike",
+                minimum_damage=90,
+                expected_damage=135,
+                maximum_damage=180,
+                resource="mana",
+                resource_cost=20,
+                conservative_damage=108,
+                source_reference="magic.c:spell_flamestrike",
+            ),
+        ),
+        (
+            "brawler",
+            "monk",
+            "agitation",
+            SourceCombatOutput(
+                action="agitation",
+                minimum_damage=15,
+                expected_damage=38,
+                maximum_damage=62,
+                resource="mana",
+                resource_cost=10,
+                conservative_damage=30,
+                source_reference="magic.c:spell_agitation",
+            ),
+        ),
+    ],
+)
+def test_source_combat_output_uses_source_legal_subclass_spell(
+    character_class: str,
+    character_subclass: str,
+    skill: str,
+    expected: SourceCombatOutput,
+) -> None:
+    output = source_combat_output_estimate(
+        character_level=30,
+        character_class=character_class,
+        character_subclass=character_subclass,
+        known_skills=(skill,),
+        known_skill_levels={skill: 45},
+    )
+
+    assert output == expected
+
+
+def test_source_combat_output_rejects_subclass_spell_on_wrong_subclass() -> None:
+    assert source_combat_output_estimate(
+        character_level=30,
+        character_class="mage",
+        character_subclass="warlock",
+        known_skills=("harm",),
+        known_skill_levels={"harm": 45},
+    ) is None
+
+
+def test_source_combat_output_uses_werewolf_natural_attack() -> None:
+    output = source_combat_output_estimate(
+        character_level=30,
+        character_class="shifter",
+        character_subclass="werewolf",
+        known_skills=("wolfbite", "ravage"),
+        known_skill_levels={"wolfbite": 50, "ravage": 45},
+    )
+
+    assert output == SourceCombatOutput(
+        action="wolfbite",
+        minimum_damage=90,
+        expected_damage=120,
+        maximum_damage=150,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=96,
+        source_reference="sft.c:do_wolfbite",
+    )
+
+
+def test_source_combat_output_rejects_werewolf_attack_on_wrong_subclass() -> None:
+    assert source_combat_output_estimate(
+        character_level=30,
+        character_class="shifter",
+        character_subclass="vampire",
+        known_skills=("wolfbite",),
+        known_skill_levels={"wolfbite": 50},
+    ) is None
+
+
+def test_source_combat_output_uses_brawler_punch_formula() -> None:
+    output = source_combat_output_estimate(
+        character_level=20,
+        character_class="brawler",
+        known_skills=("punch",),
+        known_skill_levels={"punch": 45},
+    )
+
+    assert output == SourceCombatOutput(
+        action="punch",
+        minimum_damage=11,
+        expected_damage=30,
+        maximum_damage=50,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=24,
+        source_reference="skill.c:do_punch",
+    )
+
+
+def test_source_combat_output_uses_martial_artist_atemi_formula() -> None:
+    output = source_combat_output_estimate(
+        character_level=30,
+        character_class="brawler",
+        character_subclass="martial artist",
+        known_skills=("atemi",),
+        known_skill_levels={"atemi": 45},
+    )
+
+    assert output == SourceCombatOutput(
+        action="atemi",
+        minimum_damage=45,
+        expected_damage=45,
+        maximum_damage=45,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=36,
+        source_reference="skill.c:do_atemi and atemi",
+    )
+
+
+def test_source_combat_output_rejects_atemi_on_wrong_subclass() -> None:
+    assert source_combat_output_estimate(
+        character_level=30,
+        character_class="brawler",
+        character_subclass="monk",
+        known_skills=("atemi",),
+        known_skill_levels={"atemi": 45},
+    ) is None
+
+
+def test_source_combat_output_uses_observed_weapon_and_multihit_formula() -> None:
+    output = source_combat_output_estimate(
+        character_level=20,
+        character_class="warrior",
+        known_skills=(
+            "enhanced damage",
+            "second attack",
+            "third attack",
+            "enhanced swiftness",
+        ),
+        known_skill_levels={
+            "enhanced damage": 64,
+            "second attack": 56,
+            "third attack": 40,
+            "enhanced swiftness": 80,
+        },
+        weapon_damage_range=(5, 12),
+        weapon_vnum=10014,
+        player_damroll=7,
+        player_swiftness=5,
+    )
+
+    assert output == SourceCombatOutput(
+        action="weapon strike",
+        minimum_damage=15,
+        expected_damage=47,
+        maximum_damage=100,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=37,
+        source_reference=(
+            "fight.c:one_hit/multi_hit; object vnum 10014"
+        ),
+    )
+
+
+def test_source_combat_output_does_not_invent_unobserved_weapon_skills() -> None:
+    output = source_combat_output_estimate(
+        character_level=20,
+        character_class="warrior",
+        known_skills=("second attack", "enhanced damage"),
+        known_skill_levels={"enhanced damage": 64},
+        weapon_damage_range=(5, 12),
+        player_damroll=7,
+    )
+
+    assert output == SourceCombatOutput(
+        action="weapon strike",
+        minimum_damage=15,
+        expected_damage=20,
+        maximum_damage=25,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=16,
+        source_reference="fight.c:one_hit/multi_hit",
+    )
+
+
+def test_source_combat_output_models_learned_kick_as_repeatable_damage() -> None:
+    output = source_combat_output_estimate(
+        character_level=20,
+        character_class="warrior",
+        known_skills=("kick",),
+        known_skill_levels={"kick": 80},
+    )
+
+    assert output == SourceCombatOutput(
+        action="kick",
+        minimum_damage=11,
+        expected_damage=16,
+        maximum_damage=30,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=12,
+        source_reference="fight.c:do_kick",
+    )
+
+
+def test_source_combat_output_models_learned_knife_toss_for_thief() -> None:
+    output = source_combat_output_estimate(
+        character_level=24,
+        character_class="thief",
+        known_skills=("knife toss",),
+        known_skill_levels={"knife toss": 75},
+    )
+
+    assert output == SourceCombatOutput(
+        action="knife toss",
+        minimum_damage=13,
+        expected_damage=18,
+        maximum_damage=36,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=14,
+        source_reference="fight.c:do_knife_toss",
+    )
+
+
+def test_source_combat_output_models_circle_only_with_a_piercing_weapon() -> None:
+    output = source_combat_output_estimate(
+        character_level=20,
+        character_class="thief",
+        known_skills=("circle", "second circle", "enhanced damage"),
+        known_skill_levels={
+            "circle": 80,
+            "second circle": 30,
+            "enhanced damage": 64,
+        },
+        weapon_damage_range=(5, 12),
+        weapon_vnum=10014,
+        weapon_damage_type=2,
+        player_damroll=7,
+    )
+
+    assert output == SourceCombatOutput(
+        action="circle",
+        minimum_damage=15,
+        expected_damage=50,
+        maximum_damage=99,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=40,
+        source_reference=(
+            "fight.c:do_circle/one_hit; object vnum 10014; "
+            "plus fight.c:one_hit/multi_hit"
+        ),
+    )
+    assert source_combat_output_estimate(
+        character_level=20,
+        character_class="thief",
+        known_skills=("circle",),
+        known_skill_levels={"circle": 80},
+        weapon_damage_range=(5, 12),
+        weapon_damage_type=3,
+    ) == SourceCombatOutput(
+        action="weapon strike",
+        minimum_damage=5,
+        expected_damage=8,
+        maximum_damage=12,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=6,
+        source_reference="fight.c:one_hit/multi_hit",
+    )
+
+
+def test_source_combat_output_keeps_backstab_as_a_one_shot_opening_budget() -> None:
+    output = source_combat_output_estimate(
+        character_level=20,
+        character_class="thief",
+        known_skills=("backstab", "enhanced damage"),
+        known_skill_levels={"backstab": 80, "enhanced damage": 64},
+        weapon_damage_range=(5, 12),
+        weapon_vnum=10014,
+        weapon_damage_type=2,
+        player_damroll=7,
+    )
+
+    assert output == SourceCombatOutput(
+        action="weapon strike",
+        minimum_damage=15,
+        expected_damage=20,
+        maximum_damage=25,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=16,
+        source_reference=(
+            "fight.c:one_hit/multi_hit; object vnum 10014"
+        ),
+        opening_action="backstab",
+        opening_min_damage=60,
+        opening_expected_damage=64,
+        opening_max_damage=100,
+        opening_conservative_damage=51,
+        opening_source_reference=(
+            "fight.c:do_backstab/one_hit; object vnum 10014"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("character_class", "known_skills"),
+    [
+        ("warrior", ("kick", "enhanced damage")),
+        ("thief", ("backstab", "disarm")),
+        ("mage", ("armor", "fly")),
+    ],
+)
+def test_source_combat_output_stays_unassessed_without_audited_spell(
+    character_class: str,
+    known_skills: tuple[str, ...],
+) -> None:
+    assert source_combat_output_estimate(
+        character_level=18,
+        character_class=character_class,
+        known_skills=known_skills,
+    ) is None
 
 
 def test_candidate_ranking_records_known_class_combat_readiness() -> None:

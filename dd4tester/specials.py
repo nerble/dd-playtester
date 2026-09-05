@@ -40,6 +40,9 @@ CONDITIONAL_COMBAT_SPECIALS = frozenset(
 )
 """Zero-bonus specials that can attack players with criminal/clan flags."""
 
+TRANSIT_SAFE_CONDITIONAL_SPECIALS = frozenset({"spec_grail"})
+"""Additional source specials that attack only flagged players in transit."""
+
 COMBAT_JOINING_SPECIALS = frozenset(
     {"spec_guard", "spec_sahuagin_guard"}
 )
@@ -53,8 +56,71 @@ multi-enemy fight even without ``ACT_AGGRESSIVE``.
 ECONOMIC_SPECIALS = frozenset({"spec_thief"})
 """Specials that can remove a bounded amount of carried currency."""
 
-TRANSIT_SAFE_COMBAT_ONLY_SPECIALS = frozenset({"spec_cast_undead"})
-"""Specials that act only after another character is fighting the mobile."""
+TRANSIT_SAFE_COMBAT_ONLY_SPECIALS = frozenset(
+    {
+        "spec_aboleth",
+        "spec_bloodsucker",
+        "spec_breath_acid",
+        "spec_breath_any",
+        "spec_breath_fire",
+        "spec_breath_frost",
+        "spec_breath_gas",
+        "spec_breath_lightning",
+        "spec_breath_steam",
+        "spec_buddha",
+        "spec_cast_archmage",
+        "spec_cast_cleric",
+        "spec_cast_druid",
+        "spec_cast_electric",
+        "spec_cast_judge",
+        "spec_cast_mage",
+        "spec_cast_priestess",
+        "spec_cast_psionicist",
+        "spec_cast_undead",
+        "spec_cast_water_sprite",
+        "spec_demon",
+        "spec_evil_evil_gezhp",
+        "spec_green_grung",
+        "spec_red_grung",
+        "spec_blue_grung",
+        "spec_purple_grung",
+        "spec_orange_grung",
+        "spec_gold_grung",
+        "spec_kappa",
+        "spec_kungfu_poison",
+        "spec_laghathti",
+        "spec_large_whale",
+        "spec_poison",
+        "spec_sahuagin_baron",
+        "spec_sahuagin_cavalry",
+        "spec_sahuagin_cleric",
+        "spec_sahuagin_high_cleric",
+        "spec_sahuagin_infantry",
+        "spec_sahuagin_lieutenant",
+        "spec_sahuagin_prince",
+        "spec_small_whale",
+        "spec_superwimpy",
+        "spec_uzollru",
+        "spec_vampire",
+        "spec_warrior",
+    }
+)
+"""Specials whose source code only acts after combat has started."""
+
+TRANSIT_SAFE_COMBAT_JOINING_SPECIALS = frozenset(
+    {"spec_guard", "spec_sahuagin_guard"}
+)
+"""Guard specials that assist an existing fight but do not initiate travel combat."""
+
+TRANSIT_SAFE_RELOCATION_SPECIALS = frozenset(
+    {"spec_celestial_repairman", "spec_spectral_minion"}
+)
+"""Specials that relocate or repair their mobile without attacking players."""
+
+TRANSIT_HAZARD_SPECIALS = frozenset(
+    {"spec_assassin", "spec_mast_vampire", "spec_sahuagin"}
+)
+"""Source specials that can initiate combat against an ordinary traveler."""
 
 WEAK_DEBILITATING_SPECIALS = frozenset(
     {"spec_poison", "spec_kungfu_poison"}
@@ -221,12 +287,12 @@ def source_special_profile(name: str) -> SourceSpecialProfile:
 
     if normalized in SAFE_NONCOMBAT_SPECIALS:
         risk = "noncombat"
-    elif normalized in CONDITIONAL_COMBAT_SPECIALS:
+    elif normalized in (
+        CONDITIONAL_COMBAT_SPECIALS | TRANSIT_SAFE_CONDITIONAL_SPECIALS
+    ):
         risk = "conditional-combat"
     elif normalized in ECONOMIC_SPECIALS:
         risk = "economic"
-    elif normalized in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS:
-        risk = "combat-only"
     elif normalized in WEAK_DEBILITATING_SPECIALS:
         risk = "debilitating"
     elif normalized in WEAK_EXTRA_ATTACK_SPECIALS:
@@ -243,6 +309,8 @@ def source_special_profile(name: str) -> SourceSpecialProfile:
         risk = "strong-combat"
     elif normalized in _MODERATE_BONUS_SPECIALS:
         risk = "moderate-combat"
+    elif normalized in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS:
+        risk = "combat-only"
     else:
         risk = "combat"
     return SourceSpecialProfile(
@@ -323,6 +391,25 @@ def source_special_status_effects(
     if caster_level >= 20:
         effects.append("gate")
     return tuple(effects)
+
+
+def source_special_is_transit_safe(name: str) -> bool:
+    """Return whether a known special cannot initiate ordinary travel combat.
+
+    This is deliberately narrower than target safety. A combat-only mobile can
+    still be a dangerous target once the player attacks it, and a guard can
+    still join a fight in the target room. Unknown specials remain unsafe.
+    """
+
+    normalized = str(name).strip().casefold()
+    return normalized in (
+        SAFE_NONCOMBAT_SPECIALS
+        | CONDITIONAL_COMBAT_SPECIALS
+        | TRANSIT_SAFE_CONDITIONAL_SPECIALS
+        | TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+        | TRANSIT_SAFE_COMBAT_JOINING_SPECIALS
+        | TRANSIT_SAFE_RELOCATION_SPECIALS
+    )
 
 
 def source_special_xp_bonus(name: str) -> int:

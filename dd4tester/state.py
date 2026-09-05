@@ -156,6 +156,8 @@ class CharacterState:
         if event.type == "experience_lost":
             self.xp_loss_observed = True
             amount = max(0, _integer(data.get("xp"), 0) or 0)
+            partial_xp = max(0, _integer(data.get("partial_xp"), 0) or 0)
+            net_loss = max(0, amount - partial_xp)
             self.xp_loss_total += amount
             if amount == 0:
                 return
@@ -169,28 +171,28 @@ class CharacterState:
                 pending_amount, previous_xp, previous_xptnl, incoming_xptnl = (
                     pending
                 )
-                if pending_amount == amount:
+                if pending_amount == net_loss:
                     if (
                         previous_xp is not None
-                        and self.xp != previous_xp - amount
+                        and self.xp != previous_xp - net_loss
                     ):
-                        self.xp = max(0, (self.xp or previous_xp) - amount)
+                        self.xp = max(0, (self.xp or previous_xp) - net_loss)
                     if (
                         previous_xptnl is not None
                         and self.xp_to_next_level == incoming_xptnl
                         and incoming_xptnl == previous_xptnl
                     ):
-                        self.xp_to_next_level += amount
+                        self.xp_to_next_level += net_loss
                     if isinstance(self.progress, dict):
                         progress = dict(self.progress)
                         progress_xp = _integer(progress.get("xp"))
                         if (
                             previous_xp is not None
-                            and progress_xp != previous_xp - amount
+                            and progress_xp != previous_xp - net_loss
                         ):
                             progress["xp"] = max(
                                 0,
-                                (progress_xp or previous_xp) - amount,
+                                (progress_xp or previous_xp) - net_loss,
                             )
                         progress_xptnl = _integer(progress.get("xptnl"))
                         if (
@@ -198,7 +200,7 @@ class CharacterState:
                             and progress_xptnl == incoming_xptnl
                             and incoming_xptnl == previous_xptnl
                         ):
-                            progress["xptnl"] = progress_xptnl + amount
+                            progress["xptnl"] = progress_xptnl + net_loss
                         self.progress = progress
                     self._pending_progress_loss = None
                     return
@@ -211,19 +213,19 @@ class CharacterState:
             if known_xp is None and isinstance(self.progress, dict):
                 known_xp = _integer(self.progress.get("xp"))
             if known_xp is not None:
-                self.xp = max(0, known_xp - amount)
+                self.xp = max(0, known_xp - net_loss)
 
             if self.xp_to_next_level is not None:
-                self.xp_to_next_level += amount
+                self.xp_to_next_level += net_loss
 
             if isinstance(self.progress, dict):
                 progress = dict(self.progress)
                 progress_xp = _integer(progress.get("xp"))
                 if progress_xp is not None:
-                    progress["xp"] = max(0, progress_xp - amount)
+                    progress["xp"] = max(0, progress_xp - net_loss)
                 progress_xptnl = _integer(progress.get("xptnl"))
                 if progress_xptnl is not None:
-                    progress["xptnl"] = progress_xptnl + amount
+                    progress["xptnl"] = progress_xptnl + net_loss
                 self.progress = progress
             return
 

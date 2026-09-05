@@ -14,6 +14,7 @@ from dd4tester.equipment import (
     is_capacity_infrastructure,
     is_digging_tool,
     is_digging_weapon,
+    is_equipment_object,
     is_piercing_weapon,
     normalize_item_name,
     plan_stance_swaps,
@@ -45,6 +46,32 @@ def _item(
         wear_flags=1 << wear_bit,
         affects=affects,
     )
+
+
+def test_consumables_marked_holdable_are_not_equipment_objects() -> None:
+    potion = ObjectSource(
+        1,
+        "dark red potion",
+        "a dark red potion",
+        10,
+        (9,),
+        450,
+        wear_flags=1 | (1 << 14),
+    )
+    water_skin = ObjectSource(
+        2,
+        "water skin",
+        "a water skin",
+        17,
+        (25, 25, 0, 0),
+        30,
+        wear_flags=1 | (1 << 14),
+    )
+    sword = _item(3, "long sword", wear_bit=13)
+
+    assert is_equipment_object(potion) is False
+    assert is_equipment_object(water_skin) is False
+    assert is_equipment_object(sword) is True
 
 
 def test_item_normalization_discards_ephemeral_targetmode_selector() -> None:

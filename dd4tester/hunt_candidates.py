@@ -14,6 +14,8 @@ from .fastwalks import FASTWALKS, MAP_ROUTES
 from .specials import (
     COMBAT_JOINING_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
+    TRANSIT_SAFE_COMBAT_ONLY_SPECIALS,
+    source_special_is_transit_safe,
     source_special_profile,
 )
 
@@ -145,7 +147,7 @@ _MAX_SOURCE_ROUTE_DETOUR_STEPS = 20
 # ``starter.py`` and the class training analysis; it is a ranking hint, not a
 # replacement for live consider, health, crowd, or route gates.
 _SOURCE_DIRECT_COMBAT_ACTIONS = {
-    "mage": ("chill touch", "magic missile"),
+    "mage": ("burning hands", "chill touch", "magic missile"),
     "cleric": ("cause critical", "cause serious", "cause light"),
     "thief": ("circle", "knife toss", "backstab"),
     "warrior": ("stun", "kick"),
@@ -163,6 +165,7 @@ _SOURCE_SUBCLASS_COMBAT_ACTIONS = {
     "druid": ("wither",),
     "knight": ("flamestrike",),
     "monk": ("agitation", "mind thrust"),
+    "werewolf": ("wolfbite", "ravage"),
 }
 _SOURCE_PASSIVE_COMBAT_SKILLS = (
     "second attack",
@@ -188,6 +191,719 @@ _SOURCE_DEFENSIVE_COMBAT_SKILLS = (
     "weaponchain",
     "summon familiar",
 )
+
+
+@dataclass(frozen=True)
+class SourceCombatOutput:
+    """One source-backed, repeatable damage action for a player class.
+
+    ``expected_damage`` is the source formula's integer planning average.
+    ``conservative_damage`` applies a fixed 80% planning haircut; it is not a
+    proof of a kill and must be followed by the live damage-window probe.
+    """
+
+    action: str
+    minimum_damage: int
+    expected_damage: int
+    maximum_damage: int
+    resource: str
+    resource_cost: int
+    conservative_damage: int
+    maximum_actions: int = 12
+    source_reference: str = ""
+    opening_action: str | None = None
+    opening_min_damage: int | None = None
+    opening_expected_damage: int | None = None
+    opening_max_damage: int | None = None
+    opening_conservative_damage: int | None = None
+    opening_source_reference: str | None = None
+
+
+_SOURCE_CASTER_COMBAT_ACTIONS = {
+    "mage": ("burning hands", "chill touch", "magic missile"),
+    "cleric": ("cause critical", "cause serious", "cause light"),
+    "psionic": ("psychic crush", "mind thrust"),
+}
+_SOURCE_SUBCLASS_CASTER_COMBAT_ACTIONS = {
+    "necromancer": ("harm",),
+    "druid": ("wither",),
+    "knight": ("flamestrike",),
+    "monk": ("agitation", "mind thrust"),
+}
+_SOURCE_SUBCLASS_OUTPUT_ACTIONS = {
+    "werewolf": ("wolfbite", "ravage"),
+    "martial artist": ("atemi",),
+}
+_SOURCE_DIRECT_OUTPUT_ACTIONS = {
+    "brawler": ("punch",),
+    "ranger": ("kick",),
+    "thief": ("circle", "knife toss"),
+    "warrior": ("kick",),
+}
+
+_SOURCE_PIERCING_WEAPON_DAMAGE_TYPES = frozenset({2, 11})
+
+
+def _source_known_skill_set(
+    known_skills: Collection[str],
+    known_skill_levels: Mapping[str, int] | None,
+) -> frozenset[str]:
+    raw_skills = (
+        (known_skills,)
+        if isinstance(known_skills, str)
+        else (known_skills or ())
+    )
+    skills = {
+        _normalize_skill_name(skill)
+        for skill in raw_skills
+        if str(skill).strip()
+    }
+    if not isinstance(known_skill_levels, Mapping):
+        return frozenset(skills)
+    # A level map is supplemental evidence. It may contain mixed-case keys,
+    # but it must not turn an unobserved skill into a usable capability.
+    for skill in tuple(skills):
+        raw_percent = known_skill_levels.get(skill)
+        if raw_percent is None:
+            raw_percent = next(
+                (
+                    value
+                    for raw_skill, value in known_skill_levels.items()
+                    if _normalize_skill_name(raw_skill) == skill
+                ),
+                None,
+            )
+        try:
+            if raw_percent is not None and int(raw_percent) <= 0:
+                skills.discard(skill)
+        except (TypeError, ValueError):
+            continue
+    return frozenset(skills)
+
+
+def _source_skill_percent(
+    skill: str,
+    known_skills: frozenset[str],
+    known_skill_levels: Mapping[str, int] | None,
+) -> int:
+    """Return a positive observed percentage without inventing a capability."""
+    if skill not in known_skills or not isinstance(known_skill_levels, Mapping):
+        return 0
+    raw_percent = known_skill_levels.get(skill)
+    if raw_percent is None:
+        raw_percent = next(
+            (
+                value
+                for raw_skill, value in known_skill_levels.items()
+                if _normalize_skill_name(raw_skill) == skill
+            ),
+            None,
+        )
+    try:
+        return max(0, min(100, int(raw_percent)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _source_c_trunc_divide(numerator: int, denominator: int) -> int:
+    """Mirror C integer division for the small signed damage values here."""
+    if numerator < 0:
+        return -((-numerator) // denominator)
+    return numerator // denominator
+
+
+def _source_weapon_damage_value(
+    base_damage: int,
+    *,
+    damroll: int,
+    enhanced_damage: int,
+    enhanced_hit: int,
+) -> int:
+    """Apply the player portion of DD4's ``one_hit`` weapon formula."""
+    damage = base_damage + damroll
+    if enhanced_damage > 0:
+        damage += _source_c_trunc_divide(
+            damage * enhanced_damage,
+            200,
+        )
+    if enhanced_hit > 0:
+        damage += _source_c_trunc_divide(
+            damage * enhanced_hit,
+            400,
+        )
+    return max(1, damage)
+
+
+def _source_weapon_expected_attacks(
+    *,
+    skills: frozenset[str],
+    known_skill_levels: Mapping[str, int] | None,
+    swiftness: int | None,
+    dex_swiftness: int,
+) -> tuple[float, int]:
+    """Return expected and maximum ``multi_hit`` attacks for one round.
+
+    DD4 returns from ``multi_hit`` when a player misses the second or third
+    attack, so the later attack probabilities are conditional rather than
+    additive.  Swiftness is an independent extra hit before that chain.
+    """
+    probability_second = 0.0
+    probability_third = 0.0
+    probability_fourth = 0.0
+    for skill, base_chance in (
+        ("second attack", 45),
+        ("third attack", 35),
+        ("fourth attack", 25),
+    ):
+        percent = _source_skill_percent(
+            skill,
+            skills,
+            known_skill_levels,
+        )
+        if percent <= 0:
+            continue
+        chance = max(0.0, min(100.0, base_chance + percent / 2.0))
+        if skill == "second attack":
+            probability_second = chance / 100.0
+        elif skill == "third attack":
+            probability_third = chance / 100.0
+        else:
+            probability_fourth = chance / 100.0
+
+    expected_attacks = (
+        1.0
+        + probability_second
+        + probability_second * probability_third
+        + probability_second * probability_third * probability_fourth
+    )
+    maximum_attacks = 1
+    if probability_second:
+        maximum_attacks += 1
+    if probability_second and probability_third:
+        maximum_attacks += 1
+    if probability_second and probability_third and probability_fourth:
+        maximum_attacks += 1
+
+    if swiftness is not None:
+        enhanced_swiftness = _source_skill_percent(
+            "enhanced swiftness",
+            skills,
+            known_skill_levels,
+        )
+        swift_chance = max(
+            0.0,
+            min(
+                100.0,
+                float(swiftness)
+                + float(dex_swiftness)
+                + enhanced_swiftness / 4.0,
+            ),
+        )
+        expected_attacks += swift_chance / 100.0
+        if swift_chance:
+            maximum_attacks += 1
+    return expected_attacks, maximum_attacks
+
+
+def _source_weapon_hit_values(
+    weapon_damage_range: tuple[int, int] | None,
+    *,
+    skills: frozenset[str],
+    known_skill_levels: Mapping[str, int] | None,
+    damroll: int,
+) -> tuple[int, ...]:
+    """Return the observed weapon's post-bonus one-hit damage values."""
+    if weapon_damage_range is None:
+        return ()
+    try:
+        weapon_minimum, weapon_maximum = weapon_damage_range
+        weapon_minimum = int(weapon_minimum)
+        weapon_maximum = int(weapon_maximum)
+        damroll = int(damroll)
+    except (TypeError, ValueError):
+        return ()
+    if weapon_minimum <= 0 or weapon_maximum < weapon_minimum:
+        return ()
+    enhanced_damage = _source_skill_percent(
+        "enhanced damage",
+        skills,
+        known_skill_levels,
+    )
+    enhanced_hit = _source_skill_percent(
+        "enhanced hit",
+        skills,
+        known_skill_levels,
+    )
+    return tuple(
+        _source_weapon_damage_value(
+            base_damage,
+            damroll=damroll,
+            enhanced_damage=enhanced_damage,
+            enhanced_hit=enhanced_hit,
+        )
+        for base_damage in range(weapon_minimum, weapon_maximum + 1)
+    )
+
+
+def source_combat_output_estimate(
+    *,
+    character_level: int,
+    character_class: str | None,
+    character_subclass: str | None = None,
+    known_skills: Collection[str] = (),
+    known_skill_levels: Mapping[str, int] | None = None,
+    weapon_damage_range: tuple[int, int] | None = None,
+    weapon_vnum: int | None = None,
+    weapon_damage_type: int | None = None,
+    player_damroll: int = 0,
+    player_swiftness: int | None = None,
+    player_dex_swiftness: int = 0,
+) -> SourceCombatOutput | None:
+    """Return the first executable source-backed damage action.
+
+    This covers formulas audited in ``magic.c``, ``skill.c``, and the bounded
+    werewolf natural attacks in ``sft.c``. It also models the source-backed
+    between-round ``kick``, ``knife toss``, and ``circle`` actions when their
+    observed skill percentage and weapon requirements are present. When a
+    current structured equipment snapshot supplies a source object damage
+    range, it models the player half of ``fight.c``'s weapon and
+    ``multi_hit`` formula. Hit chance, temporary affects, target armor, and
+    target resistances remain live-probed rather than guessed. An unknown
+    weapon keeps ordinary physical output unassessed.
+    For a trained thief with a source-identified piercing weapon, the result
+    also carries one optional backstab opening budget. That opening is weighted
+    by its observed proficiency and is never included as a recurring action.
+    Subclass actions are enabled only for their source-legal subclass; a
+    subclass skill must never make an unrelated base-class route look ready.
+    """
+    try:
+        level = max(1, int(character_level))
+    except (TypeError, ValueError):
+        return None
+    normalized_class = _normalize_skill_name(character_class or "")
+    normalized_subclass = _normalize_skill_name(character_subclass or "")
+    actions = tuple(
+        dict.fromkeys(
+            (
+                *_SOURCE_SUBCLASS_OUTPUT_ACTIONS.get(
+                    normalized_subclass,
+                    (),
+                ),
+                *_SOURCE_SUBCLASS_CASTER_COMBAT_ACTIONS.get(
+                    normalized_subclass,
+                    (),
+                ),
+                *_SOURCE_DIRECT_OUTPUT_ACTIONS.get(normalized_class, ()),
+                *_SOURCE_CASTER_COMBAT_ACTIONS.get(normalized_class, ()),
+            )
+        )
+    )
+    if weapon_damage_range is not None:
+        actions = (*actions, "weapon strike")
+    if not actions:
+        return None
+    skills = _source_known_skill_set(known_skills, known_skill_levels)
+    opening_data: tuple[int, int, int, int, str] | None = None
+    if (
+        normalized_class == "thief"
+        and weapon_damage_type in _SOURCE_PIERCING_WEAPON_DAMAGE_TYPES
+    ):
+        backstab_percent = _source_skill_percent(
+            "backstab",
+            skills,
+            known_skill_levels,
+        )
+        hit_values = _source_weapon_hit_values(
+            weapon_damage_range,
+            skills=skills,
+            known_skill_levels=known_skill_levels,
+            damroll=player_damroll,
+        )
+        if backstab_percent > 0 and hit_values:
+            multiplier = 3 + level // 15
+            successful_minimum = min(hit_values) * multiplier
+            successful_maximum = max(hit_values) * multiplier
+            successful_expected = (
+                sum(hit_values) / len(hit_values) * multiplier
+            )
+            expected = max(
+                1,
+                int(successful_expected * backstab_percent / 100.0),
+            )
+            opening_data = (
+                successful_minimum,
+                expected,
+                successful_maximum,
+                max(1, expected * 4 // 5),
+                "fight.c:do_backstab/one_hit",
+            )
+            if weapon_vnum is not None:
+                opening_data = (
+                    *opening_data[:-1],
+                    f"fight.c:do_backstab/one_hit; object vnum {int(weapon_vnum)}",
+                )
+    for action in actions:
+        if action != "weapon strike" and action not in skills:
+            continue
+        if action == "punch":
+            # do_punch's primary damage is level/2 plus number_range(1,
+            # level*2). Keep the optional second-punch roll out of this
+            # conservative bound; it has its own skill and trauma gate.
+            minimum = level // 2 + 1
+            maximum = level // 2 + level * 2
+            expected = level // 2 + (1 + level * 2) // 2
+            reference = "skill.c:do_punch"
+            resource_cost = 0
+        elif action in {"kick", "knife toss"}:
+            # Both commands use a level-scaled roll and a learned-percent
+            # success gate.  Keep the successful source range visible while
+            # weighting the planning average by the observed chance; a live
+            # damage-window probe still decides whether the target is viable.
+            skill_percent = _source_skill_percent(
+                action,
+                skills,
+                known_skill_levels,
+            )
+            if skill_percent <= 0:
+                continue
+            base = level // 2
+            minimum = base + 1
+            maximum = base + level
+            successful_expected = base + (level + 1) // 2
+            expected = max(
+                1,
+                int(successful_expected * skill_percent / 100.0),
+            )
+            reference = (
+                "fight.c:do_kick"
+                if action == "kick"
+                else "fight.c:do_knife_toss"
+            )
+            resource_cost = 0
+        elif action == "circle":
+            if (
+                weapon_damage_range is None
+                or weapon_damage_type
+                not in _SOURCE_PIERCING_WEAPON_DAMAGE_TYPES
+            ):
+                continue
+            skill_percent = _source_skill_percent(
+                "circle",
+                skills,
+                known_skill_levels,
+            )
+            if skill_percent <= 0:
+                continue
+            hit_values = _source_weapon_hit_values(
+                weapon_damage_range,
+                skills=skills,
+                known_skill_levels=known_skill_levels,
+                damroll=player_damroll,
+            )
+            if not hit_values:
+                continue
+            circle_values = tuple(
+                damage + damage // 2 for damage in hit_values
+            )
+            second_circle_percent = _source_skill_percent(
+                "second circle",
+                skills,
+                known_skill_levels,
+            )
+            success_probability = skill_percent / 100.0
+            second_probability = second_circle_percent / 100.0
+            successful_expected = sum(circle_values) / len(circle_values)
+            expected = max(
+                1,
+                int(
+                    successful_expected
+                    * success_probability
+                    * (1.0 + second_probability)
+                ),
+            )
+            minimum = min(circle_values)
+            maximum = max(circle_values) * (
+                2 if second_circle_percent > 0 else 1
+            )
+            reference = "fight.c:do_circle/one_hit"
+            if weapon_vnum is not None:
+                reference += f"; object vnum {int(weapon_vnum)}"
+            resource_cost = 0
+        elif action == "atemi":
+            # The standalone do_atemi path resets combo state before calling
+            # atemi(), whose source damage is a fixed level*1.5.
+            minimum = maximum = expected = level * 3 // 2
+            reference = "skill.c:do_atemi and atemi"
+            resource_cost = 0
+        elif action == "burning hands":
+            dice_count = min(level, 30)
+            minimum = (10 + dice_count) // 2
+            maximum = 20 + dice_count * 3
+            expected = 15 + (dice_count * 2)
+            reference = "magic.c:spell_burning_hands"
+            resource_cost = 15
+        elif action == "chill touch":
+            minimum = 10 + level
+            maximum = 20 + level
+            expected = 15 + level
+            reference = "magic.c:spell_chill_touch"
+            resource_cost = 10
+        elif action == "magic missile":
+            missiles = min((level + 1) // 2, 10)
+            minimum = 2 * missiles
+            maximum = 5 * missiles
+            expected = (7 * missiles) // 2
+            reference = "magic.c:spell_magic_missile"
+            resource_cost = 5
+        elif action == "cause critical":
+            minimum = 3 + level - 6
+            maximum = 24 + level - 6
+            expected = (3 * 9) // 2 + level - 6
+            reference = "magic.c:spell_cause_critical"
+            resource_cost = 20
+        elif action == "cause serious":
+            minimum = 2 + level // 2
+            maximum = 16 + level // 2
+            expected = 9 + level // 2
+            reference = "magic.c:spell_cause_serious"
+            resource_cost = 17
+        elif action == "cause light":
+            minimum = 1 + level // 3
+            maximum = 8 + level // 3
+            expected = 4 + level // 3
+            reference = "magic.c:spell_cause_light"
+            resource_cost = 15
+        elif action == "psychic crush":
+            minimum = 3 + level
+            maximum = 15 + level
+            expected = 9 + level
+            reference = "magic.c:spell_psychic_crush"
+            resource_cost = 15
+        elif action == "mind thrust":
+            minimum = 1 + level // 2
+            maximum = 10 + level // 2
+            expected = 5 + level // 2
+            reference = "magic.c:spell_mind_thrust"
+            resource_cost = 8
+        elif action == "harm":
+            minimum = 50
+            maximum = 100
+            expected = 75
+            reference = "magic.c:spell_harm"
+            resource_cost = 35
+        elif action == "wither":
+            minimum = 2 * level
+            maximum = 9 * level
+            expected = 11 * level // 2
+            reference = "magic.c:spell_wither"
+            resource_cost = 20
+        elif action == "flamestrike":
+            minimum = 3 * level
+            maximum = 6 * level
+            expected = 9 * level // 2
+            reference = "magic.c:spell_flamestrike"
+            resource_cost = 20
+        elif action == "agitation":
+            damage_by_level = (
+                0,
+                0,
+                0,
+                3,
+                6,
+                9,
+                12,
+                15,
+                18,
+                21,
+                24,
+                24,
+                24,
+                25,
+                25,
+                26,
+                26,
+                26,
+                27,
+                27,
+                27,
+                28,
+                28,
+                28,
+                29,
+                29,
+                29,
+                30,
+                30,
+                30,
+                31,
+                31,
+                31,
+                32,
+                32,
+                32,
+                33,
+                33,
+                33,
+                34,
+                34,
+                34,
+                35,
+                35,
+                35,
+                36,
+                36,
+                36,
+                37,
+                37,
+                37,
+            )
+            base = damage_by_level[min(level, len(damage_by_level) - 1)]
+            minimum = base // 2
+            maximum = base * 2
+            expected = (minimum + maximum) // 2
+            reference = "magic.c:spell_agitation"
+            resource_cost = 10
+        elif action == "wolfbite":
+            # do_wolfbite uses number_range(level * 3, level * 5) after a
+            # learned-percent hit roll. Keep the successful damage range as
+            # the source bound; the live damage-window probe remains the
+            # authority on whether this character can finish the target.
+            minimum = 3 * level
+            maximum = 5 * level
+            expected = 4 * level
+            reference = "sft.c:do_wolfbite"
+            resource_cost = 0
+        elif action == "ravage":
+            # Ravage always attempts one hit, then repeats with the source
+            # decrementing proficiency by seven points per extra hit, up to
+            # eight hits. Model that bounded expectation without treating it
+            # as live kill proof.
+            minimum = 2 * level
+            maximum = 24 * level
+            try:
+                proficiency = int(
+                    next(
+                        (
+                            value
+                            for raw_skill, value in (
+                                known_skill_levels or {}
+                            ).items()
+                            if _normalize_skill_name(raw_skill) == action
+                        ),
+                        100,
+                    )
+                )
+            except (TypeError, ValueError):
+                proficiency = 100
+            proficiency = max(0, min(100, proficiency))
+            hit_probability = 1.0
+            expected_hits = 1.0
+            for extra_hit in range(1, 8):
+                hit_probability *= max(
+                    0.0,
+                    min(100, proficiency - extra_hit * 7) / 100,
+                )
+                expected_hits += hit_probability
+            expected = max(1, int(2.5 * level * expected_hits))
+            reference = "sft.c:do_ravage"
+            resource_cost = 0
+        elif action == "weapon strike":
+            try:
+                dex_swiftness = int(player_dex_swiftness)
+            except (TypeError, ValueError):
+                continue
+            hit_values = _source_weapon_hit_values(
+                weapon_damage_range,
+                skills=skills,
+                known_skill_levels=known_skill_levels,
+                damroll=player_damroll,
+            )
+            if not hit_values:
+                continue
+            expected_hit = sum(hit_values) / len(hit_values)
+            expected_attacks, maximum_attacks = _source_weapon_expected_attacks(
+                skills=skills,
+                known_skill_levels=known_skill_levels,
+                swiftness=player_swiftness,
+                dex_swiftness=dex_swiftness,
+            )
+            minimum = min(hit_values)
+            maximum = max(hit_values) * maximum_attacks
+            expected = max(1, int(expected_hit * expected_attacks))
+            reference = "fight.c:one_hit/multi_hit"
+            if weapon_vnum is not None:
+                reference += f"; object vnum {int(weapon_vnum)}"
+            resource_cost = 0
+        else:
+            continue
+        if minimum <= 0 or maximum < minimum or expected <= 0:
+            return None
+        if action in {"kick", "knife toss", "circle"}:
+            # These commands are issued between automatic combat rounds. If a
+            # source weapon is currently wielded, include one audited
+            # ``multi_hit`` cycle in the same planning window instead of
+            # pretending that the controller stops making normal attacks.
+            automatic_hit_values = _source_weapon_hit_values(
+                weapon_damage_range,
+                skills=skills,
+                known_skill_levels=known_skill_levels,
+                damroll=player_damroll,
+            )
+            if automatic_hit_values:
+                automatic_expected_attacks, automatic_maximum_attacks = (
+                    _source_weapon_expected_attacks(
+                        skills=skills,
+                        known_skill_levels=known_skill_levels,
+                        swiftness=player_swiftness,
+                        dex_swiftness=player_dex_swiftness,
+                    )
+                )
+                automatic_expected = max(
+                    1,
+                    int(
+                        sum(automatic_hit_values)
+                        / len(automatic_hit_values)
+                        * automatic_expected_attacks
+                    ),
+                )
+                minimum = min(minimum, min(automatic_hit_values))
+                maximum += (
+                    max(automatic_hit_values) * automatic_maximum_attacks
+                )
+                expected += automatic_expected
+                reference += "; plus fight.c:one_hit/multi_hit"
+        return SourceCombatOutput(
+            action=action,
+            minimum_damage=minimum,
+            expected_damage=expected,
+            maximum_damage=maximum,
+            resource=(
+                "actions"
+                if action in {
+                    "circle",
+                    "kick",
+                    "knife toss",
+                    "punch",
+                    "atemi",
+                    "wolfbite",
+                    "ravage",
+                    "weapon strike",
+                }
+                else "mana"
+            ),
+            resource_cost=resource_cost,
+            conservative_damage=max(1, expected * 4 // 5),
+            source_reference=reference,
+            opening_action="backstab" if opening_data else None,
+            opening_min_damage=opening_data[0] if opening_data else None,
+            opening_expected_damage=opening_data[1] if opening_data else None,
+            opening_max_damage=opening_data[2] if opening_data else None,
+            opening_conservative_damage=(
+                opening_data[3] if opening_data else None
+            ),
+            opening_source_reference=opening_data[4] if opening_data else None,
+        )
+    return None
 
 
 @dataclass(frozen=True)
@@ -472,6 +1188,7 @@ class HuntCandidate:
     route_preflight_target: str | None = None
     route_preflight_level_range: tuple[int, int] = (0, 0)
     route_preflight_hard_hazard: bool = False
+    route_preflight_route_room_names: tuple[str, ...] = ()
     route_hard_hazard_targets: tuple[str, ...] = ()
     sentinel: bool = False
     stay_area: bool = False
@@ -1046,6 +1763,7 @@ def rank_hunt_candidates(
     character_class: str | None = None,
     character_subclass: str | None = None,
     known_skills: Collection[str] = (),
+    known_skill_levels: Mapping[str, int] | None = None,
     boot_kill_counts: Mapping[str, int] | None = None,
     boot_kill_counts_by_mobile_vnum: Mapping[int, int] | None = None,
     include_xp_only: bool = False,
@@ -1283,6 +2001,7 @@ def rank_hunt_candidates(
             route_preflight_target,
             route_preflight_level_range,
             route_preflight_hard_hazard,
+            route_preflight_route_room_names,
             route_hard_hazard_targets,
         ) = _route_preflight_metadata(
             world,
@@ -1397,15 +2116,26 @@ def rank_hunt_candidates(
         for path_room in path_rooms[:-1]:
             for path_reset in resets_by_room.get(path_room, ()):
                 hazard = world.mobiles.get(path_reset.mobile_vnum)
-                if hazard is None or not _source_mobile_is_combat_hazard(
+                if hazard is None:
+                    continue
+                unsafe_special = _source_mobile_has_unsafe_special(
                     world,
+                    hazard.vnum,
                     hazard,
+                )
+                if not (
+                    _source_mobile_is_combat_hazard(world, hazard)
+                    or unsafe_special
                 ):
                     continue
                 # A combat-joining guard only reacts after a fight starts;
                 # a mobile program can initiate combat on entry even when its
                 # prototype is not flagged ACT_AGGRESSIVE.
-                if not hazard.aggressive and not hazard.attack_programs:
+                if (
+                    not hazard.aggressive
+                    and not hazard.attack_programs
+                    and not unsafe_special
+                ):
                     continue
                 if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
                     hazards.append(
@@ -1424,6 +2154,11 @@ def rank_hunt_candidates(
                     f"{hazard_kind}: {hazard.short_description} "
                     f"L{hazard.level} in {path_room}"
                 )
+                if unsafe_special:
+                    dangerous = True
+                    autonomy_rejections.append(
+                        "route crosses a non-safe special mobile"
+                    )
                 if (
                     hazard.attack_programs
                     and _source_mobile_has_deterministic_attack_program(hazard)
@@ -1492,9 +2227,14 @@ def rank_hunt_candidates(
         for hazard, hazard_reset in wandering_aggressors:
             if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
                 continue
+            unsafe_special = _source_mobile_has_unsafe_special(
+                world,
+                hazard.vnum,
+                hazard,
+            )
             hazard_rooms = (
                 path_room_set
-                if hazard.aggressive or hazard.attack_programs
+                if hazard.aggressive or hazard.attack_programs or unsafe_special
                 else {path_rooms[-1]}
             )
             if (
@@ -1512,6 +2252,12 @@ def rank_hunt_candidates(
                 if hazard.attack_programs
                 else "reachable wanderer"
                 if hazard.aggressive
+                else "reachable special mobile"
+                if unsafe_special
+                and not _source_mobile_has_combat_joining_special(
+                    world,
+                    hazard.vnum,
+                )
                 else "reachable combat-joining special"
             )
             hazards.append(
@@ -1528,6 +2274,11 @@ def rank_hunt_candidates(
             hazard_article = (
                 "an" if hazard_noun.startswith("aggressive") else "a"
             )
+            if unsafe_special:
+                dangerous = True
+                autonomy_rejections.append(
+                    "a non-safe special mobile can reach the route"
+                )
             if (
                 hazard.attack_programs
                 and _source_mobile_has_deterministic_attack_program(hazard)
@@ -1536,7 +2287,7 @@ def rank_hunt_candidates(
                 autonomy_rejections.append(
                     "route crosses a program-triggered attacker"
                 )
-            elif hazard_level_max > character_level:
+            if hazard_level_max > character_level:
                 dangerous = True
                 autonomy_rejections.append(
                     f"a higher-level {hazard_noun} can reach the route"
@@ -1634,6 +2385,7 @@ def rank_hunt_candidates(
             character_class=character_class,
             character_subclass=character_subclass,
             known_skills=known_skills,
+            known_skill_levels=known_skill_levels,
             target_level_range=level_range,
             equipped_weapon_count=len(equipped_weapons),
             character_max_hp=character_max_hp,
@@ -1708,6 +2460,7 @@ def rank_hunt_candidates(
                 route_preflight_target=route_preflight_target,
                 route_preflight_level_range=route_preflight_level_range,
                 route_preflight_hard_hazard=route_preflight_hard_hazard,
+                route_preflight_route_room_names=route_preflight_route_room_names,
                 route_hard_hazard_targets=route_hard_hazard_targets,
                 undead=mobile.undead,
                 sentinel=mobile.sentinel,
@@ -2351,15 +3104,25 @@ def _route_hazard_rooms(
     for room_vnum, resets in resets_by_room.items():
         for reset in resets:
             mobile = world.mobiles.get(reset.mobile_vnum)
-            if mobile is None or not _source_mobile_is_combat_hazard(
-                world,
-                mobile,
+            if mobile is None or not (
+                _source_mobile_is_combat_hazard(world, mobile)
+                or _source_mobile_has_unsafe_special(
+                    world,
+                    mobile.vnum,
+                    mobile,
+                )
             ):
                 continue
             if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
                 continue
+            unsafe_special = _source_mobile_has_unsafe_special(
+                world,
+                mobile.vnum,
+                mobile,
+            )
             if require_no_combat_hazards and (
                 mobile.attack_programs
+                or unsafe_special
                 or _source_mobile_has_combat_joining_special(
                     world,
                     mobile.vnum,
@@ -2373,6 +3136,13 @@ def _route_hazard_rooms(
                     )
                 )
             ):
+                blocked.add(room_vnum)
+                break
+            if unsafe_special:
+                # A non-safe special can start combat or apply an unmodeled
+                # effect before a live target check. Plain aggressive mobiles
+                # still follow DD4's cutoff and the existing
+                # useful-band/crowd gates below.
                 blocked.add(room_vnum)
                 break
             level_max = _mobile_level_range(mobile.level)[1]
@@ -2401,6 +3171,11 @@ def _route_hazard_rooms(
                 continue
             if not (
                 mobile.attack_programs
+                or _source_mobile_has_unsafe_special(
+                    world,
+                    mobile.vnum,
+                    mobile,
+                )
                 or _source_mobile_has_combat_joining_special(
                     world,
                     mobile.vnum,
@@ -2450,8 +3225,14 @@ def _source_route_hazard_rejections(
                 mobile.vnum,
             ):
                 continue
+            unsafe_special = _source_mobile_has_unsafe_special(
+                world,
+                mobile.vnum,
+                mobile,
+            )
             if require_no_combat_hazards and (
                 mobile.attack_programs
+                or unsafe_special
                 or _source_mobile_has_combat_joining_special(
                     world,
                     mobile.vnum,
@@ -2467,6 +3248,12 @@ def _source_route_hazard_rejections(
             ):
                 rejections.append(
                     "strict route crosses source combat hazard: "
+                    f"{mobile.short_description} in room {room_vnum}"
+                )
+                continue
+            if unsafe_special:
+                rejections.append(
+                    "route crosses a non-safe special mobile: "
                     f"{mobile.short_description} in room {room_vnum}"
                 )
                 continue
@@ -2506,9 +3293,14 @@ def _source_route_hazard_rejections(
     for mobile, reset in _wandering_aggressors(world):
         if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
             continue
+        unsafe_special = _source_mobile_has_unsafe_special(
+            world,
+            mobile.vnum,
+            mobile,
+        )
         hazard_rooms = (
             path_room_set
-            if mobile.aggressive or mobile.attack_programs
+            if mobile.aggressive or mobile.attack_programs or unsafe_special
             else ({target_room_vnum} if target_room_vnum is not None else set())
         )
         if reset.room_vnum in hazard_rooms:
@@ -2521,6 +3313,7 @@ def _source_route_hazard_rejections(
         maximum_level = _mobile_level_range(mobile.level)[1]
         if require_no_combat_hazards and (
             mobile.attack_programs
+            or unsafe_special
             or _source_mobile_has_combat_joining_special(
                 world,
                 mobile.vnum,
@@ -2537,6 +3330,12 @@ def _source_route_hazard_rejections(
             rejections.append(
                 "strict route crosses source-reachable combat hazard: "
                 f"{mobile.short_description} from room {reset.room_vnum}"
+            )
+            continue
+        if unsafe_special:
+            rejections.append(
+                "a non-safe special mobile can reach the route: "
+                f"{mobile.short_description}"
             )
             continue
         if (
@@ -2557,6 +3356,7 @@ def _source_route_hazard_rejections(
         hazard_article = (
             "an" if hazard_noun.startswith("aggressive") else "a"
         )
+        maximum_level = _mobile_level_range(mobile.level)[1]
         if maximum_level > character_level:
             rejections.append(
                 f"a higher-level {hazard_noun} can reach the route: "
@@ -2721,6 +3521,36 @@ def _source_mobile_has_safe_noncombat_special(
     )
 
 
+def _source_mobile_has_unsafe_special(
+    world: WorldSource,
+    mobile_vnum: int,
+    mobile: MobileSource | None = None,
+) -> bool:
+    """Return whether a source special can affect an ordinary traveler.
+
+    Combat-only and combat-joining procedures are handled by the normal
+    aggression, target-room, and wandering-mobile gates. An aggressive mobile
+    carrying a combat-only procedure is an exception: once its normal attack
+    starts, that procedure can immediately add damage or a disabling effect.
+    Only a source procedure that can act before combat, an economic theft
+    risk, or an unknown procedure remains a direct transit hazard otherwise.
+    """
+    specials = tuple(world.mobile_specials.get(mobile_vnum, ()))
+    if not specials:
+        return False
+    if any(not source_special_is_transit_safe(special) for special in specials):
+        return True
+    return bool(
+        mobile is not None
+        and mobile.aggressive
+        and any(
+            str(special).strip().casefold()
+            in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+            for special in specials
+        )
+    )
+
+
 def _source_mobile_has_combat_joining_special(
     world: WorldSource,
     mobile_vnum: int,
@@ -2758,15 +3588,18 @@ def _source_aggressive_reset_can_reach_character(
     ``update.c`` skips an aggressive mobile when the player is more than ten
     levels above it. Use the highest possible fuzzy mobile level so a route
     is reopened only when every source-backed load is harmless by that rule.
-    Mobile programs and non-safe specials are separate source behavior and
-    remain route hazards regardless of the level cutoff.
+    Mobile programs and source procedures that can initiate travel combat are
+    separate source behavior and remain route hazards regardless of the level
+    cutoff. Combat-only specials still follow the normal aggression cutoff.
     """
     if not mobile.aggressive:
         return False
     if mobile.attack_programs:
         return True
-    if world.mobile_specials.get(mobile.vnum) and not (
-        _source_mobile_has_safe_noncombat_special(world, mobile.vnum)
+    if world.mobile_specials.get(mobile.vnum) and _source_mobile_has_unsafe_special(
+        world,
+        mobile.vnum,
+        mobile,
     ):
         return True
     return character_level <= _mobile_level_range(mobile.level)[1] + 10
@@ -3248,6 +4081,7 @@ def _route_preflight_metadata(
     tuple[int, int],
     bool,
     tuple[str, ...],
+    tuple[str, ...],
 ]:
     """Carry known route checks into generic source-ranked hunt records.
 
@@ -3286,9 +4120,10 @@ def _route_preflight_metadata(
             target,
             level_range,
             hard_hazard,
+            route_definition.route_preflight_route_room_names,
             route_definition.route_hard_hazard_targets,
         )
-    return (None, None, None, (0, 0), False, ())
+    return (None, None, None, (0, 0), False, (), ())
 
 
 def _mobile_base_hp_range(level_range: tuple[int, int]) -> tuple[int, int]:
@@ -3320,6 +4155,55 @@ def _mobile_normal_hit_damage(level: int, *, wielding: bool) -> int:
     """Mirror the maximum ordinary NPC damage for one ``one_hit`` call."""
     unarmed_hit = level * 3 // 2 + level // 4
     return unarmed_hit + (unarmed_hit // 2 if wielding else 0)
+
+
+def mobile_expected_round_damage(
+    level: int,
+    *,
+    wielding: bool,
+    dual_wielding: bool,
+) -> int:
+    """Return a conservative source-derived NPC damage-per-round estimate.
+
+    DD4 assumes the first NPC attack lands for this planning estimate, then
+    applies the source chances for second, third, fourth, and (at level 20+)
+    fifth attacks.  It intentionally ignores the player's armor and the
+    mobile's special procedures, so it is an admission estimate rather than
+    a live combat result.
+    """
+    level = max(1, int(level))
+    base_damages = range(level // 2, level * 3 // 2 + 1)
+    damage_values = tuple(
+        damage
+        + level // 4
+        + (damage + level // 4) // 2
+        if wielding
+        else damage + level // 4
+        for damage in base_damages
+    )
+    if not damage_values:
+        return 1
+    damage_sum = sum(damage_values)
+    damage_count = len(damage_values)
+    if dual_wielding:
+        weapon_values = tuple(
+            damage
+            + level // 4
+            + (damage + level // 4) // 2
+            for damage in base_damages
+        )
+        # NPC dual wielding uses a 90-percent source chance.
+        cycle_numerator = damage_sum * 10 + sum(weapon_values) * 9
+        cycle_denominator = damage_count * 10
+    else:
+        cycle_numerator = damage_sum
+        cycle_denominator = damage_count
+    attack_chance = 100 + (level + level // 2) + level + level
+    if level >= 20:
+        attack_chance += level
+    numerator = cycle_numerator * attack_chance
+    denominator = cycle_denominator * 100
+    return max(1, (numerator + denominator - 1) // denominator)
 
 
 def _mobile_critical_hit_damage(level: int, *, wielding: bool) -> int:
@@ -3365,7 +4249,14 @@ def _wandering_aggressors(
         (mobile, reset)
         for reset in world.mob_resets
         if (mobile := world.mobiles.get(reset.mobile_vnum)) is not None
-        and _source_mobile_is_combat_hazard(world, mobile)
+        and (
+            _source_mobile_is_combat_hazard(world, mobile)
+            or _source_mobile_has_unsafe_special(
+                world,
+                mobile.vnum,
+                mobile,
+            )
+        )
         and mobile.wanders
     )
 
@@ -3377,6 +4268,29 @@ def _money_object_keyword(item: ObjectSource) -> str:
         if preferred in words:
             return preferred
     return words[0] if words else "coins"
+
+
+def _source_route_room_names(
+    world: WorldSource,
+    path_rooms: Collection[int],
+) -> tuple[str, ...]:
+    """Return normalized source room names crossed by a route."""
+    return tuple(
+        dict.fromkeys(
+            label
+            for room_vnum in path_rooms
+            if (room := world.rooms.get(room_vnum)) is not None
+            and (label := _normalize_name(room.name))
+        )
+    )
+
+
+def _source_mobile_where_keyword(mobile: MobileSource) -> str:
+    """Choose the shortest source keyword for a live ``where`` query."""
+    words = _normalize_name(mobile.keywords).split()
+    if words:
+        return words[0]
+    return _normalize_name(mobile.short_description).split()[-1]
 
 
 def _rank_direct_ground_stashes(
@@ -3433,6 +4347,7 @@ def _rank_direct_ground_stashes(
 
         hazards: list[str] = []
         rejections: list[str] = []
+        probabilistic_route_program_vnums: list[int] = []
         for path_room_vnum in path_rooms:
             for reset in resets_by_room.get(path_room_vnum, ()):
                 mobile = world.mobiles.get(reset.mobile_vnum)
@@ -3440,6 +4355,15 @@ def _rank_direct_ground_stashes(
                     world,
                     mobile,
                 ):
+                    continue
+                if _source_mobile_has_safe_noncombat_special(
+                    world,
+                    mobile.vnum,
+                ):
+                    hazards.append(
+                        "source-backed noncombat route special: "
+                        f"{mobile.short_description}"
+                    )
                     continue
                 if (
                     not mobile.aggressive
@@ -3469,13 +4393,22 @@ def _rank_direct_ground_stashes(
                 hazard_article = (
                     "an" if hazard_noun.startswith("aggressive") else "a"
                 )
-                if (
-                    mobile.attack_programs
-                    and _source_mobile_has_deterministic_attack_program(mobile)
-                ):
-                    rejections.append(
-                        "route crosses a program-triggered attacker"
-                    )
+                if mobile.attack_programs:
+                    if _source_mobile_has_deterministic_attack_program(mobile):
+                        rejections.append(
+                            "route crosses a program-triggered attacker"
+                        )
+                    elif hazard_level_max > character_level:
+                        rejections.append(
+                            f"route crosses a higher-level {hazard_noun}"
+                        )
+                    elif hazard_level_max > character_level - 5:
+                        rejections.append(
+                            f"route crosses {hazard_article} {hazard_noun} "
+                            "inside the useful XP band"
+                        )
+                    else:
+                        probabilistic_route_program_vnums.append(mobile.vnum)
                 elif hazard_level_max > character_level:
                     rejections.append(
                         f"route crosses a higher-level {hazard_noun}"
@@ -3515,6 +4448,12 @@ def _rank_direct_ground_stashes(
             reachable = set(source_mobile_search_rooms(world, mobile_vnum))
             if hazard_rooms.isdisjoint(reachable):
                 continue
+            if _source_mobile_has_safe_noncombat_special(world, mobile_vnum):
+                hazards.append(
+                    "source-backed noncombat route special: "
+                    f"{mobile.short_description}"
+                )
+                continue
             hazard_kind = (
                 "reachable program attacker"
                 if mobile.attack_programs
@@ -3537,9 +4476,21 @@ def _rank_direct_ground_stashes(
                 "an" if hazard_noun.startswith("aggressive") else "a"
             )
             if mobile.attack_programs:
-                rejections.append(
-                    "a program-triggered attacker can reach the route"
-                )
+                if _source_mobile_has_deterministic_attack_program(mobile):
+                    rejections.append(
+                        "a program-triggered attacker can reach the route"
+                    )
+                elif hazard_level_max > character_level:
+                    rejections.append(
+                        f"a higher-level {hazard_noun} can reach the route"
+                    )
+                elif hazard_level_max > character_level - 5:
+                    rejections.append(
+                        f"{hazard_article} {hazard_noun} inside the useful XP band "
+                        "can reach the route"
+                    )
+                else:
+                    probabilistic_route_program_vnums.append(mobile_vnum)
             elif hazard_level_max > character_level:
                 rejections.append(
                     f"a higher-level {hazard_noun} can reach the route"
@@ -3556,6 +4507,15 @@ def _rank_direct_ground_stashes(
                 mobile,
             ):
                 continue
+            if _source_mobile_has_safe_noncombat_special(
+                world,
+                mobile.vnum,
+            ):
+                hazards.append(
+                    "source-backed noncombat stash special: "
+                    f"{mobile.short_description}"
+                )
+                continue
             if mobile.aggressive:
                 hazards.append(
                     f"stash room has aggressive reset: "
@@ -3569,6 +4529,34 @@ def _rank_direct_ground_stashes(
                 )
                 rejections.append(
                     "stash room has a combat-joining special"
+                )
+
+        route_preflight_room_vnum: str | None = None
+        route_preflight_command: str | None = None
+        route_preflight_target: str | None = None
+        route_preflight_level_range = (0, 0)
+        route_preflight_hard_hazard = False
+        route_preflight_route_room_names: tuple[str, ...] = ()
+        probabilistic_programs = tuple(dict.fromkeys(probabilistic_route_program_vnums))
+        if len(probabilistic_programs) > 1:
+            rejections.append(
+                "route has multiple probabilistic program attackers requiring separate preflights"
+            )
+        elif probabilistic_programs:
+            preflight_mobile = world.mobiles.get(probabilistic_programs[0])
+            if preflight_mobile is not None:
+                route_preflight_room_vnum = str(RECALL_VNUM)
+                route_preflight_command = (
+                    f"where {_source_mobile_where_keyword(preflight_mobile)}"
+                )
+                route_preflight_target = preflight_mobile.short_description
+                route_preflight_level_range = _mobile_level_range(
+                    preflight_mobile.level
+                )
+                route_preflight_hard_hazard = True
+                route_preflight_route_room_names = _source_route_room_names(
+                    world,
+                    path_rooms,
                 )
 
         keywords = tuple(dict.fromkeys(object_keyword(item) for item in ground_objects))
@@ -3616,6 +4604,12 @@ def _rank_direct_ground_stashes(
                 is_coin_stash=is_coin_stash,
                 is_food_stash=is_food_stash,
                 autonomy_rejections=tuple(dict.fromkeys(rejections)),
+                route_preflight_room_vnum=route_preflight_room_vnum,
+                route_preflight_command=route_preflight_command,
+                route_preflight_target=route_preflight_target,
+                route_preflight_level_range=route_preflight_level_range,
+                route_preflight_hard_hazard=route_preflight_hard_hazard,
+                route_preflight_route_room_names=route_preflight_route_room_names,
             )
         )
 
@@ -3883,6 +4877,7 @@ def source_combat_readiness(
     character_class: str | None,
     character_subclass: str | None = None,
     known_skills: Collection[str] = (),
+    known_skill_levels: Mapping[str, int] | None = None,
     target_level_range: tuple[int, int],
     equipped_weapon_count: int = 0,
     character_max_hp: int | None = None,
@@ -3906,11 +4901,7 @@ def source_combat_readiness(
         raw_skills: Collection[str] = (known_skills,)
     else:
         raw_skills = known_skills or ()
-    skills = {
-        _normalize_skill_name(skill)
-        for skill in raw_skills
-        if str(skill).strip()
-    }
+    skills = set(_source_known_skill_set(raw_skills, known_skill_levels))
     if not skills:
         return "unassessed", 0
 
