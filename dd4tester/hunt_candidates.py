@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Callable, Collection, Iterable, Mapping
 
 from .fastwalks import FASTWALKS, MAP_ROUTES
+from .combat_capabilities import (
+    combat_capabilities_for,
+)
 from .specials import (
     COMBAT_JOINING_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
@@ -30,6 +33,82 @@ ACT_DIE_IF_MASTER_GONE = 1 << 21
 ACT_NO_EXPERIENCE = 1 << 24
 ACT_NO_FIGHT = 1 << 26
 ACT_UNDEAD = 1 << 30
+
+# ``rank_table`` in ``server/src/mob.c`` is applied by ``create_mobile``
+# after the ordinary area-file hit-point roll.  Keep the source multiplier
+# here so static target estimates match live elite/boss/world mobiles.
+MOBILE_RANK_HP_MULTIPLIERS = {
+    "none": 1,
+    "common": 1,
+    "uncommon": 1,
+    "rare": 2,
+    "elite": 5,
+    "boss": 7,
+    "world": 30,
+}
+
+# These values mirror DD4's ``body_form`` bits in ``merc.h``.  Keep the raw
+# value on source records so anatomy-sensitive actions can make an explicit
+# decision instead of inferring from a mobile's display name.
+BODY_NO_HEAD = 1 << 0
+BODY_NO_EYES = 1 << 1
+BODY_NO_ARMS = 1 << 2
+BODY_NO_LEGS = 1 << 3
+BODY_HUGE = 1 << 7
+BODY_INORGANIC = 1 << 8
+PART_HEAD = 1 << 10
+PART_MANY_HEAD = 1 << 11
+PART_ARMS = 1 << 12
+PART_MANY_ARMS = 1 << 13
+PART_2_LEGS = 1 << 15
+PART_4_LEGS = 1 << 16
+PART_MANY_LEGS = 1 << 17
+PART_EYE = 1 << 25
+
+
+def body_form_is_huge(flags: int | None) -> bool | None:
+    """Return source ``IS_HUGE`` evidence, preserving an unknown value."""
+    return None if flags is None else bool(flags & BODY_HUGE)
+
+
+def body_form_is_inorganic(flags: int | None) -> bool | None:
+    """Return source ``IS_INORGANIC`` evidence, preserving an unknown value."""
+    return None if flags is None else bool(flags & BODY_INORGANIC)
+
+
+def body_form_has_arms(flags: int | None) -> bool | None:
+    """Mirror DD4's ``HAS_ARMS`` macro for an optional source body form."""
+    if flags is None:
+        return None
+    return not bool(flags & BODY_NO_ARMS) or bool(
+        flags & (PART_ARMS | PART_MANY_ARMS)
+    )
+
+
+def body_form_has_legs(flags: int | None) -> bool | None:
+    """Mirror DD4's ``HAS_LEGS`` macro for an optional source body form."""
+    if flags is None:
+        return None
+    return not bool(flags & BODY_NO_LEGS) or bool(
+        flags & (PART_2_LEGS | PART_4_LEGS | PART_MANY_LEGS)
+    )
+
+
+def body_form_has_eyes(flags: int | None) -> bool | None:
+    """Mirror DD4's ``HAS_EYES`` macro for an optional source body form."""
+    if flags is None:
+        return None
+    return not bool(flags & BODY_NO_EYES) or bool(flags & PART_EYE)
+
+
+def body_form_has_head(flags: int | None) -> bool | None:
+    """Mirror DD4's ``HAS_HEAD`` macro for an optional source body form."""
+    if flags is None:
+        return None
+    return not bool(flags & BODY_NO_HEAD) or bool(
+        flags & (PART_HEAD | PART_MANY_HEAD)
+    )
+
 
 AFF_BLIND = 1 << 0
 AFF_NON_CORPOREAL = 1 << 28
@@ -126,6 +205,10 @@ _MOBILE_TEACHING = re.compile(
     r"^\s*&\s*(?P<percent>\d+)\s+'(?P<skill>[^']+)'\s*$",
     re.IGNORECASE,
 )
+_MOBILE_RANK = re.compile(
+    r"^\s*<\s*[^~]*~\s*(?P<rank>[^~]*)~\s*$",
+    re.IGNORECASE,
+)
 
 # This mirrors ``movement_loss`` in DD4's ``server/src/act_move.c``.  Keep
 # source route cost separate from command count: terrain, not the direction
@@ -137,47 +220,35 @@ _MOVEMENT_LOSS = (1, 2, 2, 3, 4, 5, 4, 1, 3, 10, 6, 4)
 # segment with low-value kills before the useful target is reached.
 _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY = 4
 
+# The ordinary XP cutoff is five levels, but a source-aggressive mobile that
+# can still be close enough to interrupt travel needs a wider route-only gate.
+# It remains eligible as an incidental kill when it is farther below this band;
+# this does not change target selection or the live consider rule.
+_SOURCE_TRANSIT_AGGRESSOR_RISK_GAP = 10
+
 # A modest detour is worthwhile when it removes a source-proven crowd from a
 # route. Keep route planning from replacing a short, unusable path with an
 # effectively cross-world journey.
 _MAX_SOURCE_ROUTE_DETOUR_STEPS = 20
 
-# These are the active combat commands selected by the deterministic starter
-# controller.  Keep this list aligned with the source-backed action branches in
-# ``starter.py`` and the class training analysis; it is a ranking hint, not a
-# replacement for live consider, health, crowd, or route gates.
-_SOURCE_DIRECT_COMBAT_ACTIONS = {
-    "mage": ("burning hands", "chill touch", "magic missile"),
-    "cleric": ("cause critical", "cause serious", "cause light"),
-    "thief": ("circle", "knife toss", "backstab"),
-    "warrior": ("stun", "kick"),
-    "psionic": ("psychic crush", "mind thrust"),
-    "shifter": (),
-    "brawler": ("punch",),
-    "ranger": ("shoot", "kick"),
-    "smithy": (),
-}
-_SOURCE_SUBCLASS_COMBAT_ACTIONS = {
-    "barbarian": ("berserk",),
-    "vampire": ("suck",),
-    "martial artist": ("atemi", "kansetsu"),
-    "necromancer": ("harm",),
-    "druid": ("wither",),
-    "knight": ("flamestrike",),
-    "monk": ("agitation", "mind thrust"),
-    "werewolf": ("wolfbite", "ravage"),
-}
+# Passive and control capabilities remain separate because they affect the
+# ordinary weapon cycle or target safety rather than being direct actions.
 _SOURCE_PASSIVE_COMBAT_SKILLS = (
     "second attack",
     "third attack",
     "enhanced damage",
     "enhanced hit",
+    "second punch",
     "counterbalance",
 )
 _SOURCE_CONTROL_COMBAT_SKILLS = (
     "disarm",
     "grip",
     "stun",
+    "smash",
+    "kansetsu",
+    "dirt kick",
+    "trip",
 )
 _SOURCE_DEFENSIVE_COMBAT_SKILLS = (
     "armor",
@@ -218,28 +289,6 @@ class SourceCombatOutput:
     opening_conservative_damage: int | None = None
     opening_source_reference: str | None = None
 
-
-_SOURCE_CASTER_COMBAT_ACTIONS = {
-    "mage": ("burning hands", "chill touch", "magic missile"),
-    "cleric": ("cause critical", "cause serious", "cause light"),
-    "psionic": ("psychic crush", "mind thrust"),
-}
-_SOURCE_SUBCLASS_CASTER_COMBAT_ACTIONS = {
-    "necromancer": ("harm",),
-    "druid": ("wither",),
-    "knight": ("flamestrike",),
-    "monk": ("agitation", "mind thrust"),
-}
-_SOURCE_SUBCLASS_OUTPUT_ACTIONS = {
-    "werewolf": ("wolfbite", "ravage"),
-    "martial artist": ("atemi",),
-}
-_SOURCE_DIRECT_OUTPUT_ACTIONS = {
-    "brawler": ("punch",),
-    "ranger": ("kick",),
-    "thief": ("circle", "knife toss"),
-    "warrior": ("kick",),
-}
 
 _SOURCE_PIERCING_WEAPON_DAMAGE_TYPES = frozenset({2, 11})
 
@@ -340,6 +389,7 @@ def _source_weapon_expected_attacks(
     known_skill_levels: Mapping[str, int] | None,
     swiftness: int | None,
     dex_swiftness: int,
+    counterbalance_percent: int | None = None,
 ) -> tuple[float, int]:
     """Return expected and maximum ``multi_hit`` attacks for one round.
 
@@ -402,6 +452,22 @@ def _source_weapon_expected_attacks(
         expected_attacks += swift_chance / 100.0
         if swift_chance:
             maximum_attacks += 1
+
+    # ``do_counterbalance`` stores the learned percentage on the weapon as
+    # APPLY_BALANCE. ``fight.c`` rolls a separate attack after the ordinary
+    # cycle, so this passive is usable only when the caller has independently
+    # verified the currently wielded object.
+    if counterbalance_percent is not None:
+        try:
+            counterbalance_chance = max(
+                0,
+                min(99, int(counterbalance_percent) - 1),
+            )
+        except (TypeError, ValueError):
+            counterbalance_chance = 0
+        expected_attacks += counterbalance_chance / 100.0
+        if counterbalance_chance:
+            maximum_attacks += 1
     return expected_attacks, maximum_attacks
 
 
@@ -445,6 +511,32 @@ def _source_weapon_hit_values(
     )
 
 
+def _source_vampire_attack_values(
+    hit_values: tuple[int, ...],
+    *,
+    player_rage: int | None,
+    player_max_rage: int | None,
+) -> tuple[int, ...]:
+    """Apply DD4's source ``suck``/``lunge`` damage and rage branches."""
+    attack_values = tuple(
+        damage + damage // 2
+        for damage in hit_values
+    )
+    if player_rage is None or player_max_rage is None or player_max_rage <= 0:
+        return attack_values
+    if player_rage > (player_max_rage * 3 // 4):
+        return tuple(
+            damage + damage // 10
+            for damage in attack_values
+        )
+    if player_rage < (player_max_rage // 4):
+        return tuple(
+            max(1, damage - damage // 10)
+            for damage in attack_values
+        )
+    return attack_values
+
+
 def source_combat_output_estimate(
     *,
     character_level: int,
@@ -455,26 +547,54 @@ def source_combat_output_estimate(
     weapon_damage_range: tuple[int, int] | None = None,
     weapon_vnum: int | None = None,
     weapon_damage_type: int | None = None,
+    ranged_weapon_damage_range: tuple[int, int] | None = None,
+    ranged_weapon_vnum: int | None = None,
     player_damroll: int = 0,
     player_swiftness: int | None = None,
     player_dex_swiftness: int = 0,
+    player_rage: int | None = None,
+    player_max_rage: int | None = None,
+    weapon_counterbalanced: bool = False,
+    weapon_chained: bool = False,
+    target_body_form_flags: int | None = None,
 ) -> SourceCombatOutput | None:
     """Return the first executable source-backed damage action.
 
     This covers formulas audited in ``magic.c``, ``skill.c``, and the bounded
     werewolf natural attacks in ``sft.c``. It also models the source-backed
-    between-round ``kick``, ``knife toss``, and ``circle`` actions when their
-    observed skill percentage and weapon requirements are present. When a
+    between-round ``headbutt``, ``kick``, ``knife toss``, and ``circle`` actions
+    when their observed skill percentage and weapon requirements are present.
+    Headbutt is estimated only with parsed source body-form evidence proving a
+    non-huge target has a head. When a
     current structured equipment snapshot supplies a source object damage
     range, it models the player half of ``fight.c``'s weapon and
     ``multi_hit`` formula. Hit chance, temporary affects, target armor, and
     target resistances remain live-probed rather than guessed. An unknown
     weapon keeps ordinary physical output unassessed.
+    Counterbalance is included only when the caller has verified that the
+    current wielded object carries DD4's ``APPLY_BALANCE`` affect, not from
+    the learned skill alone; its source percentage adds a separate expected
+    hit to the ordinary cycle.
     For a trained thief with a source-identified piercing weapon, the result
-    also carries one optional backstab opening budget. That opening is weighted
-    by its observed proficiency and is never included as a recurring action.
+    also carries one optional backstab opening budget. DD4's ``multi_hit``
+    automatically rolls ``double backstab`` after that opener; include that
+    branch only from positive observed proficiency. For a trained ranger
+    with a source-identified bow, it carries the one-shot ``do_shoot`` volley
+    budget, including only observed second- and third-shot proficiencies. Both
+    openings are weighted by live proficiency and are never recurring actions.
+    For a source-verified vampire, ``suck`` uses the current weapon (or DD4's
+    unarmed 1d4 fallback), applies the source drain multiplier, and weights
+    the one-hit result by the observed skill percentage. Its rage adjustment
+    is applied only when live rage and max-rage values are available.
+    A source-verified vampire with a trained ``lunge`` also receives one
+    bounded full-health-target opening budget. ``double lunge`` contributes
+    only its observed second-opening probability; it is never treated as a
+    recurring combat action.
     Subclass actions are enabled only for their source-legal subclass; a
     subclass skill must never make an unrelated base-class route look ready.
+    Smithy ``hurl`` is included only when the current wielded weapon is
+    independently observed to carry ``EGO_ITEM_CHAINED``. The learned skill
+    alone is never treated as proof of that object property.
     """
     try:
         level = max(1, int(character_level))
@@ -483,27 +603,85 @@ def source_combat_output_estimate(
     normalized_class = _normalize_skill_name(character_class or "")
     normalized_subclass = _normalize_skill_name(character_subclass or "")
     actions = tuple(
-        dict.fromkeys(
-            (
-                *_SOURCE_SUBCLASS_OUTPUT_ACTIONS.get(
-                    normalized_subclass,
-                    (),
-                ),
-                *_SOURCE_SUBCLASS_CASTER_COMBAT_ACTIONS.get(
-                    normalized_subclass,
-                    (),
-                ),
-                *_SOURCE_DIRECT_OUTPUT_ACTIONS.get(normalized_class, ()),
-                *_SOURCE_CASTER_COMBAT_ACTIONS.get(normalized_class, ()),
-            )
+        capability.name
+        for capability in combat_capabilities_for(
+            normalized_class,
+            normalized_subclass,
+            estimated_only=True,
         )
     )
     if weapon_damage_range is not None:
         actions = (*actions, "weapon strike")
-    if not actions:
-        return None
     skills = _source_known_skill_set(known_skills, known_skill_levels)
+    if (
+        normalized_class == "smithy"
+        and weapon_chained
+        and weapon_damage_range is not None
+        and "hurl" in skills
+    ):
+        actions = ("hurl", *actions)
+    counterbalance_percent = (
+        _source_skill_percent(
+            "counterbalance",
+            skills,
+            known_skill_levels,
+        )
+        if weapon_counterbalanced
+        else None
+    )
+    opening_action: str | None = None
     opening_data: tuple[int, int, int, int, str] | None = None
+    if normalized_class == "shifter" and normalized_subclass == "vampire":
+        lunge_percent = _source_skill_percent(
+            "lunge",
+            skills,
+            known_skill_levels,
+        )
+        lunge_hit_values = _source_weapon_hit_values(
+            weapon_damage_range or (1, 4),
+            skills=skills,
+            known_skill_levels=known_skill_levels,
+            damroll=player_damroll,
+        )
+        if lunge_percent > 0 and lunge_hit_values:
+            lunge_values = _source_vampire_attack_values(
+                lunge_hit_values,
+                player_rage=player_rage,
+                player_max_rage=player_max_rage,
+            )
+            double_lunge_percent = _source_skill_percent(
+                "double lunge",
+                skills,
+                known_skill_levels,
+            )
+            successful_expected = (
+                sum(lunge_values) / len(lunge_values)
+            )
+            expected = max(
+                1,
+                int(
+                    successful_expected
+                    * lunge_percent
+                    / 100.0
+                    * (1.0 + double_lunge_percent / 100.0)
+                ),
+            )
+            opening_data = (
+                min(lunge_values),
+                expected,
+                max(lunge_values) * (
+                    2 if double_lunge_percent > 0 else 1
+                ),
+                max(1, expected * 4 // 5),
+                "fight.c:do_lunge/multi_hit/one_hit",
+            )
+            if weapon_vnum is not None:
+                opening_data = (
+                    *opening_data[:-1],
+                    f"fight.c:do_lunge/multi_hit/one_hit; object vnum "
+                    f"{int(weapon_vnum)}",
+                )
+            opening_action = "lunge"
     if (
         normalized_class == "thief"
         and weapon_damage_type in _SOURCE_PIERCING_WEAPON_DAMAGE_TYPES
@@ -526,33 +704,172 @@ def source_combat_output_estimate(
             successful_expected = (
                 sum(hit_values) / len(hit_values) * multiplier
             )
+            double_backstab_percent = _source_skill_percent(
+                "double backstab",
+                skills,
+                known_skill_levels,
+            )
             expected = max(
                 1,
-                int(successful_expected * backstab_percent / 100.0),
+                int(
+                    successful_expected
+                    * backstab_percent
+                    / 100.0
+                    * (1.0 + double_backstab_percent / 100.0)
+                ),
             )
+            maximum = successful_maximum * (
+                2 if double_backstab_percent > 0 else 1
+            )
+            reference = "fight.c:do_backstab/one_hit"
+            if double_backstab_percent > 0:
+                reference += "; plus fight.c:multi_hit/double_backstab"
             opening_data = (
                 successful_minimum,
                 expected,
-                successful_maximum,
+                maximum,
                 max(1, expected * 4 // 5),
-                "fight.c:do_backstab/one_hit",
+                reference,
             )
             if weapon_vnum is not None:
                 opening_data = (
                     *opening_data[:-1],
-                    f"fight.c:do_backstab/one_hit; object vnum {int(weapon_vnum)}",
+                    f"{reference}; object vnum {int(weapon_vnum)}",
                 )
+            opening_action = "backstab"
+    if normalized_class == "ranger":
+        shoot_percent = _source_skill_percent(
+            "shoot",
+            skills,
+            known_skill_levels,
+        )
+        ranged_hit_values = _source_weapon_hit_values(
+            ranged_weapon_damage_range,
+            skills=skills,
+            known_skill_levels=known_skill_levels,
+            damroll=player_damroll,
+        )
+        if shoot_percent > 0 and ranged_hit_values:
+            second_shot_percent = _source_skill_percent(
+                "second shot",
+                skills,
+                known_skill_levels,
+            )
+            third_shot_percent = _source_skill_percent(
+                "third shot",
+                skills,
+                known_skill_levels,
+            )
+            expected_shots = (
+                1.0
+                + second_shot_percent / 100.0
+                + third_shot_percent / 100.0
+            )
+            maximum_shots = (
+                1
+                + int(second_shot_percent > 0)
+                + int(third_shot_percent > 0)
+            )
+            successful_expected = (
+                sum(ranged_hit_values) / len(ranged_hit_values)
+                * expected_shots
+            )
+            expected = max(
+                1,
+                int(successful_expected * shoot_percent / 100.0),
+            )
+            opening_data = (
+                min(ranged_hit_values),
+                expected,
+                max(ranged_hit_values) * maximum_shots,
+                max(1, expected * 4 // 5),
+                "fight.c:do_shoot/one_hit",
+            )
+            if ranged_weapon_vnum is not None:
+                opening_data = (
+                    *opening_data[:-1],
+                    f"fight.c:do_shoot/one_hit; object vnum "
+                    f"{int(ranged_weapon_vnum)}",
+                )
+            opening_action = "shoot"
+    if not actions:
+        return None
     for action in actions:
         if action != "weapon strike" and action not in skills:
             continue
         if action == "punch":
             # do_punch's primary damage is level/2 plus number_range(1,
-            # level*2). Keep the optional second-punch roll out of this
-            # conservative bound; it has its own skill and trauma gate.
+            # level*2). The source then makes one independent second-punch
+            # roll when the arm-trauma gate is clear. Include that automatic
+            # side effect only when its positive live proficiency is known;
+            # the command remains the same ``punch`` action.
             minimum = level // 2 + 1
             maximum = level // 2 + level * 2
             expected = level // 2 + (1 + level * 2) // 2
             reference = "skill.c:do_punch"
+            resource_cost = 0
+            second_punch_percent = _source_skill_percent(
+                "second punch",
+                skills,
+                known_skill_levels,
+            )
+            if second_punch_percent > 0:
+                second_minimum = level + level
+                second_maximum = level + level * 2
+                second_expected = (second_minimum + second_maximum) // 2
+                expected += max(
+                    1,
+                    int(second_expected * second_punch_percent / 100.0),
+                )
+                maximum += second_maximum
+                reference = (
+                    "skill.c:do_punch; plus skill.c:do_punch/second_punch"
+                )
+        elif action == "headbutt":
+            # do_headbutt requires a fighting target with a head and rejects
+            # huge targets before its learned-percent damage roll. Unknown
+            # anatomy is therefore not an executable output estimate.
+            if (
+                body_form_has_head(target_body_form_flags) is not True
+                or body_form_is_huge(target_body_form_flags) is not False
+            ):
+                continue
+            skill_percent = _source_skill_percent(
+                "headbutt",
+                skills,
+                known_skill_levels,
+            )
+            if skill_percent <= 0:
+                continue
+            base = level // 2
+            minimum = base + 1
+            maximum = base + level * 3
+            successful_expected = base + (1 + level * 3) // 2
+            success_probability = skill_percent / 100.0
+            second_headbutt_percent = _source_skill_percent(
+                "second headbutt",
+                skills,
+                known_skill_levels,
+            )
+            second_maximum = base + level * 3
+            second_expected = base + (10 + level * 3) // 2
+            expected = max(
+                1,
+                int(
+                    successful_expected * success_probability
+                    + second_expected
+                    * success_probability
+                    * (second_headbutt_percent / 100.0)
+                ),
+            )
+            if second_headbutt_percent > 0:
+                maximum += second_maximum
+                reference = (
+                    "fight.c:do_headbutt/one_hit; plus "
+                    "fight.c:do_headbutt/second_headbutt"
+                )
+            else:
+                reference = "fight.c:do_headbutt/one_hit"
             resource_cost = 0
         elif action in {"kick", "knife toss"}:
             # Both commands use a level-scaled roll and a learned-percent
@@ -626,6 +943,65 @@ def source_combat_output_estimate(
                 2 if second_circle_percent > 0 else 1
             )
             reference = "fight.c:do_circle/one_hit"
+            if weapon_vnum is not None:
+                reference += f"; object vnum {int(weapon_vnum)}"
+            resource_cost = 0
+        elif action == "suck":
+            # ``do_suck`` performs one source ``one_hit`` and then adds half
+            # of that damage. A vampire can use the same action unarmed; the
+            # ordinary unarmed one_hit range is 1..4 for non-brawlers.
+            suck_weapon_range = weapon_damage_range or (1, 4)
+            hit_values = _source_weapon_hit_values(
+                suck_weapon_range,
+                skills=skills,
+                known_skill_levels=known_skill_levels,
+                damroll=player_damroll,
+            )
+            skill_percent = _source_skill_percent(
+                "suck",
+                skills,
+                known_skill_levels,
+            )
+            if skill_percent <= 0 or not hit_values:
+                continue
+            suck_values = _source_vampire_attack_values(
+                hit_values,
+                player_rage=player_rage,
+                player_max_rage=player_max_rage,
+            )
+            successful_expected = sum(suck_values) / len(suck_values)
+            minimum = min(suck_values)
+            maximum = max(suck_values)
+            expected = max(
+                1,
+                int(successful_expected * skill_percent / 100.0),
+            )
+            reference = "skill.c:do_suck; fight.c:one_hit"
+            resource_cost = 0
+        elif action == "hurl":
+            # A weapon hurl is a repeatable between-round action.  DD4 uses
+            # level/2 + number_range(level, level*2) for a successful weapon
+            # hurl, with the learned percentage as the success gate. The
+            # caller has already proved the weapon is chained and wielded.
+            skill_percent = _source_skill_percent(
+                "hurl",
+                skills,
+                known_skill_levels,
+            )
+            if (
+                not weapon_chained
+                or weapon_damage_range is None
+                or skill_percent <= 0
+            ):
+                continue
+            minimum = level // 2 + level
+            maximum = level // 2 + level * 2
+            successful_expected = (minimum + maximum) // 2
+            expected = max(
+                1,
+                int(successful_expected * skill_percent / 100.0),
+            )
+            reference = "fight.c:do_hurl/weapon"
             if weapon_vnum is not None:
                 reference += f"; object vnum {int(weapon_vnum)}"
             resource_cost = 0
@@ -826,6 +1202,7 @@ def source_combat_output_estimate(
                 known_skill_levels=known_skill_levels,
                 swiftness=player_swiftness,
                 dex_swiftness=dex_swiftness,
+                counterbalance_percent=counterbalance_percent,
             )
             minimum = min(hit_values)
             maximum = max(hit_values) * maximum_attacks
@@ -833,12 +1210,21 @@ def source_combat_output_estimate(
             reference = "fight.c:one_hit/multi_hit"
             if weapon_vnum is not None:
                 reference += f"; object vnum {int(weapon_vnum)}"
+            if counterbalance_percent is not None and counterbalance_percent > 1:
+                reference += "; plus fight.c:counterbalance"
             resource_cost = 0
         else:
             continue
         if minimum <= 0 or maximum < minimum or expected <= 0:
             return None
-        if action in {"kick", "knife toss", "circle"}:
+        if action in {
+            "headbutt",
+            "kick",
+            "knife toss",
+            "circle",
+            "suck",
+            "hurl",
+        }:
             # These commands are issued between automatic combat rounds. If a
             # source weapon is currently wielded, include one audited
             # ``multi_hit`` cycle in the same planning window instead of
@@ -856,6 +1242,7 @@ def source_combat_output_estimate(
                         known_skill_levels=known_skill_levels,
                         swiftness=player_swiftness,
                         dex_swiftness=player_dex_swiftness,
+                        counterbalance_percent=counterbalance_percent,
                     )
                 )
                 automatic_expected = max(
@@ -881,8 +1268,11 @@ def source_combat_output_estimate(
                 "actions"
                 if action in {
                     "circle",
+                    "headbutt",
                     "kick",
                     "knife toss",
+                    "suck",
+                    "hurl",
                     "punch",
                     "atemi",
                     "wolfbite",
@@ -894,7 +1284,7 @@ def source_combat_output_estimate(
             resource_cost=resource_cost,
             conservative_damage=max(1, expected * 4 // 5),
             source_reference=reference,
-            opening_action="backstab" if opening_data else None,
+            opening_action=opening_action if opening_data else None,
             opening_min_damage=opening_data[0] if opening_data else None,
             opening_expected_damage=opening_data[1] if opening_data else None,
             opening_max_damage=opening_data[2] if opening_data else None,
@@ -928,6 +1318,12 @@ class MobileSource:
     affected_flags: int = 0
     programs: tuple[MobileProgram, ...] = ()
     teachings: tuple[tuple[str, int], ...] = ()
+    # ``None`` is reserved for malformed or legacy records with no body line;
+    # a parsed ``0`` is real source evidence for an ordinary organic body.
+    body_form_flags: int | None = None
+    # DD4 stores this on the mobile prototype and multiplies max_hit when the
+    # live instance is created.  Missing legacy records are ordinary/common.
+    rank: str = "common"
 
     @property
     def aggressive(self) -> bool:
@@ -947,6 +1343,11 @@ class MobileSource:
         return bool(self.act_flags & ACT_UNDEAD)
 
     @property
+    def rank_hp_multiplier(self) -> int:
+        """Return DD4's source ``rank_table`` hit-point multiplier."""
+        return MOBILE_RANK_HP_MULTIPLIERS.get(self.rank.casefold(), 1)
+
+    @property
     def confused(self) -> bool:
         return bool(self.affected_flags & AFF_CONFUSION)
 
@@ -954,6 +1355,36 @@ class MobileSource:
     def non_corporeal(self) -> bool:
         """Return whether DD4's source prototype cannot be attacked."""
         return bool(self.affected_flags & AFF_NON_CORPOREAL)
+
+    @property
+    def huge(self) -> bool | None:
+        """Return DD4's source-level ``IS_HUGE`` result."""
+        return body_form_is_huge(self.body_form_flags)
+
+    @property
+    def inorganic(self) -> bool | None:
+        """Return DD4's source-level ``IS_INORGANIC`` result."""
+        return body_form_is_inorganic(self.body_form_flags)
+
+    @property
+    def has_arms(self) -> bool | None:
+        """Mirror DD4's ``HAS_ARMS`` macro for source mobile prototypes."""
+        return body_form_has_arms(self.body_form_flags)
+
+    @property
+    def has_head(self) -> bool | None:
+        """Mirror DD4's ``HAS_HEAD`` macro for source mobile prototypes."""
+        return body_form_has_head(self.body_form_flags)
+
+    @property
+    def has_eyes(self) -> bool | None:
+        """Mirror DD4's ``HAS_EYES`` macro for source mobile prototypes."""
+        return body_form_has_eyes(self.body_form_flags)
+
+    @property
+    def has_legs(self) -> bool | None:
+        """Mirror DD4's ``HAS_LEGS`` macro for source mobile prototypes."""
+        return body_form_has_legs(self.body_form_flags)
 
     @property
     def awards_fame(self) -> bool:
@@ -1105,6 +1536,18 @@ class MobReset:
     equipment: tuple[tuple[int, int], ...] = ()
 
 
+def _reset_object_vnums(reset: MobReset) -> tuple[int, ...]:
+    """Return every object loaded by a mobile reset, including equipment."""
+    return tuple(
+        dict.fromkeys(
+            (
+                *reset.object_vnums,
+                *(object_vnum for _wear_location, object_vnum in reset.equipment),
+            )
+        )
+    )
+
+
 @dataclass(frozen=True)
 class RoomObjectReset:
     """A source ``O`` or ``I`` reset that places an object on the ground."""
@@ -1173,7 +1616,11 @@ class HuntCandidate:
     contained_coins: int
     hazards: tuple[str, ...]
     target_identity: str = ""
+    rank: str = "common"
     equipped_weapons: tuple[str, ...] = ()
+    # ``None`` means a legacy or synthetic candidate has no body-form proof;
+    # parsed source candidates preserve a real zero-valued body form.
+    target_body_form_flags: int | None = None
     estimated_level_range: tuple[int, int] = (0, 0)
     estimated_base_hp_range: tuple[int, int] = (0, 0)
     estimated_peak_round_damage: int = 0
@@ -1190,6 +1637,13 @@ class HuntCandidate:
     route_preflight_hard_hazard: bool = False
     route_preflight_route_room_names: tuple[str, ...] = ()
     route_hard_hazard_targets: tuple[str, ...] = ()
+    # Exact source identities for mobiles that can interrupt the route.  Keep
+    # these separate from display-only hazard text so policy gates can reason
+    # about aggressive NPCs even when their source has no special procedure.
+    route_hazard_mobile_vnums: tuple[int, ...] = ()
+    route_aggressive_mobile_vnums: tuple[int, ...] = ()
+    route_attack_program_mobile_vnums: tuple[int, ...] = ()
+    route_special_mobile_vnums: tuple[int, ...] = ()
     sentinel: bool = False
     stay_area: bool = False
     estimated_move_cost: int = 0
@@ -1231,6 +1685,26 @@ class ResourcePlacement:
     route_origin_recall_index: int = 0
     hazards: tuple[str, ...] = ()
     autonomy_rejections: tuple[str, ...] = ()
+    activation: "ResourceActivation | None" = None
+
+
+@dataclass(frozen=True)
+class ResourceActivation:
+    """Source-audited command semantics for one beneficial object effect.
+
+    Acquisition and combat safety remain separate from activation.  In
+    particular, a spell-bearing mobile is still a source hazard; this record
+    only prevents the runner from having to rediscover how a safely acquired
+    object is consumed.
+    """
+
+    spell: str
+    command: str
+    mode: str
+    requires_hold: bool
+    consumes_object: bool
+    consumes_charge: bool
+    target: str | None = None
 
 
 _RESOURCE_EFFECT_SPELLS = {
@@ -1257,6 +1731,18 @@ _RESOURCE_EFFECT_ALIASES = {
     "travel": "flight",
 }
 _RESOURCE_EFFECT_ORDER = ("sanctuary", "healing", "flight", "food")
+_RESOURCE_EFFECT_SPELL_ORDER = {
+    "sanctuary": ("sanctuary",),
+    "healing": (
+        "power heal",
+        "heal",
+        "cure critical",
+        "cure serious",
+        "cure light",
+        "refresh",
+    ),
+    "flight": ("fly", "levitation"),
+}
 
 
 def money_value(values: Iterable[int]) -> int:
@@ -1323,6 +1809,96 @@ def resource_effects_for_object(
         if spell_names.intersection(_RESOURCE_EFFECT_SPELLS[name]):
             effects.append(name)
     return tuple(effects)
+
+
+def resource_activation_for_object(
+    item: ObjectSource,
+    *,
+    effect: str,
+    spell_name: str | None = None,
+) -> ResourceActivation | None:
+    """Return DD4's source command contract for one positive object effect.
+
+    ``do_quaff`` consumes a potion, ``do_recite`` consumes a held scroll,
+    ``do_brandish`` spends a held staff charge, and ``do_zap`` spends a held
+    wand charge.  The command is deliberately descriptive rather than a
+    ready-to-send selector: duplicate live objects still require the normal
+    source/VNUM-aware keyword resolution at execution time.
+    """
+    normalized = " ".join(str(effect).casefold().split())
+    normalized = _RESOURCE_EFFECT_ALIASES.get(normalized, normalized)
+    requested_spell = (
+        " ".join(str(spell_name).casefold().split())
+        if spell_name is not None
+        else None
+    )
+    if requested_spell is None:
+        # Accepting a spell-shaped effect keeps the campaign selector able to
+        # ask for an exact source spell without duplicating the effect table.
+        spell_effect = next(
+            (
+                effect_name
+                for effect_name, spell_names in _RESOURCE_EFFECT_SPELLS.items()
+                if normalized in spell_names
+            ),
+            None,
+        )
+        if spell_effect is not None:
+            requested_spell = normalized
+            normalized = spell_effect
+    if normalized not in _RESOURCE_EFFECT_SPELL_ORDER:
+        return None
+    spell_names = set(potion_spell_names(item)) | set(castable_spell_names(item))
+    spell = requested_spell or next(
+        (
+            candidate
+            for candidate in _RESOURCE_EFFECT_SPELL_ORDER[normalized]
+            if candidate in spell_names
+        ),
+        None,
+    )
+    if spell not in spell_names:
+        return None
+    if spell is None:
+        return None
+    if item.item_type == ITEM_POTION:
+        return ResourceActivation(
+            spell=spell,
+            command="quaff",
+            mode="potion",
+            requires_hold=False,
+            consumes_object=True,
+            consumes_charge=False,
+        )
+    if item.item_type == ITEM_SCROLL:
+        return ResourceActivation(
+            spell=spell,
+            command="recite",
+            mode="scroll",
+            requires_hold=True,
+            consumes_object=True,
+            consumes_charge=False,
+        )
+    if item.item_type == ITEM_STAFF:
+        return ResourceActivation(
+            spell=spell,
+            command="brandish",
+            mode="staff",
+            requires_hold=True,
+            consumes_object=False,
+            consumes_charge=True,
+        )
+    if item.item_type == ITEM_WAND:
+        return ResourceActivation(
+            spell=spell,
+            command="zap",
+            mode="wand",
+            requires_hold=True,
+            consumes_object=False,
+            consumes_charge=True,
+            target="self",
+        )
+    return None
 
 
 def rank_resource_sources(
@@ -1466,6 +2042,10 @@ def rank_resource_sources(
             item,
             effect=normalized_effect,
         ):
+            activation = resource_activation_for_object(
+                item,
+                effect=effect_name,
+            )
             placements.append(
                 ResourcePlacement(
                     effect=effect_name,
@@ -1486,6 +2066,7 @@ def rank_resource_sources(
                     route_origin_recall_index=route_origin,
                     hazards=tuple(dict.fromkeys(hazards)),
                     autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
+                    activation=activation,
                 )
             )
 
@@ -1498,7 +2079,7 @@ def rank_resource_sources(
             or (allowed_areas is not None and room.area_file not in allowed_areas)
         ):
             continue
-        matching_vnums = selected_vnums.intersection(reset.object_vnums)
+        matching_vnums = selected_vnums.intersection(_reset_object_vnums(reset))
         for object_vnum in sorted(matching_vnums):
             item = object_by_vnum[object_vnum]
             equipped = any(
@@ -1905,9 +2486,10 @@ def rank_hunt_candidates(
             or mobile.act_flags & ACT_NO_EXPERIENCE
         ):
             continue
+        reset_object_vnums = _reset_object_vnums(reset)
         required_loot_objects = tuple(
             world.objects[object_vnum]
-            for object_vnum in reset.object_vnums
+            for object_vnum in reset_object_vnums
             if object_vnum in required_loot_vnums
             and object_vnum in world.objects
         )
@@ -1936,7 +2518,10 @@ def rank_hunt_candidates(
             and (item := world.objects.get(object_vnum)) is not None
             and castable_spell_names(item)
         )
-        hp_range = _mobile_base_hp_range(level_range)
+        hp_range = _mobile_base_hp_range(
+            level_range,
+            rank=mobile.rank,
+        )
         peak_round_damage = _mobile_peak_round_damage(
             level_range[1],
             wielding=any(
@@ -2010,6 +2595,10 @@ def rank_hunt_candidates(
         )
         hazards: list[str] = []
         autonomy_rejections: list[str] = []
+        route_hazard_mobile_vnums: set[int] = set()
+        route_aggressive_mobile_vnums: set[int] = set()
+        route_attack_program_mobile_vnums: set[int] = set()
+        route_special_mobile_vnums: set[int] = set()
         dangerous = False
         normalized_target = _normalize_name(mobile.short_description)
         boot_kills = (
@@ -2056,6 +2645,7 @@ def rank_hunt_candidates(
             )
             companion_is_below_band = (
                 companion_level_range[1] <= character_level - 5
+                and not companion.attack_programs
             )
             companion_can_join = source_mobile_can_join_player_fight(
                 world,
@@ -2128,6 +2718,13 @@ def rank_hunt_candidates(
                     or unsafe_special
                 ):
                     continue
+                route_hazard_mobile_vnums.add(hazard.vnum)
+                if hazard.aggressive:
+                    route_aggressive_mobile_vnums.add(hazard.vnum)
+                if hazard.attack_programs:
+                    route_attack_program_mobile_vnums.add(hazard.vnum)
+                if unsafe_special:
+                    route_special_mobile_vnums.add(hazard.vnum)
                 # A combat-joining guard only reacts after a fight starts;
                 # a mobile program can initiate combat on entry even when its
                 # prototype is not flagged ACT_AGGRESSIVE.
@@ -2203,6 +2800,13 @@ def rank_hunt_candidates(
                             f"route crosses {hazard_article} {hazard_noun} "
                             "inside the useful XP band"
                         )
+                elif hazard.aggressive and hazard_level_max > (
+                    character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+                ):
+                    autonomy_rejections.append(
+                        "route crosses an aggressive transit attacker inside "
+                        "the transit-risk band"
+                    )
                 elif (
                     path_reset.maximum_count
                     > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
@@ -2247,6 +2851,13 @@ def rank_hunt_candidates(
                 )
             ):
                 continue
+            route_hazard_mobile_vnums.add(hazard.vnum)
+            if hazard.aggressive:
+                route_aggressive_mobile_vnums.add(hazard.vnum)
+            if hazard.attack_programs:
+                route_attack_program_mobile_vnums.add(hazard.vnum)
+            if unsafe_special:
+                route_special_mobile_vnums.add(hazard.vnum)
             hazard_kind = (
                 "reachable program attacker"
                 if hazard.attack_programs
@@ -2291,6 +2902,15 @@ def rank_hunt_candidates(
                 dangerous = True
                 autonomy_rejections.append(
                     f"a higher-level {hazard_noun} can reach the route"
+                )
+            elif (
+                hazard.aggressive
+                and hazard_level_max
+                > character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+            ):
+                autonomy_rejections.append(
+                    "an aggressive wanderer inside the transit-risk band "
+                    "can reach the route"
                 )
             elif hazard_level_max > character_level - 5:
                 if _bounded_borderline_route_aggressor(
@@ -2443,9 +3063,11 @@ def rank_hunt_candidates(
                     mobile.short_description,
                     mobile.keywords,
                 )[0],
+                rank=mobile.rank,
                 equipped_weapons=tuple(
                     item.short_description for item in equipped_weapons
                 ),
+                target_body_form_flags=mobile.body_form_flags,
                 estimated_level_range=level_range,
                 estimated_base_hp_range=hp_range,
                 estimated_peak_round_damage=peak_round_damage,
@@ -2462,6 +3084,14 @@ def rank_hunt_candidates(
                 route_preflight_hard_hazard=route_preflight_hard_hazard,
                 route_preflight_route_room_names=route_preflight_route_room_names,
                 route_hard_hazard_targets=route_hard_hazard_targets,
+                route_hazard_mobile_vnums=tuple(sorted(route_hazard_mobile_vnums)),
+                route_aggressive_mobile_vnums=tuple(
+                    sorted(route_aggressive_mobile_vnums)
+                ),
+                route_attack_program_mobile_vnums=tuple(
+                    sorted(route_attack_program_mobile_vnums)
+                ),
+                route_special_mobile_vnums=tuple(sorted(route_special_mobile_vnums)),
                 undead=mobile.undead,
                 sentinel=mobile.sentinel,
                 stay_area=mobile.stay_area,
@@ -2560,6 +3190,21 @@ def _parse_mobile_teachings(
     return tuple(teachings)
 
 
+def _parse_mobile_rank(
+    lines: list[str],
+    start: int,
+    end: int,
+) -> str:
+    """Parse the optional ``< mobspec~ rank~`` prototype record."""
+    for line in lines[start:end]:
+        match = _MOBILE_RANK.match(line)
+        if match is None:
+            continue
+        rank = " ".join(match.group("rank").casefold().split())
+        return rank or "common"
+    return "common"
+
+
 def _parse_mobiles(
     lines: list[str],
     bounds: tuple[int, int] | None,
@@ -2598,6 +3243,16 @@ def _parse_mobiles(
             index = _next_vnum_marker(lines, index, end)
             continue
         record_end = _next_vnum_marker(lines, index, end)
+        body_form_flags: int | None = None
+        if index < record_end:
+            body_parts = lines[index].split()
+            if body_parts:
+                try:
+                    body_form_flags = _parse_bits(body_parts[0])
+                except ValueError:
+                    # Keep malformed or legacy records usable, but do not
+                    # invent anatomy evidence for them.
+                    body_form_flags = None
         mobiles[vnum] = MobileSource(
             vnum=vnum,
             keywords=_clean_text(keywords),
@@ -2610,6 +3265,8 @@ def _parse_mobiles(
             affected_flags=_parse_bits(flag_parts[1]),
             programs=_parse_mobile_programs(lines, index, record_end),
             teachings=_parse_mobile_teachings(lines, index, record_end),
+            body_form_flags=body_form_flags,
+            rank=_parse_mobile_rank(lines, index, record_end),
         )
         index = record_end
     return mobiles
@@ -3147,7 +3804,14 @@ def _route_hazard_rooms(
                 break
             level_max = _mobile_level_range(mobile.level)[1]
             if (
-                level_max > character_level - 5
+                (
+                    mobile.aggressive
+                    and level_max > character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+                )
+                or (
+                    not mobile.aggressive
+                    and level_max > character_level - 5
+                )
                 or mobile.attack_programs
                 or (
                     reset.maximum_count
@@ -3276,6 +3940,14 @@ def _source_route_hazard_rejections(
             if maximum_level > character_level:
                 rejections.append(
                     f"route crosses a higher-level {hazard_noun}: "
+                    f"{mobile.short_description} in room {room_vnum}"
+                )
+            elif mobile.aggressive and maximum_level > (
+                character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+            ):
+                rejections.append(
+                    "route crosses an aggressive transit attacker inside the "
+                    "transit-risk band: "
                     f"{mobile.short_description} in room {room_vnum}"
                 )
             elif maximum_level > character_level - 5:
@@ -4126,12 +4798,20 @@ def _route_preflight_metadata(
     return (None, None, None, (0, 0), False, (), ())
 
 
-def _mobile_base_hp_range(level_range: tuple[int, int]) -> tuple[int, int]:
-    """Mirror the unranked base HP bounds in ``create_mobile``."""
+def _mobile_base_hp_range(
+    level_range: tuple[int, int],
+    *,
+    rank: str | None = None,
+) -> tuple[int, int]:
+    """Mirror ``create_mobile``'s area HP roll and prototype rank bonus."""
     low, high = level_range
+    multiplier = MOBILE_RANK_HP_MULTIPLIERS.get(
+        str(rank or "common").casefold(),
+        1,
+    )
     return (
-        low * 8 + low * low // 4,
-        high * 8 + high * high,
+        (low * 8 + low * low // 4) * multiplier,
+        (high * 8 + high * high) * multiplier,
     )
 
 
@@ -4402,6 +5082,13 @@ def _rank_direct_ground_stashes(
                         rejections.append(
                             f"route crosses a higher-level {hazard_noun}"
                         )
+                    elif mobile.aggressive and hazard_level_max > (
+                        character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+                    ):
+                        rejections.append(
+                            "route crosses an aggressive transit attacker inside "
+                            "the transit-risk band"
+                        )
                     elif hazard_level_max > character_level - 5:
                         rejections.append(
                             f"route crosses {hazard_article} {hazard_noun} "
@@ -4412,6 +5099,13 @@ def _rank_direct_ground_stashes(
                 elif hazard_level_max > character_level:
                     rejections.append(
                         f"route crosses a higher-level {hazard_noun}"
+                    )
+                elif mobile.aggressive and hazard_level_max > (
+                    character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+                ):
+                    rejections.append(
+                        "route crosses an aggressive transit attacker inside "
+                        "the transit-risk band"
                     )
                 elif hazard_level_max > character_level - 5:
                     rejections.append(
@@ -4910,15 +5604,18 @@ def source_combat_readiness(
         if character_subclass
         else ""
     )
+    capabilities = combat_capabilities_for(normalized_class, subclass)
     direct = tuple(
-        dict.fromkeys(
-            skill
-            for skill in (
-                *_SOURCE_SUBCLASS_COMBAT_ACTIONS.get(subclass, ()),
-                *_SOURCE_DIRECT_COMBAT_ACTIONS.get(normalized_class, ()),
-            )
-            if skill in skills
-        )
+        capability.name
+        for capability in capabilities
+        if capability.role == "damage"
+        and capability.name in skills
+        and capability.name not in _SOURCE_CONTROL_COMBAT_SKILLS
+    )
+    setup = tuple(
+        capability.name
+        for capability in capabilities
+        if capability.role == "setup" and capability.name in skills
     )
     passive = tuple(
         skill for skill in _SOURCE_PASSIVE_COMBAT_SKILLS if skill in skills
@@ -4932,6 +5629,8 @@ def source_combat_readiness(
     labels = []
     if direct:
         labels.append("direct=" + ",".join(direct))
+    if setup:
+        labels.append("setup=" + ",".join(setup))
     if passive:
         labels.append("passive=" + ",".join(passive))
     if control:

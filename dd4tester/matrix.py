@@ -127,6 +127,11 @@ class MatrixLiveEntry:
     campaign_id: int | None
     campaign_status: str | None
     level: int
+    checkpoint_reason: str | None = None
+    target_checkpoint_reason: str | None = None
+    target_reached: bool = False
+    creation_observed: bool = False
+    proof_status: str = "not-started"
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,9 @@ class MatrixLiveCoverage:
     validated_pairs: tuple[tuple[str, str], ...]
     pending_pairs: tuple[tuple[str, str], ...]
     validated_sexes: tuple[str, ...]
+    creation_to_target_pairs: tuple[tuple[str, str], ...]
+    creation_pending_pairs: tuple[tuple[str, str], ...]
+    creation_validated_sexes: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -193,16 +201,24 @@ def matrix_coverage(
 
 
 def live_matrix_coverage(path: str | Path) -> MatrixLiveCoverage:
-    """Read durable campaign state without treating declared entries as runs."""
+    """Read durable campaign state without treating declared entries as runs.
+
+    Target-level evidence and creation-to-target proof are intentionally kept
+    separate. A resumed campaign can prove that a character was observed at a
+    level without proving that this campaign created the character.
+    """
 
     spec = load_matrix_spec(path)
-    entries = tuple(_live_matrix_entry(entry) for entry in spec.entries)
+    entries = tuple(
+        _live_matrix_entry(entry, target_level=spec.target_level)
+        for entry in spec.entries
+    )
     validated_pairs = tuple(
         sorted(
             {
                 (entry.race, entry.character_class)
                 for entry in entries
-                if entry.level >= spec.target_level
+                if entry.target_reached
             }
         )
     )
@@ -211,12 +227,39 @@ def live_matrix_coverage(path: str | Path) -> MatrixLiveCoverage:
             {
                 (entry.race, entry.character_class)
                 for entry in entries
-                if entry.level < spec.target_level
+                if not entry.target_reached
             }
         )
     )
     validated_sexes = tuple(
-        sorted({entry.sex for entry in entries if entry.level >= spec.target_level})
+        sorted({entry.sex for entry in entries if entry.target_reached})
+    )
+    creation_to_target_pairs = tuple(
+        sorted(
+            {
+                (entry.race, entry.character_class)
+                for entry in entries
+                if entry.proof_status == "creation-to-target"
+            }
+        )
+    )
+    creation_pending_pairs = tuple(
+        sorted(
+            {
+                (entry.race, entry.character_class)
+                for entry in entries
+                if entry.proof_status != "creation-to-target"
+            }
+        )
+    )
+    creation_validated_sexes = tuple(
+        sorted(
+            {
+                entry.sex
+                for entry in entries
+                if entry.proof_status == "creation-to-target"
+            }
+        )
     )
     return MatrixLiveCoverage(
         target_level=spec.target_level,
@@ -224,6 +267,9 @@ def live_matrix_coverage(path: str | Path) -> MatrixLiveCoverage:
         validated_pairs=validated_pairs,
         pending_pairs=pending_pairs,
         validated_sexes=validated_sexes,
+        creation_to_target_pairs=creation_to_target_pairs,
+        creation_pending_pairs=creation_pending_pairs,
+        creation_validated_sexes=creation_validated_sexes,
     )
 
 
@@ -339,7 +385,10 @@ async def run_matrix_file(
     for round_index in range(rounds):
         for entry_index, entry in enumerate(spec.entries):
             previous = latest.get(entry.entry_id)
-            if previous is not None and previous.level >= spec.target_level:
+            if previous is not None and _matrix_result_reached(
+                previous,
+                spec.target_level,
+            ):
                 continue
             try:
                 campaign_kwargs: dict[str, object] = {
@@ -386,7 +435,10 @@ async def run_matrix_file(
                 await sleep(spec.inter_character_delay)
         if all(
             latest.get(entry.entry_id) is not None
-            and latest[entry.entry_id].level >= spec.target_level
+            and _matrix_result_reached(
+                latest[entry.entry_id],
+                spec.target_level,
+            )
             for entry in spec.entries
         ):
             break
@@ -394,7 +446,10 @@ async def run_matrix_file(
     ordered = tuple(latest[entry.entry_id] for entry in spec.entries)
     status = (
         "success"
-        if all(result.level >= spec.target_level for result in ordered)
+        if all(
+            _matrix_result_reached(result, spec.target_level)
+            for result in ordered
+        )
         else "incomplete"
     )
     return MatrixResult(spec.name, spec.target_level, status, ordered)
@@ -412,48 +467,119 @@ def _validate_representative_entries(entries: list[MatrixEntry]) -> None:
         raise ValueError("representative matrix requires at least three classes")
 
 
-def _live_matrix_entry(entry: MatrixEntry) -> MatrixLiveEntry:
+_TARGET_CHECKPOINT_REASONS = frozenset(
+    {"segment_complete", "target_reached", "target_reconciled"}
+)
+
+
+def _live_matrix_entry(
+    entry: MatrixEntry,
+    *,
+    target_level: int,
+) -> MatrixLiveEntry:
     character = entry.campaign.character
     database = entry.campaign.database
     if not database.is_file():
         return MatrixLiveEntry(
-            entry.entry_id,
-            character.name,
-            character.race,
-            character.character_class,
-            character.gender,
-            None,
-            None,
-            0,
+            entry_id=entry.entry_id,
+            character_name=character.name,
+            race=character.race,
+            character_class=character.character_class,
+            sex=character.gender,
+            campaign_id=None,
+            campaign_status=None,
+            level=0,
         )
 
     with RunStorage(database) as storage:
         campaign = storage.get_latest_campaign_for_config(entry.campaign_path)
         if campaign is None:
             return MatrixLiveEntry(
-                entry.entry_id,
-                character.name,
-                character.race,
-                character.character_class,
-                character.gender,
-                None,
-                None,
-                0,
+                entry_id=entry.entry_id,
+                character_name=character.name,
+                race=character.race,
+                character_class=character.character_class,
+                sex=character.gender,
+                campaign_id=None,
+                campaign_status=None,
+                level=0,
             )
-        state = storage.get_latest_character_state(character.name)
-        if state is None:
-            checkpoint = storage.get_latest_campaign_checkpoint(int(campaign["id"]))
-            state = _checkpoint_state(checkpoint["state_json"] if checkpoint else None)
-        return MatrixLiveEntry(
-            entry.entry_id,
-            character.name,
-            character.race,
-            character.character_class,
-            character.gender,
-            int(campaign["id"]),
-            str(campaign["status"]),
-            _level(state),
+
+        campaign_id = int(campaign["id"])
+        checkpoints = storage.list_campaign_checkpoints(campaign_id)
+        latest_checkpoint = checkpoints[-1] if checkpoints else None
+        state = _checkpoint_state(
+            latest_checkpoint["state_json"] if latest_checkpoint else None
         )
+        checkpoint_reason = _checkpoint_reason(latest_checkpoint)
+        target_checkpoint = next(
+            (
+                checkpoint
+                for checkpoint in reversed(checkpoints)
+                if _checkpoint_proves_target(checkpoint, target_level)
+            ),
+            None,
+        )
+        target_reached = target_checkpoint is not None
+        creation_observed = _campaign_has_creation_evidence(storage, campaign_id)
+        if target_reached:
+            proof_status = (
+                "creation-to-target" if creation_observed else "target-reached"
+            )
+        elif campaign is not None:
+            proof_status = "in-progress"
+        else:
+            proof_status = "not-started"
+        return MatrixLiveEntry(
+            entry_id=entry.entry_id,
+            character_name=character.name,
+            race=character.race,
+            character_class=character.character_class,
+            sex=character.gender,
+            campaign_id=campaign_id,
+            campaign_status=str(campaign["status"]),
+            level=_level(state),
+            checkpoint_reason=checkpoint_reason,
+            target_checkpoint_reason=_checkpoint_reason(target_checkpoint),
+            target_reached=target_reached,
+            creation_observed=creation_observed,
+            proof_status=proof_status,
+        )
+
+
+def _checkpoint_reason(checkpoint: object) -> str | None:
+    if checkpoint is None:
+        return None
+    value = checkpoint["reason"]
+    reason = str(value).strip()
+    return reason or None
+
+
+def _checkpoint_proves_target(checkpoint: object, target_level: int) -> bool:
+    if _checkpoint_reason(checkpoint) not in _TARGET_CHECKPOINT_REASONS:
+        return False
+    return _level(_checkpoint_state(checkpoint["state_json"])) >= target_level
+
+
+def _campaign_has_creation_evidence(storage: RunStorage, campaign_id: int) -> bool:
+    for segment in storage.list_campaign_segments(campaign_id):
+        run_id = segment["run_id"]
+        if run_id is None:
+            continue
+        for event in storage.list_events(int(run_id)):
+            if str(event["kind"]).casefold() != "decision":
+                continue
+            try:
+                payload = json.loads(event["payload_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            stage = str(payload.get("stage", "")).casefold()
+            category = str(payload.get("category", "")).casefold()
+            if stage.startswith("create") or category == "creation":
+                return True
+    return False
 
 
 def _checkpoint_state(value: object) -> dict[str, object]:
@@ -469,6 +595,15 @@ def _checkpoint_state(value: object) -> dict[str, object]:
 def _level(state: dict[str, object]) -> int:
     value = state.get("level")
     return int(value) if isinstance(value, (int, float)) else 0
+
+
+def _matrix_result_reached(
+    result: MatrixEntryResult,
+    target_level: int,
+) -> bool:
+    """Accept target state only from a non-fatal campaign result."""
+
+    return result.status in {"success", "ready"} and result.level >= target_level
 
 
 def _generated_password() -> str:

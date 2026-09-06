@@ -158,6 +158,7 @@ class ObservationParser:
         self._level: int | None = None
         self._dead = False
         self._previous_line: str | None = None
+        self._pending_experience_loss: dict[str, Any] | None = None
         self._recall_list_active = False
         self._recall_list_saw_point = False
         self._recall_list_saw_blank = False
@@ -196,19 +197,32 @@ class ObservationParser:
 
     def flush_text(self) -> list[GameEvent]:
         if not self._pending_text:
-            return []
+            pending_loss = self._flush_pending_experience_loss()
+            return [pending_loss] if pending_loss is not None else []
         # Telnet can split a prompt between reads. A quiet read between the
         # fragments must not turn the first half into a completed text line.
         if _INCOMPLETE_PROMPT.fullmatch(self._pending_text):
             return []
         line = self._pending_text
         self._pending_text = ""
-        return self._parse_line(line)
+        events = self._parse_line(line)
+        pending_loss = self._flush_pending_experience_loss()
+        if pending_loss is not None:
+            events.append(pending_loss)
+        return events
+
+    def _flush_pending_experience_loss(self) -> GameEvent | None:
+        pending = self._pending_experience_loss
+        self._pending_experience_loss = None
+        if pending is None:
+            return None
+        return GameEvent("experience_lost", "text", pending)
 
     def reset_connection(self) -> None:
         """Discard connection-scoped parsing state before a reconnect."""
         self._pending_text = ""
         self._previous_line = None
+        self._pending_experience_loss = None
         self._recall_list_active = False
         self._recall_list_saw_point = False
         self._recall_list_saw_blank = False
@@ -413,14 +427,31 @@ class ObservationParser:
     def _parse_line(self, line: str) -> list[GameEvent]:
         text = line.strip()
         if not text:
+            events: list[GameEvent] = []
+            pending_loss = self._flush_pending_experience_loss()
+            if pending_loss is not None:
+                events.append(pending_loss)
             if self._recall_list_active and not self._recall_list_saw_point:
                 if self._recall_list_saw_blank:
-                    return self._finish_recall_list()
+                    events.extend(self._finish_recall_list())
+                    return events
                 self._recall_list_saw_blank = True
-                return []
-            return self._finish_recall_list()
+                return events
+            events.extend(self._finish_recall_list())
+            return events
 
         events = self._finish_recall_list_if_needed(text)
+        pending_loss = self._pending_experience_loss
+        if pending_loss is not None:
+            partial_gain = _XP_PARTIAL_GAIN.search(text)
+            if partial_gain:
+                pending_loss = dict(pending_loss)
+                pending_loss["partial_xp"] = int(partial_gain.group("xp"))
+                pending_loss["text"] = (
+                    f"{pending_loss['text']} {text}"
+                )
+            events.append(GameEvent("experience_lost", "text", pending_loss))
+            self._pending_experience_loss = None
         if _RECALL_LIST_HEADER.fullmatch(text):
             self._recall_list_active = True
             self._recall_list_saw_point = False
@@ -621,13 +652,12 @@ class ObservationParser:
                 # before the withdrawal in the same response.  The GMCP
                 # worth packet reflects their net effect.
                 loss_data["partial_xp"] = int(partial_gain.group("xp"))
-            events.append(
-                GameEvent(
-                    "experience_lost",
-                    "text",
-                    loss_data,
-                )
-            )
+                events.append(GameEvent("experience_lost", "text", loss_data))
+            else:
+                # DD4 can wrap the partial combat XP onto the next text line.
+                # Hold the loss for one line so the state reducer can compare
+                # the full loss against the authoritative GMCP net change.
+                self._pending_experience_loss = loss_data
 
         level = _LEVEL.search(text)
         if level:

@@ -334,14 +334,42 @@ def test_gmcp_snapshot_with_partial_combat_xp_does_not_double_subtract() -> None
     assert state.xp_loss_total == 270
 
 
-def test_textual_loss_updates_checkpoint_without_followup_worth_packet() -> None:
+def test_multiline_partial_combat_xp_matches_authoritative_gmcp_loss() -> None:
     parser = ObservationParser()
-    state = replay_events(
-        parser.feed_text(
-            "You are level 24, have 364415 experience and need 1685 to level.\n"
-            "You flee from combat! You lose 385 exp.\n"
+    state = CharacterState(
+        level=25,
+        xp=379489,
+        max_xp=408050,
+        xp_to_next_level=28561,
+        progress_source="gmcp",
+    )
+    assert state.apply(
+        GameEvent(
+            "progress_changed",
+            "gmcp",
+            {"level": "25", "xp": "379187", "xptnl": "28863"},
         )
     )
+
+    for event in parser.feed_text(
+        "You flee from combat! You lose 419 exp.\n"
+        "However, you damaged your opponent sufficiently for 117 experience.\n"
+    ):
+        state.apply(event)
+
+    assert state.xp == 379187
+    assert state.xp_to_next_level == 28863
+    assert state.xp_loss_total == 419
+
+
+def test_textual_loss_updates_checkpoint_without_followup_worth_packet() -> None:
+    parser = ObservationParser()
+    events = parser.feed_text(
+        "You are level 24, have 364415 experience and need 1685 to level.\n"
+        "You flee from combat! You lose 385 exp.\n"
+    )
+    events.extend(parser.flush_text())
+    state = replay_events(events)
 
     assert state.level == 24
     assert state.xp == 364030

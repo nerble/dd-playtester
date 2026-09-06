@@ -2556,6 +2556,22 @@ def test_new_sellable_loot_reopens_completed_liquidation_policy() -> None:
     assert policy.execution == "sell-loot"
 
 
+def test_source_frontier_does_not_bypass_retryable_liquidation() -> None:
+    policy = policy_for(
+        25,
+        "warrior",
+        has_food=True,
+        has_flight=False,
+        has_sellable_loot=True,
+        needs_provision_funding=True,
+        source_ranked_fallback=True,
+        excluded_policy_ids=frozenset({"liquidate-loot"}),
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
+
+
 def test_new_finger_gap_reopens_completed_daycare_ring_policy() -> None:
     policy = policy_for(
         12,

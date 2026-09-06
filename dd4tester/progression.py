@@ -6068,6 +6068,7 @@ def policy_for(
     if (
         source_ranked_fallback
         and context.level >= _SOURCE_RANKED_FALLBACK_MINIMUM_LEVEL
+        and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
         and (
             selected.policy_id == _UNAVAILABLE_POLICY.policy_id
             or (
@@ -6076,6 +6077,9 @@ def policy_for(
             )
         )
     ):
+        # A stale frontier must not outrank an actionable maintenance handoff.
+        # Retryable maintenance (for example, newly acquired saleable loot)
+        # is handled below even when an older checkpoint excluded its policy.
         fallback_policy = (
             _SOURCE_RANKED_EARLY_FALLBACK_POLICY
             if context.level <= 10

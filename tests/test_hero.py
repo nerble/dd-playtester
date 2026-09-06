@@ -717,6 +717,36 @@ def test_prepare_hero_request_writes_resumable_secret_free_configuration(
     )
 
 
+def test_prepare_hero_request_pins_the_selected_source_area_directory(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    source_root = tmp_path / "dd4" / "server"
+    source_dir = source_root / "src"
+    area_dir = source_root / "area"
+    source_dir.mkdir(parents=True)
+    area_dir.mkdir()
+    const_path = source_dir / "const.c"
+    const_path.write_text(SOURCE, encoding="utf-8")
+
+    prepared = prepare_hero_request(
+        HeroRequest(
+            name="Valora",
+            race="human",
+            sex="female",
+            character_class="mage",
+        ),
+        catalog=catalog,
+        source=const_path,
+        workspace=tmp_path / "heroes",
+    )
+
+    campaign = load_campaign_spec(prepared.campaign_path)
+    assert campaign.source_directory == area_dir.resolve()
+    manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["catalog"]["source_directory"] == str(area_dir.resolve())
+
+
 def test_prepare_hero_request_updates_resumed_level_goal(tmp_path: Path) -> None:
     catalog = parse_character_catalog(SOURCE, source="fixture")
     request = HeroRequest(

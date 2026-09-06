@@ -1482,7 +1482,7 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert "Current reboot: unknown" in captured.out
     assert "Character max HP: unknown" in captured.out
     assert "fuzzed_levels\tbase_hp\tpeak_round\troom" in captured.out
-    assert "mobility\tsearch_rooms\tsource_level" in captured.out
+    assert "mobility\tsearch_rooms\trank\tsource_level" in captured.out
     assert "move_cost\tflight_cost\trequires_flight" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
     assert "autonomy_rejections" in captured.out

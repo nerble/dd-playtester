@@ -107,6 +107,144 @@ def test_live_matrix_coverage_requires_persisted_target_level_evidence(tmp_path)
     assert covered.validated_sexes == ("female",)
     assert covered.entries[0].campaign_status == "success"
     assert covered.entries[0].level == 10
+    assert covered.entries[0].target_reached is True
+    assert covered.entries[0].proof_status == "target-reached"
+    assert covered.creation_to_target_pairs == ()
+    assert len(covered.creation_pending_pairs) == 3
+
+
+def test_live_matrix_coverage_requires_creation_evidence_for_strict_proof(
+    tmp_path,
+) -> None:
+    matrix_path = _write_matrix(tmp_path)
+    spec = load_matrix_spec(matrix_path)
+    mage = spec.entries[0]
+
+    with RunStorage(mage.campaign.database) as storage:
+        campaign_id = storage.create_campaign(
+            name=mage.campaign.name,
+            config_path=mage.campaign_path,
+            character_profile_path=mage.campaign.character_profile,
+            target_level=mage.campaign.target_level,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="starter",
+            start_state={"name": mage.campaign.character.name, "level": 1},
+        )
+        run_id = storage.create_run(
+            scenario_name=f"starter:{mage.campaign.character.name}",
+            scenario_path=mage.campaign.character_profile,
+        )
+        storage.record_event(
+            run_id,
+            kind="decision",
+            payload={
+                "stage": "create_race",
+                "category": "creation",
+                "command": "human",
+            },
+        )
+        storage.finish_run(run_id, status="success")
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=run_id,
+            end_state={"name": mage.campaign.character.name, "level": 10},
+            command_count=1,
+            duration_seconds=1,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=segment_id,
+            run_id=run_id,
+            phase="starter",
+            reason="segment_complete",
+            state={"name": mage.campaign.character.name, "level": 10},
+        )
+        storage.finish_campaign(campaign_id, status="success")
+
+    covered = live_matrix_coverage(matrix_path)
+
+    assert covered.validated_pairs == (("human", "mage"),)
+    assert covered.creation_to_target_pairs == (("human", "mage"),)
+    assert covered.creation_validated_sexes == ("female",)
+    assert covered.entries[0].creation_observed is True
+    assert covered.entries[0].target_checkpoint_reason == "segment_complete"
+    assert covered.entries[0].proof_status == "creation-to-target"
+
+
+def test_live_matrix_coverage_ignores_unrelated_character_snapshot(
+    tmp_path,
+) -> None:
+    matrix_path = _write_matrix(tmp_path)
+    spec = load_matrix_spec(matrix_path)
+    mage = spec.entries[0]
+
+    with RunStorage(mage.campaign.database) as storage:
+        campaign_id = storage.create_campaign(
+            name=mage.campaign.name,
+            config_path=mage.campaign_path,
+            character_profile_path=mage.campaign.character_profile,
+            target_level=mage.campaign.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="validation",
+            reason="target_reached",
+            state={"name": mage.campaign.character.name, "level": 10},
+        )
+        unrelated_run_id = storage.create_run(
+            scenario_name=f"other:{mage.campaign.character.name}",
+            scenario_path=mage.campaign.character_profile,
+        )
+        storage.record_state_snapshot(
+            unrelated_run_id,
+            source_event_id=None,
+            reason="progress_changed",
+            state={"name": mage.campaign.character.name, "level": 99},
+        )
+        storage.finish_run(unrelated_run_id, status="success")
+        storage.finish_campaign(campaign_id, status="success")
+
+    covered = live_matrix_coverage(matrix_path)
+
+    assert covered.entries[0].level == 10
+    assert covered.entries[0].target_reached is True
+
+
+def test_live_matrix_coverage_rejects_high_level_runtime_cap_checkpoint(
+    tmp_path,
+) -> None:
+    matrix_path = _write_matrix(tmp_path)
+    spec = load_matrix_spec(matrix_path)
+    mage = spec.entries[0]
+
+    with RunStorage(mage.campaign.database) as storage:
+        campaign_id = storage.create_campaign(
+            name=mage.campaign.name,
+            config_path=mage.campaign_path,
+            character_profile_path=mage.campaign.character_profile,
+            target_level=mage.campaign.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="source-ranked-hunt",
+            reason="segment_runtime_cap",
+            state={"name": mage.campaign.character.name, "level": 99},
+        )
+        storage.finish_campaign(campaign_id, status="ready")
+
+    covered = live_matrix_coverage(matrix_path)
+
+    assert covered.entries[0].level == 99
+    assert covered.entries[0].target_reached is False
+    assert covered.entries[0].proof_status == "in-progress"
+    assert covered.validated_pairs == ()
 
 
 def test_prepare_validation_matrix_generates_each_legal_pair_once(tmp_path) -> None:
@@ -198,6 +336,29 @@ def test_matrix_passes_bounded_segment_runtime_to_campaigns(tmp_path) -> None:
     assert result.status == "success"
     assert [item["path"] for item in observed] == ["mage", "thief", "warrior"]
     assert all(item["max_segment_runtime"] == 180 for item in observed)
+
+
+def test_matrix_does_not_promote_blocked_high_level_result(tmp_path) -> None:
+    matrix_path = _write_matrix(tmp_path)
+
+    async def blocked_runner(path, **_kwargs):
+        return CampaignResult(
+            campaign_id=1,
+            status="blocked",
+            checkpoint_id=None,
+            message="stale checkpoint cannot continue",
+            state={"level": 10},
+        )
+
+    result = asyncio.run(
+        run_matrix_file(
+            matrix_path,
+            campaign_runner=blocked_runner,
+        )
+    )
+
+    assert result.status == "incomplete"
+    assert all(entry.status == "blocked" for entry in result.entries)
 
 
 def test_matrix_rejects_non_positive_segment_runtime(tmp_path) -> None:

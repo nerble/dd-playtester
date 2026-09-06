@@ -18,7 +18,16 @@ from dd4tester.equipment import (
     STANCE_RECOVERY,
 )
 from dd4tester.fastwalks import Fastwalk, route_named
-from dd4tester.hunt_candidates import ITEM_POTION, ObjectSource
+from dd4tester.hunt_candidates import (
+    BODY_HUGE,
+    BODY_NO_ARMS,
+    BODY_NO_EYES,
+    BODY_NO_HEAD,
+    BODY_NO_LEGS,
+    ITEM_POTION,
+    ITEM_SCROLL,
+    ObjectSource,
+)
 from dd4tester.hunt_candidates import load_world_source
 from dd4tester.hunt_candidates import parse_area_file
 from dd4tester.mudlet import MudletConnection
@@ -5937,6 +5946,63 @@ def test_combat_pouch_uses_source_verified_cure_light_at_low_health() -> None:
     assert policy.combat_pouch_potions == {}
 
 
+def test_source_scroll_is_held_recited_and_consumed_once() -> None:
+    scroll = ObjectSource(
+        5303,
+        "scroll sanctuary",
+        "a sanctuary scroll",
+        ITEM_SCROLL,
+        (20, 0, 0, 0),
+        7600,
+        wear_flags=1 << 17,
+        value_strings=("20", "sanctuary", "", ""),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": None}),
+        "swordfish",
+        gear_catalog=GearCatalog({scroll.vnum: scroll}),
+        verified_source_resources={
+            "sanctuary": {
+                "effect": "sanctuary",
+                "object_vnum": scroll.vnum,
+                "object_description": "sanctuary scroll",
+                "spell": "sanctuary",
+                "command": "recite",
+                "mode": "scroll",
+                "requires_hold": True,
+                "consumes_object": True,
+                "consumes_charge": False,
+                "command_keyword": "scroll",
+                "charges_remaining": 1,
+            }
+        },
+    )
+    state = CharacterState(
+        hp=300,
+        max_hp=300,
+        in_combat=True,
+        inventory=[{"quan": 1, "short_desc": "a sanctuary scroll"}],
+        affects=[],
+    )
+
+    decision = policy._combat_pouch_potion_decision(state)
+    assert decision is not None
+    assert decision.command == "hold scroll"
+    policy.fastwalk_acquired_required_object_vnums.add(scroll.vnum)
+    assert policy.source_resource_checkpoint()["sanctuary"]["object_vnum"] == (
+        scroll.vnum
+    )
+
+    policy.observe_text("You hold a sanctuary scroll.")
+    decision = policy._combat_pouch_potion_decision(state)
+    assert decision is not None
+    assert decision.command == "recite scroll"
+
+    policy.observe_text("You recite a sanctuary scroll.")
+    assert policy.verified_source_resources == {}
+    assert policy.pending_source_resource_effect is None
+
+
 def test_shire_prince_probe_considers_with_only_registered_companion() -> None:
     stop = shire_dwarven_prince_research_stops()[0]
     policy = StarterPolicy(
@@ -9233,6 +9299,8 @@ You have 1 physical and 0 intellectual practices remaining.
         "equipment_preparation_completed",
     ]
     assert events[1].data["skill"] == "counterbalance"
+    assert events[1].data["weapon_vnum"] == sword.vnum
+    assert policy.counterbalanced_weapon_vnum == sword.vnum
     assert any("APPLY_BALANCE" in ref for ref in events[1].data["source_refs"])
 
 
@@ -9353,6 +9421,88 @@ def test_smithy_re_equips_after_counterbalance_command_is_unconfirmed() -> None:
     (event,) = policy.drain_training_events()
     assert event.type == "equipment_preparation_deferred"
     assert event.data["outcome"] == "deferred"
+
+
+def test_smithy_repeats_hurl_only_with_a_source_verified_chained_weapon() -> None:
+    sword = ObjectSource(
+        3021,
+        "sword",
+        "a steel sword",
+        5,
+        (0, 2, 5, 1),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    state = CharacterState(
+        level=20,
+        hp=200,
+        max_hp=200,
+        room_name="The Forge",
+        room_vnum="3050",
+        position=6,
+    )
+
+    policy = StarterPolicy(
+        _spec(**{"class": "smithy", "subclass": None}),
+        "swordfish",
+        gear_catalog=GearCatalog({sword.vnum: sword}),
+        known_skills=("hurl",),
+        known_skill_levels={"hurl": 60},
+        chained_weapon_vnum=sword.vnum,
+    )
+    policy.in_world = True
+    policy.gear_worn = [sword]
+    policy.primary_weapon_observed = True
+    policy.active_target = "the target"
+    policy.combat_active = True
+
+    decision = policy._between_round_combat_decision(state)
+
+    assert decision is not None
+    assert decision.command == "hurl sword"
+    assert "chained weapon" in decision.reason
+
+    policy = StarterPolicy(
+        _spec(**{"class": "smithy", "subclass": None}),
+        "swordfish",
+        gear_catalog=GearCatalog({sword.vnum: sword}),
+        known_skills=("hurl",),
+        known_skill_levels={"hurl": 60},
+    )
+    policy.in_world = True
+    policy.gear_worn = [sword]
+    policy.primary_weapon_observed = True
+    policy.active_target = "the target"
+    policy.combat_active = True
+
+    assert policy._between_round_combat_decision(state) is None
+
+
+def test_smithy_identify_text_records_chain_evidence_for_a_worn_weapon() -> None:
+    sword = ObjectSource(
+        3021,
+        "sword",
+        "a steel sword",
+        5,
+        (0, 2, 5, 1),
+        10,
+        wear_flags=1 | (1 << 13),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "smithy", "subclass": None}),
+        "swordfish",
+        gear_catalog=GearCatalog({sword.vnum: sword}),
+        known_skills=("hurl",),
+        known_skill_levels={"hurl": 60},
+    )
+    policy.gear_worn = [sword]
+    policy.gear_inventory_source_hints["a steel sword"] = sword.vnum
+    policy.sale_identify_pending_keyword = "sword"
+
+    policy.observe_text("Chain Attached\nIt is worth 10 copper coins.\n")
+
+    assert policy.chained_weapon_vnum == sword.vnum
+    assert sword.vnum in policy.gear_chained_weapon_vnums
 
 
 def test_ranger_only_practises_archery_when_a_source_bow_is_equipped() -> None:
@@ -10441,6 +10591,22 @@ def test_between_round_caster_does_not_issue_an_unknown_damage_spell() -> None:
 
     assert decision is None
     assert policy.between_round_action_issued is False
+
+
+def test_between_round_psionic_uses_shared_agitation_capability() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "psionic", "subclass": None}),
+        "swordfish",
+    )
+    policy.active_target = "an astral raider"
+    policy.known_skills.add("agitation")
+
+    decision = policy._between_round_combat_decision(
+        CharacterState(mana=100, max_mana=100)
+    )
+
+    assert decision is not None
+    assert decision.command == "cast 'agitation' raider"
 
 
 def test_between_round_caster_skips_unavailable_chill_touch_only_if_known() -> None:
@@ -16350,6 +16516,75 @@ def test_ordinary_hunt_returns_after_one_below_band_transit_attacker() -> None:
     assert policy.fastwalk_transit_below_band_return_pending is False
 
 
+def test_below_band_return_rejects_source_aggression_without_a_special() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        source_mobile_level_ranges_by_vnum={18401: (13, 17)},
+        source_mobile_special_profiles_by_vnum={18401: ()},
+        source_mobile_aggressive_by_vnum={18401: True},
+        source_mobile_attack_programs_by_vnum={18401: False},
+    )
+    enemy = {
+        "name": "The rolling rock",
+        "isnpc": "18401",
+        "level": "15",
+        "hp": "120",
+        "maxhp": "120",
+    }
+    state = CharacterState(level=24, hp=334, max_hp=334)
+
+    assert policy._below_band_return_enemy_is_harmless(enemy, state) is False
+
+
+def test_source_aggressive_transit_flees_before_issuing_a_combat_action() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry captain"),
+        fastwalk_attack_target="the field target",
+        fastwalk_hunt_stops=(FieldHuntStop((), "the field target"),),
+        source_mobile_level_ranges_by_vnum={18401: (13, 17)},
+        source_mobile_special_profiles_by_vnum={18401: ()},
+        source_mobile_aggressive_by_vnum={18401: True},
+        source_mobile_attack_programs_by_vnum={18401: False},
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 4
+    policy.current_room = "10029"
+    policy.active_target = "The rolling rock"
+    policy.active_target_mobile_vnum = 18401
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        room_name="A route waypoint",
+        room_vnum="10029",
+        position=7,
+        in_combat=True,
+        combat_target="The rolling rock",
+        enemies=[[{
+            "name": "The rolling rock",
+            "isnpc": "18401",
+            "level": "15",
+            "hp": "120",
+            "maxhp": "120",
+        }]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "aggressive transit attacker" in (policy.fastwalk_abort_reason or "")
+
+
 def test_ordinary_hunt_resumes_after_one_harmless_below_band_transit_attacker() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -18945,6 +19180,118 @@ def test_source_caster_probe_rejects_an_unsafe_remaining_exchange() -> None:
     assert decision.command == "flee"
     assert "projection" in (policy.fastwalk_abort_reason or "")
     assert "HP reserve" in (policy.fastwalk_abort_reason or "")
+
+
+def test_sanctuary_extends_source_damage_window_from_health_reserve() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the target",
+        source_target_hp_ceiling=945,
+        source_combat_action="kick",
+        source_combat_conservative_damage=53,
+        source_combat_max_actions=12,
+        source_combat_reference="fight.c:do_kick; plus fight.c:one_hit/multi_hit",
+        require_damage_window_probe=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.active_target = stop.target
+    policy.fastwalk_hunt_stop_index = 0
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.field_combat_damage_probe_required = True
+    policy.field_combat_probe_total_damage = 126
+    policy.field_combat_probe_player_damage = 49
+    policy.field_combat_probe_samples = 3
+    policy.field_combat_probe_started_at = time.monotonic() - 13
+
+    state = CharacterState(
+        level=25,
+        hp=555,
+        max_hp=569,
+        mana=250,
+        max_mana=245,
+        move=367,
+        max_move=390,
+        room_vnum="6350",
+        affects=[[{"name": "sanctuary", "duration": "2"}]],
+        enemies=[
+            [
+                {
+                    "name": "the target",
+                    "level": "26",
+                    "hp": "730",
+                    "maxhp": "856",
+                    "isnpc": "6315",
+                },
+            ]
+        ],
+    )
+
+    decision = policy._damage_window_probe_decision(state)
+
+    assert decision is None
+    assert policy.field_combat_damage_probe_required is False
+    assert policy.fastwalk_abort_reason is None
+
+
+def test_live_health_reserve_extends_unprotected_source_damage_window() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the target",
+        source_target_hp_ceiling=945,
+        source_combat_action="kick",
+        source_combat_conservative_damage=53,
+        source_combat_max_actions=12,
+        source_combat_reference="fight.c:do_kick; plus fight.c:one_hit/multi_hit",
+        require_damage_window_probe=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.active_target = stop.target
+    policy.fastwalk_hunt_stop_index = 0
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.field_combat_damage_probe_required = True
+    policy.field_combat_probe_total_damage = 93
+    policy.field_combat_probe_player_damage = 62
+    policy.field_combat_probe_samples = 3
+    policy.field_combat_probe_started_at = time.monotonic() - 13
+
+    state = CharacterState(
+        level=25,
+        hp=569,
+        max_hp=569,
+        mana=250,
+        max_mana=245,
+        move=367,
+        max_move=390,
+        room_vnum="10295",
+        affects=[[]],
+        enemies=[
+            [
+                {
+                    "name": "the target",
+                    "level": "25",
+                    "hp": "523",
+                    "maxhp": "523",
+                    "isnpc": "10248",
+                },
+            ]
+        ],
+    )
+
+    decision = policy._damage_window_probe_decision(state)
+
+    assert decision is None
+    assert policy.field_combat_damage_probe_required is False
+    assert policy.fastwalk_abort_reason is None
 
 
 def test_consider_accepts_target_when_character_is_healthier() -> None:
@@ -21855,7 +22202,7 @@ def test_lotus_fame_recovery_uses_exact_source_identity_and_consider_gate() -> N
 
 def test_runtime_boundary_finishes_one_half_dead_lower_level_target() -> None:
     policy = StarterPolicy(
-        _spec(),
+        _spec(**{"class": "thief", "subclass": None}),
         "swordfish",
         fastwalk_route=route_named("moria"),
         fastwalk_hunt_stops=(FieldHuntStop((), "town clerk"),),
@@ -21902,7 +22249,7 @@ def test_runtime_boundary_finishes_one_half_dead_lower_level_target() -> None:
 
 def test_runtime_boundary_rejects_finish_grace_for_a_crowd() -> None:
     policy = StarterPolicy(
-        _spec(),
+        _spec(**{"class": "thief", "subclass": None}),
         "swordfish",
         fastwalk_route=route_named("moria"),
         fastwalk_hunt_stops=(FieldHuntStop((), "town clerk"),),
@@ -21951,6 +22298,49 @@ def test_runtime_boundary_rejects_finish_grace_for_a_crowd() -> None:
     assert decision.command == "recall"
     assert policy.runtime_boundary_finish_target is None
     assert policy.fastwalk_emergency_recall_pending is True
+
+
+def test_runtime_boundary_does_not_dispatch_cross_class_observed_skill() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "town clerk"),),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+    policy.active_target = "Town Clerk"
+    policy.active_target_selector = "#5628"
+    policy.known_skills = {"knife toss"}
+    policy.request_runtime_boundary()
+    fighting = CharacterState(
+        area="Solace",
+        room_name="An Intersection",
+        room_vnum="10266",
+        position=7,
+        level=20,
+        hp=220,
+        max_hp=283,
+        mana=250,
+        max_mana=249,
+        move=169,
+        max_move=340,
+        enemies=[
+            {
+                "name": "[#5628] Town Clerk",
+                "level": "17",
+                "hp": "37",
+                "maxhp": "211",
+                "isnpc": "10217",
+            }
+        ],
+    )
+
+    decision = policy.next_decision(fighting)
+
+    assert decision is None or not decision.command.startswith("knife toss")
 
 
 def test_runtime_boundary_recalls_when_gmcp_enemy_list_outlives_combat_flag() -> None:
@@ -24275,6 +24665,41 @@ def test_level_twenty_kerofk_route_preserves_repeated_room_transitions() -> None
     assert route.command_for("10030", "10023") == "east"
     assert route.command_for("10023", "10030") == "west"
     assert route.command_for("10023", "10024") == "east"
+
+
+def test_source_preflight_defers_hazardous_level_twenty_trainer_route() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_train_before_departure=True,
+        source_world=world,
+    )
+    policy.latest_practice_balances = (2, 0)
+    policy.selected_training_stat = "str"
+    policy.fastwalk_stat_training_configured = True
+
+    decision = policy._fastwalk_training_decision(
+        CharacterState(
+            level=25,
+            room_name="By the Temple Altar",
+            room_vnum="3054",
+        )
+    )
+
+    assert decision is None
+    assert policy.practiced is True
+    assert policy.fastwalk_training_complete is True
+    assert policy.fastwalk_training_deferred_after_route_hazard is True
+    assert any("The rolling rock" in hazard for hazard in policy.fastwalk_route_hazards)
+    events = policy.drain_training_events()
+    assert len(events) == 1
+    assert events[0].type == "training_deferred"
+    assert events[0].data["preflight"] is True
 
 
 def test_gmcp_arrival_restores_repeated_room_route_context() -> None:
@@ -37943,6 +38368,196 @@ def test_warrior_uses_kick_between_automatic_combat_rounds() -> None:
     assert "between automatic weapon rounds" in decision.reason
 
 
+def test_warrior_repeats_headbutt_for_a_source_verified_ordinary_target() -> None:
+    target = "the ordinary guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22340,
+                source_target_body_form_flags=0,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add("headbutt")
+    policy.known_skill_levels["headbutt"] = 80
+    state = CharacterState(
+        level=20,
+        hp=200,
+        max_hp=220,
+        position=6,
+        in_combat=True,
+        combat_target=target,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22340",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    first = policy._between_round_combat_decision(state)
+
+    assert first is not None
+    assert first.command == "headbutt"
+    assert "source-verified headbutt" in first.reason
+    policy.between_round_action_issued = False
+    policy.between_round_action_ready_at = 0
+
+    second = policy._between_round_combat_decision(state)
+
+    assert second is not None
+    assert second.command == "headbutt"
+
+
+@pytest.mark.parametrize("body_form_flags", [None, BODY_NO_HEAD, BODY_HUGE])
+def test_headbutt_requires_known_non_huge_target_with_a_head(body_form_flags) -> None:
+    target = "the unsuitable guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22341,
+                source_target_body_form_flags=body_form_flags,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add("headbutt")
+    policy.known_skill_levels["headbutt"] = 80
+    state = CharacterState(
+        level=20,
+        position=6,
+        in_combat=True,
+        combat_target=target,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22341",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    assert policy._between_round_combat_decision(state) is None
+
+
+@pytest.mark.parametrize(
+    ("action", "command"),
+    (
+        ("dirt kick", "dirt kick guard"),
+        ("trip", "trip guard"),
+    ),
+)
+def test_thief_control_action_is_one_bounded_source_verified_attempt(
+    action: str,
+    command: str,
+) -> None:
+    target = "the ordinary guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": None}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22342,
+                source_target_body_form_flags=0,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add(action)
+    policy.known_skill_levels[action] = 80
+    state = CharacterState(
+        level=20,
+        hp=200,
+        max_hp=220,
+        position=6,
+        sector="field",
+        in_combat=True,
+        combat_target=target,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22342",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    first = policy._between_round_combat_decision(state)
+
+    assert first is not None
+    assert first.command == command
+    policy.between_round_action_issued = False
+    policy.between_round_action_ready_at = 0
+
+    assert policy._between_round_combat_decision(state) is None
+
+
+@pytest.mark.parametrize(
+    ("action", "body_form_flags"),
+    (("dirt kick", BODY_NO_EYES), ("trip", BODY_NO_LEGS)),
+)
+def test_thief_control_action_rejects_source_incompatible_anatomy(
+    action: str,
+    body_form_flags: int,
+) -> None:
+    target = "the unsuitable guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": None}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22343,
+                source_target_body_form_flags=body_form_flags,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add(action)
+    policy.known_skill_levels[action] = 80
+    state = CharacterState(
+        level=20,
+        position=6,
+        sector="field",
+        in_combat=True,
+        combat_target=target,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22343",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    assert policy._between_round_combat_decision(state) is None
+
+
 def test_brawler_uses_punch_while_automatic_unarmed_rounds_continue() -> None:
     policy = StarterPolicy(
         _spec(**{"class": "brawler", "subclass": "monk"}),
@@ -37969,6 +38584,280 @@ def test_brawler_uses_punch_while_automatic_unarmed_rounds_continue() -> None:
     assert "automatic unarmed combat rounds continue" in decision.reason
     policy.observe_text("Your punch wounds a wild boar.\n")
     assert policy.between_round_action_issued is False
+
+
+def test_martial_artist_uses_kansetsu_once_for_an_armed_source_target() -> None:
+    target = "the armed guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "brawler", "subclass": "martial artist"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22332,
+                source_target_armed=True,
+                source_target_body_form_flags=0,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add("kansetsu")
+    policy.known_skill_levels["kansetsu"] = 80
+    state = CharacterState(
+        level=30,
+        subclass="martial artist",
+        position=6,
+        room_vnum="4000",
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22332",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    first = policy._between_round_combat_decision(state)
+
+    assert first is not None
+    assert first.command == "kansetsu guard"
+    assert "joint strike" in first.reason
+    policy.observe_text("Alas, the armed guard has no weapon.\n")
+    policy.between_round_action_ready_at = 0
+    policy.prompt_ready = True
+
+    assert policy._between_round_combat_decision(state) is None
+
+
+def test_martial_artist_does_not_issue_kansetsu_without_source_armed_evidence() -> None:
+    target = "the unarmed guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "brawler", "subclass": "martial artist"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22333,
+                source_target_armed=False,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add("kansetsu")
+    policy.known_skill_levels["kansetsu"] = 80
+    state = CharacterState(
+        level=30,
+        subclass="martial artist",
+        position=6,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22333",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    assert policy._between_round_combat_decision(state) is None
+
+
+def test_martial_artist_does_not_issue_kansetsu_for_a_dead_enemy_snapshot() -> None:
+    target = "the armed guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "brawler", "subclass": "martial artist"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22332,
+                source_target_armed=True,
+                source_target_body_form_flags=0,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add("kansetsu")
+    policy.known_skill_levels["kansetsu"] = 80
+    state = CharacterState(
+        level=30,
+        subclass="martial artist",
+        position=6,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22332",
+                "hp": "0",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    assert policy._between_round_combat_decision(state) is None
+
+
+def test_martial_artist_does_not_issue_kansetsu_to_a_source_armless_target() -> None:
+    target = "the armless guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "brawler", "subclass": "martial artist"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22334,
+                source_target_armed=True,
+                source_target_body_form_flags=BODY_NO_ARMS,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add("kansetsu")
+    policy.known_skill_levels["kansetsu"] = 80
+    state = CharacterState(
+        level=30,
+        subclass="martial artist",
+        position=6,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22334",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    assert policy._between_round_combat_decision(state) is None
+
+
+def test_thug_uses_smash_once_per_ready_between_round() -> None:
+    target = "the ordinary guard"
+    shield = ObjectSource(
+        22335,
+        "shield",
+        "a wooden shield",
+        30,
+        (0, 0, 0, 0),
+        20,
+        wear_flags=1 << 9,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "thug"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22336,
+                source_target_body_form_flags=0,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add("smash")
+    policy.known_skill_levels["smash"] = 60
+    policy.gear_worn = [shield]
+    state = CharacterState(
+        level=30,
+        subclass="thug",
+        position=6,
+        room_vnum="4000",
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22336",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    first = policy._between_round_combat_decision(state)
+
+    assert first is not None
+    assert first.command == "smash guard"
+    assert "shield smash" in first.reason
+    policy.between_round_action_issued = False
+    policy.between_round_action_ready_at = 0
+
+    second = policy._between_round_combat_decision(state)
+
+    assert second is not None
+    assert second.command == "smash guard"
+
+
+@pytest.mark.parametrize(
+    ("stop_kwargs", "wear_shield"),
+    [
+        ({}, True),
+        ({"source_target_body_form_flags": 1 << 7}, True),
+        ({}, False),
+    ],
+)
+def test_thug_smash_requires_source_non_huge_target_and_shield(
+    stop_kwargs,
+    wear_shield,
+) -> None:
+    target = "the huge guard"
+    shield = ObjectSource(
+        22337,
+        "shield",
+        "a wooden shield",
+        30,
+        (0, 0, 0, 0),
+        20,
+        wear_flags=1 << 9,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "thug"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22338,
+                **stop_kwargs,
+            ),
+        ),
+    )
+    policy.combat_active = True
+    policy.active_target = target
+    policy.known_skills.add("smash")
+    policy.known_skill_levels["smash"] = 60
+    policy.gear_worn = [shield] if wear_shield else []
+    state = CharacterState(
+        level=30,
+        subclass="thug",
+        position=6,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22338",
+                "hp": "120",
+                "maxhp": "120",
+            }
+        ],
+    )
+
+    assert policy._between_round_combat_decision(state) is None
 
 
 def test_warrior_does_not_use_kick_as_a_combat_opener() -> None:
@@ -38230,6 +39119,233 @@ def test_stun_miss_still_switches_to_piercing_backstab() -> None:
     backstab = policy._stun_opener_decision()
     assert backstab is not None
     assert backstab.command == "backstab #22332"
+
+
+def test_warrior_stun_opener_switches_back_to_primary_weapon() -> None:
+    sword = ObjectSource(
+        4002,
+        "rusty sword",
+        "a rusty sword",
+        5,
+        (0, 4, 8, 3),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    mace = ObjectSource(
+        4003,
+        "mace",
+        "a mace",
+        5,
+        (0, 2, 5, 7),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    target = "the patrolling guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        gear_catalog=GearCatalog(
+            {item.vnum: item for item in (sword, mace)}
+        ),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22332,
+            ),
+        ),
+    )
+    policy.known_skills.add("stun")
+    policy.known_skill_levels["stun"] = 80
+    policy.gear_worn = [sword]
+    policy.active_target = target
+    policy.active_target_selector = "#22332"
+    state = CharacterState(
+        level=20,
+        position=7,
+        inventory=[[{"short_desc": "a mace"}]],
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22332",
+                "hp": "100",
+                "maxhp": "100",
+            }
+        ],
+    )
+
+    first = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=state,
+    )
+    assert first.command == "wield mace"
+    policy.observe_text("You wield a mace.\n")
+
+    stun = policy._stun_opener_decision()
+    assert stun is not None
+    assert stun.command == "stun #22332"
+    policy.observe_text(
+        "You viciously pound the patrolling guard, causing it to buckle and collapse.\n"
+    )
+
+    switch = policy._stun_opener_decision()
+    assert switch is not None
+    assert switch.command == "wield sword"
+    policy.observe_text("You wield a rusty sword.\n")
+
+    kill = policy._stun_opener_decision()
+    assert kill is not None
+    assert kill.command == "kill #22332"
+    assert policy.combat_active is True
+
+
+def test_warrior_stun_opener_requires_one_full_health_source_target() -> None:
+    mace = ObjectSource(
+        4003,
+        "mace",
+        "a mace",
+        5,
+        (0, 2, 5, 7),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    target = "the patrolling guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        gear_catalog=GearCatalog({mace.vnum: mace}),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22332,
+            ),
+        ),
+    )
+    policy.known_skills.add("stun")
+    policy.known_skill_levels["stun"] = 80
+    policy.gear_worn = [mace]
+    policy.active_target = target
+    policy.active_target_selector = "#22332"
+
+    wounded = CharacterState(
+        level=20,
+        position=7,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22332",
+                "hp": "99",
+                "maxhp": "100",
+            }
+        ],
+    )
+    wounded_decision = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=wounded,
+    )
+    assert wounded_decision.command == "kill #22332"
+    assert policy.stun_opener_step is None
+
+    policy.active_target = target
+    ambiguous = CharacterState(
+        level=20,
+        position=7,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22332",
+                "hp": "100",
+                "maxhp": "100",
+                "instance": "second",
+            },
+            {
+                "name": target,
+                "isnpc": "22332",
+                "hp": "100",
+                "maxhp": "100",
+            },
+        ],
+    )
+    ambiguous_decision = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=ambiguous,
+    )
+    assert ambiguous_decision.command == "kill #22332"
+    assert policy.stun_opener_step is None
+
+
+def test_rejected_warrior_stun_falls_back_to_primary_attack_once() -> None:
+    sword = ObjectSource(
+        4002,
+        "rusty sword",
+        "a rusty sword",
+        5,
+        (0, 4, 8, 3),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    mace = ObjectSource(
+        4003,
+        "mace",
+        "a mace",
+        5,
+        (0, 2, 5, 7),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    target = "the patrolling guard"
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        gear_catalog=GearCatalog(
+            {item.vnum: item for item in (sword, mace)}
+        ),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=22332,
+            ),
+        ),
+    )
+    policy.known_skills.add("stun")
+    policy.known_skill_levels["stun"] = 80
+    policy.gear_worn = [mace]
+    policy.active_target = target
+    policy.active_target_selector = "#22332"
+    state = CharacterState(
+        level=20,
+        position=7,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22332",
+                "hp": "100",
+                "maxhp": "100",
+            }
+        ],
+    )
+
+    first = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=state,
+    )
+    assert first.command == "stun #22332"
+    policy.observe_text("The patrolling guard is too large for you to stun.\n")
+
+    fallback = policy._stun_opener_decision()
+    assert fallback is not None
+    assert fallback.command == "kill #22332"
+    assert policy.stun_opener_step is None
+    assert policy.combat_active is True
 
 
 def test_thief_rearm_keeps_stronger_carried_piercing_weapon() -> None:
@@ -38766,6 +39882,142 @@ def test_rejected_backstab_falls_back_to_normal_attack_once() -> None:
 
     assert decision.command == "kill wolf"
     assert policy.backstab_pending_target is None
+
+
+def test_vampire_lunge_opener_requires_one_full_health_source_target() -> None:
+    target = "the vampire"
+    policy = StarterPolicy(
+        _spec(**{"class": "shifter", "subclass": "vampire"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=19001,
+                source_combat_opening_action="lunge",
+            ),
+        ),
+    )
+    policy.known_skills.add("lunge")
+    policy.known_skill_levels["lunge"] = 80
+    policy.active_target = target
+    policy.active_target_selector = "#19001"
+    state = CharacterState(
+        level=30,
+        subclass="vampire",
+        position=7,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "19001",
+                "hp": "100",
+                "maxhp": "100",
+            }
+        ],
+    )
+
+    decision = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=state,
+    )
+
+    assert decision.command == "lunge #19001"
+    assert policy.lunge_pending_target == target
+    assert policy.combat_active is False
+
+
+def test_vampire_lunge_opener_skips_wounded_or_ambiguous_targets() -> None:
+    target = "the vampire"
+    policy = StarterPolicy(
+        _spec(**{"class": "shifter", "subclass": "vampire"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=19001,
+                source_combat_opening_action="lunge",
+            ),
+        ),
+    )
+    policy.known_skills.add("lunge")
+    policy.active_target = target
+    state = CharacterState(
+        level=30,
+        subclass="vampire",
+        position=7,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "19001",
+                "hp": "99",
+                "maxhp": "100",
+            }
+        ],
+    )
+
+    decision = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=state,
+    )
+
+    assert decision.command == "kill vampire"
+    assert policy.lunge_pending_target is None
+
+
+def test_rejected_vampire_lunge_falls_back_to_normal_attack_once() -> None:
+    target = "the vampire"
+    policy = StarterPolicy(
+        _spec(**{"class": "shifter", "subclass": "vampire"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                exact_target=True,
+                source_mobile_vnum=19001,
+                source_combat_opening_action="lunge",
+            ),
+        ),
+    )
+    policy.known_skills.add("lunge")
+    policy.active_target = target
+    state = CharacterState(
+        level=30,
+        subclass="vampire",
+        position=7,
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "19001",
+                "hp": "100",
+                "maxhp": "100",
+            }
+        ],
+    )
+
+    first = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=state,
+    )
+    assert first.command == "lunge vampire"
+
+    policy.observe_text(
+        "The vampire is hurt and suspicious... you can't sneak up on him.\n"
+    )
+    decision = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=state,
+    )
+
+    assert decision.command == "kill vampire"
+    assert policy.lunge_pending_target is None
 
 
 def test_field_hunt_rejected_backstab_reengages_before_room_reassessment() -> None:
@@ -39347,6 +40599,113 @@ def test_source_field_mage_does_not_summon_familiar_indoors() -> None:
 
     assert decision is None
     assert policy.familiar_precombat_step is None
+
+
+def test_source_familiar_required_stop_summons_before_player_opener() -> None:
+    target = "The guardian"
+    policy = StarterPolicy(
+        _spec(**{"class": "mage"}),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                command_keyword="guardian",
+                exact_target=True,
+                source_mobile_vnum=6313,
+                require_familiar=True,
+                require_damage_window_probe=True,
+                source_target_hp_ceiling=513,
+                source_combat_action="burning hands",
+                source_combat_conservative_damage=40,
+                source_combat_max_actions=12,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.current_room = "6367"
+    policy.fastwalk_attack_target = target
+    policy.consider_target = target
+    policy.consider_viable = True
+    policy.known_skills.add("summon familiar")
+    policy.room_target_counts["6367"] = {target: 1}
+    state = CharacterState(
+        level=18,
+        hp=218,
+        max_hp=218,
+        mana=628,
+        max_mana=628,
+        position=6,
+        room_vnum="6367",
+        sector="field",
+        enemies=[
+            [
+                {
+                    "name": target,
+                    "isnpc": "6313",
+                    "level": "17",
+                    "hp": "226",
+                    "maxhp": "226",
+                }
+            ]
+        ],
+    )
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "cast 'summon familiar'"
+    assert policy.fastwalk_attack_started is False
+
+
+def test_source_familiar_required_probe_withdraws_when_familiar_dies() -> None:
+    target = "The guardian"
+    policy = StarterPolicy(
+        _spec(**{"class": "mage"}),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                target,
+                source_mobile_vnum=6313,
+                require_familiar=True,
+                exact_target=True,
+            ),
+        ),
+    )
+    policy.fastwalk_attack_started = True
+    policy.active_target = target
+    policy.combat_active = True
+    policy.familiar_active = False
+    state = CharacterState(
+        level=18,
+        hp=200,
+        max_hp=218,
+        mana=500,
+        max_mana=628,
+        position=6,
+        room_vnum="6367",
+        enemies=[
+            [
+                {
+                    "name": target,
+                    "isnpc": "6313",
+                    "level": "17",
+                    "hp": "120",
+                    "maxhp": "226",
+                }
+            ]
+        ],
+    )
+
+    decision = policy._between_round_combat_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "familiar-backed probe" in decision.reason
+    assert policy.fastwalk_hunt_stop_skipped is True
 
 
 def test_reconnected_arena_session_refreshes_known_skills_before_combat() -> None:

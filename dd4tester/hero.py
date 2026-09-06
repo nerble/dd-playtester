@@ -27,7 +27,11 @@ from .character import (
     CharacterSpec,
     load_character_spec,
 )
-from .dd4_catalog import CharacterCatalog, load_character_catalog
+from .dd4_catalog import (
+    CharacterCatalog,
+    load_character_catalog,
+    source_area_directory,
+)
 from .credentials import (
     CredentialStoreError,
     load_character_password,
@@ -232,6 +236,7 @@ def prepare_hero_request(
         _render_yaml(
             {
                 "character_profile": "character.yaml",
+                "source_directory": str(source_area_directory(source).resolve()),
                 "name": (
                     f"{name} to HERO"
                     if target_level == 100
@@ -254,6 +259,7 @@ def prepare_hero_request(
                 "catalog": {
                     "source": catalog.source,
                     "source_revision": catalog.source_revision,
+                    "source_directory": str(source_area_directory(source).resolve()),
                 },
                 "profile": profile_path.name,
                 "campaign": campaign_path.name,

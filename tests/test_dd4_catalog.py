@@ -1,4 +1,10 @@
-from dd4tester.dd4_catalog import parse_character_catalog, parse_creation_sexes
+from pathlib import Path
+
+from dd4tester.dd4_catalog import (
+    parse_character_catalog,
+    parse_creation_sexes,
+    source_area_directory,
+)
 
 
 SOURCE = r'''
@@ -81,3 +87,20 @@ case CON_DISPLAY_CLASS:
 '''
 
     assert parse_creation_sexes(source) == ("male", "female", "neuter")
+
+
+def test_source_area_directory_accepts_const_src_server_and_area_paths(
+    tmp_path: Path,
+) -> None:
+    server = tmp_path / "server"
+    source_dir = server / "src"
+    area_dir = server / "area"
+    source_dir.mkdir(parents=True)
+    area_dir.mkdir()
+    const_path = source_dir / "const.c"
+    const_path.write_text("source", encoding="utf-8")
+
+    assert source_area_directory(const_path) == area_dir
+    assert source_area_directory(source_dir) == area_dir
+    assert source_area_directory(server) == area_dir
+    assert source_area_directory(area_dir) == area_dir

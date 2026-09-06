@@ -1504,12 +1504,25 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Live-pending declared pairs: {len(live_coverage.pending_pairs)}")
         print("Live-validated sexes: " + ", ".join(live_coverage.validated_sexes))
-        print("entry\tlevel\tstatus\tcampaign")
+        print(
+            "Creation-to-target proof pairs: "
+            f"{len(live_coverage.creation_to_target_pairs)}"
+        )
+        print(
+            "Creation-to-target pending pairs: "
+            f"{len(live_coverage.creation_pending_pairs)}"
+        )
+        print(
+            "Creation-to-target proof sexes: "
+            + ", ".join(live_coverage.creation_validated_sexes)
+        )
+        print("entry\tlevel\tstatus\tcampaign\tproof\tcheckpoint")
         for entry in live_coverage.entries:
             print(
                 f"{entry.entry_id}\t{entry.level}\t"
                 f"{entry.campaign_status or 'not-started'}\t"
-                f"{entry.campaign_id if entry.campaign_id is not None else '-'}"
+                f"{entry.campaign_id if entry.campaign_id is not None else '-'}\t"
+                f"{entry.proof_status}\t{entry.target_checkpoint_reason or '-'}"
             )
         return 0
 
@@ -1917,7 +1930,7 @@ def show_hunt_candidates(
         print("Recall origins: " + ", ".join(origin_names))
     print(
         "status\tscore\tarea\ttarget\tmobility\tsearch_rooms\t"
-        "source_level\tfuzzed_levels\t"
+        "rank\tsource_level\tfuzzed_levels\t"
         "base_hp\tpeak_round\troom\trecall_origin\troute\t"
         "move_cost\tflight_cost\trequires_flight\t"
         "room_spawns\tspawn_limit\t"
@@ -1985,6 +1998,7 @@ def show_hunt_candidates(
                     candidate.target,
                     mobility,
                     str(search_room_count),
+                    candidate.rank,
                     str(candidate.level),
                     f"{candidate.estimated_level_range[0]}-"
                     f"{candidate.estimated_level_range[1]}",
@@ -2098,7 +2112,7 @@ def show_resource_sources(
     print(
         "effect\tstatus\tobject_vnum\tobject\ttype\tsource_kind\t"
         "source_mobile\treset_room\tarea\tcount\tsource_levels\t"
-        "route_origin\troute\thazards\tautonomy_rejections"
+        "route_origin\troute\tactivation\thazards\tautonomy_rejections"
     )
     for placement in placements[:limit]:
         source_mobile = (
@@ -2129,6 +2143,16 @@ def show_resource_sources(
                     source_levels,
                     route_origin,
                     ";".join(placement.route) or "-",
+                    (
+                        (
+                            f"{placement.activation.mode}:"
+                            f"{placement.activation.command}"
+                            f"{(' ' + placement.activation.target) if placement.activation.target else ''}"
+                            f" [{placement.activation.spell}]"
+                        )
+                        if placement.activation is not None
+                        else "-"
+                    ),
                     "; ".join(clean(value) for value in placement.hazards) or "-",
                     "; ".join(
                         clean(value) for value in placement.autonomy_rejections

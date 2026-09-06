@@ -123,6 +123,25 @@ def test_text_flee_reports_authoritative_experience_loss() -> None:
     }
 
 
+def test_multiline_text_flee_keeps_partial_experience_with_loss() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "You flee from combat! You lose 419 exp.\n"
+        "However, you damaged your opponent sufficiently for 117 experience.\n"
+    )
+
+    assert [event.type for event in events] == ["experience_lost"]
+    assert events[0].data == {
+        "xp": 419,
+        "partial_xp": 117,
+        "text": (
+            "You flee from combat! You lose 419 exp. However, you damaged "
+            "your opponent sufficiently for 117 experience."
+        ),
+    }
+
+
 def test_duplicate_login_snapshot_is_discarded_until_next_room_update() -> None:
     parser = ObservationParser()
 

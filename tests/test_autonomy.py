@@ -92,6 +92,17 @@ def test_audit_surfaces_declared_class_automation_gaps() -> None:
     assert "Automation gaps:" in render_autonomy_audit(audit)
 
 
+def test_psionic_agitation_is_reported_as_automated_after_runtime_wiring() -> None:
+    audit = audit_hero_request(
+        race="human",
+        sex="female",
+        character_class="psionic",
+        target_level=30,
+    )
+
+    assert "agitation" in audit.automated_combat_skills
+
+
 def test_subclass_audit_combines_base_and_subclass_automation_gaps() -> None:
     audit = audit_hero_request(
         race="human",

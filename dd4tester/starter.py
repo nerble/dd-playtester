@@ -15,6 +15,11 @@ from typing import Any, Callable, Collection, Iterable, Mapping
 
 from .archetypes import archetype_registry
 from .character import CharacterSpec, load_character_spec
+from .combat_capabilities import (
+    combat_capabilities_for,
+    combat_skill_names,
+    combat_spell_names,
+)
 from .connection import CommandConnection, ReadResult, TelnetConnection
 from .credentials import CredentialStoreError, load_character_password
 from .decisions import classify_decision
@@ -51,16 +56,23 @@ from .hunt_candidates import (
     ITEM_CONTAINER,
     ITEM_POTION,
     ObjectSource,
+    WorldSource,
     load_world_source,
     mobile_sanctuary_critical_hit_damage,
     mobile_sanctuary_peak_round_damage,
     parse_area_file,
     potion_spell_names,
     source_class_teacher_route,
+    source_route_hazard_rejections,
     source_subclass_teacher_route,
     source_mobile_search_rooms,
     source_mobile_identities as _canonical_source_mobile_identities,
     source_mobile_can_join_player_fight,
+    body_form_has_arms,
+    body_form_has_eyes,
+    body_form_has_head,
+    body_form_has_legs,
+    body_form_is_huge,
 )
 from .observations import GameEvent, ObservationParser
 from .mudlet import MudletConnection
@@ -72,6 +84,7 @@ from .shops import (
     safe_shop_route_drunk_rooms,
     sale_keyword,
 )
+from .source_paths import current_source_directory
 from .specials import (
     POST_OBJECTIVE_HAZARD_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
@@ -259,6 +272,7 @@ _IDENTIFIED_VALUE = re.compile(
     r"\bis worth\s+(?P<coins>\d+)\s+copper coins?\b",
     re.IGNORECASE,
 )
+_CHAIN_ATTACHED = re.compile(r"\bchain attached\b", re.IGNORECASE)
 _MOB_DEATH = re.compile(
     r"(?:^|\n)\s*(?P<target>[A-Za-z][A-Za-z '-]{0,60}?) is DEAD!!",
     re.IGNORECASE,
@@ -495,7 +509,7 @@ def _source_subclass_trainer_route(
     subclass: str,
 ) -> _ClassTrainerRoute | None:
     """Build a level-30 route from the source-reset subclass teacher."""
-    source_directory = Path("runs/dd4-source/server/area")
+    source_directory = current_source_directory()
     if not source_directory.is_dir():
         return None
     world = load_world_source(source_directory, include_all_areas=True)
@@ -524,7 +538,7 @@ def _source_class_trainer_route(
     character_class: str,
 ) -> _ClassTrainerRoute | None:
     """Build the level-10 route from the current Midgaard area files."""
-    source_directory = Path("runs/dd4-source/server/area")
+    source_directory = current_source_directory()
     if not source_directory.is_dir():
         return None
     world = load_world_source(source_directory, include_all_areas=True)
@@ -1379,16 +1393,6 @@ _CASTER_MITIGATION_SPELLS = {
         ("globe of invulnerability", "globe of invulnerability", 120),
     ),
 }
-# These subclass spells are direct, single-target combat spells whose source
-# implementations are safe to repeat between automatic weapon rounds. Keep
-# area spells, corpse/object spells, and opener-only spells out of this list:
-# they need their own target, crowd, or lifecycle controller.
-_SUBCLASS_COMBAT_SPELLS = {
-    "necromancer": ("harm",),
-    "druid": ("wither",),
-    "knight": ("flamestrike",),
-    "monk": ("agitation", "mind thrust"),
-}
 # These inherited/self-target protections are safe to maintain before or
 # during a single-target fight. Area-wide subclass spells stay out of this
 # list until their crowd and weather lifecycle can be audited.
@@ -1412,6 +1416,9 @@ _SUBCLASS_COMBAT_ACTIONS = {
     "martial artist": (
         ("atemi", True, "repeat the source-defined martial artist strike"),
         ("kansetsu", True, "use the source-defined martial artist joint strike"),
+    ),
+    "thug": (
+        ("smash", True, "use the source-defined shield smash attack"),
     ),
 }
 # Werewolf form changes equipment slots and supplies natural weapons. Enter it
@@ -1611,6 +1618,7 @@ _POS_MORTAL = 1
 _POS_INCAP = 2
 _POS_STUNNED = 3
 _POS_FIGHTING = 6
+_POS_STANDING = 7
 _PIE_WEIGHT = 5
 _MOVEMENT_COMMANDS = {
     "north",
@@ -1765,6 +1773,10 @@ class FieldHuntStop:
     pre_entry_scan_hazard_source_mobile_vnums: tuple[int, ...] = ()
     route_gate_minimum_health_ratio: float = 0.90
     require_sanctuary: bool = False
+    # Some source-ranked mage/witch probes rely on the source-defined
+    # familiar as both an opener and a bounded damage-window reserve. Never
+    # silently downgrade those stops to an unprotected solo fight.
+    require_familiar: bool = False
     minimum_combat_health_ratio: float = 0.0
     route_vnums: tuple[str, ...] = ()
     maximum_level_offset: int | None = None
@@ -1807,8 +1819,12 @@ class FieldHuntStop:
     source_combat_opening_conservative_damage: int | None = None
     source_combat_opening_max_damage: int | None = None
     source_combat_opening_reference: str | None = None
+    source_familiar_minimum_damage: int | None = None
     source_policy_id: str | None = None
     source_target_armed: bool | None = None
+    # ``None`` means no source body-form proof is available.  A parsed zero
+    # is meaningful evidence for an ordinary organic, non-huge target.
+    source_target_body_form_flags: int | None = None
     source_loot_object_vnums: tuple[int, ...] = ()
     source_specials: tuple[str, ...] = ()
     # Source-ranked circuit legs can cross reboot-randomized room components.
@@ -1933,16 +1949,21 @@ class StarterPolicy:
         source_mobile_can_join_by_vnum: Mapping[int, bool] | None = None,
         source_mobile_aggressive_by_vnum: Mapping[int, bool] | None = None,
         source_mobile_attack_programs_by_vnum: Mapping[int, bool] | None = None,
+        source_world: WorldSource | None = None,
         practice_types_spent: frozenset[str] = frozenset(),
         deferred_practice_types: frozenset[str] = frozenset(),
         rejected_practice_skills: frozenset[str] = frozenset(),
         known_skills: Collection[str] = (),
         known_skill_levels: Mapping[str, int] | None = None,
         counterbalance_preparation_required: bool = False,
+        counterbalanced_weapon_vnum: int | None = None,
+        chained_weapon_vnum: int | None = None,
         title_configured: bool = False,
         description_configured: bool = False,
         selected_training_stat: str | None = None,
         verified_combat_pouch_potions: Mapping[str, int] | None = None,
+        source_resource_reserve: Mapping[str, Any] | None = None,
+        verified_source_resources: Mapping[str, Any] | None = None,
         fastwalk_skip_target_sightings: frozenset[tuple[str, str]] = frozenset(),
         subclass_selection: bool = False,
         subclass_change_keyword: str | None = None,
@@ -2105,6 +2126,7 @@ class StarterPolicy:
         self.class_trainer_locator_response_buffer = ""
         self.fastwalk_training_started = False
         self.fastwalk_training_complete = not fastwalk_train_before_departure
+        self.fastwalk_training_route_preflighted = False
         self.fastwalk_training_deferred_after_route_hazard = False
         self.class_trainer_return_pending = False
         self.fastwalk_stat_training_configured = False
@@ -2201,6 +2223,7 @@ class StarterPolicy:
                 source_mobile_attack_programs_by_vnum or {}
             ).items()
         }
+        self.source_world = source_world
         self.practice_types_spent = set(practice_types_spent)
         self.deferred_practice_types = set(deferred_practice_types)
         self.stage = "login"
@@ -2286,8 +2309,13 @@ class StarterPolicy:
         self.counterbalance_preparation_required = (
             counterbalance_preparation_required
         )
+        self.counterbalanced_weapon_vnum = _int_or_none(
+            counterbalanced_weapon_vnum
+        )
+        self.chained_weapon_vnum = _int_or_none(chained_weapon_vnum)
         self.smithy_counterbalance_step = 0
         self.smithy_counterbalance_keyword: str | None = None
+        self.smithy_counterbalance_weapon_vnum: int | None = None
         self.practice_exit_reason = "return to the Mud School entrance"
         self.arena_queried = False
         self.arena_segment_leaving = False
@@ -2362,6 +2390,7 @@ class StarterPolicy:
         self.between_round_action_ready_at = 0.0
         self.combat_action_target: str | None = None
         self.combat_subclass_actions_attempted: set[str] = set()
+        self.combat_control_actions_attempted: set[str] = set()
         self.shifter_form_recovery_pending = False
         self.shifter_form_recovery_unavailable = False
         self.faerie_fire_target_identity: str | None = None
@@ -2376,6 +2405,10 @@ class StarterPolicy:
         self.stun_opener_selector: str | None = None
         self.stun_opener_weapon_keyword: str | None = None
         self.stun_opener_piercing_keyword: str | None = None
+        self.stun_opener_followup_action: str | None = None
+        self.stun_opener_followup_weapon_keyword: str | None = None
+        self.lunge_pending_target: str | None = None
+        self.lunge_skip_once_target: str | None = None
         self.shoot_pending_target: str | None = None
         self.shoot_skip_once_target: str | None = None
         self.chill_touch_unavailable = False
@@ -2573,6 +2606,7 @@ class StarterPolicy:
         self.fastwalk_return_steps_remaining = 0
         self.fastwalk_attack_started = False
         self.fastwalk_opening_potion_pending = False
+        self.fastwalk_opening_resource_hold_pending = False
         self.fastwalk_sanctuary_consumed_in_combat = False
         self.fastwalk_sanctuary_observed_in_combat = False
         self.body_part_keyword: str | None = None
@@ -2662,6 +2696,16 @@ class StarterPolicy:
                 if int(quantity) > 0
             }
         )
+        self.source_resource_reserve = dict(source_resource_reserve or {})
+        self.verified_source_resources: dict[str, dict[str, Any]] = {
+            str(effect).casefold(): dict(record)
+            for effect, record in (verified_source_resources or {}).items()
+            if isinstance(record, Mapping)
+        }
+        self.failed_source_resource_effects: set[str] = set()
+        self.pending_source_resource_effect: str | None = None
+        self.pending_source_resource_hold: str | None = None
+        self.source_resource_hold_ready: str | None = None
         self.pending_combat_potion_keyword: str | None = None
         self.pending_combat_potion_spell: str | None = None
         # DD4 can acknowledge a quaff before Char.Affect reports sanctuary.
@@ -2738,6 +2782,10 @@ class StarterPolicy:
         self.gear_worn = []
         self.gear_worn_structured_current = False
         self.gear_wielded_vnum: int | None = None
+        self.gear_chained_weapon_vnums: set[int] = set()
+        if self.chained_weapon_vnum is not None:
+            self.gear_chained_weapon_vnums.add(self.chained_weapon_vnum)
+        self.hurl_unavailable = False
         self.gear_ranged_vnums: set[int] = set()
         self.gear_command_queue: list[tuple[str, str]] = []
         self.gear_recompute_after_removals = False
@@ -2984,6 +3032,61 @@ class StarterPolicy:
                 self._restore_combat_pouch_potion(pending_keyword)
                 self.pending_combat_potion_keyword = None
                 self.pending_combat_potion_spell = None
+        if self.pending_source_resource_hold is not None:
+            pending_effect = self.pending_source_resource_hold
+            if (
+                re.search(r"\byou\s+(?:hold|are holding)\b", recent)
+                or "already holding" in recent
+                or "you use" in recent and "hold" in recent
+            ):
+                self.pending_source_resource_hold = None
+                self.source_resource_hold_ready = pending_effect
+            elif any(
+                marker in recent
+                for marker in (
+                    "you do not have that item",
+                    "you don't have that item",
+                    "you can't hold",
+                    "you cannot hold",
+                    "you can't wear, wield, or hold",
+                    "you cannot wear, wield, or hold",
+                    "your profession prohibits",
+                )
+            ):
+                self.pending_source_resource_hold = None
+                self.source_resource_hold_ready = None
+                self.failed_source_resource_effects.add(pending_effect)
+        if self.pending_source_resource_effect is not None:
+            pending_effect = self.pending_source_resource_effect
+            if (
+                re.search(r"\byou\s+(?:recite|brandish|zap)\b", recent)
+                or "you are already affected by that spell" in recent
+            ):
+                self._consume_source_resource(pending_effect)
+                self.pending_source_resource_effect = None
+                self.source_resource_hold_ready = None
+            elif any(
+                marker in recent
+                for marker in (
+                    "you do not have that item",
+                    "you don't have that item",
+                    "you do not have a scroll",
+                    "you are not holding",
+                    "you can't recite",
+                    "you cannot recite",
+                    "you can't brandish",
+                    "you cannot brandish",
+                    "you can't zap",
+                    "you cannot zap",
+                    "you don't know that spell",
+                    "you do not know that spell",
+                    "you don't have enough mana",
+                    "you do not have enough mana",
+                )
+            ):
+                self.failed_source_resource_effects.add(pending_effect)
+                self.pending_source_resource_effect = None
+                self.source_resource_hold_ready = None
         if self.city_rearm and self.city_rearm_step == 1:
             selectors = _shop_purchase_selectors(
                 cleaned,
@@ -3641,10 +3744,18 @@ class StarterPolicy:
             or "you attempt to sink your fangs" in recent
             or "you wolfbite" in recent
             or "you ravage" in recent
+            or "you break " in recent
+            or "has no weapon" in recent
+            or "you can't break the wrists of an object" in recent
+            or "you can't disarm your opponent's body parts" in recent
+            or "powerful enchantment prevents you from disarming anyone here" in recent
             or "you morph from" in recent
             or "you are already in that form" in recent
             or "you don't know that form well enough" in recent
             or "you do not have enough mana" in recent
+            or "you hurl " in recent
+            or "you're not going to throw away something thats not chained" in recent
+            or "hurl what?" in recent
             or "your disarm attempt" in recent
             or "you disarm " in recent
             or "your opponent is not wielding a weapon" in recent
@@ -3654,6 +3765,21 @@ class StarterPolicy:
         ):
             self.between_round_action_issued = False
             self.pending_combat_spell = None
+        if (
+            "you're not going to throw away something thats not chained" in recent
+            or "hurl what?" in recent
+        ):
+            self.hurl_unavailable = True
+            refused_weapon = self._wielded_weapon()
+            refused_vnum = (
+                refused_weapon.vnum
+                if refused_weapon is not None
+                else self.gear_wielded_vnum
+            )
+            if refused_vnum is not None:
+                self.gear_chained_weapon_vnums.discard(refused_vnum)
+            if self.chained_weapon_vnum == refused_vnum:
+                self.chained_weapon_vnum = None
         if re.search(r"\byou\s+disarm\s+", recent) is not None:
             self.combat_disarm_resolved = True
         if any(
@@ -3710,21 +3836,45 @@ class StarterPolicy:
                 "you attempt to stun",
                 "your attempted stun",
                 "they are already stunned",
+                "you can't try to stun anything while fighting",
                 "you cannot stun a fighting person",
                 "you need a weapon that pounds",
                 "they aren't here",
+                "you can't stun an object",
                 "is too large for you to stun",
                 "has no head for you to whack",
                 "how can you knock yourself out",
                 "not while mounted",
             )
         ):
-            self.stun_opener_step = "wield_piercing"
+            if "they aren't here" in recent:
+                self.stun_opener_step = None
+                self.stun_opener_target = None
+                self.stun_opener_selector = None
+                self.stun_opener_weapon_keyword = None
+                self.stun_opener_piercing_keyword = None
+                self.stun_opener_followup_action = None
+                self.stun_opener_followup_weapon_keyword = None
+                self.combat_active = False
+                self.prompt_ready = True
+            elif self.stun_opener_followup_action == "kill":
+                self.stun_opener_step = (
+                    "wield_followup"
+                    if self.stun_opener_followup_weapon_keyword is not None
+                    else "kill"
+                )
+            else:
+                self.stun_opener_step = "wield_piercing"
         elif (
             self.stun_opener_step == "wield_piercing"
             and "you wield " in recent
         ):
             self.stun_opener_step = "backstab"
+        elif (
+            self.stun_opener_step == "wield_followup"
+            and "you wield " in recent
+        ):
+            self.stun_opener_step = "kill"
         current_form_rejection = any(
             phrase in recent
             for phrase in (
@@ -3733,7 +3883,8 @@ class StarterPolicy:
             )
         )
         current_form_target = (
-            self.backstab_pending_target
+            self.lunge_pending_target
+            or self.backstab_pending_target
             or self.stun_opener_target
             or self.active_target
             or self.fastwalk_attack_target
@@ -3742,12 +3893,15 @@ class StarterPolicy:
             # The source safety check can reject a live mobile after a positive
             # consider, for example while the mobile has a non-corporeal affect.
             # Do not feed that target into the ordinary opener fallback loop.
+            self.lunge_pending_target = None
             self.backstab_pending_target = None
             self.stun_opener_step = None
             self.stun_opener_target = None
             self.stun_opener_selector = None
             self.stun_opener_weapon_keyword = None
             self.stun_opener_piercing_keyword = None
+            self.stun_opener_followup_action = None
+            self.stun_opener_followup_weapon_keyword = None
             self.combat_active = False
             self.active_target = None
             self.active_target_selector = None
@@ -3766,8 +3920,10 @@ class StarterPolicy:
                 self.fastwalk_attack_started = False
                 self.fastwalk_hunt_stop_skipped = bool(self.fastwalk_hunt_stops)
                 self.fastwalk_returning = True
+                self.lunge_skip_once_target = None
                 self.backstab_skip_once_target = None
             else:
+                self.lunge_skip_once_target = current_form_target
                 self.backstab_skip_once_target = current_form_target
         if self.backstab_pending_target is not None and any(
             phrase in recent
@@ -3783,6 +3939,23 @@ class StarterPolicy:
         ):
             self.backstab_skip_once_target = self.backstab_pending_target
             self.backstab_pending_target = None
+            self.combat_active = False
+            self.prompt_ready = True
+        if self.lunge_pending_target is not None and any(
+            phrase in recent
+            for phrase in (
+                "thou are not a vampire",
+                "lunge at whom",
+                "they aren't here",
+                "how can you sneak up on yourself",
+                "you can't lunge at a fighting person",
+                "is hurt and suspicious",
+                "you attempt to lunge at",
+                "your legs are too injured to lunge effectively",
+            )
+        ):
+            self.lunge_skip_once_target = self.lunge_pending_target
+            self.lunge_pending_target = None
             self.combat_active = False
             self.prompt_ready = True
         if self.shoot_pending_target is not None and any(
@@ -4348,6 +4521,22 @@ class StarterPolicy:
                 }
             )
             self.sale_offer_coins = None
+        if (
+            _CHAIN_ATTACHED.search(cleaned) is not None
+            and self.sale_identify_pending_keyword is not None
+        ):
+            chained_vnum = self._source_item_vnum_for_keyword(
+                self.sale_identify_pending_keyword
+            )
+            wielded_weapon = self._wielded_weapon()
+            if (
+                chained_vnum is not None
+                and wielded_weapon is not None
+                and wielded_weapon.vnum == chained_vnum
+            ):
+                self.chained_weapon_vnum = chained_vnum
+                self.gear_chained_weapon_vnums.add(chained_vnum)
+                self.hurl_unavailable = False
         identified_value = _IDENTIFIED_VALUE.search(cleaned)
         if (
             identified_value is not None
@@ -4649,8 +4838,16 @@ class StarterPolicy:
             self.between_round_action_issued = False
             self.cleric_combat_heals = 0
             self.faerie_fire_target_identity = None
+            self.lunge_pending_target = None
             self.backstab_pending_target = None
             self.shoot_pending_target = None
+            self.stun_opener_step = None
+            self.stun_opener_target = None
+            self.stun_opener_selector = None
+            self.stun_opener_weapon_keyword = None
+            self.stun_opener_piercing_keyword = None
+            self.stun_opener_followup_action = None
+            self.stun_opener_followup_weapon_keyword = None
             self.consider_target = None
             self.consider_target_selector = None
             self.consider_viable = None
@@ -4738,6 +4935,7 @@ class StarterPolicy:
             self.active_enemy_count = 0
             self.between_round_action_issued = False
             self.cleric_combat_heals = 0
+            self.lunge_pending_target = None
             self.shoot_pending_target = None
             self.fastwalk_pursuit_direction = fleeing_mobile.group(
                 "direction"
@@ -4773,6 +4971,7 @@ class StarterPolicy:
             or attacking_mobile is not None
         ):
             self.combat_active = True
+            self.lunge_pending_target = None
             self.shoot_pending_target = None
         pending_endpoint_target: str | None = None
         if (
@@ -4819,6 +5018,13 @@ class StarterPolicy:
             self.between_round_action_issued = False
             self.cleric_combat_heals = 0
             self.shoot_pending_target = None
+            self.stun_opener_step = None
+            self.stun_opener_target = None
+            self.stun_opener_selector = None
+            self.stun_opener_weapon_keyword = None
+            self.stun_opener_piercing_keyword = None
+            self.stun_opener_followup_action = None
+            self.stun_opener_followup_weapon_keyword = None
         if "you flee from combat" in recent:
             self.combat_active = False
             self.active_target = None
@@ -4835,7 +5041,15 @@ class StarterPolicy:
             self.faerie_fire_target_identity = None
             self.between_round_action_issued = False
             self.cleric_combat_heals = 0
+            self.lunge_pending_target = None
             self.shoot_pending_target = None
+            self.stun_opener_step = None
+            self.stun_opener_target = None
+            self.stun_opener_selector = None
+            self.stun_opener_weapon_keyword = None
+            self.stun_opener_piercing_keyword = None
+            self.stun_opener_followup_action = None
+            self.stun_opener_followup_weapon_keyword = None
             self.flee_pending = False
             self.flee_succeeded = True
             self.flee_failed = False
@@ -5182,6 +5396,7 @@ class StarterPolicy:
                 event_mobile_vnum = _int_or_none(
                     event.data.get("isnpc", event.data.get("mobile_vnum"))
                 )
+                self.lunge_pending_target = None
                 self.backstab_pending_target = None
                 self.shoot_pending_target = None
                 target = event.data.get("target", event.data.get("name"))
@@ -5222,6 +5437,7 @@ class StarterPolicy:
                     len(raw_enemies) - len(enemies),
                 )
                 if enemies:
+                    self.lunge_pending_target = None
                     self.backstab_pending_target = None
                     self.shoot_pending_target = None
                     preferred_targets = (
@@ -5340,6 +5556,7 @@ class StarterPolicy:
                         self.unapproved_field_attacker = None
                         self.between_round_action_issued = False
                         self.cleric_combat_heals = 0
+                        self.lunge_pending_target = None
                         self.backstab_pending_target = None
                         self.awaiting_enemy_assessment = False
                         if not self.fastwalk_opening_potion_pending:
@@ -5364,6 +5581,22 @@ class StarterPolicy:
                 )
                 package = str(event.data.get("package", "")).casefold()
                 full_worn_snapshot = package == "char.worn"
+                observed_chained_weapon_vnums = (
+                    _equipment_chained_weapon_vnums(
+                        equipment_value,
+                        self.gear_catalog,
+                    )
+                )
+                if observed_chained_weapon_vnums:
+                    self.gear_chained_weapon_vnums.update(
+                        observed_chained_weapon_vnums
+                    )
+                    wielded_chained_vnum = _equipment_weapon_vnum_from_payload(
+                        equipment_value
+                    )
+                    if wielded_chained_vnum in observed_chained_weapon_vnums:
+                        self.chained_weapon_vnum = wielded_chained_vnum
+                        self.hurl_unavailable = False
                 instance_sources = _equipment_instance_sources(
                     equipment_value,
                     self.gear_catalog,
@@ -6602,6 +6835,7 @@ class StarterPolicy:
             self.runtime_boundary_finish_commands_remaining = 0
             self.runtime_boundary_finish_target = None
             self.combat_subclass_actions_attempted.clear()
+            self.combat_control_actions_attempted.clear()
             self.combat_action_target = None
 
         route_hazard = self._active_route_preflight_hazard(state)
@@ -7129,6 +7363,12 @@ class StarterPolicy:
                     and not self.needs_food
                     and not self.needs_drink
                     and _health_ratio(state) > _FIELD_WITHDRAW_HEALTH_RATIO
+                    and all(
+                        not self._source_mobile_return_enemy_is_explicitly_dangerous(
+                            enemy
+                        )
+                        for enemy in live_enemies
+                    )
                 )
                 if below_band_return:
                     # A no-recall hunt maze can retain a low-level pursuer
@@ -7906,6 +8146,28 @@ class StarterPolicy:
                     )
                     self.fastwalk_returning = not resume_after_fight
                     self.fastwalk_emergency_recall_pending = not resume_after_fight
+                    if (
+                        not resume_after_fight
+                        and self._source_mobile_return_enemy_is_explicitly_dangerous(
+                            live_enemies[0]
+                        )
+                    ):
+                        # Generic DD4 combat can disarm a player even when an
+                        # aggressive NPC has no spec_* procedure. Do not let
+                        # the bounded transit exception turn that source
+                        # hazard into a new fight before the flee is issued.
+                        self.fastwalk_abort_reason = (
+                            "field hunt aborted before fighting a source-known "
+                            "aggressive transit attacker "
+                            f"{self.active_target!r}"
+                        )
+                        if self.flee_pending:
+                            self.prompt_ready = False
+                            return None
+                        return BotDecision(
+                            "flee",
+                            "withdraw immediately from an aggressive transit attacker",
+                        )
                     if resume_after_fight:
                         if (
                             self._fastwalk_allows_multiple_below_band_transit_fights()
@@ -8272,6 +8534,24 @@ class StarterPolicy:
                 )
                 else None
             )
+            if self.fastwalk_opening_resource_hold_pending:
+                resource_decision = self._combat_pouch_potion_decision(state)
+                if resource_decision is not None:
+                    if self.pending_source_resource_effect is not None:
+                        self.fastwalk_opening_resource_hold_pending = False
+                        self.fastwalk_opening_potion_pending = True
+                    return resource_decision
+                self.fastwalk_opening_resource_hold_pending = False
+                self.fastwalk_opening_potion_pending = False
+                self.fastwalk_abort_reason = (
+                    "field combat aborted because the source resource could not "
+                    "be held before the audited special opener"
+                )
+                self.fastwalk_emergency_recall_pending = True
+                return BotDecision(
+                    "flee",
+                    "withdraw when the source recovery resource cannot be held",
+                )
             if self.fastwalk_opening_potion_pending:
                 if _has_named_affect(state.affects, "sanctuary"):
                     self.fastwalk_opening_potion_pending = False
@@ -9950,13 +10230,50 @@ class StarterPolicy:
                     if maximum_player_hp is not None and maximum_player_hp > 0
                     else None
                 )
-                if projected_actions > source_max_actions + int(
+                projection_action_budget = source_max_actions + int(
                     bool(stop.source_combat_opening_action)
+                )
+                projection_budget_detail = (
+                    f"audited budget of {source_max_actions}"
+                )
+                if (
+                    current_player_hp is not None
+                    and minimum_player_reserve is not None
+                    and player_damage > 0
                 ):
+                    # The fixed source budget is a conservative probe
+                    # horizon, not a command-count ceiling. Once the live
+                    # exchange has measured both sides, convert the actual
+                    # health reserve into a bounded action budget. Sanctuary
+                    # naturally earns a larger budget through lower observed
+                    # incoming damage; ordinary fights may also continue when
+                    # their measured exchange remains safely inside the HP
+                    # floor.
+                    available_player_hp = (
+                        current_player_hp - minimum_player_reserve
+                    )
+                    health_action_budget = (
+                        available_player_hp
+                        * self.field_combat_probe_samples
+                        // player_damage
+                        if available_player_hp > 0
+                        else 0
+                    )
+                    if health_action_budget > projection_action_budget:
+                        projection_action_budget = health_action_budget
+                        budget_label = (
+                            "protected health budget"
+                            if _has_named_affect(state.affects, "sanctuary")
+                            else "live health budget"
+                        )
+                        projection_budget_detail = (
+                            f"{budget_label} of {health_action_budget}"
+                        )
+                if projected_actions > projection_action_budget:
                     source_projection_detail = (
                         f"source-backed {stop.source_combat_action} projection "
                         f"needs {projected_actions} actions, above its "
-                        f"audited budget of {source_max_actions}"
+                        f"{projection_budget_detail}"
                         f"{source_reference}"
                     )
                 elif (
@@ -10126,6 +10443,10 @@ class StarterPolicy:
         if familiar_disengagement is not None:
             return familiar_disengagement
 
+        familiar_loss = self._required_familiar_loss_decision(state)
+        if familiar_loss is not None:
+            return familiar_loss
+
         mitigation = self._fastwalk_caster_mitigation_decision(state)
         if mitigation is not None:
             self.between_round_action_issued = True
@@ -10143,6 +10464,7 @@ class StarterPolicy:
             self.combat_disarm_attempts = 0
             self.combat_actions_since_disarm = 0
             self.combat_disarm_resolved = False
+            self.combat_control_actions_attempted.clear()
 
         target = self.active_target_selector or _target_keyword(self.active_target)
         if (
@@ -10197,34 +10519,87 @@ class StarterPolicy:
         if subclass_action is not None:
             return subclass_action
 
+        registered_combat_skills = combat_skill_names(
+            self.spec.character_class,
+            self._active_training_subclass(state),
+        )
+        for action, reason in (
+            (
+                "dirt kick",
+                "attempt the source-verified dirt kick once against this target "
+                "to blind and damage it",
+            ),
+            (
+                "trip",
+                "attempt the source-verified trip once against this target "
+                "to put it prone",
+            ),
+        ):
+            if action not in registered_combat_skills:
+                continue
+            if not self._thief_control_target_is_ready(state, target, action):
+                continue
+            self.combat_control_actions_attempted.add(action)
+            self.combat_actions_since_disarm += 1
+            self.between_round_action_issued = True
+            self.between_round_action_ready_at = (
+                now + _COMBAT_ACTION_COOLDOWN_SECONDS
+            )
+            return BotDecision(f"{action} {target}", reason)
+
         active_command: str | None = None
         active_reason: str | None = None
         wielded_weapon = self._wielded_weapon()
-        if (
-            self._skill_is_usable("circle")
-            and wielded_weapon is not None
-            and is_piercing_weapon(wielded_weapon)
-        ):
-            active_command = f"circle {target}"
-            active_reason = (
-                "repeat the source-verified circle attack between automatic "
-                "weapon rounds"
-            )
-        elif self._skill_is_usable("knife toss"):
-            active_command = f"knife toss {target}"
-            active_reason = (
+        repeatable_reasons = {
+            "headbutt": (
+                "repeat the source-verified headbutt between automatic rounds "
+                "while the target's source anatomy and live combat state remain valid"
+            ),
+            "knife toss": (
                 "repeat the source-verified level-scaled knife toss between "
                 "automatic rounds without consuming carried ammunition"
-            )
-        elif self._skill_is_usable("punch"):
-            active_command = "punch"
-            active_reason = (
+            ),
+            "punch": (
                 "repeat the source-verified punch attack while automatic "
                 "unarmed combat rounds continue"
-            )
-        elif self._skill_is_usable("kick"):
-            active_command = "kick"
-            active_reason = "repeat kick damage between automatic weapon rounds"
+            ),
+            "kick": "repeat kick damage between automatic weapon rounds",
+        }
+        for action in registered_combat_skills:
+            if action == "circle":
+                if (
+                    self._skill_is_usable(action)
+                    and wielded_weapon is not None
+                    and is_piercing_weapon(wielded_weapon)
+                ):
+                    active_command = f"circle {target}"
+                    active_reason = (
+                        "repeat the source-verified circle attack between "
+                        "automatic weapon rounds"
+                    )
+                    break
+            elif action == "hurl":
+                chained_weapon = self._smithy_hurl_weapon()
+                if chained_weapon is not None:
+                    active_command = f"hurl {item_keyword(chained_weapon)}"
+                    active_reason = (
+                        "repeat the source-verified Smithy hurl damage action "
+                        "with the currently wielded chained weapon"
+                    )
+                    break
+            elif action == "headbutt":
+                if self._headbutt_target_is_ready(state, target):
+                    active_command = "headbutt"
+                    active_reason = repeatable_reasons[action]
+                    break
+            elif action in repeatable_reasons and self._skill_is_usable(action):
+                active_command = (
+                    action
+                    if action in {"punch", "kick"}
+                    else f"{action} {target}"
+                )
+                active_reason = repeatable_reasons[action]
+                break
 
         if active_command is not None and active_reason is not None:
             self.combat_actions_since_disarm += 1
@@ -10239,15 +10614,11 @@ class StarterPolicy:
                 target,
                 disarm_available,
             )
-        class_spells = {
-            "mage": ("burning hands", "chill touch", "magic missile"),
-            "cleric": ("cause critical", "cause serious", "cause light"),
-            "psionic": ("psychic crush", "mind thrust"),
-        }
-        spells = class_spells.get(self.spec.character_class, ())
         subclass = self._active_training_subclass(state)
-        subclass_spells = _SUBCLASS_COMBAT_SPELLS.get(subclass or "", ())
-        ordered_spells = (*subclass_spells, *spells)
+        ordered_spells = combat_spell_names(
+            self.spec.character_class,
+            subclass,
+        )
         if not ordered_spells:
             return self._repeat_disarm_without_damage_action(
                 now,
@@ -10342,6 +10713,57 @@ class StarterPolicy:
         return BotDecision(
             "order pony flee",
             "withdraw the summoned familiar before it can deliver a no-XP finishing blow",
+        )
+
+    def _required_familiar_loss_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Leave a familiar-backed probe when its damage reserve is gone."""
+        stop = self._active_source_target_stop()
+        if (
+            stop is None
+            or not stop.require_familiar
+            or not self.fastwalk_attack_started
+            or self.familiar_active
+            or self.familiar_disengagement_attempted
+            or not self.active_target
+        ):
+            return None
+        matching = [
+            enemy
+            for enemy in self._current_room_enemy_records(state)
+            if _stop_target_matches(
+                str(enemy.get("name", "")),
+                self.active_target,
+                stop,
+            )
+        ]
+        if len(matching) != 1:
+            # A missing target is handled by the ordinary kill/reconciliation
+            # path; do not turn a delayed GMCP update into a false flee.
+            return None
+        enemy_hp = _int_or_none(matching[0].get("hp"))
+        enemy_max_hp = _int_or_none(matching[0].get("maxhp"))
+        if (
+            enemy_hp is None
+            or enemy_max_hp in (None, 0)
+            or enemy_hp <= 0
+            or enemy_hp / enemy_max_hp <= _FAMILIAR_WITHDRAW_TARGET_RATIO
+        ):
+            # Once the target is near death, the ordinary player finisher can
+            # safely complete the kill without letting the summoned NPC take
+            # the XP credit.
+            return None
+        self.fastwalk_abort_reason = (
+            f"required source familiar was lost before {self.active_target!r} "
+            "entered the bounded finishing window"
+        )
+        self.fastwalk_hunt_stop_skipped = True
+        self.fastwalk_emergency_recall_pending = True
+        return BotDecision(
+            "flee",
+            "withdraw because the source familiar-backed probe lost its damage reserve",
         )
 
     def _repeat_disarm_without_damage_action(
@@ -10460,6 +10882,9 @@ class StarterPolicy:
         skip_backstab = self.backstab_skip_once_target == target
         if skip_backstab:
             self.backstab_skip_once_target = None
+        skip_lunge = self.lunge_skip_once_target == target
+        if skip_lunge:
+            self.lunge_skip_once_target = None
         skip_shoot = self.shoot_skip_once_target == target
         if skip_shoot:
             self.shoot_skip_once_target = None
@@ -10485,6 +10910,10 @@ class StarterPolicy:
                     piercing,
                     weapons,
                 )
+                self.stun_opener_followup_action = "backstab"
+                self.stun_opener_followup_weapon_keyword = (
+                    self.stun_opener_piercing_keyword
+                )
                 self.combat_active = False
                 current = self._wielded_weapon()
                 self.stun_opener_step = (
@@ -10495,6 +10924,53 @@ class StarterPolicy:
                     f"backstab {keyword}",
                     "begin combat with the piercing weapon after the stun attempt",
                 )
+        source_stop = self._active_source_target_stop()
+        if (
+            state is not None
+            and self.spec.character_class.casefold() == "warrior"
+            and self._skill_is_usable("stun")
+            and self._stun_target_is_ready(state, target, source_stop)
+        ):
+            weapons = self._state_weapons(state)
+            pounding = self._best_weapon(weapons, is_blunt_weapon)
+            primary = self._best_weapon(weapons, lambda _item: True)
+            if pounding is not None and primary is not None:
+                self.stun_opener_target = target
+                self.stun_opener_selector = keyword
+                self.stun_opener_weapon_keyword = item_command_keyword(
+                    pounding,
+                    weapons,
+                )
+                self.stun_opener_followup_action = "kill"
+                self.stun_opener_followup_weapon_keyword = (
+                    item_command_keyword(primary, weapons)
+                    if primary.vnum != pounding.vnum
+                    else None
+                )
+                self.combat_active = False
+                current = self._wielded_weapon()
+                self.stun_opener_step = (
+                    "stun" if current is not None and current.vnum == pounding.vnum
+                    else "wield_pounding"
+                )
+                return self._stun_opener_decision() or BotDecision(
+                    f"kill {keyword}",
+                    "begin combat with the primary weapon after the stun attempt",
+                )
+        lunge_stop = source_stop
+        if (
+            not skip_lunge
+            and state is not None
+            and self._skill_is_usable("lunge")
+            and self._lunge_target_is_ready(state, target, lunge_stop)
+        ):
+            self.lunge_pending_target = target
+            self.combat_active = False
+            return BotDecision(
+                f"lunge {keyword}",
+                f"open against {target} with the source-verified vampire lunge "
+                "before ordinary combat begins",
+            )
         if (
             not skip_shoot
             and self.spec.character_class == "ranger"
@@ -10822,6 +11298,280 @@ class StarterPolicy:
         observed_percent = self.known_skill_levels.get(normalized)
         return observed_percent is None or observed_percent > 0
 
+    def _lunge_target_is_ready(
+        self,
+        state: CharacterState,
+        target: str,
+        stop: FieldHuntStop | None,
+    ) -> bool:
+        """Require DD4's live preconditions before a vampire lunge opener."""
+        if (
+            stop is None
+            or stop.source_mobile_vnum is None
+            or stop.source_combat_opening_action != "lunge"
+            or self.spec.character_class.casefold() != "shifter"
+            or self._active_training_subclass(state) != "vampire"
+            or state.in_combat
+            or state.combat_target
+        ):
+            return False
+        enemies = [
+            enemy
+            for enemy in self._current_room_enemy_records(state)
+            if _enemy_matches_stop_target(enemy, target, stop)
+        ]
+        if len(enemies) != 1:
+            return False
+        enemy = enemies[0]
+        current_hp = _int_or_none(enemy.get("hp"))
+        maximum_hp = _int_or_none(enemy.get("maxhp"))
+        if (
+            current_hp is None
+            or maximum_hp is None
+            or current_hp <= 0
+            or maximum_hp <= 0
+            or current_hp != maximum_hp
+        ):
+            return False
+        for key in ("fighting", "in_combat", "incombat"):
+            value = enemy.get(key)
+            if isinstance(value, str):
+                if value.casefold().strip() in {"1", "true", "yes", "on"}:
+                    return False
+            elif value:
+                return False
+        return True
+
+    def _stun_target_is_ready(
+        self,
+        state: CharacterState,
+        target: str,
+        stop: FieldHuntStop | None,
+    ) -> bool:
+        """Require an isolated, full-health source target before warrior stun."""
+        if (
+            stop is None
+            or stop.source_mobile_vnum is None
+            or self.spec.character_class.casefold() != "warrior"
+            or state.in_combat
+            or state.combat_target
+        ):
+            return False
+        position = _position_number(state)
+        if position is not None:
+            if position < _POS_STANDING:
+                return False
+        elif str(state.position).casefold() not in {"standing", "stand"}:
+            return False
+        enemies = [
+            enemy
+            for enemy in self._current_room_enemy_records(state)
+            if _enemy_matches_stop_target(enemy, target, stop)
+            and _int_or_none(enemy.get("isnpc")) == stop.source_mobile_vnum
+        ]
+        if len(enemies) != 1:
+            return False
+        enemy = enemies[0]
+        current_hp = _int_or_none(enemy.get("hp"))
+        maximum_hp = _int_or_none(enemy.get("maxhp"))
+        if (
+            current_hp is None
+            or maximum_hp is None
+            or current_hp <= 0
+            or maximum_hp <= 0
+            or current_hp != maximum_hp
+        ):
+            return False
+        for key in ("fighting", "in_combat", "incombat"):
+            value = enemy.get(key)
+            if isinstance(value, str):
+                if value.casefold().strip() in {"1", "true", "yes", "on"}:
+                    return False
+            elif value:
+                return False
+        return True
+
+    def _headbutt_target_is_ready(
+        self,
+        state: CharacterState,
+        target: str,
+    ) -> bool:
+        """Require source anatomy and a single live fighting target."""
+        stop = self._active_source_target_stop()
+        subclass = self._active_training_subclass(state)
+        if (
+            stop is None
+            or stop.source_mobile_vnum is None
+            or stop.source_target_body_form_flags is None
+            or not self.combat_active
+            or not self._skill_is_usable("headbutt")
+            or not any(
+                capability.name == "headbutt"
+                for capability in combat_capabilities_for(
+                    self.spec.character_class,
+                    subclass,
+                )
+            )
+            or body_form_has_head(stop.source_target_body_form_flags) is not True
+            or body_form_is_huge(stop.source_target_body_form_flags) is not False
+            or _has_named_affect(state.affects, "head trauma")
+        ):
+            return False
+        position = _position_number(state)
+        if position is not None and position < _POS_FIGHTING:
+            return False
+        enemies = [
+            enemy
+            for enemy in self._current_room_enemy_records(state)
+            if _enemy_matches_stop_target(enemy, target, stop)
+            and _int_or_none(enemy.get("isnpc")) == stop.source_mobile_vnum
+        ]
+        if len(enemies) != 1:
+            return False
+        current_hp = _int_or_none(enemies[0].get("hp"))
+        return current_hp is not None and current_hp > 0
+
+    def _thief_control_target_is_ready(
+        self,
+        state: CharacterState,
+        target: str,
+        action: str,
+    ) -> bool:
+        """Require source anatomy and one live target for thief controls.
+
+        DD4 rejects trip and dirt kick for transient target states such as
+        flight or existing blindness.  Those states are not always present in
+        GMCP, so an unknown state permits one bounded probe while a confirmed
+        incompatible state blocks it.  The per-target set prevents a refusal
+        from becoming a command loop.
+        """
+        if action not in {"dirt kick", "trip"}:
+            return False
+        stop = self._active_source_target_stop()
+        if (
+            self.spec.character_class.casefold() != "thief"
+            or stop is None
+            or stop.source_mobile_vnum is None
+            or stop.source_target_body_form_flags is None
+            or not self.combat_active
+            or action in self.combat_control_actions_attempted
+            or not self._skill_is_usable(action)
+        ):
+            return False
+        if not any(
+            capability.name == action
+            for capability in combat_capabilities_for(
+                self.spec.character_class,
+                self._active_training_subclass(state),
+            )
+        ):
+            return False
+        body_form_check = (
+            body_form_has_legs
+            if action == "trip"
+            else body_form_has_eyes
+        )
+        if body_form_check(stop.source_target_body_form_flags) is not True:
+            return False
+        position = _position_number(state)
+        if position is not None and position < _POS_FIGHTING:
+            return False
+        sector = str(state.sector or "").casefold().replace("-", "_")
+        if sector in {
+            "air",
+            "underwater",
+            "water",
+            "water_swim",
+            "water_noswim",
+        }:
+            return False
+        enemies = [
+            enemy
+            for enemy in self._current_room_enemy_records(state)
+            if _enemy_matches_stop_target(enemy, target, stop)
+            and _int_or_none(enemy.get("isnpc")) == stop.source_mobile_vnum
+        ]
+        if len(enemies) != 1:
+            return False
+        enemy = enemies[0]
+        current_hp = _int_or_none(enemy.get("hp"))
+        if current_hp is None or current_hp <= 0:
+            return False
+        incompatible_states = (
+            ("fly", "flight", "flying", "prone")
+            if action == "trip"
+            else ("blind", "blindness")
+        )
+        return not any(
+            _has_named_affect(enemy.get(key), state_name)
+            for key in ("affect", "affects", "effects", "flags", "status")
+            for state_name in incompatible_states
+        )
+
+    def _kansetsu_target_is_ready(
+        self,
+        state: CharacterState,
+        target: str,
+    ) -> bool:
+        """Require source evidence that ``kansetsu`` can disarm this target."""
+        stop = self._active_source_target_stop()
+        if (
+            stop is None
+            or stop.source_mobile_vnum is None
+            or stop.source_target_armed is not True
+            or body_form_has_arms(stop.source_target_body_form_flags) is not True
+            or self.spec.character_class.casefold() != "brawler"
+            or self._active_training_subclass(state) != "martial artist"
+            or "no_drop" in {str(flag).casefold() for flag in state.room_flags}
+        ):
+            return False
+        position = _position_number(state)
+        if position is not None and position < _POS_FIGHTING:
+            return False
+        enemies = [
+            enemy
+            for enemy in self._current_room_enemy_records(state)
+            if _enemy_matches_stop_target(enemy, target, stop)
+            and _int_or_none(enemy.get("isnpc")) == stop.source_mobile_vnum
+        ]
+        if len(enemies) != 1:
+            return False
+        current_hp = _int_or_none(enemies[0].get("hp"))
+        return current_hp is not None and current_hp > 0
+
+    def _smash_target_is_ready(
+        self,
+        state: CharacterState,
+        target: str,
+    ) -> bool:
+        """Require DD4's shield, form, and live target gates before smash."""
+        stop = self._active_source_target_stop()
+        if (
+            stop is None
+            or stop.source_mobile_vnum is None
+            or stop.source_target_body_form_flags is None
+            or self.spec.character_class.casefold() != "warrior"
+            or self._active_training_subclass(state) != "thug"
+            or not self.combat_active
+            or not any(item_category(item) == "shield" for item in self.gear_worn)
+        ):
+            return False
+        if body_form_is_huge(stop.source_target_body_form_flags) is not False:
+            return False
+        position = _position_number(state)
+        if position is not None and position < _POS_FIGHTING:
+            return False
+        enemies = [
+            enemy
+            for enemy in self._current_room_enemy_records(state)
+            if _enemy_matches_stop_target(enemy, target, stop)
+            and _int_or_none(enemy.get("isnpc")) == stop.source_mobile_vnum
+        ]
+        if len(enemies) != 1:
+            return False
+        current_hp = _int_or_none(enemies[0].get("hp"))
+        return current_hp is not None and current_hp > 0
+
     def _smithy_equipped_weapon(self) -> ObjectSource | None:
         return next(
             (
@@ -10839,6 +11589,35 @@ class StarterPolicy:
             or self.spec.character_class.casefold() == "thief"
         ):
             return "piercing"
+        return None
+
+    def _source_item_vnum_for_keyword(self, keyword: str) -> int | None:
+        """Resolve an identified inventory keyword to its source weapon."""
+        if self.gear_catalog is None:
+            return None
+        normalized_keyword = normalize_item_name(keyword)
+        if not normalized_keyword:
+            return None
+        candidates: list[int] = []
+        for description, vnum in self.gear_inventory_source_hints.items():
+            if (
+                normalized_keyword == description
+                or normalized_keyword in description.split()
+                or description in normalized_keyword
+            ):
+                candidates.append(vnum)
+        for item in self.gear_worn:
+            description = normalize_item_name(item.short_description)
+            if (
+                normalized_keyword == description
+                or normalized_keyword in description.split()
+                or description in normalized_keyword
+            ):
+                candidates.append(item.vnum)
+        for vnum in dict.fromkeys(candidates):
+            item = self.gear_catalog.objects.get(vnum)
+            if item is not None and item_category(item) == "wield":
+                return item.vnum
         return None
 
     def _wielded_weapon(self) -> ObjectSource | None:
@@ -10861,6 +11640,19 @@ class StarterPolicy:
             ),
             None,
         )
+
+    def _smithy_hurl_weapon(self) -> ObjectSource | None:
+        """Return the current weapon only when chained-flag evidence exists."""
+        if (
+            self.spec.character_class.casefold() != "smithy"
+            or self.hurl_unavailable
+            or not self._skill_is_usable("hurl")
+        ):
+            return None
+        weapon = self._wielded_weapon()
+        if weapon is None or weapon.vnum not in self.gear_chained_weapon_vnums:
+            return None
+        return weapon
 
     def _preferred_primary_weapon(
         self,
@@ -10961,24 +11753,46 @@ class StarterPolicy:
         if self.stun_opener_step == "stun":
             return BotDecision(
                 f"stun {keyword}",
-                "attempt the source-verified stun opener before backstab",
+                (
+                    "attempt the source-verified stun opener before the primary "
+                    "weapon attack"
+                    if self.stun_opener_followup_action == "kill"
+                    else "attempt the source-verified stun opener before backstab"
+                ),
             )
         if self.stun_opener_step == "wield_piercing":
             return BotDecision(
                 f"wield {self.stun_opener_piercing_keyword}",
                 "switch to the source-verified piercing weapon after stun",
             )
-        if self.stun_opener_step == "backstab":
+        if self.stun_opener_step == "wield_followup":
+            return BotDecision(
+                f"wield {self.stun_opener_followup_weapon_keyword}",
+                "switch back to the source-selected primary weapon after stun",
+            )
+        if self.stun_opener_step in {"backstab", "kill"}:
+            followup_action = self.stun_opener_followup_action or (
+                "backstab"
+                if self.stun_opener_step == "backstab"
+                else "kill"
+            )
             self.stun_opener_step = None
             self.stun_opener_target = None
             self.stun_opener_selector = None
             self.stun_opener_weapon_keyword = None
             self.stun_opener_piercing_keyword = None
+            self.stun_opener_followup_action = None
+            self.stun_opener_followup_weapon_keyword = None
             self.combat_active = True
-            self.backstab_pending_target = target
+            if followup_action == "backstab":
+                self.backstab_pending_target = target
+                return BotDecision(
+                    f"backstab {keyword}",
+                    "begin combat with the piercing weapon after the stun attempt",
+                )
             return BotDecision(
-                f"backstab {keyword}",
-                "begin combat with the piercing weapon after the stun attempt",
+                f"kill {keyword}",
+                "begin combat with the primary weapon after the stun attempt",
             )
         return None
 
@@ -11371,6 +12185,49 @@ class StarterPolicy:
             for target in self.room_targets.get(room_vnum, ())
         )
 
+    def _source_class_trainer_route_hazards(
+        self,
+        state: CharacterState,
+        trainer: _ClassTrainerRoute,
+    ) -> tuple[str, ...]:
+        """Preflight a distant trainer route before leaving the healer.
+
+        Level-20 class trainers use a long, source-backed Kerofk route that is
+        not the ordinary level-10 teacher path. Keep that route subject to the
+        same source mobile and transit-risk analysis as field hunts. Training
+        is useful but optional; an audited route hazard should defer it rather
+        than make the character pay an avoidable flee loss.
+        """
+        if self.fastwalk_training_route_preflighted:
+            return ()
+        self.fastwalk_training_route_preflighted = True
+        if self.source_world is None or str(state.room_vnum or "") != "3054":
+            return ()
+        try:
+            path_rooms = tuple(
+                int(room_vnum)
+                for room_vnum in (
+                    trainer.steps[0][0],
+                    *(step[2] for step in trainer.steps),
+                )
+            )
+            character_level = int(state.level or 0)
+        except (IndexError, TypeError, ValueError):
+            return ()
+        if character_level < 1 or not path_rooms:
+            return ()
+        try:
+            return source_route_hazard_rejections(
+                self.source_world,
+                path_rooms,
+                character_level=character_level,
+            )
+        except (KeyError, TypeError, ValueError):
+            # A stale source mirror must not turn a safe healer checkpoint into
+            # an unbounded retry. The live route will retain its existing
+            # bounded interruption and recovery behavior.
+            return ()
+
     def _fastwalk_training_decision(
         self,
         state: CharacterState,
@@ -11435,6 +12292,38 @@ class StarterPolicy:
         room_name = (state.room_name or "").casefold()
         class_trainer = self._level_ten_class_trainer(state)
         if class_trainer is not None:
+            route_hazards = self._source_class_trainer_route_hazards(
+                state,
+                class_trainer,
+            )
+            if route_hazards:
+                formatted_hazards = tuple(
+                    f"trainer route hazard: {hazard}"
+                    for hazard in route_hazards
+                )
+                for hazard in formatted_hazards:
+                    if hazard not in self.fastwalk_route_hazards:
+                        self.fastwalk_route_hazards.append(hazard)
+                self.practiced = True
+                self.fastwalk_training_complete = True
+                self.fastwalk_training_deferred_after_route_hazard = True
+                self.practice_exit_reason = (
+                    "defer class-aware training before a source-audited "
+                    "trainer route hazard"
+                )
+                self.pending_training_events.append(
+                    GameEvent(
+                        "training_deferred",
+                        "source",
+                        {
+                            "outcome": "deferred",
+                            "reason": self.practice_exit_reason,
+                            "route_hazards": list(formatted_hazards),
+                            "preflight": True,
+                        },
+                    )
+                )
+                return None
             locator_decision = self._class_trainer_locator_decision(
                 state,
                 class_trainer,
@@ -12404,18 +13293,33 @@ class StarterPolicy:
             )
         )
 
+    def _source_mobile_return_enemy_is_explicitly_dangerous(
+        self,
+        enemy: Mapping[str, Any],
+    ) -> bool:
+        """Reject source-known aggression even when no special is attached."""
+        mobile_vnum = _int_or_none(enemy.get("isnpc"))
+        if mobile_vnum is None:
+            return False
+        return bool(
+            self.source_mobile_aggressive_by_vnum.get(mobile_vnum, False)
+            or self.source_mobile_attack_programs_by_vnum.get(mobile_vnum, False)
+        )
+
     def _below_band_return_enemy_is_harmless(
         self,
         enemy: Mapping[str, Any],
         state: CharacterState,
     ) -> bool:
-        """Allow only an exact source-known, no-special return attacker."""
+        """Allow only an exact source-known, non-aggressive return attacker."""
         if not self._enemy_is_known_below_useful_band(dict(enemy), state):
             return False
         # An absent profile is ambiguous, while an empty exact profile proves
         # that this return interruption has no source special to execute.
         profile = self._source_mobile_special_profile_for_enemy(enemy)
-        return profile == ()
+        return profile == () and not self._source_mobile_return_enemy_is_explicitly_dangerous(
+            enemy
+        )
 
     def _fastwalk_below_band_return_combat_decision(
         self,
@@ -12436,6 +13340,7 @@ class StarterPolicy:
             return None
         if not enemies or not all(
             self._enemy_is_known_below_useful_band(enemy, state)
+            and not self._source_mobile_return_enemy_is_explicitly_dangerous(enemy)
             for enemy in enemies
         ):
             # A useful-band or unidentified mobile ends the special allowance;
@@ -16933,6 +17838,14 @@ class StarterPolicy:
                     )
                 )
                 if (
+                    stop.require_familiar
+                    and stop.source_familiar_minimum_damage is not None
+                ):
+                    live_output_ceiling += (
+                        stop.source_familiar_minimum_damage
+                        * stop.source_combat_max_actions
+                    )
+                if (
                     live_target_max_hps
                     and max(live_target_max_hps) > live_output_ceiling
                     and not stop.allow_unprotected_hp_fuzz_probe
@@ -16956,6 +17869,7 @@ class StarterPolicy:
             mitigation = self._fastwalk_caster_mitigation_decision(state)
             if mitigation is not None:
                 return mitigation
+            familiar = None
             if not (
                 stop is not None
                 and stop.require_sanctuary
@@ -16968,7 +17882,32 @@ class StarterPolicy:
                     allow_start=True,
                 )
                 if familiar is not None:
+                    if (
+                        stop is not None
+                        and stop.require_familiar
+                        and self.fastwalk_attack_started
+                    ):
+                        self.field_combat_damage_probe_required = bool(
+                            stop.require_damage_window_probe
+                        )
+                        self._start_field_combat_damage_probe(state)
                     return familiar
+            if (
+                stop is not None
+                and stop.require_familiar
+                and not self.familiar_active
+            ):
+                self.fastwalk_abort_reason = (
+                    f"source familiar was unavailable before {target!r} "
+                    "could enter the familiar-backed damage probe"
+                )
+                self.fastwalk_hunt_stop_skipped = True
+                self.fastwalk_returning = True
+                self.fastwalk_emergency_recall_pending = True
+                return BotDecision(
+                    "recall",
+                    "withdraw when the source-ranked familiar probe cannot summon its required familiar",
+                )
             self.field_combat_damage_probe_required = bool(
                 stop is not None
                 and stop.require_damage_window_probe
@@ -17014,7 +17953,10 @@ class StarterPolicy:
                         "recall",
                         "withdraw when the audited special target has no sanctuary reserve",
                     )
-                self.fastwalk_opening_potion_pending = True
+                if self.pending_source_resource_hold is not None:
+                    self.fastwalk_opening_resource_hold_pending = True
+                else:
+                    self.fastwalk_opening_potion_pending = True
                 return potion
             return self._combat_opener_decision(
                 target,
@@ -17126,6 +18068,186 @@ class StarterPolicy:
             )
         return None
 
+    def _source_resource_record(
+        self,
+        state: CharacterState,
+        *,
+        effect: str,
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Return one verified, carried non-potion resource for an effect."""
+        normalized_effect = _normalize_skill_name(effect)
+        for key, raw_record in self.verified_source_resources.items():
+            if not isinstance(raw_record, Mapping):
+                continue
+            record = dict(raw_record)
+            record_effect = _normalize_skill_name(
+                record.get("effect") or key
+            )
+            record_spell = _normalize_skill_name(record.get("spell") or "")
+            if normalized_effect not in {record_effect, record_spell}:
+                continue
+            if record.get("mode") == "potion":
+                # The pouch ledger owns potion identity and consumption.
+                continue
+            if record_effect in self.failed_source_resource_effects:
+                continue
+            try:
+                charges = int(record.get("charges_remaining", 1))
+            except (TypeError, ValueError):
+                charges = 0
+            if charges <= 0:
+                continue
+            try:
+                object_vnum = int(record.get("object_vnum"))
+            except (TypeError, ValueError):
+                object_vnum = 0
+            description = normalize_item_name(
+                str(record.get("object_description") or "")
+            )
+            if object_vnum <= 0 or not description:
+                continue
+            worn_match = next(
+                (
+                    item
+                    for item in self.gear_worn
+                    if item.vnum == object_vnum
+                ),
+                None,
+            )
+            inventory_descriptions = {
+                normalize_item_name(value)
+                for value in _inventory_descriptions(state.inventory)
+            }
+            carried = description in inventory_descriptions
+            if self.gear_catalog is not None:
+                candidates = self.gear_catalog.candidates(description)
+                if candidates and all(
+                    candidate.vnum != object_vnum for candidate in candidates
+                ):
+                    carried = False
+                elif len(candidates) > 1 and worn_match is None:
+                    # Text-only inventory cannot prove which duplicate
+                    # prototype is being activated.
+                    carried = False
+            if worn_match is None and not carried:
+                continue
+            if not isinstance(record.get("command"), str):
+                continue
+            return record_effect, record
+        return None
+
+    def _source_resource_decision(
+        self,
+        state: CharacterState,
+        *,
+        effect: str,
+    ) -> BotDecision | None:
+        """Hold and activate one source-verified recovery object."""
+        if not self.use_sanctuary_potions:
+            return None
+        selected = self._source_resource_record(state, effect=effect)
+        if selected is None:
+            return None
+        record_effect, record = selected
+        command = str(record.get("command") or "").casefold()
+        keyword = str(record.get("command_keyword") or "").strip()
+        requires_hold = bool(record.get("requires_hold"))
+        object_vnum = _int_or_none(record.get("object_vnum"))
+        held = any(
+            item.vnum == object_vnum
+            for item in self.gear_worn
+            if object_vnum is not None
+        )
+        if requires_hold and not held and self.source_resource_hold_ready != record_effect:
+            if self.pending_source_resource_hold == record_effect:
+                return None
+            if not keyword:
+                self.failed_source_resource_effects.add(record_effect)
+                return None
+            self.pending_source_resource_hold = record_effect
+            return BotDecision(
+                f"hold {keyword}",
+                f"hold the verified {record.get('spell', effect)} resource before combat",
+            )
+        self.pending_source_resource_hold = None
+        self.source_resource_hold_ready = None
+        if record_effect in self.failed_source_resource_effects:
+            return None
+        if self.pending_source_resource_effect == record_effect:
+            return None
+        self.pending_source_resource_effect = record_effect
+        if command == "recite":
+            if not keyword:
+                self.pending_source_resource_effect = None
+                return None
+            activation_command = f"recite {keyword}"
+        elif command == "brandish":
+            activation_command = "brandish"
+        elif command == "zap":
+            activation_command = "zap self"
+        else:
+            self.pending_source_resource_effect = None
+            return None
+        return BotDecision(
+            activation_command,
+            f"activate the verified source {record.get('spell', effect)} resource",
+        )
+
+    def _consume_source_resource(self, effect: str) -> None:
+        resource_key = effect
+        record = self.verified_source_resources.get(resource_key)
+        if not isinstance(record, Mapping):
+            resource_key = next(
+                (
+                    key
+                    for key, candidate in self.verified_source_resources.items()
+                    if isinstance(candidate, Mapping)
+                    and _normalize_skill_name(candidate.get("effect") or key)
+                    == effect
+                ),
+                effect,
+            )
+            record = self.verified_source_resources.get(resource_key)
+        if not isinstance(record, Mapping):
+            return
+        updated = dict(record)
+        if bool(updated.get("consumes_object")):
+            self.verified_source_resources.pop(resource_key, None)
+            return
+        try:
+            charges = max(0, int(updated.get("charges_remaining", 1)))
+        except (TypeError, ValueError):
+            charges = 0
+        updated["charges_remaining"] = max(0, charges - 1)
+        if updated["charges_remaining"] <= 0:
+            self.verified_source_resources.pop(resource_key, None)
+        else:
+            self.verified_source_resources[resource_key] = updated
+
+    def source_resource_checkpoint(self) -> dict[str, dict[str, Any]]:
+        """Return only source resources confirmed by live acquisition/use."""
+        resources = {
+            str(effect).casefold(): dict(record)
+            for effect, record in self.verified_source_resources.items()
+            if isinstance(record, Mapping)
+        }
+        if (
+            self.source_resource_reserve
+            and str(self.source_resource_reserve.get("mode") or "").casefold()
+            != "potion"
+        ):
+            try:
+                object_vnum = int(self.source_resource_reserve.get("object_vnum"))
+            except (TypeError, ValueError):
+                object_vnum = 0
+            if object_vnum in self.fastwalk_acquired_required_object_vnums:
+                effect = _normalize_skill_name(
+                    self.source_resource_reserve.get("effect") or ""
+                )
+                if effect:
+                    resources[effect] = dict(self.source_resource_reserve)
+        return resources
+
     def _combat_pouch_potion_decision(
         self,
         state: CharacterState,
@@ -17156,6 +18278,13 @@ class StarterPolicy:
                     f"quaff {healing_keyword}",
                     f"use the identified {required_spell} potion at low combat health",
                 )
+        if self.use_sanctuary_potions and health_ratio <= 0.65:
+            healing_resource = self._source_resource_decision(
+                state,
+                effect="healing",
+            )
+            if healing_resource is not None:
+                return healing_resource
         sanctuary_keyword = _verified_combat_potion_keyword_for_spell(
             self.combat_pouch_potions,
             self.gear_catalog,
@@ -17202,6 +18331,31 @@ class StarterPolicy:
                 f"quaff {sanctuary_keyword}",
                 "use the identified sanctuary potion before taking avoidable combat damage",
             )
+        if (
+            self.use_sanctuary_potions
+            and not _has_named_affect(state.affects, "sanctuary")
+            and not self.fastwalk_sanctuary_consumed_in_combat
+            and self.sanctuary_potion_target is None
+            and (
+                not self.active_target
+                or self.active_target.casefold()
+                not in self.fastwalk_below_band_targets
+            )
+        ):
+            source_resource = self._source_resource_decision(
+                state,
+                effect="sanctuary",
+            )
+            if source_resource is not None:
+                if self.pending_source_resource_hold is None:
+                    self.sanctuary_potion_target = (
+                        current_target_key or "current combat"
+                    )
+                    if self.fastwalk_route is not None and (
+                        self.combat_active or self.fastwalk_attack_started
+                    ):
+                        self.fastwalk_sanctuary_consumed_in_combat = True
+                return source_resource
         return None
 
     def _known_combat_pouch_potions(self) -> Counter[str]:
@@ -17727,7 +18881,9 @@ class StarterPolicy:
             return field_intercept
 
         rejected_opener_target = (
-            self.backstab_skip_once_target or self.shoot_skip_once_target
+            self.lunge_skip_once_target
+            or self.backstab_skip_once_target
+            or self.shoot_skip_once_target
         )
         if (
             current_stop is not None
@@ -19672,6 +20828,12 @@ class StarterPolicy:
         if straight_shifter_form is not None:
             return straight_shifter_form
         subclass = self._active_training_subclass(state)
+        registered_skills = set(
+            combat_skill_names(
+                self.spec.character_class,
+                subclass,
+            )
+        )
         if subclass == "werewolf":
             observed_form = _normalize_skill_name(state.form or "")
             if (
@@ -19703,6 +20865,8 @@ class StarterPolicy:
                         "use the source-defined ravage attack in wolf form",
                     ),
                 ):
+                    if action not in registered_skills:
+                        continue
                     if not self._skill_is_usable(action):
                         continue
                     self.combat_actions_since_disarm += 1
@@ -19714,10 +20878,21 @@ class StarterPolicy:
                         f"{action} {target}",
                         reason,
                     )
-        for action, requires_target, reason in _SUBCLASS_COMBAT_ACTIONS.get(
-            subclass or "",
-            (),
+        subclass_actions = {
+            action: (requires_target, reason)
+            for action, requires_target, reason in _SUBCLASS_COMBAT_ACTIONS.get(
+                subclass or "",
+                (),
+            )
+        }
+        for action in combat_skill_names(
+            self.spec.character_class,
+            subclass,
         ):
+            metadata = subclass_actions.get(action)
+            if metadata is None:
+                continue
+            requires_target, reason = metadata
             if not self._skill_is_usable(action):
                 continue
             if action == "berserk":
@@ -19727,6 +20902,19 @@ class StarterPolicy:
                 ):
                     continue
                 self.combat_subclass_actions_attempted.add(action)
+            elif action == "kansetsu":
+                if (
+                    action in self.combat_subclass_actions_attempted
+                    or not self._kansetsu_target_is_ready(state, target)
+                ):
+                    continue
+                # DD4's successful kansetsu drops the target's weapon. A
+                # missed or already-invalid attempt is still not worth
+                # repeating blindly during the same combat.
+                self.combat_subclass_actions_attempted.add(action)
+            elif action == "smash":
+                if not self._smash_target_is_ready(state, target):
+                    continue
             command = f"{action} {target}" if requires_target else action
             self.combat_actions_since_disarm += 1
             self.between_round_action_issued = True
@@ -25372,6 +26560,7 @@ class StarterPolicy:
                 self.smithy_counterbalance_step = 0
                 return None
             self.smithy_counterbalance_keyword = item_keyword(weapon)
+            self.smithy_counterbalance_weapon_vnum = weapon.vnum
             self.smithy_counterbalance_step = 2
             return BotDecision(
                 f"remove {self.smithy_counterbalance_keyword}",
@@ -25409,6 +26598,9 @@ class StarterPolicy:
             )
             if confirmed:
                 self.counterbalance_preparation_required = False
+                self.counterbalanced_weapon_vnum = (
+                    self.smithy_counterbalance_weapon_vnum
+                )
             self.pending_training_events.append(
                 GameEvent(
                     (
@@ -25420,6 +26612,7 @@ class StarterPolicy:
                     {
                         "skill": "counterbalance",
                         "item": self.smithy_counterbalance_keyword,
+                        "weapon_vnum": self.smithy_counterbalance_weapon_vnum,
                         "outcome": "completed" if confirmed else "deferred",
                         "reason": (
                             "weapon counterbalance confirmed by the smithing command"
@@ -25441,6 +26634,7 @@ class StarterPolicy:
             )
         self.smithy_counterbalance_step = 0
         self.smithy_counterbalance_keyword = None
+        self.smithy_counterbalance_weapon_vnum = None
         self.gear_applied_stance = None
         return None
 
@@ -25846,14 +27040,19 @@ class StarterBotRunner:
         source_mobile_can_join_by_vnum: Mapping[int, bool] | None = None,
         source_mobile_aggressive_by_vnum: Mapping[int, bool] | None = None,
         source_mobile_attack_programs_by_vnum: Mapping[int, bool] | None = None,
+        source_world: WorldSource | None = None,
         practice_types_spent: frozenset[str] = frozenset(),
         deferred_practice_types: frozenset[str] = frozenset(),
         rejected_practice_skills: frozenset[str] = frozenset(),
         known_skills: Collection[str] = (),
         known_skill_levels: Mapping[str, int] | None = None,
         counterbalance_preparation_required: bool = False,
+        counterbalanced_weapon_vnum: int | None = None,
+        chained_weapon_vnum: int | None = None,
         use_sanctuary_potions: bool = True,
         verified_combat_pouch_potions: Mapping[str, int] | None = None,
+        source_resource_reserve: Mapping[str, Any] | None = None,
+        verified_source_resources: Mapping[str, Any] | None = None,
         inactivity_timeout: float = 45.0,
         command_send_timeout: float | None = None,
         fastwalk_skip_target_sightings: frozenset[tuple[str, str]] = frozenset(),
@@ -25945,6 +27144,7 @@ class StarterBotRunner:
         self.source_mobile_attack_programs_by_vnum = (
             source_mobile_attack_programs_by_vnum
         )
+        self.source_world = source_world
         self.practice_types_spent = practice_types_spent
         self.deferred_practice_types = deferred_practice_types
         self.rejected_practice_skills = rejected_practice_skills
@@ -25961,10 +27161,20 @@ class StarterBotRunner:
         self.counterbalance_preparation_required = (
             counterbalance_preparation_required
         )
+        self.counterbalanced_weapon_vnum = _int_or_none(
+            counterbalanced_weapon_vnum
+        )
+        self.chained_weapon_vnum = _int_or_none(chained_weapon_vnum)
         self.use_sanctuary_potions = use_sanctuary_potions
         self.verified_combat_pouch_potions = dict(
             verified_combat_pouch_potions or {}
         )
+        self.source_resource_reserve = dict(source_resource_reserve or {})
+        self.verified_source_resources = {
+            str(effect).casefold(): dict(record)
+            for effect, record in (verified_source_resources or {}).items()
+            if isinstance(record, Mapping)
+        }
         self.inactivity_timeout = inactivity_timeout
         self.command_send_timeout = (
             command_send_timeout
@@ -26086,6 +27296,15 @@ class StarterBotRunner:
                 return {"observed": False}
             value = snapshot(level=self.character_state.level)
             return dict(value) if isinstance(value, Mapping) else {"observed": False}
+
+        def source_resource_snapshot() -> dict[str, Any]:
+            if policy is None:
+                return {}
+            snapshot = getattr(policy, "source_resource_checkpoint", None)
+            if not callable(snapshot):
+                return {}
+            value = snapshot()
+            return dict(value) if isinstance(value, Mapping) else {}
 
         def persist_policy_research() -> None:
             nonlocal persisted_boot_id, persisted_kill_count, persisted_sale_count
@@ -26213,7 +27432,7 @@ class StarterBotRunner:
                     raise RuntimeError(str(exc)) from exc
             await asyncio.sleep(0)
             gear_catalog = self.gear_catalog
-            source_directory = Path("runs/dd4-source/server/area")
+            source_directory = current_source_directory()
             if gear_catalog is None and source_directory.is_dir():
                 gear_catalog = load_gear_catalog(str(source_directory.resolve()))
             source_mobile_targets = self.source_mobile_targets
@@ -26415,6 +27634,7 @@ class StarterBotRunner:
                 source_mobile_attack_programs_by_vnum=(
                     source_mobile_attack_programs_by_vnum
                 ),
+                source_world=self.source_world,
                 practice_types_spent=self.practice_types_spent,
                 deferred_practice_types=self.deferred_practice_types,
                 rejected_practice_skills=self.rejected_practice_skills,
@@ -26423,6 +27643,8 @@ class StarterBotRunner:
                 counterbalance_preparation_required=(
                     self.counterbalance_preparation_required
                 ),
+                counterbalanced_weapon_vnum=self.counterbalanced_weapon_vnum,
+                chained_weapon_vnum=self.chained_weapon_vnum,
                 title_configured=(
                     not self.spec.title
                     or bool(
@@ -26456,6 +27678,8 @@ class StarterBotRunner:
                 verified_combat_pouch_potions=(
                     self.verified_combat_pouch_potions
                 ),
+                source_resource_reserve=self.source_resource_reserve,
+                verified_source_resources=self.verified_source_resources,
                 fastwalk_skip_target_sightings=(
                     self.fastwalk_skip_target_sightings
                 ),
@@ -27449,6 +28673,15 @@ class StarterBotRunner:
                 "campaign_known_skill_levels": dict(
                     sorted(policy.known_skill_levels.items())
                 ),
+                **(
+                    {
+                        "campaign_source_resource_reserves": (
+                            source_resource_snapshot()
+                        )
+                    }
+                    if source_resource_snapshot()
+                    else {}
+                ),
                 "campaign_gear_audit_completed": policy.gear_audited,
                 "campaign_gear_applied_stance": policy.gear_applied_stance,
                 "campaign_gear_loop_abort_reason": policy.gear_loop_abort_reason,
@@ -27570,6 +28803,14 @@ class StarterBotRunner:
                     policy.primary_weapon_observed
                     and not policy.primary_weapon_lost
                 )
+            if policy.counterbalanced_weapon_vnum is not None:
+                final_state["campaign_counterbalanced_weapon_vnum"] = (
+                    policy.counterbalanced_weapon_vnum
+                )
+            if policy.chained_weapon_vnum is not None:
+                final_state["campaign_chained_weapon_vnum"] = (
+                    policy.chained_weapon_vnum
+                )
             if getattr(policy, "sale_rejections", ()):
                 final_state["campaign_sale_rejections"] = list(
                     getattr(policy, "sale_rejections", ())
@@ -27592,8 +28833,18 @@ class StarterBotRunner:
                     "state": "runtime_cap" if runtime_cap_reached else "failed",
                     "error": str(exc),
                     "completed_kills": policy.completed_kills if policy else [],
-                     "objective_kills": policy.objective_kills if policy else [],
+                    "objective_kills": policy.objective_kills if policy else [],
                      "training_audit": training_audit_snapshot(),
+                    "campaign_counterbalanced_weapon_vnum": (
+                        getattr(policy, "counterbalanced_weapon_vnum", None)
+                        if policy is not None
+                        else None
+                    ),
+                    "campaign_chained_weapon_vnum": (
+                        getattr(policy, "chained_weapon_vnum", None)
+                        if policy is not None
+                        else None
+                    ),
                     # A controlled runtime cap can interrupt after a potion
                     # command has been issued but before a normal RunResult
                     # is built. Persist the in-memory reserve here so a
@@ -27613,6 +28864,9 @@ class StarterBotRunner:
                         )
                         if policy is not None
                         else {}
+                    ),
+                    "campaign_source_resource_reserves": (
+                        source_resource_snapshot()
                     ),
                     # Preserve the generic field observations too. The
                     # campaign cap handler uses them to record a static
@@ -30145,7 +31399,7 @@ def _shire_thain_where_location_routes(
             ),
         ),
     )
-    source_path = Path("runs/dd4-source/server/area/shire.are")
+    source_path = (current_source_directory() / "shire.are")
     if not source_path.is_file():
         return fallback
     try:
@@ -31005,7 +32259,7 @@ def _moria_sanctuary_locator_routes(
         ),
         ("4071", "the large cave", ("4069", "4071")),
     )
-    source_path = Path("runs/dd4-source/server/area/moria.are")
+    source_path = (current_source_directory() / "moria.are")
     if not source_path.is_file():
         return fallback_locations, fallback_relocations
     try:
@@ -33591,6 +34845,50 @@ def _equipment_instance_sources(value: Any, catalog: GearCatalog) -> dict[str, i
             result.update(_equipment_instance_sources(item, catalog))
         return result
     return {}
+
+
+def _equipment_chained_weapon_vnums(
+    value: Any,
+    catalog: GearCatalog,
+) -> set[int]:
+    """Return source weapon VNUMs whose live GMCP ego flags say chained."""
+    if isinstance(value, str):
+        cleaned = _ANSI_ESCAPE.sub("", value).strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return set()
+        return _equipment_chained_weapon_vnums(parsed, catalog)
+    if isinstance(value, dict):
+        result: set[int] = set()
+        flags = value.get("egoFlags", value.get("ego_flags", ()))
+        if isinstance(flags, str):
+            flags = (flags,)
+        normalized_flags = {
+            " ".join(str(flag).casefold().replace("_", " ").split())
+            for flag in flags
+        } if isinstance(flags, (list, tuple, set, frozenset)) else set()
+        vnum = _int_or_none(value.get("vnum"))
+        if (
+            vnum is not None
+            and vnum in catalog.objects
+            and item_category(catalog.objects[vnum]) == "wield"
+            and ({"chained", "chain attached"} & normalized_flags)
+        ):
+            result.add(vnum)
+        for key, item in value.items():
+            if key not in {"vnum", "egoFlags", "ego_flags"} and isinstance(
+                item,
+                (dict, list),
+            ):
+                result.update(_equipment_chained_weapon_vnums(item, catalog))
+        return result
+    if isinstance(value, list):
+        result: set[int] = set()
+        for item in value:
+            result.update(_equipment_chained_weapon_vnums(item, catalog))
+        return result
+    return set()
 
 
 def _equipment_weapon_from_payload(value: Any) -> tuple[bool, str | None]:

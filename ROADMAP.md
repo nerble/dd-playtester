@@ -14,44 +14,53 @@ headlessly or through a visible Mudlet client in a Windows virtual machine.
 
 ## Latest Continuation
 
-**Runtime reassessment (2026-09-05):** See
-`docs/REASSESSMENT_2026-09-05.md` for measured costs, priorities, and proof
-boundaries. Run 12327 exposed a mage death caused by a duplicated enemy report
-and survival checks bypassed during transit combat; run 12328 recovered the
-corpse. Run 12335 then exposed a hard Shadow Guardian preflight hazard and two
-flee losses totalling 464 XP. Hard hazards now stop regardless of nominal
-level, successful flee goes directly to safe return, and room transitions
-invalidate old `Char.Enemies` snapshots. Run 12336 completed a clean Lord Doom
-research pass; run 12337 correctly stopped before the same fight because no
-sanctuary reserve was executable. Run 12338 exposed the matching source-HP
-  ceiling gap for a same-band unarmed worm and lost 298 net XP; run 12339 safely
-  completed sanctuary recovery. Run 12341 then calibrated the source-backed
-  caster probe against Secretary: two burning-hands exchanges dealt 77 while
-  Aeloria took 60, and the route withdrew at 117/218 HP for a net 125-XP loss.
-  Aeloria is now level 18 at 159,305 XP in healer room 3054, checkpoint 37924.
-  Accepted mage training now refreshes the live listing before the next decision.
-  Continue current class frontiers, measure net XP
-including maintenance/losses, and validate trainer/subclass handoffs before
-adding distant level bands. Static template coverage is not executable or
-live progression proof.
+**Runtime reassessment (2026-09-06):** See
+`docs/REASSESSMENT_2026-09-06.md` for the measured costs, revised health
+budget, and proof boundaries. The latest live frontier is Dorrik, a level-25
+Dwarf Warrior at 380,076 XP and checkpoint 38105, safely full in healer room
+3054 with flight active. Runs 12398-12405 covered bounded funding,
+liquidation, and flight maintenance. Run 12406 found a Fleshmonger senior-guard
+companion with a level-15 `greet_prog` that can initiate `mpkill`, costing 419
+XP; run 12411 found a reachable Arachnos Guardian interrupting transit, also
+costing 419 XP. Run 12412 then reached an isolated Solace Secretary whose live
+585-HP instance produced only 95 damage against 80 received during the bounded
+probe, costing 324 XP on withdrawal. All three exact policies are now
+quarantined before ordinary selection. Revision 197 requires a source-backed
+damage budget and incoming-exchange proof before another post-loss unprotected
+HP-fuzz probe. The next live step is fresh level-25 progression or a bounded
+sanctuary/resource handoff; no level-26, subclass, or HERO proof is implied.
 
-Final validation: 3,533 offline tests pass. Autonomous runs 12336-12342
-returned safely; run 12336 added 232 net XP during research without an
-objective kill, run 12337 made no combat attempt, run 12338 recorded a 298-XP
-net loss, run 12339 made no XP change, run 12341 recorded a 125-XP calibration
-loss after 77 damage dealt versus 60 received, and run 12342 made no XP change
-after a bounded sanctuary-recovery check. The subsequent Praelarran resume
-returned safely at checkpoint 37939 with the same current-reboot cooldown, and
-The earlier Kestrel service checkpoint was 37955 after the Bakery refused
-service under negative fame. The Secretary route is quarantined. Source-ranked
-food planning uses a bounded `where drunk` preflight for the probabilistic
-Midgaard greet program; run 12355 then live-validated collection at Haon,
-while a present or inconclusive locator result still returns safely.
-Aeloria's death and route losses remain evidence, and no level-19 or HERO proof
-is claimed.
+Revision 198 narrows one remaining false positive in the emergency no-sanctuary
+fallback. Source-ranked route aggressors are no longer rejected solely because
+they carry `ACT_AGGRESSIVE`: a source-proven mobile at least ten levels below
+the character, with no attack program and only a typed non-combat special such
+as `spec_fido`, may be treated as incidental transit noise. Near-band mobiles,
+program attackers, unsafe specials, and missing or malformed source metadata
+remain fail-closed. This improves frontier availability without weakening the
+live consider, crowd, damage-window, health, resource, or healer-return gates;
+it is not live progression proof.
+
+The connection-loss recovery patch now persists an explicit homeward marker
+and clears stale field target/crowd observations before the next policy
+selection. The full offline suite passes 3,647 tests.
+
+The Astra implementation slice now treats DD4 sanctuary duration `0` as live
+for the current fight but not as durable protection for a new outbound route.
+Once a field exchange has measured both damage streams, the damage-window
+probe may extend the conservative twelve-action source horizon from the
+character's actual HP reserve, while retaining the damage-trade, HP-floor, and
+healer-return gates. The full offline suite passes 3,647 tests. The next
+executable slice is fresh level-25 progression toward level 26, followed by
+class trainer and subclass validation; no level-26, subclass, or HERO proof is
+implied.
+
+Static template coverage is not executable or live progression proof. Continue
+current class frontiers, measure net XP including maintenance and losses, and
+validate trainer/subclass handoffs before adding distant level bands.
 
 The latest Kestrel continuation is the active engineering anchor: checkpoint
-37978, level 24, 333,918 XP, safely in healer room 3054 after run 12360. Runs
+37990, level 24, 333,533 XP, safely in healer room 3054 after a bounded resume
+following run 12363. Runs
 12355 and 12359 acquired source food at the live Haon endpoint; run 12356 rejected a
 below-band Old Treant without combat; run 12358 reached the Solace Secretary,
 which passed live `consider` but outlasted the thief's audited action budget
@@ -61,26 +70,217 @@ GMCP HP exceeds its source action budget. The runner now opens a dynamic
 source-ranked frontier at level 21 and above after the registered band is
 exhausted, without bypassing its safety gates. Run 12360 live-validated that
 handoff through a bounded Kerofk gravedigger route; it returned from Ambush at
-the field boundary with no XP change or objective kill. These repairs still
+the field boundary with no XP change or objective kill. Runs 12361-12362 then
+refreshed Kestrel's source-verified food reserve and movement without changing
+level or XP. The latest resume stopped at the existing sanctuary-recovery
+cooldown without opening combat. These repairs still
 need fresh post-reboot target validation and do not constitute level-25 or HERO proof.
 
-**Astra strategy reassessment (2026-09-05):** The full offline suite passes
-3,533 tests. Praelarran is level 20 at 224,053 XP and checkpoint 37939 after
-the bounded post-run resume, safely in healer room 3054. Aeloria is level 18 at 159,305 XP and
-checkpoint 37924,
-also safely at the Healer. Kestrel is level 24 at 333,918 XP and checkpoint
-37978 after bounded live continuation; negative fame still blocks city service.
-Runs 12346-12347 confirmed the refusal and safe healer return, and runs
-12355-12360 supplied the latest food, below-band, HP-fuzz, and frontier evidence. Run
-12341 showed that source spell output must be
-checked against the entire expected incoming fight, not just one peak round;
-its Secretary route is quarantined after a 125-XP calibration loss. The next
-mage frontier is a live protection reserve or a lower-risk unarmed target whose
-source HP ceiling and projected damage window fit, followed by level-19
-training and the level-20/subclass gate. These are continuation and safety
-results, not level-21, level-25, subclass, or HERO proof. The current live
-frontier is Kestrel level 24; after two current-level XP losses, the next safe
-field attempt must use sanctuary or wait for the reboot boundary.
+Policy revision 193 now makes the executable source-ranked frontier lead
+ordinary fresh research from level 10 onward. A named research probe remains
+the fallback when no safe current-band candidate is available, while resource,
+training, quest, subclass, equipment, funding, flight, and recovery transitions
+remain mandatory. This is the reusable progression path for arbitrary
+race/class campaigns; selection evidence is not progression proof.
+
+Revision 193 separates fixed-reset transit risk from the ordinary five-level
+XP cutoff. An aggressive source mobile within the ten-level transit-risk band
+blocks a route even when it is too low-level to farm, and long class-trainer
+routes are preflighted from healer room 3054 before departure. A blocked route
+defers training with its exact source hazard instead of discovering it after a
+flee loss.
+
+Revision 195 extends the same ten-level gate to source-reachable aggressive
+wanderers and refuses below-band room companions with attack programs. It also
+keeps retryable liquidation ahead of generic funding selection, so fresh loot
+is sold before another field hunt. The only transit-risk exception is the
+explicitly bounded outdoor Mage/Witch familiar probe; ordinary source-ranked
+warrior and thief routes remain blocked.
+
+Revision 196 closes the post-loss plain-target escape unless the source-ranked
+combat model proves that the player's audited damage budget covers the target
+HP ceiling and expected incoming exchange. This retains the aggressive
+single-probe behavior for fresh evidence while preventing a low incoming peak
+from reopening an unprotected route after a same-level XP loss.
+
+A read-only level-25 source audit found no fresh warrior candidate that passes
+that budget and the route-hazard gates. The remaining plain unprotected
+Secretary is the exact policy quarantined by run 12412; every other
+current-band option requires sanctuary or carries a source-identified transit
+hazard. The campaign must wait for a new reboot or acquire a verified
+sanctuary reserve before the next live combat attempt.
+
+The Astra reassessment also fixed source consistency at the HERO boundary.
+New HERO workspaces now persist the resolved area directory alongside the
+manifest and campaign configuration; the campaign runner scopes every gear,
+teacher, route, resource, and candidate loader to that directory. Resumes keep
+the original source pin, so a later upstream pull cannot silently mix source
+revisions into an existing evidence trail.
+
+The Astra selector repair also blocks an ordinary source-ranked candidate when
+its audited HP ceiling or combat path requires sanctuary but the checkpoint has
+no executable sanctuary reserve. The runner no longer spends a bounded segment
+travelling to a target that the field executor is guaranteed to reject before
+combat. Explicit bounded-peak retries, sanctuary-resource specials, and
+audited protection fallbacks remain available through their separate gates.
+Revision 194 applies the same boundary to an unprotected HP-fuzz durability
+probe during active protection recovery, so a small source peak cannot reopen
+a fuzzy target outside the plain-target fallback.
+
+The familiar-backed mage slice closes the matching planner/executor gap. When
+live practice shows `summon familiar`, a plain unarmed target is source-ranked
+as outdoors and non-underwater, and the combined player-plus-pony damage
+budget fits the source HP ceiling and mana reserve, the field stop persists
+`require_familiar`. The starter summons, groups, and orders the pony before
+combat, withdraws it near 45% target health to preserve player XP, and flees
+if the familiar is lost early. Run 12365 live-validated this route for 633 XP;
+the result is continuation evidence, not HERO proof.
+
+**Shared combat contract (2026-09-06):** Direct combat action ordering now
+lives in `dd4tester/combat_capabilities.py` and is consumed by both source
+damage estimation and live `StarterPolicy` dispatch. Base psionic `agitation`
+is source-formula-backed, positively-observed at runtime, and marked automated
+in training priorities. Subclass actions whose lifecycle or formula is still
+incomplete remain explicitly readiness-visible but estimate-ineligible. The
+next implementation slices should extend this contract one audited action at
+a time, with source, training, runtime, and focused tests landing together.
+The first follow-on slice now covers brawler `second punch`: DD4 emits it as
+an automatic side effect of `punch`, so the estimator weights its source damage
+only from positive live proficiency while the controller continues issuing one
+ordinary `punch` command.
+The shared registry now also exposes the already-implemented control-only
+`disarm` path for thief, warrior, ranger, and vampire identities. It remains
+estimate-ineligible, but its source reference and automated training status now
+match the live controller and the class prerequisite catalog.
+
+The source parser now retains each mobile prototype's DD4 rank and applies the
+`mob.c` rank-table HP multiplier to candidate estimates. Candidate inspection
+also reports the rank, making elite, boss, and world targets visibly distinct
+from ordinary source mobiles before a live route is admitted.
+
+The next physical slice now covers source-backed `headbutt` for warrior,
+brawler, and barbarian identities. The estimator mirrors DD4's level-scaled
+first and optional second hit, includes the automatic weapon cycle, and admits
+the action only when parsed body-form flags prove a non-huge target has a head.
+The starter repeats the exact no-argument `headbutt` command only for one fresh
+source target in live combat, with positive observed proficiency and no head
+trauma. Unknown or legacy anatomy remains unassessed; this is capability
+evidence, not live progression or HERO proof.
+
+Thief opening estimates now also include DD4's automatic `double backstab`
+branch after a successful backstab, using only positive observed proficiency
+and preserving the one-shot opening boundary. The thief training priorities
+now schedule that automatic branch after its source prerequisites.
+
+The next thief slice registers source-defined `trip` and `dirt kick` as
+control-only capabilities. Each action is dispatched at most once per exact
+source target after live body-form, sector, fighting-position, and GMCP enemy
+gates pass. Because DD4's target-state and sector rules are not yet represented
+in the damage estimator, these actions remain estimate-ineligible; this is
+executable control coverage, not live progression proof.
+
+The vampire combat slice now covers `suck` and the bounded `lunge` opener. The
+estimator mirrors `skill.c:do_suck`, `fight.c:do_lunge`, and
+`fight.c:one_hit`, including weapon or unarmed fallback, the half-damage and
+rage branches, observed skill success, and `double lunge` probability. The
+live bridge issues lunge only for an exact source target whose fresh enemy
+snapshot is unique, full-health, and not already fighting; a rejection falls
+back once to ordinary combat. This remains bounded combat-planning evidence:
+live organic-target admission, vampire forms, and light/blood lifecycle still
+need their own source and controller coverage.
+
+The warrior physical slice now gives source-audited `stun` a bounded opener
+controller. It requires positive live proficiency, an exact source VNUM,
+one fresh full-health enemy record, and a blunt weapon; after the attempt it
+switches back to the source-selected primary weapon and starts ordinary
+combat. Rejections, missing heads, oversized targets, and absent targets are
+handled once without a retry loop. The shared registry now rejects subclass
+actions when their declared base class does not match the character identity,
+closing a stale-checkpoint path to source-illegal dispatch.
+
+The martial-artist slice adds the corresponding `kansetsu` gate. DD4 uses it
+to break an armed opponent's weapon arm, so the starter requires a positive
+live proficiency, level-30 martial-artist identity, exact source VNUM, fresh
+single-target room evidence, and source-armed target metadata. It consumes one
+attempt per fight and accepts the server's rejection or disarm message without
+retrying. Its damage remains estimate-ineligible until target weapon state and
+the source outcome are represented in the planner.
+
+The body-form provenance slice closes the missing source contract behind these
+physical gates. Raw DD4 body bits now survive area parsing and candidate,
+checkpoint, and field-stop serialization. Kansetsu requires known usable arms;
+thug `smash` requires a known non-huge target and a worn shield. A missing body
+line in legacy or synthetic data is preserved as unknown and cannot authorize
+either anatomy-dependent action.
+
+The same evidence rule now covers smithy `counterbalance`. A confirmed anvil
+command records the exact prepared weapon VNUM in campaign metadata, and the
+source estimator adds DD4's `APPLY_BALANCE` extra-attack chance only when that
+VNUM matches the currently wielded source object. Skill knowledge alone cannot
+inflate a weapon estimate; a replacement or mismatched weapon falls back to
+ordinary output. This is reusable planning coverage, not live progression
+proof.
+
+Smithy `hurl` now has the corresponding chained-weapon boundary. The source
+estimator and between-round starter command are enabled only for the matching
+currently wielded weapon after `EGO_ITEM_CHAINED` has been observed in GMCP or
+`identify` output. The VNUM survives campaign checkpoints; a learned hurl
+percentage, stale marker, or mismatched weapon cannot authorize the action.
+Steel/material acquisition, weaponchain preparation, and shieldchain remain
+future live-safe automation work.
+
+The current-reboot protection fallback was also recalibrated to the same 80%
+source-peak bound used by the unprotected HP-fuzz probe. It now requires the
+source lower HP bound to fit the character, while retaining one-loss scope,
+95% departure health, distinct-route rotation, live isolation, consider,
+damage-window, and second-loss quarantine. This is intended to prevent a
+recovery cooldown from freezing an otherwise executable level frontier.
+It now also requires the route's typed source hazard metadata to be clear of
+aggressive, attack-program, and special mobiles. The live gravedigger attempt
+showed why: the rolling rock had no special procedure, but ordinary `fight.c`
+combat still disarmed Kestrel. A no-sanctuary recovery allowance cannot treat
+that route as a plain target.
+
+**Astra strategy reassessment (2026-09-06):** The full offline suite passes
+3,629 tests. Dorrik was level 25 at 379,277 XP and checkpoint 38034 after
+runs 12372-12381, safely full in healer room 3054. The sequence recorded two
+source-ranked losses, safe expiry handling, a 100-XP sanctuary acquisition,
+a 1,619-XP protected Mr. Smithy kill, a safe shop-hazard deferral, and a
+second 100-XP reserve acquisition, the corrected -302-XP net result for run
+12380, and the repaired checkpoint resume in run 12381. The live damage-window
+probe now extends
+the conservative twelve-action source horizon only when measured damage and
+current HP reserve support the projected exchange; unsafe trades still flee.
+Campaign selection treats sanctuary duration 0 as active for the current fight
+but not as a durable outbound reserve. Aeloria remains level 18, Praelarran
+level 20, and Kestrel level 24; none has subclass or HERO proof.
+The next frontier is fresh level-25 progression toward level 26, followed by
+class trainer and subclass validation. See
+`docs/REASSESSMENT_2026-09-06.md` for the full live ledger and proof rules.
+
+The post-reassessment continuation reached a clean 2,032-XP Secretary kill in
+run 12390 and safely rejected a crowded Mr. Smithy room in run 12391. Runs
+12392-12393 then bounded a Windows socket failure and a return-home retry while
+the MUD stopped accepting port 8888 connections. Run 12394 validated the
+return-home repair; runs 12395-12396 completed bounded maintenance, and run
+12397 confirmed no new reboot after the single reset wait. The campaign is now
+checkpointed at 38072 with Dorrik alive at level 25 and 380,838 XP, full in
+healer room 3054. The next executable action is fresh progression after the
+area reset; no level-26, subclass, or HERO proof is claimed.
+
+Runs 12398-12405 then covered bounded funding, liquidation, and flight
+maintenance. Run 12406 exposed a level-15 `greet_prog` companion in the
+Fleshmonger senior-guard room; its `mpkill` path cost 419 XP and is now
+quarantined. Run 12411 exposed a separate Arachnos transit loss when the
+source-reachable Guardian interrupted the Donjonkeeper route, also costing 419
+XP. Run 12412 reached an isolated Solace Secretary, measured only 95 damage
+against 80 received on a 585-HP live instance, and cost 324 XP on withdrawal.
+Checkpoint 38105 is safe at 380,076 XP. Candidate construction now rejects all
+three exact policies before ordinary selection, while the single familiar-backed
+Mage/Witch exception remains explicitly bounded and covered by the full 3,647
+test suite. Revision 196 also requires source-backed player-output and
+incoming-exchange proof before a post-loss unprotected HP-fuzz probe. No
+level-26, subclass, or HERO proof is implied.
 
 The direct resource planner now treats source `greet_prog` attackers with a
 bounded distinction: deterministic programs reject a route, while one
@@ -114,15 +314,17 @@ which is useful for choosing the next replay matrix. A practice listing at
 executable combat capability; opener, mitigation, between-round, and subclass
 action dispatch all use the same rule.
 
-The caster admission model now carries four source-verified level-30 subclass
-spells: necromancer `harm`, druid `wither`, knight `flamestrike`, and monk
-`agitation`. A spell is eligible only when the requested subclass owns it;
-source formulas improve bounded planning but never replace live evidence.
+The caster admission model carries source-verified direct spells: base psionic
+`agitation`, plus necromancer `harm`, druid `wither`, knight `flamestrike`, and
+monk `agitation` after subclass transition. A spell is eligible only when the
+requested identity owns it; source formulas improve bounded planning but never
+replace live evidence.
 
 The output model now also covers existing deterministic physical controllers:
-brawler `punch`, martial artist `atemi`, werewolf `wolfbite`/`ravage`, learned
-warrior/ranger `kick`, learned thief `knife toss`, learned thief `circle` with
-a source-identified piercing primary weapon, and ordinary weapon strikes. A trained
+brawler `punch`, martial artist `atemi`, werewolf `wolfbite`/`ravage`, ranger
+`shoot` as a one-shot bow opener, warrior/ranger `kick`, learned thief `knife
+toss`, learned thief `circle` with a source-identified piercing primary weapon,
+and ordinary weapon strikes. A trained
 thief's source-matched `backstab` is budgeted once as an opener, never as a
 recurring action. The weapon branch requires an observed primary wielded source object
 and applies DD4's source
@@ -132,11 +334,21 @@ actions are weighted by their observed proficiency. Hit chance and temporary
 combat state remain live-calibrated; a missing or ambiguous weapon never
 becomes a guessed capability. Between-round kick, knife toss, and circle
 budgets include the automatic weapon cycle that continues alongside them. The
-latest lifecycle slice adds straight-shifter
-form entry and healer-side restoration,
-while later form selection, natural-weapon output calibration, and travel
-behavior remain outside the source-ranked admission model. Vampire light/blood
-state and follower or constructed-platform subclasses are also still pending.
+source-identified ranger bow is resolved from DD4's separate `ranged_weapon`
+slot; `shoot`, `second shot`, and `third shot` contribute only to one bounded
+opening volley. That intermediate ranger pass passed 3,548 tests; the current
+full offline suite passes 3,587 tests. Observed skills that arrive before the
+static registry remain checkpoint and audit evidence, but are not dispatched
+until a source-audited registry entry exists. The latest lifecycle slice adds
+straight-shifter form entry and healer-side restoration. Source-ranked
+admission now recognizes DD4's source-created snake fangs (object VNUM 59): a
+live snake form is accepted directly, while a normal form checkpoint may
+project the fangs only when the same morph, 20% form-skill, and source mana
+gates used by the starter are satisfied. The shared readiness report labels
+`morph` and `snake form` as setup capabilities rather than direct damage. Later
+form selection, live damage calibration, and travel behavior remain open.
+Vampire light/blood state and follower or constructed-platform subclasses are
+also still pending.
 
 The controller/source contract is now exact for thieves: repeatable knife-toss
 actions issue `knife toss <target>`, matching DD4's registered command instead
@@ -622,6 +834,21 @@ recovery, and reserve boundaries remain active. The campaign suite passes 1,057,
 the starter suite passes 1,221, and the full offline suite passes 3,270 tests.
 This is level-24 route and recovery evidence, not level-25, subclass, or HERO
 proof.
+
+The resource catalog and executor now share reset provenance: mobile-carried
+objects and mobile-equipped objects are both eligible required-resource
+placements, while direct carried loot remains the saleable subset. A generic
+sanctuary reserve route carries the exact source mobile and object VNUM into
+the live required-loot stop and falls back to the proven Moria route when no
+other source-safe potion carrier is reachable. The Dwarven Catacombs flask
+VNUM 2008 is correctly `source-only` because its route is key-locked; this is
+source evidence, not live acquisition proof. Castable scrolls, wands, and
+staves now expose source-derived activation semantics in each resource
+placement (`quaff`, held `recite`, held `brandish`, or held `zap self`). Once
+one is acquired and acknowledged live, the checkpoint persists its exact
+activation contract and remaining charges; the next segment can hold and use
+it without guessing. Source-only placement rows remain outside executable
+proof until that acquisition boundary is crossed.
 
 Training policy note: live `practice` output is authoritative for current
 skill percentages. Historical accepted or rejected events are migration
