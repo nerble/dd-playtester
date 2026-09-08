@@ -772,6 +772,7 @@ def test_prepare_hero_request_updates_resumed_level_goal(tmp_path: Path) -> None
 
     assert resumed.resumed
     assert load_campaign_spec(resumed.campaign_path).target_level == 40
+    assert load_campaign_spec(resumed.campaign_path).name == "Valora to level 40"
     assert "password" not in resumed.manifest_path.read_text(
         encoding="utf-8"
     ).casefold()
@@ -784,6 +785,7 @@ def test_prepare_hero_request_updates_resumed_level_goal(tmp_path: Path) -> None
     )
     assert shortened.resumed
     assert load_campaign_spec(shortened.campaign_path).target_level == 40
+    assert load_campaign_spec(shortened.campaign_path).name == "Valora to level 40"
 
 
 def test_named_resume_finds_a_manifest_inside_a_matrix_workspace(

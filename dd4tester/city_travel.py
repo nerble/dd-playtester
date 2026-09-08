@@ -1,0 +1,113 @@
+"""Source-bounded city shopping and one session-local defensive interruption."""
+
+from dataclasses import dataclass
+from typing import Any, Mapping
+
+from .hunt_candidates import (
+    WorldSource, _mobile_base_hp_range, _mobile_level_range,
+    source_mobile_route_program_attacker_is_bounded,
+)
+
+
+CITY_GREETER_VNUM = 3064
+MAGIC_SHOP_ROUTE_ROOMS = frozenset({
+    "3054", "3001", "3005", "3006", "3014", "3013", "3019", "3018",
+    "3017", "3012", "3033",
+})
+CITY_TRANSIT_KEY = "campaign_city_shop_transit"
+
+
+def bounded_city_shop_transit_available(
+    world: WorldSource | None, state: Mapping[str, Any],
+) -> bool:
+    if world is None:
+        return False
+    level, maximum_hp = state.get("level"), state.get("max_hp")
+    if type(level) is not int or type(maximum_hp) is not int:
+        return False
+    prior = state.get(CITY_TRANSIT_KEY)
+    if (isinstance(prior, Mapping) and prior.get("status") == "aborted"
+            and prior.get("level") == level
+            and (not prior.get("boot_id") or not state.get("world_boot_id")
+                 or prior.get("boot_id") == state.get("world_boot_id"))):
+        return False
+    mobile = world.mobiles.get(CITY_GREETER_VNUM)
+    return bool(mobile and mobile.area_file == "midgaard.are"
+                and source_mobile_route_program_attacker_is_bounded(
+                    world, mobile, character_level=level, character_max_hp=maximum_hp,
+                ))
+
+
+def _number(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@dataclass
+class CityShopTransit:
+    status: str = "idle"
+    started_at: float | None = None
+    reason: str | None = None
+
+    def admit(self) -> None:
+        if self.status == "idle":
+            self.status = "admitted"
+
+    def finish_combat(self) -> None:
+        if self.status == "fighting":
+            self.status = "finished"
+
+    def combat_allowed(
+        self, world: WorldSource | None, state: Mapping[str, Any],
+        enemies: list[dict[str, Any]], *, now: float, nutrition_ready: bool,
+        runtime_boundary: bool = False,
+    ) -> bool:
+        if self.status == "aborted":
+            return False
+        reason = None
+        if runtime_boundary:
+            reason = "city interruption reached the segment runtime boundary"
+        elif self.status not in {"admitted", "fighting"}:
+            reason = "another city interruption is outside the one-fight budget"
+        elif not bounded_city_shop_transit_available(world, state):
+            reason = "city attacker no longer satisfies source combat bounds"
+        elif str(state.get("room_vnum")) not in MAGIC_SHOP_ROUTE_ROOMS:
+            reason = "city interruption is outside the registered shopping route"
+        elif len(enemies) != 1 or _number(enemies[0].get("isnpc")) != CITY_GREETER_VNUM:
+            reason = "city interruption lacks one exact source-identified enemy"
+        elif not nutrition_ready:
+            reason = "city interruption exhausted nutrition reserves"
+        else:
+            mobile = world.mobiles[CITY_GREETER_VNUM]
+            levels = _mobile_level_range(mobile.level)
+            maximum_enemy_hp = _mobile_base_hp_range(levels, rank=mobile.rank)[1]
+            level = _number(enemies[0].get("level"))
+            enemy_hp = _number(enemies[0].get("maxhp"))
+            hp, maximum_hp = _number(state.get("hp")), _number(state.get("max_hp"))
+            if level is None or not levels[0] <= level <= min(levels[1], state["level"] - 4):
+                reason = "live city attacker level exceeds its source admission"
+            elif enemy_hp is None or not 0 < enemy_hp <= maximum_enemy_hp:
+                reason = "live city attacker health exceeds its source admission"
+            elif hp is None or maximum_hp is None or hp < maximum_hp * 0.70:
+                reason = "city interruption reached the health withdrawal floor"
+            elif self.started_at is not None and now - self.started_at >= 60:
+                reason = "city interruption reached its sixty-second deadline"
+        if reason is not None:
+            self.status, self.reason = "aborted", reason
+            return False
+        if self.started_at is None:
+            self.started_at = now
+        self.status = "fighting"
+        return True
+
+    def evidence(self, *, level: int | None, boot_id: str | None) -> dict[str, Any]:
+        if self.status == "idle":
+            return {}
+        return {CITY_TRANSIT_KEY: {
+            "status": self.status, "reason": self.reason, "level": level,
+            "boot_id": boot_id, "source_mobile_vnum": CITY_GREETER_VNUM,
+        }}

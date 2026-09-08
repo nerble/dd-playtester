@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Iterable
 
-from .observations import GameEvent
+from .observations import GameEvent, valid_enemy_snapshot
 
 
 _MAX_CHARACTER_LEVEL = 100
@@ -437,6 +437,8 @@ class CharacterState:
 
         if event.type == "enemies_changed":
             value = data.get("value", _payload(data))
+            if not valid_enemy_snapshot(value):
+                return
             self.enemies = deepcopy(value)
             if _enemy_snapshot_empty(value):
                 self.in_combat = False

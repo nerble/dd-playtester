@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import ExitStack
 import json
 import os
 import secrets
@@ -22,6 +23,7 @@ from .storage import RunStorage
 
 
 CampaignFileRunner = Callable[..., Awaitable[CampaignResult]]
+MatrixProgressCallback = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -209,10 +211,29 @@ def live_matrix_coverage(path: str | Path) -> MatrixLiveCoverage:
     """
 
     spec = load_matrix_spec(path)
-    entries = tuple(
-        _live_matrix_entry(entry, target_level=spec.target_level)
-        for entry in spec.entries
-    )
+    live_entries: list[MatrixLiveEntry] = []
+    with ExitStack() as stack:
+        storages: dict[Path, RunStorage] = {}
+        for entry in spec.entries:
+            database = entry.campaign.database
+            if not database.is_file():
+                live_entries.append(
+                    _live_matrix_entry(entry, target_level=spec.target_level)
+                )
+                continue
+            database_key = database.resolve()
+            storage = storages.get(database_key)
+            if storage is None:
+                storage = stack.enter_context(RunStorage(database_key))
+                storages[database_key] = storage
+            live_entries.append(
+                _live_matrix_entry(
+                    entry,
+                    target_level=spec.target_level,
+                    storage=storage,
+                )
+            )
+    entries = tuple(live_entries)
     validated_pairs = tuple(
         sorted(
             {
@@ -372,6 +393,7 @@ async def run_matrix_file(
     force_new: bool = False,
     campaign_runner: CampaignFileRunner = run_campaign_file,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    progress_callback: MatrixProgressCallback | None = None,
 ) -> MatrixResult:
     if rounds < 1:
         raise ValueError("rounds must be positive")
@@ -383,13 +405,29 @@ async def run_matrix_file(
     latest: dict[str, MatrixEntryResult] = {}
 
     for round_index in range(rounds):
+        if progress_callback is not None:
+            progress_callback(
+                f"Starting matrix round {round_index + 1}/{rounds} "
+                f"with {len(spec.entries)} character entries."
+            )
         for entry_index, entry in enumerate(spec.entries):
             previous = latest.get(entry.entry_id)
             if previous is not None and _matrix_result_reached(
                 previous,
                 spec.target_level,
             ):
+                if progress_callback is not None:
+                    progress_callback(
+                        f"Skipping {entry.entry_id} ({entry.campaign.character.name}); "
+                        f"target level {spec.target_level} is already reached."
+                    )
                 continue
+            if progress_callback is not None:
+                progress_callback(
+                    f"Starting {entry.entry_id} ({entry.campaign.character.name}, "
+                    f"{entry.campaign.character.character_class}) in round "
+                    f"{round_index + 1}/{rounds}."
+                )
             try:
                 campaign_kwargs: dict[str, object] = {
                     "force_new": force_new and round_index == 0,
@@ -397,6 +435,12 @@ async def run_matrix_file(
                 }
                 if max_segment_runtime is not None:
                     campaign_kwargs["max_segment_runtime"] = max_segment_runtime
+                if progress_callback is not None:
+                    campaign_kwargs["progress_callback"] = (
+                        lambda message, entry_id=entry.entry_id: progress_callback(
+                            f"{entry_id}: {message}"
+                        )
+                    )
                 result = await campaign_runner(
                     entry.campaign_path,
                     **campaign_kwargs,
@@ -411,6 +455,10 @@ async def run_matrix_file(
                     previous.level if previous is not None else 0,
                     str(error),
                 )
+                if progress_callback is not None:
+                    progress_callback(
+                        f"Completed {entry.entry_id} with failure: {error}"
+                    )
                 more_work_follows = (
                     entry_index < len(spec.entries) - 1
                     or round_index < rounds - 1
@@ -428,6 +476,12 @@ async def run_matrix_file(
                 level,
                 result.message,
             )
+            if progress_callback is not None:
+                progress_callback(
+                    f"Completed {entry.entry_id}: status={result.status}, "
+                    f"level={level}, checkpoint={result.checkpoint_id or '-'}; "
+                    f"{result.message or 'no additional message'}."
+                )
             more_work_follows = (
                 entry_index < len(spec.entries) - 1 or round_index < rounds - 1
             )
@@ -476,6 +530,7 @@ def _live_matrix_entry(
     entry: MatrixEntry,
     *,
     target_level: int,
+    storage: RunStorage | None = None,
 ) -> MatrixLiveEntry:
     character = entry.campaign.character
     database = entry.campaign.database
@@ -491,60 +546,74 @@ def _live_matrix_entry(
             level=0,
         )
 
-    with RunStorage(database) as storage:
-        campaign = storage.get_latest_campaign_for_config(entry.campaign_path)
-        if campaign is None:
-            return MatrixLiveEntry(
-                entry_id=entry.entry_id,
-                character_name=character.name,
-                race=character.race,
-                character_class=character.character_class,
-                sex=character.gender,
-                campaign_id=None,
-                campaign_status=None,
-                level=0,
+    if storage is None:
+        with RunStorage(database) as owned_storage:
+            return _live_matrix_entry_from_storage(
+                entry,
+                target_level=target_level,
+                storage=owned_storage,
             )
+    return _live_matrix_entry_from_storage(
+        entry,
+        target_level=target_level,
+        storage=storage,
+    )
 
-        campaign_id = int(campaign["id"])
-        checkpoints = storage.list_campaign_checkpoints(campaign_id)
-        latest_checkpoint = checkpoints[-1] if checkpoints else None
-        state = _checkpoint_state(
-            latest_checkpoint["state_json"] if latest_checkpoint else None
-        )
-        checkpoint_reason = _checkpoint_reason(latest_checkpoint)
-        target_checkpoint = next(
-            (
-                checkpoint
-                for checkpoint in reversed(checkpoints)
-                if _checkpoint_proves_target(checkpoint, target_level)
-            ),
-            None,
-        )
-        target_reached = target_checkpoint is not None
-        creation_observed = _campaign_has_creation_evidence(storage, campaign_id)
-        if target_reached:
-            proof_status = (
-                "creation-to-target" if creation_observed else "target-reached"
-            )
-        elif campaign is not None:
-            proof_status = "in-progress"
-        else:
-            proof_status = "not-started"
+
+def _live_matrix_entry_from_storage(
+    entry: MatrixEntry,
+    *,
+    target_level: int,
+    storage: RunStorage,
+) -> MatrixLiveEntry:
+    character = entry.campaign.character
+    campaign = storage.get_latest_campaign_for_config(entry.campaign_path)
+    if campaign is None:
         return MatrixLiveEntry(
             entry_id=entry.entry_id,
             character_name=character.name,
             race=character.race,
             character_class=character.character_class,
             sex=character.gender,
-            campaign_id=campaign_id,
-            campaign_status=str(campaign["status"]),
-            level=_level(state),
-            checkpoint_reason=checkpoint_reason,
-            target_checkpoint_reason=_checkpoint_reason(target_checkpoint),
-            target_reached=target_reached,
-            creation_observed=creation_observed,
-            proof_status=proof_status,
+            campaign_id=None,
+            campaign_status=None,
+            level=0,
         )
+
+    campaign_id = int(campaign["id"])
+    latest_checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+    state = _checkpoint_state(
+        latest_checkpoint["state_json"] if latest_checkpoint else None
+    )
+    checkpoint_reason = _checkpoint_reason(latest_checkpoint)
+    target_checkpoint = storage.get_latest_campaign_checkpoint_at_or_above_level(
+        campaign_id,
+        target_level=target_level,
+        reasons=_TARGET_CHECKPOINT_REASONS,
+    )
+    target_reached = target_checkpoint is not None
+    creation_observed = storage.campaign_has_creation_evidence(campaign_id)
+    if target_reached:
+        proof_status = (
+            "creation-to-target" if creation_observed else "target-reached"
+        )
+    else:
+        proof_status = "in-progress"
+    return MatrixLiveEntry(
+        entry_id=entry.entry_id,
+        character_name=character.name,
+        race=character.race,
+        character_class=character.character_class,
+        sex=character.gender,
+        campaign_id=campaign_id,
+        campaign_status=str(campaign["status"]),
+        level=_level(state),
+        checkpoint_reason=checkpoint_reason,
+        target_checkpoint_reason=_checkpoint_reason(target_checkpoint),
+        target_reached=target_reached,
+        creation_observed=creation_observed,
+        proof_status=proof_status,
+    )
 
 
 def _checkpoint_reason(checkpoint: object) -> str | None:
@@ -553,33 +622,6 @@ def _checkpoint_reason(checkpoint: object) -> str | None:
     value = checkpoint["reason"]
     reason = str(value).strip()
     return reason or None
-
-
-def _checkpoint_proves_target(checkpoint: object, target_level: int) -> bool:
-    if _checkpoint_reason(checkpoint) not in _TARGET_CHECKPOINT_REASONS:
-        return False
-    return _level(_checkpoint_state(checkpoint["state_json"])) >= target_level
-
-
-def _campaign_has_creation_evidence(storage: RunStorage, campaign_id: int) -> bool:
-    for segment in storage.list_campaign_segments(campaign_id):
-        run_id = segment["run_id"]
-        if run_id is None:
-            continue
-        for event in storage.list_events(int(run_id)):
-            if str(event["kind"]).casefold() != "decision":
-                continue
-            try:
-                payload = json.loads(event["payload_json"])
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if not isinstance(payload, dict):
-                continue
-            stage = str(payload.get("stage", "")).casefold()
-            category = str(payload.get("category", "")).casefold()
-            if stage.startswith("create") or category == "creation":
-                return True
-    return False
 
 
 def _checkpoint_state(value: object) -> dict[str, object]:

@@ -767,6 +767,11 @@ def build_parser() -> argparse.ArgumentParser:
             "rotate past a temporarily blocked campaign"
         ),
     )
+    matrix_parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="print each character's bounded attempt and completion progress to stderr",
+    )
 
     matrix_coverage_parser = subcommands.add_parser(
         "matrix-coverage",
@@ -1552,6 +1557,9 @@ def main(argv: list[str] | None = None) -> int:
                     segments_per_character=args.segments_per_character,
                     max_segment_runtime=args.max_segment_runtime,
                     force_new=args.new,
+                    progress_callback=(
+                        _print_campaign_progress if args.progress else None
+                    ),
                 )
             )
         except Exception as exc:
@@ -1935,7 +1943,7 @@ def show_hunt_candidates(
         "move_cost\tflight_cost\trequires_flight\t"
         "room_spawns\tspawn_limit\t"
         "boot_kills\tloot\thazards\tautonomy_rejections\t"
-        "combat_readiness\tcombat_bonus\tundead"
+        "combat_readiness\tcombat_bonus\ttemplate\txp_modifier\tundead"
     )
     for candidate in candidates[:limit]:
         mobile = world.mobiles.get(candidate.mobile_vnum)
@@ -2019,6 +2027,8 @@ def show_hunt_candidates(
                     "; ".join(candidate.autonomy_rejections) or "-",
                     candidate.combat_readiness,
                     str(candidate.combat_readiness_bonus),
+                    (mobile.template_name if mobile is not None else None) or "-",
+                    str(mobile.xp_modifier if mobile is not None else 0),
                     "yes" if candidate.undead else "no",
                 ]
             )

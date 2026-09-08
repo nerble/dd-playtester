@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from dd4tester.fastwalks import expand_fastwalk, route_named, routes_for_level
@@ -22,6 +24,17 @@ def test_expand_fastwalk_expands_repeated_directions_and_commands() -> None:
 def test_expand_fastwalk_rejects_malformed_segments(notation: str) -> None:
     with pytest.raises(ValueError):
         expand_fastwalk(notation)
+
+
+def test_route_expansion_cache_is_bounded_and_keyed_by_notation() -> None:
+    expand_fastwalk.cache_clear()
+    route = route_named("Foundry")
+    expected = route.commands
+    assert route.commands is expected
+    assert expand_fastwalk.cache_info().hits == 1
+    assert expand_fastwalk.cache_info().maxsize == 1024
+    assert replace(route, notation="2n").commands == ("north", "north")
+    assert route.commands == expected
 
 
 def test_official_routes_are_searchable_by_level_and_name() -> None:

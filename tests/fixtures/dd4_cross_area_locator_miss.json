@@ -1,0 +1,17 @@
+{
+  "source_run_id": 12697,
+  "source_revision": "900c61592875771c701beaf70e4e83654d029d66",
+  "character_level": 11,
+  "room_vnum": 9850,
+  "area_name": "Dragon Cult",
+  "command": "where fanatic",
+  "response": "You fail to find anyone by that name.\n\r\n\r<186/186 hits 172/172 mana 249/250 move [Dragon Cult]> ",
+  "source_mobile_vnum": 9808,
+  "source_keywords": "fanatic monk",
+  "source_short_description": "a fanatic monk",
+  "source_act_flags": 0,
+  "source_reset_room_vnum": 9850,
+  "source_open_neighbor": {"direction": "south", "room_vnum": 3024, "area_file": "midgaard.are"},
+  "observed_target_presence": false,
+  "scope": "current-area-only; neighboring-area presence is unobserved"
+}

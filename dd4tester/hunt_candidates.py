@@ -54,6 +54,7 @@ BODY_NO_HEAD = 1 << 0
 BODY_NO_EYES = 1 << 1
 BODY_NO_ARMS = 1 << 2
 BODY_NO_LEGS = 1 << 3
+BODY_NO_HEART = 1 << 4
 BODY_HUGE = 1 << 7
 BODY_INORGANIC = 1 << 8
 PART_HEAD = 1 << 10
@@ -111,6 +112,7 @@ def body_form_has_head(flags: int | None) -> bool | None:
 
 
 AFF_BLIND = 1 << 0
+AFF_DETECT_MAGIC = 1 << 4
 AFF_NON_CORPOREAL = 1 << 28
 
 ROOM_NO_MOB = 1 << 2
@@ -205,8 +207,8 @@ _MOBILE_TEACHING = re.compile(
     r"^\s*&\s*(?P<percent>\d+)\s+'(?P<skill>[^']+)'\s*$",
     re.IGNORECASE,
 )
-_MOBILE_RANK = re.compile(
-    r"^\s*<\s*[^~]*~\s*(?P<rank>[^~]*)~\s*$",
+_MOBILE_TEMPLATE = re.compile(
+    r"^\s*<\s*(?P<template>[^~]*)~\s*(?P<rank>[^~]*)~\s*$",
     re.IGNORECASE,
 )
 
@@ -225,6 +227,21 @@ _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY = 4
 # It remains eligible as an incidental kill when it is farther below this band;
 # this does not change target selection or the live consider rule.
 _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP = 10
+# A source-identified, unarmed aggressor below the useful XP band may still
+# interrupt travel.  Admit it only when one live exchange and one critical
+# hit remain well inside the character's current HP reserve; the live runner
+# still requires exact identity, isolation, and a bounded return.
+_SOURCE_BOUNDED_TRANSIT_PEAK_RATIO = 0.40
+_SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO = 0.20
+# A probabilistic greet-program attacker may be treated as bounded route noise
+# only when both its trigger and source combat envelope are tightly capped.
+_SOURCE_BOUNDED_PROGRAM_MAX_TRIGGER_PERCENT = 25
+_SOURCE_BOUNDED_PROGRAM_LEVEL_GAP = 4
+_SOURCE_BOUNDED_PROGRAM_MAX_CAPACITY = 3
+# A low-level probabilistic greet program can be checked from recall before
+# the route is crossed. Keep this separate from the ordinary transit-risk
+# band: the starter has a bounded ``where`` preflight for exactly this case.
+_SOURCE_PROGRAM_PREFLIGHT_LEVEL_GAP = 2
 
 # A modest detour is worthwhile when it removes a source-proven crowd from a
 # route. Keep route planning from replacing a short, unusable path with an
@@ -537,6 +554,17 @@ def _source_vampire_attack_values(
     return attack_values
 
 
+def _observed_combat_stat(value: object) -> int | None:
+    """Decode update.c's concealed-stat sentinel without altering raw evidence."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return None if number == 50000 else number
+
+
 def source_combat_output_estimate(
     *,
     character_level: int,
@@ -595,7 +623,12 @@ def source_combat_output_estimate(
     Smithy ``hurl`` is included only when the current wielded weapon is
     independently observed to carry ``EGO_ITEM_CHAINED``. The learned skill
     alone is never treated as proof of that object property.
+    DD4 conceals low-level damroll/swiftness with the sentinel 50000. Missing,
+    concealed, or malformed values grant no damage bonus or swiftness credit;
+    the raw observation remains available to the caller for audit.
     """
+    player_damroll = _observed_combat_stat(player_damroll) or 0
+    player_swiftness = _observed_combat_stat(player_swiftness)
     try:
         level = max(1, int(character_level))
     except (TypeError, ValueError):
@@ -1306,6 +1339,18 @@ class MobileProgram:
 
 
 @dataclass(frozen=True)
+class MobileTemplateSource:
+    """One resolved body-species/archetype layer from DD4's mob.c."""
+
+    name: str
+    species: str
+    act_flags: int = 0
+    affected_flags: int = 0
+    body_form_flags: int = 0
+    xp_modifier: int = 0
+
+
+@dataclass(frozen=True)
 class MobileSource:
     vnum: int
     keywords: str
@@ -1324,6 +1369,17 @@ class MobileSource:
     # DD4 stores this on the mobile prototype and multiplies max_hit when the
     # live instance is created.  Missing legacy records are ordinary/common.
     rank: str = "common"
+    # Preserve DD4's source layering.  The public flag fields remain the
+    # effective values used by candidate safety decisions.
+    template_name: str | None = None
+    template_species: str | None = None
+    template_act_flags: int = 0
+    template_affected_flags: int = 0
+    template_body_form_flags: int = 0
+    xp_modifier: int = 0
+    area_act_flags: int | None = None
+    area_affected_flags: int | None = None
+    area_body_form_flags: int | None = None
 
     @property
     def aggressive(self) -> bool:
@@ -1580,6 +1636,8 @@ class WorldSource:
     container_contents: dict[int, list[int]] = field(default_factory=dict)
     mobile_specials: dict[int, tuple[str, ...]] = field(default_factory=dict)
     shopkeepers: set[int] = field(default_factory=set)
+    mobile_templates: dict[str, MobileTemplateSource] = field(default_factory=dict)
+    skill_groups: dict[str, tuple[tuple[str, int], ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -2143,6 +2201,201 @@ def rank_resource_sources(
     )
 
 
+_C_DEFINE = re.compile(
+    r"^\s*#define\s+(?P<name>[A-Za-z_]\w*)\s+(?P<value>.+?)\s*$"
+)
+_C_IDENTIFIER = re.compile(r"\b[A-Za-z_]\w*\b")
+
+
+def _strip_c_comments(value: str) -> str:
+    value = re.sub(r"/\*.*?\*/", "", value, flags=re.DOTALL)
+    return re.sub(r"//[^\r\n]*", "", value)
+
+
+def _parse_c_integer_expression(
+    expression: str,
+    macros: Mapping[str, int],
+) -> int | None:
+    """Evaluate the small integer-expression subset used by mob.c tables."""
+    expression = " ".join(expression.split())
+    if not expression or expression.endswith("\\"):
+        return None
+
+    def replace_identifier(match: re.Match[str]) -> str:
+        name = match.group(0)
+        if name not in macros:
+            raise ValueError(name)
+        return str(macros[name])
+
+    try:
+        resolved = _C_IDENTIFIER.sub(replace_identifier, expression)
+    except ValueError:
+        return None
+    if not re.fullmatch(r"[0-9A-Fa-fxX\s()+\-*/%<>&|^~]+", resolved):
+        return None
+    try:
+        return int(eval(resolved, {"__builtins__": {}}, {}))
+    except (ArithmeticError, SyntaxError, TypeError, ValueError):
+        return None
+
+
+def _load_c_integer_macros(header_text: str) -> dict[str, int]:
+    """Resolve the flag aliases used by DD4's source template tables."""
+    definitions: dict[str, str] = {}
+    for line in _strip_c_comments(header_text).splitlines():
+        match = _C_DEFINE.match(line)
+        if match is not None:
+            definitions[match.group("name")] = match.group("value").strip()
+
+    values: dict[str, int] = {
+        "INT_MIN": -(1 << 31),
+        "INT_MAX": (1 << 31) - 1,
+    }
+    for _ in range(len(definitions) + 1):
+        progress = False
+        for name, expression in definitions.items():
+            parsed = _parse_c_integer_expression(expression, values)
+            if parsed is None or values.get(name) == parsed:
+                continue
+            values[name] = parsed
+            progress = True
+        if not progress:
+            break
+    return values
+
+
+def _c_initializer_rows(source_text: str, table_name: str) -> tuple[str, ...]:
+    """Extract top-level brace records from one C initializer table."""
+    source_text = _strip_c_comments(source_text)
+    match = re.search(
+        rf"\b{re.escape(table_name)}\s*\[[^\]]+\]\s*=\s*\{{",
+        source_text,
+    )
+    if match is None:
+        return ()
+    opening = source_text.find("{", match.start())
+    rows: list[str] = []
+    depth = 0
+    row_start: int | None = None
+    quoted = False
+    escaped = False
+    for position in range(opening, len(source_text)):
+        char = source_text[position]
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+            continue
+        if char == '"':
+            quoted = True
+            continue
+        if char == "{":
+            depth += 1
+            if depth == 2:
+                row_start = position + 1
+        elif char == "}":
+            if depth == 2 and row_start is not None:
+                rows.append(source_text[row_start:position])
+                row_start = None
+            depth -= 1
+            if depth == 0:
+                break
+    return tuple(rows)
+
+
+def _split_c_initializer_fields(row: str) -> tuple[str, ...]:
+    fields: list[str] = []
+    start = 0
+    parentheses = 0
+    quoted = False
+    escaped = False
+    for position, char in enumerate(row):
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+            continue
+        if char == '"':
+            quoted = True
+        elif char == "(":
+            parentheses += 1
+        elif char == ")":
+            parentheses = max(0, parentheses - 1)
+        elif char == "," and parentheses == 0:
+            fields.append(row[start:position].strip())
+            start = position + 1
+    fields.append(row[start:].strip())
+    return tuple(fields)
+
+
+def _c_string_literal(value: str) -> str | None:
+    match = re.fullmatch(r'\s*"((?:\\.|[^"\\])*)"\s*', value, re.DOTALL)
+    return None if match is None else match.group(1)
+
+
+@lru_cache(maxsize=4)
+def load_mobile_template_catalog(
+    source_directory: Path,
+) -> dict[str, MobileTemplateSource]:
+    """Load DD4's resolved mobile-template defaults from the source mirror.
+
+    Area files carry only the individual XOR overrides.  Keeping this parser
+    beside the area parser means a source refresh changes candidate safety
+    decisions without requiring a hand-maintained Python copy of mob.c.
+    """
+    mob_path = source_directory / "mob.c"
+    header_path = source_directory / "merc.h"
+    if not mob_path.is_file() or not header_path.is_file():
+        return {}
+    mob_text = mob_path.read_text(encoding="latin-1")
+    macros = _load_c_integer_macros(header_path.read_text(encoding="latin-1"))
+    species_by_name: dict[str, tuple[str, int, int, int]] = {}
+    for row in _c_initializer_rows(mob_text, "species_table"):
+        fields = _split_c_initializer_fields(row)
+        if len(fields) < 4:
+            continue
+        name = _c_string_literal(fields[0])
+        if not name:
+            continue
+        species_by_name[name.casefold()] = (
+            name,
+            _parse_c_integer_expression(fields[1], macros) or 0,
+            _parse_c_integer_expression(fields[2], macros) or 0,
+            _parse_c_integer_expression(fields[3], macros) or 0,
+        )
+
+    templates: dict[str, MobileTemplateSource] = {}
+    for row in _c_initializer_rows(mob_text, "mob_table"):
+        fields = _split_c_initializer_fields(row)
+        if len(fields) < 12:
+            continue
+        name = _c_string_literal(fields[0])
+        species_name = _c_string_literal(fields[1])
+        if not name or not species_name:
+            continue
+        species = species_by_name.get(species_name.casefold())
+        if species is None:
+            continue
+        templates[name.casefold()] = MobileTemplateSource(
+            name=name,
+            species=species[0],
+            act_flags=species[1]
+            ^ (_parse_c_integer_expression(fields[4], macros) or 0),
+            affected_flags=species[2]
+            ^ (_parse_c_integer_expression(fields[5], macros) or 0),
+            body_form_flags=species[3]
+            ^ (_parse_c_integer_expression(fields[6], macros) or 0),
+            xp_modifier=_parse_c_integer_expression(fields[-1], macros) or 0,
+        )
+    return templates
+
+
 @lru_cache(maxsize=4)
 def load_world_source(
     area_directory: Path,
@@ -2153,7 +2406,17 @@ def load_world_source(
     if not area_directory.is_dir():
         raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
 
-    world = WorldSource()
+    mobile_templates = load_mobile_template_catalog(area_directory.parent / "src")
+    world = WorldSource(mobile_templates=mobile_templates)
+    const_path = area_directory.parent / "src" / "const.c"
+    if const_path.is_file():
+        from .teaching import parse_skill_groups
+
+        try:
+            world.skill_groups = parse_skill_groups(const_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError):
+            # Missing teaching evidence cannot authorize the optional fallback.
+            world.skill_groups = {}
     target_files = (
         {path.name for path in area_directory.glob("*.are")}
         if include_all_areas
@@ -2166,6 +2429,7 @@ def load_world_source(
             include_resets=True,
             include_entities=True,
             include_objects=is_target,
+            mobile_templates=mobile_templates,
         )
         world.mobiles.update(parsed.mobiles)
         world.objects.update(parsed.objects)
@@ -2215,11 +2479,17 @@ def parse_area_file(
     include_resets: bool = True,
     include_entities: bool = True,
     include_objects: bool | None = None,
+    mobile_templates: Mapping[str, MobileTemplateSource] | None = None,
 ) -> AreaSource:
     lines = path.read_text(encoding="latin-1").splitlines()
     sections = _section_ranges(lines)
     mobiles = (
-        _parse_mobiles(lines, sections.get("#MOBILES"), path.name)
+        _parse_mobiles(
+            lines,
+            sections.get("#MOBILES"),
+            path.name,
+            mobile_templates=mobile_templates,
+        )
         if include_entities
         else {}
     )
@@ -2337,6 +2607,133 @@ def _bounded_borderline_route_aggressor(
     )
 
 
+def source_mobile_route_aggressor_is_bounded(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int,
+    character_max_hp: int | None = None,
+) -> bool:
+    """Return whether one below-band route aggressor may be finished once.
+
+    This is deliberately narrower than the ordinary ten-level movement
+    cutoff.  It is for source-identified, unarmed mobiles that can only make
+    a small incidental interruption: scripted attacks, unsafe specials,
+    armed resets, and useful-band loads remain rejected.  Without a live HP
+    ceiling the older ten-level rule remains the fail-closed fallback.
+    """
+    if not mobile.aggressive or mobile.attack_programs:
+        return False
+    specials = set(world.mobile_specials.get(mobile.vnum, ()))
+    if specials and not specials <= SAFE_NONCOMBAT_SPECIALS:
+        return False
+    maximum_level = _mobile_level_range(mobile.level)[1]
+    if maximum_level > character_level - 5:
+        return False
+    resets = [
+        reset
+        for reset in world.mob_resets
+        if reset.mobile_vnum == mobile.vnum
+    ]
+    if any(reset.equipment for reset in resets):
+        return False
+    if character_max_hp is None or character_max_hp <= 0:
+        return maximum_level <= character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+    peak_round_damage = _mobile_peak_round_damage(
+        maximum_level,
+        wielding=False,
+        dual_wielding=False,
+    )
+    critical_hit_damage = _mobile_critical_hit_damage(
+        maximum_level,
+        wielding=False,
+    )
+    return (
+        peak_round_damage * 100
+        <= int(character_max_hp * _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO * 100)
+        and critical_hit_damage * 100
+        <= int(character_max_hp * _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO * 100)
+    )
+
+
+def source_mobile_route_program_attacker_is_bounded(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int,
+    character_max_hp: int | None,
+) -> bool:
+    """Return whether one probabilistic greeter is a bounded transit fight.
+
+    This exception is intentionally source-generic but narrow. It covers an
+    exact, low-chance ``greet_prog`` attacker such as Midgaard's drunk only
+    when the mobile is unarmed, ordinary rank-adjusted HP fits inside the
+    character's maximum HP, and both ordinary and critical damage remain well
+    inside the existing transit reserve. Live identity, isolation, health,
+    and return gates still decide whether an interruption is actually fought.
+    """
+    if (
+        character_max_hp is None
+        or character_max_hp <= 0
+        or mobile.aggressive
+        or mobile.non_corporeal
+        or mobile.costs_fame
+        or mobile.vnum in world.shopkeepers
+        or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+    ):
+        return False
+    attack_programs = mobile.attack_programs
+    if len(attack_programs) != 1:
+        return False
+    program = attack_programs[0]
+    if program.trigger != "greet_prog":
+        return False
+    try:
+        trigger_percent = int(str(program.condition).strip())
+    except (TypeError, ValueError):
+        return False
+    if not 0 < trigger_percent <= _SOURCE_BOUNDED_PROGRAM_MAX_TRIGGER_PERCENT:
+        return False
+    if world.mobile_specials.get(mobile.vnum):
+        return False
+
+    maximum_level = _mobile_level_range(mobile.level)[1]
+    if maximum_level > character_level - _SOURCE_BOUNDED_PROGRAM_LEVEL_GAP:
+        return False
+    resets = tuple(
+        reset
+        for reset in world.mob_resets
+        if reset.mobile_vnum == mobile.vnum
+    )
+    if (
+        len(resets) != 1
+        or not 0 < resets[0].maximum_count <= _SOURCE_BOUNDED_PROGRAM_MAX_CAPACITY
+        or resets[0].equipment
+    ):
+        return False
+
+    _, maximum_hp = _mobile_base_hp_range(
+        _mobile_level_range(mobile.level),
+        rank=mobile.rank,
+    )
+    peak_round_damage = _mobile_peak_round_damage(
+        maximum_level,
+        wielding=False,
+        dual_wielding=False,
+    )
+    critical_hit_damage = _mobile_critical_hit_damage(
+        maximum_level,
+        wielding=False,
+    )
+    return (
+        maximum_hp <= character_max_hp
+        and peak_round_damage * 100
+        <= int(character_max_hp * _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO * 100)
+        and critical_hit_damage * 100
+        <= int(character_max_hp * _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO * 100)
+    )
+
+
 def rank_hunt_candidates(
     world: WorldSource,
     *,
@@ -2371,6 +2768,12 @@ def rank_hunt_candidates(
         for vnum, count in (boot_kill_counts_by_mobile_vnum or {}).items()
     }
     resets_by_room = _resets_by_room(world)
+    prototype_population_limits: dict[int, int] = {}
+    for reset in world.mob_resets:
+        prototype_population_limits[reset.mobile_vnum] = max(
+            prototype_population_limits.get(reset.mobile_vnum, 0),
+            reset.maximum_count,
+        )
     candidate_area_files = None if include_all_areas else set(LOW_LEVEL_AREA_FILES)
     wandering_aggressors = _wandering_aggressors(world)
     recall_origin_rooms: dict[int, int] = {0: RECALL_VNUM}
@@ -2395,6 +2798,24 @@ def rank_hunt_candidates(
         )
         for mobile, reset in wandering_aggressors
     }
+    # Index source reachability once, retaining reset order for stable evidence.
+    # Joining-only specials matter at the endpoint, not every transit room.
+    transit_wanderers: dict[int, set[int]] = {}
+    endpoint_wanderers: dict[int, set[int]] = {}
+    for index, (hazard, hazard_reset) in enumerate(wandering_aggressors):
+        if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
+            continue
+        room_index = (
+            transit_wanderers
+            if hazard.aggressive
+            or hazard.attack_programs
+            or _source_mobile_has_unsafe_special(world, hazard.vnum, hazard)
+            else endpoint_wanderers
+        )
+        for reachable_room in wanderer_reachability[
+            (hazard.vnum, hazard_reset.room_vnum)
+        ]:
+            room_index.setdefault(reachable_room, set()).add(index)
     source_keyword_counts = _source_keyword_counts(world)
     required_loot_vnums = {
         int(object_vnum) for object_vnum in required_loot_object_vnums
@@ -2612,11 +3033,9 @@ def rank_hunt_candidates(
             dangerous = True
             autonomy_rejections.append("source mobile is non-corporeal")
 
-        matching_target_capacity = sum(
-            room_reset.maximum_count
-            for room_reset in resets_by_room.get(room.vnum, ())
-            if room_reset.mobile_vnum == mobile.vnum
-        )
+        # db.c checks the prototype-global count for every M reset. A local
+        # reset with a smaller limit cannot bound spawns from other rooms.
+        matching_target_capacity = prototype_population_limits[mobile.vnum]
         if matching_target_capacity > 1:
             hazards.append(
                 "target reset permits up to "
@@ -2784,6 +3203,18 @@ def rank_hunt_candidates(
                     autonomy_rejections.append(
                         f"route crosses a higher-level {hazard_noun}"
                     )
+                elif (
+                    hazard.attack_programs
+                    and not hazard.aggressive
+                    and hazard_level_max
+                    <= character_level - _SOURCE_PROGRAM_PREFLIGHT_LEVEL_GAP
+                ):
+                    # A probabilistic, non-aggressive program such as the
+                    # level-2 drunk is exactly what the source-backed `where`
+                    # preflight handles. Its fuzzed upper bound may overlap
+                    # the ordinary five-level XP floor, but the live locator
+                    # lets the route avoid it before departure.
+                    continue
                 elif hazard_level_max > character_level - 5:
                     if _bounded_borderline_route_aggressor(
                         world,
@@ -2803,10 +3234,21 @@ def rank_hunt_candidates(
                 elif hazard.aggressive and hazard_level_max > (
                     character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
                 ):
-                    autonomy_rejections.append(
-                        "route crosses an aggressive transit attacker inside "
-                        "the transit-risk band"
-                    )
+                    if source_mobile_route_aggressor_is_bounded(
+                        world,
+                        hazard,
+                        character_level=character_level,
+                        character_max_hp=character_max_hp,
+                    ):
+                        hazards.append(
+                            "bounded low-risk aggressive transit mobile may be "
+                            "finished once"
+                        )
+                    else:
+                        autonomy_rejections.append(
+                            "route crosses an aggressive transit attacker inside "
+                            "the transit-risk band"
+                        )
                 elif (
                     path_reset.maximum_count
                     > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
@@ -2828,7 +3270,11 @@ def rank_hunt_candidates(
                     )
 
         path_room_set = set(path_rooms)
-        for hazard, hazard_reset in wandering_aggressors:
+        reachable_wanderers = set(endpoint_wanderers.get(path_rooms[-1], ()))
+        for path_room in path_room_set:
+            reachable_wanderers.update(transit_wanderers.get(path_room, ()))
+        for index in sorted(reachable_wanderers):
+            hazard, hazard_reset = wandering_aggressors[index]
             if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
                 continue
             unsafe_special = _source_mobile_has_unsafe_special(
@@ -2908,10 +3354,30 @@ def rank_hunt_candidates(
                 and hazard_level_max
                 > character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
             ):
-                autonomy_rejections.append(
-                    "an aggressive wanderer inside the transit-risk band "
-                    "can reach the route"
-                )
+                if source_mobile_route_aggressor_is_bounded(
+                    world,
+                    hazard,
+                    character_level=character_level,
+                    character_max_hp=character_max_hp,
+                ):
+                    hazards.append(
+                        "bounded low-risk aggressive wanderer may be finished once"
+                    )
+                else:
+                    autonomy_rejections.append(
+                        "an aggressive wanderer inside the transit-risk band "
+                        "can reach the route"
+                    )
+            elif (
+                hazard.attack_programs
+                and not hazard.aggressive
+                and hazard_level_max
+                <= character_level - _SOURCE_PROGRAM_PREFLIGHT_LEVEL_GAP
+            ):
+                # Keep the same two-level source-fuzz admission rule for a
+                # wandering program attacker. The exact `where` result is
+                # still required before the live route can start.
+                pass
             elif hazard_level_max > character_level - 5:
                 if _bounded_borderline_route_aggressor(
                     world,
@@ -2928,6 +3394,40 @@ def rank_hunt_candidates(
                         f"{hazard_article} {hazard_noun} inside the useful XP band "
                         "can reach the route"
                     )
+
+        # A single far-below-band probabilistic greet program can be checked
+        # once from the recall origin. Preserve the exact source identity and
+        # room map so the live starter can issue ``where`` before crossing the
+        # route; deterministic or multi-program routes remain ordinary hazards.
+        if (
+            route_preflight_room_vnum is None
+            and len(route_attack_program_mobile_vnums) == 1
+        ):
+            program_mobile = world.mobiles.get(
+                next(iter(route_attack_program_mobile_vnums))
+            )
+            if (
+                program_mobile is not None
+                and program_mobile.attack_programs
+                and not _source_mobile_has_deterministic_attack_program(
+                    program_mobile
+                )
+                and _mobile_level_range(program_mobile.level)[1]
+                <= character_level - _SOURCE_PROGRAM_PREFLIGHT_LEVEL_GAP
+            ):
+                route_preflight_room_vnum = str(route_origin_room_vnum)
+                route_preflight_command = (
+                    f"where {_source_mobile_where_keyword(program_mobile)}"
+                )
+                route_preflight_target = program_mobile.short_description
+                route_preflight_level_range = _mobile_level_range(
+                    program_mobile.level
+                )
+                route_preflight_hard_hazard = True
+                route_preflight_route_room_names = _source_route_room_names(
+                    world,
+                    path_rooms,
+                )
 
         if closed_doors:
             hazards.append(f"{closed_doors} closed door(s) on route")
@@ -3046,7 +3546,7 @@ def rank_hunt_candidates(
                 room_vnum=room.vnum,
                 room_name=room.name,
                 route=route,
-                source_spawn_limit=reset.maximum_count,
+                source_spawn_limit=matching_target_capacity,
                 room_spawn_count=room_spawn_count,
                 boot_kills=boot_kills,
                 loot=tuple(
@@ -3195,9 +3695,9 @@ def _parse_mobile_rank(
     start: int,
     end: int,
 ) -> str:
-    """Parse the optional ``< mobspec~ rank~`` prototype record."""
+    """Parse the rank from the optional ``< mobspec~ rank~`` record."""
     for line in lines[start:end]:
-        match = _MOBILE_RANK.match(line)
+        match = _MOBILE_TEMPLATE.match(line)
         if match is None:
             continue
         rank = " ".join(match.group("rank").casefold().split())
@@ -3205,10 +3705,27 @@ def _parse_mobile_rank(
     return "common"
 
 
+def _parse_mobile_template_name(
+    lines: list[str],
+    start: int,
+    end: int,
+) -> str | None:
+    """Parse the body-species/archetype name from a template record."""
+    for line in lines[start:end]:
+        match = _MOBILE_TEMPLATE.match(line)
+        if match is None:
+            continue
+        template = " ".join(match.group("template").casefold().split())
+        return template or None
+    return None
+
+
 def _parse_mobiles(
     lines: list[str],
     bounds: tuple[int, int] | None,
     area_file: str,
+    *,
+    mobile_templates: Mapping[str, MobileTemplateSource] | None = None,
 ) -> dict[int, MobileSource]:
     mobiles: dict[int, MobileSource] = {}
     if bounds is None:
@@ -3253,20 +3770,50 @@ def _parse_mobiles(
                     # Keep malformed or legacy records usable, but do not
                     # invent anatomy evidence for them.
                     body_form_flags = None
+        area_act_flags = _parse_bits(flag_parts[0])
+        area_affected_flags = _parse_bits(flag_parts[1])
+        area_body_form_flags = body_form_flags
+        template_name = _parse_mobile_template_name(lines, index, record_end)
+        template = (
+            mobile_templates.get(template_name)
+            if mobile_templates is not None and template_name is not None
+            else None
+        )
+        template_act_flags = template.act_flags if template is not None else 0
+        template_affected_flags = (
+            template.affected_flags if template is not None else 0
+        )
+        template_body_form_flags = (
+            template.body_form_flags if template is not None else 0
+        )
+        effective_body_form_flags = (
+            None
+            if body_form_flags is None
+            else body_form_flags ^ template_body_form_flags
+        )
         mobiles[vnum] = MobileSource(
             vnum=vnum,
             keywords=_clean_text(keywords),
             short_description=_clean_text(short_description),
             level=int(combat_parts[0]),
-            act_flags=_parse_bits(flag_parts[0]),
+            act_flags=area_act_flags ^ template_act_flags,
             alignment=int(flag_parts[2]),
             area_file=area_file,
             room_description=_clean_text(room_description),
-            affected_flags=_parse_bits(flag_parts[1]),
+            affected_flags=area_affected_flags ^ template_affected_flags,
             programs=_parse_mobile_programs(lines, index, record_end),
             teachings=_parse_mobile_teachings(lines, index, record_end),
-            body_form_flags=body_form_flags,
+            body_form_flags=effective_body_form_flags,
             rank=_parse_mobile_rank(lines, index, record_end),
+            template_name=template_name,
+            template_species=template.species if template is not None else None,
+            template_act_flags=template_act_flags,
+            template_affected_flags=template_affected_flags,
+            template_body_form_flags=template_body_form_flags,
+            xp_modifier=template.xp_modifier if template is not None else 0,
+            area_act_flags=area_act_flags,
+            area_affected_flags=area_affected_flags,
+            area_body_form_flags=area_body_form_flags,
         )
         index = record_end
     return mobiles
@@ -3866,6 +4413,7 @@ def _source_route_hazard_rejections(
     *,
     character_level: int,
     require_no_combat_hazards: bool = False,
+    combat_at_destination: bool = True,
 ) -> tuple[str, ...]:
     """Return source-backed combat hazards on a route, including its endpoint.
 
@@ -3878,7 +4426,9 @@ def _source_route_hazard_rejections(
         raise ValueError("character_level must be at least 1")
     path_room_sequence = tuple(path_rooms)
     path_room_set = set(path_room_sequence)
-    target_room_vnum = path_room_sequence[-1] if path_room_sequence else None
+    target_room_vnum = (
+        path_room_sequence[-1] if path_room_sequence and combat_at_destination else None
+    )
     resets_by_room = _resets_by_room(world)
     rejections: list[str] = []
     for room_vnum in path_room_set:
@@ -4169,13 +4719,15 @@ def source_route_hazard_rejections(
     *,
     character_level: int,
     require_no_combat_hazards: bool = False,
+    combat_at_destination: bool = True,
 ) -> tuple[str, ...]:
-    """Return source-backed hazards for an already selected room path."""
+    """Check a room path; noncombat endpoints omit only combat-only joiners."""
     return _source_route_hazard_rejections(
         world,
         path_rooms,
         character_level=character_level,
         require_no_combat_hazards=require_no_combat_hazards,
+        combat_at_destination=combat_at_destination,
     )
 
 

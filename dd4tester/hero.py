@@ -675,6 +675,22 @@ def _update_campaign_target(path: Path, target_level: int) -> None:
     if current_target >= target_level:
         return
     mapping["target_level"] = target_level
+    # Keep the generated operator-facing name aligned with the durable goal.
+    # Leave hand-written campaign names alone when they do not use the HERO
+    # entry point's ``<name> to ...`` convention.
+    current_name = str(mapping.get("name", "")).strip()
+    prefix_match = re.match(
+        r"^(?P<prefix>.+?)\s+to\s+(?:HERO|level\s+\d+)\s*$",
+        current_name,
+        flags=re.IGNORECASE,
+    )
+    if prefix_match:
+        prefix = prefix_match.group("prefix").strip()
+        mapping["name"] = (
+            f"{prefix} to HERO"
+            if target_level == 100
+            else f"{prefix} to level {target_level}"
+        )
     path.write_text(_render_yaml(mapping), encoding="utf-8")
 
 

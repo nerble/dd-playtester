@@ -16,6 +16,7 @@ from dd4tester.matrix import (
     provision_matrix_passwords,
     run_matrix_file,
 )
+from dd4tester.scenario import load_yaml_mapping
 from dd4tester.storage import RunStorage
 
 
@@ -32,6 +33,24 @@ def test_repository_matrix_covers_requested_contrasting_classes() -> None:
     assert len({entry.campaign.character.race for entry in spec.entries}) == 3
     assert len({entry.campaign.character.gender for entry in spec.entries}) == 3
     assert all(entry.campaign.character.subclass for entry in spec.entries)
+
+
+def test_active_hero_rotation_includes_all_hero_target_workspaces() -> None:
+    data = load_yaml_mapping(Path("matrices/active-hero-rotation.yaml"))
+
+    assert data["target_level"] == 100
+    assert [entry["id"] for entry in data["entries"]] == [
+        "aeloria",
+        "astrevo",
+        "dorrik",
+        "kestrel",
+        "praelarran",
+        "serevian",
+    ]
+    assert all(
+        str(entry["campaign"]).startswith("../runs/heroes/")
+        for entry in data["entries"]
+    )
 
 
 def test_repository_full_validation_matrix_declares_all_source_legal_pairs() -> None:
@@ -115,6 +134,7 @@ def test_live_matrix_coverage_requires_persisted_target_level_evidence(tmp_path)
 
 def test_live_matrix_coverage_requires_creation_evidence_for_strict_proof(
     tmp_path,
+    monkeypatch,
 ) -> None:
     matrix_path = _write_matrix(tmp_path)
     spec = load_matrix_spec(matrix_path)
@@ -163,6 +183,13 @@ def test_live_matrix_coverage_requires_creation_evidence_for_strict_proof(
             state={"name": mage.campaign.character.name, "level": 10},
         )
         storage.finish_campaign(campaign_id, status="success")
+
+    def unexpected_history_scan(*args, **kwargs):
+        raise AssertionError("matrix coverage must use bounded storage queries")
+
+    monkeypatch.setattr(RunStorage, "list_campaign_checkpoints", unexpected_history_scan)
+    monkeypatch.setattr(RunStorage, "list_campaign_segments", unexpected_history_scan)
+    monkeypatch.setattr(RunStorage, "list_events", unexpected_history_scan)
 
     covered = live_matrix_coverage(matrix_path)
 
@@ -336,6 +363,36 @@ def test_matrix_passes_bounded_segment_runtime_to_campaigns(tmp_path) -> None:
     assert result.status == "success"
     assert [item["path"] for item in observed] == ["mage", "thief", "warrior"]
     assert all(item["max_segment_runtime"] == 180 for item in observed)
+
+
+def test_matrix_forwards_progress_with_entry_context(tmp_path) -> None:
+    matrix_path = _write_matrix(tmp_path)
+    messages: list[str] = []
+
+    async def fake_campaign_runner(path, **kwargs):
+        progress_callback = kwargs.get("progress_callback")
+        assert progress_callback is not None
+        progress_callback("bounded attempt started")
+        return CampaignResult(
+            campaign_id=1,
+            status="success",
+            checkpoint_id=17,
+            message="checkpointed",
+            state={"level": 10},
+        )
+
+    result = asyncio.run(
+        run_matrix_file(
+            matrix_path,
+            campaign_runner=fake_campaign_runner,
+            progress_callback=messages.append,
+        )
+    )
+
+    assert result.status == "success"
+    assert messages[0].startswith("Starting matrix round 1/1")
+    assert any("mage: bounded attempt started" in message for message in messages)
+    assert any("Completed mage: status=success, level=10" in message for message in messages)
 
 
 def test_matrix_does_not_promote_blocked_high_level_result(tmp_path) -> None:

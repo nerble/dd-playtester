@@ -1,0 +1,16 @@
+name: Active HERO character rotation
+target_level: 100
+inter_character_delay: 2
+entries:
+  - id: aeloria
+    campaign: ../runs/heroes/aeloria/campaign.yaml
+  - id: astrevo
+    campaign: ../runs/heroes/astrevo/campaign.yaml
+  - id: dorrik
+    campaign: ../runs/heroes/dorrik/campaign.yaml
+  - id: kestrel
+    campaign: ../runs/heroes/kestrel/campaign.yaml
+  - id: praelarran
+    campaign: ../runs/heroes/human-male-warrior-base/campaign.yaml
+  - id: serevian
+    campaign: ../runs/heroes/serevian/campaign.yaml

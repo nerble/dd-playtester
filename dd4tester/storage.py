@@ -742,18 +742,37 @@ class RunStorage:
         row = cursor.fetchone()
         return str(row["boot_id"]) if row is not None else None
 
-    def list_events(self, run_id: int) -> list[sqlite3.Row]:
+    def list_events(self, run_id: int, *, limit: int | None = None) -> list[sqlite3.Row]:
         """Return the recorded evidence for a run in chronological storage order."""
+        if limit is not None and limit < 1:
+            raise ValueError("event limit must be positive")
         cursor = self.connection.execute(
             """
             SELECT id, run_id, timestamp, kind, payload_json
             FROM events
             WHERE run_id = ?
             ORDER BY id
-            """,
-            (run_id,),
+            """ + (" LIMIT ?" if limit is not None else ""),
+            (run_id, limit) if limit is not None else (run_id,),
         )
         return list(cursor.fetchall())
+
+    def get_latest_run_kill_event(self, run_id: int) -> sqlite3.Row | None:
+        """Read the latest kill ledger without materializing a run's transcript."""
+        return self.connection.execute(
+            """
+            SELECT id, run_id, timestamp, kind, payload_json
+            FROM events
+            WHERE run_id = ? AND kind = 'state'
+              AND (
+                  json_type(payload_json, '$.objective_kills') = 'array'
+                  OR json_type(payload_json, '$.completed_kills') = 'array'
+              )
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (run_id,),
+        ).fetchone()
 
     def repair_run_events_from_transcript(self, run_id: int) -> int:
         """Replay a transcript suffix that was not committed before a stop.
@@ -1567,6 +1586,71 @@ class RunStorage:
         )
         return cursor.fetchone()
 
+    def get_latest_campaign_checkpoint_at_or_above_level(
+        self,
+        campaign_id: int,
+        *,
+        target_level: int,
+        reasons: Collection[str],
+    ) -> sqlite3.Row | None:
+        """Return the newest checkpoint that can prove a target level.
+
+        Matrix inspection only needs an existence check.  Keep that path in
+        SQLite so a large campaign does not deserialize every historical
+        checkpoint just to find one accepted target record.
+        """
+        reason_values = tuple(dict.fromkeys(str(reason) for reason in reasons if reason))
+        if not reason_values:
+            return None
+        placeholders = ", ".join("?" for _ in reason_values)
+        cursor = self.connection.execute(
+            f"""
+            SELECT id, campaign_id, segment_id, run_id, phase, reason, created_at,
+                   state_json
+            FROM campaign_checkpoints
+            WHERE campaign_id = ?
+              AND reason IN ({placeholders})
+              AND COALESCE(
+                    CAST(json_extract(state_json, '$.level') AS INTEGER), 0
+                  ) >= ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (campaign_id, *reason_values, target_level),
+        )
+        return cursor.fetchone()
+
+    def campaign_has_creation_evidence(self, campaign_id: int) -> bool:
+        """Return whether a campaign has a persisted creation decision.
+
+        Join only the starter-run subset to the event index and stop at the
+        first matching decision.  Creation decisions are emitted by
+        ``StarterBotRunner`` with the durable ``starter:<name>`` scenario
+        prefix; avoiding later field runs keeps HERO inspection bounded.
+        """
+        cursor = self.connection.execute(
+            """
+            SELECT 1
+            FROM campaign_segments AS segment
+            JOIN runs AS run ON run.id = segment.run_id
+            JOIN events AS event ON event.run_id = segment.run_id
+            WHERE segment.campaign_id = ?
+              AND run.scenario_name LIKE 'starter:%'
+              AND event.kind = 'decision'
+              AND json_valid(event.payload_json)
+              AND (
+                    lower(COALESCE(json_extract(event.payload_json, '$.stage'), ''))
+                        LIKE 'create%'
+                    OR lower(
+                        COALESCE(json_extract(event.payload_json, '$.category'), '')
+                    ) = 'creation'
+                  )
+            LIMIT 1
+            """,
+            (campaign_id,),
+        )
+        return cursor.fetchone() is not None
+
     def list_campaign_checkpoints(self, campaign_id: int) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """
@@ -1679,7 +1763,18 @@ class RunStorage:
         self._recent_campaign_checkpoints_cache[cache_key] = rows
         return list(rows)
 
-    def list_state_snapshots(self, run_id: int) -> list[sqlite3.Row]:
+    def list_state_snapshots(
+        self, run_id: int, *, limit: int | None = None,
+    ) -> list[sqlite3.Row]:
+        if limit is not None:
+            if type(limit) is not int or limit < 1:
+                raise ValueError("snapshot limit must be a positive integer")
+            rows = self.connection.execute(
+                "SELECT id, run_id, source_event_id, timestamp, reason, state_json "
+                "FROM state_snapshots WHERE run_id = ? ORDER BY id DESC LIMIT ?",
+                (run_id, limit),
+            ).fetchall()
+            return list(reversed(rows))
         cursor = self.connection.execute(
             """
             SELECT id, run_id, source_event_id, timestamp, reason, state_json
@@ -1801,9 +1896,14 @@ class RunStorage:
         self.connection.commit()
         return found
 
-    def close(self) -> None:
-        self.connection.commit()
+    def flush(self) -> None:
+        """Release a buffered write transaction before yielding to live I/O."""
+        if self.connection.in_transaction:
+            self.connection.commit()
         self._events_since_commit = 0
+
+    def close(self) -> None:
+        self.flush()
         self.connection.close()
 
     def __enter__(self) -> "RunStorage":

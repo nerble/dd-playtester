@@ -5903,13 +5903,15 @@ def policy_for(
             )
         if quest.nextquest > 0:
             return replace(
-                _QUEST_POINTS_REQUIRED_POLICY,
+                _QUEST_REQUEST_POLICY,
+                policy_id="quest-cooldown",
                 minimum_level=context.level,
                 maximum_level=context.level,
                 summary=(
                     f"DD4 reports a {shortfall}-point quest shortfall, but the "
                     f"questmaster cooldown has {quest.nextquest} minute(s) "
-                    "remaining; preserve the checkpoint and wait."
+                    "remaining; stay connected at the healer, then request "
+                    "one bounded quest without logging out."
                 ),
                 practice_skill=context.practice_skill,
             )

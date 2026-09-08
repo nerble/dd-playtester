@@ -11,12 +11,16 @@ from dd4tester.hunt_candidates import (
     ACT_LOSE_FAME,
     ACT_SENTINEL,
     ACT_UNDEAD,
+    AFF_DETECT_MAGIC,
     AFF_CONFUSION,
     BODY_HUGE,
     BODY_INORGANIC,
     BODY_NO_HEAD,
     BODY_NO_ARMS,
+    BODY_NO_HEART,
+    BODY_NO_LEGS,
     BODY_NO_EYES,
+    PART_HEAD,
     PART_MANY_ARMS,
     ITEM_FOOD,
     ITEM_MONEY,
@@ -25,6 +29,7 @@ from dd4tester.hunt_candidates import (
     ITEM_WAND,
     ExitSource,
     MobileSource,
+    MobileTemplateSource,
     MobileProgram,
     MobReset,
     ObjectSource,
@@ -46,6 +51,7 @@ from dd4tester.hunt_candidates import (
     mobile_sanctuary_critical_hit_damage,
     mobile_sanctuary_peak_round_damage,
     load_object_sources,
+    load_mobile_template_catalog,
     load_world_source,
     parse_area_file,
     rank_hunt_candidates,
@@ -62,6 +68,8 @@ from dd4tester.hunt_candidates import (
     source_class_teacher_route,
     source_class_teacher_skill,
     source_mobile_can_join_player_fight,
+    source_mobile_route_aggressor_is_bounded,
+    source_mobile_route_program_attacker_is_bounded,
     source_subclass_teacher_route,
     source_subclass_teacher_skill,
     WEAR_HOLD,
@@ -123,6 +131,25 @@ def test_required_consumable_can_rank_a_carrier_without_saleable_loot() -> None:
 
     assert candidate.mobile_vnum == 100
     assert candidate.loot == ("a black potion",)
+
+
+@pytest.mark.parametrize("character_class,skills", [
+    ("warrior", {"kick": 35}), ("thief", {"circle": 35, "backstab": 35}),
+])
+@pytest.mark.parametrize("hidden", [50000, "50000"])
+def test_source_damage_ignores_dd4_concealed_stat_sentinel(character_class, skills, hidden):
+    params = dict(
+        character_level=8, character_class=character_class,
+        known_skills=tuple(skills), known_skill_levels=skills,
+        weapon_damage_range=(5, 7), weapon_vnum=3020, weapon_damage_type=2,
+        target_body_form_flags=0,
+    )
+    baseline = source_combat_output_estimate(**params, player_damroll=0, player_swiftness=None)
+    hidden_output = source_combat_output_estimate(
+        **params, player_damroll=hidden, player_swiftness=hidden,
+    )
+    assert baseline is not None
+    assert hidden_output == baseline
 
 
 def test_required_consumable_can_rank_a_mob_equipped_carrier() -> None:
@@ -1081,6 +1108,96 @@ An elite guardian stands here.~
     assert ranked == (40, 325)
 
 
+def test_source_mobile_template_catalog_matches_dd4_resolution(tmp_path: Path) -> None:
+    source_root = Path("runs/dd4-source/server/src")
+    templates = load_mobile_template_catalog(source_root)
+
+    elemental = templates["fire_elemental"]
+    assert elemental.species == "elemental"
+    assert elemental.act_flags & ACT_UNDEAD
+    assert elemental.affected_flags & AFF_DETECT_MAGIC
+    assert elemental.body_form_flags == (
+        BODY_NO_ARMS
+        | BODY_NO_LEGS
+        | BODY_NO_HEART
+        | BODY_INORGANIC
+        | PART_HEAD
+    )
+    assert elemental.xp_modifier == 5
+
+    area_file = tmp_path / "templated.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+fire elemental~
+the fire elemental~
+A fire elemental is here.~
+~
+0 0 0 S
+5 0 0 0d0+0 0d0+0
+0 0
+8 8 0
+< fire_elemental~ common~
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+
+    mobile = parse_area_file(
+        area_file,
+        include_objects=False,
+        mobile_templates=templates,
+    ).mobiles[100]
+    assert mobile.template_name == "fire_elemental"
+    assert mobile.template_species == "elemental"
+    assert mobile.area_act_flags == 0
+    assert mobile.act_flags & ACT_UNDEAD
+    assert mobile.affected_flags & AFF_DETECT_MAGIC
+    assert mobile.body_form_flags == elemental.body_form_flags
+    assert mobile.xp_modifier == 5
+
+
+def test_mobile_template_area_masks_cancel_inherited_flags(tmp_path: Path) -> None:
+    template = MobileTemplateSource(
+        name="templated",
+        species="humanoid",
+        act_flags=ACT_UNDEAD,
+        affected_flags=AFF_DETECT_MAGIC,
+        body_form_flags=BODY_HUGE,
+        xp_modifier=7,
+    )
+    area_file = tmp_path / "override.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+templated guard~
+the templated guard~
+A templated guard is here.~
+~
+1073741856 16 0 S
+5 0 0 0d0+0 0d0+0
+128 0
+8 8 0
+< templated~ common~
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+    source = parse_area_file(
+        area_file,
+        include_objects=False,
+        mobile_templates={"templated": template},
+    ).mobiles[100]
+    assert source.act_flags == ACT_AGGRESSIVE
+    assert source.affected_flags == 0
+    assert source.body_form_flags == 0
+    assert source.xp_modifier == 7
+
+
 def test_candidate_ranking_uses_mobile_rank_for_hp_estimates() -> None:
     area = parse_area_file(FIXTURE)
     area.mobiles[100] = replace(area.mobiles[100], rank="elite")
@@ -1767,6 +1884,149 @@ def test_rank_food_stashes_preflights_probabilistic_route_program() -> None:
     )
 
 
+def test_rank_hunt_candidates_preflights_probabilistic_route_program() -> None:
+    world = WorldSource(
+        mobiles={
+            200: MobileSource(
+                200,
+                "drunk man",
+                "the drunk",
+                2,
+                0,
+                0,
+                "midgaard.are",
+                programs=(
+                    MobileProgram(
+                        "greet_prog",
+                        "10",
+                        ("mpkill $n",),
+                    ),
+                ),
+            ),
+            300: MobileSource(
+                300,
+                "plain sentinel",
+                "a plain sentinel",
+                20,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(
+                7001,
+                "Fido street",
+                "target.are",
+                exits={"north": ExitSource("north", 7002, 0, -1)},
+            ),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(300, 7002, 1, ()),
+        ],
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=25,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+
+    assert candidate.target == "a plain sentinel"
+    assert candidate.autonomous_safe
+    assert candidate.route_preflight_room_vnum == "3001"
+    assert candidate.route_preflight_command == "where drunk"
+    assert candidate.route_preflight_target == "the drunk"
+    assert candidate.route_preflight_level_range == (1, 4)
+    assert candidate.route_preflight_hard_hazard is True
+    assert candidate.route_preflight_route_room_names == (
+        "recall",
+        "fido street",
+        "target room",
+    )
+    assert candidate.route_attack_program_mobile_vnums == (200,)
+
+
+def test_rank_hunt_candidates_preflights_two_level_below_program_at_level_eight() -> None:
+    world = WorldSource(
+        mobiles={
+            200: MobileSource(
+                200,
+                "drunk man",
+                "the drunk",
+                2,
+                0,
+                0,
+                "midgaard.are",
+                programs=(
+                    MobileProgram(
+                        "greet_prog",
+                        "10",
+                        ("mpkill $n",),
+                    ),
+                ),
+            ),
+            300: MobileSource(
+                300,
+                "plain sentinel",
+                "a plain sentinel",
+                5,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(
+                7001,
+                "Fido street",
+                "target.are",
+                exits={"north": ExitSource("north", 7002, 0, -1)},
+            ),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(300, 7002, 1, ()),
+        ],
+    )
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=8,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+    [candidate] = [
+        item for item in candidates if item.target == "a plain sentinel"
+    ]
+
+    assert candidate.target == "a plain sentinel"
+    assert candidate.status == "caution"
+    assert candidate.autonomy_rejections == ()
+    assert candidate.route_preflight_room_vnum == "3001"
+    assert candidate.route_preflight_command == "where drunk"
+    assert candidate.route_preflight_target == "the drunk"
+    assert candidate.route_preflight_level_range == (1, 4)
+    assert candidate.route_preflight_hard_hazard is True
+    assert candidate.route_attack_program_mobile_vnums == (200,)
+
+
 def test_candidate_ranking_values_mixed_denominations_on_mobile_loot() -> None:
     world = WorldSource(
         mobiles={
@@ -2085,6 +2345,158 @@ def test_candidate_records_exact_aggressive_route_mobile_for_policy_gates() -> N
     assert candidate.route_aggressive_mobile_vnums == (200,)
     assert candidate.route_attack_program_mobile_vnums == ()
     assert candidate.route_special_mobile_vnums == ()
+
+
+def test_candidate_admits_bounded_below_band_aggressive_route_mobile() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "target",
+                "the field target",
+                18,
+                0,
+                0,
+                "target.are",
+            ),
+            200: MobileSource(
+                200,
+                "goblin",
+                "the low-risk goblin",
+                7,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(
+                7001,
+                "Transit",
+                "target.are",
+                exits={"north": ExitSource("north", 7002, 0, -1)},
+            ),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 4, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=18,
+        character_max_hp=218,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert any(
+        "bounded low-risk aggressive transit mobile" in hazard
+        for hazard in candidate.hazards
+    )
+    assert candidate.route_aggressive_mobile_vnums == (200,)
+    assert source_mobile_route_aggressor_is_bounded(
+        world,
+        world.mobiles[200],
+        character_level=18,
+        character_max_hp=218,
+    )
+
+
+def test_bounded_route_aggressor_rejects_an_armed_source_reset() -> None:
+    world = WorldSource(
+        mobiles={
+            200: MobileSource(
+                200,
+                "goblin",
+                "the armed goblin",
+                7,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            )
+        },
+        mob_resets=[MobReset(200, 7001, 1, (), ((16, 9001),))],
+    )
+
+    assert not source_mobile_route_aggressor_is_bounded(
+        world,
+        world.mobiles[200],
+        character_level=18,
+        character_max_hp=218,
+    )
+
+
+def test_bounded_route_program_attacker_accepts_low_chance_unarmed_greeter() -> None:
+    mobile = MobileSource(
+        3064,
+        "drunk",
+        "the drunk",
+        2,
+        0,
+        400,
+        "midgaard.are",
+        programs=(MobileProgram("greet_prog", "10", ("mpkill $n",)),),
+    )
+    world = WorldSource(
+        mobiles={3064: mobile},
+        mob_resets=[MobReset(3064, 3007, 3, ())],
+    )
+
+    assert source_mobile_route_program_attacker_is_bounded(
+        world,
+        mobile,
+        character_level=8,
+        character_max_hp=113,
+    )
+
+
+@pytest.mark.parametrize(
+    ("program", "maximum_count", "equipment", "max_hp"),
+    (
+        (MobileProgram("greet_prog", "100", ("mpkill $n",)), 3, (), 113),
+        (MobileProgram("rand_prog", "10", ("mpkill $n",)), 3, (), 113),
+        (MobileProgram("greet_prog", "10", ("mpkill $n",)), 4, (), 113),
+        (MobileProgram("greet_prog", "10", ("mpkill $n",)), 3, ((16, 50),), 113),
+        (MobileProgram("greet_prog", "10", ("mpkill $n",)), 3, (), 50),
+    ),
+)
+def test_bounded_route_program_attacker_rejects_unbounded_source_evidence(
+    program: MobileProgram,
+    maximum_count: int,
+    equipment: tuple[tuple[int, int], ...],
+    max_hp: int,
+) -> None:
+    mobile = MobileSource(
+        3064,
+        "drunk",
+        "the drunk",
+        2,
+        0,
+        400,
+        "midgaard.are",
+        programs=(program,),
+    )
+    world = WorldSource(
+        mobiles={3064: mobile},
+        mob_resets=[MobReset(3064, 3007, maximum_count, (), equipment)],
+    )
+
+    assert not source_mobile_route_program_attacker_is_bounded(
+        world,
+        mobile,
+        character_level=8,
+        character_max_hp=max_hp,
+    )
 
 
 def test_armed_mobile_damage_keeps_ordinary_peak_separate_from_critical_burst() -> None:

@@ -378,7 +378,7 @@ def test_completed_quest_returns_to_questmaster_for_reward() -> None:
     assert policy.execution == "quest-complete"
 
 
-def test_quest_cooldown_keeps_the_level_gate_explicitly_unavailable() -> None:
+def test_quest_cooldown_keeps_the_level_gate_and_waits_on_one_connection() -> None:
     policy = policy_for(
         24,
         "mage",
@@ -387,8 +387,9 @@ def test_quest_cooldown_keeps_the_level_gate_explicitly_unavailable() -> None:
         quest_status={"status": "available", "nextquest": 15},
     )
 
-    assert policy.policy_id == "quest-points-required"
-    assert policy.executable is False
+    assert policy.policy_id == "quest-cooldown"
+    assert policy.execution == "quest-request"
+    assert policy.executable is True
     assert "15 minute" in policy.summary
 
 

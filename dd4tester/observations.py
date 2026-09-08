@@ -6,6 +6,17 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def valid_enemy_snapshot(value: Any, *, depth: int = 0) -> bool:
+    """Accept DD4 enemy arrays/records, never a failed JSON decode as no enemies."""
+    if depth > 8:
+        return False
+    if isinstance(value, list):
+        return all(valid_enemy_snapshot(item, depth=depth + 1) for item in value)
+    if isinstance(value, dict):
+        return isinstance(value.get("name"), str) and bool(value["name"].strip())
+    return False
+
+
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _ROOM = re.compile(r"^Room:\s*(?P<name>.+)$", re.IGNORECASE)
 _EXITS = re.compile(r"^\[Exits:\s*(?P<exits>[^\]]*)\]$", re.IGNORECASE)
@@ -382,6 +393,10 @@ class ObservationParser:
             "char.enemies": "enemies_changed",
         }
         snapshot_type = snapshot_types.get(normalized)
+        if normalized == "char.enemies" and not valid_enemy_snapshot(payload):
+            return [GameEvent("gmcp_snapshot_rejected", "gmcp", {
+                "package": package, "reason": "invalid enemy snapshot", "value": payload,
+            })]
         if snapshot_type is not None and self._gmcp_snapshots.get(normalized) != payload:
             self._gmcp_snapshots[normalized] = payload
             events.append(
@@ -860,6 +875,8 @@ class ObservationParser:
 
     @staticmethod
     def _gmcp_data(package: str, payload: Any) -> dict[str, Any]:
+        if package.casefold() == "char.enemies":
+            return {"package": package, "value": payload}
         if isinstance(payload, dict):
             return {**payload, "package": package}
         return {"package": package, "value": payload}

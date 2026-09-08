@@ -1486,6 +1486,7 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert "move_cost\tflight_cost\trequires_flight" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
     assert "autonomy_rejections" in captured.out
+    assert "template\txp_modifier\tundead" in captured.out
     assert "caution\t" in captured.out
     assert "the dangerous guard" in captured.out
     assert "reachable wanderer: a cellar rat L3" in captured.out

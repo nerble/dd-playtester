@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 
 _DIRECTIONS = {
@@ -41,11 +42,22 @@ class Fastwalk:
     route_preflight_command: str | None = None
     route_preflight_target: str | None = None
     route_preflight_hard_hazard: bool = False
+    # Source-ranked routes set this only when the catalog proved one
+    # non-deterministic attack program whose live location can be rechecked.
+    route_preflight_retryable: bool = False
     # Normalized room names on this route where a probabilistic preflight
     # target is unsafe.  A live `where` result outside these rooms permits
     # the route to continue while the ordinary combat gates remain active.
     route_preflight_route_room_names: tuple[str, ...] = ()
+    # `where` only searches the caller's current area. Source-ranked routes
+    # therefore scan each adjacent destination the preflight mobile can reach.
+    route_preflight_scan_room_vnums: tuple[str, ...] = ()
     route_hard_hazard_targets: tuple[str, ...] = ()
+    # Generated source routes already carry their complete route-program
+    # analysis. Fixed routes are marked after the campaign dispatcher audits
+    # their source path so that the two policies cannot overwrite each other.
+    route_source_program_audited: bool = False
+    route_source_program_block_reason: str | None = None
     route_origin_recall_index: int = 0
     route_origin_room_vnum: int = 3001
     # A route may be split at source-audited no-mob rooms for movement
@@ -60,6 +72,7 @@ class Fastwalk:
         return expand_fastwalk(self.notation)
 
 
+@lru_cache(maxsize=1024)
 def expand_fastwalk(notation: str) -> tuple[str, ...]:
     """Expand DD4 compact notation such as ``2s6e8n`` into commands."""
     commands: list[str] = []
