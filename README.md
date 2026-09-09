@@ -85,11 +85,118 @@ not require a reboot. Missing observations and ordinary loss, route, resource,
 and protection gates still block execution. `--retry-stalled` permits one bounded
 frontier rotation, not a safety override.
 
+The normal attempt limit still ends the invocation even when reset retries
+remain. A funding-exhausted `ready` result can represent an area-reset wait;
+read its message as well as its status. A new bounded invocation can use its
+own explicit retry budget; do not run duplicate workers.
+
+Resume also reconciles losses first observed after a disconnect. A verified
+same-level XP decrease sets a lower bound on `campaign_xp_loss_total`, even
+without a captured penalty message. This does not invent a death or identify
+the command that caused the loss. Replaying saved history cannot charge the
+same decrease twice; explicit larger loss counters remain authoritative.
+
+For wandering hunt targets and funding carriers, the runner can stop the approach at a verified
+waypoint in the same area and locate the target before visiting its reset
+room. Fresh results choose a source-checked route; uncertain approaches keep
+the original plan. This saves travel without adding searches or retry budgets.
+Ordinary hunts retain any required familiar staging waypoint before locating
+the target. Specialised transit-recovery plans, closed or random approaches,
+and routes whose required preflight would be omitted keep the original route.
+If a below-band wanderer is intercepted before the planned destination, the
+runner retains its exact route position and continues the unvisited path.
+It does not jump to the following leg as though it had reached the endpoint.
+Later targets still need fresh consideration; no search or retry budget grows.
+An intercepted room check retains control after a bystander response. The
+remaining exact target must receive its own consider before travel or attack;
+an inconclusive check cannot silently resume the outbound route. This handoff
+is replay-tested, with fresh live acceptance still pending.
+A uniquely source-identified sentinel seen beside its planned reset room can
+also be considered on approach. This requires a fresh exact instance and
+matching source/live room exits; normal crowd, combat, and loss gates remain.
+The displaced-target behavior is replay-tested, not yet live-validated.
+Restricted protection-carrier trips can query the exact source identity before
+their final approach, then search accessible source-mapped rooms. The bounded
+plan retains excluded locations as sightings rather than reporting area absence;
+it does not grant access to hazardous deep routes or bypass combat checks.
+The deep-reserve fallback can use this same search from level 16 when
+invisibility is source-authorized and positively practiced. A fresh live effect
+is still required. Lower-level or unqualified characters retain the restricted
+reset-room plan; the change does not grant a new retry or reduce required loot.
+When an exactly identified carrier shares its room with one ordinary bystander,
+the runner uses its existing bystander consideration and bounded crowd waits.
+Only fresh evidence can discount that bystander; the carrier still requires
+its own normal combat checks. Dangerous or unidentified crowds remain blocked.
+An absent carrier in a fully source-identified passive room can use the normal
+search continuation to the next already-planned endpoint. This is not combat
+permission, and it adds neither locator queries nor route alternatives.
+On resume, checkpoint cleanup does not treat an inherited field-abort message
+as a fresh funding failure. A completed, safely returned carrier run can repair
+that exact replayed restriction; newer failures and other route hazards remain.
+
+Positive, source-tagged funding kills also update their exact hunting-route
+reward evidence. Their runs remain funding segments, and XP is not counted
+twice. A fed character may prefer an executable ground hunt when the latest
+same-reboot carrier sale cannot cover the observed flight-price shortfall.
+Food, protection, loss, and retry requirements still apply; this preference
+does not authorize another loan or an extra trip for missing protection.
+
+If an identified familiar finishes the pending target before the player can
+attack, the runner records a zero-XP encounter, cancels that player opener,
+and preserves corpse looting. This is not character progression; ordinary
+player XP must still be observed. The opening-death fix is replay-verified.
+
+Familiar preparation waits for its own summon, room-listing, and grouping
+acknowledgements within one 30-second deadline. Unrelated world messages do not
+trigger a duplicate cast or immediate recall. Temporary confirmation failures
+retain the normal bounded retry; explicit refusals and identity failures do not.
+
+A freshly considered easy-kill load may instead use a source-budgeted solo
+fight. The runner first confirms that its owned companion is asleep, then
+uses the existing timed encounter and measured-damage checks without companion
+damage credit. It confirms the companion is awake before ordinary onward
+travel. Each acknowledgement is capped at five seconds; an uncertain handoff
+returns to recovery. Stronger or underfunded targets keep the normal familiar
+path. No new CLI option is required. This does not yet avoid summoning costs.
+Solo continuation uses the opponent's remaining health, current spell costs,
+observed damage rate, and the original time/command limits. A single missed
+spell or narrowly missed opening-damage threshold is not itself a retreat.
+The live sleep/opening sequence is confirmed; a complete solo kill/wake cycle
+with this continuation correction still needs live acceptance.
+
 A roaming city obstruction can trigger up to three 12-second healer waits
 within a shop segment, each followed by a fresh location check. Persistent
 obstruction normally stops travel. Invisibility requires source authorization,
 positive observed practice, sufficient mana, and an awake noncombat state;
 class and level alone do not authorize a cast.
+
+For source-audited field routes, fresh active invisibility can also suppress
+an ordinary sight-dependent greeting hazard. This does not bypass detecting
+mobiles, all-greeting programs, unrelated hazards, or combat checks. Expiry,
+an explicit invisibility-loss message, or reconnection revokes the exemption;
+saved effects alone never grant it. Route messages distinguish the observation
+room from the reported mobile location. No additional CLI option is needed.
+
+Required-loot carrier searches can use the same source-proven visibility rule
+for ordinary aggressive transit mobiles. The character must have an audited
+class path, positive observed `invis` practice, and a live effect that the
+runner maintains while moving. Detect-invisibility, scripts, equipped reset
+objects, pre-combat specials, and unknown behavior remain hard exclusions.
+This may inspect up to 12 rooms within the existing 24-step circuit; target,
+consider, crowd, resource, and return-home gates are unchanged.
+Because `where` reports display labels rather than room VNUMs, a bounded plan
+preserves coverage for distinct labels before adding duplicate names. A field
+`look` completes only after an actual room listing. Unrelated status output is
+ignored; silence receives one five-second retry and then a safe abort. An empty
+locator path never rechecks a room already proved empty.
+
+An ordinary aggressive transit mobile with a combat-only special follows the
+same source aggression cutoff as its normal attack. The route remains blocked
+when the highest fuzzed mobile level is within ten levels of the character;
+only a strictly larger gap makes that special inert before combat. Pre-combat,
+economic, scripted, equipped, unknown, engaged, and endpoint hazards remain
+blocked. This rule can widen an existing bounded locator circuit, but it adds no
+room, step, query, retry, combat, or resource permission.
 
 When a city obstruction is recorded, the existing world-time probe also makes
 one observation-only `where drunk` check at the healer. A fresh off-route
@@ -104,6 +211,26 @@ unidentified enemies, changed source bounds, or the segment deadline force
 withdrawal. A failed attempt remains excluded at the same level/reboot; missing
 reboot evidence never grants a retry. Purchase failures and loan limits remain.
 The audit is stored as `campaign_city_shop_transit`; timers are connection-local.
+
+Source-backed field departures also check the actual Midgaard route and fountain
+when guard assistance cannot be ruled out by revealed alignment. This shares
+the bounded city locator/wait behavior; it adds no retries to the campaign.
+`campaign_field_city_preflight` records the result separately from shopping.
+Unknown GMCP alignment is not a good-alignment bonus: the current server sends
+the sentinel 50000 below level 10. Raw packets remain unchanged in transcripts.
+A confirmed healer-origin departure deferral stops the current invocation after
+its existing short waits. It consumes the segment but not a funding-target or
+hunting-endpoint attempt. Resume later for a fresh city check; this outcome does
+not automatically spend an area-reset retry or rotate through other blocked
+destinations. The checkpoint reason is `field_city_departure_blocked`.
+
+A below-band target is still skipped for XP. If it has already attacked at its
+registered endpoint, one exactly identified ordinary enemy may use the existing
+30-second combat-finishing budget instead of an automatic XP-losing retreat.
+Source hazards, fresh health/mana, nutrition, extra attackers, and command
+acknowledgements still govern continuation. Its kill is incidental, never a
+repeatable XP objective. Inspect `campaign_fastwalk_encounter_budgets` for the
+`below-band-endpoint-defense` audit; no new CLI option is required.
 
 Run only one gameplay worker at a time. After an interrupted worker has stopped:
 
@@ -133,6 +260,12 @@ python -m dd4tester report 12767 --format json --output reports/run-12767.json
 Reports distinguish XP, kills, losses, deaths, decisions, and recovery. Non-secret
 title, description, and personality remain in run context. Commentary derives
 from stored events; a report does not itself prove autonomous HERO progression.
+The parser now reconciles DD4's LF-CR flee/refund lines with GMCP without
+subtracting the same loss twice. Historical records are not rewritten:
+run 12816's raw GMCP confirms 28,815 XP (net -53), while checkpoint 39419
+incorrectly retains 28,747. Fresh recovery run 12820 confirmed 28,815 and the
+normal public resume saved it in checkpoint 39433. This correction is not
+earned XP; the genuine loss and original audit records remain relevant.
 For multi-stop source hunts, the circuit name is not the killed target's
 identity. Reconnect reconstruction uses each kill's source policy ID and keeps
 later stop-specific failures distinct from that earlier success.
@@ -162,6 +295,10 @@ configure other destinations. Run records retain the actual transcript path.
 SQLite tables: `runs`, `events`, `state_snapshots`, `character_commands`,
 `character_acquired_items`, `character_item_backfills`, `loot_sales`, `mob_kills`,
 `campaigns`, `campaign_segments`, `campaign_checkpoints`, and `campaign_usage`.
+
+`loot_sales.sold_coins` and campaign funding `proceeds` are gross shop prices,
+not necessarily carried income. Shops divert part of a sale toward outstanding
+bank debt; use the live currency snapshots and loan notice to reconcile cash.
 
 ```powershell
 python -m dd4tester show-transcript transcripts/login-1.jsonl --raw
@@ -221,8 +358,18 @@ python -m pytest -q tests/test_damage_window_timing.py
 python -m compileall -q dd4tester tests
 ```
 
-Latest full offline verification: **4,670 tests pass**. Tests do not establish
-live progression. The [contributor guide](AGENTS.md) defines coding, evidence,
-and local-only commit rules. The [preserved README](docs/history/README_2026-09-08.md)
-retains earlier details and run history; superseded defaults there are not the
-current operating contract.
+Latest full offline verification: **5,424 tests pass**. Reconnect accounting
+preserves verified XP decreases first observed after disconnection, without
+double-counting or inventing their cause. Kestrel checkpoint 39707 remains
+level 24 at 333,258 XP after the interrupted Circus attempt.
+
+Run 12880 live-validated Aeloria's invisible carrier-search handoff, reaching
+both carriers together, but duplicate-target handling prevented consideration.
+That handoff is now fixed and replay-tested; fresh potion acquisition is still
+pending. Checkpoint 39727 remains level 18 at 161,091 XP with one purple potion.
+Both characters are at healer 3054 with full HP. Neither this work nor safe
+recovery establishes a new level, sustained progression, or HERO. The
+[contributor guide](AGENTS.md) defines coding, evidence, and local-only commit
+rules. The [preserved README](docs/history/README_2026-09-08.md) retains earlier
+details and run history; superseded defaults there are not the current
+operating contract.

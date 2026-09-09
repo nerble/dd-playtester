@@ -1,7 +1,7 @@
 """Source-bounded city shopping and one session-local defensive interruption."""
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .hunt_candidates import (
     WorldSource, _mobile_base_hp_range, _mobile_level_range,
@@ -45,6 +45,45 @@ def _number(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def observed_guard_safe_alignment(value: Any) -> bool:
+    """Hidden GMCP alignment (50000) is not evidence for spec_guard's gate."""
+    alignment = _number(value)
+    return alignment is not None and 300 <= alignment <= 1000
+
+
+def field_city_route_rooms(
+    world: WorldSource | None, commands: Sequence[str], *, origin: int,
+    alignment: Any,
+) -> tuple[str, ...]:
+    """Scope the existing locator to the actual Midgaard departure and refill."""
+    if world is None or origin != 3001 or observed_guard_safe_alignment(alignment):
+        return ()
+    greeter = world.mobiles.get(CITY_GREETER_VNUM)
+    if greeter is None or greeter.area_file != "midgaard.are" or not greeter.attack_programs:
+        return ()
+    if not any(
+        "spec_guard" in specials and vnum in world.mobiles
+        and world.mobiles[vnum].area_file == "midgaard.are"
+        for vnum, specials in world.mobile_specials.items()
+    ):
+        return ()
+    names = [world.rooms[vnum].name for vnum in (3054, 3001, 3005)
+             if vnum in world.rooms]
+    room = world.rooms.get(origin)
+    for command in commands:
+        if room is None or room.area_file != "midgaard.are" or room.random_exits:
+            break
+        if command.startswith("open "):
+            continue
+        exit_ = room.exits.get(command)
+        if exit_ is None:
+            break
+        room = world.rooms.get(exit_.destination)
+        if room is not None and room.area_file == "midgaard.are":
+            names.append(room.name)
+    return tuple(dict.fromkeys(names))
 
 
 @dataclass

@@ -165,6 +165,7 @@ class ObservationParser:
 
     def __init__(self, expected_character_name: str | None = None) -> None:
         self._pending_text = ""
+        self._line_break_leader: str | None = None
         self._health: int | float | None = None
         self._level: int | None = None
         self._dead = False
@@ -191,7 +192,7 @@ class ObservationParser:
         self.expected_character_name = _normalized_name(name)
 
     def feed_text(self, text: str) -> list[GameEvent]:
-        cleaned = _ANSI_ESCAPE.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
+        cleaned = self._normalize_line_breaks(_ANSI_ESCAPE.sub("", text))
         self._pending_text += cleaned
         lines = self._pending_text.split("\n")
         self._pending_text = lines.pop()
@@ -205,6 +206,21 @@ class ObservationParser:
             events.extend(self._parse_line(self._pending_text))
             self._pending_text = ""
         return events
+
+    def _normalize_line_breaks(self, text: str) -> str:
+        """Fold CR-LF and DD4's LF-CR, including pairs split across reads."""
+        normalized: list[str] = []
+        for char in text:
+            leader = self._line_break_leader
+            self._line_break_leader = None
+            if leader is not None and char in {"\r", "\n"} and char != leader:
+                continue
+            if char in {"\r", "\n"}:
+                normalized.append("\n")
+                self._line_break_leader = char
+            else:
+                normalized.append(char)
+        return "".join(normalized)
 
     def flush_text(self) -> list[GameEvent]:
         if not self._pending_text:
@@ -232,6 +248,7 @@ class ObservationParser:
     def reset_connection(self) -> None:
         """Discard connection-scoped parsing state before a reconnect."""
         self._pending_text = ""
+        self._line_break_leader = None
         self._previous_line = None
         self._pending_experience_loss = None
         self._recall_list_active = False

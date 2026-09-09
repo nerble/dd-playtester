@@ -14,11 +14,18 @@ from pathlib import Path
 from typing import Any, Callable, Collection, Iterable, Mapping
 
 from .archetypes import archetype_registry
-from .visibility import learned_invisibility_mana_cost
-from .city_travel import CityShopTransit, bounded_city_shop_transit_available
+from .visibility import (
+    invisibility_blocks_source_aggression,
+    invisibility_blocks_source_greet,
+    learned_invisibility_mana_cost,
+)
+from .city_travel import (
+    CityShopTransit, bounded_city_shop_transit_available, field_city_route_rooms,
+    observed_guard_safe_alignment,
+)
 from .character import CharacterSpec, load_character_spec
 from .companions import (
-    FamiliarPreparation, FamiliarWithdrawal, companion_finishing_blow, learned_familiar_available,
+    FamiliarPreparation, FamiliarStandby, FamiliarWithdrawal, companion_finishing_blow, learned_familiar_available,
 )
 from .combat_timing import (
     COMBAT_WAIT_SECONDS, CombatCommandWindow, SPELL_MIN_MANA,
@@ -33,8 +40,9 @@ from .connection import CommandConnection, ReadResult, TelnetConnection
 from .credentials import CredentialStoreError, load_character_password
 from .decisions import classify_decision
 from .encounters import (
-    ObservedTargetIdentity, SourcePairEncounter, active_encounter_budget,
-    source_pair_budget,
+    DisplacedTargetIdentity, ObservedTargetIdentity, SourcePairEncounter,
+    active_encounter_budget, displaced_sentinel_reset_room,
+    solo_continuation_budget, source_pair_budget, source_solo_budget,
 )
 from .equipment import (
     GearCatalog,
@@ -82,6 +90,7 @@ from .hunt_candidates import (
     potion_spell_names,
     source_class_teacher_route,
     source_route_hazard_rejections,
+    source_route_requires_flight,
     source_subclass_teacher_route,
     source_mobile_search_rooms,
     source_mobile_identities as _canonical_source_mobile_identities,
@@ -1441,6 +1450,12 @@ _MOVEMENT_RECOVERY_CHECK_SECONDS = 30
 _COMMAND_PROMPT_MIN_SECONDS = 0.05
 _POST_FLEE_AUDIT_GRACE_SECONDS = 0.75
 _WHERE_RESPONSE_GRACE_SECONDS = 1.5
+_FIELD_LOOK_RESPONSE_GRACE_SECONDS = 5.0
+_FIELD_LOOK_RESPONSE_RETRIES = 1
+_FIELD_ROOM_LISTING = re.compile(
+    r"^[ \t]*\[Exits:[^\r\n]*\][ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _COMBAT_ACTION_COOLDOWN_SECONDS = 3.0
 _MIDGAARD_CITY_SHOP_DRUNK_ROUTE_ROOMS = frozenset(
     {
@@ -1993,6 +2008,9 @@ class FieldHuntStop:
     source_target_body_form_flags: int | None = None
     source_loot_object_vnums: tuple[int, ...] = ()
     source_specials: tuple[str, ...] = ()
+    # A source-proven low-level mage special can recover from blindness by
+    # fleeing to a recallable neighbor and waiting beside Midgaard's healer.
+    allow_healer_blindness_recovery: bool = False
     # Source-ranked circuit legs can cross reboot-randomized room components.
     # Keep their source graph as a preference, but let the live GMCP graph
     # choose the actual exits for this stop.
@@ -2180,10 +2198,16 @@ class StarterPolicy:
         self.magic_shop_buy_fly = magic_shop_buy_fly
         self.allow_bounded_city_shop_transit = allow_bounded_city_shop_transit
         self.city_shop_transit = CityShopTransit()
+        self.field_city_preflight_active = False
+        self.field_city_departure_stopped = False
         self.flight_borrowing = flight_borrowing
         self.prepare_learned_flight = prepare_learned_flight
         self.learned_flight_preparation = FlightPreparation()
         self.learned_flight_affect_revision = 0
+        self.route_visibility_affects_observed = False
+        self.route_invisibility_revoked = False
+        self.route_visibility_text = ""
+        self.fastwalk_route_invisibility_checks: list[dict[str, Any]] = []
         self.bank_excess_coins = bank_excess_coins
         self.liquidate_loot = liquidate_loot
         self.extract_money_container = extract_money_container
@@ -2310,7 +2334,13 @@ class StarterPolicy:
         self.fastwalk_practice_audit_requested = False
         self.fastwalk_practice_audit_attempts = 0
         self.latest_practice_balances: tuple[int | None, int | None] = (None, None)
-        self.fastwalk_require_invisibility = fastwalk_require_invisibility
+        self.fastwalk_require_invisibility = bool(
+            fastwalk_require_invisibility
+            or (
+                fastwalk_route is not None
+                and fastwalk_route.route_invisibility_source_mobile_vnums
+            )
+        )
         self.fastwalk_invisibility_attempts = 0
         self.fastwalk_invisibility_pending = False
         self.fastwalk_invisibility_unavailable = False
@@ -2338,6 +2368,10 @@ class StarterPolicy:
         self.fastwalk_hunt_action_index = 0
         self.fastwalk_hunt_post_action_index = 0
         self.fastwalk_hunt_looked = False
+        self.fastwalk_hunt_look_response_pending = False
+        self.fastwalk_hunt_look_response_deadline: float | None = None
+        self.fastwalk_hunt_look_response_retries = 0
+        self.fastwalk_hunt_look_response_buffer = ""
         self.fastwalk_pre_entry_scan_pending: tuple[int, str, str] | None = None
         self.fastwalk_pre_entry_scan_checked: set[tuple[int, str]] = set()
         self.fastwalk_pre_entry_scan_response_buffer = ""
@@ -2597,11 +2631,17 @@ class StarterPolicy:
         self.combat_command_window = CombatCommandWindow()
         self.familiar_precombat_step: str | None = None
         self.familiar_precombat_target: str | None = None
+        self.familiar_order_room: str | None = None
+        self.familiar_standby: FamiliarStandby | None = None
+        self.solo_consider_pending: ObservedTargetIdentity | None = None
+        self.solo_consider_identity: ObservedTargetIdentity | None = None
+        self.solo_consider_buffer = ""
         self.familiar_ordered_target: str | None = None
         self.familiar_active = False
         self.familiar_unavailable = False
         self.familiar_disengagement_attempted = False
         self.familiar_withdrawal = FamiliarWithdrawal()
+        self.fastwalk_familiar_handoff_duplicates: list[dict[str, Any]] = []
         self.familiar_preparation = FamiliarPreparation()
         self.familiar_preparation_room: str | None = None
         self.familiar_presence_refreshed_rooms: set[str] = set()
@@ -2802,6 +2842,7 @@ class StarterPolicy:
         self.fastwalk_opening_potion_pending = False
         self.fastwalk_opening_resource_hold_pending = False
         self.fastwalk_sanctuary_consumed_in_combat = False
+        self.fastwalk_sanctuary_used_during_segment = False
         self.fastwalk_sanctuary_observed_in_combat = False
         self.body_part_keyword: str | None = None
         self.body_part_cleanup_step = 0
@@ -2819,6 +2860,8 @@ class StarterPolicy:
         self.fleeing_field_target: ObservedTargetIdentity | None = None
         self.fleeing_field_destination: str | None = None
         self.fastwalk_pursuit_identity_outcomes: list[dict[str, Any]] = []
+        self.displaced_field_target: DisplacedTargetIdentity | None = None
+        self.fastwalk_displaced_target_outcomes: list[dict[str, Any]] = []
         self.fastwalk_target_absent = False
         self.fastwalk_target_present_observed = False
         self.fastwalk_crowded = False
@@ -2861,6 +2904,8 @@ class StarterPolicy:
         self.active_encounter_room: str | None = None
         self.active_encounter_vnums: frozenset[int] = frozenset()
         self.active_encounter_started_at: float | None = None
+        self.active_encounter_target: ObservedTargetIdentity | None = None
+        self.defensive_endpoint_used = False
         self.fastwalk_encounter_budgets: list[dict[str, Any]] = []
         self.fastwalk_consider_outcomes: dict[str, bool] = {}
         self.fastwalk_source_consider_outcomes: dict[str, bool] = {}
@@ -2885,6 +2930,7 @@ class StarterPolicy:
         self.consider_response_pending = False
         self.fastwalk_loot_step = 0
         self.fastwalk_recall_after_loot = False
+        self.fastwalk_familiar_recall_after_loot = False
         self.fastwalk_pouch_audit_pending = False
         self.fastwalk_pouch_audited = False
         self.fastwalk_pouch_attempted: set[str] = set()
@@ -3143,9 +3189,36 @@ class StarterPolicy:
 
     def observe_text(self, text: str) -> None:
         cleaned = _ANSI_ESCAPE.sub("", text).replace("\r", "")
+        self.route_visibility_text += cleaned
+        while "\n" in self.route_visibility_text:
+            line, self.route_visibility_text = self.route_visibility_text.split("\n", 1)
+            if line.strip().casefold() == "you are no longer invisible.":
+                self.route_invisibility_revoked = True
+            elif line.strip().casefold() == "you fade out of existence.":
+                self.route_invisibility_revoked = False
+                self.route_visibility_affects_observed = False
+        self.route_visibility_text = self.route_visibility_text[-512:]
         self.last_response = cleaned
+        if self.fastwalk_hunt_look_response_pending:
+            if self.fastwalk_hunt_look_response_buffer:
+                self.fastwalk_hunt_look_response_buffer += "\n"
+            self.fastwalk_hunt_look_response_buffer = (
+                self.fastwalk_hunt_look_response_buffer + cleaned
+            )[-4_000:]
+            if _FIELD_ROOM_LISTING.search(
+                self.fastwalk_hunt_look_response_buffer
+            ):
+                self.fastwalk_hunt_look_response_pending = False
+                self.fastwalk_hunt_look_response_deadline = None
+                self.fastwalk_hunt_look_response_retries = 0
         self.familiar_preparation.observe(cleaned)
         self.familiar_withdrawal.observe(cleaned, now=time.monotonic())
+        if self.familiar_standby is not None:
+            previous_standby_stage = self.familiar_standby.stage
+            self.familiar_standby.observe(cleaned, now=time.monotonic())
+            if previous_standby_stage == "sleeping" and self.familiar_standby.stage == "asleep":
+                self._record_source_pair("companion asleep")
+        solo_consider_response = self._observe_solo_consider(cleaned)
         if self.familiar_withdrawal.confirmed:
             self.familiar_active = False
             self.familiar_ordered_target = None
@@ -3448,19 +3521,22 @@ class StarterPolicy:
                 self.familiar_ordered_target = None
                 self.familiar_active = False
                 self.familiar_unavailable = True
-        if self.familiar_active and (
-            "pony" in recent or "familiar" in recent
-        ) and any(
-            marker in recent
-            for marker in (
-                "has been slain",
-                "is dead",
-                "vanishes",
-                "you lose track of",
+        familiar_lost = self.familiar_active and any(
+            re.fullmatch(
+                r"(?:the pony|your familiar) (?:is dead!+|has been slain[.!]|vanishes[.!])"
+                r"|you lose track of (?:the pony|your familiar)[.!]",
+                line.strip(),
             )
-        ):
+            for line in recent.splitlines()
+        )
+        if familiar_lost:
             self.familiar_active = False
             self.familiar_ordered_target = None
+            self.familiar_order_room = None
+            self.familiar_precombat_step = None
+            self.familiar_precombat_target = None
+            self.familiar_preparation.order_pending = False
+            self.familiar_unavailable = True
         if self.magic_shop_drunk_preflight_pending:
             self.magic_shop_drunk_preflight_buffer = (
                 _append_locator_response_chunk(
@@ -3474,6 +3550,8 @@ class StarterPolicy:
                 self.magic_shop_drunk_preflight_pending = False
                 self.magic_shop_drunk_preflight_deadline = None
                 self.magic_shop_drunk_preflight_complete = True
+                self.magic_shop_drunk_preflight_locations = ()
+                self.magic_shop_route_blocked_by_drunk = False
             elif locations:
                 self.magic_shop_drunk_preflight_pending = False
                 self.magic_shop_drunk_preflight_deadline = None
@@ -3695,8 +3773,11 @@ class StarterPolicy:
                 self.maxed_stats.add(stat)
             else:
                 self.maxed_stats.discard(stat)
+        # Exact request-scoped reassembly must also complete ordinary consider
+        # handling; retaining it only for the solo budget leaves a split reply pending.
+        consider_recent = (solo_consider_response or cleaned).casefold()
         is_consider_response = self.consider_response_pending and _consider_response_matches(
-            recent
+            consider_recent
         )
         if self.gear_response_expectation is not None:
             if _gear_response_matches(self.gear_response_expectation, recent):
@@ -3832,14 +3913,14 @@ class StarterPolicy:
             resolved_to_rejected_subject = bool(
                 stop is not None
                 and any(
-                    subject.casefold() in recent
+                    subject.casefold() in consider_recent
                     for subject in stop.rejected_consider_subjects
                 )
             )
             resolved_to_rejected_fragment = bool(
                 stop is not None
                 and any(
-                    fragment.casefold() in recent
+                    fragment.casefold() in consider_recent
                     for fragment in stop.rejected_consider_fragments
                 )
             )
@@ -3848,16 +3929,16 @@ class StarterPolicy:
                 self.consider_health_warning = False
                 self.consider_level_offset_ceiling = None
             elif stop is not None and any(
-                phrase.casefold() in recent
+                phrase.casefold() in consider_recent
                 for phrase in stop.accepted_consider_fragments
             ):
                 self.consider_viable = True
                 self.consider_health_warning = any(
-                    phrase in recent
+                    phrase in consider_recent
                     for phrase in _CONSIDER_UNSUPPORTED_HEALTH_FRAGMENTS
                 )
                 self.consider_level_offset_ceiling = (
-                    9 if "laughs at you mercilessly" in recent else None
+                    9 if "laughs at you mercilessly" in consider_recent else None
                 )
             elif (
                 stop is not None
@@ -3867,7 +3948,7 @@ class StarterPolicy:
                 and stop.protected_source_peak_round_damage is None
                 and stop.source_target_hp_ceiling is None
                 and any(
-                    phrase in recent
+                    phrase in consider_recent
                     for phrase in _CONSIDER_UNSUPPORTED_HEALTH_FRAGMENTS
                 )
             ):
@@ -3879,17 +3960,17 @@ class StarterPolicy:
                 self.consider_viable = False
                 self.consider_health_warning = True
                 self.consider_level_offset_ceiling = None
-            elif any(phrase in recent for phrase in _CONSIDER_VIABLE_FRAGMENTS):
+            elif any(phrase in consider_recent for phrase in _CONSIDER_VIABLE_FRAGMENTS):
                 self.consider_viable = True
                 self.consider_health_warning = any(
-                    phrase in recent
+                    phrase in consider_recent
                     for phrase in _CONSIDER_UNSUPPORTED_HEALTH_FRAGMENTS
                 )
                 self.consider_level_offset_ceiling = (
-                    1 if "the perfect match" in recent else 0
+                    1 if "the perfect match" in consider_recent else 0
                 )
             elif any(
-                phrase in recent for phrase in _CONSIDER_TARGET_ABSENT_FRAGMENTS
+                phrase in consider_recent for phrase in _CONSIDER_TARGET_ABSENT_FRAGMENTS
             ):
                 # A wandering mobile can leave after TARGETMODE selected it.
                 # Keep this distinct from a below-band consider result so the
@@ -3897,12 +3978,12 @@ class StarterPolicy:
                 self.consider_viable = False
                 self.consider_health_warning = False
                 self.consider_level_offset_ceiling = None
-            elif any(phrase in recent for phrase in _CONSIDER_REJECTED_FRAGMENTS):
+            elif any(phrase in consider_recent for phrase in _CONSIDER_REJECTED_FRAGMENTS):
                 self.consider_viable = False
                 self.consider_health_warning = False
                 self.consider_level_offset_ceiling = None
                 if any(
-                    phrase in recent for phrase in _CONSIDER_BELOW_BAND_FRAGMENTS
+                    phrase in consider_recent for phrase in _CONSIDER_BELOW_BAND_FRAGMENTS
                 ):
                     self.fastwalk_below_band_targets.add(
                         self.consider_target.casefold()
@@ -4843,8 +4924,10 @@ class StarterPolicy:
             self.advice_direction = direction.group("direction").casefold()
         if "hole in the north wall" in folded:
             self.advice_direction = "north"
+        opening_death = self._adopt_familiar_opening_death()
         combat_resolved = (
-            "is dead" in recent
+            opening_death
+            or ("is dead" in recent and not familiar_lost)
             or ("you receive" in recent and "experience" in recent)
         )
         if combat_resolved:
@@ -5015,10 +5098,12 @@ class StarterPolicy:
                             )
                     death_match = _MOB_DEATH.search(cleaned)
                     if (
-                        xp_gain is None and self.familiar_preparation.selector
-                        and companion_finishing_blow(
-                            self.text,
-                            target=death_match.group("target") if death_match else defeated_target,
+                        opening_death or (
+                            xp_gain is None and self.familiar_preparation.selector
+                            and companion_finishing_blow(
+                                self.text,
+                                target=death_match.group("target") if death_match else defeated_target,
+                            )
                         )
                     ):
                         # group_gain awards nothing when the killer is an NPC.
@@ -5039,7 +5124,18 @@ class StarterPolicy:
                         pair is not None and self.active_target_selector in pair.remaining
                         and pair.room_vnum == self.current_room
                         and pair.stop_index == self.fastwalk_hunt_stop_index
-                        and self.active_target_mobile_vnum == pair.budget.mobile_vnums[0]
+                        and (
+                            self.active_target_mobile_vnum == pair.budget.mobile_vnums[0]
+                            or (
+                                len(pair.selectors) == 1 and self.active_target_mobile_vnum is None
+                                and completed_source_stop is not None and xp_gain is not None
+                                and completed_source_stop.source_mobile_vnum == pair.budget.mobile_vnums[0]
+                                and death_match is not None and self.source_world is not None
+                                and (mobile := self.source_world.mobiles.get(pair.budget.mobile_vnums[0])) is not None
+                                and _target_identity_without_article(death_match.group("target"))
+                                    == _target_identity_without_article(mobile.short_description)
+                            )
+                        )
                     ):
                         pair.defeated.add(self.active_target_selector)
                         self._record_source_pair("member defeated")
@@ -5530,6 +5626,9 @@ class StarterPolicy:
         for event in events:
             if event.type == "affects_changed" and event.source == "gmcp":
                 self.learned_flight_affect_revision += 1
+                self.route_visibility_affects_observed = True
+                if not _has_named_affect(state.affects, "invis"):
+                    self.route_invisibility_revoked = False
             if event.type == "vitals_changed":
                 if state.hunger is not None and state.hunger <= 0:
                     self.needs_food = True
@@ -5595,6 +5694,7 @@ class StarterPolicy:
                     self.pending_recall_origin = None
                     self.fastwalk_emergency_recall_failed = False
                 if room and room != self.current_room:
+                    self.displaced_field_target = None
                     self._clear_bystander_consider()
                     self._clear_active_encounter()
                     self._clear_source_pair("room changed")
@@ -6154,6 +6254,10 @@ class StarterPolicy:
         login = self._login_decision()
         if login is not None:
             return login
+        preparation_was_pending = self.familiar_preparation.pending
+        self.familiar_preparation.expire(time.monotonic())
+        if preparation_was_pending and self.familiar_preparation.failure:
+            self.prompt_ready = True
         if (
             self.bystander_consider_pending is not None
             and (
@@ -6229,6 +6333,52 @@ class StarterPolicy:
                 )
 
         now = time.monotonic()
+        if self.in_world and self.fastwalk_hunt_look_response_pending:
+            if (
+                state.in_combat
+                or self.combat_active
+                or state.combat_target
+                or self._current_room_enemy_records(state)
+            ):
+                self.fastwalk_hunt_look_response_pending = False
+                self.fastwalk_hunt_look_response_deadline = None
+                self.fastwalk_hunt_look_response_retries = 0
+                self.fastwalk_hunt_look_response_buffer = ""
+            elif (
+                self.fastwalk_hunt_look_response_deadline is None
+                or now < self.fastwalk_hunt_look_response_deadline
+            ):
+                self.prompt_ready = False
+                return None
+            elif (
+                self.fastwalk_hunt_look_response_retries
+                < _FIELD_LOOK_RESPONSE_RETRIES
+            ):
+                self.fastwalk_hunt_look_response_retries += 1
+                self.fastwalk_hunt_look_response_pending = False
+                self.fastwalk_hunt_look_response_deadline = None
+                self.prompt_ready = True
+                return BotDecision(
+                    "look",
+                    "retry a field room listing interrupted by unrelated output",
+                )
+            else:
+                self.fastwalk_hunt_look_response_pending = False
+                self.fastwalk_hunt_look_response_deadline = None
+                self.fastwalk_hunt_look_response_buffer = ""
+                self.fastwalk_abort_reason = (
+                    "field room listing remained unavailable after one bounded retry"
+                )
+                self.fastwalk_returning = True
+                self.prompt_ready = True
+                return BotDecision(
+                    "recall",
+                    "return when a bounded field room audit remains unavailable",
+                )
+        if self.familiar_standby is not None:
+            self.familiar_standby.expire(now)
+            if self.familiar_standby.failure:
+                self.prompt_ready = True
         if (
             self.in_world
             and self.fastwalk_where_response_pending
@@ -6704,6 +6854,8 @@ class StarterPolicy:
                 self._record_source_pair("started")
             pair.damage_commands += self.combat_command_window.sent - sent_before
         if decision.command in _MOVEMENT_COMMANDS or decision.command in {"recall", "flee"}:
+            self.displaced_field_target = None
+            self.solo_consider_pending = self.solo_consider_identity = None
             self._clear_bystander_consider()
             self._clear_active_encounter()
             self._clear_source_pair(decision.command)
@@ -6813,6 +6965,15 @@ class StarterPolicy:
             self.room_target_counts[self.current_room] = {}
             self.room_target_selectors[self.current_room] = {}
             self.room_target_selector_descriptions[self.current_room] = {}
+            if decision.reason != (
+                "retry a field room listing interrupted by unrelated output"
+            ):
+                self.fastwalk_hunt_look_response_retries = 0
+            self.fastwalk_hunt_look_response_pending = True
+            self.fastwalk_hunt_look_response_deadline = (
+                time.monotonic() + _FIELD_LOOK_RESPONSE_GRACE_SECONDS
+            )
+            self.fastwalk_hunt_look_response_buffer = ""
         if decision.command == "sleep" and self.waiting_for_heal:
             self.health_check_due = time.monotonic() + _HEALTH_CHECK_WAIT_SECONDS
         if decision.command == "sleep":
@@ -6858,16 +7019,39 @@ class StarterPolicy:
             elif decision.reason.startswith("remove lower-priority gear"):
                 self.gear_response_expectation = "remove"
         if decision.command.startswith("consider "):
+            self.solo_consider_pending = self.solo_consider_identity = None
+            self.solo_consider_buffer = ""
             if self.bystander_consider_pending is not None:
                 pass
             elif self.fastwalk_post_objective_attacker_consider_target is not None:
                 self.fastwalk_post_objective_attacker_consider_response_pending = True
             else:
                 self.consider_response_pending = True
+                stop = (
+                    self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+                    if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops) else None
+                )
+                selector = self.consider_target_selector
+                if (
+                    stop is not None and stop.source_mobile_vnum is not None
+                    and selector and re.fullmatch(r"#\d+", selector)
+                    and decision.command == f"consider {selector}" and self.current_room
+                ):
+                    self.solo_consider_pending = ObservedTargetIdentity(
+                        selector, stop.source_mobile_vnum, self.current_room,
+                        self.fastwalk_hunt_stop_index, self.last_character_level,
+                        self.world_boot_id, time.monotonic(),
+                    )
         if decision.command == "quit":
             self.done = True
 
     def on_connection_closed(self) -> None:
+        self.route_visibility_affects_observed = False
+        self.route_invisibility_revoked = False
+        self.route_visibility_text = ""
+        self.displaced_field_target = None
+        self.familiar_standby = None
+        self.solo_consider_pending = self.solo_consider_identity = None
         self._clear_bystander_consider()
         self._clear_active_encounter()
         self._clear_source_pair("connection closed")
@@ -6892,6 +7076,10 @@ class StarterPolicy:
         self.fastwalk_where_response_pending = False
         self.fastwalk_where_response_deadline = None
         self.fastwalk_where_response_buffer = ""
+        self.fastwalk_hunt_look_response_pending = False
+        self.fastwalk_hunt_look_response_deadline = None
+        self.fastwalk_hunt_look_response_retries = 0
+        self.fastwalk_hunt_look_response_buffer = ""
         if was_in_world and self.fastwalk_route is not None:
             # A reconnect normally places the character back in Midgaard while
             # the local field cursor still points at the old remote room.
@@ -8046,6 +8234,11 @@ class StarterPolicy:
                     f"field target {endpoint_target!r} loaded at live level "
                     f"{live_level}, at or below the useful XP floor"
                 )
+                handled, defense = self._active_encounter_decision(
+                    state, defensive_endpoint=True,
+                )
+                if handled:
+                    return defense
                 self.fastwalk_emergency_recall_pending = True
                 if self.flee_pending:
                     self.prompt_ready = False
@@ -8891,7 +9084,16 @@ class StarterPolicy:
                     if not self._enemy_is_known_below_useful_band(enemy, state)
                 ]
                 material_enemy_count = len(material_enemies)
-                if not self._duplicate_enemy_packets_are_trivial(state, enemies):
+                familiar_handoff_duplicate = (
+                    self._duplicate_enemy_packet_is_confirmed_familiar_handoff(
+                        state,
+                        enemies,
+                    )
+                )
+                if not (
+                    self._duplicate_enemy_packets_are_trivial(state, enemies)
+                    or familiar_handoff_duplicate
+                ):
                     material_enemy_count += self.active_enemy_duplicate_count
                 current_stop = (
                     self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
@@ -10848,14 +11050,188 @@ class StarterPolicy:
 
     def _clear_active_encounter(self) -> None:
         self.active_encounter_room = None
+        self.active_encounter_target = None
         self.active_encounter_vnums = frozenset()
         self.active_encounter_started_at = None
+
+    def _observe_solo_consider(self, text: str) -> str | None:
+        identity = self.solo_consider_pending
+        if identity is None or self.source_world is None:
+            return None
+        stop = (
+            self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+            if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops) else None
+        )
+        if (
+            identity.room_vnum != self.current_room
+            or identity.level != self.last_character_level
+            or identity.boot_id != self.world_boot_id
+            or identity.stop_index != self.fastwalk_hunt_stop_index
+            or identity.selector != self.consider_target_selector
+            or stop is None or identity.mobile_vnum != stop.source_mobile_vnum
+            or time.monotonic() - identity.observed_at >= 20
+        ):
+            self.solo_consider_pending = None
+            return None
+        self.solo_consider_buffer = (self.solo_consider_buffer + text)[-2000:]
+        mobile = self.source_world.mobiles.get(identity.mobile_vnum)
+        lines = [line.strip().casefold() for line in self.solo_consider_buffer.splitlines()]
+        if mobile and f"{mobile.short_description.casefold()} looks like an easy kill." in lines:
+            self.solo_consider_identity = identity
+            self.solo_consider_pending = None
+            return self.solo_consider_buffer
+        elif _consider_response_matches(self.solo_consider_buffer.casefold()):
+            self.solo_consider_pending = self.solo_consider_identity = None
+        return None
+
+    def _considered_solo_ready(self, state: CharacterState) -> bool:
+        pair, standby = self.source_pair_encounter, self.familiar_standby
+        return bool(
+            pair and len(pair.selectors) == 1 and standby and standby.stage == "asleep"
+            and not standby.failure and standby.selector == self.familiar_preparation.selector
+            and standby.room_vnum == str(state.room_vnum)
+            and self._source_pair_scope_issue(state, time.monotonic()) is None
+        )
+
+    def _standby_abort(self, reason: str) -> BotDecision:
+        self._clear_source_pair(reason)
+        self.familiar_standby = None
+        self.familiar_active = False
+        self.familiar_unavailable = True
+        self.fastwalk_abort_reason = reason
+        self.fastwalk_returning = self.fastwalk_emergency_recall_pending = True
+        return BotDecision("recall", reason)
+
+    def _considered_solo_decision(
+        self, state: CharacterState, stop: FieldHuntStop | None,
+    ) -> tuple[bool, BotDecision | None]:
+        """A fresh low load may replace companion damage with a full solo budget."""
+        standby = self.familiar_standby
+        if standby is not None:
+            if self.source_pair_encounter is None:
+                return False, None
+            issue = self._source_pair_scope_issue(state, time.monotonic())
+            if (
+                standby.selector != self.familiar_preparation.selector
+                or not self._staged_familiar_present(state)
+                or self.consider_target_selector not in self.source_pair_encounter.selectors
+                or self.consider_viable is not True
+                or self.solo_consider_identity is None
+                or time.monotonic() - self.solo_consider_identity.observed_at >= 20
+            ):
+                issue = "considered solo lost its exact target or companion binding"
+            standby.expire(time.monotonic())
+            if issue or standby.failure:
+                return True, self._standby_abort(issue or standby.failure)
+            if self._considered_solo_ready(state):
+                self.familiar_active = False
+                return False, None
+            self.prompt_ready = False
+            return True, None
+        identity = self.solo_consider_identity
+        room = str(state.room_vnum or "")
+        if (
+            self.source_world is None or stop is None or not stop.require_familiar
+            or not 4 <= (state.level or 0) < 25
+            or stop.consider_only or stop.allow_below_band_for_required_loot
+            or stop.require_sanctuary or identity is None or not room
+            or identity.mobile_vnum != stop.source_mobile_vnum
+            or identity.selector != self.consider_target_selector
+            or identity.room_vnum != room or identity.level != state.level
+            or identity.stop_index != self.fastwalk_hunt_stop_index
+            or identity.boot_id != self.world_boot_id
+            or time.monotonic() - identity.observed_at >= 20
+            or self.consider_viable is not True or state.position != 7
+            or state.in_combat or self.combat_active or self.fastwalk_attack_started
+            or self.runtime_boundary_requested or self.fastwalk_returning
+            or self.fastwalk_emergency_recall_pending or self.needs_food or self.needs_drink
+            or "no_recall" in state.room_flags or self.familiar_unavailable
+            or self.source_pair_encounter is not None
+            or self.familiar_preparation.order_pending
+            or self.familiar_precombat_step == "attack"
+            or not self._staged_familiar_present(state)
+            or not learned_familiar_available(
+                self.spec.character_class, state.subclass, self.known_skill_levels,
+            )
+        ):
+            return False, None
+        selectors = [
+            selector for name, values in self.room_target_selectors.get(room, {}).items()
+            if _stop_target_matches(name, stop.target or "", stop) for selector in values
+        ]
+        descriptions = self.room_target_selector_descriptions.get(room, {})
+        companion = self.familiar_preparation.selector
+        if list(selectors) != [identity.selector] or set(descriptions) != {identity.selector, companion}:
+            return False, None
+        output = self._encounter_output(state, (identity.mobile_vnum,))
+        # This substitution is for the audited spellcasting companion classes;
+        # concealed physical stats must not become a new solo admission signal.
+        if output is None or output.resource != "mana":
+            return False, None
+        budget = source_solo_budget(
+            self.source_world, identity.mobile_vnum, character_level=state.level or 0,
+            hp=state.hp or 0, max_hp=state.max_hp or 0,
+            mana=state.mana or 0, max_mana=state.max_mana or 0, output=output,
+        )
+        if not budget.allowed:
+            self.fastwalk_encounter_budgets.append({
+                **asdict(budget), "mode": "considered-solo", "outcome": "declined", "room_vnum": room,
+            })
+            return False, None
+        self.source_pair_encounter = SourcePairEncounter(
+            budget, (identity.selector,), room, self.fastwalk_hunt_stop_index,
+            state.level or 0, self.world_boot_id, time.monotonic(),
+        )
+        self.familiar_standby = FamiliarStandby(companion, room)
+        command = self.familiar_standby.command(wake=False, now=time.monotonic())
+        self._record_source_pair("awaiting companion sleep")
+        return True, BotDecision(command, "keep the companion out of a source-funded solo opening")
+
+    def _familiar_standby_return_decision(
+        self, state: CharacterState,
+    ) -> tuple[bool, BotDecision | None]:
+        standby = self.familiar_standby
+        if standby is None:
+            return False, None
+        if (
+            self.runtime_boundary_requested or self.fastwalk_emergency_recall_pending
+            or standby.room_vnum != str(state.room_vnum)
+        ):
+            self._clear_source_pair("companion standby scope ended")
+            self.familiar_standby = None
+            self.familiar_active = False
+            self.familiar_unavailable = True
+            return False, None
+        if self.source_pair_encounter is not None and self.source_pair_encounter.started_at is None and (
+            self.fastwalk_returning or self.fastwalk_hunt_stop_skipped
+        ):
+            self._clear_source_pair("solo target skipped before player attack")
+        if self.source_pair_encounter is not None or state.in_combat or self.combat_active:
+            return False, None
+        if not self._staged_familiar_present(state):
+            return True, self._standby_abort("companion disappeared before the solo return")
+        if standby.stage == "awake":
+            self.fastwalk_encounter_budgets.append({
+                "mode": "considered-solo", "outcome": "companion awake", "room_vnum": standby.room_vnum,
+            })
+            self.familiar_standby = None
+            self.familiar_ordered_target = self.familiar_precombat_step = None
+            return False, None
+        command = standby.command(wake=True, now=time.monotonic())
+        if standby.failure:
+            return True, self._standby_abort(standby.failure)
+        if command:
+            return True, BotDecision(command, "confirm the companion is awake before leaving the solo fight")
+        self.prompt_ready = False
+        return True, None
 
     def _record_source_pair(self, outcome: str) -> None:
         pair = self.source_pair_encounter
         if pair is not None:
             self.fastwalk_encounter_budgets.append({
-                **asdict(pair.budget), "mode": "source-pair", "outcome": outcome,
+                **asdict(pair.budget),
+                "mode": "considered-solo" if len(pair.selectors) == 1 else "source-pair",
+                "outcome": outcome,
                 "room_vnum": pair.room_vnum, "defeated": len(pair.defeated),
                 "damage_commands": pair.damage_commands,
             })
@@ -10877,7 +11253,7 @@ class StarterPolicy:
             body_flags = 0
             for value in forms:
                 body_flags |= int(value)
-        return source_combat_output_estimate(
+        output = source_combat_output_estimate(
             character_level=state.level or 0,
             character_class=self.spec.character_class,
             character_subclass=state.subclass,
@@ -10891,6 +11267,18 @@ class StarterPolicy:
             player_rage=_int_or_none(state.rage), player_max_rage=_int_or_none(state.max_rage),
             target_body_form_flags=body_flags,
         )
+        if output is not None and output.resource == "mana":
+            proficiency = self.known_skill_levels.get(output.action)
+            if (
+                type(proficiency) is not int or not 0 < proficiency <= 100
+                or output.action not in combat_spell_names(
+                    self.spec.character_class, self._active_training_subclass(state),
+                )
+            ):
+                return None
+            # handler.c:mana_cost; ignore racial discounts, never underbudget.
+            output = replace(output, resource_cost=max(output.resource_cost, 60 - proficiency))
+        return output
 
     def _prepare_source_pair(
         self, state: CharacterState, stop: FieldHuntStop | None,
@@ -10935,17 +11323,6 @@ class StarterPolicy:
         if len(selectors) != 2 or len(set(selectors)) != 2:
             return False
         output = self._encounter_output(state, (stop.source_mobile_vnum,))
-        if output is not None and output.resource == "mana":
-            proficiency = self.known_skill_levels.get(output.action)
-            if (
-                type(proficiency) is not int or not 0 < proficiency <= 100
-                or output.action not in combat_spell_names(
-                    self.spec.character_class, self._active_training_subclass(state),
-                )
-            ):
-                return False
-            # handler.c:mana_cost; ignore racial discounts, never underbudget.
-            output = replace(output, resource_cost=max(output.resource_cost, 60 - proficiency))
         budget = source_pair_budget(
             self.source_world, stop.source_mobile_vnum, character_level=state.level or 0,
             hp=_int_or_none(state.hp) or 0, max_hp=_int_or_none(state.max_hp) or 0,
@@ -11019,19 +11396,40 @@ class StarterPolicy:
             if not self.field_combat_damage_probe_required:
                 self.field_combat_damage_probe_required = True
                 self._start_field_combat_damage_probe(state)
-            probe = self._damage_window_probe_decision(state)
-            if probe is not None:
-                self._clear_source_pair("damage window failed")
-                return True, probe
             effective = max(0, self.field_combat_probe_total_damage - self.field_combat_probe_regenerated_hp)
             incoming = self.field_combat_probe_player_damage
             started = self.field_combat_probe_started_at
+            if len(pair.selectors) == 1:
+                now = time.monotonic()
+                continuation = solo_continuation_budget(
+                    self.source_world, enemies, character_level=state.level or 0,
+                    hp=state.hp or 0, max_hp=state.max_hp or 0,
+                    mana=state.mana or 0, max_mana=state.max_mana or 0,
+                    output=self._encounter_output(state, pair.budget.mobile_vnums),
+                    elapsed=now - started if started is not None else 0,
+                    effective_damage=effective, received_damage=incoming,
+                    remaining_seconds=45 - (now - pair.started_at),
+                    remaining_commands=pair.budget.actions + 4 - pair.damage_commands,
+                )
+                if not self._considered_solo_ready(state):
+                    issue = "source solo lost its confirmed companion standby"
+                elif not continuation.allowed:
+                    issue = continuation.reason
+            else:
+                probe = self._damage_window_probe_decision(state)
+                if probe is not None:
+                    self._clear_source_pair("damage window failed")
+                    return True, probe
             if effective and incoming and started is not None and time.monotonic() - started >= 6.5:
                 remaining_hp = (_int_or_none(enemies[0].get("hp")) or 0) + (
                     len(pair.remaining) - 1
                 ) * pair.budget.target_hp_ceiling
                 if math.ceil(remaining_hp * incoming / effective) >= (state.hp or 0) - pair.budget.health_reserve:
-                    issue = "source pair measured damage cannot fund both remaining targets"
+                    issue = (
+                        "source pair measured damage cannot fund both remaining targets"
+                        if len(pair.selectors) == 2
+                        else "source solo measured damage cannot fund the remaining target"
+                    )
         if issue is not None:
             self.fastwalk_abort_reason = issue
             self.fastwalk_emergency_recall_pending = True
@@ -11043,7 +11441,7 @@ class StarterPolicy:
         return True, decision
 
     def _active_encounter_decision(
-        self, state: CharacterState,
+        self, state: CharacterState, *, defensive_endpoint: bool = False,
     ) -> tuple[bool, BotDecision | None]:
         """Replace count-only flight with an audited short finishing window."""
         if self.source_pair_encounter is not None:
@@ -11057,13 +11455,43 @@ class StarterPolicy:
             else None
         )
         continuing = self.active_encounter_room == str(state.room_vnum)
+        if defensive_endpoint and (
+            stop is None or stop.consider_only or stop.require_familiar
+            or (self.defensive_endpoint_used and not continuing)
+            or self.fastwalk_returning or self.return_home
+            or self.needs_food or self.needs_drink or _health_ratio(state) < .7
+            or "no_recall" in state.room_flags
+            or len(_enemy_records(state.enemies, deduplicate=False)) != 1
+            or self.active_enemy_duplicate_count > 0
+            or self.unapproved_field_attacker is not None
+            or not self.active_target_selector
+            or not self.active_target_selector.startswith("#")
+            or self.active_target_selector != self._target_selector_for(stop.target, stop)
+            or str(state.room_vnum) not in {
+                str(stop.source_reset_room_vnum),
+                str(stop.route_vnums[-1]) if stop.route_vnums else "",
+            }
+            or not enemies
+            or _int_or_none(enemies[0].get("isnpc")) != stop.source_mobile_vnum
+            or not self._enemy_is_known_below_useful_band(enemies[0], state)
+        ):
+            return False, None
+        if defensive_endpoint and continuing:
+            identity = self.active_encounter_target
+            if identity is None or (
+                identity.selector != self.active_target_selector
+                or identity.level != state.level or identity.boot_id != self.world_boot_id
+                or identity.stop_index != self.fastwalk_hunt_stop_index
+            ):
+                return False, None
         if (
             self.source_world is None or self.fastwalk_route is None
-            or not self.fastwalk_attack_started or not self.combat_active
+            or (not self.fastwalk_attack_started and not defensive_endpoint)
+            or not self.combat_active
             or not state.in_combat or self.familiar_active
             or self.runtime_boundary_requested or self.flee_pending
             or stop is None or stop.source_mobile_vnum is None
-            or (len(enemies) < 2 and not continuing)
+            or (len(enemies) < 2 and not continuing and not defensive_endpoint)
             or not enemies or len(enemies) > 3
             or (stop.require_sanctuary and not _has_named_affect(state.affects, "sanctuary"))
             or (
@@ -11084,6 +11512,7 @@ class StarterPolicy:
             if level is None or state.level is None or (
                 level <= state.level - 5
                 and not self._allows_below_band_resource_kill(state, stop)
+                and not defensive_endpoint
             ) or (
                 stop.maximum_level_offset is not None
                 and level > state.level + stop.maximum_level_offset
@@ -11102,6 +11531,8 @@ class StarterPolicy:
         )
         audit = {**asdict(budget), "room_vnum": state.room_vnum,
                  "action": output.action if output else None}
+        if defensive_endpoint:
+            audit["mode"] = "below-band-endpoint-defense"
         if not self.fastwalk_encounter_budgets or self.fastwalk_encounter_budgets[-1] != audit:
             self.fastwalk_encounter_budgets.append(audit)
         if not budget.allowed:
@@ -11110,6 +11541,13 @@ class StarterPolicy:
             self.active_encounter_room = str(state.room_vnum)
             self.active_encounter_vnums = frozenset(budget.mobile_vnums)
             self.active_encounter_started_at = time.monotonic()
+            if defensive_endpoint:
+                self.defensive_endpoint_used = True
+                self.active_encounter_target = ObservedTargetIdentity(
+                    self.active_target_selector, stop.source_mobile_vnum,
+                    str(state.room_vnum), self.fastwalk_hunt_stop_index,
+                    state.level, self.world_boot_id, self.active_encounter_started_at,
+                )
             if not self.field_combat_damage_probe_required:
                 self.field_combat_damage_probe_required = True
                 self._start_field_combat_damage_probe(state)
@@ -11495,6 +11933,7 @@ class StarterPolicy:
             or not self.fastwalk_attack_started
             or self.familiar_active
             or self.familiar_disengagement_attempted
+            or self._considered_solo_ready(state)
             or not self.active_target
         ):
             return None
@@ -11765,7 +12204,58 @@ class StarterPolicy:
                 f"open against {target} with source-verified backstab damage "
                 "while wielding a piercing weapon",
             )
+        spell_opener = self._source_combat_spell_opener_decision(
+            state,
+            source_stop,
+            target=target,
+            command_target=keyword,
+        )
+        if spell_opener is not None:
+            return spell_opener
         return BotDecision(f"kill {keyword}", reason)
+
+    def _source_combat_spell_opener_decision(
+        self,
+        state: CharacterState | None,
+        stop: FieldHuntStop | None,
+        *,
+        target: str,
+        command_target: str,
+    ) -> BotDecision | None:
+        """Open with the exact spell used by the source damage budget."""
+        if state is None or stop is None or stop.source_combat_action is None:
+            return None
+        spell = _normalize_skill_name(stop.source_combat_action)
+        registered_spells = combat_spell_names(
+            self.spec.character_class,
+            self._active_training_subclass(state),
+        )
+        proficiency = self.known_skill_levels.get(spell)
+        minimum_mana = SPELL_MIN_MANA.get(spell)
+        mana = _int_or_none(state.mana)
+        max_mana = _int_or_none(state.max_mana)
+        if (
+            spell not in registered_spells
+            or not self._skill_is_usable(spell)
+            or spell in self.unavailable_combat_spells
+            or (spell == "chill touch" and self.chill_touch_unavailable)
+            or type(proficiency) is not int
+            or not 0 < proficiency <= 100
+            or minimum_mana is None
+            or mana is None
+            or max_mana is None
+            or max_mana <= 0
+        ):
+            return None
+        mana_cost = max(minimum_mana, 60 - proficiency)
+        if mana - mana_cost < math.ceil(max_mana * _FIELD_READY_MANA_RATIO):
+            return None
+        self.pending_combat_spell = spell
+        return BotDecision(
+            f"cast '{spell}' {command_target}",
+            f"open against {target} with the practiced source-planned damage "
+            f"spell {spell} before its first automatic combat round",
+        )
 
     def _needs_fastwalk_training(self, state: CharacterState) -> bool:
         if self.fastwalk_training_complete:
@@ -15676,6 +16166,61 @@ class StarterPolicy:
             "room_vnum": state.room_vnum,
         }}
 
+    def field_city_preflight_checkpoint(self, state: CharacterState) -> dict[str, Any]:
+        if not self.field_city_preflight_active:
+            return {}
+        return {"campaign_field_city_preflight": {
+            "complete": self.magic_shop_drunk_preflight_complete,
+            "blocked": self.magic_shop_route_blocked_by_drunk,
+            "locations": list(self.magic_shop_drunk_preflight_locations),
+            "route_rooms": sorted(self.magic_shop_drunk_preflight_route_rooms),
+            "wait_attempts": self.city_shop_route_wait_attempts,
+            "stopped_before_departure": self.field_city_departure_stopped,
+            "outbound_index": self.fastwalk_outbound_index,
+            "boot_id": self.world_boot_id, "level": state.level,
+        }}
+
+    def _field_city_departure_decision(
+        self, state: CharacterState,
+    ) -> tuple[bool, BotDecision | None]:
+        route = self.fastwalk_route
+        if (
+            route is None or not self.fastwalk_hunt_stops or self.fastwalk_returning
+            or self.fastwalk_outbound_index != 0 or state.room_vnum != "3054"
+            or self.runtime_boundary_requested or self.return_home
+            or state.in_combat or self.combat_active or self._current_room_enemy_records(state)
+        ):
+            return False, None
+        rooms = field_city_route_rooms(
+            self.source_world, route.commands, origin=route.route_origin_room_vnum,
+            alignment=state.progress.get("alignment"),
+        )
+        if not rooms:
+            return False, None
+        self.field_city_preflight_active = True
+        if _is_sleeping(state):
+            return True, BotDecision("stand", "wake at the healer before the city departure check")
+        preflight = self._midgaard_city_shop_preflight_decision(
+            state, operation="field departure and fountain refill", route_rooms=rooms,
+        )
+        if preflight is not None or self.magic_shop_drunk_preflight_pending:
+            return True, preflight
+        if self.magic_shop_route_blocked_by_drunk:
+            wait = self._wait_for_city_shop_route(state)
+            if wait is not None or self.city_shop_route_wait_due is not None:
+                return True, wait
+            self.fastwalk_abort_reason = (
+                "field city departure remained blocked by the source greeter/guard "
+                "interaction after bounded rechecks"
+            )
+            self.field_city_departure_stopped = True
+            self.fastwalk_returning = True
+            return True, self._begin_midgaard_logout(
+                state, save_reason="persist the blocked field city departure",
+                quit_reason="bounded field city preflight complete",
+            )
+        return False, None
+
     def _learned_flight_decision(self, state: CharacterState) -> BotDecision | None:
         preparation = self.learned_flight_preparation
         if state.room_vnum != "3054":
@@ -16385,9 +16930,18 @@ class StarterPolicy:
             if self.failure is not None or not self.fastwalk_training_complete:
                 return None
 
+        standby_handled, standby = self._familiar_standby_return_decision(state)
+        if standby_handled:
+            return standby
         preparation = self._familiar_staging_decision(state)
         if preparation is not None:
             return preparation
+        if (
+            self.familiar_preparation.pending and not self.fastwalk_returning
+            and not self.runtime_boundary_requested and not self.fastwalk_emergency_recall_pending
+            and not state.in_combat and not self.combat_active
+        ):
+            return None
 
         if (
             self.fastwalk_returning
@@ -16916,6 +17470,17 @@ class StarterPolicy:
                     self.fastwalk_requested_target,
                 )
             )
+            current_stop = (
+                self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+                if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+                else None
+            )
+            familiar_reserve_spent = bool(
+                objective_killed
+                and current_stop is not None
+                and current_stop.require_familiar
+                and self.familiar_disengagement_attempted
+            )
             next_stop_index = self.fastwalk_hunt_stop_index + 1
             next_target_stop = next(
                 (
@@ -16995,9 +17560,12 @@ class StarterPolicy:
                             and objective_killed
                         )
                         or low_reserve_after_loot
+                        or familiar_reserve_spent
                     )
                 )
             )
+            if self.fastwalk_recall_after_loot and familiar_reserve_spent:
+                self.fastwalk_familiar_recall_after_loot = True
             if not objective_killed and self.fastwalk_last_kill_target is not None:
                 self.fastwalk_attack_target = self.fastwalk_requested_target
                 self.fastwalk_attack_started = False
@@ -17068,15 +17636,23 @@ class StarterPolicy:
                         for stop in self.fastwalk_hunt_stops[remaining_start:]
                     )
                 )
+                familiar_recall = self.fastwalk_familiar_recall_after_loot
+                self.fastwalk_familiar_recall_after_loot = False
                 return BotDecision(
                     "recall",
                     (
-                        "withdraw after loot because the next field target "
+                        "end the familiar-backed sortie after securing the "
+                        "player-credited objective kill"
+                        if familiar_recall
+                        else "withdraw after loot because the next field target "
                         "recovery gate is not met"
                         if has_remaining_target
                         else "leave a one-way hunt immediately after securing loot"
                     ),
                 )
+            city_handled, city_decision = self._field_city_departure_decision(state)
+            if city_handled:
+                return city_decision
             if not self.fastwalk_recall_started:
                 if room_vnum == "3001":
                     self.fastwalk_recall_started = True
@@ -17489,14 +18065,12 @@ class StarterPolicy:
             intercept_followup = self._fastwalk_intercept_followup_decision(state)
             if intercept_followup is not None:
                 return intercept_followup
-            if (
-                self.fastwalk_intercept_returning
-                and self.consider_target == self.fastwalk_attack_target
-                and self.consider_viable is None
-            ):
+            if self.fastwalk_intercept_returning and not self.combat_active:
                 return None
             intercept = self._fastwalk_live_target_intercept_decision(state)
-            if intercept is not None:
+            if intercept is not None or (
+                self.fastwalk_intercept_returning and not self.combat_active
+            ):
                 return intercept
             if self.fastwalk_outbound_index < len(self.fastwalk_route.commands):
                 if (
@@ -17516,6 +18090,11 @@ class StarterPolicy:
                         "recall",
                         "return before following a source route that requires flight",
                     )
+                source_invisibility = (
+                    self._source_aggression_invisibility_decision(state)
+                )
+                if source_invisibility is not None:
+                    return source_invisibility
                 invisibility = self._fastwalk_invisibility_decision(
                     state,
                     failure_command="south",
@@ -17934,6 +18513,119 @@ class StarterPolicy:
             "wait at the healer for the wandering route-program mobile to clear",
         )
 
+    def _route_greet_blocked_by_invisibility(
+        self, state: CharacterState, *, destination: str,
+    ) -> bool:
+        route = self.fastwalk_route
+        if (
+            route is None or not route.route_source_program_audited
+            or route.route_source_program_block_reason or route.route_hard_hazard_targets
+            or not self.route_visibility_affects_observed
+            or self.route_invisibility_revoked
+            or (_named_affect_duration(state.affects, "invis") or 0) < 2
+            or state.in_combat or self.combat_active or state.dead
+            or self.runtime_boundary_requested or self.fastwalk_returning or self.return_home
+            or self.fastwalk_emergency_recall_pending
+            or not invisibility_blocks_source_greet(
+                self.source_world, route.route_preflight_source_mobile_vnum,
+                target=route.route_preflight_target or "",
+            )
+        ):
+            return False
+        evidence = {
+            "source_mobile_vnum": route.route_preflight_source_mobile_vnum,
+            "from_room": str(state.room_vnum), "destination": destination,
+            "reason": "live invisibility blocks source greet visibility",
+        }
+        if evidence not in self.fastwalk_route_invisibility_checks:
+            self.fastwalk_route_invisibility_checks.append(evidence)
+        return True
+
+    def _source_aggression_invisibility_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Require fresh invisibility before crossing audited aggression."""
+        route = self.fastwalk_route
+        if (
+            route is None
+            or not route.route_invisibility_source_mobile_vnums
+            or self.fastwalk_returning
+        ):
+            return None
+        source_valid = all(
+            invisibility_blocks_source_aggression(self.source_world, mobile_vnum)
+            for mobile_vnum in route.route_invisibility_source_mobile_vnums
+        )
+        duration = _named_affect_duration(state.affects, "invis")
+        ready = bool(
+            source_valid
+            and self.route_visibility_affects_observed
+            and not self.route_invisibility_revoked
+            and _has_named_affect(state.affects, "invis")
+            and duration is not None
+            and duration >= 2
+            and not state.in_combat
+            and not self.combat_active
+            and not state.dead
+            and not self.runtime_boundary_requested
+            and not self.return_home
+            and not self.fastwalk_emergency_recall_pending
+        )
+        if ready:
+            evidence = {
+                "source_mobile_vnums": list(
+                    route.route_invisibility_source_mobile_vnums
+                ),
+                "from_room": str(state.room_vnum),
+                "outbound_index": self.fastwalk_outbound_index,
+                "duration": duration,
+                "reason": "fresh live invisibility blocks source aggression",
+            }
+            if evidence not in self.fastwalk_route_invisibility_checks:
+                self.fastwalk_route_invisibility_checks.append(evidence)
+            return None
+
+        # At the source-ranked route origin, the ordinary invisibility state
+        # machine still owns a missing affect and its bounded cast attempts.
+        if (
+            source_valid
+            and self.fastwalk_outbound_index == 0
+            and str(state.room_vnum or "") == str(route.route_origin_room_vnum)
+            and not _has_named_affect(state.affects, "invis")
+            and not state.in_combat
+            and not self.combat_active
+            and not state.dead
+            and not self.runtime_boundary_requested
+        ):
+            return None
+
+        self.fastwalk_abort_reason = (
+            "source-aggressive route lacked fresh live invisibility"
+            if source_valid
+            else "source-aggressive route visibility metadata failed validation"
+        )
+        self.fastwalk_returning = True
+        self.return_home = True
+        if state.in_combat or self.combat_active:
+            if self.flee_pending:
+                self.prompt_ready = False
+                return None
+            return BotDecision(
+                "flee",
+                "leave combat after source-route invisibility became unsafe",
+            )
+        if str(state.room_vnum or "") == "3001":
+            return BotDecision(
+                "north",
+                "return to the healer before an unsafe invisible route departure",
+            )
+        self.fastwalk_emergency_recall_pending = True
+        return BotDecision(
+            "recall",
+            "return after source-route invisibility became unsafe",
+        )
+
     def _fastwalk_route_preflight_decision(
         self,
         state: CharacterState,
@@ -17961,6 +18653,10 @@ class StarterPolicy:
             or route.route_preflight_command is None
             or str(state.room_vnum or "")
             != str(route.route_preflight_room_vnum)
+        ):
+            return None
+        if self._route_greet_blocked_by_invisibility(
+            state, destination=str(route.route_preflight_room_vnum),
         ):
             return None
         if self.fastwalk_route_preflight_hazard_observed:
@@ -18002,7 +18698,8 @@ class StarterPolicy:
             self.fastwalk_route_preflight_complete = True
             self.fastwalk_abort_reason = (
                 "field route preflight found source-registered hazard "
-                f"{target!r} in room {route.route_preflight_room_vnum}"
+                f"{target!r} at {', '.join(self.fastwalk_route_preflight_locations) or 'an unmapped location'} "
+                f"while observing from room {route.route_preflight_room_vnum}"
             )
             self.fastwalk_returning = True
             if retryable:
@@ -18185,6 +18882,15 @@ class StarterPolicy:
             if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
             else None
         )
+        if self.bystander_consider_pending is not None:
+            return None
+        if (
+            self.fastwalk_attack_target is not None
+            and self.consider_target != self.fastwalk_attack_target
+        ):
+            # A completed bystander audit clears the main consider state;
+            # the interception still owns its evaluation, not outbound travel.
+            return self._consider_fastwalk_target(state)
         if stop is not None and stop.consider_only:
             if (
                 self.consider_target == self.fastwalk_attack_target
@@ -18228,6 +18934,8 @@ class StarterPolicy:
 
     def _intercept_failure_can_continue_circuit(self) -> bool:
         """Keep an independent later stop after one intercepted stop fails."""
+        if self._intercepted_field_route_can_resume():
+            return True
         if self.fastwalk_hunt_stop_index + 1 >= len(self.fastwalk_hunt_stops):
             return False
         stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
@@ -18241,13 +18949,50 @@ class StarterPolicy:
             )
         )
 
+    def _intercepted_field_route_can_resume(self) -> bool:
+        """A weak waypoint instance does not consume the unvisited endpoint."""
+        context = self.fastwalk_intercept_resume_context
+        if (
+            not self.fastwalk_field_intercept_active
+            or context is None
+            or self.fastwalk_returning
+            or self.fastwalk_crowded
+            or self.fastwalk_abort_reason
+            or self.consider_viable is not False
+        ):
+            return False
+        stop_index, move_index, _, killed, skipped, _ = context
+        if (
+            stop_index != self.fastwalk_hunt_stop_index
+            or not 0 <= stop_index < len(self.fastwalk_hunt_stops)
+            or killed or skipped
+        ):
+            return False
+        stop = self.fastwalk_hunt_stops[stop_index]
+        return bool(
+            stop.target is not None
+            and not stop.abort_after_consider_rejection
+            and not stop.route
+            and 0 < move_index < len(stop.route_vnums)
+            and stop.route_vnums[move_index - 1] == self.current_room
+            and any(
+                room == self.current_room
+                and _stop_target_matches(target, stop.target, stop)
+                for room, target in self.fastwalk_below_band_sightings
+            )
+        )
+
     def _clear_intercept_evaluation(self) -> None:
         """Release ephemeral target state before advancing the circuit."""
+        self.displaced_field_target = None
         resume_context = self.fastwalk_intercept_resume_context
-        if resume_context is not None and not self.fastwalk_field_intercept_active:
+        resume_field_route = self._intercepted_field_route_can_resume()
+        if resume_context is not None and (
+            not self.fastwalk_field_intercept_active or resume_field_route
+        ):
             (
                 stop_index,
-                _move_index,
+                move_index,
                 action_index,
                 stop_killed,
                 stop_skipped,
@@ -18259,8 +19004,10 @@ class StarterPolicy:
             self.fastwalk_hunt_action_index = action_index
             self.fastwalk_hunt_post_action_index = 0
             self.fastwalk_hunt_looked = False
-            self.fastwalk_hunt_route_before_target = False
-            if stop_index < len(self.fastwalk_hunt_stops):
+            self.fastwalk_hunt_route_before_target = resume_field_route
+            if resume_field_route:
+                self.fastwalk_hunt_move_index = move_index
+            elif stop_index < len(self.fastwalk_hunt_stops):
                 stop = self.fastwalk_hunt_stops[stop_index]
                 # The official outbound route has already carried the
                 # character to its endpoint; source-ranked route VNUMs for
@@ -18332,6 +19079,10 @@ class StarterPolicy:
         for stop_index, stop in indexed_stops:
             if stop.target is None:
                 continue
+            displaced = (
+                self._displaced_target_on_approach(state, stop, stop_index)
+                if not field_circuit_in_progress and not self.combat_active else None
+            )
             if self.combat_active:
                 # An aggressive wanderer can engage before the text and GMCP
                 # snapshots settle into the usual pre-combat order.  Once
@@ -18358,10 +19109,11 @@ class StarterPolicy:
                     continue
             if self._source_mobile_level_range(stop.target, stop) is None:
                 continue
-            if not self._at_registered_source_reset_room(state, stop):
+            if not self._at_registered_source_reset_room(state, stop) and displaced is None:
                 continue
             if (
                 not field_circuit_in_progress
+                and displaced is None
                 and stop.source_mobile_vnum is not None
                 and stop.route_vnums
                 and (
@@ -18391,15 +19143,21 @@ class StarterPolicy:
                 # not enough to authorize an interception.
                 continue
             self.fastwalk_intercepted_sightings.add(sighting_key)
-            if not field_circuit_in_progress:
-                self.fastwalk_intercept_resume_context = (
-                    self.fastwalk_hunt_stop_index,
-                    self.fastwalk_hunt_move_index,
-                    self.fastwalk_hunt_action_index,
-                    self.fastwalk_hunt_stop_killed,
-                    self.fastwalk_hunt_stop_skipped,
-                    self.fastwalk_hunt_route_before_target,
-                )
+            self.displaced_field_target = displaced
+            if displaced is not None:
+                self.fastwalk_displaced_target_outcomes.append({
+                    "selector": displaced.selector, "source_mobile_vnum": displaced.mobile_vnum,
+                    "room_vnum": displaced.room_vnum, "reset_room_vnum": displaced.reset_room_vnum,
+                    "stop_index": stop_index, "evidence": "unique source room description",
+                })
+            self.fastwalk_intercept_resume_context = (
+                self.fastwalk_hunt_stop_index,
+                self.fastwalk_hunt_move_index,
+                self.fastwalk_hunt_action_index,
+                self.fastwalk_hunt_stop_killed,
+                self.fastwalk_hunt_stop_skipped,
+                self.fastwalk_hunt_route_before_target,
+            )
             self.fastwalk_hunt_stop_index = stop_index
             self.fastwalk_hunt_move_index = (
                 len(stop.route_vnums) + len(stop.route)
@@ -18482,6 +19240,56 @@ class StarterPolicy:
         mobile = self.source_world.mobiles.get(19900) if self.source_world else None
         return _normalize_mobile_line(mobile.room_description) if mobile else ""
 
+    def _adopt_familiar_opening_death(self) -> bool:
+        """An ordered NPC can finish its target before the player has attacked."""
+        preparation = self.familiar_preparation
+        if (
+            self.active_target is not None
+            or self.familiar_precombat_step != "attack"
+            or not self.familiar_active or not preparation.order_pending
+            or not self.current_room or self.familiar_order_room != self.current_room
+            or self.fastwalk_hunt_stop_index >= len(self.fastwalk_hunt_stops)
+            or self.source_world is None
+        ):
+            return False
+        stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+        mobile = self.source_world.mobiles.get(stop.source_mobile_vnum)
+        selector = self.consider_target_selector
+        descriptions = self.room_target_selector_descriptions.get(self.current_room, {})
+        companion_description = self._staged_familiar_description()
+        death = _MOB_DEATH.search(preparation.buffer)
+        matching_selectors = {
+            value
+            for target, values in self.room_target_selectors.get(self.current_room, {}).items()
+            if stop.target is not None and _stop_target_matches(target, stop.target, stop)
+            for value in values
+        }
+        if (
+            mobile is None or stop.target is None or death is None
+            or self.familiar_ordered_target != self.familiar_precombat_target
+            or not _stop_target_matches(self.familiar_ordered_target or "", stop.target, stop)
+            or re.fullmatch(r"#\d+", selector or "") is None
+            or matching_selectors != {selector}
+            or self._target_selector_for(stop.target, stop) != selector
+            or not preparation.present(descriptions, companion_description)
+            or list(descriptions.values()).count(companion_description) != 1
+            or _normalize_mobile_line(death.group("target")) != _normalize_mobile_line(mobile.short_description)
+            or _KILL_XP_GAIN.search(preparation.buffer)
+            or not companion_finishing_blow(preparation.buffer, target=death.group("target"))
+        ):
+            return False
+        # Adopt only the completed encounter, never a new combat permission.
+        self.active_target = stop.target
+        self.active_target_selector = selector
+        self.active_target_mobile_vnum = stop.source_mobile_vnum
+        self.familiar_precombat_step = None
+        self.familiar_precombat_target = None
+        self.familiar_ordered_target = None
+        self.familiar_order_room = None
+        preparation.order_pending = False
+        self.familiar_active = False
+        return True
+
     def _staged_familiar_present(self, state: CharacterState) -> bool:
         return self.familiar_preparation.present(
             self.room_target_selector_descriptions.get(str(state.room_vnum), {}),
@@ -18496,7 +19304,7 @@ class StarterPolicy:
         ):
             return None
         preparation = self.familiar_preparation
-        if preparation.stage == "ready" or preparation.failure:
+        if preparation.stage == "ready":
             return None
         staging_rooms = {
             stop.familiar_staging_room_vnum for stop in self.fastwalk_hunt_stops
@@ -18649,6 +19457,7 @@ class StarterPolicy:
                     return None
                 self.familiar_precombat_step = "attack"
                 self.familiar_ordered_target = active_target
+                self.familiar_order_room = self.current_room
                 self.familiar_preparation.expect_order()
                 keyword = (
                     self.consider_target_selector or self.active_target_selector
@@ -18673,6 +19482,7 @@ class StarterPolicy:
                 self.familiar_unavailable = True
                 return None
             self.familiar_preparation.order_pending = False
+            self.familiar_order_room = None
             self.familiar_precombat_step = None
             self.familiar_active = True
             self.familiar_ordered_target = active_target
@@ -19062,8 +19872,11 @@ class StarterPolicy:
             mitigation = self._fastwalk_caster_mitigation_decision(state)
             if mitigation is not None:
                 return mitigation
+            solo_handled, solo = self._considered_solo_decision(state, stop)
+            if solo_handled:
+                return solo
             familiar = None
-            if not (
+            if not self._considered_solo_ready(state) and not (
                 stop is not None
                 and stop.require_sanctuary
                 and not _has_named_affect(state.affects, "sanctuary")
@@ -19085,10 +19898,13 @@ class StarterPolicy:
                         )
                         self._start_field_combat_damage_probe(state)
                     return familiar
+                if self.familiar_preparation.pending and not self.familiar_unavailable:
+                    return None
             if (
                 stop is not None
                 and stop.require_familiar
                 and not self.familiar_active
+                and not self._considered_solo_ready(state)
             ):
                 self.fastwalk_abort_reason = (
                     f"source familiar was unavailable before {target!r} "
@@ -19522,6 +20338,7 @@ class StarterPolicy:
                 self.combat_active or self.fastwalk_attack_started
             ):
                 self.fastwalk_sanctuary_consumed_in_combat = True
+                self.fastwalk_sanctuary_used_during_segment = True
             return BotDecision(
                 f"quaff {sanctuary_keyword}",
                 "use the identified sanctuary potion before taking avoidable combat damage",
@@ -19550,6 +20367,7 @@ class StarterPolicy:
                         self.combat_active or self.fastwalk_attack_started
                     ):
                         self.fastwalk_sanctuary_consumed_in_combat = True
+                        self.fastwalk_sanctuary_used_during_segment = True
                 return source_resource
         return None
 
@@ -19851,6 +20669,8 @@ class StarterPolicy:
         self,
         state: CharacterState,
     ) -> BotDecision | None:
+        if self.fastwalk_hunt_look_response_pending:
+            return None
         pair_issue = self._source_pair_scope_issue(state, time.monotonic())
         if pair_issue is not None:
             self.fastwalk_abort_reason = pair_issue
@@ -21338,7 +22158,11 @@ class StarterPolicy:
             choices = [
                 (len(path), label.casefold(), path)
                 for origin, label, path in locator.where_relocation_routes
-                if origin == current_room and label.casefold() in locations
+                if (
+                    origin == current_room
+                    and label.casefold() in locations
+                    and path
+                )
             ]
             if not choices:
                 self.fastwalk_target_absent = False
@@ -21540,10 +22364,6 @@ class StarterPolicy:
 
         if not all(profile == {"spec_guard"} for profile in profile_sets):
             return False
-        try:
-            alignment = int(state.progress.get("alignment", 0))
-        except (TypeError, ValueError):
-            return False
         # spec_guard attacks criminal flags immediately and assists only
         # characters below 300 alignment. One non-hostile retry is live proof
         # that this controlled character is not currently flagged criminal.
@@ -21554,7 +22374,7 @@ class StarterPolicy:
             )
             > 0
         )
-        return alignment >= 300 and waited_non_hostile_retry
+        return observed_guard_safe_alignment(state.progress.get("alignment")) and waited_non_hostile_retry
 
     def _at_registered_source_reset_room(
         self,
@@ -21653,12 +22473,24 @@ class StarterPolicy:
             or self._current_room_enemy_records(state)
         ):
             return None
+        stop = (
+            self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+            if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+            else None
+        )
+        if stop is not None and stop.target != target:
+            stop = None
         for bystander, count in observed.items():
             if not 1 <= count <= 3 or (
-                count == 1 and _targets_match(bystander, target)
+                count == 1 and _stop_target_matches(bystander, target, stop)
             ):
                 continue
-            if self._source_mobile_name_is_non_assisting_bystander(bystander, state):
+            # Same-name targets still need per-instance consider evidence.
+            # Skipping them here leaves their count above the single-target
+            # limit even when source data already excludes mutual assistance.
+            if self._source_mobile_name_is_non_assisting_bystander(bystander, state) and not (
+                count > 1 and _stop_target_matches(bystander, target, stop)
+            ):
                 continue
             selectors = self.room_target_selectors.get(
                 str(state.room_vnum or ""), {},
@@ -21889,6 +22721,89 @@ class StarterPolicy:
             self.fastwalk_pursuit_identity_outcomes.append(result)
         return True
 
+    def _displaced_target_on_approach(
+        self, state: CharacterState, stop: FieldHuntStop, stop_index: int,
+    ) -> DisplacedTargetIdentity | None:
+        world, route = self.source_world, self.fastwalk_route
+        room = _int_or_none(state.room_vnum)
+        if (
+            world is None or route is None or room is None or not self.world_boot_id
+            or str(room) != self.current_room or room not in world.rooms
+            or state.in_combat or self.combat_active or self.fastwalk_returning
+            or state.position == 6 or self._current_room_enemy_records(state)
+            or self.runtime_boundary_requested or self.fastwalk_emergency_recall_pending
+            or stop.target is None or stop.source_mobile_vnum is None or not stop.route_vnums
+            or not 0 < self.fastwalk_outbound_index < len(route.commands)
+        ):
+            return None
+        remaining = route.commands[self.fastwalk_outbound_index:]
+        direction = remaining[0]
+        if direction.startswith("open "):
+            direction = direction.removeprefix("open ")
+            if len(remaining) < 2 or remaining[1] != direction:
+                return None
+        destination = _int_or_none(_exit_destination(state.exits, direction))
+        if (
+            destination is None or str(destination) != stop.route_vnums[-1]
+            or stop.source_reset_room_vnum not in {None, str(destination)}
+        ):
+            return None
+        mobile = world.mobiles.get(stop.source_mobile_vnum)
+        if mobile is None:
+            return None
+        description = _normalize_mobile_line(mobile.room_description)
+        current_text = self.text.casefold()
+        room_heading = re.escape(world.rooms[room].name.casefold())
+        if not re.search(rf"(?m)^{room_heading}[ \t]*\n", current_text) or "[exits:" not in current_text:
+            return None
+        selectors = [
+            selector for observed, values in self.room_target_selectors.get(str(room), {}).items()
+            if _stop_target_matches(observed, stop.target, stop) for selector in values
+        ]
+        if len(selectors) != 1 or re.fullmatch(r"#\d+", selectors[0]) is None:
+            return None
+        selector = selectors[0]
+        if (
+            _room_mobile_target_selector_descriptions(self.text).get(selector) != description
+            or self.room_target_selector_descriptions.get(str(room), {}).get(selector) != description
+            or displaced_sentinel_reset_room(
+                world, mobile.vnum, room_vnum=room, direction=direction,
+                destination=destination, description=description,
+            ) is None
+        ):
+            return None
+        return DisplacedTargetIdentity(
+            selector, mobile.vnum, str(room), stop_index, state.level,
+            self.world_boot_id, time.monotonic(), str(destination), description,
+        )
+
+    def _displaced_field_target_matches(
+        self, state: CharacterState, stop: FieldHuntStop, target: str,
+    ) -> bool:
+        identity = self.displaced_field_target
+        if (
+            identity is None or str(state.room_vnum) != self.current_room
+            or identity.room_vnum != self.current_room
+            or identity.mobile_vnum != stop.source_mobile_vnum
+            or identity.stop_index != self.fastwalk_hunt_stop_index
+            or identity.level != state.level or identity.boot_id != self.world_boot_id
+            or time.monotonic() - identity.observed_at >= 30
+            or not stop.route_vnums or stop.route_vnums[-1] != identity.reset_room_vnum
+            or self.fastwalk_returning or self.runtime_boundary_requested
+            or self.fastwalk_emergency_recall_pending
+        ):
+            return False
+        selectors = [
+            selector for observed, values in self.room_target_selectors.get(self.current_room, {}).items()
+            if _stop_target_matches(observed, target, stop) for selector in values
+        ]
+        return bool(
+            selectors == [identity.selector]
+            and self._target_selector_for(target, stop) == identity.selector
+            and self.room_target_selector_descriptions.get(self.current_room, {}).get(identity.selector)
+            == identity.description
+        )
+
     def _source_target_reachability_issue(
         self,
         state: CharacterState,
@@ -21915,6 +22830,8 @@ class StarterPolicy:
         # Sentinel restricts ordinary wandering, not a combat flee. A fresh
         # exact-instance observation outranks the static population graph.
         if self._live_pursuit_identifies_target(state, stop, target):
+            return None
+        if self._displaced_field_target_matches(state, stop, target):
             return None
         target_key = next(
             (
@@ -21977,6 +22894,13 @@ class StarterPolicy:
         }
         if "blindness" not in effects:
             return None
+        healer_recovery_allowed = bool(
+            stop.allow_healer_blindness_recovery
+            and set(stop.source_specials) == {"spec_cast_mage"}
+            and source_effect_level is not None
+            and source_effect_level < 20
+            and effects <= {"blindness", "weaken"}
+        )
         if "cure blindness" in self.known_skills:
             return None
         cure_keyword = _verified_combat_potion_keyword_for_spell(
@@ -21985,6 +22909,8 @@ class StarterPolicy:
             "cure blindness",
         )
         if cure_keyword is None:
+            if healer_recovery_allowed:
+                return None
             specials = ", ".join(sorted(set(stop.source_specials)))
             return (
                 f"source special {specials} can inflict blindness without a "
@@ -22003,6 +22929,8 @@ class StarterPolicy:
         if sanctuary_consumed_before_fight and (
             self.combat_pouch_potions.get(cure_keyword, 0) < 2
         ):
+            if healer_recovery_allowed:
+                return None
             specials = ", ".join(sorted(set(stop.source_specials)))
             return (
                 f"source special {specials} can blind after the sanctuary "
@@ -23404,6 +24332,11 @@ class StarterPolicy:
             str(room_vnum) for room_vnum in route.route_preflight_scan_room_vnums
         }:
             return None
+        if (
+            self.fastwalk_route_pre_entry_scan_pending is None
+            and self._route_greet_blocked_by_invisibility(state, destination=destination)
+        ):
+            return None
         scan_key = (self.fastwalk_outbound_index, destination)
         pending_key = (
             self.fastwalk_outbound_index,
@@ -23594,6 +24527,8 @@ class StarterPolicy:
             if count <= 0 or _stop_target_matches(observed, target, stop):
                 continue
             if self.gear_catalog is not None and self.gear_catalog.match(observed):
+                continue
+            if count == 1 and self._live_bystander_below_assistance_band(observed, state):
                 continue
             source_vnums = self._source_mobile_vnums_for_name_in_room(
                 observed,
@@ -24285,6 +25220,83 @@ class StarterPolicy:
             and stop.maximum_target_count == 1
         )
 
+    def _duplicate_enemy_packet_is_confirmed_familiar_handoff(
+        self,
+        state: CharacterState,
+        enemies: Collection[Mapping[str, Any]],
+    ) -> bool:
+        """Accept one source-explained duplicate at the exact pony handoff."""
+        if (
+            self.active_enemy_duplicate_count != 1
+            or self.active_enemy_snapshot_count != 2
+            or not state.in_combat
+            or self.fastwalk_hunt_stop_index >= len(self.fastwalk_hunt_stops)
+            or not self.familiar_disengagement_attempted
+            or self.familiar_active
+            or not self.familiar_unavailable
+            or self.unapproved_field_attacker is not None
+        ):
+            return False
+        stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+        withdrawal = self.familiar_withdrawal
+        target = self.active_target or self.fastwalk_attack_target
+        if (
+            not stop.require_familiar
+            or not stop.exact_target
+            or stop.source_mobile_vnum is None
+            or target is None
+            or not withdrawal.confirmed
+            or withdrawal.failure is not None
+            or withdrawal.deadline is None
+            or time.monotonic() > withdrawal.deadline
+            or re.fullmatch(r"#\d+", self.active_target_selector or "") is None
+            or re.fullmatch(r"#\d+", self.familiar_preparation.selector or "") is None
+        ):
+            return False
+        response_lines = {
+            " ".join(line.casefold().split())
+            for line in self.last_response.splitlines()
+            if line.strip()
+        }
+        if "the pony stops following you." not in response_lines:
+            return False
+        raw_enemies = self._current_room_enemy_records(
+            state,
+            deduplicate=False,
+        )
+        if (
+            len(raw_enemies) != 2
+            or raw_enemies[0] != raw_enemies[1]
+            or len(enemies) != 1
+            or not _enemy_matches_stop_target(enemies[0], target, stop)
+            or _int_or_none(enemies[0].get("isnpc")) != stop.source_mobile_vnum
+        ):
+            return False
+        room_key = str(state.room_vnum or self.current_room or "")
+        target_selectors = {
+            selector
+            for observed_target, selectors in self.room_target_selectors.get(
+                room_key,
+                {},
+            ).items()
+            if _stop_target_matches(observed_target, target, stop)
+            for selector in selectors
+        }
+        if target_selectors != {self.active_target_selector}:
+            return False
+        evidence = {
+            "room_vnum": room_key,
+            "selector": self.active_target_selector,
+            "source_mobile_vnum": stop.source_mobile_vnum,
+            "target": target,
+            "raw_records": 2,
+            "outcome": "confirmed familiar handoff alias",
+            "source_reference": "update.c:4216-4269",
+        }
+        if evidence not in self.fastwalk_familiar_handoff_duplicates:
+            self.fastwalk_familiar_handoff_duplicates.append(evidence)
+        return True
+
     def _field_attacker_is_known_below_band(
         self,
         attacker: str,
@@ -24513,7 +25525,6 @@ class StarterPolicy:
         if (
             self.fastwalk_route is None
             or self.fastwalk_attack_started
-            or self.fastwalk_attack_target is not None
             or not self.fastwalk_hunt_stops
             or self.fastwalk_hunt_stop_index >= len(self.fastwalk_hunt_stops)
             or not enemies
@@ -24521,6 +25532,8 @@ class StarterPolicy:
             return
         stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
         if stop.target is None:
+            return
+        if self.fastwalk_attack_target not in (None, stop.target):
             return
         room_vnum = str(state.room_vnum or self.current_room or "")
         route_length = len(stop.route_vnums) + len(stop.route)
@@ -24950,6 +25963,86 @@ class StarterPolicy:
             "assess the exact audited route-gate mobile before fighting it",
         )
 
+    def _required_loot_search_can_leave_passive_room(
+        self, state: CharacterState, target: str, stop: FieldHuntStop | None,
+    ) -> bool:
+        """Permit the normal absence/search path, never an attack on this room."""
+        world = self.source_world
+        if (
+            world is None or stop is None or not stop.allow_below_band_for_required_loot
+            or stop.source_mobile_vnum is None or self.fastwalk_where_locator_stop is None
+            or self.fastwalk_hunt_stop_index + 1 >= len(self.fastwalk_hunt_stops)
+            or self.runtime_boundary_requested or self.fastwalk_returning
+            or self.fastwalk_emergency_recall_pending or self.flee_pending
+            or state.in_combat or state.combat_target or self.combat_active
+            or self._current_room_enemy_records(state) or state.level is None or state.level < 1
+        ):
+            return False
+        room_key = str(state.room_vnum or "")
+        room = world.rooms.get(_int_or_none(room_key))
+        if room is None or room.random_exits:
+            return False
+        observed = self._current_room_target_counts(state)
+        if not observed or any(
+            count > 0 and _stop_target_matches(name, target, stop)
+            for name, count in observed.items()
+        ):
+            return False
+        for name, count in observed.items():
+            if count <= 0 or (self.gear_catalog is not None and self.gear_catalog.match(name)):
+                continue
+            vnums = self._source_mobile_vnums_for_name_in_room(name, state)
+            selectors = self.room_target_selectors.get(room_key, {}).get(name, ())
+            if len(vnums) != 1 or len(selectors) != count or len(set(selectors)) != count:
+                return False
+            mobile = world.mobiles.get(vnums[0])
+            if (
+                mobile is None or mobile.aggressive or mobile.programs
+                or not set(world.mobile_specials.get(mobile.vnum, ())).issubset(
+                    SAFE_NONCOMBAT_SPECIALS | TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+                )
+            ):
+                return False
+            description = _normalize_mobile_line(mobile.room_description)
+            if not description or any(
+                not re.fullmatch(r"#[0-9]+", selector)
+                or description != self.room_target_selector_descriptions.get(room_key, {}).get(selector)
+                for selector in selectors
+            ):
+                return False
+        next_stop = self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index + 1]
+        if (
+            next_stop.source_mobile_vnum != stop.source_mobile_vnum
+            or next_stop.target != stop.target or not next_stop.route_vnums
+            or next_stop.route or str(next_stop.route_vnums[-1]) == room_key
+        ):
+            return False
+        path = [room.vnum]
+        for destination in next_stop.route_vnums:
+            destination_id = _int_or_none(destination)
+            if destination_id == room.vnum:
+                continue
+            exit_ = next((exit_ for exit_ in room.exits.values()
+                          if exit_.destination == destination_id and not exit_.closed
+                          and not exit_.locked), None)
+            if exit_ is None or destination_id not in world.rooms:
+                return False
+            if len(path) == 1 and str(destination) not in {str(vnum) for vnum in state.exits.values()}:
+                return False
+            room = world.rooms[destination_id]
+            if room.random_exits:
+                return False
+            path.append(room.vnum)
+        if (
+            any(world.rooms[vnum].room_flags & ((1 << 9) | (1 << 11) | (1 << 13)) for vnum in path)
+            or source_route_requires_flight(world, path)
+        ):
+            return False
+        return len(path) > 1 and not source_route_hazard_rejections(
+            world, path, character_level=state.level,
+            require_no_combat_hazards=True, combat_at_destination=False,
+        )
+
     def _continue_required_loot_endpoint_sweep(
         self,
         state: CharacterState,
@@ -25138,6 +26231,25 @@ class StarterPolicy:
         )
 
         if room_text_required_loot_hazards:
+            if self._required_loot_search_can_leave_passive_room(state, target, stop):
+                return True, None
+            if (
+                not required_loot_combat_started
+                and stop is not None
+                and len(room_text_required_loot_hazards) == 1
+                and room_text_required_loot_hazards[0][1] == 1
+                and self._bystander_source_instance(
+                    room_text_required_loot_hazards[0][0], state,
+                ) is not None
+                and sum(
+                    count for observed, count in self._current_room_target_counts(state).items()
+                    if _stop_target_matches(observed, target, stop)
+                ) == 1
+                and self._target_selector_for(target, stop, state=state) is not None
+            ):
+                # This is permission to inspect, not to attack. The shared
+                # target evaluator owns exact consider and bounded crowd waits.
+                return True, None
             if (
                 required_loot_combat_started
                 and self._required_loot_endpoint_hazards_can_finish(
@@ -29106,6 +30218,9 @@ class StarterBotRunner:
             probe = getattr(policy, "city_shop_route_probe_checkpoint", None)
             if callable(probe):
                 snapshot.update(probe(self.character_state))
+            field_probe = getattr(policy, "field_city_preflight_checkpoint", None)
+            if callable(field_probe):
+                snapshot.update(field_probe(self.character_state))
             transit = getattr(policy, "city_shop_transit", None)
             if transit is not None:
                 snapshot.update(transit.evidence(
@@ -30481,6 +31596,7 @@ class StarterBotRunner:
                      "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
                      "magic_shop_route_blocked_by_drunk": (
                          getattr(policy, "magic_shop_route_blocked_by_drunk", False)
+                         and not getattr(policy, "field_city_preflight_active", False)
                      ),
                      "city_shop_route_wait_attempts": (
                          getattr(policy, "city_shop_route_wait_attempts", 0)
@@ -30617,10 +31733,19 @@ class StarterBotRunner:
                         withdrawal.evidence()
                         if (withdrawal := getattr(policy, "familiar_withdrawal", None)) else {}
                     ),
+                    "fastwalk_familiar_handoff_duplicates": list(
+                        getattr(policy, "fastwalk_familiar_handoff_duplicates", ())
+                    ),
                     **({FLIGHT_EVIDENCE_KEY: policy.learned_flight_checkpoint(self.character_state)}
                        if getattr(policy, "prepare_learned_flight", False) else {}),
                     "fastwalk_pursuit_identity_outcomes": list(
                         getattr(policy, "fastwalk_pursuit_identity_outcomes", ())
+                    ),
+                    "fastwalk_displaced_target_outcomes": list(
+                        getattr(policy, "fastwalk_displaced_target_outcomes", ())
+                    ),
+                    "fastwalk_route_invisibility_checks": list(
+                        getattr(policy, "fastwalk_route_invisibility_checks", ())
                     ),
                     "fastwalk_encounter_budgets": list(policy.fastwalk_encounter_budgets),
                     "fastwalk_where_area_checks": list(policy.fastwalk_where_area_checks),
@@ -30636,6 +31761,7 @@ class StarterBotRunner:
                 "magic_shop_purchase_failed": policy.magic_shop_purchase_failed,
                 "magic_shop_route_blocked_by_drunk": (
                     getattr(policy, "magic_shop_route_blocked_by_drunk", False)
+                    and not getattr(policy, "field_city_preflight_active", False)
                 ),
                 "campaign_magic_shop_flight_price": (
                     policy.magic_shop_flight_price
@@ -30770,14 +31896,26 @@ class StarterBotRunner:
                     withdrawal.evidence()
                     if (withdrawal := getattr(policy, "familiar_withdrawal", None)) else {}
                 ),
+                "campaign_fastwalk_familiar_handoff_duplicates": list(
+                    getattr(policy, "fastwalk_familiar_handoff_duplicates", ())
+                ),
                 **({FLIGHT_EVIDENCE_KEY: policy.learned_flight_checkpoint(self.character_state)}
                    if getattr(policy, "prepare_learned_flight", False) else {}),
                 "campaign_fastwalk_pursuit_identity_outcomes": list(
                     getattr(policy, "fastwalk_pursuit_identity_outcomes", ())
                 ),
+                "campaign_fastwalk_displaced_target_outcomes": list(
+                    getattr(policy, "fastwalk_displaced_target_outcomes", ())
+                ),
+                "campaign_fastwalk_route_invisibility_checks": list(
+                    getattr(policy, "fastwalk_route_invisibility_checks", ())
+                ),
                 "campaign_fastwalk_encounter_budgets": list(policy.fastwalk_encounter_budgets),
                 "campaign_fastwalk_where_area_checks": list(policy.fastwalk_where_area_checks),
                 "campaign_fastwalk_abort_reason": policy.fastwalk_abort_reason,
+                "campaign_fastwalk_sanctuary_consumed_in_combat": (
+                    policy.fastwalk_sanctuary_used_during_segment
+                ),
                 "campaign_fastwalk_route_hazards": list(
                     policy.fastwalk_route_hazards
                 ),
@@ -30886,6 +32024,17 @@ class StarterBotRunner:
                         if policy is not None
                         else {}
                     ),
+                    "fastwalk_sanctuary_used_during_segment": (
+                        bool(
+                            getattr(
+                                policy,
+                                "fastwalk_sanctuary_used_during_segment",
+                                False,
+                            )
+                        )
+                        if policy is not None
+                        else False
+                    ),
                     "campaign_source_resource_reserves": (
                         source_resource_snapshot()
                     ),
@@ -30945,6 +32094,7 @@ class StarterBotRunner:
                      ),
                      "magic_shop_route_blocked_by_drunk": (
                          getattr(policy, "magic_shop_route_blocked_by_drunk", False)
+                         and not getattr(policy, "field_city_preflight_active", False)
                          if policy
                          else False
                      ),
@@ -31027,10 +32177,19 @@ class StarterBotRunner:
                         withdrawal.evidence()
                         if (withdrawal := getattr(policy, "familiar_withdrawal", None)) else {}
                     ),
+                    "fastwalk_familiar_handoff_duplicates": list(
+                        getattr(policy, "fastwalk_familiar_handoff_duplicates", ())
+                    ),
                     **({FLIGHT_EVIDENCE_KEY: policy.learned_flight_checkpoint(self.character_state)}
                        if getattr(policy, "prepare_learned_flight", False) else {}),
                     "fastwalk_pursuit_identity_outcomes": (
                         list(getattr(policy, "fastwalk_pursuit_identity_outcomes", ()))
+                    ),
+                    "fastwalk_displaced_target_outcomes": list(
+                        getattr(policy, "fastwalk_displaced_target_outcomes", ())
+                    ),
+                    "fastwalk_route_invisibility_checks": list(
+                        getattr(policy, "fastwalk_route_invisibility_checks", ())
                     ),
                     "fastwalk_encounter_budgets": (
                         list(policy.fastwalk_encounter_budgets) if policy else []

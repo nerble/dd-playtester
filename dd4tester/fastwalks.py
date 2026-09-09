@@ -66,6 +66,11 @@ class Fastwalk:
     return_commands: tuple[str, ...] = ()
     # Only source-validated routes may reverse their closed-door commands.
     return_commands_allow_open: bool = False
+    # Exact source identity for visibility-aware program preflight only.
+    route_preflight_source_mobile_vnum: int | None = None
+    # Exact aggressive source mobiles whose update.c aggression check is
+    # blocked only while fresh live invisibility remains confirmed.
+    route_invisibility_source_mobile_vnums: tuple[int, ...] = ()
 
     @property
     def commands(self) -> tuple[str, ...]:

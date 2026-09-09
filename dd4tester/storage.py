@@ -774,6 +774,25 @@ class RunStorage:
             (run_id,),
         ).fetchone()
 
+    def get_latest_run_state_event(
+        self, run_id: int, *, states: tuple[str, ...],
+    ) -> sqlite3.Row | None:
+        """Read one latest matching boundary without loading the transcript."""
+        if not states:
+            return None
+        placeholders = ", ".join("?" for _ in states)
+        return self.connection.execute(
+            f"""
+            SELECT id, run_id, timestamp, kind, payload_json
+            FROM events
+            WHERE run_id = ? AND kind = 'state'
+              AND json_extract(payload_json, '$.state') IN ({placeholders})
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (run_id, *states),
+        ).fetchone()
+
     def repair_run_events_from_transcript(self, run_id: int) -> int:
         """Replay a transcript suffix that was not committed before a stop.
 

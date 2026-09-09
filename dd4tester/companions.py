@@ -9,6 +9,7 @@ from typing import Collection, Mapping, Sequence
 
 from .hunt_candidates import EX_WALL, WorldSource, source_route_requires_flight
 from .archetypes import archetype_registry
+from .observations import _DD4_PROMPT, _EXITS
 
 
 ROOM_INDOORS = 1 << 3
@@ -27,6 +28,56 @@ def companion_finishing_blow(text: str, *, target: str, companion: str = "the po
                 and not any(word in attack for word in (" says ", " tells ", " misses "))
             )
     return False
+
+
+@dataclass
+class FamiliarStandby:
+    """One acknowledged sleep/stand exchange, scoped to an owned companion."""
+
+    selector: str
+    room_vnum: str
+    stage: str = "idle"
+    deadline: float | None = None
+    buffer: str = ""
+    failure: str | None = None
+
+    def command(self, *, wake: bool, now: float) -> str | None:
+        if self.failure:
+            return None
+        if re.fullmatch(r"#\d+", self.selector) is None:
+            self.failure = "missing exact companion selector"
+            return None
+        if self.stage in {"sleeping", "waking"}:
+            if self.deadline is not None and now >= self.deadline:
+                self.failure = "companion standby acknowledgement timed out"
+            return None
+        if (wake and self.stage != "asleep") or (not wake and self.stage != "idle"):
+            return None
+        self.stage = "waking" if wake else "sleeping"
+        self.deadline = now + 5
+        self.buffer = ""
+        return f"order {self.selector} {'stand' if wake else 'sleep'}"
+
+    def expire(self, now: float) -> None:
+        if self.stage in {"sleeping", "waking"} and self.deadline is not None and now >= self.deadline:
+            self.failure = "companion standby acknowledgement timed out"
+
+    def observe(self, text: str, *, now: float) -> None:
+        self.expire(now)
+        if self.failure:
+            return
+        self.buffer = (self.buffer + text)[-2000:]
+        lines = [line.strip().casefold() for line in self.buffer.splitlines()]
+        if set(lines) & {"they aren't here.", "do it yourself!", "you have no followers here."}:
+            self.failure = "companion standby order refused"
+            return
+        if self.stage == "sleeping" and "the pony sleeps." in lines:
+            self.stage = "asleep"
+        elif self.stage == "waking" and any(
+            re.fullmatch(r"the pony wakes and readies (?:him|her|it)self for action\.", line)
+            for line in lines
+        ):
+            self.stage = "awake"
 
 
 @dataclass
@@ -193,12 +244,28 @@ class FamiliarPreparation:
     attempts: int = 0
     recitation_failed: bool = False
     deadline: float | None = None
+    listing_started: bool = False
+    listing_complete: bool = False
 
-    def observe(self, text: str) -> None:
-        if self.stage not in {"summoning", "grouping"} and not self.order_pending:
+    @property
+    def pending(self) -> bool:
+        return self.stage in {"summoning", "identifying", "grouping"} and not self.failure
+
+    def expire(self, now: float) -> None:
+        if self.pending and self.deadline is not None and now >= self.deadline:
+            self.failure = "familiar preparation exceeded its confirmation deadline"
+
+    def observe(self, text: str, *, now: float | None = None) -> None:
+        self.expire(time.monotonic() if now is None else now)
+        if self.failure or (not self.pending and not self.order_pending):
             return
-        self.buffer = (self.buffer + text)[-2_000:]
-        lines = {" ".join(line.casefold().split()) for line in self.buffer.splitlines()}
+        received = self.buffer + text
+        self.buffer = received[-2_000:]
+        # A server prompt need not end with a newline before the next reply.
+        lines = {
+            " ".join(line.casefold().split())
+            for line in _DD4_PROMPT.sub("\n", self.buffer).splitlines()
+        }
         if self.stage == "summoning":
             self.summoned = self.summoned or (
                 "you raise your hands and the form of the pony appears before you."
@@ -208,8 +275,30 @@ class FamiliarPreparation:
                 "you fail to correctly recite the spell!",
                 "you lost your concentration.", "you lose your concentration.",
             })
+            if lines & {
+                "you don't have enough mana.",
+                "you can't summon a familiar indoors.",
+                "you can't summon a familiar underwater.",
+            }:
+                self.failure = "summon familiar was explicitly refused"
+        elif self.stage == "identifying":
+            if not self.listing_started:
+                header = next((line for line in received.splitlines() if _EXITS.fullmatch(line.strip())), None)
+                if header is not None:
+                    # Discard any world-tick prompt preceding the requested look.
+                    self.buffer = received[received.index(header):][-2_000:]
+                    self.listing_started = True
+            self.listing_complete = self.listing_started and bool(_DD4_PROMPT.search(self.buffer))
         elif self.stage == "grouping":
             self.grouped = self.grouped or "the pony joins your group." in lines
+            if lines & {
+                "they aren't here.", "the pony isn't following you.",
+                "the pony cannot join your group.",
+                "but you are following someone else!",
+                "you can't have any more npcs in your group.",
+                "you remove the pony from your group.",
+            }:
+                self.failure = "familiar group ownership was explicitly refused"
         elif self.order_pending:
             self.order_confirmed = self.order_confirmed or "ok." in lines
 
@@ -255,11 +344,14 @@ class FamiliarPreparation:
             return "cast 'summon familiar'"
         if self.stage == "summoning":
             if not self.summoned:
-                self.failure = "summon familiar was not positively confirmed"
                 return None
             self.stage = "identifying"
+            self.buffer = ""
+            self.listing_started = self.listing_complete = False
             return "look"
         if self.stage == "identifying":
+            if not self.listing_complete:
+                return None
             matches = [
                 selector for selector, observed in selectors.items()
                 if observed == description and re.fullmatch(r"#\d+", selector)
@@ -273,7 +365,6 @@ class FamiliarPreparation:
             return f"group {self.selector}"
         if self.stage == "grouping":
             if not self.grouped:
-                self.failure = "familiar group ownership was not positively confirmed"
                 return None
             self.stage = "ready"
         return None

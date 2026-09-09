@@ -281,8 +281,7 @@ class CharacterState:
             self.max_xp = incoming_max_xp
             self.xp_to_next_level = incoming_xp_to_next_level
             if (
-                not self.xp_loss_observed
-                and previous_xp is not None
+                previous_xp is not None
                 and incoming_xp is not None
                 and incoming_level == previous_level
                 and incoming_xp < previous_xp

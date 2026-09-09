@@ -88,6 +88,37 @@ def test_source_caster_profiles_expose_status_effects_from_special_c() -> None:
     )
 
 
+def test_mage_and_cleric_special_effects_follow_source_level_gates() -> None:
+    assert source_special_status_effects("spec_cast_mage", level=6) == (
+        "blindness",
+    )
+    assert source_special_status_effects("spec_cast_mage", level=19) == (
+        "blindness",
+        "weaken",
+    )
+    assert source_special_status_effects("spec_cast_mage", level=20) == (
+        "blindness",
+        "weaken",
+        "dispel magic",
+    )
+    assert source_special_status_effects("spec_cast_mage", level=25)[-2:] == (
+        "dispel magic",
+        "energy drain",
+    )
+    assert source_special_status_effects("spec_cast_cleric", level=11) == (
+        "blindness",
+    )
+    assert source_special_status_effects("spec_cast_cleric", level=12) == (
+        "blindness",
+        "curse",
+    )
+    assert source_special_status_effects("spec_cast_cleric", level=16) == (
+        "blindness",
+        "curse",
+        "dispel magic",
+    )
+
+
 def test_undead_special_effects_follow_source_level_gates() -> None:
     assert source_special_status_effects("spec_cast_undead", level=8) == (
         "curse",

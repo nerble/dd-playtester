@@ -484,6 +484,189 @@ def test_active_encounter_authorization_never_survives_a_departure(boundary):
     assert policy.fastwalk_encounter_budgets
 
 
+def _below_band_endpoint(character_class="mage"):
+    policy, state = _active_pair(character_class)
+    mobile = MobileSource(
+        1524, "hermit crab", "a hermit", 5, ACT_AGGRESSIVE, 0,
+        "gnome.are", room_description="A hermit crab crawls towards you.",
+    )
+    policy.source_world.mobiles = {1524: mobile}
+    policy.source_world.mob_resets = [MobReset(1524, 1589, 1, ())]
+    policy.fastwalk_hunt_stops = (FieldHuntStop(
+        (), "hermit crab", source_mobile_vnum=1524,
+        source_reset_room_vnum=1589,
+        source_mobile_room_description=mobile.room_description,
+        exact_target=True, require_isolated=True,
+    ),)
+    policy.fastwalk_attack_target = "hermit crab"
+    policy.fastwalk_attack_started = False
+    policy.current_room = state.room_vnum = "1589"
+    policy.room_target_counts["1589"] = {"hermit crab": 1}
+    policy.room_target_selectors["1589"] = {"hermit crab": ("#23779",)}
+    policy.room_target_selector_descriptions["1589"] = {
+        "#23779": "a hermit crab crawls towards you.",
+    }
+    policy.source_mobile_level_ranges_by_vnum[1524] = (3, 7)
+    policy.source_mobile_vnums_by_target_room["hermit crab"] = {"1589": (1524,)}
+    state.position = 6
+    state.hunger, state.thirst = 11, 48
+    state.enemies = [[{
+        "name": "a hermit", "level": "3", "hp": "26", "maxhp": "29",
+        "isnpc": "1524", "long_desc": "A hermit crab crawls towards you.  ",
+    }]]
+    policy.observe_events([GameEvent("enemies_changed", "gmcp", {"value": state.enemies})], state)
+    policy.active_target = "a hermit"
+    policy.active_target_selector = "#23779"
+    policy.unapproved_field_attacker = None
+    policy.active_enemy_duplicate_count = 0
+    return policy, state
+
+
+@pytest.mark.parametrize("character_class,action", [
+    ("mage", "cast 'chill touch'"), ("thief", "circle"), ("warrior", "kick"),
+])
+def test_run_12798_finishes_engaged_low_load_without_spending_xp_to_flee(character_class, action):
+    policy, state = _below_band_endpoint(character_class)
+    decision = policy.next_decision(state)
+    assert decision is not None and decision.command.startswith(action)
+    if character_class != "warrior":
+        assert decision.command.endswith("#23779")
+    assert policy.active_encounter_target.selector == "#23779"
+    assert policy.fastwalk_hunt_stop_skipped
+    assert not policy.fastwalk_emergency_recall_pending
+    assert not policy.fastwalk_attack_started  # No new XP-target authorization.
+    audit = policy.fastwalk_encounter_budgets[-1]
+    assert audit["mode"] == "below-band-endpoint-defense" and audit["allowed"]
+    if character_class == "mage":
+        assert audit["actions"] == 2 and audit["mana_cost"] == 100
+
+
+@pytest.mark.parametrize("boundary", [
+    "not_engaged", "hp", "mana", "nutrition", "runtime", "return", "no_recall",
+    "familiar", "require_familiar", "consider_only", "no_source", "unknown",
+    "duplicate", "add", "special", "armed", "missing_selector", "replacement", "room",
+])
+def test_below_band_endpoint_defense_preserves_survival_and_identity_gates(boundary):
+    policy, state = _below_band_endpoint()
+    if boundary == "not_engaged":
+        state.in_combat = False
+    elif boundary == "hp":
+        state.hp = 50
+    elif boundary == "mana":
+        state.mana = 120  # Enough for minimum-cost fiction, not practiced cost.
+    elif boundary == "nutrition":
+        policy.needs_food = True
+    elif boundary == "runtime":
+        policy.runtime_boundary_requested = True
+    elif boundary == "return":
+        policy.return_home = True
+    elif boundary == "no_recall":
+        state.room_flags = {"no_recall"}
+    elif boundary == "familiar":
+        policy.familiar_active = True
+    elif boundary in {"require_familiar", "consider_only"}:
+        policy.fastwalk_hunt_stops = (replace(policy.fastwalk_hunt_stops[0], **{boundary: True}),)
+    elif boundary == "no_source":
+        policy.source_world = None
+    elif boundary == "unknown":
+        state.enemies[0][0]["isnpc"] = "99999"
+    elif boundary in {"duplicate", "add"}:
+        state.enemies[0].append(dict(state.enemies[0][0]))
+        if boundary == "add":
+            state.enemies[0][-1]["isnpc"] = "100"
+    elif boundary == "special":
+        policy.source_world.mobile_specials[1524] = ("spec_poison",)
+    elif boundary == "armed":
+        policy.source_world.mob_resets[0] = replace(
+            policy.source_world.mob_resets[0], equipment=((16, 900),),
+        )
+    elif boundary == "missing_selector":
+        policy.active_target_selector = None
+    elif boundary == "room":
+        state.room_vnum = "1588"
+    else:
+        policy.room_target_selectors["1589"] = {"hermit crab": ("#999",)}
+    assert policy._active_encounter_decision(state, defensive_endpoint=True) == (False, None)
+
+
+@pytest.mark.parametrize("change", ["timeout", "level", "boot", "selector"])
+def test_below_band_defense_cannot_reopen_on_scope_change(monkeypatch, change):
+    policy, state = _below_band_endpoint()
+    monkeypatch.setattr(starter.time, "monotonic", lambda: 100.0)
+    assert policy._active_encounter_decision(state, defensive_endpoint=True)[0]
+    if change == "timeout":
+        monkeypatch.setattr(starter.time, "monotonic", lambda: 130.0)
+    elif change == "level":
+        state.level += 1
+    elif change == "boot":
+        policy.world_boot_id = "new boot"
+    else:
+        policy.active_target_selector = "#999"
+        policy.room_target_selectors["1589"] = {"hermit crab": ("#999",)}
+    assert policy._active_encounter_decision(state, defensive_endpoint=True) == (False, None)
+    assert policy.active_encounter_started_at == 100.0
+
+
+def test_below_band_defensive_kill_is_not_objective_progression():
+    policy, state = _below_band_endpoint()
+    assert policy.next_decision(state).command.startswith("cast")
+    policy.observe_events([GameEvent("experience_gained", "text", {"xp": 30})], state)
+    policy.observe_text("A hermit is DEAD!!\n")
+    assert policy.completed_kills
+    assert policy.completed_kills[-1]["below_useful_band"]
+    assert policy.completed_kills[-1]["objective_eligible"] is False
+    assert not policy.objective_kills
+
+
+def test_below_band_defense_uses_captured_gmcp_and_damage_acknowledgement(monkeypatch):
+    policy, state = _below_band_endpoint()
+    parser = starter.ObservationParser()
+    packet = 'Char.Enemies [ [ { "name": "a hermit", "level": "3", "hp": "26", "maxhp": "29", "isnpc": "1524", "long_desc": "A hermit crab crawls towards you.  " } ] ]'
+    for event in parser.feed_gmcp(packet):
+        state.apply(event)
+        policy.observe_events([event], state)
+    monkeypatch.setattr(starter.time, "monotonic", lambda: 100.0)
+    decision = policy.next_decision(state)
+    assert decision.command == "cast 'chill touch' #23779"
+    policy.after_command(decision)
+    policy.observe_text("A hermit misses you.\n")
+    policy.prompt_ready = True
+    assert policy.next_decision(state) is None
+    assert not policy.fastwalk_emergency_recall_pending
+    policy.observe_text("Your chilling touch wounds a hermit.\n")
+    monkeypatch.setattr(starter.time, "monotonic", lambda: 103.3)
+    policy.prompt_ready = True
+    assert policy.next_decision(state).command == "cast 'chill touch' #23779"
+
+
+@pytest.mark.parametrize("boundary", ["north", "flee", "recall", "disconnect"])
+def test_below_band_defense_identity_is_session_local(boundary):
+    policy, state = _below_band_endpoint()
+    assert policy.next_decision(state).command.startswith("cast")
+    if boundary == "disconnect":
+        policy.on_connection_closed()
+    else:
+        policy.after_command(BotDecision(boundary, "test"))
+    assert policy.active_encounter_target is None
+    assert policy.active_encounter_started_at is None
+
+
+def test_empty_enemy_update_does_not_grant_a_second_defensive_endpoint_fight():
+    policy, state = _below_band_endpoint()
+    assert policy.next_decision(state).command.startswith("cast")
+    saved_enemies = state.enemies
+    event = GameEvent("enemies_changed", "gmcp", {"value": []})
+    state.apply(event)
+    policy.observe_events([event], state)
+    assert policy.active_encounter_target is None
+    assert policy.defensive_endpoint_used
+    event = GameEvent("enemies_changed", "gmcp", {"value": saved_enemies})
+    state.apply(event)
+    policy.observe_events([event], state)
+    policy.active_target_selector = "#23779"
+    assert policy._active_encounter_decision(state, defensive_endpoint=True) == (False, None)
+
+
 def _centipede_crowd():
     policy, state = _encounter()
     description = "A small centipede here is looking for vegetation."

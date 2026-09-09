@@ -112,10 +112,12 @@ def body_form_has_head(flags: int | None) -> bool | None:
 
 
 AFF_BLIND = 1 << 0
+AFF_DETECT_INVIS = 1 << 3
 AFF_DETECT_MAGIC = 1 << 4
 AFF_NON_CORPOREAL = 1 << 28
 
 ROOM_NO_MOB = 1 << 2
+ROOM_NO_RECALL = 1 << 13
 EX_WALL = 128
 SECT_WATER_SWIM = 6
 SECT_WATER_NOSWIM = 7
@@ -1582,6 +1584,10 @@ class RoomSource:
     def no_mob(self) -> bool:
         return bool(self.room_flags & ROOM_NO_MOB)
 
+    @property
+    def no_recall(self) -> bool:
+        return bool(self.room_flags & ROOM_NO_RECALL)
+
 
 @dataclass(frozen=True)
 class MobReset:
@@ -2809,7 +2815,12 @@ def rank_hunt_candidates(
             transit_wanderers
             if hazard.aggressive
             or hazard.attack_programs
-            or _source_mobile_has_unsafe_special(world, hazard.vnum, hazard)
+            or _source_mobile_has_unsafe_special(
+                world,
+                hazard.vnum,
+                hazard,
+                character_level=character_level,
+            )
             else endpoint_wanderers
         )
         for reachable_room in wanderer_reachability[
@@ -3131,6 +3142,7 @@ def rank_hunt_candidates(
                     world,
                     hazard.vnum,
                     hazard,
+                    character_level=character_level,
                 )
                 if not (
                     _source_mobile_is_combat_hazard(world, hazard)
@@ -3281,6 +3293,7 @@ def rank_hunt_candidates(
                 world,
                 hazard.vnum,
                 hazard,
+                character_level=character_level,
             )
             hazard_rooms = (
                 path_room_set
@@ -4314,6 +4327,7 @@ def _route_hazard_rooms(
                     world,
                     mobile.vnum,
                     mobile,
+                    character_level=character_level,
                 )
             ):
                 continue
@@ -4323,6 +4337,7 @@ def _route_hazard_rooms(
                 world,
                 mobile.vnum,
                 mobile,
+                character_level=character_level,
             )
             if require_no_combat_hazards and (
                 mobile.attack_programs
@@ -4386,6 +4401,7 @@ def _route_hazard_rooms(
                     world,
                     mobile.vnum,
                     mobile,
+                    character_level=character_level,
                 )
                 or _source_mobile_has_combat_joining_special(
                     world,
@@ -4414,6 +4430,7 @@ def _source_route_hazard_rejections(
     character_level: int,
     require_no_combat_hazards: bool = False,
     combat_at_destination: bool = True,
+    invisible: bool = False,
 ) -> tuple[str, ...]:
     """Return source-backed combat hazards on a route, including its endpoint.
 
@@ -4439,10 +4456,20 @@ def _source_route_hazard_rejections(
                 mobile.vnum,
             ):
                 continue
+            if (
+                invisible
+                and not combat_at_destination
+                and source_invisibility_blocks_mobile_aggression(
+                    world,
+                    mobile.vnum,
+                )
+            ):
+                continue
             unsafe_special = _source_mobile_has_unsafe_special(
                 world,
                 mobile.vnum,
                 mobile,
+                character_level=character_level,
             )
             if require_no_combat_hazards and (
                 mobile.attack_programs
@@ -4515,10 +4542,20 @@ def _source_route_hazard_rejections(
     for mobile, reset in _wandering_aggressors(world):
         if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
             continue
+        if (
+            invisible
+            and not combat_at_destination
+            and source_invisibility_blocks_mobile_aggression(
+                world,
+                mobile.vnum,
+            )
+        ):
+            continue
         unsafe_special = _source_mobile_has_unsafe_special(
             world,
             mobile.vnum,
             mobile,
+            character_level=character_level,
         )
         hazard_rooms = (
             path_room_set
@@ -4720,6 +4757,7 @@ def source_route_hazard_rejections(
     character_level: int,
     require_no_combat_hazards: bool = False,
     combat_at_destination: bool = True,
+    invisible: bool = False,
 ) -> tuple[str, ...]:
     """Check a room path; noncombat endpoints omit only combat-only joiners."""
     return _source_route_hazard_rejections(
@@ -4728,6 +4766,43 @@ def source_route_hazard_rejections(
         character_level=character_level,
         require_no_combat_hazards=require_no_combat_hazards,
         combat_at_destination=combat_at_destination,
+        invisible=invisible,
+    )
+
+
+def source_invisibility_blocks_mobile_aggression(
+    world: WorldSource,
+    mobile_vnum: int,
+) -> bool:
+    """Return whether source-proven invisibility prevents route combat.
+
+    DD4's ordinary aggression calls ``can_see`` before attacking. Keep this
+    admission narrow: the mobile must have no detect-invisibility affect,
+    executable program, equipped reset object, or special that can act before
+    combat. Combat-only specials such as ``spec_poison`` remain inert while
+    the invisible character is not fighting.
+    """
+    mobile = world.mobiles.get(mobile_vnum)
+    if (
+        mobile is None
+        or not mobile.aggressive
+        or mobile.affected_flags & AFF_DETECT_INVIS
+        or _mobile_level_range(mobile.level)[1] > 100
+        or mobile.programs
+    ):
+        return False
+    resets = [
+        reset for reset in world.mob_resets
+        if reset.mobile_vnum == mobile_vnum
+    ]
+    if not resets or any(reset.equipment for reset in resets):
+        return False
+    permitted_specials = (
+        SAFE_NONCOMBAT_SPECIALS | TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    )
+    return all(
+        str(special).strip().casefold() in permitted_specials
+        for special in world.mobile_specials.get(mobile_vnum, ())
     )
 
 
@@ -4749,22 +4824,24 @@ def _source_mobile_has_unsafe_special(
     world: WorldSource,
     mobile_vnum: int,
     mobile: MobileSource | None = None,
+    *,
+    character_level: int | None = None,
 ) -> bool:
     """Return whether a source special can affect an ordinary traveler.
 
     Combat-only and combat-joining procedures are handled by the normal
     aggression, target-room, and wandering-mobile gates. An aggressive mobile
-    carrying a combat-only procedure is an exception: once its normal attack
-    starts, that procedure can immediately add damage or a disabling effect.
-    Only a source procedure that can act before combat, an economic theft
-    risk, or an unknown procedure remains a direct transit hazard otherwise.
+    carrying a combat-only procedure remains hazardous only while DD4's normal
+    ten-level aggression check can start the fight. A source procedure that can
+    act before combat, an economic theft risk, or an unknown procedure remains
+    a direct transit hazard at every level.
     """
     specials = tuple(world.mobile_specials.get(mobile_vnum, ()))
     if not specials:
         return False
     if any(not source_special_is_transit_safe(special) for special in specials):
         return True
-    return bool(
+    aggressive_combat_only = bool(
         mobile is not None
         and mobile.aggressive
         and any(
@@ -4773,6 +4850,11 @@ def _source_mobile_has_unsafe_special(
             for special in specials
         )
     )
+    if not aggressive_combat_only:
+        return False
+    if character_level is None:
+        return True
+    return character_level <= _mobile_level_range(mobile.level)[1] + 10
 
 
 def _source_mobile_has_combat_joining_special(
@@ -4824,6 +4906,7 @@ def _source_aggressive_reset_can_reach_character(
         world,
         mobile.vnum,
         mobile,
+        character_level=character_level,
     ):
         return True
     return character_level <= _mobile_level_range(mobile.level)[1] + 10

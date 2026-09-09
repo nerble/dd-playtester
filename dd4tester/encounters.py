@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import permutations
 from math import ceil
 from typing import Any, Mapping, Sequence
 
+from .combat_timing import COMBAT_WAIT_SECONDS
+
 from .hunt_candidates import (
+    ACT_SENTINEL,
+    EX_WALL,
     ITEM_WEAPON,
     WEAR_DUAL,
     WEAR_WIELD,
@@ -47,6 +51,63 @@ class ObservedTargetIdentity:
 
 
 @dataclass(frozen=True)
+class DisplacedTargetIdentity(ObservedTargetIdentity):
+    """Source-description inference, not a live GMCP VNUM observation."""
+
+    reset_room_vnum: str
+    description: str
+
+
+def displaced_sentinel_reset_room(
+    world: WorldSource, mobile_vnum: int, *, room_vnum: int,
+    direction: str, destination: int, description: str,
+) -> int | None:
+    """Identify a single-reset sentinel beside its planned destination."""
+    mobile = world.mobiles.get(mobile_vnum)
+    room = world.rooms.get(room_vnum)
+    reset_room = world.rooms.get(destination)
+    def normalize(value: str) -> str:
+        return " ".join(value.casefold().split())
+
+    if (
+        mobile is None or room is None or reset_room is None
+        or not mobile.act_flags & ACT_SENTINEL or mobile.wanders
+        or mobile.aggressive or mobile.programs
+        or not description or normalize(mobile.room_description) != description
+        or room_vnum == destination
+        or room.area_file != reset_room.area_file
+        or mobile.area_file != room.area_file
+        or room.random_exits or reset_room.random_exits
+        or room.no_mob or reset_room.no_mob
+        or room.sector_type not in range(6) or reset_room.sector_type not in range(6)
+    ):
+        return None
+    identities = [
+        candidate.vnum for candidate in world.mobiles.values()
+        if normalize(candidate.room_description) == description
+    ]
+    resets = [reset for reset in world.mob_resets if reset.mobile_vnum == mobile_vnum]
+    if identities != [mobile_vnum] or len(resets) != 1:
+        return None
+    if resets[0].room_vnum != destination or resets[0].maximum_count != 1:
+        return None
+    outward = room.exits.get(direction)
+    opposite = {
+        "north": "south", "south": "north", "east": "west", "west": "east",
+        "up": "down", "down": "up",
+    }.get(direction)
+    inward = reset_room.exits.get(opposite)
+    if (
+        outward is None or inward is None
+        or outward.destination != destination or inward.destination != room_vnum
+        or outward.locked or inward.locked
+        or (outward.flags | inward.flags) & EX_WALL
+    ):
+        return None
+    return destination
+
+
+@dataclass(frozen=True)
 class SourcePairBudget(EncounterBudget):
     level_ceiling: int = 0
     target_hp_ceiling: int = 0
@@ -54,10 +115,10 @@ class SourcePairBudget(EncounterBudget):
 
 @dataclass
 class SourcePairEncounter:
-    """A room-observed pair; never pretend duplicated GMCP identifies the add."""
+    """One or two considered targets, sharing the measured encounter controller."""
 
     budget: SourcePairBudget
-    selectors: tuple[str, str]
+    selectors: tuple[str, ...]
     room_vnum: str
     stop_index: int
     level: int
@@ -70,6 +131,45 @@ class SourcePairEncounter:
     @property
     def remaining(self) -> tuple[str, ...]:
         return tuple(value for value in self.selectors if value not in self.defeated)
+
+
+def source_solo_budget(
+    world: WorldSource, mobile_vnum: int, *, character_level: int,
+    hp: int, max_hp: int, mana: int, max_mana: int,
+    output: SourceCombatOutput | None,
+) -> SourcePairBudget:
+    """Price a useful easy-kill source load without pretending it is live GMCP.
+
+    The caller must bind a fresh exact-instance easy-kill consider. Use the
+    full source HP ceiling and the existing short-encounter cost calculation;
+    no companion, armor, or opening damage receives credit.
+    """
+    mobile = world.mobiles.get(mobile_vnum)
+    if mobile is None or mobile.aggressive:
+        return SourcePairBudget(False, "missing or aggressive solo source target")
+    resets = [reset for reset in world.mob_resets if reset.mobile_vnum == mobile_vnum]
+    if not resets or max(reset.maximum_count for reset in resets) > 4:
+        return SourcePairBudget(False, "missing or excessive source reset population")
+    if any(slot in {WEAR_WIELD, WEAR_DUAL} for reset in resets for slot, _ in reset.equipment):
+        return SourcePairBudget(False, "armed solo target retains its protection gate")
+    lower, upper = _mobile_level_range(mobile.level)
+    lower, upper = max(lower, character_level - 4), min(upper, character_level - 2)
+    if character_level <= 0 or lower <= 0 or lower > upper:
+        return SourcePairBudget(False, "no useful easy-kill source intersection")
+    if not 0 < hp <= max_hp or hp < ceil(max_hp * .95):
+        return SourcePairBudget(False, "solo admission requires near-full health")
+    hp_ceiling = _mobile_base_hp_range((lower, upper), rank=mobile.rank)[1]
+    budget = active_encounter_budget(
+        world, [{"isnpc": mobile_vnum, "level": upper, "hp": hp_ceiling, "maxhp": hp_ceiling}],
+        character_level=character_level, hp=hp, max_hp=max_hp,
+        mana=mana, max_mana=max_mana, output=output,
+    )
+    return SourcePairBudget(
+        budget.allowed, "source-bounded solo: " + budget.reason,
+        budget.mobile_vnums, budget.actions, budget.expected_incoming,
+        budget.peak_round, budget.health_reserve, budget.mana_cost,
+        upper, hp_ceiling,
+    )
 
 
 def source_pair_budget(
@@ -126,6 +226,45 @@ def source_pair_budget(
     elif output.resource != "actions" or output.resource_cost:
         return SourcePairBudget(False, "unsupported pair damage resource", **values)
     return SourcePairBudget(True, "source-estimated pair fits a measured probe", **values)
+
+
+def solo_continuation_budget(
+    world: WorldSource, enemies: Sequence[Mapping[str, Any]], *,
+    character_level: int, hp: int, max_hp: int, mana: int, max_mana: int,
+    output: SourceCombatOutput | None, elapsed: float, effective_damage: int,
+    received_damage: int, remaining_seconds: float, remaining_commands: int,
+) -> EncounterBudget:
+    """Reprice an already-bound solo fight against its remaining resources.
+
+    A fixed fraction of initial target HP is not a remaining-fight estimate.
+    Retain source ceilings and measured loss/time projections instead. This
+    function never admits a new target or extends the controller's deadline.
+    """
+    if len(enemies) != 1:
+        return EncounterBudget(False, "solo continuation requires one live opponent")
+    budget = active_encounter_budget(
+        world, enemies, character_level=character_level, hp=hp, max_hp=max_hp,
+        mana=mana, max_mana=max_mana, output=output,
+    )
+    if not budget.allowed:
+        return budget
+    reason = None
+    if remaining_commands < budget.actions + 2:
+        reason = "solo finish exceeds the remaining command reserve"
+    elif remaining_seconds <= COMBAT_WAIT_SECONDS or elapsed < 0:
+        reason = "solo finish has no remaining time reserve"
+    elif elapsed >= 12 and effective_damage <= 0:
+        reason = "solo opponent made no net damage progress within twelve seconds"
+    elif elapsed >= 2 * COMBAT_WAIT_SECONDS and effective_damage > 0:
+        remaining_hp = int(enemies[0]["hp"])
+        projected_loss = ceil(remaining_hp * max(0, received_damage) / effective_damage)
+        # The observed wall-clock rate already includes input and round waits.
+        projected_seconds = remaining_hp * elapsed / effective_damage
+        if projected_loss >= hp - budget.health_reserve:
+            reason = "solo measured exchange exceeds the remaining health reserve"
+        elif projected_seconds >= remaining_seconds:
+            reason = "solo measured finish exceeds the original encounter deadline"
+    return replace(budget, allowed=False, reason=reason) if reason else budget
 
 
 def active_encounter_budget(

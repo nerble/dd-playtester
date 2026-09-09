@@ -1,0 +1,20 @@
+{
+  "source_run_id": 12818,
+  "response_event_id": 8021169,
+  "worth_event_id": 8021171,
+  "initial": {
+    "level": 11,
+    "xp": 50894,
+    "max_xp": 58450,
+    "xp_to_next_level": 7556,
+    "progress_source": "gmcp"
+  },
+  "text": "You flee from combat! You lose 99 exp.\n\rHowever, you damaged your opponent sufficiently for 55 experience.\n\r\n\r<172/186 hits 172/172 mana 174/250 move [In the Air]> ",
+  "gmcp": "Char.Worth { \"alignment\": \"847\", \"level\": \"11\", \"xp\": \"50850\", \"maxxp\": \"58450\", \"xptnl\": \"7600\", \"xplvl\": \"9950\", \"practice\": \"0\" }",
+  "expected": {
+    "xp": 50850,
+    "xp_to_next_level": 7600,
+    "gross_loss": 99,
+    "partial_xp": 55
+  }
+}

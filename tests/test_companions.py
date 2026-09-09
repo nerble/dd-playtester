@@ -17,6 +17,7 @@ import dd4tester.campaign as campaign
 DESCRIPTION = "A small pony stands here grazing."
 NORMALIZED = _normalize_mobile_line(DESCRIPTION)
 SUMMONED = "You raise your hands and the form of the pony appears before you.\n"
+LISTING = "Hills\n[Exits: south]\n[#42] A small pony stands here grazing.\n<113/113 hits 224/324 mana 167/220 move [Test]> "
 
 
 def world_fixture():
@@ -70,6 +71,7 @@ def prepared():
     preparation.observe(SUMMONED[:35])
     preparation.observe(SUMMONED[35:])
     assert preparation.next_command({}, NORMALIZED) == "look"
+    preparation.observe(LISTING)
     assert preparation.next_command({"#42": NORMALIZED}, NORMALIZED) == "group #42"
     preparation.observe("The pony joins your group.\n")
     assert preparation.next_command({}, NORMALIZED) is None
@@ -90,17 +92,19 @@ def test_preparation_requires_positive_fragmented_acknowledgements():
 
 
 @pytest.mark.parametrize("reply", [
-    "", "You do not have enough mana.\n",
+    "", "The sun slowly disappears in the west.\n",
     "Someone says 'You fail to correctly recite the spell!'\n",
     "Someone says 'The pony joins your group.'\n",
 ])
 def test_failed_summon_never_groups_or_retries(reply):
     preparation = FamiliarPreparation()
-    preparation.next_command({}, NORMALIZED, mana=324)
-    preparation.observe(reply)
-    assert preparation.next_command({}, NORMALIZED) is None
+    preparation.next_command({}, NORMALIZED, mana=324, now=0)
+    preparation.observe(reply, now=1)
+    assert preparation.next_command({}, NORMALIZED, now=2) is None
+    assert preparation.failure is None and preparation.attempts == 1
+    assert preparation.next_command({}, NORMALIZED, now=30) is None
     assert preparation.failure
-    assert preparation.next_command({}, NORMALIZED) is None
+    assert preparation.next_command({}, NORMALIZED, now=31) is None
 
 
 @pytest.mark.parametrize("selectors", [{}, {"#42": NORMALIZED, "#43": NORMALIZED}, {"pony": NORMALIZED}])
@@ -109,6 +113,7 @@ def test_missing_or_ambiguous_companion_identity_stops(selectors):
     preparation.next_command({}, NORMALIZED, mana=324)
     preparation.observe(SUMMONED)
     assert preparation.next_command({}, NORMALIZED) == "look"
+    preparation.observe(LISTING)
     assert preparation.next_command(selectors, NORMALIZED) is None
     assert preparation.failure
 
@@ -118,8 +123,9 @@ def test_group_failure_is_not_ownership_evidence():
     preparation.next_command({}, NORMALIZED, mana=324)
     preparation.observe(SUMMONED)
     preparation.next_command({}, NORMALIZED)
+    preparation.observe(LISTING)
     preparation.next_command({"#42": NORMALIZED}, NORMALIZED)
-    preparation.observe("The pony is not following you.\n")
+    preparation.observe("The pony isn't following you.\n")
     assert preparation.next_command({}, NORMALIZED) is None
     assert preparation.failure and not preparation.grouped
 
@@ -149,6 +155,7 @@ def test_field_runner_stages_and_verifies_exact_companion_before_indoor_order():
     policy.observe_text(SUMMONED)
     look = policy._familiar_staging_decision(outdoor)
     assert look is not None and look.command == "look"
+    policy.observe_text(LISTING)
     policy.room_target_selector_descriptions["2"] = {"#42": NORMALIZED}
     group = policy._familiar_staging_decision(outdoor)
     assert group is not None and group.command == "group #42"
@@ -252,8 +259,8 @@ def test_recitation_failure_retries_only_three_times(failure):
     preparation = FamiliarPreparation()
     for attempt in range(3):
         assert preparation.next_command({}, NORMALIZED, mana=300 - attempt * 50, now=attempt) == "cast 'summon familiar'"
-        preparation.observe(failure[:12])
-        preparation.observe(failure[12:])
+        preparation.observe(failure[:12], now=attempt)
+        preparation.observe(failure[12:], now=attempt)
     assert preparation.next_command({}, NORMALIZED, mana=150, now=3) is None
     assert preparation.attempts == 3 and not preparation.summoned
     assert "three" in preparation.failure
@@ -263,7 +270,7 @@ def test_recitation_failure_retries_only_three_times(failure):
 def test_summon_retry_requires_mana_and_time(mana, now):
     preparation = FamiliarPreparation()
     preparation.next_command({}, NORMALIZED, mana=300, now=0)
-    preparation.observe("You fail to correctly recite the spell!\n")
+    preparation.observe("You fail to correctly recite the spell!\n", now=0)
     assert preparation.next_command({}, NORMALIZED, mana=mana, now=now) is None
     assert preparation.failure and preparation.attempts == 1
 
@@ -271,12 +278,13 @@ def test_summon_retry_requires_mana_and_time(mana, now):
 def test_success_after_failed_cast_does_not_require_another_cast_mana_reserve():
     preparation = FamiliarPreparation()
     preparation.next_command({}, NORMALIZED, mana=150, now=0)
-    preparation.observe("You fail to correctly recite the spell!\n")
+    preparation.observe("You fail to correctly recite the spell!\n", now=0)
     assert preparation.next_command({}, NORMALIZED, mana=100, now=1) == "cast 'summon familiar'"
-    preparation.observe(SUMMONED)
+    preparation.observe(SUMMONED, now=1)
     assert preparation.next_command({}, NORMALIZED, mana=0, now=2) == "look"
+    preparation.observe(LISTING, now=2)
     assert preparation.next_command({"#42": NORMALIZED}, NORMALIZED, mana=0, now=3) == "group #42"
-    preparation.observe("The pony joins your group.\n")
+    preparation.observe("The pony joins your group.\n", now=3)
     assert preparation.next_command({}, NORMALIZED, mana=0, now=4) is None
     assert preparation.stage == "ready" and preparation.attempts == 2
 
@@ -316,6 +324,7 @@ def test_run_12741_failed_outdoor_summon_retries_then_confirms_exact_ownership()
     policy.observe_text(SUMMONED)
     assert not policy.familiar_active
     assert policy._familiar_precombat_decision(state).command == "look"
+    policy.observe_text(LISTING)
     policy.room_target_selector_descriptions["2"] = {"#42": NORMALIZED}
     assert policy._familiar_precombat_decision(state).command == "group #42"
     policy.observe_text("The pony joins your group.\n")
@@ -351,6 +360,7 @@ def test_outdoor_familiar_cannot_advance_without_each_confirmation(boundary):
     elif boundary != "missing-success":
         policy.observe_text(SUMMONED)
         assert policy._familiar_precombat_decision(state).command == "look"
+        policy.observe_text(LISTING)
         policy.room_target_selector_descriptions["2"] = {"#42": NORMALIZED}
         if boundary == "ambiguous-identity":
             policy.room_target_selector_descriptions["2"]["#43"] = NORMALIZED

@@ -1755,7 +1755,7 @@ _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY = ProgressionPolicy(
     status="research",
     execution="moria-sanctuary-hunt",
     summary=(
-        "Acquire one source-verified purple sanctuary potion before retrying "
+        "Acquire a source-verified purple sanctuary reserve before retrying "
         "a current-band hunt that reached its protection floor."
     ),
     evidence=(
@@ -1763,6 +1763,7 @@ _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY = ProgressionPolicy(
         "The existing Moria carrier route is source-backed and uses the required-loot gate, so a below-band carrier is never promoted into ordinary XP hunting.",
         "The recovery transition is class-independent: sanctuary protects fighters, thieves, and spellcasters before the exact failed hunt is retried.",
         "At level 16 and above, only the mage recovery path may use the deeper carrier circuit, and only with the existing bounded invisibility readiness gate; thief and other non-invisible paths remain reset-room-only until their level-19 research band.",
+        "When that bounded invisible circuit reaches both source resets, it may collect two potions in one journey so a subsequent multikill hunt can replace an expired sanctuary effect.",
     ),
     practice_skill=None,
     segment_kill_limit=1,

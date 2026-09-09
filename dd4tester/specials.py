@@ -335,6 +335,8 @@ def source_special_status_effects(
 
     normalized = str(name).strip().casefold()
     if normalized not in {
+        "spec_cast_cleric",
+        "spec_cast_mage",
         "spec_cast_undead",
         "spec_cast_druid",
         "spec_cast_psionicist",
@@ -345,6 +347,22 @@ def source_special_status_effects(
         caster_level = max(0, int(level))
     except (TypeError, ValueError):
         return source_special_profile(normalized).status_effects
+    if normalized == "spec_cast_cleric":
+        effects = ["blindness"]
+        if caster_level >= 12:
+            effects.append("curse")
+        if caster_level >= 16:
+            effects.append("dispel magic")
+        return tuple(effects)
+    if normalized == "spec_cast_mage":
+        effects = ["blindness"]
+        if caster_level >= 7:
+            effects.append("weaken")
+        if caster_level >= 20:
+            effects.append("dispel magic")
+        if caster_level >= 25:
+            effects.append("energy drain")
+        return tuple(effects)
     if normalized == "spec_cast_druid":
         return ("fear",) if caster_level >= 15 else ()
     if normalized == "spec_cast_psionicist":
