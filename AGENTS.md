@@ -46,6 +46,10 @@ Read `docs/OPERATIONS.md` before live work or user commentary. Source-audited
 capability registration plus positive practice and action-specific gates are
 required for dispatch; observed skill names alone authorize nothing. Preserve
 loss evidence, exact live targeting, bounded retries, and healer recovery.
+If the latest checkpoint has an observed, same-level, same-boot training audit,
+reuse its live skill listing instead of scanning thousands of historical event
+rows. Only legacy checkpoints without that audit should use historical skill
+backfill, and public preparation stages must remain visible and bounded.
 Use `docs/history/AGENTS_2026-09-08.md` for gameplay contracts; search
 the affected topic before changing its behavior. Preserve distinct labels,
 nested closed exits, and synchronized observed and verified resource ledgers. A visibility-dependent route requires positive practiced
@@ -54,6 +58,10 @@ unknown mobiles. Combat-only specials follow source aggression cutoffs during
 transit; pre-combat, scripted, equipped, unknown, and engaged hazards remain
 blocked. AI personality
 generation does not authorize AI gameplay.
+GMCP `Char.Worth.alignment` is authoritative wire data: DD4 sends 50000 below
+level 10 and the actual server-clamped -1000..1000 value at level 10 and above.
+Never treat the sentinel as good alignment; source guard admission requires a
+revealed value at or above the exact 300 assistance threshold.
 
 ## Security And Changes
 

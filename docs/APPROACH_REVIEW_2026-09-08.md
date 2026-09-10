@@ -26,6 +26,28 @@ Dorrik's comparison consumed 286.28 connected seconds plus a 180-second reset
 wait. These characters ended safely at healer 3054. Safe logout is a
 reliability result, not an XP result. No improved throughput is established.
 
+## Current Continuation: 2026-09-10
+
+Kestrel is the active frontier at level 24 with 332,552 XP and fame -12. Run
+12912 reached the Circus Ticket Clerk and captured GMCP level 31, maximum HP
+1,033, and the matching high-risk consider text. This is not an alignment
+defect: GMCP supplied the target data accurately. Run 12932 then exposed that
+the level-22 Canyon cyclops is an aggressive `spec_cast_cleric` sentinel that
+attacked on room entry, before `consider`; the resulting flee cost 81 XP.
+
+Runs 12939-12941 exercised the next resource and equipment frontier. Run
+12939 stopped the blackberries route at the source-registered level-2 drunk
+after three bounded preflight checks. Run 12940 acquired one dead squid and
+returned safely. Run 12941 reached Forest room 18027 and found the Kodiak, but
+the room also held multiple source-aggressive mosquito and wasp instances; the
+crowd gate fled before combat with no loss. Revision 269 now requires a
+matching live `where` location before a narrow route branch is entered, so a
+broad `Forest` result cannot select the River bed poison-swarm route. The
+campaign was later checkpointed at **39920**, alive and fully recovered at
+healer 3054, after startup repair restored the damage-gate marker. The full
+offline suite now passes **5,471 tests**, and compilation passes; this remains
+regression evidence rather than HERO proof.
+
 ## Root Causes
 
 1. **Incorrect observation units.** The willow probe counted an opening hit
@@ -75,6 +97,25 @@ reliability result, not an XP result. No improved throughput is established.
   and requires its own consider. Genuine combat pursuit and ordinary crowd,
   target, resource, and loss gates are preserved. The run-12774 replay changes
   `north` to `consider #23632`; the latter is not a claimed live kill.
+- Fixed fame routes now receive the same state-specific source combat envelope
+  as source-ranked routes. This closes the gap exposed by run 12912 without
+  weakening GMCP authority or turning the source estimate into a claimed kill.
+- Revision 264 fills missing fixed-stop HP ceilings from the source mobile's
+  rank and level range. The pre-combat gate now fails closed even without a
+  live enemy HP snapshot; live verification rejected the 660-HP Secretary
+  against a 318-point budget with no additional XP loss.
+- Revision 265 closes the aggressive-special ordering gap. A source target
+  that can auto-attack on entry must have a source-backed player output
+  envelope covering its source HP ceiling before selection; persisted candidate
+  records cannot hide a special newly present in the source mirror. The change
+  has focused, full-suite, and compilation verification; no live retry has yet
+  been claimed.
+- Revision 269 binds source route branches to their locator labels. The Forest
+  River bed legs now require `where` to report `River bed`; a broad `Forest`
+  result proceeds through the safe Forest search instead of entering the
+  source-aggressive poison-swarm branch. Six focused forest cases and the full
+  5,456-test suite pass. Live run 12941 remains valid crowd-withdrawal
+  evidence, not a kill or progression result.
 
 ## Revised Work Order
 
@@ -1934,3 +1975,265 @@ Final verification passes **5,424 tests in 427.19 seconds**, including the
 header validation pass. No gameplay worker remains; the separate Discord
 streamer is left running. All changes remain local. The master goal is active
 and HERO remains unproved.
+
+### Live Duplicate-Carrier Acceptance (September 9)
+
+Run **12881** is the first live acceptance after the duplicate-target fix. The
+level-18 mage reached Moria invisibly, queried `where hobgoblin`, and received
+two large-hobgoblin instances in `The large cave`. The controller issued exact
+instance consideration rather than treating the pair as an unresolvable crowd,
+selected the source carrier **4055**, killed it for **90 XP**, ate the severed
+head, and returned safely to healer 3054. The segment took **153.71 seconds**
+and 94 commands; final state was 218/218 HP, 628/628 mana, and 258/320 move.
+The second purple reserve was not lost: the run still shows one purple potion
+in Aeloria's pouch after this required-loot segment.
+
+Run **12882** immediately exercised the ordinary current-band continuation at
+the same level. The White Stag route reached room 10016, found no exact target
+after its bounded locator check, recalled, recovered at healer 3054, and ended
+with unchanged **161,181 XP** and no loss. It took **75.03 seconds** and 83
+commands. Runs 12880-12882 therefore prove the repaired search and one useful
+kill, but not a level gain, second-potion acquisition, or sustained positive
+XP/minute across repeated journeys.
+
+### Dynamic Fame Damage Preflight (September 10)
+
+Run **12899** exercised the newly admitted source-ranked fame fallback after
+the route-greeter audit. The source selector chose mobile **20510**, the
+Dwarven musician, at Kestrel level 24. Live `consider` correctly accepted its
+level band, and the route reached room 20515. The damage-window probe then
+measured **84 outgoing versus 101 incoming damage** and projected about **40
+actions** for the observed **1,187-HP** target, above the audited 12-action
+budget. Kestrel recalled safely; the segment recorded a **301-XP loss** and no
+objective kill. This is a failed combat experiment, not progression.
+
+The existing source-backed player-output estimator is now an admission gate
+for high-health fame candidates. It accounts for the character's practiced
+repeatable action, bounded opener, target HP ceiling, resource reserve, and
+incoming damage; sanctuary uses the protected source incoming bound. Route
+program preflight remains independently bounded, so a safe transit greeter
+does not imply a killable endpoint. The same live candidate now fails offline
+selection, preventing a repeat loss. Read-only verification confirms Kestrel
+at checkpoint **39782**, level 24, **332,847 XP**, fame -12, healer 3054, with
+no purple reserve and an active protection-recovery marker.
+
+The focused fame/output regressions pass, the full campaign suite passes
+**1,374 tests**, and compilation passes. The next evidence requirement is a
+sanctuary recovery or verified combat-output improvement followed by a fresh
+positive whole-journey result. No sustained progression, level 25, subclass,
+or HERO proof is claimed.
+
+### Durable Damage-Gate Handoff (September 10)
+
+Runs **12948-12951** separated three safe non-progress outcomes from a policy
+deadlock. Run 12948 found a level-24 Solace secretary whose source HP ceiling
+was 660, above Kestrel's 318-point knife-toss budget. That rejection correctly
+avoided combat, but its transient abort text disappeared after run 12949's
+successful food reserve. Run 12950 then found Mr. Smithy with a live poisonous
+insect beside it and withdrew before combat.
+
+The campaign now records a source damage-gate marker with reboot, level, source
+revision, weapon, policy, and reason. It carries across recovery and food
+segments, is invalidated by a reboot, level, source, or weapon change, and is
+consumed by the next Forest upgrade attempt. Startup repair also reconstructs
+the newest unconsumed marker from the bounded segment history, so an interposed
+maintenance segment cannot hide it or cause an immediate retry loop.
+
+Run **12951** live-validated the repaired selection: the Forest bear-claw
+route was selected once, reached room 18027, and withdrew when another live
+mobile accompanied the required-loot route. Kestrel recalled and slept at
+healer 3054; checkpoint **39914** remains level 24 at **332,552 XP**, with no
+death or XP loss. The full suite passes **5,460 tests**. This is selection and
+one-shot hazard handling proof, not bear-claw acquisition, positive XP/minute,
+level 25, or HERO proof. The next delivery gate is still a productive
+current-band kill and repeated positive whole-journey XP.
+
+### GMCP Alignment Source Contract (September 10)
+
+The additional source audit confirms that the alignment value is not being
+corrupted by the Telnet or JSON layers. In `update.c:4079-4086`, DD4 sends
+`d->character->alignment` through `Char.Worth` at level 10 and above, and sends
+the deliberate value **50000** below level 10. `protocol.c:3307` maps that
+field to `alignment`; the parser retains the value exactly in the progress
+event and raw transcript. A live level-24 Kestrel packet recorded alignment
+**1000**, matching the source contract.
+
+The consumer rule is now level-aware. Player alignment is clamped to
+**-1000..1000** in `fight.c:3518`, while `special.c:spec_guard` uses
+`max_evil = 300` and assists only a character below that strict threshold.
+Route admission therefore requires known level **10 or higher** and a numeric
+alignment in **300..1000**. A hidden sentinel, an unknown level, an out-of-range
+value, or a pre-reveal value cannot waive the source guard check. This updates
+the older historical note that did not yet apply the level gate; it does not
+rewrite any raw packet or historical run.
+
+The focused parser, state, and city-departure checks pass **90 tests**, and the
+full suite passes **5,468 tests**. Runs 12952-12953 and startup attempt 1306
+added no new gameplay loss; the current checkpoint remains level 24 at
+**332,552 XP** in healer room 3054. HERO and sustained progression remain
+unproved.
+
+### Source Equipment Placement Report (September 10)
+
+The source equipment audit now treats `MobReset.equipment` as loot provenance
+alongside ordinary carried-object resets. Hunt candidates and campaign stops
+therefore retain equipped weapons and armour instead of silently dropping them
+from required-loot evidence. A regression covers both the parsed candidate and
+the source-ranked campaign stop path.
+
+`rank_gear_sources` and `show-gear-sources` provide a reusable acquisition view
+for a requested class, optional subclass, level, and loadout stance. Each row
+preserves the object VNUM, reset kind, source mobile or ground room, source
+level range, exact source keywords, route origin, route, hazard text, autonomy
+rejections, weapon role, and whether the role-aware stance score improves the
+stored loadout. Thief reports automatically mark piercing wieldables as
+preferred, matching the campaign planner's backstab requirement; a stronger
+non-piercing weapon is retained as a visible mismatch rather than a usable
+upgrade.
+`source-only` rows keep future or otherwise unranked placements visible. The
+report is evidence for gear planning, not a combat authorization or
+live-availability claim; class-slot
+coverage and live acquisition remain open master-goal work.
+
+The focused equipment, hunt-candidate, campaign, and CLI checks pass, and the
+full offline suite passes **5,471 tests**. No live connection was launched for
+this report because Kestrel's current damage and
+crowd gates are unchanged. The next acceptance gate remains a productive
+current-band journey with positive whole-session XP.
+
+### Bounded Startup Skill Backfill (September 10)
+
+The first frontier rerun exposed a startup cost rather than a gameplay
+failure: Kestrel's shared 25.9 GB database spent more than a minute in the
+legacy training-event repair before policy selection. The latest checkpoint
+already contains an observed practice listing for level 24 and the current
+reboot. The repair now treats that live audit as authoritative and skips the
+historical scan; only checkpoints without a matching audit replay training
+events. A regression test covers the skip and preserves the legacy merge path.
+
+The public rerun reached all preparation boundaries in seconds, selected the
+same unavailable source-ranked frontier, and exited cleanly without opening a
+connection. This is startup reliability evidence only; Kestrel remains level
+24 at **332,552 XP** in healer room 3054, and HERO plus sustained progression
+remain unproved.
+
+### Funding Completion Ledger And Retry Liveness (September 10)
+
+Run **12959** exercised the next Kestrel funding continuation after the startup
+repair. The exact source-ranked Midget at Circus room **4411** was below the
+useful XP band, so its kill was not objective progression, but it completed the
+explicit provision-funding action. The live state recorded **40 XP**, **50
+copper**, the completed kill, and a safe return to healer room **3054**. There
+was no death, loss, or invented target result.
+
+The first resume checkpoint retained an empty `objective_kills` list and a
+false funding marker because the two ledgers were being read interchangeably.
+The repair now reads the exact segment's durable `completed_kills` event and
+created checkpoint **39933** with `completed_kill: true`. Funding actions also
+advance their retry cooldown when their XP delta is zero, while an observed
+below-quote balance remains eligible for safe funding even during a retry
+cooldown. These changes prevent a stale marker or an unaffordable quote from
+stalling the campaign without promoting low-value XP into progression proof.
+
+The focused ledger regressions pass **64 tests** and the full offline suite now
+passes **5,475 tests**; compilation and log validation pass. Kestrel remains
+level **24** at **332,592 XP**, with **157** carried copper-equivalent, a
+**131-copper** flight quote, and two funding cooldown steps. The next acceptance
+gate is a productive current-band journey and repeated positive whole-session
+XP. HERO remains unproved.
+
+### Current-Band Rotation And Bounded Liveness Recovery (September 10)
+
+Runs **12960-12962** completed the immediate maintenance sequence: the
+recovered Midget purse was cleared, its loot was sold, and Kestrel reached
+**2,878 copper-equivalent**. The watchman research probe produced a fresh
+viable result for the level-24 frontier. Runs **12963-12965** then used the
+official Moria route and returned safely to healer 3054 without acquiring
+sanctuary or adding XP. Run 12965 completed before the liveness stop; it was
+not interrupted.
+
+Reconnect run **12966** emitted no fresh transcript event across its bounded
+liveness window. The exact gameplay worker tree was stopped after the single
+allowed reconnect, without touching the Discord streamer or unrelated Python
+processes. Startup recovery marked the run failed with interruption evidence,
+left segment 12515 ready, and converged through checkpoints **39960-39961**.
+There was no death, XP loss, or fabricated kill result. Kestrel is currently
+level **24** at **332,592 XP**, alive in healer room 3054. The next gate is a
+productive current-band kill and repeated positive whole-session XP; the HERO
+claim remains unproved.
+
+The focused ledger regressions pass **64 tests**, the full offline suite passes
+**5,475 tests**, compilation passes, and the conversation log remains valid.
+
+### Moria Carrier Locator Expansion (September 10)
+
+The first corrected Moria retry exposed a bounded-plan omission rather than a
+source safety failure. Mobile 4055 can reach 15 source rooms, and the live
+`where hobgoblin` response named `the large cave`; the eight-endpoint fallback
+did not inspect every safe room with that label. The shared locator already
+admitted room 4068 within its 24-step safety budget, so the required-loot
+campaign handoff now requests nine non-invisibility endpoints. All existing
+source hazard, exact-target, below-band, and healer-return gates remain in
+force.
+
+Runs **12967-12970** recorded the bounded reconnect and food-reserve
+maintenance needed before another protected field trip. Run **12971** then
+used the new plan live: Kestrel considered and killed source carrier 4055 in
+Moria's large cave, gained the source-consistent **100 XP**, looted object 4050
+(`purple potion`), placed it in the combat pouch, sacrificed the corpse, and
+returned to healer room 3054. The run ended at checkpoint **39975**, level 24
+with **332,692 XP**, no new loss, and one verified purple reserve. This is
+required-loot recovery evidence, not sustained progression; the existing
+protection marker still requires a protected productive hunt.
+
+The focused locator and campaign checks pass, and the generated fallback uses
+22 of 24 movement steps while including room 4068. The next live gate is the
+protected current-band hunt, followed by repeated positive whole-session XP;
+HERO remains unproved.
+
+### Durable Resource Ledgers And Level-24 Rotation (September 10)
+
+The first post-Moria resume exposed a state-reconciliation defect. A raw live
+character snapshot correctly supplies current room, inventory, vitals, and
+affects, but it does not carry campaign-owned combat-pouch counts or verified
+source-resource contracts. Because those keys were absent from the startup
+sticky-metadata allowlist, the next segment temporarily forgot the purple
+sanctuary reserve and unnecessarily reopened the Moria recovery policy.
+
+The campaign now preserves `combat_pouch_potions`,
+`verified_combat_pouch_potions`, and `campaign_source_resource_reserves` from
+the durable checkpoint while still accepting live inventory and resource
+consumption outcomes. A regression reproduces the omission and verifies that
+live inventory remains authoritative. The full offline suite passes **5,477
+tests**.
+
+Runs **12972-12978** completed bounded food and target maintenance. Run
+**12979** began with both purple ledgers intact and selected the ordinary
+Solace frontier, proving the startup fix against the live campaign database.
+Run **12981** replenished food at Haon. Runs **12980** and **12982** reached
+Ultima and Mahntor targets; each returned safely without a kill because source
+HP ceilings exceeded Kestrel's measured knife damage budget. The latest
+checkpoint is **40014**, level 24 at **332,692 XP**, alive in healer room 3054
+with one purple reserve and no new loss. The
+protection-recovery marker remains open, so the next gate is still a protected
+productive current-band journey and repeated positive whole-session XP.
+
+### Forest Retry And Crowd Evidence (September 10)
+
+The fresh source combat-budget marker now reopens a previously cleared Forest
+bear-claw upgrade only when the current level, reboot, source revision, weapon,
+and damage-gate reason still match. This restores a valid retry without erasing
+the prior crowd quarantine or permitting a bypass of target, consider, route,
+or healer-return checks. A regression covers the policy-selection boundary.
+
+Run **12984** selected that repaired Forest policy and reached the source-mapped
+River bed approach. The exact `where kodiak` result placed the Giant Kodiak bear
+in room **18026**; room **18027** then exposed source-registered mosquito and
+wasp instances alongside the route. The required-loot crowd gate withdrew
+before combat, recalled, recovered at healer **3054**, and quit cleanly. There
+was no death, loss, kill, or XP change. Kestrel's latest checkpoint is **40031**
+at level **24** and **332,692 XP**, with one purple reserve; the upgrade cooldown
+is six bounded segments. The full offline suite passes **5,477 tests**, and
+compilation is clean. This is concrete route-safety evidence, not sustained
+progression; the next acceptance gate remains a protected productive
+current-band journey with positive whole-session XP.

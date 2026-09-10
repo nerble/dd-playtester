@@ -516,6 +516,35 @@ def test_character_snapshot_lookups_are_indexed_and_case_insensitive(tmp_path) -
     )
 
 
+def test_run_scoped_evidence_lookups_are_indexed(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+
+    loot_plan = storage.connection.execute(
+        """
+        EXPLAIN QUERY PLAN
+        SELECT id
+        FROM loot_sales
+        WHERE run_id = ?
+        ORDER BY id
+        """,
+        (1,),
+    ).fetchall()
+    kill_plan = storage.connection.execute(
+        """
+        EXPLAIN QUERY PLAN
+        SELECT id
+        FROM mob_kills
+        WHERE run_id = ?
+        ORDER BY id
+        """,
+        (1,),
+    ).fetchall()
+    storage.close()
+
+    assert any("idx_loot_sales_run_id" in row[3] for row in loot_plan)
+    assert any("idx_mob_kills_run_id" in row[3] for row in kill_plan)
+
+
 def test_storage_marks_interrupted_runs_as_failed(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     run_id = storage.create_run(scenario_name="arena", scenario_path=Path("arena.yaml"))

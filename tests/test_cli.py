@@ -4,8 +4,9 @@ from pathlib import Path
 import dd4tester.cli
 from dd4tester.campaign import CampaignResult
 from dd4tester.cli import main
+from dd4tester.equipment import GearSourcePlacement
 from dd4tester.lease import CampaignLease, campaign_lease_path
-from dd4tester.hunt_candidates import ResourcePlacement
+from dd4tester.hunt_candidates import ObjectSource, ResourcePlacement, WorldSource
 from dd4tester.matrix import (
     MatrixCredentialResult,
     MatrixEntryResult,
@@ -121,6 +122,147 @@ def test_show_hunt_candidates_reuses_persisted_recall_origins(
     assert exit_code == 0
     assert captured_origins == [{0: 3001, 2: 28003}]
     assert "Recall origins: 0 Default recall, 2 Draagdim" in captured.out
+
+
+def test_show_gear_sources_renders_source_and_hazard_fields(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    placement = GearSourcePlacement(
+        object_vnum=50,
+        object_keywords="needle dagger",
+        object_description="a needle dagger",
+        category="wield",
+        stance_rank=(12, 4),
+        better_than_current=True,
+        source_kind="mob-equipped",
+        source_mobile_vnum=100,
+        source_mobile="a quiet guard",
+        room_vnum=200,
+        room_name="the guard post",
+        area_file="test.are",
+        maximum_count=1,
+        source_level_range=(5, 5),
+        status="caution",
+        route=("south",),
+        hazards=("target equips a needle dagger",),
+        weapon_role="preferred",
+    )
+    captured_options: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "load_world_source",
+        lambda *_args, **_kwargs: object(),
+    )
+
+    def fake_rank(_world, **kwargs):
+        captured_options.update(kwargs)
+        return [placement]
+
+    monkeypatch.setattr(dd4tester.cli, "rank_gear_sources", fake_rank)
+
+    exit_code = main(
+        [
+            "show-gear-sources",
+            "--level",
+            "5",
+            "--class",
+            "thief",
+            "--stance",
+            "combat",
+            "--source",
+            str(source),
+            "--database",
+            str(tmp_path / "missing.sqlite3"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured_options["character_level"] == 5
+    assert captured_options["character_class"] == "thief"
+    assert captured_options["stance"] == "combat"
+    assert "Weapon preference: piercing" in captured.out
+    assert "object_vnum\tkeywords\tobject\tcategory" in captured.out
+    assert "50\tneedle dagger\ta needle dagger\twield\tyes\tcaution" in captured.out
+    assert "mob-equipped" in captured.out
+    assert "target equips a needle dagger" in captured.out
+    assert "target equips a needle dagger\t-\tpreferred" in captured.out
+
+
+def test_show_gear_sources_matches_json_encoded_current_equipment(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    database = tmp_path / "runs.sqlite3"
+    current = ObjectSource(
+        40,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 1, 1, 2),
+        10,
+        wear_flags=1 << 13,
+    )
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="gear",
+            scenario_path=tmp_path / "gear.yaml",
+        )
+        storage.record_state_snapshot(
+            run_id,
+            source_event_id=None,
+            reason="prompt_seen",
+            state={
+                "name": "Scout",
+                "level": 5,
+                "max_hp": 50,
+                "equipment": '{"wield": {"name": "a needle dagger"}}',
+                "inventory": '[{"short_desc": "some grain"}]',
+            },
+        )
+
+    captured_options: dict[str, object] = {}
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "load_world_source",
+        lambda *_args, **_kwargs: WorldSource(objects={current.vnum: current}),
+    )
+
+    def fake_rank(_world, **kwargs):
+        captured_options.update(kwargs)
+        return []
+
+    monkeypatch.setattr(dd4tester.cli, "rank_gear_sources", fake_rank)
+
+    exit_code = main(
+        [
+            "show-gear-sources",
+            "--level",
+            "5",
+            "--class",
+            "thief",
+            "--character",
+            "Scout",
+            "--source",
+            str(source),
+            "--database",
+            str(database),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured_options["character_max_hp"] == 50
+    assert captured_options["current_items"] == [current]
+    assert "Character max HP: 50" in captured.out
 
 
 def test_hero_prepare_only_builds_source_validated_campaign(tmp_path, capsys) -> None:

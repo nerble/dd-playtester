@@ -20,6 +20,11 @@ order; dated run evidence belongs there, not in an expanding policy changelog.
 - Run/campaign reports with evidence-grounded commentary and persona metadata.
 - Public `hero` entry point, resumable campaigns, credentials, bounds, and recovery.
 - Shared source-backed combat, training, equipment, travel, and resource policies.
+- Bounded campaign startup that reuses a current-level live training audit and
+  reserves historical event scans for legacy checkpoints.
+- Source-ranked gear acquisition report with separate equipment-reset provenance,
+  stance scoring, route evidence, and hazard/rejection fields; it is analysis,
+  not combat permission.
 - Mudlet bridge interface; this is not full VM lifecycle or HERO validation.
 
 These have implementation and varying amounts of live proof. Their existence
@@ -27,30 +32,70 @@ does not mean every race/class or level band works end to end.
 
 ## Immediate Delivery Gate
 
-1. Advance Aeloria from level 18 to 19 using measured current-band encounters;
-   audit prior Arachnos loss evidence before allowing the next guardian route.
+1. Continue Kestrel beyond level 24 with measured current-band encounters and
+   positive whole-session net XP; do not spend a fame reserve on an unfinishable
+   target.
 2. Advance the fresh character from level 8 to 9 and through the level-10
    trainer transition without adding name-specific behavior.
 3. Demonstrate three consecutive bounded public invocations with positive
    combined net XP, repeated useful kills, autonomous maintenance, and a level
    gained. Include travel, recovery, provisions, and failed hunts in the cost.
-4. Use existing thief, mage, and warrior campaigns for shared-behavior
-   comparisons at their actual frontiers. Fix the largest measured bottleneck.
+4. Compare the existing thief, mage, and warrior campaigns at their actual
+   frontiers, then expand only after the shared loop proves productive.
 
-The latest Kestrel handoff consumed its sanctuary reserve in an interrupted
-Circus attempt. Recovery checkpoint 39707 is level 24 at 333,258 XP and full
-health at the healer; it did not clear negative fame. Connection-gap accounting
-now retains the 385-XP decrease without claiming an observed death or a failed
-damage probe. Preserve that evidence while continuing roster-level progression;
-do not reopen the same combat merely because its worker was interrupted.
+Current continuation (2026-09-10): runs 12948-12953 advanced the level-24
+frontier without inventing progress. The secretary exceeded Kestrel's audited
+damage budget, food was replenished, a poisonous live crowd blocked Mr. Smithy,
+and the Forest bear-claw route withdrew at room 18027 when its required-loot
+gate found a bystander. Run 12959 completed a below-band Midget kill as a
+funding action, adding 40 XP and 50 copper before a safe return to healer 3054.
+Runs 12960-12962 then cleared the recovered purse, sold the loot, and produced
+a viable current-band watchman research result; the balance reached 2,878
+copper-equivalent. Runs 12963-12965 safely exhausted the current Moria
+sanctuary attempts. Reconnect run 12966 was interrupted; startup repair marked
+it failed, left its segment ready, and converged at checkpoint 39961. Runs
+12967-12970 completed bounded food maintenance. Run 12971 exercised the
+widened nine-endpoint fallback, killed source carrier 4055 for 100 expected
+below-band XP, recovered purple potion 4050 into the pouch, sacrificed the
+corpse, and returned safely to healer 3054. Runs 12972-12978 completed safe
+food, recovery, and target probes. Run 12979 verified that the purple potion
+ledger survives a fresh live resume; runs 12980-12982 reached current-band
+targets but rejected them on source HP and damage bounds without combat or new
+loss. Run 12984 reopened the source-validated Forest upgrade after the fresh
+damage gate, then withdrew at room 18027 when source-registered mosquitoes and
+wasps formed a crowd. Kestrel remains level 24 at 332,692 XP at checkpoint
+40031. Required-loot and funding kills remain separate from objective
+progression. This proves safe resource recovery, corrected source location,
+durable campaign metadata, and bounded crowd handling, not sustained
+progression; the next gate remains a protected productive current-band journey.
 
-Aeloria checkpoint 39727 remains level 18 at 161,091 XP. Run 12880 now
-live-proves that the invisible carrier locator reaches both required-loot
-mobiles together. Duplicate-target consideration was the next blocker; its
-shared probe handoff is now replay-tested. Require actual second-potion
-acquisition and a subsequent useful kill before claiming progression.
+The funding ledger now prefers durable completed-kill evidence for a funding
+segment even when the kill is below the useful XP band. A completed funding
+action ages its retry cooldown even when it yields no progression XP, and a
+below-quote funding need is not hidden by a cooldown while the observed balance
+is insufficient. This prevents stale funding markers from causing startup
+deadlocks without turning low-value kills into progression proof.
 
-Current checkpoint 39657 is Aeloria level 18 at 161,091 XP, with full resources
+Offline source work (September 10) now retains objects loaded through `E`
+equipment resets when building hunt and campaign loot evidence. The new
+`show-gear-sources` command ranks class-usable placements by combat, pre-level,
+or recovery stance and exposes reset provenance, route, hazards, source
+rejections, and role fit. Thief combat and recovery reports preserve the
+source-backed piercing primary required by backstab, so a higher-damage
+non-piercing weapon is not misreported as a usable upgrade. It makes gear
+planning reusable across the roster, but it does not grant live combat
+permission or count as acquisition or progression proof.
+
+Aeloria checkpoint 39739 is level 18 at 161,181 XP. Run 12880 proved that the
+invisible carrier locator reaches both required-loot mobiles together. Run
+12881 live-proved the duplicate-target handoff and gained 90 XP from the exact
+carrier; run 12882 found the White Stag absent with no loss. Require repeated
+positive whole-journey XP and the second potion before claiming sustained
+progression.
+
+### Earlier comparison (preserved)
+
+Current checkpoint 39657 was Aeloria level 18 at 161,091 XP, with full resources
 and one verified purple potion in healer room 3054. Runs 12857-12863 netted
 -7 XP over 575.85 connected seconds, plus one 180-second reset wait, with no
 level gained. Policy 254 source-proves a narrower alternative to repeatedly
@@ -314,3 +359,24 @@ The [previous roadmap](docs/history/ROADMAP_2026-09-08.md) retains the original
 practical milestones, exit criteria, and subsequent cycles. The
 [operating instructions](docs/OPERATIONS.md) retain commentary, fail-fast,
 process, source-refresh, and local-only commit requirements.
+
+### Current Frontier: Kestrel (September 10, 2026)
+
+Runs 12948-12984 now supply the current frontier evidence: a secretary
+exceeded the dagger damage budget, food was recovered, the Forest bear route
+reached a real target before rejecting a crowded room, and the flight shop
+refused service at fame -12. Funding, loot sale, and watchman research all
+completed safely. Moria sanctuary attempts were exhausted without acquisition;
+run 12966 was interrupted and recovered, while runs 12967-12970 supplied food
+maintenance. Run 12971 completed the corrected nine-endpoint Moria fallback,
+acquired purple potion 4050 from source carrier 4055, and returned safely.
+Runs 12972-12978 added safe resource and target probes. Run 12979 confirmed
+the potion ledgers survive startup reconciliation; run 12981 replenished food,
+while runs 12980 and 12982 reached current-band targets and rejected them on
+source-backed damage bounds. Run 12984 reopened the Forest upgrade only after
+fresh source damage evidence, reached room 18027, and withdrew from a crowd of
+source-registered mosquitoes and wasps. Kestrel is level 24 at 332,692 XP,
+alive at healer 3054, with 2,979 copper-equivalent and one pouch reserve at
+checkpoint 40031. Do not widen the
+level band or claim sustained progression until the protection marker is
+cleared by a positive net-XP journey.

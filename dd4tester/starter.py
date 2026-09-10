@@ -1894,6 +1894,10 @@ class FieldHuntStop:
     where_relocation_routes: tuple[
         tuple[str, str, tuple[str, ...]], ...
     ] = ()
+    # Restrict a route branch to locator labels that the live MUD actually
+    # reported. This prevents a broad area label from selecting a narrower
+    # source branch with different hazards.
+    required_where_locations: tuple[str, ...] = ()
     maximum_where_relocations: int = 0
     where_area_file: str | None = None
     where_source_mobile_vnum: int | None = None
@@ -11697,7 +11701,7 @@ class StarterPolicy:
             self.between_round_action_ready_at = (
                 now + _COMBAT_ACTION_COOLDOWN_SECONDS
             )
-            return BotDecision(f"{action} {target}", reason)
+            return BotDecision(_combat_skill_command(action, target), reason)
 
         active_command: str | None = None
         active_reason: str | None = None
@@ -11748,7 +11752,7 @@ class StarterPolicy:
                 active_command = (
                     action
                     if action in {"punch", "kick"}
-                    else f"{action} {target}"
+                    else _combat_skill_command(action, target)
                 )
                 active_reason = repeatable_reasons[action]
                 break
@@ -16193,7 +16197,7 @@ class StarterPolicy:
             return False, None
         rooms = field_city_route_rooms(
             self.source_world, route.commands, origin=route.route_origin_room_vnum,
-            alignment=state.progress.get("alignment"),
+            alignment=state.progress.get("alignment"), level=state.level,
         )
         if not rooms:
             return False, None
@@ -19826,6 +19830,11 @@ class StarterPolicy:
                 and stop.source_target_hp_ceiling is not None
                 and state.max_hp is not None
                 and stop.source_target_hp_ceiling > state.max_hp
+                and not (
+                    stop.require_familiar
+                    and not self.familiar_active
+                    and not self._considered_solo_ready(state)
+                )
             ):
                 live_target_max_hps = [
                     max_hp
@@ -19848,9 +19857,14 @@ class StarterPolicy:
                         stop.source_familiar_minimum_damage
                         * stop.source_combat_max_actions
                     )
+                target_hp_ceiling = (
+                    max(live_target_max_hps)
+                    if live_target_max_hps
+                    else stop.source_target_hp_ceiling
+                )
                 if (
-                    live_target_max_hps
-                    and max(live_target_max_hps) > live_output_ceiling
+                    target_hp_ceiling is not None
+                    and target_hp_ceiling > live_output_ceiling
                     and not stop.allow_unprotected_hp_fuzz_probe
                 ):
                     source_reference = (
@@ -19858,8 +19872,13 @@ class StarterPolicy:
                         if stop.source_combat_reference
                         else ""
                     )
+                    target_hp_label = (
+                        "live target HP ceiling"
+                        if live_target_max_hps
+                        else "source target HP ceiling"
+                    )
                     self.fastwalk_abort_reason = (
-                        f"live target HP ceiling {max(live_target_max_hps)} for "
+                        f"{target_hp_label} {target_hp_ceiling} for "
                         f"{target!r} exceeds the source-backed {stop.source_combat_action} "
                         f"damage budget of {live_output_ceiling}{source_reference}"
                     )
@@ -20665,6 +20684,26 @@ class StarterPolicy:
         self.consider_viable = None
         self.consider_response_pending = False
 
+    def _fastwalk_stop_matches_locator_location(
+        self,
+        stop: FieldHuntStop,
+    ) -> bool:
+        """Return whether a branch is supported by the latest ``where`` label."""
+        required = {
+            str(location).casefold()
+            for location in stop.required_where_locations
+            if str(location).strip()
+        }
+        if not required:
+            return True
+        locations = self.fastwalk_locator_where_locations or self.fastwalk_where_locations
+        if not locations and self.fastwalk_where_location:
+            locations = (self.fastwalk_where_location,)
+        return bool(
+            locations
+            and any(str(location).casefold() in required for location in locations)
+        )
+
     def _fastwalk_hunt_plan_decision(
         self,
         state: CharacterState,
@@ -20710,6 +20749,25 @@ class StarterPolicy:
             # room-target and registered-route checks decide what remains.
             self.fastwalk_target_refresh_pending = False
             self.fastwalk_hunt_looked = True
+        current_stop = (
+            self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+            if self.fastwalk_hunt_stop_index < len(self.fastwalk_hunt_stops)
+            else None
+        )
+        if (
+            current_stop is not None
+            and current_stop.required_where_locations
+            and not self.fastwalk_hunt_stop_skipped
+            and not self._fastwalk_stop_matches_locator_location(current_stop)
+        ):
+            self.fastwalk_hunt_stop_skipped = True
+            marker = (
+                "skipped route branch requiring locator location: "
+                + ", ".join(current_stop.required_where_locations)
+            )
+            if marker not in self.fastwalk_route_hazards:
+                self.fastwalk_route_hazards.append(marker)
+            return self._fastwalk_hunt_plan_decision(state)
         must_take_no_recall_exit = bool(
             current_stop is not None
             and current_stop.target is None
@@ -21098,6 +21156,19 @@ class StarterPolicy:
                 and _targets_match(completed_stop.target, next_stop.target)
                 and (next_stop.route_vnums or next_stop.route)
             )
+            if (
+                next_stop is not None
+                and next_stop.required_where_locations
+                and not self._fastwalk_stop_matches_locator_location(next_stop)
+            ):
+                self.fastwalk_hunt_stop_skipped = True
+                marker = (
+                    "skipped route branch requiring locator location: "
+                    + ", ".join(next_stop.required_where_locations)
+                )
+                if marker not in self.fastwalk_route_hazards:
+                    self.fastwalk_route_hazards.append(marker)
+                return self._fastwalk_hunt_plan_decision(state)
 
         if self.fastwalk_hunt_stop_index >= len(self.fastwalk_hunt_stops):
             if (
@@ -22374,7 +22445,12 @@ class StarterPolicy:
             )
             > 0
         )
-        return observed_guard_safe_alignment(state.progress.get("alignment")) and waited_non_hostile_retry
+        return (
+            observed_guard_safe_alignment(
+                state.progress.get("alignment"), level=state.level,
+            )
+            and waited_non_hostile_retry
+        )
 
     def _at_registered_source_reset_room(
         self,
@@ -25693,8 +25769,8 @@ class StarterPolicy:
         DD4 can show an aggressive sentinel in the room without putting it in
         ``Char.Enemies``.  Only synthesize a gate record when the stop names
         the exact room and its locator has already confirmed the required
-        target; any target or other live enemy keeps the ordinary crowd gate
-        in charge.
+        target.  The target itself is intentionally ignored here: a required
+        carrier beside an audited poisoner must still be rejected as a crowd.
         """
         if not stop.route_gate_source_mobile_vnums:
             return []
@@ -25708,13 +25784,6 @@ class StarterPolicy:
             or bool(self.fastwalk_locator_where_locations)
         ):
             return []
-        if stop.target is not None and any(
-            _stop_target_matches(observed, stop.target, stop)
-            for observed, count in self._current_room_target_counts(state).items()
-            if count > 0
-        ):
-            return []
-
         records: list[dict[str, Any]] = []
         allowed_vnums = set(stop.route_gate_source_mobile_vnums)
         for observed, count in self._current_room_target_counts(state).items():
@@ -32774,7 +32843,13 @@ def forest_bear_claws_hunt_route() -> Fastwalk:
 
 
 def forest_bear_claws_hunt_stops() -> tuple[FieldHuntStop, ...]:
-    """Acquire the wandering Forest kodiak's high-damage piercing claws."""
+    """Acquire the wandering Forest kodiak's high-damage piercing claws.
+
+    The area source gives the Kodiak a single reset room, but its
+    ``ACT_WANDER`` path includes three identically named River bed rooms.
+    Keep that locator branch explicit so a live ``where`` result does not
+    turn into blind movement through the poison-swarm rooms.
+    """
     common = {
         "command_keyword": "bear",
         "required_items": ("pair of bears claws",),
@@ -32784,14 +32859,70 @@ def forest_bear_claws_hunt_stops() -> tuple[FieldHuntStop, ...]:
         "allow_below_band_for_required_loot": True,
         "minimum_combat_health_ratio": 0.25,
         "maximum_level_offset": 0,
+        "source_mobile_vnum": 18001,
+        "source_mobile_room_description": (
+            "A giant Kodiak bear stands here chewing on a carcass."
+        ),
+        "source_policy_id": "forest-bear-claws-upgrade-10-29",
+        "source_loot_object_vnums": (18000,),
     }
     stops = [
         FieldHuntStop(
             (),
             "kodiak bear",
+            where_target="giant kodiak bear",
             actions=("where kodiak",),
+            where_location_routes=(
+                ("River bed", ("18028", "18029", "18030")),
+            ),
+            where_relocation_routes=(
+                ("18026", "River bed", ("18025", "18023", "18027", "18028")),
+                ("18028", "River bed", ("18029",)),
+                ("18029", "River bed", ("18030",)),
+            ),
             abort_if_where_target_absent=True,
-            abort_if_where_room_names=("River bed", "Medicine man's Lair"),
+            abort_if_where_room_names=("Medicine man's Lair",),
+            source_reset_room_vnum="18026",
+            **common,
+        ),
+        # Both source poison swarms are aggressive wanderers and can occupy
+        # any of these same-name rooms.  A route gate may remove exactly one
+        # isolated below-band swarm after the Kodiak locator has confirmed
+        # this branch; a crowd or unknown mobile still aborts the route.
+        FieldHuntStop(
+            (),
+            "kodiak bear",
+            route_vnums=("18025", "18023", "18027", "18028"),
+            required_where_locations=("River bed",),
+            route_gate_source_mobile_vnums=(18002, 18003),
+            route_gate_allow_below_band=True,
+            route_gate_room_vnums=("18027", "18028"),
+            route_gate_requires_locator_target=True,
+            deferred_required_loot_hazard_source_mobile_vnums=(18002, 18003),
+            **common,
+        ),
+        FieldHuntStop(
+            (),
+            "kodiak bear",
+            route_vnums=("18028", "18029"),
+            required_where_locations=("River bed",),
+            route_gate_source_mobile_vnums=(18002, 18003),
+            route_gate_allow_below_band=True,
+            route_gate_room_vnums=("18029",),
+            route_gate_requires_locator_target=True,
+            deferred_required_loot_hazard_source_mobile_vnums=(18002, 18003),
+            **common,
+        ),
+        FieldHuntStop(
+            (),
+            "kodiak bear",
+            route_vnums=("18029", "18030"),
+            required_where_locations=("River bed",),
+            route_gate_source_mobile_vnums=(18002, 18003),
+            route_gate_allow_below_band=True,
+            route_gate_room_vnums=("18030",),
+            route_gate_requires_locator_target=True,
+            deferred_required_loot_hazard_source_mobile_vnums=(18002, 18003),
             **common,
         ),
         FieldHuntStop(
@@ -36638,7 +36769,11 @@ def _load_source_mobile_vnums_by_target_room(
     for target, vnums in identity_vnums.items():
         rooms_for_target = indexed.setdefault(target, {})
         for mobile_vnum in sorted(vnums):
-            for room_vnum in source_mobile_search_rooms(world, mobile_vnum):
+            for room_vnum in source_mobile_search_rooms(
+                world,
+                mobile_vnum,
+                include_closed=True,
+            ):
                 rooms_for_target.setdefault(str(room_vnum), set()).add(mobile_vnum)
 
     return {
@@ -37112,6 +37247,20 @@ def _where_target_row(words: list[str], target_words: list[str]) -> int | None:
 def _target_keyword(target: str) -> str:
     words = target.split()
     return words[-1] if words else ""
+
+
+_COMBAT_SKILL_COMMAND_VERBS = {
+    # DD4's command table uses the skill names, but its parser consumes only
+    # the first word before dispatching the documented shorter syntax.
+    "dirt kick": "dirt",
+    "knife toss": "knife",
+}
+
+
+def _combat_skill_command(action: str, target: str) -> str:
+    """Build the live command for a target-taking combat skill."""
+    verb = _COMBAT_SKILL_COMMAND_VERBS.get(action, action)
+    return f"{verb} {target}"
 
 
 def _strip_target_selector(value: str) -> str:

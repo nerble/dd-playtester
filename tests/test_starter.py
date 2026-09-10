@@ -4511,10 +4511,10 @@ def test_forest_bear_claws_upgrade_uses_source_route_and_live_safety_gates() -> 
     assert route.recall_after_loot is True
     assert [stop.route_vnums for stop in stops[:5]] == [
         (),
+        ("18025", "18023", "18027", "18028"),
+        ("18028", "18029"),
+        ("18029", "18030"),
         ("18025",),
-        ("18023",),
-        ("18024",),
-        ("18023", "18022"),
     ]
     searched_vnums = {
         vnum for stop in stops for vnum in stop.route_vnums
@@ -4522,15 +4522,43 @@ def test_forest_bear_claws_upgrade_uses_source_route_and_live_safety_gates() -> 
     assert {"18000", "18016", "18046", "18048", "18053", "18054"} <= (
         searched_vnums
     )
-    assert searched_vnums.isdisjoint(
-        {"18027", "18028", "18029", "18030", "18042"}
-    )
+    assert searched_vnums.isdisjoint({"18042"})
     assert stops[-1].route_vnums == ("18053",)
     assert stops[0].actions == ("where kodiak",)
+    assert stops[0].where_target == "giant kodiak bear"
     assert stops[0].abort_if_where_target_absent is True
-    assert stops[0].abort_if_where_room_names == (
-        "River bed",
-        "Medicine man's Lair",
+    assert stops[0].abort_if_where_room_names == ("Medicine man's Lair",)
+    assert stops[0].where_location_routes == (
+        ("River bed", ("18028", "18029", "18030")),
+    )
+    assert stops[0].where_relocation_routes == (
+        ("18026", "River bed", ("18025", "18023", "18027", "18028")),
+        ("18028", "River bed", ("18029",)),
+        ("18029", "River bed", ("18030",)),
+    )
+    assert [stop.required_where_locations for stop in stops[1:4]] == [
+        ("River bed",),
+        ("River bed",),
+        ("River bed",),
+    ]
+    assert stops[0].source_mobile_vnum == 18001
+    assert stops[0].source_reset_room_vnum == "18026"
+    river_stops = stops[1:4]
+    assert all(stop.source_mobile_vnum == 18001 for stop in river_stops)
+    assert all(
+        stop.route_gate_source_mobile_vnums == (18002, 18003)
+        for stop in river_stops
+    )
+    assert all(stop.route_gate_allow_below_band for stop in river_stops)
+    assert all(stop.route_gate_requires_locator_target for stop in river_stops)
+    assert [stop.route_gate_room_vnums for stop in river_stops] == [
+        ("18027", "18028"),
+        ("18029",),
+        ("18030",),
+    ]
+    assert all(
+        stop.deferred_required_loot_hazard_source_mobile_vnums == (18002, 18003)
+        for stop in river_stops
     )
     assert all(stop.target == "kodiak bear" for stop in stops)
     assert all(stop.command_keyword == "bear" for stop in stops)
@@ -4544,6 +4572,180 @@ def test_forest_bear_claws_upgrade_uses_source_route_and_live_safety_gates() -> 
         stop.trivial_bystanders == ("mountain goblin",) for stop in stops
     )
     assert all(stop.allow_below_band_for_required_loot for stop in stops)
+
+
+def test_forest_locator_narrows_river_bed_to_source_ordered_legs() -> None:
+    stops = forest_bear_claws_hunt_stops()
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=forest_bear_claws_hunt_route(),
+        fastwalk_hunt_stops=stops,
+    )
+    policy.current_room = "18026"
+    policy.fastwalk_hunt_stop_index = 0
+
+    policy._narrow_fastwalk_stops_to_where_locations(
+        stops[0],
+        ("River bed",),
+    )
+
+    assert [stop.route_vnums for stop in policy.fastwalk_hunt_stops] == [
+        (),
+        ("18025", "18023", "18027", "18028"),
+        ("18029",),
+        ("18030",),
+    ]
+
+
+def test_forest_broad_area_locator_skips_river_bed_hazard_branch() -> None:
+    stops = forest_bear_claws_hunt_stops()
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=forest_bear_claws_hunt_route(),
+        fastwalk_hunt_stops=stops,
+    )
+    policy.in_world = True
+    policy.needs_food = False
+    policy.needs_drink = False
+    policy.current_room = "18026"
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_outbound_index = len(policy.fastwalk_route.commands)
+    policy.fastwalk_hunt_stop_index = 1
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_locator_target_present_observed = True
+    policy.fastwalk_locator_where_locations = ("Forest",)
+
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=380,
+        max_move=380,
+        position=7,
+        room_vnum="18026",
+        exits={"east": "18025"},
+    )
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "east"
+    assert policy.fastwalk_hunt_stop_index == 4
+    assert policy.fastwalk_route_hazards == [
+        "skipped route branch requiring locator location: River bed",
+    ]
+
+
+def test_forest_river_gate_accepts_one_source_poisoner_after_locator() -> None:
+    stops = forest_bear_claws_hunt_stops()
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=forest_bear_claws_hunt_route(),
+        fastwalk_attack_target="kodiak bear",
+        fastwalk_hunt_stops=stops,
+        source_mobile_vnums_by_target_room={
+            "swarm of mosquitoes": {"18028": (18002,)},
+        },
+        source_mobile_level_ranges_by_vnum={18002: (10, 10)},
+        source_mobile_special_profiles_by_vnum={
+            18002: ("spec_poison",),
+        },
+    )
+    policy.current_room = "18028"
+    policy.fastwalk_hunt_stop_index = 1
+    policy.fastwalk_hunt_move_index = len(stops[1].route_vnums)
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_locator_target_present_observed = True
+    policy.fastwalk_locator_where_locations = ("River bed",)
+    policy.room_target_counts["18028"] = {"swarm of mosquitoes": 1}
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=234,
+        max_move=380,
+        position=7,
+        room_vnum="18028",
+        enemies=[],
+    )
+
+    decision = policy._fastwalk_route_gate_decision(state, [])
+
+    assert decision is not None
+    assert decision.command == "consider #18002"
+    policy.after_command(decision)
+    policy.observe_text("The swarm of mosquitoes is no match for you.\n")
+    policy.prompt_ready = True
+
+    decision = policy._fastwalk_route_gate_decision(state, [])
+
+    assert decision is not None
+    assert decision.command.endswith("#18002")
+    assert policy.fastwalk_route_gate_active is True
+    assert policy.fastwalk_route_gate_source_vnum == 18002
+
+
+def test_forest_river_gate_rejects_a_target_plus_source_poisoner_crowd() -> None:
+    stops = forest_bear_claws_hunt_stops()
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=forest_bear_claws_hunt_route(),
+        fastwalk_attack_target="kodiak bear",
+        fastwalk_hunt_stops=stops,
+        source_mobile_vnums_by_target_room={
+            "swarm of mosquitoes": {"18027": (18002,)},
+            "swarm of wasps": {"18027": (18003,)},
+        },
+        source_mobile_level_ranges_by_vnum={
+            18002: (10, 10),
+            18003: (10, 10),
+        },
+        source_mobile_special_profiles_by_vnum={
+            18002: ("spec_poison",),
+            18003: ("spec_poison",),
+        },
+    )
+    policy.current_room = "18027"
+    policy.fastwalk_hunt_stop_index = 1
+    policy.fastwalk_hunt_move_index = len(stops[1].route_vnums)
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_locator_target_present_observed = True
+    policy.fastwalk_locator_where_locations = ("River bed",)
+    policy.room_target_counts["18027"] = {
+        "kodiak bear": 1,
+        "swarm of mosquitoes": 1,
+        "swarm of wasps": 3,
+    }
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=234,
+        max_move=380,
+        position=7,
+        room_vnum="18027",
+        enemies=[],
+    )
+
+    decision = policy._fastwalk_route_gate_decision(state, [])
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.fastwalk_returning is True
+    assert policy.fastwalk_target_absent is False
+    assert policy.fastwalk_abort_reason == (
+        "required-loot route gate was accompanied by another live mobile"
+    )
 
 
 def test_finite_forest_hunt_gets_a_derived_but_bounded_command_budget() -> None:
@@ -4618,6 +4820,26 @@ def test_thalos_lamia_locator_accepts_live_generic_where_rows() -> None:
 
     assert policy.fastwalk_where_response_observed is True
     assert policy.fastwalk_where_target_present_observed is True
+    assert policy.fastwalk_where_response_pending is False
+
+
+def test_forest_kodiak_locator_accepts_source_display_adjective() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=forest_bear_claws_hunt_stops(),
+    )
+    policy.fastwalk_hunt_action_index = 1
+
+    policy.observe_text(
+        "You detect the presence of:\n"
+        "A Giant Kodiak bear          Forest\n"
+        "\n<334/334 hits 289/283 mana 197/380 move [Forest]>"
+    )
+
+    assert policy.fastwalk_where_response_observed is True
+    assert policy.fastwalk_where_target_present_observed is True
+    assert policy.fastwalk_where_target_absent_observed is False
     assert policy.fastwalk_where_response_pending is False
 
 
@@ -10500,6 +10722,18 @@ def test_source_mobile_identity_index_tracks_short_combat_aliases() -> None:
     # The source room line calls VNUM 3501 a mountain goblin, but combat text
     # reports its prototype short description as "The goblin".
     assert index["goblin"]["3504"] == (3501,)
+
+
+def test_source_mobile_identity_index_tracks_wanderers_behind_openable_doors() -> None:
+    index = _load_source_mobile_vnums_by_target_room(
+        str(Path("runs/dd4-source/server/area").resolve())
+    )
+
+    # Ultima's un-specialed swarm can wander from reset room 2408 through the
+    # reset-closed north door once a route opens it.  Binding that endpoint
+    # keeps a same-name spec_poison mobile in another area from becoming a
+    # false live hazard.
+    assert index["swarm of insects"]["2406"] == (2400,)
 
 
 def test_source_mobile_non_assisting_index_is_room_aware() -> None:
@@ -18745,7 +18979,7 @@ def test_fastwalk_where_absence_aborts_remaining_area_search() -> None:
     assert policy.fastwalk_returning is True
     assert policy.fastwalk_target_absent is True
     assert policy.fastwalk_abort_reason == (
-        "`where` confirmed 'kodiak bear' absent from the current area"
+        "`where` confirmed 'giant kodiak bear' absent from the current area"
     )
 
 
@@ -18786,7 +19020,7 @@ def test_fastwalk_where_absence_records_explicit_locator_identity() -> None:
     )
 
 
-def test_fastwalk_where_unsafe_room_aborts_without_marking_target_absent() -> None:
+def test_fastwalk_where_mapped_river_room_is_not_treated_as_excluded() -> None:
     policy = StarterPolicy(
         _spec(),
         "swordfish",
@@ -18800,6 +19034,12 @@ def test_fastwalk_where_unsafe_room_aborts_without_marking_target_absent() -> No
         "A Giant Kodiak bear          River bed\n"
         "<205/205 hits 207/207 mana 208/280 move [Forest]>"
     )
+    policy.fastwalk_where_target_present_observed = True
+    policy.fastwalk_where_locations = ("River bed",)
+    policy.fastwalk_locator_target_present_observed = True
+    policy.fastwalk_locator_where_locations = ("River bed",)
+    policy.room_targets["18026"] = ["kodiak bear"]
+    policy.room_target_counts["18026"] = {"kodiak bear": 1}
     state = CharacterState(
         level=14,
         hp=205,
@@ -18815,12 +19055,10 @@ def test_fastwalk_where_unsafe_room_aborts_without_marking_target_absent() -> No
     decision = policy._fastwalk_hunt_plan_decision(state)
 
     assert decision is not None
-    assert decision.command == "recall"
-    assert policy.fastwalk_returning is True
+    assert decision.command == "consider bear"
+    assert policy.fastwalk_returning is False
     assert policy.fastwalk_target_absent is False
-    assert policy.fastwalk_abort_reason == (
-        "`where` located 'kodiak bear' in excluded room 'River bed'"
-    )
+    assert policy.fastwalk_abort_reason is None
 
 
 def test_route_preflight_allows_a_clear_shadow_grove_boundary() -> None:
@@ -19738,6 +19976,51 @@ def test_source_caster_budget_rejects_live_target_above_its_action_ceiling() -> 
     assert decision is not None
     assert decision.command == "look"
     assert "damage budget" in decision.reason
+    assert policy.fastwalk_attack_started is False
+
+
+def test_source_caster_budget_rejects_source_ceiling_before_enemy_snapshot() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the target",
+        source_target_hp_ceiling=1353,
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_opening_conservative_damage=18,
+        source_combat_max_actions=12,
+        require_damage_window_probe=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "200"
+    policy.fastwalk_hunt_stop_index = 0
+    policy.fastwalk_attack_target = stop.target
+    policy.room_target_counts["200"] = {"the target": 1}
+    policy.consider_target = stop.target
+    policy.consider_viable = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="200",
+    )
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert "source target HP ceiling 1353" in (
+        policy.fastwalk_abort_reason or ""
+    )
+    assert "damage budget of 318" in (policy.fastwalk_abort_reason or "")
     assert policy.fastwalk_attack_started is False
 
 
@@ -23093,7 +23376,7 @@ def test_runtime_boundary_finishes_one_half_dead_lower_level_target() -> None:
     decision = policy.next_decision(fighting)
 
     assert decision is not None
-    assert decision.command == "knife toss #5628"
+    assert decision.command == "knife #5628"
     assert policy.runtime_boundary_finish_target == "[#5628] Town Clerk"
     assert policy.runtime_boundary_finish_commands_remaining == 5
     assert policy.fastwalk_emergency_recall_pending is False
@@ -39394,7 +39677,7 @@ def test_headbutt_requires_known_non_huge_target_with_a_head(body_form_flags) ->
 @pytest.mark.parametrize(
     ("action", "command"),
     (
-        ("dirt kick", "dirt kick guard"),
+    ("dirt kick", "dirt guard"),
         ("trip", "trip guard"),
     ),
 )
@@ -40538,10 +40821,10 @@ def test_thief_repeats_knife_toss_with_exact_selector(monkeypatch) -> None:
     second = policy._between_round_combat_decision(state)
 
     assert first is not None
-    assert first.command == "knife toss #22332"
+    assert first.command == "knife #22332"
     assert "without consuming carried ammunition" in first.reason
     assert second is not None
-    assert second.command == "knife toss #22332"
+    assert second.command == "knife #22332"
 
 
 def test_thief_circle_requires_the_piercing_primary_weapon() -> None:
@@ -40746,7 +41029,7 @@ def test_source_proven_unarmed_target_skips_disarm(monkeypatch) -> None:
     decision = policy._between_round_combat_decision(state)
 
     assert decision is not None
-    assert decision.command == "knife toss sentry"
+    assert decision.command == "knife sentry"
 
 
 def test_one_kill_recovery_with_targets_remaining_is_recorded() -> None:

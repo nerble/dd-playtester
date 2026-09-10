@@ -445,6 +445,24 @@ def test_affordable_flight_with_no_food_restock_before_funding() -> None:
     assert policy.executable is True
 
 
+def test_protected_negative_recovery_keeps_flight_funding_deferred() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        has_food=True,
+        needs_provision_funding=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        shop_rearm_blocked_by_reputation=True,
+        has_sanctuary_potion=True,
+        protection_recovery_required=True,
+        protection_recovery_hard_health=True,
+    )
+
+    assert policy.policy_id == "provision-funding"
+    assert policy.execution == "provision-funding"
+
+
 def test_excluded_source_funding_remains_available_for_required_loot() -> None:
     policy = policy_for(
         18,
@@ -2898,6 +2916,20 @@ def test_thief_piercing_upgrade_is_not_repeated_during_same_reboot() -> None:
     )
 
     assert policy.policy_id == "fleshmonger-thief-rotation-11-12"
+
+
+def test_thief_damage_gate_reopens_cleared_forest_upgrade() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        piercing_weapon_upgrade_retry_allowed=True,
+        excluded_policy_ids={"forest-bear-claws-upgrade-10-29"},
+        has_flight=True,
+    )
+
+    assert policy.policy_id == "forest-bear-claws-upgrade-10-29"
+    assert policy.execution == "upgrade-piercing-weapon"
 
 
 def test_piercing_upgrade_does_not_override_other_class_policy() -> None:

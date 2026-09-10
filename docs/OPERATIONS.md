@@ -69,6 +69,11 @@ retain the entire selected payload, explicit empty kill ledgers, and newer
 events. Do not cache terminal absence or remove loss history to speed startup.
 Measure public startup separately from query benchmarks and distinguish cold
 from warm reads. Faster inspection is not XP or combat-readiness evidence.
+When a checkpoint contains an observed training listing for the current level
+and reboot, use that compact audit as the skill capability source; do not replay
+up to 4,096 historical segments. Keep the legacy event backfill for checkpoints
+without that evidence, and retain visible preparation boundaries so a shared
+SQLite database cannot make a live launch appear hung.
 When reconnect reveals a verified same-level XP drop, retain it as a campaign
 loss lower bound even without a captured penalty message. Do not add it twice
 to explicit loss counters, infer a death or command-level cause, or reopen a
@@ -321,6 +326,16 @@ Compare an exact same-reboot latest gross sale with a known current flight
 shortfall only as an income upper bound. A low-yield funding preference may
 yield to an already executable ground hunt, never skip food or protection,
 add a loan, or manufacture another reset allowance.
+
+Funding completion and objective eligibility are separate ledgers. A source-
+identified below-band kill may complete an explicitly selected provision-funding
+action and age its retry cooldown, while its XP remains excluded from objective
+progression. Prefer the funding segment's durable `completed_kills` event over
+an empty `objective_kills` list, and repair its completion marker on resume from
+that exact run only. A completed funding action advances cooldown even when its
+XP delta is zero. An observed below-quote balance remains actionable despite a
+retry cooldown; negative fame must not override that safe funding path. None of
+these repairs authorize another target or promote low-value XP.
 
 Crowd assessment shares the existing three-probe, five-second-response budget
 across single and repeated mobile identities. Require complete, unique live

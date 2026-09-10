@@ -15,6 +15,11 @@ MAGIC_SHOP_ROUTE_ROOMS = frozenset({
     "3017", "3012", "3033",
 })
 CITY_TRANSIT_KEY = "campaign_city_shop_transit"
+GMCP_ALIGNMENT_HIDDEN_VALUE = 50000
+GMCP_ALIGNMENT_REVEAL_LEVEL = 10
+ALIGNMENT_MIN = -1000
+ALIGNMENT_MAX = 1000
+GUARD_ASSIST_ALIGNMENT_CEILING = 300
 
 
 def bounded_city_shop_transit_available(
@@ -47,18 +52,30 @@ def _number(value: Any) -> int | None:
         return None
 
 
-def observed_guard_safe_alignment(value: Any) -> bool:
-    """Hidden GMCP alignment (50000) is not evidence for spec_guard's gate."""
+def observed_guard_safe_alignment(value: Any, *, level: Any) -> bool:
+    """Return whether GMCP proves the player clears DD4's guard threshold."""
     alignment = _number(value)
-    return alignment is not None and 300 <= alignment <= 1000
+    observed_level = _number(level)
+    return (
+        observed_level is not None
+        and observed_level >= GMCP_ALIGNMENT_REVEAL_LEVEL
+        and alignment is not None
+        and GMCP_ALIGNMENT_HIDDEN_VALUE != alignment
+        and ALIGNMENT_MIN <= alignment <= ALIGNMENT_MAX
+        and alignment >= GUARD_ASSIST_ALIGNMENT_CEILING
+    )
 
 
 def field_city_route_rooms(
     world: WorldSource | None, commands: Sequence[str], *, origin: int,
-    alignment: Any,
+    alignment: Any, level: Any,
 ) -> tuple[str, ...]:
     """Scope the existing locator to the actual Midgaard departure and refill."""
-    if world is None or origin != 3001 or observed_guard_safe_alignment(alignment):
+    if (
+        world is None
+        or origin != 3001
+        or observed_guard_safe_alignment(alignment, level=level)
+    ):
         return ()
     greeter = world.mobiles.get(CITY_GREETER_VNUM)
     if greeter is None or greeter.area_file != "midgaard.are" or not greeter.attack_programs:

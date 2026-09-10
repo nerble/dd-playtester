@@ -26,6 +26,14 @@ from .credentials import (
     configure_character_password,
     configure_login,
 )
+from .equipment import (
+    GearCatalog,
+    STANCE_COMBAT,
+    STANCE_PRE_LEVEL,
+    STANCE_RECOVERY,
+    rank_gear_sources,
+    weapon_preference_for_character,
+)
 from .evidence import collect_run_evidence, render_evidence_json
 from .fastwalks import FASTWALKS, routes_for_level
 from .dd4_catalog import load_character_catalog
@@ -62,6 +70,7 @@ from .report import (
 )
 from .runner import run_scenario_file
 from .starter import (
+    _equipment_descriptions,
     run_ambush_research_profile,
     run_arena_research_profile,
     run_guildmaster_research_profile,
@@ -460,6 +469,55 @@ def build_parser() -> argparse.ArgumentParser:
         help="maximum placements to show, default: 40",
     )
     resource_sources_parser.add_argument(
+        "--all-areas",
+        action="store_true",
+        help="analyse every area file instead of the conservative starter-area set",
+    )
+    gear_sources_parser = subcommands.add_parser(
+        "show-gear-sources",
+        help="rank source-backed equipment placements for a class and stance",
+    )
+    gear_sources_parser.add_argument("--level", type=int, required=True)
+    gear_sources_parser.add_argument(
+        "--class",
+        dest="character_class",
+        required=True,
+        help="base class used for source equipment restrictions",
+    )
+    gear_sources_parser.add_argument(
+        "--subclass",
+        help="optional subclass used for source equipment restrictions",
+    )
+    gear_sources_parser.add_argument(
+        "--stance",
+        choices=(STANCE_COMBAT, STANCE_PRE_LEVEL, STANCE_RECOVERY),
+        default=STANCE_COMBAT,
+        help="loadout priority to rank, default: combat",
+    )
+    gear_sources_parser.add_argument(
+        "--character",
+        default="Ararisa",
+        help="character name used for current state and recall origins, default: Ararisa",
+    )
+    gear_sources_parser.add_argument(
+        "--source",
+        type=Path,
+        default=Path("runs/dd4-source/server/area"),
+        help="path to the DD4 server area directory",
+    )
+    gear_sources_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    gear_sources_parser.add_argument(
+        "--limit",
+        type=int,
+        default=40,
+        help="maximum placements to show, default: 40",
+    )
+    gear_sources_parser.add_argument(
         "--all-areas",
         action="store_true",
         help="analyse every area file instead of the conservative starter-area set",
@@ -1319,6 +1377,19 @@ def main(argv: list[str] | None = None) -> int:
             include_all_areas=args.all_areas,
         )
 
+    if args.command == "show-gear-sources":
+        return show_gear_sources(
+            args.source,
+            level=args.level,
+            character_class=args.character_class,
+            subclass=args.subclass,
+            stance=args.stance,
+            character=args.character,
+            database=args.database,
+            limit=args.limit,
+            include_all_areas=args.all_areas,
+        )
+
     if args.command == "configure-login":
         try:
             configure_login(args.credential_name)
@@ -2168,6 +2239,174 @@ def show_resource_sources(
                         clean(value) for value in placement.autonomy_rejections
                     )
                     or "-",
+                )
+            )
+        )
+    print(f"Placements shown: {min(limit, len(placements))} of {len(placements)}")
+    return 0
+
+
+def show_gear_sources(
+    source: Path,
+    *,
+    level: int,
+    character_class: str,
+    subclass: str | None,
+    stance: str,
+    character: str,
+    database: Path,
+    limit: int,
+    include_all_areas: bool = False,
+) -> int:
+    if level < 1:
+        print("--level must be at least 1", file=sys.stderr)
+        return 2
+    if limit < 1:
+        print("--limit must be at least 1", file=sys.stderr)
+        return 2
+    try:
+        world = load_world_source(source, include_all_areas=include_all_areas)
+    except (OSError, ValueError) as exc:
+        print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
+        return 1
+
+    boot_id: str | None = None
+    character_max_hp: int | None = None
+    recall_origins: dict[int, int] | None = None
+    current_items = []
+    catalog = GearCatalog(getattr(world, "objects", {}))
+
+    def state_descriptions(value: object) -> list[str]:
+        if isinstance(value, str):
+            try:
+                return state_descriptions(json.loads(value))
+            except json.JSONDecodeError:
+                return []
+        if isinstance(value, dict):
+            descriptions: list[str] = []
+            for key in ("short_desc", "description", "name"):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    descriptions.append(candidate)
+            for key, item in value.items():
+                if key not in {"short_desc", "description", "name"}:
+                    descriptions.extend(state_descriptions(item))
+            return descriptions
+        if isinstance(value, (list, tuple)):
+            descriptions: list[str] = []
+            for item in value:
+                descriptions.extend(state_descriptions(item))
+            return descriptions
+        return []
+
+    if database.exists():
+        with RunStorage(database) as storage:
+            boot_id = storage.latest_boot_id()
+            latest_state = storage.get_latest_character_state(character)
+            if latest_state is not None:
+                recall_origins = recall_origins_from_state(latest_state)
+                stored_level = latest_state.get("level")
+                raw_max_hp = latest_state.get("max_hp")
+                if (
+                    stored_level == level
+                    and isinstance(raw_max_hp, (int, float))
+                    and raw_max_hp > 0
+                ):
+                    character_max_hp = int(raw_max_hp)
+                current_items = catalog.match_many_usable(
+                    [
+                        *state_descriptions(
+                            latest_state.get("campaign_worn_equipment")
+                        ),
+                        *_equipment_descriptions(latest_state.get("equipment")),
+                        *state_descriptions(latest_state.get("inventory")),
+                    ],
+                    character_class=character_class,
+                    subclass=subclass,
+                )
+
+    try:
+        placements = rank_gear_sources(
+            world,
+            character_level=level,
+            character_class=character_class,
+            subclass=subclass,
+            stance=stance,
+            current_items=current_items,
+            character_max_hp=character_max_hp,
+            include_all_areas=include_all_areas,
+            recall_origins=recall_origins,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    def clean(value: object) -> str:
+        return " ".join(str(value).replace("\t", " ").split())
+
+    def room_label(room_vnum: int, room_name: str) -> str:
+        return f"{room_vnum} {clean(room_name)}"
+
+    print(f"Source: {source.resolve()}")
+    print(
+        f"Character: {character}, level {level}, class {character_class}"
+        + (f", subclass {subclass}" if subclass else "")
+    )
+    print(f"Stance: {stance}")
+    print(
+        "Weapon preference: "
+        + (
+            weapon_preference_for_character(
+                character_class,
+                subclass=subclass,
+            )
+            or "none"
+        )
+    )
+    print(f"Character max HP: {character_max_hp or 'unknown'}")
+    print(f"Current reboot: {boot_id or 'unknown'}")
+    print(
+        "object_vnum\tkeywords\tobject\tcategory\tbetter_than_current\tstatus\t"
+        "source_kind\tsource_mobile\treset_room\tarea\tcount\t"
+        "source_levels\troute_origin\troute\tstance_rank\thazards\t"
+        "autonomy_rejections\tweapon_role"
+    )
+    for placement in placements[:limit]:
+        source_mobile = (
+            f"{placement.source_mobile_vnum} {clean(placement.source_mobile)}"
+            if placement.source_mobile_vnum is not None
+            else "-"
+        )
+        minimum, maximum = placement.source_level_range
+        source_levels = (
+            f"{minimum}-{maximum}" if minimum or maximum else "unknown"
+        )
+        print(
+            "\t".join(
+                (
+                    str(placement.object_vnum),
+                    clean(placement.object_keywords),
+                    clean(placement.object_description),
+                    placement.category,
+                    "yes" if placement.better_than_current else "no",
+                    placement.status,
+                    placement.source_kind,
+                    source_mobile,
+                    room_label(placement.room_vnum, placement.room_name),
+                    placement.area_file,
+                    str(placement.maximum_count),
+                    source_levels,
+                    str(placement.route_origin_recall_index),
+                    ";".join(placement.route) or "-",
+                    ",".join(str(value) for value in placement.stance_rank),
+                    "; ".join(clean(value) for value in placement.hazards)
+                    or "-",
+                    "; ".join(
+                        clean(value)
+                        for value in placement.autonomy_rejections
+                    )
+                    or "-",
+                    placement.weapon_role,
                 )
             )
         )

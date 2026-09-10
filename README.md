@@ -8,6 +8,29 @@ resumable campaigns work. The highest roster level is 25; the fresh-creation
 track is 8. See the [current review](docs/APPROACH_REVIEW_2026-09-08.md) for
 measured results and the [roadmap](ROADMAP.md) for remaining acceptance gates.
 
+The current live frontier is Kestrel, level 24 at 332,692 XP. Runs 12948-12984
+added durable evidence: source damage and crowd gates rejected unsafe targets,
+food was replenished, a below-band Midget completed a flight-funding action,
+loot was sold, and the widened Moria carrier locator recovered a purple
+sanctuary potion. Runs 12972-12978 completed safe food, recovery, and frontier
+probes; run 12979 verified that the purple pouch ledger survives a fresh live
+resume. Run 12980 reached the Ultima target and run 12982 reached Mahntor;
+source HP and damage gates rejected both without combat or new loss. Run 12981
+replenished food at Haon. Run 12984 reopened the source-validated Forest upgrade
+after fresh damage evidence, then withdrew safely when room 18027 contained the
+registered swarm crowd. The latest durable checkpoint is 40031 in healer
+room 3054 with 2 gold, 18 silver,
+and 79 copper (2,979 copper-equivalent), a 131-copper flight quote, one
+funding cooldown step, and one purple potion in the combat pouch. Funding and
+required-loot kills remain separate from objective-eligible progression. HERO
+and sustained progression remain unproved.
+
+Campaign startup reuses a current-level, current-reboot live training audit
+when one is present, avoiding a large historical event scan in the shared
+SQLite database. Legacy checkpoints still receive historical skill backfill;
+the public runner reports each preparation boundary and stops within its
+bounded setup allowance.
+
 ## Setup
 
 Run from the repository root with Python 3.12:
@@ -140,6 +163,9 @@ twice. A fed character may prefer an executable ground hunt when the latest
 same-reboot carrier sale cannot cover the observed flight-price shortfall.
 Food, protection, loss, and retry requirements still apply; this preference
 does not authorize another loan or an extra trip for missing protection.
+Below-band kills selected specifically for provision funding are retained in
+`completed_kills` even when they are absent from `objective_kills`; successful
+funding advances its retry cooldown without becoming progression proof.
 
 If an identified familiar finishes the pending target before the player can
 attack, the runner records a zero-XP encounter, cancels that player opener,
@@ -163,6 +189,13 @@ observed damage rate, and the original time/command limits. A single missed
 spell or narrowly missed opening-damage threshold is not itself a retreat.
 The live sleep/opening sequence is confirmed; a complete solo kill/wake cycle
 with this continuation correction still needs live acceptance.
+
+Fixed fame routes use the same source-backed player output envelope as the
+dynamic frontier. Their live damage-window probe compares measured target and
+player HP against the current action budget; a target that cannot be completed
+inside that budget is abandoned before protection expires. GMCP target level
+and HP remain authoritative, while source estimates only admit or bound the
+probe.
 
 A roaming city obstruction can trigger up to three 12-second healer waits
 within a shop segment, each followed by a fresh location check. Persistent
@@ -216,8 +249,12 @@ Source-backed field departures also check the actual Midgaard route and fountain
 when guard assistance cannot be ruled out by revealed alignment. This shares
 the bounded city locator/wait behavior; it adds no retries to the campaign.
 `campaign_field_city_preflight` records the result separately from shopping.
-Unknown GMCP alignment is not a good-alignment bonus: the current server sends
-the sentinel 50000 below level 10. Raw packets remain unchanged in transcripts.
+DD4 sends the actual alignment through `Char.Worth` at level 10 and above,
+clamped by the server to -1000..1000. Below level 10 it intentionally sends
+50000 as a concealment sentinel. The parser retains the wire value in state and
+transcripts; route safety accepts only a level-aware 300..1000 value because
+`spec_guard` assists characters below 300 alignment. Raw packets remain
+unchanged in transcripts.
 A confirmed healer-origin departure deferral stops the current invocation after
 its existing short waits. It consumes the segment but not a funding-target or
 hunting-endpoint attempt. Resume later for a fresh city check; this outcome does
@@ -315,6 +352,8 @@ python -m dd4tester campaign campaigns/hero.example.yaml
 python -m dd4tester show-policies --class mage --level 8
 python -m dd4tester skill-analysis --class warrior
 python -m dd4tester show-prereqs --class mage --skill fireball
+python -m dd4tester show-gear-sources --level 24 --class thief `
+  --stance combat --all-areas
 python -m dd4tester autonomy-audit --race human --sex female --all-classes --target-level 100
 ```
 
@@ -329,6 +368,17 @@ fresh and review changes before live use. Race/class validation is declared in
 `matrices/level-10-all-race-class.yaml`; the existing roster is in
 `matrices/active-hero-rotation.yaml`. Run serially and use `matrix-coverage` to
 distinguish declared entries from actual proof.
+
+`show-gear-sources` ranks source-reset equipment for a requested class and
+stance (`combat`, `pre_level`, or `recovery`). It includes equipped and carried
+mobile drops, shop stock, ground resets, source level ranges, route origins,
+exact source keywords, hazards, autonomy rejections, and a `weapon_role`
+column. Thieves automatically receive the source-backed `piercing` primary
+preference used by the backstab planner; stronger non-piercing weapons are
+shown as mismatches rather than upgrades. Use `--database` and `--character`
+to compare the latest stored loadout. This is acquisition evidence only: a
+promising row does not authorize combat or claim live availability, and source
+class-slot coverage remains an active expansion area.
 
 ## Mudlet Visibility
 
@@ -358,18 +408,52 @@ python -m pytest -q tests/test_damage_window_timing.py
 python -m compileall -q dd4tester tests
 ```
 
-Latest full offline verification: **5,424 tests pass**. Reconnect accounting
+Latest full offline verification: **5,477 tests pass**. Reconnect accounting
 preserves verified XP decreases first observed after disconnection, without
-double-counting or inventing their cause. Kestrel checkpoint 39707 remains
-level 24 at 333,258 XP after the interrupted Circus attempt.
+double-counting or inventing their cause. Campaign startup now preserves
+campaign-owned potion and source-resource ledgers when a raw live snapshot
+omits those fields. Fresh source combat-budget evidence can reopen a previously
+cleared Forest upgrade without erasing its crowd quarantine. Run 12984 recorded
+that retry and withdrew at room 18027; Kestrel checkpoint 40031 remains level 24
+at 332,692 XP, alive in healer room 3054. The latest focused Moria and locator
+regressions also pass; the nine-endpoint fallback remains within the shared
+24-step movement bound.
 
 Run 12880 live-validated Aeloria's invisible carrier-search handoff, reaching
 both carriers together, but duplicate-target handling prevented consideration.
-That handoff is now fixed and replay-tested; fresh potion acquisition is still
-pending. Checkpoint 39727 remains level 18 at 161,091 XP with one purple potion.
-Both characters are at healer 3054 with full HP. Neither this work nor safe
-recovery establishes a new level, sustained progression, or HERO. The
+Run 12881 then exercised the fix live: exact-instance consideration selected a
+large hobgoblin, Aeloria gained 90 XP, ate its severed head, and returned full
+to healer 3054. Run 12882 found the White Stag absent and returned safely with
+no loss. Aeloria is now level 18 at 161,181 XP. This is the first positive
+post-fix kill, not yet sustained progression or HERO. The
 [contributor guide](AGENTS.md) defines coding, evidence, and local-only commit
 rules. The [preserved README](docs/history/README_2026-09-08.md) retains earlier
 details and run history; superseded defaults there are not the current
 operating contract.
+
+### Current Frontier: Kestrel (September 10, 2026)
+
+Runs 12948-12953 followed the level-24 source frontier. The secretary target
+exceeded the dagger damage budget, the Forest bear-claw route reached room
+18027 and correctly withdrew from a live crowd, and the flight shop refused
+service because fame is -12. Run 12959 then completed a below-band Midget
+funding kill for 40 XP and 50 copper. Run 12960 cleared the recovered purse,
+12961 sold its loot for a 2,878 copper-equivalent balance, and 12962 found the
+watchman research route viable. Runs 12963-12965 safely exhausted the current
+Moria sanctuary attempts. Reconnect run 12966 was interrupted and repaired;
+runs 12967-12970 completed bounded food and recovery maintenance. Run 12971
+used the widened nine-endpoint Moria fallback, killed source carrier 4055 for
+100 below-band XP, and stored purple potion 4050 in the pouch. Runs 12972-12978
+continued food and target probes safely. Run 12979 proved the pouch ledger is
+preserved across a new live connection; run 12981 replenished food, while runs
+12980 and 12982 reached current frontier targets and rejected them on source
+damage bounds. Run 12984 reopened the Forest upgrade only after fresh source
+damage evidence, reached room 18027, and withdrew when source-registered
+mosquito and wasp instances formed a crowd. Kestrel is level 24 at 332,692 XP
+at checkpoint 40031, with no new loss; the recovery marker still requires a
+protected productive hunt. HERO remains unproved.
+
+Use the source checkout refresh command above before source-sensitive planning;
+do not treat a live observation or static source estimate as proof of a kill.
+The full offline suite passes **5,477 tests**, and the current source mirror is
+up to date.

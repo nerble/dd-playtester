@@ -119,6 +119,7 @@ class ProgressionContext:
     intermediate_piercing_weapon_upgrade_attempted: bool = False
     needs_piercing_weapon_upgrade: bool = False
     piercing_weapon_upgrade_attempted: bool = False
+    piercing_weapon_upgrade_retry_allowed: bool = False
     needs_piercing_weapon: bool = False
     needs_pounding_weapon: bool = False
     movement_available: int = 0
@@ -5698,6 +5699,7 @@ def policy_for(
     intermediate_piercing_weapon_upgrade_attempted: bool = False,
     needs_piercing_weapon_upgrade: bool = False,
     piercing_weapon_upgrade_attempted: bool = False,
+    piercing_weapon_upgrade_retry_allowed: bool = False,
     needs_piercing_weapon: bool = False,
     needs_pounding_weapon: bool = False,
     movement_available: int = 0,
@@ -5769,6 +5771,9 @@ def policy_for(
         ),
         needs_piercing_weapon_upgrade=needs_piercing_weapon_upgrade,
         piercing_weapon_upgrade_attempted=piercing_weapon_upgrade_attempted,
+        piercing_weapon_upgrade_retry_allowed=(
+            piercing_weapon_upgrade_retry_allowed
+        ),
         needs_piercing_weapon=needs_piercing_weapon,
         needs_pounding_weapon=needs_pounding_weapon,
         movement_available=movement_available,
@@ -6110,6 +6115,12 @@ def policy_for(
             )
         )
         or (
+            selected.policy_id == _FOREST_BEAR_CLAWS_UPGRADE_POLICY.policy_id
+            and context.piercing_weapon_upgrade_retry_allowed
+            and context.needs_piercing_weapon_upgrade
+            and not context.piercing_weapon_upgrade_attempted
+        )
+        or (
             selected.policy_id == _LIQUIDATE_LOOT_POLICY.policy_id
             and context.has_sellable_loot
         )
@@ -6231,6 +6242,11 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         and not context.flight_purchase_failed
         and context.has_food
         and selected.policy_id == _PROVISION_FUNDING_POLICY.policy_id
+        and not (
+            context.shop_rearm_blocked_by_reputation
+            and context.protection_recovery_hard_health
+            and context.has_sanctuary_potion
+        )
     ):
         # Once provisions are secure and the character can afford the current
         # reboot's price, purchase flight before another long funding walk.

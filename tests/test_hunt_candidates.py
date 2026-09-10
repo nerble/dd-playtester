@@ -73,6 +73,7 @@ from dd4tester.hunt_candidates import (
     source_subclass_teacher_route,
     source_subclass_teacher_skill,
     WEAR_HOLD,
+    WEAR_WIELD,
 )
 
 
@@ -199,6 +200,52 @@ def test_required_consumable_can_rank_a_mob_equipped_carrier() -> None:
 
     assert candidate.mobile_vnum == 100
     assert candidate.loot == ("a black potion",)
+
+
+def test_hunt_candidate_loot_includes_separately_recorded_equipment() -> None:
+    weapon = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        100,
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guard",
+                "a quiet guard",
+                5,
+                0,
+                0,
+                "test.are",
+            )
+        },
+        objects={50: weapon},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "guard post", "test.are"),
+        },
+        mob_resets=[
+            MobReset(100, 200, 1, (), equipment=((WEAR_WIELD, 50),)),
+        ],
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=5,
+        include_all_areas=True,
+    )
+
+    assert candidate.loot == ("a needle dagger",)
+    assert candidate.equipped_weapons == ("a needle dagger",)
 
 
 def test_resource_source_report_keeps_carrier_and_ground_paths_distinct() -> None:

@@ -18,17 +18,21 @@ def world():
 
 @pytest.mark.parametrize("value", [50000, "50000", None, True, 299, -1000, 1001, 300.0, "bad"])
 def test_hidden_or_invalid_alignment_does_not_prove_guard_nonassistance(value):
-    assert not observed_guard_safe_alignment(value)
+    assert not observed_guard_safe_alignment(value, level=10)
 
 
 @pytest.mark.parametrize("value", [300, "300", 349, 1000])
 def test_revealed_alignment_matches_guard_threshold(value):
-    assert observed_guard_safe_alignment(value)
+    assert observed_guard_safe_alignment(value, level=10)
+    assert observed_guard_safe_alignment(value, level=24)
+    assert not observed_guard_safe_alignment(value, level=9)
 
 
 def test_source_city_scope_includes_refill_and_actual_route_only(world):
     route = Fastwalk("moria", 1, 100, "2s6e8n")
-    rooms = field_city_route_rooms(world, route.commands, origin=3001, alignment=50000)
+    rooms = field_city_route_rooms(
+        world, route.commands, origin=3001, alignment=50000, level=8,
+    )
     assert world.rooms[3005].name in rooms
     market = world.rooms[world.rooms[3005].exits["south"].destination]
     assert market.name in rooms
@@ -40,11 +44,16 @@ def test_source_city_scope_includes_refill_and_actual_route_only(world):
     (False, 3001, 50000), (True, 9999, 50000), (True, 3001, 300),
 ])
 def test_departure_scope_does_not_invent_source_or_override_other_origins(world, source, origin, alignment):
-    assert not field_city_route_rooms(world if source else None, ("south",), origin=origin, alignment=alignment)
+    assert not field_city_route_rooms(
+        world if source else None, ("south",), origin=origin,
+        alignment=alignment, level=10,
+    )
 
 
 def test_no_guard_or_greeter_source_does_not_add_a_city_gate():
-    assert not field_city_route_rooms(WorldSource(), ("south",), origin=3001, alignment=0)
+    assert not field_city_route_rooms(
+        WorldSource(), ("south",), origin=3001, alignment=0, level=10,
+    )
 
 
 def setup(world, monkeypatch, character_class="mage"):

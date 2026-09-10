@@ -684,6 +684,19 @@ def test_real_dd4_gmcp_fixture_maps_character_state_and_deduplicates_room() -> N
     assert parser.feed_gmcp(messages[-1]) == []
 
 
+def test_gmcp_worth_preserves_the_source_alignment_value() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_gmcp(
+        'Char.Worth {"alignment":"-347","level":"11",'
+        '"xp":"50850","maxxp":"58450","xptnl":"7600"}'
+    )
+
+    progress = next(event for event in events if event.type == "progress_changed")
+    assert progress.data["alignment"] == "-347"
+    assert progress.data["package"] == "Char.Worth"
+
+
 def test_gmcp_room_enriches_a_text_room_without_reentering() -> None:
     parser = ObservationParser()
     text_fixture = (

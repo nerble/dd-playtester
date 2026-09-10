@@ -19,13 +19,23 @@ from dd4tester.equipment import (
     normalize_item_name,
     plan_stance_swaps,
     protects_from_sale,
+    rank_gear_sources,
     stance_score,
     weapon_damage_score,
+    weapon_preference_for_character,
 )
 from dd4tester.hunt_candidates import (
+    ACT_SENTINEL,
+    ExitSource,
+    MobileSource,
+    MobReset,
     ObjectSetBonus,
     ObjectSetSource,
     ObjectSource,
+    RoomObjectReset,
+    RoomSource,
+    WEAR_WIELD,
+    WorldSource,
     parse_area_file,
 )
 
@@ -46,6 +56,130 @@ def _item(
         wear_flags=1 << wear_bit,
         affects=affects,
     )
+
+
+def test_rank_gear_sources_ranks_a_source_equipped_upgrade() -> None:
+    current = ObjectSource(
+        40,
+        "small dagger",
+        "a small dagger",
+        5,
+        (0, 1, 1, 2),
+        10,
+        wear_flags=1 << 13,
+    )
+    upgrade = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        100,
+        wear_flags=1 << 13,
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guard",
+                "a quiet guard",
+                5,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            )
+        },
+        objects={upgrade.vnum: upgrade},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "guard post", "test.are"),
+        },
+        mob_resets=[
+            MobReset(100, 200, 1, (), equipment=((WEAR_WIELD, upgrade.vnum),)),
+        ],
+    )
+
+    placements = rank_gear_sources(
+        world,
+        character_level=5,
+        character_class="thief",
+        current_items=(current,),
+        include_all_areas=True,
+    )
+
+    assert len(placements) == 1
+    placement = placements[0]
+    assert placement.object_vnum == upgrade.vnum
+    assert placement.object_keywords == "needle dagger"
+    assert placement.category == "wield"
+    assert placement.better_than_current is True
+    assert placement.source_kind == "mob-equipped"
+    assert placement.status == "caution"
+    assert any(
+        hazard.startswith("target equips a needle dagger")
+        for hazard in placement.hazards
+    )
+    assert placement.route == ("south",)
+
+
+def test_rank_gear_sources_keeps_thief_primary_weapon_piercing() -> None:
+    current = ObjectSource(
+        40,
+        "long slim dagger",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        10,
+        wear_flags=1 << 13,
+    )
+    sword = ObjectSource(
+        41,
+        "broad sword",
+        "a broad sword",
+        5,
+        (0, 9, 20, 3),
+        10,
+        wear_flags=1 << 13,
+    )
+    dagger = ObjectSource(
+        42,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 11),
+        10,
+        wear_flags=1 << 13,
+    )
+    world = WorldSource(
+        objects={sword.vnum: sword, dagger.vnum: dagger},
+        rooms={
+            3001: RoomSource(3001, "recall", "test.are"),
+            200: RoomSource(200, "weapon room", "test.are"),
+        },
+        room_object_resets=[
+            RoomObjectReset(sword.vnum, 200),
+            RoomObjectReset(dagger.vnum, 200),
+        ],
+    )
+
+    placements = rank_gear_sources(
+        world,
+        character_level=5,
+        character_class="thief",
+        current_items=(current,),
+        include_all_areas=True,
+    )
+
+    by_vnum = {placement.object_vnum: placement for placement in placements}
+    assert weapon_preference_for_character("thief") == "piercing"
+    assert by_vnum[sword.vnum].weapon_role == "mismatch"
+    assert by_vnum[sword.vnum].better_than_current is False
+    assert by_vnum[dagger.vnum].weapon_role == "preferred"
 
 
 def test_consumables_marked_holdable_are_not_equipment_objects() -> None:

@@ -8,13 +8,20 @@ from dataclasses import dataclass
 from functools import lru_cache
 from itertools import combinations
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from .hunt_candidates import (
+    LOW_LEVEL_AREA_FILES,
+    RECALL_VNUM,
+    WorldSource,
     ObjectSetSource,
     ObjectSource,
+    _mobile_level_range,
+    _reset_object_vnums,
+    _shortest_paths_from,
     load_object_set_sources,
     load_object_sources,
+    rank_hunt_candidates,
 )
 
 
@@ -122,6 +129,32 @@ class GearChoice:
     worn: bool
 
 
+@dataclass(frozen=True)
+class GearSourcePlacement:
+    """One source-backed placement for a class-usable equipment object."""
+
+    object_vnum: int
+    object_keywords: str
+    object_description: str
+    category: str
+    stance_rank: tuple[int, ...]
+    better_than_current: bool
+    source_kind: str
+    source_mobile_vnum: int | None
+    source_mobile: str
+    room_vnum: int
+    room_name: str
+    area_file: str
+    maximum_count: int
+    source_level_range: tuple[int, int]
+    status: str
+    route: tuple[str, ...] = ()
+    route_origin_recall_index: int = 0
+    hazards: tuple[str, ...] = ()
+    autonomy_rejections: tuple[str, ...] = ()
+    weapon_role: str = "not_applicable"
+
+
 class GearCatalog:
     def __init__(
         self,
@@ -225,6 +258,258 @@ def load_gear_catalog(area_directory: str) -> GearCatalog:
     return GearCatalog.from_area_directory(Path(area_directory))
 
 
+def rank_gear_sources(
+    world: WorldSource,
+    *,
+    character_level: int,
+    character_class: str,
+    subclass: str | None = None,
+    stance: str = STANCE_COMBAT,
+    level_gain_priorities: tuple[str, ...] = (),
+    current_items: Iterable[ObjectSource] = (),
+    include_all_areas: bool = False,
+    character_max_hp: int | None = None,
+    recall_origins: Mapping[int, int] | None = None,
+) -> list[GearSourcePlacement]:
+    """Rank source placements that can improve a character's loadout.
+
+    This is an acquisition report, not combat permission.  It preserves the
+    source candidate's route and hazard evidence, while ``source-only`` rows
+    keep future or otherwise unranked placements visible for later policy
+    registration.
+    """
+    if character_level < 1:
+        raise ValueError("character_level must be at least 1")
+    # Validate the stance before doing source work, including on an empty map.
+    if stance not in {STANCE_COMBAT, STANCE_PRE_LEVEL, STANCE_RECOVERY}:
+        raise ValueError(f"Unknown equipment stance: {stance}")
+
+    weapon_preference = weapon_preference_for_character(
+        character_class,
+        subclass=subclass,
+    )
+
+    allowed_areas = None if include_all_areas else set(LOW_LEVEL_AREA_FILES)
+    selected_objects = tuple(
+        item
+        for item in world.objects.values()
+        if is_equipment_object(item)
+        and (category := item_category(item)) is not None
+        and character_can_use_item(
+            item,
+            character_class=character_class,
+            subclass=subclass,
+        )
+    )
+    if not selected_objects:
+        return []
+
+    current_by_category: dict[str, tuple[int, ...]] = {}
+    for item in current_items:
+        category = item_category(item)
+        if category is None:
+            continue
+        score = _stance_rank(
+            item,
+            stance,
+            level_gain_priorities=level_gain_priorities,
+            weapon_preference=weapon_preference,
+        )
+        if score > current_by_category.get(category, ()):
+            current_by_category[category] = score
+
+    selected_vnums = {item.vnum for item in selected_objects}
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=character_level,
+        character_class=character_class,
+        character_subclass=subclass,
+        include_xp_only=True,
+        include_below_band=True,
+        character_max_hp=character_max_hp,
+        include_level_ceiling_candidates=character_max_hp is not None,
+        include_all_areas=include_all_areas,
+        required_loot_object_vnums=selected_vnums,
+        recall_origins=recall_origins,
+    )
+    candidates_by_source: dict[tuple[int, int], Any] = {}
+    for candidate in candidates:
+        candidates_by_source.setdefault(
+            (candidate.mobile_vnum, candidate.room_vnum),
+            candidate,
+        )
+    direct_paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
+
+    def fallback_hazards(mobile: Any) -> tuple[str, ...]:
+        hazards: list[str] = []
+        if mobile.non_corporeal:
+            hazards.append("source mobile is non-corporeal")
+        if mobile.aggressive:
+            hazards.append("source mobile is aggressive")
+        if mobile.vnum in world.shopkeepers:
+            hazards.append("source mobile is a shopkeeper")
+        for special in world.mobile_specials.get(mobile.vnum, ()):
+            hazards.append(f"source special: {special}")
+        if mobile.attack_programs:
+            hazards.append("source mobile has a combat-triggering program")
+        return tuple(dict.fromkeys(hazards))
+
+    def item_level_range(item: ObjectSource) -> tuple[int, int]:
+        return (
+            item.load_level_min or item.level,
+            item.load_level_max or item.level,
+        )
+
+    placements: list[GearSourcePlacement] = []
+    seen: set[tuple[int, str, int | None, int, int]] = set()
+
+    def append(
+        item: ObjectSource,
+        *,
+        source_kind: str,
+        source_mobile_vnum: int | None,
+        source_mobile: str,
+        room: Any,
+        maximum_count: int,
+        source_level_range: tuple[int, int],
+        candidate: Any | None,
+    ) -> None:
+        if allowed_areas is not None and room.area_file not in allowed_areas:
+            return
+        key = (
+            item.vnum,
+            source_kind,
+            source_mobile_vnum,
+            room.vnum,
+            maximum_count,
+        )
+        if key in seen:
+            return
+        seen.add(key)
+        category = item_category(item)
+        if category is None:
+            return
+        score = stance_score(
+            item,
+            stance,
+            level_gain_priorities=level_gain_priorities,
+        )
+        comparison_score = _stance_rank(
+            item,
+            stance,
+            level_gain_priorities=level_gain_priorities,
+            weapon_preference=weapon_preference,
+        )
+        current_score = current_by_category.get(category, ())
+        better_than_current = (
+            not current_score or comparison_score > current_score
+        )
+        if candidate is None:
+            path = direct_paths.get(room.vnum)
+            route = path[0] if path is not None else ()
+            status = "source-only"
+            route_origin = 0
+            hazards = ()
+            autonomy_rejections = ()
+            if source_mobile_vnum is not None:
+                mobile = world.mobiles.get(source_mobile_vnum)
+                if mobile is not None:
+                    hazards = fallback_hazards(mobile)
+        else:
+            route = candidate.route
+            status = candidate.status
+            route_origin = candidate.route_origin_recall_index
+            hazards = candidate.hazards
+            autonomy_rejections = candidate.autonomy_rejections
+        placements.append(
+            GearSourcePlacement(
+                object_vnum=item.vnum,
+                object_keywords=item.keywords,
+                object_description=item.short_description,
+                category=category,
+                stance_rank=score,
+                better_than_current=better_than_current,
+                source_kind=source_kind,
+                source_mobile_vnum=source_mobile_vnum,
+                source_mobile=source_mobile,
+                room_vnum=room.vnum,
+                room_name=room.name,
+                area_file=room.area_file,
+                maximum_count=maximum_count,
+                source_level_range=source_level_range,
+                status=status,
+                route=tuple(route),
+                route_origin_recall_index=route_origin,
+                hazards=tuple(dict.fromkeys(hazards)),
+                autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
+                weapon_role=weapon_role(item, weapon_preference),
+            )
+        )
+
+    object_by_vnum = {item.vnum: item for item in selected_objects}
+    for reset in world.mob_resets:
+        room = world.rooms.get(reset.room_vnum)
+        mobile = world.mobiles.get(reset.mobile_vnum)
+        if room is None or mobile is None:
+            continue
+        for object_vnum in sorted(
+            selected_vnums.intersection(_reset_object_vnums(reset))
+        ):
+            item = object_by_vnum[object_vnum]
+            equipped = any(
+                equipped_vnum == object_vnum
+                for _wear_location, equipped_vnum in reset.equipment
+            )
+            source_kind = (
+                "shop-stock"
+                if mobile.vnum in world.shopkeepers
+                else "mob-equipped"
+                if equipped
+                else "mob-carried"
+            )
+            append(
+                item,
+                source_kind=source_kind,
+                source_mobile_vnum=mobile.vnum,
+                source_mobile=mobile.short_description,
+                room=room,
+                maximum_count=reset.maximum_count,
+                source_level_range=_mobile_level_range(mobile.level),
+                candidate=candidates_by_source.get((mobile.vnum, room.vnum)),
+            )
+
+    for reset in world.room_object_resets:
+        item = object_by_vnum.get(reset.object_vnum)
+        room = world.rooms.get(reset.room_vnum)
+        if item is None or room is None:
+            continue
+        append(
+            item,
+            source_kind="ground-reset",
+            source_mobile_vnum=None,
+            source_mobile="",
+            room=room,
+            maximum_count=reset.maximum_count,
+            source_level_range=item_level_range(item),
+            candidate=None,
+        )
+
+    status_order = {"promising": 0, "caution": 1, "source-only": 2, "reject": 3}
+    role_order = {"preferred": 0, "not_applicable": 1, "mismatch": 2}
+    return sorted(
+        placements,
+        key=lambda placement: (
+            placement.better_than_current,
+            -status_order.get(placement.status, 9),
+            -role_order.get(placement.weapon_role, 9),
+            placement.stance_rank,
+            -len(placement.route),
+            -placement.object_vnum,
+        ),
+        reverse=True,
+    )
+
+
 def normalize_item_name(value: str) -> str:
     cleaned = _COLOUR_CODE.sub("", value)
     cleaned = _NUMERIC_COLOUR_CODE.sub("", cleaned)
@@ -321,6 +606,34 @@ def stance_score(
         armor=item.values[0] if item.item_type == 9 and item.values else 0,
         weapon=weapon_damage_score(item),
     )
+
+
+def weapon_preference_for_character(
+    character_class: str,
+    *,
+    subclass: str | None = None,
+) -> str | None:
+    """Return a source-backed primary weapon role for a character class."""
+    del subclass
+    if character_class.strip().casefold() == "thief":
+        # DD4 backstab requires a piercing primary; the campaign planner uses
+        # the same role when it equips a thief between fights.
+        return "piercing"
+    return None
+
+
+def weapon_role(
+    item: ObjectSource,
+    weapon_preference: str | None,
+) -> str:
+    """Label whether a wielded weapon matches the active class role."""
+    if item_category(item) != "wield" or weapon_preference is None:
+        return "not_applicable"
+    if weapon_preference == "piercing":
+        return "preferred" if is_piercing_weapon(item) else "mismatch"
+    if weapon_preference == "blunt":
+        return "preferred" if is_blunt_weapon(item) else "mismatch"
+    return "not_applicable"
 
 
 def _stance_score_from_totals(

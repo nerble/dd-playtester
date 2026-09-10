@@ -2934,7 +2934,10 @@ def rank_hunt_candidates(
         if not include_below_band and level_range[1] <= character_level - 5:
             continue
 
-        loot_objects = _loot_objects(world, reset.object_vnums)
+        # Equipment resets are separate from carried-object resets in the
+        # source model.  Treat both as loot after a kill so weapon and armour
+        # provenance is not lost from ordinary candidates.
+        loot_objects = _loot_objects(world, reset_object_vnums)
         equipped_weapon_slots = tuple(
             (wear_location, item)
             for wear_location, object_vnum in reset.equipment
@@ -6013,6 +6016,7 @@ def source_mobile_search_rooms(
     *,
     maximum_rooms: int | None = None,
     blocked_rooms: set[int] | frozenset[int] = frozenset(),
+    include_closed: bool = False,
 ) -> tuple[int, ...]:
     """Return rooms a source mobile can occupy from its reset locations.
 
@@ -6022,7 +6026,10 @@ def source_mobile_search_rooms(
     makes a reset mobile effectively fixed until a master is present, while
     ``AFF_CONFUSION`` uses a separate movement path that overrides sentinel,
     stay-area, and no-mob restrictions.  This graph is therefore the
-    source-backed search boundary for live target discovery.
+    source-backed search boundary for live target discovery.  Callers that
+    resolve a mobile already observed after a player opened a reset-closed
+    door may set ``include_closed`` so the room identity remains source-bound
+    for that current session; ordinary route safety keeps the default.
     """
     mobile = world.mobiles.get(mobile_vnum)
     if mobile is None:
@@ -6068,7 +6075,7 @@ def source_mobile_search_rooms(
                 or destination.vnum in blocked_rooms
                 # update.c checks EX_CLOSED, not EX_LOCKED, for wandering
                 # mobiles. An open-but-locked exit is therefore reachable.
-                or exit_source.closed
+                or (not include_closed and exit_source.closed)
                 or (
                     not mobile.confused
                     and destination.no_mob

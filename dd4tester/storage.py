@@ -141,6 +141,9 @@ class RunStorage:
             CREATE INDEX IF NOT EXISTS idx_loot_sales_character
             ON loot_sales(character_name, item_keyword, shop_name, id);
 
+            CREATE INDEX IF NOT EXISTS idx_loot_sales_run_id
+            ON loot_sales(run_id, id);
+
             CREATE TABLE IF NOT EXISTS mob_kills (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -157,6 +160,9 @@ class RunStorage:
 
             CREATE INDEX IF NOT EXISTS idx_mob_kills_character
             ON mob_kills(character_name, boot_id, mob_name, id);
+
+            CREATE INDEX IF NOT EXISTS idx_mob_kills_run_id
+            ON mob_kills(run_id, id);
 
             CREATE TABLE IF NOT EXISTS campaigns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
