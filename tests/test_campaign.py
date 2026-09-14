@@ -8,11 +8,13 @@ from types import SimpleNamespace
 
 import pytest
 from dd4tester.state import CharacterState
+from dd4tester.character import CharacterSpec
 
 from dd4tester.campaign import (
     _CAMPAIGN_METADATA_REPAIRED_REASON,
     _CAMPAIGN_RESEARCH_RESET_WAIT_REASON,
     _CAMPAIGN_POLICY_REVISION,
+    _state_alignment,
     _reopen_stale_source_crowds,
     _SHADOW_GROVE_ROUTE_HAZARD_KEY,
     _TRAINING_SKILL_REGRESSION_KEY,
@@ -26,11 +28,15 @@ from dd4tester.campaign import (
     _advance_intermediate_piercing_weapon_upgrade_cooldown,
     _advance_piercing_weapon_upgrade_cooldown,
     _advance_war_dog_collar_cooldown,
+    _FIELD_CITY_ROUTE_BLOCKED_POLICY_ID,
     _COUNTERBALANCED_WEAPON_VNUM_KEY,
     _CHAINED_WEAPON_VNUM_KEY,
+    _PRESERVED_PRIMARY_WEAPON_VNUM_KEY,
     _campaign_counterbalance_preparation_required,
     _repair_campaign_counterbalanced_weapon_from_events,
+    _repair_preserved_primary_weapon_from_segments,
     _campaign_checkpoint_needs_return_home,
+    _field_city_departure_blocked_current_reboot,
     _campaign_fastwalk_training_deferred_after_route_hazard,
     _campaign_needs_healer_recovery,
     _active_crowded_research_policy_id,
@@ -42,6 +48,7 @@ from dd4tester.campaign import (
     _repair_shadow_grove_route_hazard,
     _campaign_has_item,
     _campaign_segment_end_state,
+    _repair_sack_vault_container_metadata,
     _campaign_failure_state_from_run,
     _is_connection_recovery_failure,
     _mark_connection_loss_checkpoint,
@@ -66,6 +73,7 @@ from dd4tester.campaign import (
     _clear_non_objective_maintenance_kills,
     _campaign_practice_types_spent,
     _repair_campaign_known_skills_from_events,
+    _repair_forest_required_loot_absence_from_segments,
     _ensure_training_deficit_repair_marker,
     _reopen_noop_training_deficit_repair,
     _training_deficit_records,
@@ -88,18 +96,31 @@ from dd4tester.campaign import (
     _repair_sanctuary_resource_acquisition_history,
     _repair_source_food_funding_handoff,
     _repair_source_ranked_xp_loss_attempt_counts,
+    _clear_source_ranked_xp_loss,
     _campaign_rejected_practice_skills,
     _campaign_vault_stow_items,
     _candidate_has_saleable_funding_drop,
+    _provision_funding_below_band_loot_route_allowed,
+    _provision_funding_flight_purchase_allowed,
+    _provision_funding_shortfall_coin_carrier_allowed,
     _select_provision_funding_candidate,
     _select_source_food_candidate,
     _select_source_consumable_candidate,
+    _select_source_flight_reserve_plan,
+    _source_resource_reserve_record,
     _select_source_ranked_hunt_candidate,
     _source_ranked_bounded_peak_probe_allowed,
     _source_ranked_dynamic_wanderer_probe_allowed,
     _source_ranked_dynamic_wanderer_repeatability_allowed,
     _record_source_ranked_dynamic_wanderer_repeatability,
     _source_ranked_protected_peak_probe_allowed,
+    _source_ranked_protected_peak_revalidation_allowed,
+    _arm_source_ranked_protected_peak_revalidation,
+    _mark_source_ranked_protected_peak_revalidation,
+    _source_ranked_protected_armed_opener_revalidation_allowed,
+    _arm_source_ranked_protected_armed_opener_revalidation,
+    _mark_source_ranked_protected_armed_opener_revalidation,
+    _source_ranked_result_status,
     _source_ranked_level_ceiling_probe_allowed,
     _source_ranked_level_ceiling_probe_in_current_band,
     _source_ranked_candidate_from_record,
@@ -107,8 +128,14 @@ from dd4tester.campaign import (
     _source_ranked_recall_origins,
     _source_ranked_candidate_record,
     _source_ranked_candidate_blocked_by_protection_recovery,
+    _source_ranked_route_only_loss_hazards,
+    _arm_source_ranked_route_loss_revalidation,
+    _mark_source_ranked_route_loss_revalidation,
+    _source_ranked_route_loss_revalidation_pending,
+    _source_ranked_route_loss_revalidation_attempted,
     _source_ranked_partial_timeout_retry_candidate_allowed,
     _source_ranked_partial_timeout_retry_record,
+    _source_ranked_second_sanctuary_refill_allowed,
     _record_source_ranked_protection_recovery_retry,
     _source_ranked_protection_recovery_fallback_active,
     _source_ranked_protection_recovery_fallback_candidate_allowed,
@@ -153,19 +180,52 @@ from dd4tester.campaign import (
     _source_ranked_route_transit_recovery_plan,
     _source_ranked_route_with_transit_recovery,
     _source_guard_fixed_fastwalk_route,
+    _source_route_room_vnums,
     _run_runner_with_outer_timeout,
     _current_dd4_source_revision,
     _synchronize_source_revision,
     _SOURCE_REVISION_KEY,
     _SOURCE_CONSUMABLE_SPELL_KEY,
     _SOURCE_RESOURCE_RESERVES_KEY,
+    _SOURCE_ABSENT_SIGHTINGS_KEY,
     _SOURCE_RANKED_FRONTIER_RETRY_KEY,
     _FIXED_ROUTE_PROGRAM_REVALIDATION_KEY,
     _SANCTUARY_SAFE_LOCATOR_REVALIDATION_KEY,
     _SANCTUARY_COMBAT_ONLY_TRANSIT_REVALIDATION_KEY,
+    _SANCTUARY_DEEP_LOCATOR_REVALIDATION_KEY,
+    _SANCTUARY_DEEP_LOCATOR_REVALIDATION_REVISION,
+    _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY,
+    _SANCTUARY_DEEP_ROUTE_REVALIDATION_REVISION,
+    _SANCTUARY_DEEP_ROUTE_CONTINUATION_REVISION,
+    _SANCTUARY_DEEP_ROUTE_SOURCE_ROOM_REVISION,
+    _SANCTUARY_DEEP_ROUTE_PRECEDENCE_REVISION,
+    _SANCTUARY_DEEP_ROUTE_CONSUMED_FLAG_REVISION,
+    _SANCTUARY_DEEP_ROUTE_TRANSIT_ADVANCE_REVISION,
+    _SANCTUARY_DEEP_ROUTE_ROUTE_COMPLETION_REVISION,
+    _SANCTUARY_DEEP_ROUTE_TRANSIT_WAIT_REVISION,
+    _SANCTUARY_DEEP_ROUTE_LOCATOR_BOUNDARY_REVISION,
+    _SANCTUARY_LOCATOR_GRAPH_REVALIDATION_KEY,
+    _SANCTUARY_LOCATOR_GRAPH_REVALIDATION_REVISION,
+    _SANCTUARY_SOURCE_SAFE_BYSTANDER_REVALIDATION_KEY,
+    _SANCTUARY_SOURCE_SAFE_BYSTANDER_REVALIDATION_REVISION,
+    _SANCTUARY_RESET_CAPACITY_REVALIDATION_KEY,
+    _SANCTUARY_RESET_CAPACITY_REVALIDATION_REVISION,
     _SANCTUARY_RESOURCE_ATTEMPTS_KEY,
+    _SANCTUARY_SECOND_RESERVE_REFILL_KEY,
+    _SANCTUARY_SECOND_RESERVE_REFILL_REVALIDATION_REVISION,
+    _SOURCE_RANKED_ALIGNMENT_CROWD_REVALIDATION_REVISION,
     _consume_sanctuary_combat_only_transit_revalidation,
     _sanctuary_combat_only_transit_revalidation_pending,
+    _consume_sanctuary_deep_locator_revalidation,
+    _sanctuary_deep_locator_revalidation_pending,
+    _consume_sanctuary_deep_route_revalidation,
+    _sanctuary_deep_route_revalidation_pending,
+    _consume_sanctuary_locator_graph_revalidation,
+    _sanctuary_locator_graph_revalidation_pending,
+    _consume_sanctuary_source_safe_bystander_revalidation,
+    _sanctuary_source_safe_bystander_revalidation_pending,
+    _consume_sanctuary_reset_capacity_revalidation,
+    _sanctuary_reset_capacity_revalidation_pending,
     _SOURCE_DYNAMIC_WANDERER_REPEATABILITY_KEY,
     _source_mobile_kill_counts_from_segments,
     _source_mobile_latest_xp_from_segments,
@@ -179,7 +239,21 @@ from dd4tester.campaign import (
     _SOURCE_RANKED_TIMEOUT_POLICIES_KEY,
     _SOURCE_RANKED_PARTIAL_TIMEOUT_RETRY_KEY,
     _SOURCE_COMBAT_DAMAGE_GATE_EVIDENCE_KEY,
+    _PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY,
+    _PIERCING_WEAPON_UPGRADE_DAMAGE_GATE_KEY,
+    _PIERCING_WEAPON_UPGRADE_FRONTIER_RETRY_KEY,
+    _FOREST_ROUTE_GATE_CROWD_RECHECK_KEY,
+    _SOURCE_RANKED_PROTECTED_PEAK_REVALIDATION_KEY,
+    _SOURCE_RANKED_PROTECTED_ARMED_OPENER_REVALIDATION_KEY,
+    _SOURCE_RANKED_ROUTE_LOSS_REVALIDATION_KEY,
+    _SOURCE_RANKED_DISPLACED_SENTINEL_REVALIDATION_KEY,
+    _source_ranked_displaced_sentinel_revalidation_policy,
+    _source_ranked_displaced_sentinel_revalidation_pending,
+    _source_ranked_displaced_sentinel_revalidation_attempted,
+    _arm_source_ranked_displaced_sentinel_revalidation,
+    _mark_source_ranked_displaced_sentinel_revalidation,
     _source_combat_damage_gate_evidence_valid,
+    _source_combat_damage_gate_retry_available,
     _repair_source_combat_damage_gate_evidence,
     _PROTECTION_RECOVERY_ORDINARY_FALLBACK_KEY,
     _SOURCE_RANKED_RETRY_EXHAUSTED_KEY,
@@ -206,6 +280,7 @@ from dd4tester.campaign import (
     _source_ranked_policy_id,
     _source_food_policy_id,
     _SOURCE_FOOD_TRANSIT_REJECTIONS,
+    _source_ranked_field_food_reserve_needed,
     _source_ranked_candidate_requires_sanctuary,
     _source_ranked_candidate_requires_sanctuary_for_state,
     _source_ranked_healer_blindness_recovery_allowed,
@@ -213,7 +288,23 @@ from dd4tester.campaign import (
     _source_ranked_familiar_probe_allowed,
     _source_ranked_invisibility_route_candidate_allowed,
     _source_ranked_unprotected_hp_fuzz_probe_allowed,
+    _source_ranked_protected_hp_fuzz_probe_allowed,
+    _source_ranked_protected_level_ceiling_hp_probe_allowed,
+    _source_ranked_protected_nominal_level_fuzz_probe_allowed,
+    _source_ranked_protected_special_hp_fuzz_probe_allowed,
+    _shadow_keep_fine_dagger_route_parts,
+    _SHADOW_KEEP_FINE_DAGGER_ROOM_VNUM,
+    _SHADOW_KEEP_FINE_DAGGER_VNUM,
+    _SHADOW_KEEP_LOCKPICK_SELLER_ROOM_VNUM,
+    _source_ranked_hp_probe_admission_available,
+    _source_ranked_persisted_candidate_admission_valid,
+    _source_ranked_special_reserve_acquisition_allowed,
     _source_ranked_post_loss_plain_probe_allowed,
+    _source_ranked_target_hp_gate_evidence,
+    _source_ranked_famous_gas_combat_output_revalidation_allowed,
+    _source_ranked_combat_output_revalidation_allowed,
+    _source_ranked_combat_output_revalidation_attempted,
+    _mark_source_ranked_combat_output_revalidation,
     _source_ranked_route_aggressors_are_bounded,
     _source_ranked_route_program_preflight_allowed,
     _source_ranked_route_program_fastwalk_options,
@@ -292,6 +383,9 @@ from dd4tester.campaign import (
     _EXPLICIT_RESEARCH_RETRY_KEY,
     _SOURCE_RANKED_CROWD_ATTEMPTS_KEY,
     _SOURCE_RANKED_REVALIDATION_POLICY_KEY,
+    _SOURCE_RANKED_COMBAT_OUTPUT_REVALIDATION_KEY,
+    _SOURCE_RANKED_DAMAGE_WINDOW_REVALIDATION_KEY,
+    _SOURCE_RANKED_SPECIAL_HP_REVALIDATION_KEY,
     _MAGIC_SHOP_FLIGHT_PRICE_KEY,
     _MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY,
     _MAGIC_SHOP_ROUTE_BLOCKED_KEY,
@@ -323,6 +417,7 @@ from dd4tester.campaign import (
     _quest_mobile_candidate,
     _quest_target_route,
     _quest_source_preflight_issue,
+    _legacy_sack_vault_lodges_for_resume,
     _run_successful_vault_lodges,
     _run_worn_equipment_descriptions,
     _state_needs_better_piercing_weapon,
@@ -331,16 +426,18 @@ from dd4tester.campaign import (
     load_campaign_spec,
     run_campaign_file,
 )
-from dd4tester.equipment import GearCatalog
+from dd4tester.equipment import GearCatalog, GearSourcePlacement
 from dd4tester.fastwalks import Fastwalk, route_named
 from dd4tester.hunt_candidates import (
     ACT_AGGRESSIVE,
+    ACT_IS_FAMOUS,
     ACT_SENTINEL,
     ACT_STAY_AREA,
     AFF_CONFUSION,
     BODY_HUGE,
     ExitSource,
     HuntCandidate,
+    ITEM_WEAPON,
     ITEM_SCROLL,
     MobileSource,
     MobileProgram,
@@ -365,7 +462,9 @@ from dd4tester.progression import (
     _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
     _SOURCE_RANKED_CURE_CRITICAL_RESERVE_POLICY,
     _SOURCE_RANKED_FOOD_RESERVE_POLICY,
+    _SOURCE_RANKED_FLIGHT_RESERVE_POLICY,
     _SOURCE_RANKED_HUNT_POLICY,
+    _SOURCE_GEAR_ACQUISITION_POLICY,
     _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY,
     _PROVISION_FUNDING_POLICY,
     policy_for,
@@ -379,6 +478,7 @@ from dd4tester.starter import (
     StarterRuntimeCapReached,
     ambush_exterior_hunt_stops,
     circus_ticket_clerk_fame_recovery_stops,
+    moria_deep_sanctuary_potion_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
 )
 from dd4tester.storage import RunStorage
@@ -405,6 +505,1105 @@ def test_campaign_runner_scopes_the_pinned_source_directory(
     assert asyncio.run(runner._run_with_lease()) == "complete"
     assert observed["source"] == selected_source
     assert current_source_directory() != selected_source
+
+
+def _source_gear_test_placement() -> GearSourcePlacement:
+    return GearSourcePlacement(
+        object_vnum=50,
+        object_keywords="needle dagger",
+        object_description="a needle dagger",
+        category="wield",
+        stance_rank=(10, 5),
+        better_than_current=True,
+        source_kind="ground-reset",
+        source_mobile_vnum=None,
+        source_mobile="",
+        room_vnum=200,
+        room_name="equipment room",
+        area_file="test.are",
+        maximum_count=1,
+        source_level_range=(1, 5),
+        status="promising",
+        route=("south",),
+        route_vnums=("3001", "200"),
+    )
+
+
+def test_shadow_keep_fine_dagger_route_replays_against_source_world() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    route = _shadow_keep_fine_dagger_route_parts(world)
+
+    assert route is not None
+    assert route.purchase_commands[-1] == "north"
+    assert route.purchase_rooms[-1] == _SHADOW_KEEP_LOCKPICK_SELLER_ROOM_VNUM
+    assert route.target_from_healer_rooms[-1] == _SHADOW_KEEP_FINE_DAGGER_ROOM_VNUM
+    assert route.target_from_healer_commands[-14:] == (
+        "west",
+        "north",
+        "west",
+        "west",
+        "west",
+        "pick west",
+        "open west",
+        "west",
+        "south",
+        "west",
+        "open south",
+        "south",
+        "open down",
+        "down",
+    )
+    assert route.movement_cost == 266
+    assert route.flying_movement_cost == 74
+    assert route.requires_flight is False
+
+
+def test_campaign_selects_shadow_keep_fine_dagger_with_bounded_spec_thief_risk() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    runner = object.__new__(CampaignRunner)
+    runner.spec = SimpleNamespace(
+        character=SimpleNamespace(character_class="thief"),
+    )
+    runner._boot_id = "boot-1"
+    state = {
+        "level": 26,
+        "character_class": "thief",
+        "max_hp": 500,
+        "max_mana": 300,
+        "campaign_known_skills": [
+            "backstab",
+            "second attack",
+            "enhanced damage",
+            "enhanced hit",
+            "disarm",
+            "pick lock",
+            "thief base",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 60,
+            "second attack": 60,
+            "enhanced damage": 60,
+            "enhanced hit": 60,
+            "disarm": 60,
+            "pick lock": 60,
+            "thief base": 30,
+        },
+        "campaign_primary_weapon": "a small dagger",
+        "campaign_worn_equipment": ["a small dagger"],
+        "inventory": [
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a water skin"},
+            {"short_desc": "a purple potion"},
+        ],
+        "currencies": {"copper": 1_100},
+    }
+
+    placement = runner._select_shadow_keep_fine_dagger_placement(
+        state,
+        world=world,
+        current_items=(world.objects[5252],),
+        level=26,
+        character_max_hp=500,
+        has_flight=False,
+        free_weight=100,
+        free_slots=100,
+        attempted=set(),
+    )
+
+    assert placement is not None
+    assert placement.source_gear_plan == "shadow-keep-fine-dagger-lockpick"
+    assert placement.object_vnum == _SHADOW_KEEP_FINE_DAGGER_VNUM
+    assert placement.source_mobile_vnum == 16609
+    assert placement.room_vnum == _SHADOW_KEEP_FINE_DAGGER_ROOM_VNUM
+    assert placement.estimated_move_cost == 266
+
+    state["currencies"] = {"copper": 1_255}
+    assert (
+        runner._select_shadow_keep_fine_dagger_placement(
+            state,
+            world=world,
+            current_items=(world.objects[5252],),
+            level=26,
+            character_max_hp=500,
+            has_flight=False,
+            free_weight=100,
+            free_slots=100,
+            attempted=set(),
+        )
+        is None
+    )
+
+
+def test_shadow_keep_fine_dagger_execution_builds_purchase_and_loot_stops(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    selector = object.__new__(CampaignRunner)
+    selector.spec = SimpleNamespace(
+        character=SimpleNamespace(character_class="thief"),
+    )
+    selector._boot_id = "boot-1"
+    state = {
+        "level": 26,
+        "character_class": "thief",
+        "max_hp": 500,
+        "max_mana": 300,
+        "campaign_known_skills": [
+            "backstab",
+            "second attack",
+            "enhanced damage",
+            "enhanced hit",
+            "disarm",
+            "pick lock",
+            "thief base",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 60,
+            "second attack": 60,
+            "enhanced damage": 60,
+            "enhanced hit": 60,
+            "disarm": 60,
+            "pick lock": 60,
+            "thief base": 30,
+        },
+        "campaign_primary_weapon": "a small dagger",
+        "campaign_worn_equipment": ["a small dagger"],
+        "inventory": [
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a water skin"},
+            {"short_desc": "a purple potion"},
+        ],
+        "currencies": {"copper": 1_100},
+    }
+    placement = selector._select_shadow_keep_fine_dagger_placement(
+        state,
+        world=world,
+        current_items=(world.objects[5252],),
+        level=26,
+        character_max_hp=500,
+        has_flight=False,
+        free_weight=100,
+        free_slots=100,
+        attempted=set(),
+    )
+    assert placement is not None
+    candidate = selector._selected_source_gear_candidate
+    assert candidate is not None
+    captured: dict[str, object] = {}
+
+    class FakeStarter:
+        def __init__(self, *_args, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return "started"
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeStarter)
+    character = CharacterSpec.from_mapping(
+        {
+            "name": "Kestrel",
+            "password_env": "TEST_PASSWORD",
+            "race": "human",
+            "gender": "male",
+            "class": "thief",
+        }
+    )
+
+    result = asyncio.run(
+        _run_policy_segment(
+            character,
+            tmp_path / "character.yaml",
+            _SOURCE_GEAR_ACQUISITION_POLICY,
+            current_state=state,
+            gear_catalog=GearCatalog(world.objects),
+            source_world=world,
+            character_level=26,
+            source_gear_placement=placement,
+            source_gear_candidate=candidate,
+        )
+    )
+
+    assert result == "started"
+    assert captured["required_practice_skill"] == "pick lock"
+    assert captured["required_practice_prerequisites"] == (("thief base", 30),)
+    assert captured["fastwalk_required_free_weight"] == 7
+    assert captured["fastwalk_required_move"] == 281
+    assert captured["fastwalk_require_flight"] is False
+    assert captured["fastwalk_hunt_stops"][0].actions == ("buy lockpick",)
+    target_stop = next(
+        stop for stop in captured["fastwalk_hunt_stops"] if stop.target
+    )
+    assert "pick west" in target_stop.route
+    assert target_stop.route[-8:] == (
+        "open west",
+        "west",
+        "south",
+        "west",
+        "open south",
+        "south",
+        "open down",
+        "down",
+    )
+
+
+def _shargugh_lockpick_funding_state() -> dict[str, object]:
+    return {
+        "level": 24,
+        "character_class": "thief",
+        "subclass": "ninja",
+        "max_hp": 334,
+        "max_move": 380,
+        "move": 370,
+        "campaign_primary_weapon": "a long slim dagger",
+        "campaign_primary_weapon_vnum": 5252,
+        "campaign_worn_equipment": ["a long slim dagger"],
+        "inventory": ["a big pot pie", "a water skin"],
+        "campaign_known_skills": [
+            "backstab",
+            "disarm",
+            "second attack",
+            "enhanced damage",
+            "enhanced hit",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 69,
+            "disarm": 51,
+            "second attack": 77,
+            "enhanced damage": 60,
+            "enhanced hit": 60,
+        },
+        "currencies": {"gold": 2, "silver": 18, "copper": 88},
+    }
+
+
+def test_shargugh_is_admitted_as_exact_low_band_lockpick_funding_route() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    catalog = GearCatalog(world.objects)
+    state = _shargugh_lockpick_funding_state()
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=24,
+        character_class="thief",
+        character_subclass="ninja",
+        known_skills=state["campaign_known_skills"],
+        known_skill_levels=state["campaign_known_skill_levels"],
+        character_max_hp=334,
+        character_alignment=1000,
+        include_below_band=True,
+        include_all_areas=True,
+    )
+    candidate = next(item for item in candidates if item.mobile_vnum == 6115)
+
+    assert candidate.route_preflight_command == "where drunk"
+    assert candidate.source_value == 5_000
+    assert _provision_funding_below_band_loot_route_allowed(
+        state,
+        candidate,
+        character_level=24,
+        boot_id="boot-1",
+        source_world=world,
+        gear_catalog=catalog,
+        minimum_proceeds=532,
+    )
+    assert not _provision_funding_below_band_loot_route_allowed(
+        state,
+        replace(candidate, route_hard_hazard_targets=("unsafe route",)),
+        character_level=24,
+        boot_id="boot-1",
+        source_world=world,
+        gear_catalog=catalog,
+        minimum_proceeds=532,
+    )
+
+
+def test_lockpick_funding_selector_prioritizes_shargugh_over_small_coin_carriers() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    state = _shargugh_lockpick_funding_state()
+    selected = _select_provision_funding_candidate(
+        state,
+        character_level=24,
+        boot_kill_counts={},
+        boot_id="boot-1",
+        source_directory=Path("runs/dd4-source/server/area"),
+        gear_catalog=GearCatalog(world.objects),
+    )
+
+    assert selected is not None
+    assert selected.mobile_vnum == 6115
+    assert selected.room_vnum == 6100
+
+
+def test_lockpick_funding_forces_route_program_preflight() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    state = _shargugh_lockpick_funding_state()
+    candidate = next(
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=24,
+            character_class="thief",
+            character_subclass="ninja",
+            known_skills=state["campaign_known_skills"],
+            known_skill_levels=state["campaign_known_skill_levels"],
+            character_max_hp=334,
+            character_alignment=1000,
+            include_below_band=True,
+            include_all_areas=True,
+        )
+        if item.mobile_vnum == 6115
+    )
+
+    ordinary = _source_ranked_route_program_fastwalk_options(
+        world,
+        candidate,
+        state,
+        character_level=24,
+    )
+    forced = _source_ranked_route_program_fastwalk_options(
+        world,
+        candidate,
+        state,
+        character_level=24,
+        force_route_program_preflight=True,
+    )
+
+    assert ordinary["route_preflight_command"] is None
+    assert forced["route_preflight_command"] == "where drunk"
+    assert forced["route_preflight_target"] == "the drunk"
+
+
+def test_lockpick_funding_policy_preempts_negative_fame_frontier(
+    tmp_path: Path,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    base_spec = load_campaign_spec(config_path)
+    thief = replace(
+        base_spec.character,
+        name="Kestrel",
+        character_class="thief",
+        subclass="ninja",
+    )
+    runner = CampaignRunner(
+        replace(base_spec, name="Kestrel to HERO", character=thief),
+        config_path,
+    )
+    runner._boot_id = "boot-1"
+    runner._ensure_gear_catalog()
+    state = {
+        **_shargugh_lockpick_funding_state(),
+        "world_boot_id": "boot-1",
+        "area": "Midgaard",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "room_flags": ["safe", "healing"],
+        "hp": 334,
+        "mana": 289,
+        "max_mana": 289,
+        "hunger": 10,
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a buffalo water skin"},
+        ]],
+        "affects": [],
+        "fame": -12,
+        "verified_combat_pouch_potions": {"purple": 1},
+        "campaign_flight_funding_required": True,
+        "magic_shop_purchase_failed": True,
+        "campaign_flight_loan_attempted": True,
+        "campaign_magic_shop_flight_price": 131,
+        "campaign_flight_purchase_cooldown": 5,
+        "campaign_intermediate_piercing_weapon_upgrade_cooldown": 5,
+        "campaign_piercing_weapon_upgrade_cooldown": 5,
+    }
+
+    policy = runner._policy_without_learned_flight(state)
+
+    assert policy.execution == "provision-funding"
+    assert "Shargugh" in policy.summary
+
+
+def test_lockpick_funding_policy_survives_generic_frontier_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    base_spec = load_campaign_spec(config_path)
+    thief = replace(
+        base_spec.character,
+        name="Kestrel",
+        character_class="thief",
+        subclass="ninja",
+    )
+    runner = CampaignRunner(
+        replace(base_spec, name="Kestrel to HERO", character=thief),
+        config_path,
+    )
+    runner._boot_id = "boot-1"
+    runner._ensure_gear_catalog()
+    state = {
+        **_shargugh_lockpick_funding_state(),
+        "world_boot_id": "boot-1",
+        "area": "Midgaard",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "room_flags": ["safe", "healing"],
+        "hp": 334,
+        "mana": 289,
+        "max_mana": 289,
+        "hunger": 10,
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a buffalo water skin"},
+        ]],
+        "affects": [],
+        "fame": -12,
+        "verified_combat_pouch_potions": {"purple": 1},
+        "campaign_flight_funding_required": True,
+        "magic_shop_purchase_failed": True,
+        "campaign_flight_loan_attempted": True,
+        "campaign_magic_shop_flight_price": 131,
+        "campaign_flight_purchase_cooldown": 2,
+        "campaign_provision_funding_attempts": [{
+            "boot_id": "boot-1",
+            "candidate_key": "haon.are:6115:6100",
+            "completed_kill": False,
+            "unavailable_reason": "absent",
+        }],
+        "campaign_provision_funding_last_attempt": {
+            "boot_id": "boot-1",
+            "candidate_key": "haon.are:6115:6100",
+            "completed_kill": False,
+            "unavailable_reason": "absent",
+        },
+        "campaign_maintenance_route_hazards": {
+            "provision-funding": {
+                "boot_id": "boot-1",
+                "candidate_keys": ["haon.are:6115:6100"],
+                "route_hazard": "`where` listed no exact 'shargugh'",
+            }
+        },
+    }
+    monkeypatch.setattr(
+        runner,
+        "_select_provision_funding_candidate",
+        lambda _state: None,
+    )
+
+    policy = runner._policy_for_state(state)
+
+    assert policy.execution == "provision-funding"
+
+
+def test_lockpick_shortfall_blocks_empty_funding_flight_fallback(
+    tmp_path: Path,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._ensure_gear_catalog()
+    state = {
+        **_shargugh_lockpick_funding_state(),
+        "world_boot_id": "boot-1",
+        "affects": [],
+        "campaign_shadow_keep_lockpick_funding_required": {
+            "source_cost": 1_000,
+        },
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a buffalo water skin"},
+        ]],
+        "campaign_magic_shop_flight_price": 131,
+        "campaign_flight_purchase_cooldown": 0,
+    }
+
+    assert not _provision_funding_flight_purchase_allowed(
+        state,
+        gear_catalog=runner._gear_catalog,
+    )
+
+    state["currencies"] = {"gold": 10}
+    assert _provision_funding_flight_purchase_allowed(
+        state,
+        gear_catalog=runner._gear_catalog,
+    )
+
+
+def test_excluded_money_container_falls_back_to_liquidation_before_funding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    base_spec = load_campaign_spec(config_path)
+    thief = replace(
+        base_spec.character,
+        name="Kestrel",
+        character_class="thief",
+        subclass="ninja",
+    )
+    runner = CampaignRunner(
+        replace(base_spec, name="Kestrel to HERO", character=thief),
+        config_path,
+    )
+    runner._boot_id = "boot-1"
+    runner._ensure_gear_catalog()
+    state = {
+        **_shargugh_lockpick_funding_state(),
+        "world_boot_id": "boot-1",
+        "area": "Midgaard",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "room_flags": ["safe", "healing"],
+        "hp": 334,
+        "mana": 289,
+        "max_mana": 289,
+        "hunger": 10,
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a buffalo water skin"},
+            {"short_desc": "the midget's purse"},
+        ]],
+        "affects": [],
+        "fame": -12,
+        "verified_combat_pouch_potions": {"purple": 1},
+        "campaign_flight_funding_required": True,
+        "magic_shop_purchase_failed": True,
+        "campaign_flight_loan_attempted": True,
+        "campaign_magic_shop_flight_price": 131,
+        "campaign_flight_purchase_cooldown": 3,
+        "campaign_below_band_policy_exclusions": {
+            "empty-money-container": {
+                "boot_id": "boot-1",
+                "level": 24,
+                "targets": ["purse"],
+            },
+        },
+    }
+    monkeypatch.setattr(
+        runner,
+        "_select_provision_funding_candidate",
+        lambda _state: None,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        lambda _state, **_kwargs: None,
+    )
+
+    policy = runner._policy_for_state(state)
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
+
+
+def test_lockpick_shortfall_preempts_pending_flight_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    base_spec = load_campaign_spec(config_path)
+    thief = replace(
+        base_spec.character,
+        name="Kestrel",
+        character_class="thief",
+        subclass="ninja",
+    )
+    runner = CampaignRunner(
+        replace(base_spec, name="Kestrel to HERO", character=thief),
+        config_path,
+    )
+    runner._boot_id = "boot-1"
+    runner._ensure_gear_catalog()
+    state = {
+        **_shargugh_lockpick_funding_state(),
+        "world_boot_id": "boot-1",
+        "area": "Midgaard",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "room_flags": ["safe", "healing"],
+        "hp": 334,
+        "mana": 289,
+        "max_mana": 289,
+        "hunger": 10,
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a buffalo water skin"},
+        ]],
+        "affects": [],
+        "fame": -12,
+        "verified_combat_pouch_potions": {"purple": 2},
+        "campaign_flight_funding_retry_pending": True,
+        "magic_shop_purchase_failed": True,
+        "campaign_flight_purchase_cooldown": 1,
+    }
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *args, **kwargs: replace(
+            _PROVISION_FUNDING_POLICY,
+            policy_id="buy-flight-potion",
+            execution="buy-flight",
+            status="verified",
+        ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_provision_funding_candidate",
+        lambda _state: None,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        lambda _state, **_kwargs: None,
+    )
+
+    policy = runner._policy_without_learned_flight(state)
+
+    assert policy.execution == "provision-funding"
+    assert "lockpick shortfall" in policy.summary
+
+
+def test_lockpick_funding_prefers_coin_carrier_that_covers_shortfall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    short_carrier = replace(
+        _source_test_candidate(
+            target="the tiny coin carrier",
+            level_range=(1, 5),
+            mobile_vnum=4408,
+            room_vnum=4411,
+        ),
+        loot=(),
+        source_value=0,
+        contained_coins=50,
+    )
+    sufficient_carrier = replace(
+        _source_test_candidate(
+            target="the sufficient coin carrier",
+            level_range=(12, 16),
+            mobile_vnum=10245,
+            room_vnum=10302,
+        ),
+        loot=(),
+        source_value=0,
+        contained_coins=3_400,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.load_world_source",
+        lambda *args, **kwargs: WorldSource(),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_hunt_candidates",
+        lambda *args, **kwargs: [short_carrier, sufficient_carrier],
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._shadow_keep_lockpick_funding_source_cost",
+        lambda *args, **kwargs: 1_000,
+    )
+    state = _shargugh_lockpick_funding_state()
+    state["world_boot_id"] = "boot-1"
+    state["campaign_provision_funding_attempts"] = [{
+        "boot_id": "boot-1",
+        "candidate_key": "haon.are:6115:6100",
+        "completed_kill": False,
+        "unavailable_reason": "absent",
+    }]
+    state["campaign_provision_funding_last_attempt"] = {
+        "boot_id": "boot-1",
+        "candidate_key": "haon.are:6115:6100",
+        "completed_kill": False,
+        "unavailable_reason": "absent",
+    }
+    state["campaign_maintenance_route_hazards"] = {
+        "provision-funding": {
+            "boot_id": "boot-1",
+            "candidate_keys": ["haon.are:6115:6100"],
+            "route_hazard": "`where` listed no exact 'shargugh'",
+        }
+    }
+
+    selected = _select_provision_funding_candidate(
+        state,
+        character_level=24,
+        boot_kill_counts={},
+        boot_id="boot-1",
+        source_directory=tmp_path,
+        gear_catalog=GearCatalog({}),
+        prefer_completed_funding_candidate=True,
+    )
+
+    assert selected is not None
+    assert selected is sufficient_carrier
+    assert selected.contained_coins >= 1_000
+
+
+def test_campaign_selects_one_unattempted_source_ground_upgrade(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    runner = CampaignRunner(spec, config_path)
+    current = ObjectSource(
+        40,
+        "small dagger",
+        "a small dagger",
+        5,
+        (0, 1, 1, 2),
+        10,
+        wear_flags=1 << 13,
+    )
+    upgrade = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        100,
+        wear_flags=1 << 13,
+        weight=1,
+    )
+    runner._source_world = WorldSource(
+        objects={current.vnum: current, upgrade.vnum: upgrade}
+    )
+    runner._gear_catalog = GearCatalog(runner._source_world.objects)
+    placement = _source_gear_test_placement()
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_executable_ground_gear_sources",
+        lambda _world, **_kwargs: [placement],
+    )
+    state = {
+        "level": 8,
+        "room_vnum": "3054",
+        "world_boot_id": "boot-1",
+        "hp": 100,
+        "max_hp": 100,
+        "mana": 100,
+        "max_mana": 100,
+        "move": 100,
+        "max_move": 100,
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a water skin"},
+        ]],
+        "campaign_worn_equipment": ["a small dagger"],
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": [],
+        "affects": [],
+        "stats": {
+            "carry_wt": 0,
+            "maxcarry_wt": 100,
+            "carry_num": 2,
+            "maxcarry_num": 20,
+            "fame": -12,
+        },
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 8,
+            "policy_id": "source-ranked-hunt-failed-8",
+            "trigger": "hard_health_floor",
+        },
+        _FLIGHT_FUNDING_REQUIRED_KEY: True,
+        _FLIGHT_FUNDING_RETRY_KEY: True,
+    }
+
+    selected = runner._select_source_gear_placement(state)
+
+    assert selected is placement
+    assert runner._selected_source_gear_placement is placement
+
+    state["campaign_source_gear_attempts"] = [{
+        "boot_id": "boot-1",
+        "level": 8,
+        "object_vnum": 50,
+        "room_vnum": 200,
+    }]
+    assert runner._select_source_gear_placement(state) is None
+
+
+def test_source_gear_policy_builds_exact_required_item_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    placement = _source_gear_test_placement()
+    item = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        100,
+        wear_flags=1 << 13,
+        weight=1,
+    )
+    world = WorldSource(
+        objects={item.vnum: item},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "equipment room", "test.are"),
+        },
+    )
+    captured: dict[str, object] = {}
+
+    class FakeStarter:
+        def __init__(self, *_args, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return "started"
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeStarter)
+    policy = _SOURCE_GEAR_ACQUISITION_POLICY
+
+    result = asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            current_state={"level": 8, "max_hp": 100},
+            gear_catalog=GearCatalog(world.objects),
+            source_world=world,
+            character_level=8,
+            source_gear_placement=placement,
+        )
+    )
+
+    assert result == "started"
+    route = captured["fastwalk_route"]
+    stop = captured["fastwalk_hunt_stops"][0]
+    assert route.commands == ("south",)
+    assert stop.required_items == ("a needle dagger",)
+    assert stop.source_loot_object_vnums == (50,)
+    assert stop.actions[0].startswith("wield ")
+    assert stop.actions[-1] == "eq all"
+    assert captured["fastwalk_required_free_weight"] == 1
+    assert captured["require_fastwalk_kill"] is False
+
+
+def test_campaign_selects_source_carrier_upgrade_with_matching_hunt_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    runner = CampaignRunner(spec, config_path)
+    current = ObjectSource(
+        40,
+        "small dagger",
+        "a small dagger",
+        5,
+        (0, 1, 1, 2),
+        10,
+        wear_flags=1 << 13,
+    )
+    upgrade = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        100,
+        wear_flags=1 << 13,
+        weight=1,
+    )
+    runner._source_world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guard",
+                "a quiet guard",
+                8,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            )
+        },
+        objects={current.vnum: current, upgrade.vnum: upgrade},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "guard post", "test.are"),
+        },
+        mob_resets=[MobReset(100, 200, 1, (upgrade.vnum,))],
+    )
+    runner._gear_catalog = GearCatalog(runner._source_world.objects)
+    placement = replace(
+        _source_gear_test_placement(),
+        source_kind="mob-carried",
+        source_mobile_vnum=100,
+        source_mobile="a quiet guard",
+    )
+    candidate = _source_test_candidate(
+        target="a quiet guard",
+        level_range=(6, 10),
+        mobile_vnum=100,
+        room_vnum=200,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_executable_ground_gear_sources",
+        lambda _world, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_executable_carrier_gear_sources",
+        lambda _world, **_kwargs: [placement],
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_hunt_candidates",
+        lambda _world, **_kwargs: [candidate],
+    )
+    state = {
+        "level": 8,
+        "room_vnum": "3054",
+        "world_boot_id": "boot-1",
+        "hp": 100,
+        "max_hp": 100,
+        "mana": 100,
+        "max_mana": 100,
+        "move": 100,
+        "max_move": 100,
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a water skin"},
+        ]],
+        "campaign_worn_equipment": ["a small dagger"],
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": [],
+        "affects": [],
+        "stats": {
+            "carry_wt": 0,
+            "maxcarry_wt": 100,
+            "carry_num": 2,
+            "maxcarry_num": 20,
+            "fame": -12,
+        },
+    }
+
+    selected = runner._select_source_gear_placement(state)
+
+    assert selected is placement
+    assert runner._selected_source_gear_candidate is candidate
+
+
+def test_source_carrier_policy_builds_targeted_loot_and_equip_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    placement = replace(
+        _source_gear_test_placement(),
+        source_kind="mob-equipped",
+        source_mobile_vnum=100,
+        source_mobile="a quiet guard",
+    )
+    item = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        100,
+        wear_flags=1 << 13,
+        weight=1,
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guard",
+                "a quiet guard",
+                8,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            )
+        },
+        objects={item.vnum: item},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "guard post", "test.are"),
+        },
+        mob_resets=[MobReset(100, 200, 1, (item.vnum,))],
+    )
+    candidate = _source_test_candidate(
+        target="a quiet guard",
+        level_range=(6, 10),
+        mobile_vnum=100,
+        room_vnum=200,
+    )
+    captured: dict[str, object] = {}
+
+    class FakeStarter:
+        def __init__(self, *_args, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return "started"
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeStarter)
+
+    result = asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            _SOURCE_GEAR_ACQUISITION_POLICY,
+            current_state={"level": 8, "max_hp": 100},
+            gear_catalog=GearCatalog(world.objects),
+            source_world=world,
+            character_level=8,
+            source_gear_placement=placement,
+            source_gear_candidate=candidate,
+        )
+    )
+
+    assert result == "started"
+    route = captured["fastwalk_route"]
+    target_stop = next(
+        stop for stop in captured["fastwalk_hunt_stops"] if stop.target
+    )
+    assert route.commands == ("south",)
+    assert target_stop.required_items == ("a needle dagger",)
+    assert target_stop.post_actions == ("wield dagger", "eq all")
+    assert target_stop.source_mobile_vnum == 100
+    assert target_stop.source_reset_room_vnum == "200"
+    assert target_stop.source_loot_object_vnums == (50,)
+    assert captured["fastwalk_kill_limit"] == 1
+    assert captured["fastwalk_train_before_departure"] is True
+    assert captured["require_fastwalk_kill"] is False
 
 
 def _source_test_candidate(
@@ -444,6 +1643,103 @@ def _source_test_candidate(
         autonomy_rejections=autonomy_rejections,
         specials=specials,
     )
+
+
+def _source_combat_output_revalidation_fixture(
+    *,
+    observed_max_hp: int = 300,
+) -> tuple[HuntCandidate, WorldSource, dict[str, object], str]:
+    candidate = replace(
+        _source_test_candidate(
+            target="the measured golem",
+            level_range=(23, 25),
+            status="fresh",
+            mobile_vnum=1303,
+            room_vnum=1312,
+        ),
+        estimated_base_hp_range=(100, 900),
+    )
+    world = WorldSource(
+        objects={
+            3701: ObjectSource(
+                3701,
+                "jewel dagger",
+                "a jewel-studded dagger",
+                ITEM_WEAPON,
+                (0, 2, 3, 11),
+                0,
+            ),
+        }
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=24)
+    state: dict[str, object] = {
+        "level": 24,
+        "max_hp": 334,
+        "world_boot_id": "boot-1",
+        _SOURCE_REVISION_KEY: "source-1",
+        "character_class": "thief",
+        "campaign_primary_weapon": "a jewel-studded dagger",
+        "stats": {"damroll": 9, "swift": 9},
+        "campaign_known_skills": [
+            "armed combat knowledge",
+            "backstab",
+            "defense knowledge",
+            "disarm",
+            "dodge",
+            "heighten senses",
+            "hide",
+            "knife toss",
+            "parry",
+            "second attack",
+            "sneak",
+            "stealth techniques",
+            "thievery skills",
+            "third attack",
+            "unarmed combat knowledge",
+        ],
+        "campaign_known_skill_levels": {
+            "armed combat knowledge": 67,
+            "backstab": 69,
+            "defense knowledge": 61,
+            "disarm": 51,
+            "dodge": 50,
+            "heighten senses": 99,
+            "hide": 23,
+            "knife toss": 48,
+            "parry": 43,
+            "second attack": 77,
+            "sneak": 99,
+            "stealth techniques": 60,
+            "thievery skills": 46,
+            "third attack": 61,
+            "unarmed combat knowledge": 46,
+        },
+        _SOURCE_RANKED_CANDIDATE_KEY: _source_ranked_candidate_record(
+            candidate,
+            character_level=24,
+            source_revision="source-1",
+        ),
+        _SOURCE_RANKED_XP_LOSS_POLICIES_KEY: [
+            {
+                "boot_id": "boot-1",
+                "level": 24,
+                "policy_id": policy_id,
+                "xp_delta": -311,
+                "loss_count": 1,
+                "target_hp_evidence": {
+                    "policy_id": policy_id,
+                    "target": "the measured golem",
+                    "mobile_vnum": 1303,
+                    "room_vnum": 1312,
+                    "observed_max_hp": observed_max_hp,
+                    "source_output_ceiling": 318,
+                    "source_revision": "source-1",
+                    "weapon": "a long slim dagger",
+                },
+            },
+        ],
+    }
+    return candidate, world, state, policy_id
 
 
 def _low_level_mage_healer_recovery_fixture() -> tuple[
@@ -567,6 +1863,136 @@ def test_city_shop_route_hazard_is_retryable_and_ages_between_field_segments() -
     )
     assert "campaign_city_shop_route_cooldown" not in cleared
     assert "magic_shop_route_blocked_by_drunk" not in cleared
+
+
+def test_field_city_departure_block_is_scoped_to_level_and_reboot() -> None:
+    state = {
+        "level": 8,
+        "world_boot_id": "boot-1",
+        "campaign_field_city_preflight": {
+            "stopped_before_departure": True,
+            "outbound_index": 0,
+            "complete": True,
+            "blocked": True,
+            "level": 8,
+            "boot_id": "boot-1",
+        },
+    }
+
+    assert _field_city_departure_blocked_current_reboot(state)
+
+    changed_level = {**state, "level": 9}
+    assert not _field_city_departure_blocked_current_reboot(changed_level)
+    changed_boot = {**state, "world_boot_id": "boot-2"}
+    assert not _field_city_departure_blocked_current_reboot(changed_boot)
+
+
+def test_field_city_departure_block_can_rotate_to_another_saved_route() -> None:
+    state = {
+        "level": 8,
+        "world_boot_id": "boot-1",
+        "campaign_field_city_preflight": {
+            "stopped_before_departure": True,
+            "outbound_index": 0,
+            "complete": True,
+            "blocked": True,
+            "level": 8,
+            "boot_id": "boot-1",
+            "policy_id": "source-ranked-hunt-circus-4406-4409-8",
+        },
+    }
+
+    assert _field_city_departure_blocked_current_reboot(
+        state,
+        policy_id="source-ranked-hunt-circus-4406-4409-8",
+    )
+    assert not _field_city_departure_blocked_current_reboot(
+        state,
+        policy_id="source-ranked-hunt-moria-4005-4022-8",
+    )
+
+
+def test_field_city_departure_block_survives_healer_recovery() -> None:
+    previous = {
+        "level": 8,
+        "world_boot_id": "boot-1",
+        "campaign_field_city_preflight": {
+            "stopped_before_departure": True,
+            "outbound_index": 0,
+            "complete": True,
+            "blocked": True,
+            "level": 8,
+            "boot_id": "boot-1",
+            "policy_id": "source-ranked-hunt-circus-4406-4409-8",
+        },
+    }
+    current = {
+        "level": 8,
+        "world_boot_id": "boot-1",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "hp": 113,
+        "max_hp": 113,
+    }
+
+    merged = _campaign_segment_end_state(
+        previous,
+        current,
+        execution="return-home",
+        policy_id="return-home",
+    )
+
+    assert merged["campaign_field_city_preflight"] == previous[
+        "campaign_field_city_preflight"
+    ]
+    assert _field_city_departure_blocked_current_reboot(
+        merged,
+        policy_id="source-ranked-hunt-circus-4406-4409-8",
+    )
+    assert not _field_city_departure_blocked_current_reboot(
+        merged,
+        policy_id="source-ranked-hunt-moria-4005-4022-8",
+    )
+
+
+def test_source_ranked_fallback_does_not_reopen_blocked_city_route() -> None:
+    candidate = _source_test_candidate(
+        target="a productive route",
+        level_range=(6, 10),
+        boot_kills=1,
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=8)
+    state = {
+        "level": 8,
+        "max_hp": 113,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": policy_id,
+        "campaign_field_city_preflight": {
+            "stopped_before_departure": True,
+            "outbound_index": 0,
+            "complete": True,
+            "blocked": True,
+            "level": 8,
+            "boot_id": "boot-1",
+            "policy_id": policy_id,
+        },
+        "campaign_research_results": {
+            policy_id: {
+                "boot_id": "boot-1",
+                "completed_kill": True,
+                "observed": True,
+                "viable": True,
+                "objective_xp": 100,
+            }
+        },
+    }
+
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        character_level=8,
+        character_max_hp=113,
+    ) is None
 
 
 def test_city_shop_route_hazard_survives_flight_cooldown_maintenance() -> None:
@@ -1616,6 +3042,249 @@ def test_campaign_uses_source_safe_thief_upgrade_before_hazardous_funding(
 
     state["campaign_piercing_weapon_upgrade_cooldown"] = 1
     assert not runner._forest_piercing_weapon_upgrade_source_safe(state)
+
+
+def test_stalled_retry_opens_forest_upgrade_once_per_scope(
+    tmp_path: Path,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    profile_path = tmp_path / "character.yaml"
+    profile_path.write_text(
+        profile_path.read_text(encoding="utf-8").replace(
+            "class: mage",
+            "class: thief",
+        ),
+        encoding="utf-8",
+    )
+    runner = CampaignRunner(
+        load_campaign_spec(config_path),
+        config_path,
+        retry_stalled=True,
+    )
+    runner._ensure_gear_catalog()
+    state = {
+        "level": 24,
+        "world_boot_id": "boot-1",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "area": "Midgaard",
+        "room_flags": ["safe", "healing"],
+        "hp": 334,
+        "max_hp": 334,
+        "move": 345,
+        "max_move": 380,
+        "affects": [],
+        "hunger": 20,
+        "thirst": 50,
+        "inventory": [
+            [{"short_desc": "a big pot pie"}],
+            [{"short_desc": "a buffalo water skin"}],
+            [{"short_desc": "a long slim dagger"}],
+        ],
+        "campaign_worn_equipment": ["a long slim dagger"],
+        "campaign_primary_weapon": "a long slim dagger",
+        "campaign_has_weapon": True,
+        "campaign_piercing_weapon_upgrade_attempted_boot_id": "boot-1",
+        "campaign_piercing_weapon_upgrade_cooldown": 2,
+        "verified_combat_pouch_potions": {"purple": 1},
+        "stats": {
+            "fame": -12,
+            "carry_wt": 157,
+            "maxcarry_wt": 300,
+        },
+        _PROTECTION_RECOVERY_KEY: {
+            "boot_id": "boot-1",
+            "level": 24,
+            "trigger": "hard_health_floor",
+        },
+    }
+
+    assert not runner._forest_piercing_weapon_upgrade_source_safe(state)
+    assert runner._forest_piercing_weapon_upgrade_frontier_retry_allowed(state)
+
+    runner._record_forest_piercing_weapon_upgrade_frontier_retry(state)
+
+    marker = state[_PIERCING_WEAPON_UPGRADE_FRONTIER_RETRY_KEY]
+    assert marker["boot_id"] == "boot-1"
+    assert marker["level"] == 24
+    assert marker["status"] == "attempted"
+    assert not runner._forest_piercing_weapon_upgrade_frontier_retry_allowed(
+        state
+    )
+
+
+def test_forest_route_gate_recheck_requires_exact_source_crowd_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    thief = replace(spec.character, character_class="thief", subclass="ninja")
+    runner = CampaignRunner(
+        replace(spec, character=thief),
+        config_path,
+        retry_stalled=True,
+    )
+    source_mobiles = {
+        18002: MobileSource(
+            18002,
+            "mosquitoes",
+            "a swarm of mosquitoes",
+            10,
+            ACT_AGGRESSIVE | ACT_STAY_AREA,
+            0,
+            "forest.are",
+        ),
+        18003: MobileSource(
+            18003,
+            "wasps",
+            "a swarm of wasps",
+            10,
+            ACT_AGGRESSIVE | ACT_STAY_AREA,
+            0,
+            "forest.are",
+        ),
+    }
+    runner._source_world = WorldSource(
+        mobiles=source_mobiles,
+        rooms={
+            18027: RoomSource(
+                18027,
+                "Forest",
+                "forest.are",
+                exits={"s": ExitSource("s", 18026, 0, 0)},
+            )
+        },
+        mob_resets=[
+            MobReset(18002, 18028, 3, ()),
+            MobReset(18003, 18029, 5, ()),
+        ],
+        mobile_specials={
+            18002: ("spec_poison",),
+            18003: ("spec_poison",),
+        },
+    )
+    source_revision = "source-1"
+    abort_reason = (
+        "required-loot route gate was accompanied by another live mobile"
+    )
+    terminal = {
+        "state": "completed",
+        "world_boot_id": "boot-1",
+        "fastwalk_route": "forest bear claws",
+        "fastwalk_abort_reason": abort_reason,
+        "fastwalk_route_hazards": [f"route gate aborted: {abort_reason}"],
+        "fastwalk_target_present_observed": True,
+        "fastwalk_target_absent": False,
+        "fastwalk_required_object_vnums": [],
+        "objective_kills": None,
+        "completed_kills": [],
+        "died_during_run": False,
+        "xp_loss_observed": False,
+        "fastwalk_source_absent_sightings": [
+            {
+                "policy_id": _FOREST_BEAR_CLAWS_UPGRADE_POLICY.policy_id,
+                "room_vnum": "18026",
+                "target": "kodiak bear",
+            }
+        ],
+    }
+
+    class StorageStub:
+        response_text = (
+            "Forest\n[Exits: south]\n"
+            "A swarm of wasps is here attacking anything that enters here.\n"
+            "A swarm of mosquitoes is hungrily looking at you."
+        )
+
+        def get_latest_run_state_event(
+            self,
+            run_id: int,
+            *,
+            states: tuple[str, ...],
+        ):
+            assert run_id == 701
+            assert states == ("completed", "runtime_cap")
+            return {"payload_json": json.dumps(terminal)}
+
+        def list_recent_events(self, run_id: int, *, limit: int):
+            assert run_id == 701
+            assert limit == 4096
+            return [
+                {
+                    "id": 702,
+                    "kind": "response",
+                    "payload_json": json.dumps({"text": self.response_text}),
+                }
+            ]
+
+    runner._campaign_policy_storage = StorageStub()
+    runner._campaign_policy_segments = [
+        {
+            "id": 700,
+            "phase": _FOREST_BEAR_CLAWS_UPGRADE_POLICY.policy_id,
+            "status": "success",
+            "run_id": 701,
+            "start_state_json": json.dumps(
+                {
+                    "name": thief.name,
+                    "level": 24,
+                    "world_boot_id": "boot-1",
+                    "campaign_source_revision": source_revision,
+                }
+            ),
+        }
+    ]
+    monkeypatch.setattr(
+        runner,
+        "_forest_piercing_weapon_upgrade_source_safe",
+        lambda _state, **_kwargs: True,
+    )
+    state = {
+        "name": thief.name,
+        "level": 24,
+        "world_boot_id": "boot-1",
+        "campaign_source_revision": source_revision,
+        "room_vnum": "3054",
+        "area": "Midgaard",
+        "room_flags": ["safe", "healing"],
+        "hp": 334,
+        "max_hp": 334,
+        "move": 345,
+        "max_move": 380,
+        "hunger": 20,
+        "thirst": 40,
+        "inventory": [
+            [
+                {"short_desc": "a big pot pie"},
+                {"short_desc": "a buffalo water skin"},
+            ]
+        ],
+        "campaign_piercing_weapon_upgrade_frontier_retry": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "source_revision": source_revision,
+            "status": "closed",
+            "outcome": "required_object_not_acquired",
+        },
+    }
+
+    evidence = runner._forest_route_gate_crowd_recheck_allowed(state)
+
+    assert evidence is not None
+    assert evidence["run_id"] == 701
+    assert evidence["response_event_id"] == 702
+    assert evidence["source_mobile_vnums"] == [18002, 18003]
+
+    runner._record_forest_route_gate_crowd_recheck(state, evidence)
+    assert state[_FOREST_ROUTE_GATE_CROWD_RECHECK_KEY]["status"] == "attempted"
+    assert runner._forest_route_gate_crowd_recheck_allowed(state) is None
+
+    runner._campaign_policy_storage.response_text = (
+        "Forest\n[Exits: south]\nA swarm of mosquitoes is hungrily looking at you."
+    )
+    state.pop(_FOREST_ROUTE_GATE_CROWD_RECHECK_KEY)
+    assert runner._forest_route_gate_crowd_recheck_allowed(state) is None
 
 
 def test_coin_funding_special_gate_fails_closed_without_source_context() -> None:
@@ -3227,6 +4896,411 @@ def test_source_ranked_fame_probe_allows_bounded_unprotected_mobile() -> None:
     assert stop.source_critical_hit_damage == 104
 
 
+def test_source_ranked_fame_probe_uses_the_source_famous_level_branch() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "famous guardian",
+                "the famous guardian",
+                22,
+                ACT_SENTINEL | ACT_IS_FAMOUS,
+                0,
+                "test.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(
+                200,
+                "Garden",
+                "test.are",
+                exits={"north": ExitSource("north", 3001, 0, -1)},
+            ),
+        },
+        mob_resets=[MobReset(100, 200, 1, ())],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="the famous guardian",
+            level_range=(20, 24),
+            mobile_vnum=100,
+            room_vnum=200,
+        ),
+        estimated_base_hp_range=(20, 30),
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_move": 380,
+        "world_boot_id": "boot-1",
+    }
+
+    assert _source_ranked_fame_recovery_candidate_allowed(
+        candidate,
+        world,
+        state,
+        character_level=24,
+        character_max_hp=334,
+    ) is True
+    ordinary_world = replace(
+        world,
+        mobiles={
+            100: replace(world.mobiles[100], act_flags=ACT_SENTINEL),
+        },
+    )
+    assert _source_ranked_fame_recovery_candidate_allowed(
+        candidate,
+        ordinary_world,
+        state,
+        character_level=24,
+        character_max_hp=334,
+    ) is False
+
+
+def test_source_ranked_famous_gas_probe_requires_healer_and_sanctuary() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    skills = [
+        "armed combat knowledge",
+        "backstab",
+        "defense knowledge",
+        "disarm",
+        "dodge",
+        "heighten senses",
+        "hide",
+        "knife toss",
+        "parry",
+        "second attack",
+        "sneak",
+        "stealth techniques",
+        "thievery skills",
+        "third attack",
+        "unarmed combat knowledge",
+    ]
+    skill_levels = {
+        "armed combat knowledge": 67,
+        "backstab": 69,
+        "defense knowledge": 61,
+        "disarm": 51,
+        "dodge": 50,
+        "heighten senses": 99,
+        "hide": 23,
+        "knife toss": 48,
+        "parry": 43,
+        "second attack": 77,
+        "sneak": 99,
+        "stealth techniques": 60,
+        "thievery skills": 46,
+        "third attack": 61,
+        "unarmed combat knowledge": 46,
+    }
+    [candidate] = [
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=24,
+            character_class="thief",
+            character_subclass="ninja",
+            known_skills=skills,
+            known_skill_levels=skill_levels,
+            include_xp_only=True,
+            include_below_band=False,
+            character_max_hp=334,
+            include_level_ceiling_candidates=True,
+            level_ceiling_offset=9,
+            include_all_areas=True,
+            character_alignment=1000,
+        )
+        if item.mobile_vnum == 6112
+    ]
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_move": 380,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": "world-time-probe",
+        "character_class": "thief",
+        "subclass": "ninja",
+        "campaign_known_skills": skills,
+        "campaign_known_skill_levels": skill_levels,
+        "equipment": [
+            {
+                "name": "a long slim dagger",
+                "slot": "wield",
+                "vnum": 5252,
+                "wear_loc": 16,
+            }
+        ],
+        "stats": {"damroll": 5, "dex_mod": 27, "swift": 9},
+        "verified_combat_pouch_potions": {"purple": 1},
+        "room_vnum": "3054",
+        "affects": [],
+    }
+
+    assert world.mobiles[6112].awards_fame is True
+    assert candidate.specials == ("spec_breath_gas",)
+    assert _source_ranked_fame_recovery_candidate_allowed(
+        candidate,
+        world,
+        state,
+        character_level=24,
+        character_max_hp=334,
+    ) is True
+    assert _source_ranked_protected_special_hp_fuzz_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+    target_stops = [
+        stop
+        for stop in _source_ranked_hunt_stops(
+            candidate,
+            world,
+            character_level=24,
+            state=state,
+            fame_recovery=True,
+        )
+        if stop.target is not None
+    ]
+    assert len(target_stops) == 1
+    assert target_stops[0].allow_protected_special_hp_fuzz_probe is True
+    assert _select_source_ranked_fame_recovery_candidate(
+        (candidate,),
+        world,
+        state,
+        character_level=24,
+        character_max_hp=334,
+    ) == candidate
+    (stop,) = _source_ranked_hunt_stops(
+        candidate,
+        world,
+        character_level=24,
+        state=state,
+        fame_recovery=True,
+    )
+    assert stop.source_mobile_vnum == 6112
+    assert stop.require_sanctuary is True
+    assert stop.allow_protected_special_hp_fuzz_probe is True
+    assert stop.allow_healer_poison_recovery is True
+    assert stop.source_target_hp_ceiling == 945
+    assert stop.source_peak_round_damage == 276
+    assert stop.protected_source_peak_round_damage == 138
+
+    no_healer = {**state, "room_vnum": "3001"}
+    assert _source_ranked_fame_recovery_candidate_allowed(
+        candidate,
+        world,
+        no_healer,
+        character_level=24,
+        character_max_hp=334,
+    ) is False
+    no_sanctuary = {**state, "verified_combat_pouch_potions": {}}
+    assert _source_ranked_fame_recovery_candidate_allowed(
+        candidate,
+        world,
+        no_sanctuary,
+        character_level=24,
+        character_max_hp=334,
+    ) is False
+
+
+def _famous_gas_output_revalidation_fixture() -> tuple[
+    HuntCandidate,
+    WorldSource,
+    dict[str, object],
+    str,
+]:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    skills = [
+        "armed combat knowledge",
+        "backstab",
+        "defense knowledge",
+        "disarm",
+        "dodge",
+        "heighten senses",
+        "hide",
+        "knife toss",
+        "parry",
+        "second attack",
+        "sneak",
+        "stealth techniques",
+        "thievery skills",
+        "third attack",
+        "unarmed combat knowledge",
+    ]
+    skill_levels = {
+        "armed combat knowledge": 67,
+        "backstab": 69,
+        "defense knowledge": 61,
+        "disarm": 51,
+        "dodge": 50,
+        "heighten senses": 99,
+        "hide": 23,
+        "knife toss": 90,
+        "parry": 43,
+        "second attack": 77,
+        "sneak": 99,
+        "stealth techniques": 60,
+        "thievery skills": 46,
+        "third attack": 61,
+        "unarmed combat knowledge": 46,
+    }
+    [candidate] = [
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=24,
+            character_class="thief",
+            character_subclass="ninja",
+            known_skills=skills,
+            known_skill_levels=skill_levels,
+            include_xp_only=True,
+            include_below_band=False,
+            character_max_hp=334,
+            include_level_ceiling_candidates=True,
+            level_ceiling_offset=9,
+            include_all_areas=True,
+            character_alignment=1000,
+        )
+        if item.mobile_vnum == 6112
+    ]
+    policy_id = _source_ranked_policy_id(candidate, character_level=24)
+    state: dict[str, object] = {
+        "level": 24,
+        "max_hp": 334,
+        "max_move": 380,
+        "world_boot_id": "boot-1",
+        "source_revision": "source-1",
+        "campaign_last_policy": policy_id,
+        "character_class": "thief",
+        "subclass": "ninja",
+        "campaign_primary_weapon": "a pair of bears claws",
+        "campaign_primary_weapon_vnum": 18000,
+        "campaign_known_skills": skills,
+        "campaign_known_skill_levels": skill_levels,
+        "equipment": [{
+            "name": "a pair of bears claws",
+            "slot": "wield",
+            "vnum": 18000,
+            "wear_loc": 16,
+        }],
+        "stats": {"damroll": 5, "dex_mod": 27, "swift": 9},
+        "verified_combat_pouch_potions": {"purple": 1},
+        "room_vnum": "3054",
+        "affects": [],
+        "campaign_research_results": {
+            policy_id: {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "retryable_failure": True,
+            },
+        },
+        _SOURCE_RANKED_XP_LOSS_POLICIES_KEY: [{
+            "boot_id": "boot-1",
+            "level": 24,
+            "policy_id": policy_id,
+            "xp_delta": -385,
+            "loss_count": 1,
+            "target_hp_evidence": {
+                "policy_id": policy_id,
+                "target": candidate.target,
+                "mobile_vnum": candidate.mobile_vnum,
+                "room_vnum": candidate.room_vnum,
+                "observed_max_hp": 576,
+                "source_output_ceiling": 342,
+                "source_revision": "source-1",
+                "weapon": "a long slim dagger",
+            },
+        }],
+    }
+    return candidate, world, state, policy_id
+
+
+def test_source_ranked_famous_gas_output_revalidation_reopens_after_better_output() -> None:
+    candidate, world, state, policy_id = (
+        _famous_gas_output_revalidation_fixture()
+    )
+
+    assert _source_ranked_combat_output_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_famous_gas_combat_output_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+    assert _source_ranked_fame_recovery_candidate_allowed(
+        candidate,
+        world,
+        state,
+        character_level=24,
+        character_max_hp=334,
+    ) is True
+    assert _select_source_ranked_fame_recovery_candidate(
+        (candidate,),
+        world,
+        state,
+        character_level=24,
+        character_max_hp=334,
+    ) == candidate
+
+    assert _mark_source_ranked_combat_output_revalidation(
+        state,
+        candidate,
+        character_level=24,
+        source_world=world,
+        allow_famous_gas_recovery=True,
+    ) is True
+    assert state[_SOURCE_RANKED_COMBAT_OUTPUT_REVALIDATION_KEY][
+        "current_output_ceiling"
+    ] == 1722
+    assert _source_ranked_combat_output_revalidation_attempted(
+        state,
+        policy_id=policy_id,
+    ) is True
+    assert _source_ranked_famous_gas_combat_output_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+
+
+def test_source_ranked_famous_gas_output_revalidation_requires_enough_output() -> None:
+    candidate, world, state, _policy_id = (
+        _famous_gas_output_revalidation_fixture()
+    )
+    state["campaign_known_skill_levels"] = {
+        "knife toss": 10,
+    }
+    state["campaign_known_skills"] = ["knife toss"]
+
+    assert _source_ranked_famous_gas_combat_output_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+
+
 def test_source_ranked_fame_stops_require_sanctuary_and_damage_window() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
@@ -4787,6 +6861,743 @@ def test_unprotected_hp_fuzz_probe_closes_after_current_level_xp_loss() -> None:
     ) is False
 
 
+def test_protected_hp_fuzz_probe_requires_source_output_and_sanctuary() -> None:
+    weapon = ObjectSource(
+        5252,
+        "dagger",
+        "a dagger",
+        ITEM_WEAPON,
+        (0, 2, 5, 11),
+        10,
+    )
+    world = WorldSource(
+        mobiles={
+            101: MobileSource(
+                101,
+                "guard",
+                "the nominally useful guard",
+                20,
+                ACT_AGGRESSIVE | ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+        },
+        objects={5252: weapon},
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="the nominally useful guard",
+            level_range=(18, 22),
+            mobile_vnum=101,
+            room_vnum=201,
+        ),
+        estimated_base_hp_range=(225, 660),
+        estimated_min_peak_round_damage=155,
+        estimated_peak_round_damage=228,
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_mana": 283,
+        "world_boot_id": "boot-1",
+        "character_class": "thief",
+        "campaign_known_skills": [
+            "backstab",
+            "knife toss",
+            "second attack",
+            "third attack",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 69,
+            "knife toss": 48,
+            "second attack": 77,
+            "third attack": 61,
+        },
+        "equipment": [{
+            "name": "a dagger",
+            "slot": "wield",
+            "vnum": 5252,
+            "wear_loc": 16,
+        }],
+        "stats": {"damroll": 5, "swift": 9},
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+    }
+
+    assert _source_ranked_protected_hp_fuzz_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_unprotected_hp_fuzz_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+    ) is False
+    assert _source_ranked_protected_hp_fuzz_probe_allowed(
+        candidate,
+        {**state, "combat_pouch_potions": {},
+         "verified_combat_pouch_potions": {}},
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_protected_hp_fuzz_probe_allowed(
+        replace(candidate, estimated_level_range=(23, 27), level=25),
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_protected_hp_fuzz_probe_allowed(
+        replace(candidate, route_preflight_hard_hazard=True),
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    passive_world = WorldSource(
+        mobiles={
+            101: MobileSource(
+                101,
+                "guard",
+                "the passive guard",
+                20,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+        },
+        objects={5252: weapon},
+    )
+    assert _source_ranked_protected_hp_fuzz_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=passive_world,
+    ) is True
+    scripted_passive_world = WorldSource(
+        mobiles={
+            101: MobileSource(
+                101,
+                "guard",
+                "the scripted passive guard",
+                20,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+                programs=(
+                    MobileProgram(
+                        "greet_prog",
+                        commands=("mpkill $n",),
+                    ),
+                ),
+            ),
+        },
+        objects={5252: weapon},
+    )
+    assert _source_ranked_protected_hp_fuzz_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=scripted_passive_world,
+    ) is False
+
+
+def test_protected_level_ceiling_hp_probe_accepts_nominal_next_level_target() -> None:
+    weapon = ObjectSource(
+        5252,
+        "dagger",
+        "a dagger",
+        ITEM_WEAPON,
+        (0, 2, 5, 11),
+        10,
+    )
+    world = WorldSource(
+        objects={5252: weapon},
+        mobiles={
+            2413: MobileSource(
+                2413,
+                "horse Smithy",
+                "Mr. Smithy",
+                25,
+                ACT_AGGRESSIVE | ACT_SENTINEL,
+                500,
+                "ultima.are",
+            ),
+        },
+        rooms={2413: RoomSource(2413, "Stables", "ultima.are")},
+        mob_resets=[MobReset(2413, 2413, 1, ())],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="Mr. Smithy",
+            level_range=(23, 27),
+            mobile_vnum=2413,
+            room_vnum=2413,
+        ),
+        level=25,
+        estimated_base_hp_range=(316, 945),
+        estimated_min_peak_round_damage=234,
+        estimated_peak_round_damage=276,
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_mana": 283,
+        "world_boot_id": "boot-1",
+        "character_class": "thief",
+        "campaign_known_skills": [
+            "backstab",
+            "knife toss",
+            "second attack",
+            "third attack",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 69,
+            "knife toss": 48,
+            "second attack": 77,
+            "third attack": 61,
+        },
+        "equipment": [{
+            "name": "a dagger",
+            "slot": "wield",
+            "vnum": 5252,
+            "wear_loc": 16,
+        }],
+        "stats": {"damroll": 5, "swift": 9},
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+    }
+
+    assert _source_ranked_protected_level_ceiling_hp_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    passive_world = WorldSource(
+        objects={5252: weapon},
+        mobiles={
+            2413: MobileSource(
+                2413,
+                "horse Smithy",
+                "Mr. Smithy",
+                25,
+                ACT_SENTINEL,
+                500,
+                "ultima.are",
+            ),
+        },
+        rooms={2413: RoomSource(2413, "Stables", "ultima.are")},
+        mob_resets=[MobReset(2413, 2413, 1, ())],
+    )
+    assert _source_ranked_protected_level_ceiling_hp_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=passive_world,
+    ) is True
+    assert _source_ranked_hp_probe_admission_available(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_hp_probe_admission_available(
+        candidate,
+        state,
+        character_level=24,
+        source_world=passive_world,
+    ) is True
+    target_stops = [
+        stop for stop in _source_ranked_hunt_stops(
+        candidate,
+        passive_world,
+        character_level=24,
+        state=state,
+    )
+        if stop.target is not None
+    ]
+
+    assert len(target_stops) == 1
+    assert target_stops[0].require_sanctuary is True
+    assert target_stops[0].allow_protected_hp_fuzz_probe is True
+    assert target_stops[0].maximum_level_offset == 2
+
+
+def test_protected_nominal_level_fuzz_probe_accepts_current_level_target() -> None:
+    weapon = ObjectSource(
+        5252,
+        "dagger",
+        "a dagger",
+        ITEM_WEAPON,
+        (0, 2, 5, 11),
+        10,
+    )
+    world = WorldSource(
+        objects={5252: weapon},
+        mobiles={
+            305: MobileSource(
+                305,
+                "Shudde-Mell",
+                "Shudde-Mell",
+                24,
+                ACT_SENTINEL,
+                0,
+                "plains_north.are",
+            ),
+        },
+        rooms={305: RoomSource(305, "a test room", "plains_north.are")},
+        mob_resets=[MobReset(305, 305, 1, ())],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="Shudde-Mell",
+            level_range=(22, 26),
+            mobile_vnum=305,
+            room_vnum=305,
+        ),
+        level=24,
+        estimated_base_hp_range=(297, 884),
+        estimated_min_peak_round_damage=155,
+        estimated_peak_round_damage=228,
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_mana": 283,
+        "world_boot_id": "boot-1",
+        "character_class": "thief",
+        "campaign_known_skills": [
+            "backstab",
+            "knife toss",
+            "second attack",
+            "third attack",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 69,
+            "knife toss": 48,
+            "second attack": 77,
+            "third attack": 61,
+        },
+        "equipment": [{
+            "name": "a dagger",
+            "slot": "wield",
+            "vnum": 5252,
+            "wear_loc": 16,
+        }],
+        "stats": {"damroll": 5, "swift": 9},
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+    }
+
+    assert _source_ranked_protected_level_ceiling_hp_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_protected_nominal_level_fuzz_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+    assert _source_ranked_hp_probe_admission_available(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+    target_stops = [
+        stop for stop in _source_ranked_hunt_stops(
+            candidate,
+            world,
+            character_level=24,
+            state=state,
+        )
+        if stop.target is not None
+    ]
+    assert len(target_stops) == 1
+    assert target_stops[0].require_sanctuary is True
+    assert target_stops[0].allow_protected_hp_fuzz_probe is True
+    assert target_stops[0].maximum_level_offset == 2
+
+
+def test_source_ranked_selection_surfaces_protected_hp_fuzz_probe() -> None:
+    weapon = ObjectSource(
+        5252,
+        "dagger",
+        "a dagger",
+        ITEM_WEAPON,
+        (0, 2, 5, 11),
+        10,
+    )
+    world = WorldSource(
+        mobiles={
+            101: MobileSource(
+                101,
+                "guard",
+                "the nominally useful guard",
+                20,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+        },
+        objects={5252: weapon},
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="the nominally useful guard",
+            level_range=(18, 22),
+            status="fresh",
+            mobile_vnum=101,
+            room_vnum=201,
+        ),
+        estimated_base_hp_range=(225, 660),
+        estimated_min_peak_round_damage=155,
+        estimated_peak_round_damage=228,
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_mana": 283,
+        "world_boot_id": "boot-1",
+        "character_class": "thief",
+        "campaign_known_skills": [
+            "backstab",
+            "knife toss",
+            "second attack",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 69,
+            "knife toss": 48,
+            "second attack": 77,
+        },
+        "equipment": [{
+            "name": "a dagger",
+            "slot": "wield",
+            "vnum": 5252,
+            "wear_loc": 16,
+        }],
+        "stats": {"damroll": 5, "swift": 9},
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+    }
+
+    assert _source_ranked_protected_hp_fuzz_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    )
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        world=world,
+        character_level=24,
+        character_max_hp=334,
+    ) == candidate
+
+
+def test_protected_special_hp_fuzz_probe_requires_bounded_source_exchange() -> None:
+    weapon = ObjectSource(
+        5252,
+        "dagger",
+        "a dagger",
+        ITEM_WEAPON,
+        (0, 2, 5, 11),
+        10,
+    )
+    world = WorldSource(
+        mobiles={
+            9202: MobileSource(
+                9202,
+                "audited cleric",
+                "the audited cleric",
+                22,
+                ACT_AGGRESSIVE | ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+        },
+        objects={5252: weapon},
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="the audited cleric",
+            level_range=(20, 24),
+            mobile_vnum=9202,
+            room_vnum=9204,
+            specials=("spec_cast_cleric",),
+            autonomy_rejections=(
+                "target has special procedure spec_cast_cleric",
+            ),
+        ),
+        estimated_base_hp_range=(260, 768),
+        estimated_min_peak_round_damage=210,
+        estimated_peak_round_damage=252,
+        estimated_critical_hit_damage=84,
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_mana": 283,
+        "world_boot_id": "boot-1",
+        "character_class": "thief",
+        "campaign_known_skills": [
+            "backstab",
+            "knife toss",
+            "second attack",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 69,
+            "knife toss": 48,
+            "second attack": 77,
+        },
+        "equipment": [{
+            "name": "a dagger",
+            "slot": "wield",
+            "vnum": 5252,
+            "wear_loc": 16,
+        }],
+        "stats": {"damroll": 5, "swift": 9},
+        "combat_pouch_potions": {"purple": 2},
+        "verified_combat_pouch_potions": {"purple": 2},
+    }
+
+    assert _source_ranked_protected_special_hp_fuzz_probe_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+    assert _source_ranked_hp_probe_admission_available(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+    assert _source_ranked_protected_special_hp_fuzz_probe_allowed(
+        candidate,
+        {**state, "verified_combat_pouch_potions": {"purple": 1}},
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_protected_special_hp_fuzz_probe_allowed(
+        replace(candidate, route_aggressive_mobile_vnums=(999,)),
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+
+
+def test_source_ranked_special_hunt_stop_carries_live_probe_contract() -> None:
+    weapon = ObjectSource(
+        5252,
+        "dagger",
+        "a dagger",
+        ITEM_WEAPON,
+        (0, 2, 5, 11),
+        10,
+    )
+    world = WorldSource(
+        mobiles={
+            9202: MobileSource(
+                9202,
+                "audited cleric",
+                "the audited cleric",
+                22,
+                ACT_AGGRESSIVE | ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+        },
+        objects={5252: weapon},
+        rooms={9204: RoomSource(9204, "Training Room", "test.are")},
+        mob_resets=[MobReset(9202, 9204, 1, ())],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="the audited cleric",
+            level_range=(20, 24),
+            mobile_vnum=9202,
+            room_vnum=9204,
+            specials=("spec_cast_cleric",),
+            autonomy_rejections=(
+                "target has special procedure spec_cast_cleric",
+            ),
+        ),
+        estimated_base_hp_range=(260, 768),
+        estimated_min_peak_round_damage=210,
+        estimated_peak_round_damage=252,
+        estimated_critical_hit_damage=84,
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_mana": 283,
+        "world_boot_id": "boot-1",
+        "character_class": "thief",
+        "campaign_known_skills": [
+            "backstab",
+            "knife toss",
+            "second attack",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 69,
+            "knife toss": 48,
+            "second attack": 77,
+        },
+        "equipment": [{
+            "name": "a dagger",
+            "slot": "wield",
+            "vnum": 5252,
+            "wear_loc": 16,
+        }],
+        "stats": {"damroll": 5, "swift": 9},
+        "combat_pouch_potions": {"purple": 2},
+        "verified_combat_pouch_potions": {"purple": 2},
+    }
+
+    target_stops = [
+        stop
+        for stop in _source_ranked_hunt_stops(
+            candidate,
+            world,
+            character_level=24,
+            state=state,
+        )
+        if stop.target is not None
+    ]
+
+    assert len(target_stops) == 1
+    assert target_stops[0].require_sanctuary is True
+    assert target_stops[0].require_damage_window_probe is True
+    assert target_stops[0].allow_protected_special_hp_fuzz_probe is True
+    assert target_stops[0].allow_protected_hp_fuzz_probe is False
+    assert target_stops[0].protected_source_peak_round_damage is not None
+
+
+def test_persisted_plain_candidate_rechecks_hp_output_admission() -> None:
+    weapon = ObjectSource(
+        5252,
+        "dagger",
+        "a dagger",
+        ITEM_WEAPON,
+        (0, 2, 5, 11),
+        10,
+    )
+    world = WorldSource(objects={5252: weapon})
+    candidate = replace(
+        _source_test_candidate(
+            target="the nominally useful teller",
+            level_range=(18, 22),
+            mobile_vnum=635,
+            room_vnum=800,
+        ),
+        estimated_base_hp_range=(225, 660),
+        estimated_min_peak_round_damage=155,
+        estimated_peak_round_damage=228,
+        route_preflight_hard_hazard=True,
+        route_attack_program_mobile_vnums=(3064,),
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_mana": 283,
+        "world_boot_id": "boot-1",
+        "character_class": "thief",
+        "campaign_known_skills": [
+            "backstab",
+            "knife toss",
+            "second attack",
+        ],
+        "campaign_known_skill_levels": {
+            "backstab": 69,
+            "knife toss": 48,
+            "second attack": 77,
+        },
+        "equipment": [{
+            "name": "a dagger",
+            "slot": "wield",
+            "vnum": 5252,
+            "wear_loc": 16,
+        }],
+        "stats": {"damroll": 5, "swift": 9},
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+    }
+
+    assert _source_ranked_persisted_candidate_admission_valid(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_persisted_candidate_admission_valid(
+        replace(candidate, estimated_base_hp_range=(225, 334)),
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+
+
+def test_persisted_special_candidate_rechecks_hp_output_admission() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="the special teller",
+            level_range=(18, 22),
+            mobile_vnum=636,
+            room_vnum=801,
+            specials=("spec_cast_mage",),
+        ),
+        estimated_base_hp_range=(225, 660),
+    )
+
+    state = {"level": 24, "max_hp": 334}
+
+    assert _source_ranked_persisted_candidate_admission_valid(
+        candidate,
+        state,
+        character_level=24,
+        source_world=WorldSource(),
+    ) is False
+    assert _source_ranked_persisted_candidate_admission_valid(
+        replace(candidate, estimated_base_hp_range=(225, 334)),
+        state,
+        character_level=24,
+        source_world=WorldSource(),
+    ) is True
+
+
+def test_special_reserve_handoff_does_not_admit_guard_with_one_purple() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="the guarded target",
+            level_range=(18, 22),
+            mobile_vnum=629,
+            room_vnum=688,
+            specials=("spec_guard",),
+        ),
+        estimated_base_hp_range=(225, 660),
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "world_boot_id": "boot-1",
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+    }
+
+    assert _source_ranked_special_reserve_acquisition_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=WorldSource(),
+    ) is False
+
+
 def test_post_loss_plain_probe_requires_a_source_output_bound() -> None:
     candidate = replace(
         _source_test_candidate(
@@ -4969,6 +7780,87 @@ def test_source_ranked_hunt_stops_mark_unprotected_hp_fuzz_probe() -> None:
     assert target_stops[0].require_sanctuary is False
     assert target_stops[0].require_damage_window_probe is True
     assert target_stops[0].allow_unprotected_hp_fuzz_probe is True
+
+
+def test_source_ranked_hunt_stops_mark_protected_hp_fuzz_probe() -> None:
+    weapon = ObjectSource(
+        5252,
+        "dagger",
+        "a dagger",
+        ITEM_WEAPON,
+        (0, 2, 5, 11),
+        10,
+    )
+    world = WorldSource(
+        mobiles={
+            101: MobileSource(
+                101,
+                "guard",
+                "the nominally useful guard",
+                20,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+        },
+        objects={5252: weapon},
+        rooms={
+            201: RoomSource(201, "Training Room", "test.are"),
+        },
+        mob_resets=[MobReset(101, 201, 1, ())],
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="the nominally useful guard",
+            level_range=(18, 22),
+            mobile_vnum=101,
+            room_vnum=201,
+        ),
+        estimated_base_hp_range=(225, 660),
+        estimated_min_peak_round_damage=155,
+        estimated_peak_round_damage=228,
+    )
+
+    stops = _source_ranked_hunt_stops(
+        candidate,
+        world,
+        character_level=24,
+        state={
+            "level": 24,
+            "max_hp": 334,
+            "max_mana": 283,
+            "world_boot_id": "boot-1",
+            "character_class": "thief",
+            "campaign_known_skills": [
+                "backstab",
+                "knife toss",
+                "second attack",
+            ],
+            "campaign_known_skill_levels": {
+                "backstab": 69,
+                "knife toss": 48,
+                "second attack": 77,
+            },
+            "equipment": [{
+                "name": "a dagger",
+                "slot": "wield",
+                "vnum": 5252,
+                "wear_loc": 16,
+            }],
+            "stats": {"damroll": 5, "swift": 9},
+            "combat_pouch_potions": {"purple": 1},
+            "verified_combat_pouch_potions": {"purple": 1},
+        },
+    )
+    target_stops = [stop for stop in stops if stop.target is not None]
+
+    assert len(target_stops) == 1
+    assert target_stops[0].require_sanctuary is True
+    assert target_stops[0].require_damage_window_probe is True
+    assert target_stops[0].allow_protected_hp_fuzz_probe is True
+    assert target_stops[0].allow_unprotected_hp_fuzz_probe is False
+    assert target_stops[0].protected_source_peak_round_damage is not None
+    assert target_stops[0].protected_source_critical_hit_damage is not None
 
 
 def test_negative_fame_falls_back_to_ordinary_hp_fuzz_probe(
@@ -5571,7 +8463,7 @@ def test_source_ranked_circuit_does_not_anchor_on_unprotected_ceiling_probe() ->
     singleton = replace(
         _source_test_candidate(
             target="the singleton",
-            level_range=(17, 21),
+            level_range=(17, 20),
             mobile_vnum=90,
             room_vnum=190,
         ),
@@ -10852,6 +13744,176 @@ def test_campaign_routes_empty_source_frontier_to_sanctuary_recovery(
     assert "campaign_source_ranked_hunt_candidate" not in state
 
 
+def test_automatic_reset_entitlement_reopens_audited_sanctuary_carrier(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    unavailable_policy = ProgressionPolicy(
+        "test-unavailable",
+        1,
+        100,
+        "unavailable",
+        None,
+        "test unavailable",
+        (),
+        None,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *args, **kwargs: unavailable_policy,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._current_dd4_source_revision",
+        lambda: "source-1",
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        lambda state, **kwargs: None,
+    )
+    capacity_candidate = replace(
+        _source_test_candidate(
+            target="the audited sanctuary carrier",
+            level_range=(8, 12),
+            mobile_vnum=4055,
+            room_vnum=4064,
+            status="reject",
+            autonomy_rejections=("target reset capacity exceeds one",),
+        ),
+        source_spawn_limit=2,
+        room_spawn_count=1,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._select_source_consumable_candidate",
+        lambda *args, **kwargs: (capacity_candidate, (4050,)),
+    )
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "max_mana": 240,
+        "mana": 240,
+        "max_move": 380,
+        "move": 380,
+        "room_vnum": "3054",
+        "area": "Midgaard",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        _SOURCE_REVISION_KEY: "source-1",
+        "affects": [],
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": [],
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "trigger": "hard_health_floor",
+        },
+        _SOURCE_CAPACITY_RESET_WAIT_KEY: {
+            "boot_id": "boot-1",
+            "consumed": False,
+            "reason": "automatic area reset wait completed",
+        },
+    }
+
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert selected.execution == "moria-sanctuary-hunt"
+    assert runner._selected_source_consumable_candidate == capacity_candidate
+    assert runner._selected_source_consumable_object_vnums == (4050,)
+    assert runner._selected_source_consumable_uses_capacity_reset_wait is True
+    assert state[_SOURCE_CAPACITY_RESET_WAIT_KEY]["consumed"] is False
+
+
+def test_sanctuary_capacity_wait_is_consumed_at_segment_start(
+    tmp_path,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+
+    async def segment(character, profile_path: Path) -> RunResult:
+        return _record_segment_run(
+            database,
+            profile_path,
+            {"name": "Campaignmage", "level": 24, "xp": 0},
+        )
+
+    runner = CampaignRunner(spec, config_path, segment_runner=segment)
+    capacity_candidate = replace(
+        _source_test_candidate(
+            target="the audited sanctuary carrier",
+            level_range=(8, 12),
+            mobile_vnum=4055,
+            room_vnum=4064,
+            status="reject",
+            autonomy_rejections=("target reset capacity exceeds one",),
+        ),
+        source_spawn_limit=2,
+        room_spawn_count=1,
+    )
+    runner._selected_source_consumable_candidate = capacity_candidate
+    runner._selected_source_consumable_object_vnums = (4050,)
+    runner._selected_source_consumable_uses_capacity_reset_wait = True
+    state = {
+        "name": "Campaignmage",
+        "level": 24,
+        "xp": 0,
+        "max_hp": 334,
+        "hp": 334,
+        "max_mana": 240,
+        "mana": 240,
+        "max_move": 380,
+        "move": 380,
+        "room_vnum": "3054",
+        "area": "Midgaard",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "affects": [],
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": [],
+        _SOURCE_CAPACITY_RESET_WAIT_KEY: {
+            "boot_id": "boot-1",
+            "consumed": False,
+            "reason": "automatic area reset wait completed",
+        },
+    }
+    policy = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY
+
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        asyncio.run(
+            runner._run_starter(
+                storage,
+                campaign_id,
+                state,
+                storage.campaign_totals(campaign_id),
+                policy,
+            )
+        )
+        segments = storage.list_campaign_segments(campaign_id)
+
+    assert len(segments) == 1
+    start_state = json.loads(segments[0]["start_state_json"])
+    assert start_state[_SOURCE_CAPACITY_RESET_WAIT_KEY] == {
+        "boot_id": "boot-1",
+        "consumed": True,
+        "policy_id": _source_ranked_policy_id(
+            capacity_candidate,
+            character_level=24,
+        ),
+        "reason": "capacity probe dispatched",
+    }
+
+
 def test_revision_243_visibility_revalidation_reaches_sanctuary_selector(
     tmp_path,
     monkeypatch,
@@ -11016,7 +14078,7 @@ def test_revision_245_reopens_exact_locator_failure_once() -> None:
         "where_relocation_attempts": 1,
         "prior_policy_revision": 244,
     }
-    assert policy_id not in refreshed["campaign_research_results"]
+    assert policy_id not in refreshed.get("campaign_research_results", {})
     assert refreshed["campaign_research_results"]["other-policy"]["absent"]
     assert refreshed["campaign_research_absence_cooldowns"] == {
         "other-policy": 2,
@@ -11071,6 +14133,1333 @@ def test_revision_245_locator_revalidation_reaches_sanctuary_selector(
     )
     assert selected.execution == "moria-sanctuary-hunt"
     assert _sanctuary_locator_label_revalidation_pending(state)
+
+
+def test_revision_276_reopens_only_the_fixed_deep_locator_chain() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    reserve_policy_id = _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY.policy_id
+    exhausted = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "required_object_acquired": False,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    state = {
+        "campaign_policy_revision": 275,
+        "level": 24,
+        "hp": 334,
+        "max_hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        "campaign_sanctuary_resource_attempts": {
+            recovery_policy_id: {
+                "boot_id": "boot-1", "level": 24, "count": 2,
+            },
+            reserve_policy_id: {
+                "boot_id": "boot-1", "level": 24, "count": 2,
+            },
+        },
+        "campaign_sanctuary_safe_locator_revalidation": {
+            "policy_revision": 256,
+            "policy_id": reserve_policy_id,
+            "boot_id": "boot-1",
+            "level": 24,
+            "status": "reopened",
+            "safe_endpoint_room_vnums": [4064, 4063],
+        },
+        "campaign_sanctuary_combat_only_transit_revalidation": {
+            "policy_revision": 257,
+            "policy_id": reserve_policy_id,
+            "boot_id": "boot-1",
+            "level": 24,
+            "status": "attempted",
+            "superseded_result": dict(exhausted),
+        },
+        "campaign_research_results": {
+            recovery_policy_id: dict(exhausted),
+            reserve_policy_id: dict(exhausted),
+        },
+        "campaign_cleared_research_policies": [
+            recovery_policy_id,
+            reserve_policy_id,
+        ],
+        "campaign_last_policy": "source-ranked-food-reserve-test",
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert _SANCTUARY_DEEP_LOCATOR_REVALIDATION_REVISION == 276
+    marker = refreshed[_SANCTUARY_DEEP_LOCATOR_REVALIDATION_KEY]
+    assert marker["status"] == "pending"
+    assert marker["policy_id"] == recovery_policy_id
+    assert marker["observed_block_room_vnum"] == "4014"
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert reserve_policy_id in refreshed["campaign_research_results"]
+    assert refreshed["campaign_sanctuary_resource_attempts"] == state[
+        "campaign_sanctuary_resource_attempts"
+    ]
+    assert refreshed["campaign_last_policy"] == "source-ranked-food-reserve-test"
+    assert _sanctuary_deep_locator_revalidation_pending(refreshed)
+
+    assert _consume_sanctuary_deep_locator_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_locator_revalidation_pending(refreshed)
+    assert (
+        refreshed[_SANCTUARY_DEEP_LOCATOR_REVALIDATION_KEY]["status"]
+        == "attempted"
+    )
+    assert not _consume_sanctuary_deep_locator_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+
+
+def test_revision_278_reopens_only_source_safe_bystander_false_positive() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    state = {
+        "campaign_policy_revision": 276,
+        "level": 24,
+        "hp": 334,
+        "max_hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_last_policy": recovery_policy_id,
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        "campaign_sanctuary_resource_attempts": {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 3,
+            },
+        },
+        "campaign_sanctuary_deep_locator_revalidation": {
+            "policy_revision": 276,
+            "policy_id": recovery_policy_id,
+            "boot_id": "boot-1",
+            "level": 24,
+            "status": "attempted",
+            "source_mobile_vnum": 4055,
+            "safe_endpoint_room_vnums": [4064, 4063],
+            "observed_block_room_vnum": "4014",
+        },
+        "campaign_research_results": {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "observed": False,
+                "viable": False,
+                "completed_kill": False,
+                "fatal_failure": True,
+                "crowded": True,
+                "route_hazard": (
+                    "sanctuary resource route exhausted after 2 failed attempts"
+                ),
+            },
+        },
+        "campaign_cleared_research_policies": [recovery_policy_id],
+        "campaign_fastwalk_abort_reason": (
+            "field pre-entry scan found source-registered hazard warrior x1 "
+            "(source mobile 4051) before entering room 4064"
+        ),
+        "campaign_fastwalk_route_hazards": [
+            "pre-entry scan blocked room 4064: warrior x1 "
+            "(source mobile 4051)"
+        ],
+        "campaign_fastwalk_target_absent": False,
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_crowded": True,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_SOURCE_SAFE_BYSTANDER_REVALIDATION_KEY]
+    assert marker["policy_revision"] == (
+        _SANCTUARY_SOURCE_SAFE_BYSTANDER_REVALIDATION_REVISION
+    )
+    assert marker["status"] == "pending"
+    assert marker["source_mobile_vnum"] == 4051
+    assert marker["blocked_room_vnum"] == "4064"
+    assert marker["superseded_abort_reason"].startswith(
+        "field pre-entry scan found source-registered hazard warrior"
+    )
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert refreshed["campaign_sanctuary_resource_attempts"][
+        recovery_policy_id
+    ]["count"] == 3
+    assert "campaign_last_policy" not in refreshed
+    assert "campaign_fastwalk_abort_reason" not in refreshed
+    assert "campaign_fastwalk_route_hazards" not in refreshed
+    assert _sanctuary_source_safe_bystander_revalidation_pending(refreshed)
+
+    assert _consume_sanctuary_source_safe_bystander_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_source_safe_bystander_revalidation_pending(refreshed)
+    assert refreshed[_SANCTUARY_SOURCE_SAFE_BYSTANDER_REVALIDATION_KEY][
+        "status"
+    ] == "attempted"
+    assert not _consume_sanctuary_source_safe_bystander_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+
+
+def test_revision_279_reopens_moria_capacity_two_room_carrier() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    reserve_policy_id = _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY.policy_id
+    exhausted = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    state = {
+        "campaign_policy_revision": 278,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "hp": 334,
+        "max_hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY: {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+            reserve_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+        },
+        "campaign_research_results": {
+            recovery_policy_id: dict(exhausted),
+            reserve_policy_id: dict(exhausted),
+        },
+        "campaign_research_absence_cooldowns": {
+            recovery_policy_id: 3,
+            reserve_policy_id: 3,
+            "keep-policy": 1,
+        },
+        "campaign_research_crowd_cooldowns": {
+            recovery_policy_id: 2,
+            reserve_policy_id: 2,
+            "keep-policy": 1,
+        },
+        "campaign_cleared_research_policies": [
+            recovery_policy_id,
+            reserve_policy_id,
+            "keep-policy",
+        ],
+        "campaign_last_policy": "keep-policy",
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert _SANCTUARY_RESET_CAPACITY_REVALIDATION_REVISION == 279
+    marker = refreshed[_SANCTUARY_RESET_CAPACITY_REVALIDATION_KEY]
+    assert marker["status"] == "pending"
+    assert marker["policy_id"] == recovery_policy_id
+    assert marker["source_mobile_vnum"] == 4055
+    assert marker["source_object_vnum"] == 4050
+    assert marker["source_room_vnums"] == [4064, 4071]
+    assert marker["source_global_reset_capacity"] == 2
+    assert marker["source_reset_entries_per_room"] == 1
+    assert set(marker["superseded_results"]) == {
+        recovery_policy_id,
+        reserve_policy_id,
+    }
+    assert "campaign_research_results" not in refreshed
+    assert refreshed[_SANCTUARY_RESOURCE_ATTEMPTS_KEY] == state[
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY
+    ]
+    assert refreshed["campaign_research_absence_cooldowns"] == {
+        "keep-policy": 1,
+    }
+    assert refreshed["campaign_research_crowd_cooldowns"] == {
+        "keep-policy": 1,
+    }
+    assert refreshed["campaign_cleared_research_policies"] == ["keep-policy"]
+    assert refreshed["campaign_last_policy"] == "keep-policy"
+    assert _sanctuary_reset_capacity_revalidation_pending(refreshed)
+
+    assert not _consume_sanctuary_reset_capacity_revalidation(
+        refreshed,
+        policy_id=reserve_policy_id,
+    )
+    assert _consume_sanctuary_reset_capacity_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_reset_capacity_revalidation_pending(refreshed)
+    assert (
+        refreshed[_SANCTUARY_RESET_CAPACITY_REVALIDATION_KEY]["status"]
+        == "attempted"
+    )
+    assert not _consume_sanctuary_reset_capacity_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+
+
+def test_revision_279_requires_both_exact_sanctuary_failures() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    state = {
+        "campaign_policy_revision": 278,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+        },
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY: {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+        },
+        "campaign_research_results": {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "observed": True,
+                "viable": False,
+                "completed_kill": False,
+                "fatal_failure": True,
+                "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+            },
+        },
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert _SANCTUARY_RESET_CAPACITY_REVALIDATION_KEY not in refreshed
+    assert recovery_policy_id in refreshed["campaign_research_results"]
+
+
+def test_revision_283_reopens_only_the_widened_moria_locator_result() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    exhausted = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    state = {
+        "campaign_policy_revision": 282,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "hp": 334,
+        "max_hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY: {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 1,
+            },
+        },
+        _SANCTUARY_DEEP_LOCATOR_REVALIDATION_KEY: {
+            "policy_revision": 276,
+            "policy_id": recovery_policy_id,
+            "boot_id": "boot-1",
+            "level": 24,
+            "status": "attempted",
+            "source_mobile_vnum": 4055,
+            "safe_endpoint_room_vnums": [4064, 4063],
+            "observed_block_room_vnum": "4014",
+        },
+        "campaign_research_results": {
+            recovery_policy_id: dict(exhausted),
+        },
+        "campaign_research_absence_cooldowns": {
+            recovery_policy_id: 3,
+            "keep-policy": 1,
+        },
+        "campaign_research_crowd_cooldowns": {
+            recovery_policy_id: 2,
+            "keep-policy": 1,
+        },
+        "campaign_cleared_research_policies": [
+            recovery_policy_id,
+            "keep-policy",
+        ],
+        "campaign_last_policy": "keep-policy",
+        "campaign_fastwalk_required_object_vnums": [4050],
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert _SANCTUARY_LOCATOR_GRAPH_REVALIDATION_REVISION == 283
+    marker = refreshed[_SANCTUARY_LOCATOR_GRAPH_REVALIDATION_KEY]
+    assert marker["status"] == "pending"
+    assert marker["policy_id"] == recovery_policy_id
+    assert marker["source_locator_room_vnums"] == ["4063", "4066", "4065"]
+    assert marker["superseded_result"] == exhausted
+    assert marker["superseded_deep_locator"]["policy_revision"] == 276
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert refreshed["campaign_research_absence_cooldowns"] == {
+        "keep-policy": 1,
+    }
+    assert refreshed["campaign_research_crowd_cooldowns"] == {
+        "keep-policy": 1,
+    }
+    assert refreshed["campaign_cleared_research_policies"] == ["keep-policy"]
+    assert refreshed["campaign_last_policy"] == "keep-policy"
+    assert "campaign_fastwalk_required_object_vnums" not in refreshed
+    assert _sanctuary_locator_graph_revalidation_pending(refreshed)
+
+    assert not _consume_sanctuary_locator_graph_revalidation(
+        refreshed,
+        policy_id="other-policy",
+    )
+    assert _consume_sanctuary_locator_graph_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_locator_graph_revalidation_pending(refreshed)
+    assert (
+        refreshed[_SANCTUARY_LOCATOR_GRAPH_REVALIDATION_KEY]["status"]
+        == "attempted"
+    )
+    assert not _consume_sanctuary_locator_graph_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+
+
+@pytest.mark.parametrize(
+    "policy_revision",
+    (
+        _SANCTUARY_LOCATOR_GRAPH_REVALIDATION_REVISION,
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_REVISION,
+    ),
+)
+def test_revision_284_reopens_consumed_moria_deep_route_once(
+    policy_revision: int,
+) -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    exhausted = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    old_graph_marker = {
+        "policy_revision": _SANCTUARY_LOCATOR_GRAPH_REVALIDATION_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "source_locator_room_vnums": ["4063", "4066", "4065"],
+    }
+    state = {
+        "campaign_policy_revision": policy_revision,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "affects": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY: {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+        },
+        _SANCTUARY_LOCATOR_GRAPH_REVALIDATION_KEY: old_graph_marker,
+        "campaign_research_results": {
+            recovery_policy_id: dict(exhausted),
+        },
+        "campaign_cleared_research_policies": [recovery_policy_id],
+        "campaign_last_policy": "source-ranked-food-reserve-2-100-crystal-10036-10012-24",
+        "campaign_fastwalk_required_object_vnums": [10012],
+        "campaign_source_consumable_spell": "food",
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert refreshed[_SANCTUARY_LOCATOR_GRAPH_REVALIDATION_KEY] == old_graph_marker
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_REVALIDATION_REVISION
+    assert marker["status"] == "pending"
+    assert marker["route_origin_room_vnum"] == 4064
+    assert marker["route_target_room_vnum"] == 4152
+    assert marker["superseded_result"] == exhausted
+    assert marker["superseded_locator_graph"] == old_graph_marker
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert "campaign_fastwalk_required_object_vnums" not in refreshed
+    assert "campaign_source_consumable_spell" not in refreshed
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert refreshed[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][recovery_policy_id]["count"] == 2
+
+    assert not _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id="other-policy",
+    )
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]["status"] == "attempted"
+    assert not _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert _refresh_policy_revision(dict(refreshed)) == refreshed
+
+
+def test_revision_285_reopens_moria_after_locator_continuation_fix() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    exhausted = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": False,
+        "viable": False,
+        "fatal_failure": True,
+        "absent": True,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    previous_marker = {
+        "policy_revision": _SANCTUARY_DEEP_ROUTE_REVALIDATION_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "route_origin_room_vnum": 4064,
+        "route_target_room_vnum": 4152,
+        "reason": (
+            "reopen the exact level-24 Moria carrier after replacing the unsafe "
+            "Mage's Laboratory transit with a source-safe southern maze detour"
+        ),
+    }
+    state = {
+        "campaign_policy_revision": _SANCTUARY_DEEP_ROUTE_REVALIDATION_REVISION,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY: {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+        },
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: previous_marker,
+        "campaign_research_results": {
+            recovery_policy_id: exhausted,
+        },
+        _SOURCE_ABSENT_SIGHTINGS_KEY: [
+            {
+                "policy_id": recovery_policy_id,
+                "room_vnum": "4064",
+                "target": "large hobgoblin",
+            },
+        ],
+        "campaign_cleared_research_policies": [recovery_policy_id],
+        "campaign_last_policy": recovery_policy_id,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_CONTINUATION_REVISION
+    assert marker["status"] == "pending"
+    assert marker["reason"].startswith("continue the exact level-24 Moria")
+    assert marker["superseded_deep_route"] == previous_marker
+    assert marker["superseded_result"] == exhausted
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert recovery_policy_id not in refreshed.get("campaign_cleared_research_policies", [])
+    assert _SOURCE_ABSENT_SIGHTINGS_KEY not in refreshed
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+
+
+def test_revision_286_reopens_moria_after_source_room_registration_fix() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    exhausted = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": False,
+        "viable": False,
+        "absent": True,
+    }
+    previous_marker = {
+        "policy_revision": _SANCTUARY_DEEP_ROUTE_CONTINUATION_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "route_origin_room_vnum": 4064,
+        "route_target_room_vnum": 4152,
+        "reason": (
+            "continue the exact level-24 Moria carrier search after the source-vetted "
+            "deep locator learned to advance beyond an absent reset-room carrier"
+        ),
+    }
+    state = {
+        "campaign_policy_revision": _SANCTUARY_DEEP_ROUTE_CONTINUATION_REVISION,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY: {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+        },
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: previous_marker,
+        "campaign_research_results": {
+            recovery_policy_id: exhausted,
+        },
+        _SOURCE_ABSENT_SIGHTINGS_KEY: [
+            {
+                "policy_id": recovery_policy_id,
+                "room_vnum": "4064",
+                "target": "large hobgoblin",
+            },
+        ],
+        "campaign_cleared_research_policies": [recovery_policy_id],
+        "campaign_last_policy": recovery_policy_id,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_SOURCE_ROOM_REVISION
+    assert marker["status"] == "pending"
+    assert marker["reason"].startswith("reopen the exact level-24 Moria carrier")
+    assert marker["superseded_deep_route"] == previous_marker
+    assert marker["superseded_result"] == exhausted
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert _SOURCE_ABSENT_SIGHTINGS_KEY not in refreshed
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+
+
+def test_revision_287_reopens_moria_after_dispatch_precedence_fix() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    previous_marker = {
+        "policy_revision": _SANCTUARY_DEEP_ROUTE_SOURCE_ROOM_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "route_origin_room_vnum": 4064,
+        "route_target_room_vnum": 4152,
+        "reason": (
+            "reopen the exact level-24 Moria carrier after registering its "
+            "first locator stop at source reset room 4064"
+        ),
+    }
+    compact_result = {
+        "absent": True,
+        "boot_id": "boot-1",
+        "observed": False,
+        "viable": False,
+    }
+    state = {
+        "campaign_policy_revision": _SANCTUARY_DEEP_ROUTE_SOURCE_ROOM_REVISION,
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": None,
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        "campaign_fastwalk_target_absent": True,
+        "campaign_fastwalk_target_present_observed": False,
+        "campaign_fastwalk_required_object_vnums": [],
+        "campaign_fastwalk_route_hazards": [],
+        "campaign_fastwalk_where_area_checks": [],
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY: {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+        },
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: previous_marker,
+        "campaign_research_results": {
+            recovery_policy_id: compact_result,
+        },
+        _SOURCE_ABSENT_SIGHTINGS_KEY: [
+            {
+                "policy_id": recovery_policy_id,
+                "room_vnum": "4064",
+                "target": "large hobgoblin",
+            },
+        ],
+        "campaign_cleared_research_policies": [recovery_policy_id],
+        "campaign_last_policy": recovery_policy_id,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_PRECEDENCE_REVISION
+    assert marker["status"] == "pending"
+    assert marker["reason"].startswith(
+        "reopen the exact level-24 Moria carrier"
+    )
+    assert marker["superseded_deep_route"] == previous_marker
+    assert marker["superseded_result"] == compact_result
+    assert recovery_policy_id not in refreshed.get(
+        "campaign_research_results", {}
+    )
+    assert _SOURCE_ABSENT_SIGHTINGS_KEY not in refreshed
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+
+
+def test_revision_288_reopens_moria_after_consumed_marker_dispatch_fix() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    previous_marker = {
+        "policy_revision": _SANCTUARY_DEEP_ROUTE_PRECEDENCE_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "route_origin_room_vnum": 4064,
+        "route_target_room_vnum": 4152,
+        "reason": (
+            "reopen the exact level-24 Moria carrier after giving its pending "
+            "deep route precedence over the generic sanctuary reserve dispatch"
+        ),
+    }
+    compact_result = {
+        "absent": True,
+        "boot_id": "boot-1",
+        "observed": False,
+        "viable": False,
+    }
+    state = {
+        "campaign_policy_revision": _SANCTUARY_DEEP_ROUTE_PRECEDENCE_REVISION,
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": None,
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": -330,
+        },
+        "campaign_fastwalk_target_absent": True,
+        "campaign_fastwalk_target_present_observed": False,
+        "campaign_fastwalk_required_object_vnums": [],
+        "campaign_fastwalk_route_hazards": [],
+        "campaign_fastwalk_where_area_checks": [],
+        _SANCTUARY_RESOURCE_ATTEMPTS_KEY: {
+            recovery_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+        },
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: previous_marker,
+        "campaign_research_results": {
+            recovery_policy_id: compact_result,
+        },
+        _SOURCE_ABSENT_SIGHTINGS_KEY: [
+            {
+                "policy_id": recovery_policy_id,
+                "room_vnum": "4064",
+                "target": "large hobgoblin",
+            },
+        ],
+        "campaign_cleared_research_policies": [recovery_policy_id],
+        "campaign_last_policy": recovery_policy_id,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_CONSUMED_FLAG_REVISION
+    assert marker["status"] == "pending"
+    assert marker["reason"].startswith(
+        "reopen the exact level-24 Moria carrier"
+    )
+    assert marker["superseded_deep_route"] == previous_marker
+    assert marker["superseded_result"] == compact_result
+    assert recovery_policy_id not in refreshed.get(
+        "campaign_research_results", {}
+    )
+    assert _SOURCE_ABSENT_SIGHTINGS_KEY not in refreshed
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+
+
+def test_revision_289_reopens_moria_after_transit_waypoint_advance_fix() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    previous_marker = {
+        "policy_revision": _SANCTUARY_DEEP_ROUTE_CONSUMED_FLAG_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "route_origin_room_vnum": 4064,
+        "route_target_room_vnum": 4152,
+        "reason": (
+            "reopen the exact level-24 Moria carrier after preserving deep-route "
+            "precedence through campaign segment-start marker consumption"
+        ),
+    }
+    result = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    state = {
+        "campaign_policy_revision": _SANCTUARY_DEEP_ROUTE_CONSUMED_FLAG_REVISION,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": 0,
+        },
+        "campaign_fastwalk_target_absent": False,
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_abort_reason": (
+            "field expedition withdrew before acquiring required item(s): purple potion"
+        ),
+        "campaign_fastwalk_required_object_vnums": [],
+        "campaign_fastwalk_route_hazards": [],
+        "campaign_fastwalk_where_area_checks": [],
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: previous_marker,
+        "campaign_research_results": {recovery_policy_id: result},
+        "campaign_last_policy": recovery_policy_id,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_TRANSIT_ADVANCE_REVISION
+    assert marker["status"] == "pending"
+    assert marker["reason"].startswith(
+        "reopen the exact level-24 Moria carrier"
+    )
+    assert marker["superseded_deep_route"] == previous_marker
+    assert marker["superseded_result"] == result
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+
+
+def test_revision_290_reopens_moria_after_route_completion_fix() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    previous_marker = {
+        "policy_revision": _SANCTUARY_DEEP_ROUTE_TRANSIT_ADVANCE_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "route_origin_room_vnum": 4064,
+        "route_target_room_vnum": 4152,
+        "reason": (
+            "reopen the exact level-24 Moria carrier after allowing its "
+            "source-audited no-mob transit waypoint to advance to the remaining "
+            "locator stops"
+        ),
+    }
+    result = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    state = {
+        "campaign_policy_revision": _SANCTUARY_DEEP_ROUTE_TRANSIT_ADVANCE_REVISION,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": 0,
+        },
+        "campaign_fastwalk_target_absent": False,
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_abort_reason": (
+            "field expedition withdrew before acquiring required item(s): purple potion"
+        ),
+        "campaign_fastwalk_required_object_vnums": [],
+        "campaign_fastwalk_route_hazards": [],
+        "campaign_fastwalk_where_area_checks": [],
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: previous_marker,
+        "campaign_research_results": {recovery_policy_id: result},
+        "campaign_last_policy": recovery_policy_id,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_ROUTE_COMPLETION_REVISION
+    assert marker["status"] == "pending"
+    assert marker["reason"].startswith(
+        "reopen the exact level-24 Moria carrier"
+    )
+    assert marker["superseded_deep_route"] == previous_marker
+    assert marker["superseded_result"] == result
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+
+
+def test_revision_291_reopens_moria_after_transit_wait_fix() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    previous_marker = {
+        "policy_revision": _SANCTUARY_DEEP_ROUTE_ROUTE_COMPLETION_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "route_origin_room_vnum": 4064,
+        "route_target_room_vnum": 4152,
+        "reason": (
+            "reopen the exact level-24 Moria carrier after keeping its "
+            "source-audited transit route active through the final affordable "
+            "movement step"
+        ),
+    }
+    result = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    state = {
+        "campaign_policy_revision": _SANCTUARY_DEEP_ROUTE_ROUTE_COMPLETION_REVISION,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": 0,
+        },
+        "campaign_fastwalk_target_absent": False,
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_abort_reason": (
+            "field expedition withdrew before acquiring required item(s): purple potion"
+        ),
+        "campaign_fastwalk_required_object_vnums": [],
+        "campaign_fastwalk_route_hazards": [],
+        "campaign_fastwalk_where_area_checks": [],
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: previous_marker,
+        "campaign_research_results": {recovery_policy_id: result},
+        "campaign_last_policy": recovery_policy_id,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_TRANSIT_WAIT_REVISION
+    assert marker["status"] == "pending"
+    assert marker["reason"].startswith(
+        "reopen the exact level-24 Moria carrier"
+    )
+    assert marker["superseded_deep_route"] == previous_marker
+    assert marker["superseded_result"] == result
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+
+
+def test_revision_292_reopens_moria_after_locator_boundary_fix() -> None:
+    recovery_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    previous_marker = {
+        "policy_revision": _SANCTUARY_DEEP_ROUTE_TRANSIT_WAIT_REVISION,
+        "policy_id": recovery_policy_id,
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "source_mobile_vnum": 4055,
+        "source_object_vnum": 4050,
+        "route_origin_room_vnum": 4064,
+        "route_target_room_vnum": 4152,
+        "reason": (
+            "reopen the exact level-24 Moria carrier after adding a bounded "
+            "standing wait before an unaffordable final transit edge"
+        ),
+    }
+    result = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "observed": True,
+        "viable": False,
+        "completed_kill": False,
+        "fatal_failure": True,
+        "route_hazard": "sanctuary resource route exhausted after 2 failed attempts",
+    }
+    state = {
+        "campaign_policy_revision": _SANCTUARY_DEEP_ROUTE_TRANSIT_WAIT_REVISION,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "max_hp": 334,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "campaign_objective_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "xp_delta": 0,
+        },
+        "campaign_fastwalk_target_absent": False,
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_abort_reason": (
+            "field expedition withdrew before acquiring required item(s): purple potion"
+        ),
+        "campaign_fastwalk_required_object_vnums": [],
+        "campaign_fastwalk_route_hazards": [],
+        "campaign_fastwalk_where_area_checks": [],
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: previous_marker,
+        "campaign_research_results": {recovery_policy_id: result},
+        "campaign_last_policy": recovery_policy_id,
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    marker = refreshed[_SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY]
+    assert marker["policy_revision"] == _SANCTUARY_DEEP_ROUTE_LOCATOR_BOUNDARY_REVISION
+    assert marker["status"] == "pending"
+    assert marker["reason"].startswith(
+        "reopen the exact level-24 Moria carrier"
+    )
+    assert marker["superseded_deep_route"] == previous_marker
+    assert marker["superseded_result"] == result
+    assert recovery_policy_id not in refreshed.get("campaign_research_results", {})
+    assert _sanctuary_deep_route_revalidation_pending(refreshed)
+    assert _consume_sanctuary_deep_route_revalidation(
+        refreshed,
+        policy_id=recovery_policy_id,
+    )
+    assert not _sanctuary_deep_route_revalidation_pending(refreshed)
+
+
+def test_policy_selects_the_reopened_moria_capacity_carrier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._source_world = WorldSource()
+    runner._gear_catalog = GearCatalog({})
+    candidate = _source_test_candidate(
+        target="the large hobgoblin",
+        level_range=(8, 12),
+        mobile_vnum=4055,
+        room_vnum=4064,
+        status="fresh",
+        autonomy_rejections=("target reset capacity exceeds one",),
+    )
+    state = {
+        "campaign_policy_revision": _CAMPAIGN_POLICY_REVISION,
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "character_class": "thief",
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "position": 7,
+        "hp": 334,
+        "max_hp": 334,
+        "mana": 283,
+        "max_mana": 283,
+        "move": 380,
+        "max_move": 380,
+        "dead": False,
+        "in_combat": False,
+        "enemies": [],
+        "affects": [],
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_empty_equipment_categories": [],
+        "campaign_has_weapon": True,
+        "campaign_objective_kills": [],
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+        },
+        _SANCTUARY_RESET_CAPACITY_REVALIDATION_KEY: {
+            "policy_revision": _SANCTUARY_RESET_CAPACITY_REVALIDATION_REVISION,
+            "policy_id": _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+            "boot_id": "boot-1",
+            "level": 24,
+            "status": "pending",
+            "source_mobile_vnum": 4055,
+            "source_object_vnum": 4050,
+            "source_room_vnums": [4064, 4071],
+        },
+    }
+    unavailable = replace(
+        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+        status="unavailable",
+        execution=None,
+    )
+    calls: list[dict[str, object]] = []
+
+    def select_consumable(current_state, **kwargs):
+        calls.append({"state": current_state, **kwargs})
+        return candidate, (4050,)
+
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *args, **kwargs: unavailable,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._select_source_consumable_candidate",
+        select_consumable,
+    )
+
+    selected = runner._policy_without_learned_flight(state)
+
+    assert selected.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert selected.execution == "moria-sanctuary-hunt"
+    assert runner._selected_source_consumable_candidate == candidate
+    assert runner._selected_source_consumable_object_vnums == (4050,)
+    assert len(calls) == 1
+    assert calls[0]["spell_name"] == "sanctuary"
+    assert calls[0]["require_unarmed"] is True
 
 
 def test_policy_revision_reopens_stale_forest_locator_absence() -> None:
@@ -11386,6 +15775,416 @@ def test_policy_revision_reopens_stale_forest_route_cursor_failure() -> None:
         "status": "reopened",
     }
     assert _refresh_policy_revision(dict(migrated)) == migrated
+
+
+def test_policy_revision_reopens_old_protected_zero_damage_new_ofcol_probe() -> None:
+    policy_id = "source-ranked-hunt-new-ofcol-635-800-24"
+    old_result = {
+        "boot_id": "boot-1",
+        "completed_kill": False,
+        "consider_viable": True,
+        "observed": True,
+        "retryable_failure": True,
+        "viable": False,
+    }
+    state = {
+        "campaign_policy_revision": 269,
+        "world_boot_id": "boot-1",
+        "level": 24,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "enemies": [],
+        "in_combat": False,
+        "dead": False,
+        "campaign_died_during_segment": False,
+        "campaign_last_policy": policy_id,
+        "campaign_fastwalk_abort_reason": (
+            "field damage-window probe for 'a sluggish Dragonhoard teller' "
+            "observed 62 damage against 605 HP versus 0 received; protected "
+            "source-backed knife toss budget covers 318 HP but live target "
+            "HP ceiling is 605; target remained outside the executable kill "
+            "window"
+        ),
+        "campaign_fastwalk_sanctuary_consumed_in_combat": True,
+        "campaign_source_ranked_retry_exhausted_policy": policy_id,
+        "campaign_source_ranked_retry_exhausted_boot": "boot-1",
+        "campaign_source_ranked_xp_loss_policies": [{
+            "boot_id": "boot-1",
+            "level": 24,
+            "loss_count": 1,
+            "loss_event_id": 12560,
+            "policy_id": policy_id,
+            "sanctuary_protected": True,
+            "xp_delta": -385,
+        }],
+        "campaign_research_results": {policy_id: old_result},
+        "campaign_research_absence_cooldowns": {policy_id: 3},
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "policy_id": policy_id,
+            "reason": "viable hunt withdrew with an XP loss before a kill",
+            "xp_delta": -385,
+        },
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert policy_id not in refreshed.get("campaign_research_results", {})
+    assert refreshed[_SOURCE_RANKED_REVALIDATION_POLICY_KEY] == policy_id
+    marker = refreshed[_SOURCE_RANKED_DAMAGE_WINDOW_REVALIDATION_KEY]
+    assert marker["policy_revision"] == 270
+    assert marker["status"] == "pending"
+    assert marker["superseded_result"] == old_result
+    assert marker["superseded_loss_event_id"] == 12560
+    assert refreshed["campaign_source_ranked_xp_loss_policies"] == state[
+        "campaign_source_ranked_xp_loss_policies"
+    ]
+    assert policy_id not in refreshed.get(
+        "campaign_research_absence_cooldowns", {}
+    )
+    assert "campaign_last_policy" not in refreshed
+    assert "campaign_fastwalk_abort_reason" not in refreshed
+    assert "campaign_source_ranked_retry_exhausted_policy" not in refreshed
+
+    assert _refresh_policy_revision(dict(refreshed)) == refreshed
+
+
+def test_policy_revision_reopens_old_protected_cyclops_special_probe() -> None:
+    policy_id = "source-ranked-hunt-canyon-9202-9204-24"
+    state = {
+        "campaign_policy_revision": 273,
+        "world_boot_id": "boot-1",
+        "campaign_source_revision": "source-1",
+        "level": 24,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "position": 7,
+        "enemies": [],
+        "in_combat": False,
+        "dead": False,
+        "campaign_died_during_segment": False,
+        "campaign_objective_kills": [],
+        "campaign_source_ranked_xp_loss_policies": [{
+            "boot_id": "boot-1",
+            "level": 24,
+            "loss_count": 1,
+            "loss_event_id": 12481,
+            "policy_id": policy_id,
+            "sanctuary_protected": True,
+            "xp_delta": -81,
+        }],
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert refreshed[_SOURCE_RANKED_REVALIDATION_POLICY_KEY] == policy_id
+    marker = refreshed[_SOURCE_RANKED_SPECIAL_HP_REVALIDATION_KEY]
+    assert marker["policy_revision"] == 274
+    assert marker["status"] == "pending"
+    assert marker["source_mobile_vnum"] == 9202
+    assert marker["source_endpoint_room_vnum"] == "9204"
+    assert marker["source_special"] == "spec_cast_cleric"
+    assert marker["superseded_loss_event_id"] == 12481
+    assert refreshed["campaign_source_ranked_xp_loss_policies"] == state[
+        "campaign_source_ranked_xp_loss_policies"
+    ]
+    assert _refresh_policy_revision(dict(refreshed)) == refreshed
+
+
+def test_special_hp_revalidation_closes_after_source_segment_boundary() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="the cyclops",
+            level_range=(20, 24),
+            mobile_vnum=9202,
+            room_vnum=9204,
+            specials=("spec_cast_cleric",),
+            autonomy_rejections=(
+                "target has special procedure spec_cast_cleric",
+            ),
+        ),
+        estimated_base_hp_range=(260, 768),
+        estimated_min_peak_round_damage=210,
+        estimated_peak_round_damage=252,
+        estimated_critical_hit_damage=84,
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=24)
+    previous = {
+        "world_boot_id": "boot-1",
+        "level": 24,
+        _SOURCE_RANKED_SPECIAL_HP_REVALIDATION_KEY: {
+            "boot_id": "boot-1",
+            "level": 24,
+            "policy_id": policy_id,
+            "policy_revision": 274,
+            "status": "attempted",
+        },
+    }
+
+    closed = _campaign_segment_end_state(
+        previous,
+        {
+            "world_boot_id": "boot-1",
+            "level": 24,
+            "campaign_last_policy": policy_id,
+            "campaign_objective_kills": [],
+        },
+        execution="source-ranked-hunt",
+        policy_id=policy_id,
+    )
+
+    marker = closed[_SOURCE_RANKED_SPECIAL_HP_REVALIDATION_KEY]
+    assert marker["status"] == "closed"
+    assert marker["outcome"] == "no_kill"
+    assert _source_ranked_candidate_blocked_by_protection_recovery(
+        candidate,
+        closed,
+        character_level=24,
+    ) is True
+
+
+def test_policy_revision_reopens_new_ofcol_after_good_alignment_crowd_fix() -> None:
+    policy_id = "source-ranked-hunt-new-ofcol-635-800-24"
+    old_damage_marker = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "policy_id": policy_id,
+        "policy_revision": 270,
+        "status": "closed",
+        "outcome": "no_kill",
+        "superseded_result": {
+            "boot_id": "boot-1",
+            "completed_kill": False,
+            "consider_viable": True,
+            "observed": True,
+            "retryable_failure": True,
+            "viable": False,
+        },
+        "superseded_loss_event_id": 12560,
+    }
+    state = {
+        "campaign_policy_revision": 270,
+        "world_boot_id": "boot-1",
+        "level": 24,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "progress": {"alignment": 1000},
+        "enemies": [],
+        "in_combat": False,
+        "dead": False,
+        "campaign_died_during_segment": False,
+        "campaign_last_policy": policy_id,
+        "campaign_fastwalk_abort_reason": (
+            "field room contained 2 observed mobiles while evaluating "
+            "'sluggish Dragonhoard teller'"
+        ),
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_crowded": True,
+        "campaign_source_ranked_damage_window_revalidation": old_damage_marker,
+        "campaign_source_ranked_crowd_attempts": {
+            policy_id: {"boot_id": "boot-1", "count": 1},
+        },
+        "campaign_research_results": {
+            policy_id: {
+                "boot_id": "boot-1",
+                "crowded": True,
+                "observed": False,
+                "viable": False,
+            },
+            "other-policy": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+            },
+        },
+        "campaign_research_crowd_cooldowns": {
+            policy_id: 3,
+            "other-policy": 1,
+        },
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert refreshed[_SOURCE_RANKED_REVALIDATION_POLICY_KEY] == policy_id
+    marker = refreshed[_SOURCE_RANKED_DAMAGE_WINDOW_REVALIDATION_KEY]
+    assert marker["policy_revision"] == (
+        _SOURCE_RANKED_ALIGNMENT_CROWD_REVALIDATION_REVISION
+    )
+    assert marker["status"] == "pending"
+    assert marker["superseded_attempt"] == old_damage_marker
+    assert marker["superseded_crowd_result"] == {
+        "boot_id": "boot-1",
+        "crowded": True,
+        "observed": False,
+        "viable": False,
+    }
+    assert refreshed["campaign_research_results"] == {
+        "other-policy": {
+            "boot_id": "boot-1",
+            "observed": True,
+            "viable": True,
+        }
+    }
+    assert refreshed["campaign_research_crowd_cooldowns"] == {
+        "other-policy": 1,
+    }
+    assert "campaign_last_policy" not in refreshed
+    assert "campaign_fastwalk_abort_reason" not in refreshed
+    assert _refresh_policy_revision(dict(refreshed)) == refreshed
+
+
+@pytest.mark.parametrize("persisted_marker", ["missing", "legacy"])
+def test_policy_revision_reopens_mis_sized_second_reserve_refill(
+    persisted_marker: str,
+) -> None:
+    policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    old_marker = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "policy_id": policy_id,
+        "status": "attempted",
+        "reason": (
+            "reuse the proven generic recovery route for a second purple "
+            "after the dedicated reserve route was quarantined"
+        ),
+    }
+    old_result = {
+        "boot_id": "boot-1",
+        "completed_kill": False,
+        "observed": True,
+        "retryable_failure": True,
+        "viable": False,
+    }
+    reserve_policy_id = _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY.policy_id
+    state = {
+        "campaign_policy_revision": (
+            _SANCTUARY_SECOND_RESERVE_REFILL_REVALIDATION_REVISION - 1
+        ),
+        "world_boot_id": "boot-1",
+        "level": 24,
+        "hp": 334,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "position": 7,
+        "enemies": [],
+        "in_combat": False,
+        "dead": False,
+        "campaign_died_during_segment": False,
+        "xp_loss_observed": False,
+        "campaign_xp_loss_observed": False,
+        "campaign_last_policy": policy_id,
+        "campaign_fastwalk_abort_reason": None,
+        "campaign_fastwalk_crowded": False,
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_below_band_targets": ["large hobgoblin"],
+        "campaign_fastwalk_required_object_vnums": [],
+        "campaign_objective_kills": [],
+        "campaign_fastwalk_where_area_checks": [{
+            "area_file": "moria.are",
+            "result": "present",
+            "room_vnum": "4014",
+            "scope": "current_area",
+            "source_mobile_vnum": 4055,
+            "target": "large hobgoblin",
+        }],
+        "campaign_sanctuary_second_reserve_refill": (
+            old_marker if persisted_marker == "legacy" else None
+        ),
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+        },
+        "verified_combat_pouch_potions": {"purple": 1},
+        "campaign_sanctuary_resource_attempts": {
+            policy_id: {"boot_id": "boot-1", "level": 24, "count": 1},
+            reserve_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "count": 2,
+            },
+        },
+        "campaign_research_results": {
+            policy_id: old_result,
+            reserve_policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "completed_kill": False,
+                "fatal_failure": True,
+                "route_hazard": (
+                    "sanctuary resource route exhausted after 2 failed attempts"
+                ),
+                "viable": False,
+            },
+        },
+        "campaign_research_absence_cooldowns": {policy_id: 3},
+    }
+
+    refreshed = _refresh_policy_revision(state)
+
+    assert refreshed["campaign_policy_revision"] == _CAMPAIGN_POLICY_REVISION
+    assert policy_id not in refreshed.get("campaign_research_results", {})
+    marker = refreshed[_SANCTUARY_SECOND_RESERVE_REFILL_KEY]
+    assert marker["policy_revision"] == (
+        _SANCTUARY_SECOND_RESERVE_REFILL_REVALIDATION_REVISION
+    )
+    assert marker["status"] == "pending"
+    assert marker["requested_potion_count"] == 2
+    assert marker["superseded_marker"] == (
+        old_marker if persisted_marker == "legacy" else None
+    )
+    assert marker["superseded_result"] == old_result
+    assert _source_ranked_second_sanctuary_refill_allowed(refreshed)
+    assert policy_id not in refreshed.get(
+        "campaign_research_absence_cooldowns", {}
+    )
+    assert "campaign_last_policy" not in refreshed
+    assert _refresh_policy_revision(dict(refreshed)) == refreshed
+
+
+def test_damage_window_revalidation_closes_after_source_segment_boundary() -> None:
+    candidate = _source_test_candidate(
+        target="the reopened teller",
+        level_range=(23, 25),
+        mobile_vnum=635,
+        room_vnum=800,
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=24)
+    previous = {
+        "world_boot_id": "boot-1",
+        "level": 24,
+        _SOURCE_RANKED_DAMAGE_WINDOW_REVALIDATION_KEY: {
+            "boot_id": "boot-1",
+            "level": 24,
+            "policy_id": policy_id,
+            "status": "attempted",
+        },
+    }
+    closed = _campaign_segment_end_state(
+        previous,
+        {
+            "world_boot_id": "boot-1",
+            "level": 24,
+            "campaign_last_policy": policy_id,
+            "campaign_objective_kills": [],
+        },
+        execution="source-ranked-hunt",
+        policy_id=policy_id,
+    )
+    assert closed[_SOURCE_RANKED_DAMAGE_WINDOW_REVALIDATION_KEY]["status"] == (
+        "closed"
+    )
+    assert _source_ranked_candidate_blocked_by_protection_recovery(
+        candidate,
+        closed,
+        character_level=24,
+    ) is True
 
 
 @pytest.mark.parametrize(
@@ -13084,7 +17883,7 @@ def test_source_ranked_assassin_special_requires_blindness_reserve() -> None:
     )
 
 
-def test_source_ranked_aggressive_special_requires_player_output_before_entry() -> None:
+def test_source_ranked_aggressive_special_uses_bounded_live_hp_probe() -> None:
     candidate = replace(
         _source_test_candidate(
             target="the hungry cleric",
@@ -13152,14 +17951,14 @@ def test_source_ranked_aggressive_special_requires_player_output_before_entry() 
         character_level=24,
         character_max_hp=334,
         source_world=world,
-    ) is False
+    ) is True
     assert _select_source_ranked_hunt_candidate(
         (candidate,),
         state,
         world=world,
         character_level=24,
         character_max_hp=334,
-    ) is None
+    ) == candidate
     legacy_candidate = replace(
         candidate,
         specials=(),
@@ -13462,6 +18261,133 @@ def test_source_ranked_selection_defers_only_current_reboot_xp_loss_route() -> N
     ) is False
 
 
+def test_route_only_loss_revalidation_is_repaired_and_one_shot() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="a safe sentinel",
+            level_range=(6, 10),
+            status="fresh",
+            mobile_vnum=20100,
+            room_vnum=20101,
+        ),
+        target_identity="safe sentinel",
+        estimated_base_hp_range=(10, 20),
+        estimated_peak_round_damage=10,
+        estimated_critical_hit_damage=10,
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=8)
+    world = WorldSource(
+        mobiles={
+            candidate.mobile_vnum: MobileSource(
+                candidate.mobile_vnum,
+                "safe sentinel",
+                "a safe sentinel",
+                8,
+                0,
+                0,
+                "test.are",
+            )
+        },
+        rooms={
+            candidate.room_vnum: RoomSource(
+                candidate.room_vnum,
+                "a safe room",
+                "test.are",
+            )
+        },
+        mob_resets=[
+            MobReset(candidate.mobile_vnum, candidate.room_vnum, 1, ())
+        ],
+    )
+    state = {
+        "level": 8,
+        "max_hp": 113,
+        "world_boot_id": "boot-1",
+        "campaign_source_ranked_xp_loss_policies": [{
+            "boot_id": "boot-1",
+            "level": 8,
+            "policy_id": policy_id,
+            "xp_delta": -48,
+            "loss_count": 1,
+            "loss_event_id": 77,
+        }],
+    }
+    end_state = {
+        "level": 8,
+        "hp": 113,
+        "max_hp": 113,
+        "world_boot_id": "boot-1",
+        "campaign_fastwalk_target_present_observed": False,
+        "campaign_fastwalk_target_absent": False,
+        "campaign_fastwalk_consider_outcomes": {},
+        "campaign_fastwalk_abort_reason": (
+            "field hunt recalled before a transit interruption could engage"
+        ),
+        "campaign_fastwalk_route_hazards": [
+            "transit below-band attacker: a low-level passerby"
+        ],
+        "enemies": [],
+        "in_combat": False,
+    }
+    assert _source_ranked_route_only_loss_hazards(
+        end_state,
+        policy_id=policy_id,
+    ) == ("transit below-band attacker: a low-level passerby",)
+
+    repaired = _arm_source_ranked_route_loss_revalidation(
+        state,
+        (candidate,),
+        character_level=8,
+        character_max_hp=113,
+        source_world=world,
+        segments=[{
+            "id": 77,
+            "phase": policy_id,
+            "status": "success",
+            "end_state_json": json.dumps(end_state),
+        }],
+    )
+    repaired_record = repaired["campaign_source_ranked_xp_loss_policies"][0]
+    assert repaired_record["route_only_loss"] is True
+    assert repaired_record["route_loss_hazards"] == [
+        "transit below-band attacker: a low-level passerby"
+    ]
+    assert _source_ranked_route_loss_revalidation_pending(
+        repaired,
+        policy_id=policy_id,
+    ) is True
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        repaired,
+        world=world,
+        character_level=8,
+        character_max_hp=113,
+    ) is candidate
+
+    assert _mark_source_ranked_route_loss_revalidation(
+        repaired,
+        candidate,
+        character_level=8,
+    ) is True
+    assert _source_ranked_route_loss_revalidation_attempted(
+        repaired,
+        policy_id=policy_id,
+    ) is True
+    assert _source_ranked_candidate_blocked_by_protection_recovery(
+        candidate,
+        repaired,
+        character_level=8,
+        character_max_hp=113,
+        source_world=world,
+    ) is True
+    cleared = _clear_source_ranked_xp_loss(
+        repaired,
+        policy_ids=(policy_id,),
+    )
+    assert _SOURCE_RANKED_ROUTE_LOSS_REVALIDATION_KEY not in cleared
+    assert _SOURCE_RANKED_XP_LOSS_POLICIES_KEY not in cleared
+
+
 def test_source_ranked_protected_retry_is_one_shot_after_selection() -> None:
     candidate = _source_test_candidate(
         target="a protected retry sentinel",
@@ -13644,6 +18570,36 @@ def test_source_ranked_selection_allows_one_low_peak_protection_fallback() -> No
         character_level=15,
         character_max_hp=342,
     ) is False
+
+
+def test_live_protection_fallback_rejects_overwide_armed_target_without_output() -> None:
+    candidate, world, state, _policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+    candidate = replace(
+        candidate,
+        level=24,
+        equipped_weapons=("a sword",),
+        estimated_peak_round_damage=100,
+    )
+    state = dict(state)
+    state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+    state.pop(_SOURCE_RANKED_XP_LOSS_POLICIES_KEY, None)
+
+    assert not _source_ranked_hp_probe_admission_available(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    )
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        world=world,
+        character_level=24,
+        character_max_hp=334,
+        allow_protection_recovery_fallback=True,
+    ) is None
 
 
 def test_protection_fallback_uses_the_hp_fuzz_bound_without_overreaching() -> None:
@@ -13894,6 +18850,46 @@ def test_protection_fallback_distinguishes_far_below_band_route_noise() -> None:
         character_level=24,
         source_world=program_world,
     ) is False
+
+
+def test_route_aggressors_allow_one_bounded_borderline_reset() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="a plain foundry target",
+            level_range=(6, 8),
+            mobile_vnum=100,
+            room_vnum=7002,
+        ),
+        route_aggressive_mobile_vnums=(104,),
+    )
+    world = WorldSource(
+        mobiles={
+            104: MobileSource(
+                104,
+                "orc",
+                "Olog",
+                2,
+                ACT_AGGRESSIVE,
+                0,
+                "foundry.are",
+            ),
+        },
+        mob_resets=[MobReset(104, 108, 1, (), ((16, 101), (6, 109)))],
+    )
+
+    assert _source_ranked_route_aggressors_are_bounded(
+        candidate,
+        character_level=8,
+        character_max_hp=113,
+        source_world=world,
+    ) is True
+    options = _source_ranked_route_program_fastwalk_options(
+        world,
+        candidate,
+        {"max_hp": 113},
+        character_level=8,
+    )
+    assert options["route_bounded_borderline_source_mobile_vnums"] == (104,)
 
 
 def test_protection_fallback_allows_one_low_band_program_with_where_preflight() -> None:
@@ -14250,6 +19246,48 @@ def test_fixed_fastwalk_inherits_exact_source_program_guard() -> None:
     assert guarded.route_preflight_scan_room_vnums == ("3002",)
     assert guarded.route_source_program_audited is True
     assert guarded.route_source_program_block_reason is None
+
+
+def test_source_route_replays_keyed_doors_without_counting_commands_as_moves() -> None:
+    world = WorldSource(
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={
+                    "east": ExitSource(
+                        "east",
+                        3002,
+                        4,
+                        42,
+                        reset_state=2,
+                    )
+                },
+            ),
+            3002: RoomSource(
+                3002,
+                "Locked room",
+                "test.are",
+                exits={"west": ExitSource("west", 3001, 0, -1)},
+            ),
+        }
+    )
+
+    assert _source_route_room_vnums(
+        world,
+        3001,
+        ("unlock east", "open east", "east"),
+    ) == (3001, 3002)
+    assert _source_route_room_vnums(world, 3001, ("unlock east", "east")) == (
+        3001,
+        3002,
+    )
+    assert _source_route_room_vnums(
+        world,
+        3001,
+        ("open east", "east"),
+    ) is None
 
 
 def test_fixed_moria_fastwalk_uses_bounded_drunk_transit_contract() -> None:
@@ -16781,7 +21819,7 @@ def test_source_ranked_selection_can_reuse_meaningful_productive_stop() -> None:
             character_level=19,
             allow_repeated_policy_ids={policy_id},
         )
-        == candidate
+        is None
     )
 
     rotated_state = {
@@ -17457,6 +22495,7 @@ def test_source_ranked_protected_peak_probe_requires_sanctuary_reserve() -> None
         state=state,
     )
     assert stop.require_sanctuary is True
+    assert stop.allow_protected_hp_fuzz_probe is True
     assert stop.maximum_level_offset == 2
 
     state["combat_pouch_potions"] = {}
@@ -17472,6 +22511,405 @@ def test_source_ranked_protected_peak_probe_requires_sanctuary_reserve() -> None
         character_level=17,
         character_max_hp=209,
     ) is None
+
+
+def test_source_ranked_protected_peak_admission_uses_output_floor() -> None:
+    candidate, world, state, _policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+    state = dict(state)
+    state[_SOURCE_RANKED_XP_LOSS_POLICIES_KEY] = []
+    state["combat_pouch_potions"] = {"purple": 1}
+    state["verified_combat_pouch_potions"] = {"purple": 1}
+    candidate = replace(
+        candidate,
+        status="reject",
+        estimated_base_hp_range=(278, 825),
+        estimated_peak_round_damage=384,
+        autonomy_rejections=(
+            "source peak round can exceed character HP",
+        ),
+    )
+
+    assert _source_ranked_hp_probe_admission_available(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+
+    over_output_floor = replace(
+        candidate,
+        estimated_base_hp_range=(397, 825),
+    )
+    assert _source_ranked_hp_probe_admission_available(
+        over_output_floor,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+
+
+def test_source_ranked_protected_peak_probe_accepts_one_armed_target() -> None:
+    candidate, world, state, _policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+    state = dict(state)
+    state["combat_pouch_potions"] = {"purple": 1}
+    state["verified_combat_pouch_potions"] = {"purple": 1}
+    candidate = replace(
+        candidate,
+        estimated_base_hp_range=(278, 825),
+        estimated_peak_round_damage=384,
+        equipped_weapons=("a long sword",),
+        autonomy_rejections=(
+            "source peak round can exceed character HP",
+        ),
+    )
+
+    assert _source_ranked_protected_peak_probe_allowed(
+        candidate,
+        state=state,
+        character_level=24,
+        character_max_hp=334,
+        source_world=world,
+    ) is True
+    assert _source_ranked_protected_peak_probe_allowed(
+        replace(candidate, equipped_weapons=("a long sword", "a mace")),
+        state=state,
+        character_level=24,
+        character_max_hp=334,
+        source_world=world,
+    ) is False
+
+
+def test_source_ranked_protected_peak_revalidation_reopens_exact_old_ceiling() -> None:
+    candidate, world, state, policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+    candidate = replace(
+        candidate,
+        area_file="midgaard.are",
+        target="the mayor",
+        target_keyword="mayor",
+        target_identity="mayor",
+        mobile_vnum=3143,
+        room_vnum=3138,
+        room_name="The Mayor's Office",
+        level=23,
+        status="reject",
+        equipped_weapons=("a long sword",),
+        estimated_level_range=(21, 25),
+        estimated_base_hp_range=(278, 825),
+        estimated_peak_round_damage=384,
+        estimated_critical_hit_damage=128,
+        autonomy_rejections=("source peak round can exceed character HP",),
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=24)
+    state = dict(state)
+    state["combat_pouch_potions"] = {"purple": 1}
+    state["campaign_research_results"] = {
+        policy_id: {
+            "boot_id": "boot-1",
+            "completed_kill": False,
+            "consider_viable": True,
+            "observed": True,
+            "retryable_failure": True,
+            "viable": False,
+        }
+    }
+    state["campaign_research_absence_cooldowns"] = {policy_id: 3}
+    state["campaign_last_policy"] = policy_id
+
+    assert _source_ranked_protected_peak_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        character_max_hp=334,
+        source_world=world,
+    )
+    _arm_source_ranked_protected_peak_revalidation(
+        state,
+        candidate,
+        character_level=24,
+        character_max_hp=334,
+        source_world=world,
+    )
+    assert _source_ranked_result_status(
+        candidate,
+        state,
+        character_level=24,
+    ) == "retryable"
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        world=world,
+        character_level=24,
+        character_max_hp=334,
+    ) == candidate
+
+    _mark_source_ranked_protected_peak_revalidation(
+        state,
+        candidate,
+        character_level=24,
+    )
+    assert state[_SOURCE_RANKED_PROTECTED_PEAK_REVALIDATION_KEY]["status"] == (
+        "attempted"
+    )
+    assert _source_ranked_result_status(
+        candidate,
+        state,
+        character_level=24,
+    ) == "cooldown"
+
+    closed = _campaign_segment_end_state(
+        state,
+        {
+            **state,
+            "campaign_objective_kills": [],
+        },
+        execution="source-ranked-hunt",
+        policy_id=policy_id,
+    )
+    assert closed[_SOURCE_RANKED_PROTECTED_PEAK_REVALIDATION_KEY]["status"] == (
+        "closed"
+    )
+
+
+def test_source_ranked_protected_peak_revalidation_rejects_unrelated_result() -> None:
+    candidate, world, state, policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+    candidate = replace(
+        candidate,
+        status="reject",
+        equipped_weapons=("a long sword",),
+        estimated_base_hp_range=(278, 825),
+        estimated_peak_round_damage=384,
+        autonomy_rejections=("source peak round can exceed character HP",),
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=24)
+    state = dict(state)
+    state["combat_pouch_potions"] = {"purple": 1}
+    state["campaign_research_results"] = {
+        policy_id: {
+            "boot_id": "boot-1",
+            "completed_kill": False,
+            "observed": True,
+            "retryable_failure": True,
+            "viable": False,
+            "route_hazard": "an unrelated route obstruction",
+        }
+    }
+
+    assert not _source_ranked_protected_peak_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        character_max_hp=334,
+        source_world=world,
+    )
+    assert _SOURCE_RANKED_PROTECTED_PEAK_REVALIDATION_KEY not in state
+
+
+def test_source_ranked_protected_armed_opener_revalidation_reopens_no_opener_gap() -> None:
+    candidate, world, state, _policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+    candidate = replace(
+        candidate,
+        area_file="midgaard.are",
+        target="the mayor",
+        target_keyword="mayor",
+        target_identity="mayor",
+        mobile_vnum=3143,
+        room_vnum=3138,
+        room_name="The Mayor's Office",
+        level=23,
+        status="reject",
+        equipped_weapons=("a long sword",),
+        estimated_level_range=(21, 25),
+        estimated_base_hp_range=(278, 825),
+        estimated_peak_round_damage=384,
+        estimated_critical_hit_damage=128,
+        autonomy_rejections=("source peak round can exceed character HP",),
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=24)
+    state = dict(state)
+    state["combat_pouch_potions"] = {"purple": 1}
+    state["verified_combat_pouch_potions"] = {"purple": 1}
+    state["campaign_fastwalk_abort_reason"] = (
+        "protected field target 'the mayor' had no authoritative live HP "
+        "before sanctuary or opener dispatch"
+    )
+    state["campaign_research_results"] = {
+        policy_id: {
+            "boot_id": "boot-1",
+            "completed_kill": False,
+            "consider_viable": True,
+            "observed": True,
+            "retryable_failure": True,
+            "viable": False,
+        }
+    }
+    state["campaign_research_absence_cooldowns"] = {policy_id: 3}
+    state["campaign_last_policy"] = policy_id
+    state[_SOURCE_RANKED_PROTECTED_PEAK_REVALIDATION_KEY] = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "policy_id": policy_id,
+        "mobile_vnum": 3143,
+        "room_vnum": 3138,
+        "status": "closed",
+        "outcome": "no_kill",
+    }
+
+    assert _source_ranked_protected_armed_opener_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        character_max_hp=334,
+        source_world=world,
+    )
+    _arm_source_ranked_protected_armed_opener_revalidation(
+        state,
+        candidate,
+        character_level=24,
+        character_max_hp=334,
+        source_world=world,
+    )
+    assert _source_ranked_result_status(
+        candidate,
+        state,
+        character_level=24,
+    ) == "retryable"
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        world=world,
+        character_level=24,
+        character_max_hp=334,
+    ) == candidate
+
+    _mark_source_ranked_protected_armed_opener_revalidation(
+        state,
+        candidate,
+        character_level=24,
+    )
+    assert state[
+        _SOURCE_RANKED_PROTECTED_ARMED_OPENER_REVALIDATION_KEY
+    ]["status"] == "attempted"
+    closed = _campaign_segment_end_state(
+        state,
+        {**state, "campaign_objective_kills": []},
+        execution="source-ranked-hunt",
+        policy_id=policy_id,
+    )
+    assert closed[
+        _SOURCE_RANKED_PROTECTED_ARMED_OPENER_REVALIDATION_KEY
+    ]["status"] == "closed"
+
+
+def test_campaign_prioritizes_armed_opener_correction_over_food_reserve(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    candidate, world, state, _policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+    candidate = replace(
+        candidate,
+        area_file="midgaard.are",
+        target="the mayor",
+        target_keyword="mayor",
+        target_identity="mayor",
+        mobile_vnum=3143,
+        room_vnum=3138,
+        room_name="The Mayor's Office",
+        level=23,
+        status="reject",
+        equipped_weapons=("a long sword",),
+        estimated_level_range=(21, 25),
+        estimated_base_hp_range=(278, 825),
+        estimated_peak_round_damage=384,
+        estimated_critical_hit_damage=128,
+        autonomy_rejections=("source peak round can exceed character HP",),
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=24)
+    source_revision = _current_dd4_source_revision()
+    state = dict(state)
+    state.update(
+        {
+            "campaign_source_revision": source_revision,
+            "combat_pouch_potions": {"purple": 1},
+            "verified_combat_pouch_potions": {"purple": 1},
+            "campaign_research_results": {
+                policy_id: {
+                    "boot_id": "boot-1",
+                    "completed_kill": False,
+                    "consider_viable": True,
+                    "observed": True,
+                    "retryable_failure": True,
+                    "viable": False,
+                }
+            },
+            "campaign_research_absence_cooldowns": {policy_id: 3},
+            "campaign_last_policy": policy_id,
+            "room_vnum": "3054",
+            "room_name": "By the Temple Altar",
+            "room_flags": ["safe", "healing"],
+            "inventory": [[{"short_desc": "a big pot pie"}]],
+            "hunger": 1,
+            "campaign_empty_equipment_categories": [],
+            "campaign_has_weapon": True,
+            _SOURCE_RANKED_PROTECTED_PEAK_REVALIDATION_KEY: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "policy_id": policy_id,
+                "mobile_vnum": 3143,
+                "room_vnum": 3138,
+                "status": "closed",
+                "outcome": "no_kill",
+                "source_revision": source_revision,
+                "reason": (
+                    "one source-validated retry after sanctuary-protected peak "
+                    "admission replaced the old full source-HP veto"
+                ),
+            },
+        }
+    )
+    runner._source_world = world
+
+    def select_candidate(current_state, **_kwargs):
+        _arm_source_ranked_protected_armed_opener_revalidation(
+            current_state,
+            candidate,
+            character_level=24,
+            character_max_hp=334,
+            source_world=world,
+        )
+        return candidate
+
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        select_candidate,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *args, **kwargs: _SOURCE_RANKED_HUNT_POLICY,
+    )
+
+    selected = runner._policy_without_learned_flight(state)
+
+    assert selected.execution == "source-ranked-hunt"
+    assert selected.policy_id == policy_id
+    assert state[_SOURCE_RANKED_CANDIDATE_KEY]["mobile_vnum"] == 3143
+    assert state[
+        _SOURCE_RANKED_PROTECTED_ARMED_OPENER_REVALIDATION_KEY
+    ]["status"] == "pending"
 
 
 def test_source_ranked_bounded_peak_probe_limits_spec_thief_coin_exposure() -> None:
@@ -17911,6 +23349,160 @@ def test_source_ranked_runner_deduplicates_recall_origin_path_searches(
 
     assert selected == first
     assert path_origins == [3001]
+
+
+def test_source_ranked_runner_allows_protected_plain_frontier_with_carried_reserve(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    candidate = replace(
+        _source_test_candidate(
+            target="a protected plain target",
+            level_range=(21, 25),
+            mobile_vnum=700,
+            room_vnum=701,
+            status="fresh",
+        ),
+        estimated_base_hp_range=(225, 660),
+        estimated_peak_round_damage=228,
+        estimated_min_peak_round_damage=155,
+    )
+
+    monkeypatch.setattr(
+        "dd4tester.campaign.load_world_source",
+        lambda *args, **kwargs: WorldSource(),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_hunt_candidates",
+        lambda *args, **kwargs: (candidate,),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._shortest_paths_from",
+        lambda *args, **kwargs: {701: (("south",), (3001, 701), 1)},
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_route_live_navigation",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_route_has_static_safe_live_navigation_path",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_caster_output_can_cover",
+        lambda *args, **kwargs: bool(
+            kwargs.get("protected_incoming_damage")
+        ),
+    )
+
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_move": 380,
+        "move": 380,
+        "world_boot_id": "boot-1",
+        "affects": [],
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "policy_id": "fame-recovery-circus-24-26",
+        },
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+    }
+
+    selected = runner._select_source_ranked_candidate(
+        state,
+        preserve_sanctuary_reserve=False,
+        allow_retryable_failure_cooldown=True,
+    )
+
+    assert selected == candidate
+
+    without_reserve = deepcopy(state)
+    without_reserve.pop("combat_pouch_potions")
+    without_reserve.pop("verified_combat_pouch_potions")
+    assert (
+        runner._select_source_ranked_candidate(
+            without_reserve,
+            preserve_sanctuary_reserve=False,
+            allow_retryable_failure_cooldown=True,
+        )
+        is None
+    )
+
+
+def test_source_ranked_runner_rejects_armed_target_outside_output_window(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    candidate = replace(
+        _source_test_candidate(
+            target="an armed impossible target",
+            level_range=(21, 25),
+            mobile_vnum=702,
+            room_vnum=703,
+            status="fresh",
+        ),
+        equipped_weapons=("a source sword",),
+        estimated_base_hp_range=(225, 825),
+        estimated_peak_round_damage=258,
+        estimated_min_peak_round_damage=216,
+    )
+
+    monkeypatch.setattr(
+        "dd4tester.campaign.load_world_source",
+        lambda *args, **kwargs: WorldSource(),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_hunt_candidates",
+        lambda *args, **kwargs: (candidate,),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._shortest_paths_from",
+        lambda *args, **kwargs: {703: (("south",), (3001, 703), 1)},
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_route_live_navigation",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_route_has_static_safe_live_navigation_path",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_caster_output_for_state",
+        lambda *args, **kwargs: SimpleNamespace(
+            conservative_damage=31,
+            maximum_actions=12,
+            opening_conservative_damage=24,
+        ),
+    )
+
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_move": 380,
+        "move": 380,
+        "world_boot_id": "boot-1",
+        "affects": [],
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+    }
+
+    assert (
+        runner._select_source_ranked_candidate(
+            state,
+            preserve_sanctuary_reserve=False,
+            allow_retryable_failure_cooldown=True,
+        )
+        is None
+    )
 
 
 def test_source_ranked_runner_reopens_cooldown_after_no_progress(
@@ -19307,6 +24899,142 @@ def test_source_ranked_crowd_attempt_count_blocks_aged_result_payload() -> None:
         state,
         character_level=18,
     ) is None
+
+
+def test_displaced_sentinel_revalidation_reopens_one_exact_changed_route() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="a displaced sentinel",
+            level_range=(17, 20),
+            mobile_vnum=101,
+            room_vnum=201,
+            status="fresh",
+        ),
+        sentinel=True,
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=19)
+    state = {
+        "level": 19,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": policy_id,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "campaign_fastwalk_crowded": True,
+        "campaign_fastwalk_displaced_target_outcomes": [
+            {
+                "source_mobile_vnum": 101,
+                "reset_room_vnum": "201",
+                "room_vnum": "200",
+                "evidence": "unique source room description",
+            }
+        ],
+        "campaign_fastwalk_source_present_sightings": [
+            {
+                "policy_id": policy_id,
+                "room_vnum": "200",
+                "target": "displaced sentinel",
+            }
+        ],
+    }
+
+    assert (
+        _source_ranked_displaced_sentinel_revalidation_policy(
+            candidate,
+            state,
+            character_level=19,
+        )
+        == policy_id
+    )
+    assert (
+        _arm_source_ranked_displaced_sentinel_revalidation(
+            state,
+            (candidate,),
+            character_level=19,
+        )
+        == policy_id
+    )
+    assert _source_ranked_displaced_sentinel_revalidation_pending(
+        state,
+        policy_id=policy_id,
+    )
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        character_level=19,
+        additional_blocked_policy_ids=(policy_id,),
+    ) == candidate
+
+    _mark_source_ranked_displaced_sentinel_revalidation(
+        state,
+        policy_id=policy_id,
+    )
+
+    assert _source_ranked_displaced_sentinel_revalidation_attempted(
+        state,
+        policy_id=policy_id,
+    )
+    closed = _campaign_segment_end_state(
+        state,
+        {**state, "campaign_last_policy": policy_id},
+        execution="source-ranked-hunt",
+        policy_id=policy_id,
+    )
+    assert (
+        closed[_SOURCE_RANKED_DISPLACED_SENTINEL_REVALIDATION_KEY]["status"]
+        == "closed"
+    )
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        character_level=19,
+        additional_blocked_policy_ids=(policy_id,),
+    ) is None
+
+
+def test_displaced_sentinel_revalidation_rejects_loss_or_route_hazard() -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="a displaced sentinel",
+            level_range=(17, 20),
+            mobile_vnum=101,
+            room_vnum=201,
+        ),
+        sentinel=True,
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=19)
+    state = {
+        "level": 19,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": policy_id,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "campaign_fastwalk_crowded": True,
+        "campaign_fastwalk_route_hazards": ["a route hazard"],
+        "campaign_fastwalk_displaced_target_outcomes": [
+            {
+                "source_mobile_vnum": 101,
+                "reset_room_vnum": "201",
+                "room_vnum": "200",
+                "evidence": "unique source room description",
+            }
+        ],
+        "campaign_fastwalk_source_present_sightings": [
+            {
+                "policy_id": policy_id,
+                "room_vnum": "200",
+                "target": "displaced sentinel",
+            }
+        ],
+    }
+
+    assert (
+        _source_ranked_displaced_sentinel_revalidation_policy(
+            candidate,
+            state,
+            character_level=19,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("hazard", [None, "fatal_failure", "route_hazard", "consider_viable", "protection_required", "unknown_failure"])
@@ -22007,6 +27735,154 @@ def test_funding_selection_keeps_unarmed_familiar_protection_contract(
     assert selected is (carrier if reserve else None)
 
 
+def test_flight_funding_allows_one_audited_coin_carrier_after_first_loss(
+    tmp_path, monkeypatch,
+) -> None:
+    carrier = replace(
+        _source_test_candidate(
+            target="the measured coin carrier",
+            level_range=(1, 5),
+            mobile_vnum=4408,
+            room_vnum=4411,
+        ),
+        loot=(),
+        source_value=0,
+        contained_coins=50,
+        estimated_base_hp_range=(8, 65),
+        estimated_peak_round_damage=40,
+        estimated_critical_hit_damage=16,
+        target_identity="measured coin carrier",
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.load_world_source",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_hunt_candidates",
+        lambda *args, **kwargs: [carrier],
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_route_program_candidate_allowed",
+        lambda *args, **kwargs: True,
+    )
+    state = {
+        "level": 8,
+        "max_hp": 113,
+        "world_boot_id": "boot-1",
+        "currencies": {"silver": 9, "copper": 3},
+        _MAGIC_SHOP_FLIGHT_PRICE_KEY: 131,
+        _MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY: "boot-1",
+        _SOURCE_RANKED_XP_LOSS_POLICIES_KEY: [{
+            "boot_id": "boot-1",
+            "level": 8,
+            "policy_id": _source_ranked_policy_id(
+                carrier,
+                character_level=8,
+            ),
+            "xp_delta": -68,
+            "loss_count": 1,
+        }],
+    }
+
+    selected = _select_provision_funding_candidate(
+        state,
+        character_level=8,
+        boot_kill_counts={},
+        boot_id="boot-1",
+        source_directory=tmp_path,
+        gear_catalog=None,
+        prefer_completed_funding_candidate=True,
+    )
+
+    assert selected is carrier
+    assert _provision_funding_shortfall_coin_carrier_allowed(
+        state,
+        carrier,
+        character_level=8,
+        boot_id="boot-1",
+        source_world=object(),
+        prefer_completed_funding_candidate=True,
+    ) is True
+
+
+def test_flight_funding_coin_carrier_exception_is_one_shot_and_shortfall_bound(
+    tmp_path, monkeypatch,
+) -> None:
+    carrier = replace(
+        _source_test_candidate(
+            target="the measured coin carrier",
+            level_range=(1, 5),
+            mobile_vnum=4408,
+            room_vnum=4411,
+        ),
+        loot=(),
+        source_value=0,
+        contained_coins=50,
+        estimated_base_hp_range=(8, 65),
+        estimated_peak_round_damage=40,
+        estimated_critical_hit_damage=16,
+        target_identity="measured coin carrier",
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_route_program_candidate_allowed",
+        lambda *args, **kwargs: True,
+    )
+    base = {
+        "level": 8,
+        "max_hp": 113,
+        "world_boot_id": "boot-1",
+        "currencies": {"silver": 9, "copper": 3},
+        _MAGIC_SHOP_FLIGHT_PRICE_KEY: 131,
+        _MAGIC_SHOP_FLIGHT_PRICE_BOOT_KEY: "boot-1",
+        _SOURCE_RANKED_XP_LOSS_POLICIES_KEY: [{
+            "boot_id": "boot-1",
+            "level": 8,
+            "policy_id": _source_ranked_policy_id(
+                carrier,
+                character_level=8,
+            ),
+            "xp_delta": -68,
+            "loss_count": 1,
+        }],
+    }
+
+    assert _provision_funding_shortfall_coin_carrier_allowed(
+        base,
+        carrier,
+        character_level=8,
+        boot_id="boot-1",
+        source_world=object(),
+        prefer_completed_funding_candidate=True,
+    ) is True
+    assert _provision_funding_shortfall_coin_carrier_allowed(
+        {
+            **base,
+            _PROVISION_FUNDING_ATTEMPTS_KEY: [{
+                "boot_id": "boot-1",
+                "level": 8,
+                "candidate_key": "test.are:4408:4411",
+                "funding_only": True,
+            }],
+        },
+        carrier,
+        character_level=8,
+        boot_id="boot-1",
+        source_world=object(),
+        prefer_completed_funding_candidate=True,
+    ) is False
+    assert _provision_funding_shortfall_coin_carrier_allowed(
+        {
+            **base,
+            _MAGIC_SHOP_FLIGHT_PRICE_KEY: 200,
+        },
+        carrier,
+        character_level=8,
+        boot_id="boot-1",
+        source_world=object(),
+        prefer_completed_funding_candidate=True,
+    ) is False
+
+
 def test_funding_filter_rejects_zero_cost_weapon_drop() -> None:
     candidate = replace(
         _source_test_candidate(
@@ -24618,7 +30494,7 @@ def test_provision_funding_dispatch_marks_source_coin_carrier_below_band_safe(
         source_spawn_limit=1,
         room_spawn_count=1,
         boot_kills=0,
-        loot=(),
+        loot=("a saleable purse",),
         source_value=0,
         contained_coins=25,
         hazards=(),
@@ -24663,6 +30539,172 @@ def test_provision_funding_dispatch_marks_source_coin_carrier_below_band_safe(
     assert stop.required_items == ()
     assert stop.allow_below_band_for_required_loot is False
     assert stop.allow_below_band_for_source_coins is True
+    assert stop.allow_source_coin_bystander_encounter is True
+
+
+def test_provision_funding_dispatch_admits_audited_coin_route_bystander(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    [candidate] = [
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=8,
+            character_max_hp=113,
+            include_below_band=True,
+            include_all_areas=True,
+        )
+        if item.mobile_vnum == 4408
+    ]
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                spec.character_profile,
+                {"level": 8},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy_for(
+                8,
+                "mage",
+                has_food=True,
+                needs_provision_funding=True,
+            ),
+            current_state={
+                "level": 8,
+                "hp": 113,
+                "max_hp": 113,
+                "mana": 324,
+                "max_mana": 324,
+                "move": 220,
+                "max_move": 220,
+                "affects": [],
+                "currencies": {"silver": 2},
+                _FLIGHT_FUNDING_REQUIRED_KEY: True,
+                "world_boot_id": "source-test-boot",
+            },
+            source_world=world,
+            character_level=8,
+            provision_funding_candidate=candidate,
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    assert isinstance(stops, tuple)
+    target_stops = [stop for stop in stops if stop.target == "midget"]
+    assert len(target_stops) == 1
+    stop = target_stops[0]
+    assert stop.required_items == ()
+    assert stop.allow_below_band_for_source_coins is True
+    assert stop.allow_source_coin_bystander_encounter is True
+    assert stop.allow_source_bystander_encounter is True
+
+
+def test_source_ranked_dispatch_passes_bounded_city_admission(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    [candidate] = [
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=8,
+            character_max_hp=113,
+            include_below_band=True,
+            include_all_areas=True,
+        )
+        if item.mobile_vnum == 4408
+    ]
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                spec.character_profile,
+                {"level": 8},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            replace(
+                _SOURCE_RANKED_HUNT_POLICY,
+                policy_id=_source_ranked_policy_id(
+                    candidate,
+                    character_level=8,
+                ),
+                minimum_level=8,
+                maximum_level=8,
+            ),
+            current_state={
+                "level": 8,
+                "hp": 113,
+                "max_hp": 113,
+                "mana": 324,
+                "max_mana": 324,
+                "move": 220,
+                "max_move": 220,
+                "affects": [],
+                "currencies": {"silver": 2},
+                "character_class": "mage",
+                "campaign_known_skills": [
+                    "armor",
+                    "chill touch",
+                    "magic missile",
+                    "protective magiks",
+                ],
+                "campaign_known_skill_levels": {
+                    "armor": 36,
+                    "chill touch": 35,
+                    "magic missile": 35,
+                    "protective magiks": 36,
+                },
+                "world_boot_id": "source-test-boot",
+            },
+            source_world=world,
+            character_level=8,
+            source_ranked_hunt_candidate=candidate,
+        )
+    )
+
+    assert captured["allow_bounded_city_shop_transit"] is True
+    stops = captured["fastwalk_hunt_stops"]
+    assert isinstance(stops, tuple)
+    assert any(
+        stop.target == "midget" and stop.allow_source_bystander_encounter
+        for stop in stops
+    )
 
 
 def test_source_ranked_dispatch_runs_a_bounded_multi_target_circuit(
@@ -25064,6 +31106,89 @@ def test_sanctuary_reserve_dispatch_uses_alternate_source_potion_identity(
     assert captured["use_sanctuary_potions"] is False
 
 
+def test_pending_deep_sanctuary_route_precedes_generic_reserve_dispatch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidate = _source_test_candidate(
+        target="the large hobgoblin",
+        level_range=(8, 12),
+        mobile_vnum=4055,
+        room_vnum=4064,
+    )
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                spec.character_profile,
+                {"level": 24},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    policy = replace(
+        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+        minimum_level=24,
+        maximum_level=24,
+    )
+    policy_id = policy.policy_id
+    state = {
+        "level": 24,
+        "max_hp": 334,
+        "max_move": 380,
+        "move": 380,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        _SANCTUARY_DEEP_ROUTE_REVALIDATION_KEY: {
+            "policy_revision": _SANCTUARY_DEEP_ROUTE_PRECEDENCE_REVISION,
+            "policy_id": policy_id,
+            "boot_id": "boot-1",
+            "level": 24,
+            "status": "pending",
+            "source_mobile_vnum": 4055,
+            "source_object_vnum": 4050,
+            "route_origin_room_vnum": 4064,
+            "route_target_room_vnum": 4152,
+        },
+    }
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            current_state=state,
+            source_world=world,
+            character_level=24,
+            source_consumable_candidate=candidate,
+            source_consumable_object_vnums=(4050,),
+            source_consumable_spell="sanctuary",
+            sanctuary_deep_route_revalidation_started=True,
+        )
+    )
+
+    route = captured["fastwalk_route"]
+    assert isinstance(route, Fastwalk)
+    assert route.name == "moria"
+    assert route.notation == "2s6e8n"
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert len(stops) == 11
+    assert stops[0].actions == ("where hobgoblin",)
+    assert stops[0].source_reset_room_vnum == "4064"
+    assert captured["use_sanctuary_potions"] is True
+
+
 def test_source_consumable_selector_accepts_mob_equipped_potion(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -25291,6 +31416,115 @@ def test_source_food_reserve_dispatch_collects_without_shop_resupply(
     )
 
     assert captured["urgent_food_acquisition"] is False
+
+
+def test_source_food_reserve_chains_a_distinct_same_area_reset(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    primary = replace(
+        _source_test_candidate(
+            target="food stash",
+            level_range=(0, 0),
+            mobile_vnum=0,
+            room_vnum=6016,
+            status="promising",
+        ),
+        area_file="haon.are",
+        target_keyword="mushroom",
+        route=("south",),
+        loot=("a mushroom",),
+        source_value=6,
+        ground_loot_keywords=("mushroom",),
+        ground_loot_object_vnums=(6011,),
+        is_food_stash=True,
+        estimated_move_cost=42,
+    )
+    companion = replace(
+        primary,
+        target_keyword="toadstool",
+        room_vnum=6111,
+        loot=("a toadstool",),
+        source_value=12,
+        ground_loot_keywords=("toadstool",),
+        ground_loot_object_vnums=(6106,),
+    )
+    world = WorldSource()
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                spec.character_profile,
+                {"level": 24},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+    monkeypatch.setattr(
+        "dd4tester.campaign.load_world_source",
+        lambda *args, **kwargs: world,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_food_stashes",
+        lambda *args, **kwargs: [primary, companion],
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_route_has_static_safe_live_navigation_path",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_inter_candidate_route",
+        lambda *args, **kwargs: ("6100", "6111"),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._source_ranked_inter_route_live_navigation",
+        lambda *args, **kwargs: {},
+    )
+    policy = replace(
+        _SOURCE_RANKED_FOOD_RESERVE_POLICY,
+        policy_id=_source_food_policy_id(primary, character_level=24),
+        minimum_level=24,
+        maximum_level=24,
+    )
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            policy,
+            current_state={
+                "level": 24,
+                "move": 380,
+                "max_move": 380,
+                "hunger": -3,
+                "inventory": [],
+                "affects": [],
+                "world_boot_id": "boot-1",
+            },
+            character_level=24,
+            source_food_candidate=primary,
+        )
+    )
+
+    stops = tuple(captured["fastwalk_hunt_stops"])
+    assert len(stops) == 2
+    assert [stop.required_items for stop in stops] == [
+        ("a mushroom",),
+        ("a toadstool",),
+    ]
+    assert stops[0].route_vnums == ()
+    assert stops[1].route_vnums == ("6100", "6111")
+    assert stops[1].source_policy_id == _source_food_policy_id(
+        companion,
+        character_level=24,
+    )
+    assert captured["fastwalk_required_move"] == 59
 
 
 def test_source_food_selector_allows_only_bounded_below_band_transit(
@@ -26189,6 +32423,198 @@ def test_campaign_segment_end_state_keeps_provision_funding_metadata() -> None:
     assert merged[_PROVISION_FUNDING_ATTEMPTS_KEY] == [{"candidate_key": "old"}]
 
 
+def test_campaign_segment_end_state_records_capacity_vault_lodge() -> None:
+    merged = _campaign_segment_end_state(
+        {
+            "level": 8,
+            "campaign_sack_vault_items": ["vest"],
+            "campaign_sack_vault_reclaim_attempted_level": 8,
+        },
+        {
+            "level": 8,
+            "vault_lodged_items": ["sack", "vest"],
+        },
+        execution="vault-spare-gear",
+    )
+
+    assert merged["campaign_sack_vault_items"] == ["vest", "sack"]
+    assert "campaign_sack_vault_reclaim_attempted_level" not in merged
+
+
+def test_campaign_resume_repairs_capacity_vault_lodge_metadata() -> None:
+    state = {
+        "level": 8,
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_sack_vault_items": ["vest"],
+        "campaign_sack_vault_reclaim_attempted_level": 8,
+    }
+    segments = [
+        {
+            "sequence": 1,
+            "status": "success",
+            "phase": "vault-spare-gear",
+            "end_state_json": json.dumps(
+                {"vault_lodged_items": ["sack"]},
+            ),
+        },
+    ]
+
+    repaired = _repair_sack_vault_container_metadata(state, segments)
+
+    assert repaired["campaign_sack_vault_items"] == ["vest", "sack"]
+    assert "campaign_sack_vault_reclaim_attempted_level" not in repaired
+    assert _repair_sack_vault_container_metadata(repaired, segments) == repaired
+
+    claimed = _repair_sack_vault_container_metadata(
+        repaired,
+        [
+            *segments,
+            {
+                "sequence": 2,
+                "status": "success",
+                "phase": "outfit-basic-gear",
+                "end_state_json": json.dumps(
+                    {"vault_claimed_items": ["sack"]},
+                ),
+            },
+        ],
+    )
+
+    assert claimed["campaign_sack_vault_items"] == ["vest"]
+
+
+def test_legacy_sack_recovery_does_not_restore_later_claimed_items(tmp_path) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        run_id = storage.create_run(
+            scenario_name="midennir-sack:Campaignmage",
+            scenario_path=config_path,
+        )
+        storage.record_event(
+            run_id,
+            kind="command",
+            payload={"command": "lodge vest"},
+        )
+        storage.record_event(
+            run_id,
+            kind="response",
+            payload={"text": "You lodge a vest in your vault."},
+        )
+        sack_segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="midennir-sack-8-10",
+            start_state={"level": 8},
+        )
+        storage.finish_campaign_segment(
+            sack_segment_id,
+            status="success",
+            run_id=run_id,
+            end_state={"vault_lodged_items": ["vest"]},
+            command_count=2,
+            duration_seconds=1.0,
+        )
+        outfit_segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="outfit-basic-gear",
+            start_state={"level": 8},
+        )
+        storage.finish_campaign_segment(
+            outfit_segment_id,
+            status="success",
+            run_id=run_id,
+            end_state={"vault_claimed_items": ["vest"]},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        lodged = _legacy_sack_vault_lodges_for_resume(
+            storage,
+            storage.list_campaign_segments(campaign_id),
+        )
+
+    assert lodged == ()
+
+
+def test_source_ranked_selector_does_not_reopen_retry_exhausted_last_policy() -> None:
+    candidate = _source_test_candidate(
+        target="the exhausted target",
+        level_range=(7, 9),
+        status="fresh",
+        boot_kills=1,
+    )
+    policy_id = _source_ranked_policy_id(candidate, character_level=8)
+    state = {
+        "level": 8,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": policy_id,
+        _SOURCE_RANKED_RETRY_EXHAUSTED_KEY: policy_id,
+        _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY: "boot-1",
+        "campaign_research_results": {
+            policy_id: {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+                "completed_kill": True,
+                "objective_xp": 200,
+                "max_objective_kill_xp": 200,
+            }
+        },
+    }
+
+    assert _select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        character_level=8,
+    ) is None
+
+
+def test_campaign_reclaims_pending_capacity_before_field_funding_at_healer(
+    tmp_path,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+
+    policy = runner._policy_for_state(
+        {
+            "level": 8,
+            "world_boot_id": "boot-1",
+            "area": "Midgaard",
+            "room_vnum": "3054",
+            "room_name": "By the Temple Altar",
+            "room_flags": ["safe", "healing"],
+            "hp": 113,
+            "max_hp": 113,
+            "mana": 324,
+            "max_mana": 324,
+            # A healer-side reclaim remains safe while movement regenerates.
+            "move": 184,
+            "max_move": 220,
+            "hunger": 10,
+            "inventory": [[
+                {"short_desc": "a big pot pie"},
+                {"short_desc": "a buffalo water skin"},
+            ]],
+            "affects": [],
+            "campaign_has_weapon": True,
+            "campaign_sack_vault_items": ["sack"],
+            "campaign_sack_vault_reclaim_attempted_level": 7,
+            "campaign_flight_funding_required": True,
+            "campaign_flight_loan_attempted": True,
+        }
+    )
+
+    assert policy.execution == "outfit-basic-gear"
+    assert "before another funding" in policy.summary
+
+
 def test_campaign_segment_end_state_keeps_cumulative_xp_loss_total() -> None:
     previous = {
         "level": 25,
@@ -26270,6 +32696,109 @@ def test_source_ranked_segment_consumes_revalidation_marker() -> None:
     )
 
     assert _SOURCE_RANKED_REVALIDATION_POLICY_KEY not in merged
+
+
+def test_source_ranked_target_hp_gate_evidence_keeps_exact_live_identity() -> None:
+    candidate, _world, state, policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+    state["campaign_fastwalk_abort_reason"] = (
+        "live target HP ceiling 545 for 'the measured golem' exceeds the "
+        "source-backed knife toss damage budget of 318"
+    )
+
+    evidence = _source_ranked_target_hp_gate_evidence(
+        state,
+        policy_id=policy_id,
+    )
+
+    assert evidence is not None
+    assert evidence["policy_id"] == policy_id
+    assert evidence["target"] == candidate.target
+    assert evidence["mobile_vnum"] == candidate.mobile_vnum
+    assert evidence["room_vnum"] == candidate.room_vnum
+    assert evidence["observed_max_hp"] == 545
+    assert evidence["source_output_ceiling"] == 318
+    assert evidence["weapon"] == "a jewel-studded dagger"
+
+
+def test_source_ranked_improved_output_reopens_one_exact_overwide_target() -> None:
+    candidate, world, state, policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+
+    assert _source_ranked_combat_output_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+    assert _source_ranked_hp_probe_admission_available(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is True
+    assert _source_ranked_combat_output_revalidation_attempted(
+        state,
+        policy_id=policy_id,
+    ) is False
+
+
+def test_source_ranked_improved_output_revalidation_is_one_shot() -> None:
+    candidate, world, state, policy_id = (
+        _source_combat_output_revalidation_fixture()
+    )
+
+    assert _mark_source_ranked_combat_output_revalidation(
+        state,
+        candidate,
+        character_level=24,
+        source_world=world,
+    ) is True
+    assert _source_ranked_combat_output_revalidation_attempted(
+        state,
+        policy_id=policy_id,
+    ) is True
+    assert _source_ranked_combat_output_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
+    assert _source_ranked_candidate_blocked_by_protection_recovery(
+        candidate,
+        state,
+        character_level=24,
+        character_max_hp=334,
+        source_world=world,
+    ) is True
+    assert state[_SOURCE_RANKED_COMBAT_OUTPUT_REVALIDATION_KEY][
+        "current_output_ceiling"
+    ] == 396
+
+
+@pytest.mark.parametrize(
+    "observed_max_hp, loss_count",
+    [(400, 1), (300, 2)],
+)
+def test_source_ranked_improved_output_stays_closed_when_evidence_is_invalid(
+    observed_max_hp: int,
+    loss_count: int,
+) -> None:
+    candidate, world, state, _policy_id = (
+        _source_combat_output_revalidation_fixture(
+            observed_max_hp=observed_max_hp,
+        )
+    )
+    state[_SOURCE_RANKED_XP_LOSS_POLICIES_KEY][0]["loss_count"] = loss_count
+
+    assert _source_ranked_combat_output_revalidation_allowed(
+        candidate,
+        state,
+        character_level=24,
+        source_world=world,
+    ) is False
 
 
 def test_aruncus_safe_drops_trigger_campaign_liquidation() -> None:
@@ -34038,6 +40567,41 @@ def test_piercing_upgrade_signal_compares_known_source_weapon_damage() -> None:
     )
 
 
+def test_piercing_upgrade_signal_accounts_for_carried_combat_bonuses() -> None:
+    jewel = ObjectSource(
+        3701,
+        "jewel-studded dagger",
+        "a jewel-studded dagger",
+        5,
+        (0, 2, 3, 11),
+        0,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 5), (19, 5)),
+    )
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 1), (19, 1)),
+    )
+
+    assert not _needs_piercing_weapon_upgrade(
+        {
+            "campaign_worn_equipment": ["a long slim dagger"],
+            "campaign_primary_weapon": "a long slim dagger",
+            "inventory": [[{"short_desc": "a jewel-studded dagger"}]],
+        },
+        gear_catalog=GearCatalog({3701: jewel, 5252: long_dagger}),
+        character_class="thief",
+        subclass="ninja",
+        target_vnum=5252,
+    )
+
+
 def test_campaign_item_check_includes_newly_acquired_required_loot() -> None:
     assert _campaign_has_item(
         {
@@ -34387,6 +40951,235 @@ def test_source_damage_gate_reopens_safe_forest_upgrade(tmp_path, monkeypatch) -
     )
 
 
+def test_source_damage_gate_reopens_forest_upgrade_once_with_stale_cooldowns(
+    tmp_path, monkeypatch
+) -> None:
+    config_path, _ = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    thief_character = replace(
+        spec.character,
+        character_class="thief",
+        subclass="ninja",
+    )
+    runner = CampaignRunner(
+        replace(spec, character=thief_character),
+        config_path,
+    )
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+    )
+    claws = ObjectSource(
+        18000,
+        "claws bears",
+        "a pair of bears claws",
+        5,
+        (0, 6, 12, 11),
+        0,
+    )
+    runner._gear_catalog = GearCatalog(
+        {dagger.vnum: dagger, claws.vnum: claws}
+    )
+    runner._boot_id = 77
+    source_revision = _current_dd4_source_revision() or "source-1"
+    monkeypatch.setattr(
+        runner,
+        "_forest_piercing_weapon_upgrade_source_safe",
+        lambda _state: True,
+    )
+    state = {
+        "level": 24,
+        "world_boot_id": 77,
+        "campaign_source_revision": source_revision,
+        "hp": 334,
+        "max_hp": 334,
+        "move": 380,
+        "max_move": 380,
+        "campaign_has_weapon": True,
+        "campaign_worn_equipment": ["a dagger"],
+        "campaign_primary_weapon": "a dagger",
+        "campaign_empty_equipment_categories": [],
+        "inventory": [[{"quan": "1", "short_desc": "a big pot pie"}]],
+        "affects": [[{"name": "fly"}]],
+        "campaign_piercing_weapon_upgrade_attempted_boot_id": 77,
+        "campaign_piercing_weapon_upgrade_cooldown": 2,
+        "campaign_research_absence_cooldowns": {
+            "forest-bear-claws-upgrade-10-29": 3,
+        },
+        _SOURCE_COMBAT_DAMAGE_GATE_EVIDENCE_KEY: {
+            "boot_id": 77,
+            "level": 24,
+            "source_revision": source_revision,
+            "weapon": "a dagger",
+            "reason": "source target HP ceiling 660 exceeds damage budget",
+        },
+    }
+
+    assert _source_combat_damage_gate_retry_available(
+        state,
+        consumed_key=_PIERCING_WEAPON_UPGRADE_DAMAGE_GATE_KEY,
+    ) is True
+    assert runner._policy_for_state(state).policy_id == (
+        "forest-bear-claws-upgrade-10-29"
+    )
+
+    state[_PIERCING_WEAPON_UPGRADE_DAMAGE_GATE_KEY] = [
+        "77",
+        "24",
+        source_revision,
+        "a dagger",
+        "source target HP ceiling 660 exceeds damage budget",
+    ]
+    assert _source_combat_damage_gate_retry_available(
+        state,
+        consumed_key=_PIERCING_WEAPON_UPGRADE_DAMAGE_GATE_KEY,
+    ) is False
+
+
+def test_negative_fame_flight_fallback_reaches_stale_forest_retry(
+    tmp_path, monkeypatch
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    thief_character = replace(
+        spec.character,
+        character_class="thief",
+        subclass="ninja",
+    )
+    runner = CampaignRunner(
+        replace(spec, character=thief_character),
+        config_path,
+        retry_stalled=True,
+    )
+    flight_candidate = replace(
+        _source_test_candidate(
+            target="a flight-only frontier target",
+            level_range=(22, 26),
+            mobile_vnum=700,
+            room_vnum=800,
+        ),
+        requires_flight=True,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        lambda _state, *, require_no_flight=False, **_kwargs: (
+            None if require_no_flight else flight_candidate
+        ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_forest_piercing_weapon_upgrade_source_safe",
+        lambda _state, **_kwargs: True,
+    )
+    safe_funding_candidate = _source_test_candidate(
+        target="a safe funding target",
+        level_range=(22, 26),
+        mobile_vnum=701,
+        room_vnum=801,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_provision_funding_candidate",
+        lambda _state: safe_funding_candidate,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_forest_upgrade_should_preempt_funding",
+        lambda _state, _candidate: False,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_intermediate_upgrade_should_preempt_funding",
+        lambda _state: False,
+    )
+    source_revision = _current_dd4_source_revision() or "source-current"
+
+    def state_with_retry_marker(marker_source_revision: str) -> dict[str, object]:
+        return {
+            "level": 24,
+            "room_vnum": "3054",
+            "area": "Midgaard",
+            "room_flags": ["safe", "healing"],
+            "world_boot_id": 77,
+            _SOURCE_REVISION_KEY: source_revision,
+            "hp": 334,
+            "max_hp": 334,
+            "move": 380,
+            "max_move": 380,
+            "hunger": 10,
+            "campaign_has_weapon": True,
+            "campaign_worn_equipment": ["a long slim dagger"],
+            "campaign_primary_weapon": "a long slim dagger",
+            "campaign_empty_equipment_categories": [],
+            "inventory": [[
+                {"short_desc": "a big pot pie"},
+                {"short_desc": "a buffalo water skin"},
+            ]],
+            "stats": {
+                "fame": -12,
+                "carry_wt": 100,
+                "maxcarry_wt": 250,
+                "carry_num": 5,
+                "maxcarry_num": 30,
+            },
+            "affects": [],
+            "verified_combat_pouch_potions": {"black": 1, "purple": 1},
+            "combat_pouch_potions": {"purple": 1},
+            "magic_shop_purchase_failed": True,
+            "campaign_flight_loan_attempted": True,
+            _FLIGHT_FUNDING_REQUIRED_KEY: True,
+            _PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY: 6,
+            _PIERCING_WEAPON_UPGRADE_FRONTIER_RETRY_KEY: {
+                "boot_id": 77,
+                "level": 24,
+                "source_revision": marker_source_revision,
+                "status": "closed",
+                "outcome": "required_object_not_acquired",
+            },
+            "campaign_research_absence_cooldowns": {
+                "fame-recovery-circus-24-26": 3,
+                "fame-recovery-mirror-realm-24-26": 3,
+                "source-ranked-sanctuary-recovery-2-100": 3,
+            },
+            "campaign_research_results": {
+                "fame-recovery-circus-24-26": {
+                    "boot_id": 77,
+                    "observed": True,
+                    "completed_kill": False,
+                    "viable": False,
+                },
+                "fame-recovery-mirror-realm-24-26": {
+                    "boot_id": 77,
+                    "observed": True,
+                    "completed_kill": False,
+                    "viable": False,
+                },
+            },
+        }
+
+    stale = state_with_retry_marker("source-old")
+    policy = runner._policy_for_state(stale)
+
+    assert policy.policy_id == _FOREST_BEAR_CLAWS_UPGRADE_POLICY.policy_id
+    assert policy.execution == "upgrade-piercing-weapon"
+    assert stale[_PIERCING_WEAPON_UPGRADE_FRONTIER_RETRY_KEY]["status"] == (
+        "attempted"
+    ), policy.summary
+
+    same_revision = state_with_retry_marker(source_revision)
+    blocked = runner._policy_for_state(same_revision)
+
+    assert blocked.policy_id != _FOREST_BEAR_CLAWS_UPGRADE_POLICY.policy_id
+    assert same_revision[_PIERCING_WEAPON_UPGRADE_FRONTIER_RETRY_KEY]["status"] == (
+        "closed"
+    )
+
+
 def test_source_damage_gate_evidence_survives_interposed_segment() -> None:
     gate_state = {
         "level": 24,
@@ -34620,6 +41413,74 @@ def test_campaign_selects_intermediate_upgrade_during_forest_cooldown(
     )
 
 
+def test_source_damage_gate_reopens_thalos_retry_once_during_funding_deadlock(
+    tmp_path,
+) -> None:
+    config_path, _ = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    thief_character = replace(
+        spec.character,
+        character_class="thief",
+        subclass="ninja",
+    )
+    runner = CampaignRunner(
+        replace(spec, character=thief_character),
+        config_path,
+    )
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        10,
+    )
+    intermediate = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        1000,
+    )
+    runner._gear_catalog = GearCatalog(
+        {dagger.vnum: dagger, intermediate.vnum: intermediate}
+    )
+    state = {
+        "level": 24,
+        "hp": 334,
+        "max_hp": 334,
+        "campaign_worn_equipment": ["a dagger"],
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_intermediate_piercing_weapon_upgrade_cooldown": 3,
+        "world_boot_id": "boot-1",
+        "campaign_source_revision": "source-1",
+        "campaign_primary_weapon": "a dagger",
+        _SOURCE_COMBAT_DAMAGE_GATE_EVIDENCE_KEY: {
+            "boot_id": "boot-1",
+            "level": 24,
+            "source_revision": "source-1",
+            "weapon": "a dagger",
+            "reason": "source target HP ceiling 660 exceeds damage budget",
+        },
+    }
+
+    assert _source_combat_damage_gate_retry_available(state) is True
+    assert runner._intermediate_upgrade_should_preempt_funding(state) is True
+
+    state[
+        "campaign_intermediate_piercing_weapon_upgrade_damage_gate"
+    ] = [
+        "boot-1",
+        "24",
+        "source-1",
+        "a dagger",
+        "source target HP ceiling 660 exceeds damage budget",
+    ]
+    assert _source_combat_damage_gate_retry_available(state) is False
+    assert runner._intermediate_upgrade_should_preempt_funding(state) is False
+
+
 def test_thalos_upgrade_source_gate_rejects_aggressive_multi_capacity_carrier(
     tmp_path,
 ) -> None:
@@ -34652,6 +41513,25 @@ def test_thalos_upgrade_source_gate_rejects_aggressive_multi_capacity_carrier(
     )
 
     assert runner._intermediate_piercing_weapon_upgrade_source_safe() is False
+
+
+def test_thalos_upgrade_source_gate_accepts_the_audited_dynamic_route(
+    tmp_path,
+) -> None:
+    config_path, _ = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    thief_spec = replace(
+        spec,
+        character=replace(
+            spec.character,
+            character_class="thief",
+            subclass="ninja",
+        ),
+    )
+    runner = CampaignRunner(thief_spec, config_path)
+    runner._ensure_gear_catalog()
+
+    assert runner._intermediate_piercing_weapon_upgrade_source_safe() is True
 
 
 def test_negative_fame_routes_unarmed_thief_to_field_dagger_recovery(
@@ -35824,6 +42704,103 @@ def test_source_food_drunk_preflight_persists_retryable_cooldown() -> None:
     assert merged[_RESEARCH_ABSENCE_COOLDOWN_KEY][policy_id] == 3
 
 
+def test_forest_required_loot_absence_is_reset_scoped_research_evidence() -> None:
+    policy = _FOREST_BEAR_CLAWS_UPGRADE_POLICY
+    current = {
+        "level": 24,
+        "world_boot_id": "boot-1",
+        "campaign_fastwalk_abort_reason": (
+            "field expedition withdrew before acquiring required item(s): "
+            "pair of bears claws"
+        ),
+        "campaign_fastwalk_required_object_vnums": [],
+        "campaign_fastwalk_source_present_sightings": [],
+        "campaign_fastwalk_source_absent_sightings": [
+            {"policy_id": policy.policy_id, "room_vnum": "18026", "target": "kodiak bear"},
+            {"policy_id": policy.policy_id, "room_vnum": "18031", "target": "kodiak bear"},
+        ],
+        "campaign_fastwalk_route_hazards": [
+            "skipped route branch requiring locator location: River bed"
+        ],
+        "campaign_objective_kills": [],
+        "campaign_completed_kills": [],
+        "campaign_died_during_segment": False,
+        "campaign_xp_loss_observed": False,
+    }
+
+    merged = _merge_campaign_research_result(
+        {"world_boot_id": "boot-1", _CLEARED_RESEARCH_POLICIES_KEY: [policy.policy_id]},
+        current,
+        policy=policy,
+    )
+
+    result = merged["campaign_research_results"][policy.policy_id]
+    assert result["absent"] is True
+    assert result["required_object_absent"] is True
+    assert result["source_absent_sighting_count"] == 2
+    assert merged[_RESEARCH_ABSENCE_COOLDOWN_KEY][policy.policy_id] == 3
+    assert policy.policy_id not in merged.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
+
+
+def test_startup_repair_recovers_forest_absence_from_terminal_run() -> None:
+    policy_id = _FOREST_BEAR_CLAWS_UPGRADE_POLICY.policy_id
+
+    class StorageStub:
+        def get_latest_run_state_event(self, run_id: int, *, states: tuple[str, ...]):
+            assert run_id == 13023
+            assert states == ("completed", "runtime_cap")
+            return {
+                "payload_json": json.dumps(
+                    {
+                        "state": "completed",
+                        "world_boot_id": "boot-1",
+                        "fastwalk_route": "forest bear claws",
+                        "fastwalk_abort_reason": (
+                            "field expedition withdrew before acquiring required item(s): "
+                            "pair of bears claws"
+                        ),
+                        "fastwalk_required_object_vnums": [],
+                        "fastwalk_source_present_sightings": [],
+                        "fastwalk_source_absent_sightings": [
+                            {"policy_id": policy_id, "room_vnum": "18026", "target": "kodiak bear"}
+                        ],
+                        "fastwalk_route_hazards": [],
+                        "objective_kills": [],
+                        "completed_kills": [],
+                        "died_during_run": False,
+                        "xp_loss_observed": False,
+                    }
+                )
+            }
+
+    repaired = _repair_forest_required_loot_absence_from_segments(
+        StorageStub(),
+        8,
+        {
+            "level": 24,
+            "world_boot_id": "boot-1",
+            _CLEARED_RESEARCH_POLICIES_KEY: [policy_id],
+        },
+        [
+            {
+                "id": 12573,
+                "phase": policy_id,
+                "status": "success",
+                "run_id": 13023,
+                "start_state_json": json.dumps(
+                    {"level": 24, "world_boot_id": "boot-1"}
+                ),
+            }
+        ],
+    )
+
+    result = repaired["campaign_research_results"][policy_id]
+    assert result["absent"] is True
+    assert result["run_id"] == 13023
+    assert repaired[_RESEARCH_ABSENCE_COOLDOWN_KEY][policy_id] == 3
+    assert policy_id not in repaired.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
+
+
 def test_source_food_selector_does_not_repeat_acquired_reset(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -35874,6 +42851,82 @@ def test_source_food_selector_does_not_repeat_acquired_reset(
         state,
         source_directory=source_directory,
     ) is None
+
+
+def test_source_food_selector_reopens_acquired_reset_when_starving_without_food(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = replace(
+        _source_test_candidate(
+            target="food stash",
+            level_range=(0, 0),
+            mobile_vnum=0,
+            room_vnum=6006,
+        ),
+        area_file="haon.are",
+        target_keyword="mushroom",
+        loot=("a mushroom",),
+        ground_loot_object_vnums=(6110,),
+        is_food_stash=True,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.load_world_source",
+        lambda *args, **kwargs: WorldSource(),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign.rank_food_stashes",
+        lambda *args, **kwargs: [candidate],
+    )
+    source_directory = tmp_path / "area"
+    source_directory.mkdir()
+    policy_id = _source_food_policy_id(candidate, character_level=24)
+    state = {
+        "level": 24,
+        "hunger": -2,
+        "world_boot_id": "boot-1",
+        "campaign_last_policy": "source-ranked-food-reserve-other-24",
+        "campaign_research_results": {
+            policy_id: {
+                "observed": True,
+                "viable": True,
+                "completed_kill": False,
+                "required_object_acquired": True,
+                "boot_id": "boot-1",
+            }
+        },
+        "max_move": 380,
+        "inventory": [],
+        "affects": [],
+    }
+
+    assert _select_source_food_candidate(
+        state,
+        source_directory=source_directory,
+    ) == candidate
+
+
+@pytest.mark.parametrize(
+    ("hunger", "food_units", "expected"),
+    [
+        (-2, 0, True),
+        (1, 1, True),
+        (2, 1, False),
+        (-2, 2, False),
+    ],
+)
+def test_source_food_reserve_requires_a_carried_reserve_at_the_hunger_floor(
+    hunger: int,
+    food_units: int,
+    expected: bool,
+) -> None:
+    assert (
+        _source_ranked_field_food_reserve_needed(
+            {"hunger": hunger},
+            food_units,
+        )
+        is expected
+    )
 
 
 def test_area_reset_reopens_successful_source_food_reset() -> None:
@@ -35995,6 +43048,35 @@ def test_source_food_acquisition_clears_stale_absence_evidence() -> None:
     assert merged["campaign_fastwalk_target_absent"] is False
     assert merged["campaign_fastwalk_target_present_observed"] is True
     assert policy_id not in merged.get(_RESEARCH_ABSENCE_COOLDOWN_KEY, {})
+
+
+def test_source_food_reconciliation_rejects_consumed_food_without_positive_hunger() -> None:
+    policy = replace(
+        _SOURCE_RANKED_FOOD_RESERVE_POLICY,
+        policy_id="source-ranked-food-reserve-2-100-haon-6122-6106-24",
+        minimum_level=24,
+        maximum_level=24,
+    )
+
+    merged = _merge_campaign_research_result(
+        {"world_boot_id": "boot-1"},
+        {
+            "level": 24,
+            "world_boot_id": "boot-1",
+            "hunger": -2,
+            "campaign_urgent_food_acquisition": True,
+            "campaign_food_reserve_count": 0,
+            "campaign_fastwalk_required_object_vnums": [6106],
+            "campaign_fastwalk_target_present_observed": True,
+        },
+        policy=policy,
+    )
+
+    result = merged["campaign_research_results"][policy.policy_id]
+    assert result["required_object_acquired"] is False
+    assert result["food_reserve_unsatisfied"] is True
+    assert result["viable"] is False
+    assert merged[_RESEARCH_ABSENCE_COOLDOWN_KEY][policy.policy_id] == 3
 
 
 def test_source_food_acquisition_clears_stale_provision_funding_marker() -> None:
@@ -36249,6 +43331,10 @@ def test_negative_fame_food_reserve_precedes_field_route(
     monkeypatch.setattr(
         "dd4tester.campaign._select_source_food_candidate",
         lambda *args, **kwargs: candidate,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._campaign_should_liquidate_loot",
+        lambda *args, **kwargs: True,
     )
     state = {
         "level": 24,
@@ -37810,6 +44896,111 @@ def test_partial_protection_reserve_reopens_second_purple_after_shop_refusal(
     assert "second" in selected.summary
 
 
+def test_proven_recovery_refills_second_purple_after_reserve_quarantine(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *_args, **_kwargs: _PROVISION_FUNDING_POLICY,
+    )
+    state = {
+        "level": 24,
+        "hunger": 18,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "affects": [],
+        "hp": 334,
+        "max_hp": 334,
+        "move": 380,
+        "max_move": 380,
+        "campaign_has_weapon": True,
+        "campaign_worn_equipment": ["a long slim dagger"],
+        "campaign_primary_weapon": "a long slim dagger",
+        "campaign_empty_equipment_categories": [],
+        "inventory": [[{"quan": "1", "short_desc": "a big pot pie"}]],
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+        "campaign_cure_blindness_available": False,
+        "campaign_flight_funding_required": True,
+        "campaign_flight_loan_attempted": True,
+        "magic_shop_purchase_failed": False,
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "policy_id": "source-ranked-hunt-failed-24",
+            "trigger": "hard_health_floor",
+        },
+        "campaign_research_results": {
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id: {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": True,
+                "required_object_acquired": True,
+            },
+            _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY.policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "observed": True,
+                "viable": False,
+                "fatal_failure": True,
+                "route_hazard": (
+                    "sanctuary resource route exhausted after 2 failed attempts"
+                ),
+            },
+        },
+        "campaign_stalled_segments": 0,
+    }
+
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert selected.execution == "moria-sanctuary-hunt"
+    assert "second" in selected.summary
+    assert state[_SANCTUARY_SECOND_RESERVE_REFILL_KEY]["status"] == "attempted"
+    assert state[_SANCTUARY_SECOND_RESERVE_REFILL_KEY]["boot_id"] == "boot-1"
+
+
+@pytest.mark.parametrize("guard", ["missing_proof", "already_attempted"])
+def test_second_sanctuary_refill_requires_fresh_proof(
+    guard: str,
+) -> None:
+    state = {
+        "level": 24,
+        "world_boot_id": "boot-1",
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+        },
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+        "campaign_research_results": {
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id: {
+                "boot_id": "boot-1",
+                "viable": True,
+                "required_object_acquired": guard != "missing_proof",
+            },
+            _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY.policy_id: {
+                "boot_id": "boot-1",
+                "level": 24,
+                "viable": False,
+                "fatal_failure": True,
+            },
+        },
+    }
+    if guard == "already_attempted":
+        state[_SANCTUARY_SECOND_RESERVE_REFILL_KEY] = {
+            "boot_id": "boot-1",
+            "level": 24,
+            "status": "attempted",
+        }
+
+    assert not _source_ranked_second_sanctuary_refill_allowed(state)
+
+
 def test_successful_reserve_does_not_reopen_partial_gate(
     tmp_path,
     monkeypatch,
@@ -37988,6 +45179,43 @@ def test_exhausted_source_frontier_requests_one_bounded_quest(
     assert blocked.execution is None
 
 
+def test_exhausted_source_frontier_does_not_request_quest_without_live_fame(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *args, **kwargs: _SOURCE_RANKED_HUNT_POLICY,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        lambda *args, **kwargs: None,
+    )
+    state = {
+        "level": 24,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "affects": ["fly"],
+        "hp": 334,
+        "max_hp": 334,
+        "move": 380,
+        "max_move": 380,
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": [],
+        "inventory": [[{"quan": "1", "short_desc": "a big pot pie"}]],
+    }
+
+    policy = runner._policy_for_state(state)
+
+    assert policy.policy_id == "source-ranked-hunt-unavailable-24"
+    assert policy.execution is None
+    assert "campaign_quest_frontier_request" not in state
+
+
 def test_exhausted_frontier_previews_cooldown_without_consuming_wait(
     tmp_path, monkeypatch,
 ) -> None:
@@ -38080,7 +45308,7 @@ def test_fresh_probe_reopens_a_cleared_research_family(
     assert policy.execution == "shadow-keep-undead-soldier-hunt"
 
 
-def test_negative_fame_does_not_retry_refused_shop_for_flight_only_frontier(
+def test_negative_fame_blocks_source_flight_ticket_route(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -38182,9 +45410,10 @@ def test_negative_fame_does_not_retry_refused_shop_for_flight_only_frontier(
     policy = runner._policy_for_state(state)
 
     assert policy.execution is None
-    assert policy.policy_id == "source-ranked-hunt-unavailable-24"
-    assert "magic shop" in policy.summary.casefold()
-    assert policy.policy_id != "buy-flight-potion"
+    assert policy.status == "unavailable"
+    assert runner._selected_source_flight_plan is None
+    assert "negative fame" in policy.summary.casefold()
+    assert "ticket" in policy.summary.casefold()
     assert [
         bool(call.get("require_no_flight")) for call in selection_calls
     ] == [True, False]
@@ -38209,6 +45438,127 @@ def test_negative_fame_does_not_retry_refused_shop_for_flight_only_frontier(
 
     assert recovery.policy_id == recovery_policy_id
     assert recovery.execution == "moria-sanctuary-hunt"
+
+
+def test_retry_stalled_reopens_source_flight_route_program_hazard(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    runner = CampaignRunner(
+        replace(
+            spec,
+            character=replace(
+                spec.character,
+                character_class="thief",
+                subclass="ninja",
+            ),
+        ),
+        config_path,
+        retry_stalled=True,
+    )
+    candidate = replace(
+        _source_test_candidate(
+            target="a flight-only target",
+            level_range=(20, 24),
+            mobile_vnum=771,
+            room_vnum=772,
+        ),
+        requires_flight=True,
+        estimated_move_cost=250,
+        estimated_flying_move_cost=60,
+    )
+    placement = object()
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *args, **kwargs: _SOURCE_RANKED_HUNT_POLICY,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        lambda state, **kwargs: (
+            None if kwargs.get("require_no_flight") else candidate
+        ),
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._select_source_flight_reserve_plan",
+        lambda *args, **kwargs: (candidate, placement),
+    )
+    state = {
+        "level": 24,
+        "hunger": 18,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "world_boot_id": "boot-1",
+        "affects": [],
+        "hp": 334,
+        "max_hp": 334,
+        "move": 380,
+        "max_move": 380,
+        "campaign_has_weapon": True,
+        "campaign_worn_equipment": ["a long slim dagger"],
+        "campaign_primary_weapon": "a long slim dagger",
+        "campaign_empty_equipment_categories": [],
+        "inventory": [[{"quan": "1", "short_desc": "a big pot pie"}]],
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+        "campaign_shop_rearm_blocked_by_reputation": True,
+        "campaign_flight_funding_required": True,
+        "magic_shop_purchase_failed": True,
+        "campaign_flight_loan_attempted": True,
+        "stats": {"fame": "0"},
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "policy_id": "fame-recovery-circus-24-26",
+            "trigger": "hard_health_floor",
+        },
+        "campaign_research_results": {
+            "fame-recovery-circus-24-26": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": False,
+                "retryable_failure": True,
+            },
+            "fame-recovery-mirror-realm-24-26": {
+                "boot_id": "boot-1",
+                "observed": True,
+                "viable": False,
+                "retryable_failure": True,
+            },
+            _SOURCE_RANKED_FLIGHT_RESERVE_POLICY.policy_id: {
+                "boot_id": "boot-1",
+                "observed": False,
+                "viable": False,
+                "retryable_failure": True,
+                "route_hazard": (
+                    "field route preflight found source-registered hazard "
+                    "'the drunk' at Wall Road while observing from room 3001"
+                ),
+            },
+        },
+        "campaign_research_absence_cooldowns": {
+            "fame-recovery-circus-24-26": 3,
+            "fame-recovery-mirror-realm-24-26": 3,
+            _SOURCE_RANKED_FLIGHT_RESERVE_POLICY.policy_id: 3,
+        },
+    }
+
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _SOURCE_RANKED_FLIGHT_RESERVE_POLICY.policy_id
+    assert selected.execution == "source-ranked-flight-reserve"
+    assert runner._selected_source_flight_plan == (candidate, placement)
+
+    state["stats"]["fame"] = "-12"
+    state["campaign_research_results"][_SOURCE_RANKED_FLIGHT_RESERVE_POLICY.policy_id][
+        "reputation_blocked"
+    ] = True
+    blocked = runner._policy_for_state(state)
+
+    assert blocked.execution is None
+    assert blocked.status == "unavailable"
 
 
 def test_failed_mirror_fame_recovery_rotates_to_stocked_lotus_fallback(
@@ -40119,6 +47469,22 @@ def test_liquidation_baseline_suppresses_retained_gear_until_loot_changes() -> N
     assert _has_campaign_sellable_loot(state) is True
 
 
+def test_liquidation_baseline_ignores_retained_item_moved_into_worn_gear() -> None:
+    state = {
+        "inventory": [[
+            {"short_desc": "a standard issue shield"},
+            {"short_desc": "a buffalo water skin"},
+        ]],
+        "campaign_worn_equipment": ["a long slim dagger"],
+        "campaign_liquidation_baseline": [
+            "long slim dagger",
+            "standard issue shield",
+        ],
+    }
+
+    assert _has_campaign_sellable_loot(state) is False
+
+
 def test_campaign_batches_small_loot_load_until_capacity_pressure() -> None:
     catalog = GearCatalog({
         1: ObjectSource(
@@ -41271,6 +48637,55 @@ def test_campaign_recovers_unfinished_counterbalance_preparation(tmp_path) -> No
             {"level": 10},
         )
         assert repaired[_COUNTERBALANCED_WEAPON_VNUM_KEY] == 3021
+
+
+def test_campaign_repairs_preserved_primary_weapon_from_legacy_handoff(tmp_path) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 1), (19, 1)),
+    )
+    state = {
+        "level": 24,
+        "inventory": [[{"short_desc": "a long slim dagger"}]],
+        "campaign_worn_equipment": ["a jewel-studded dagger"],
+        "campaign_primary_weapon": "a jewel-studded dagger",
+    }
+    segments = [
+        {
+            "phase": "thalos-long-dagger-upgrade-10-29",
+            "status": "success",
+            "end_state_json": json.dumps(
+                {
+                    "campaign_fastwalk_target_present_observed": True,
+                    "acquired_items": [
+                        {
+                            "item": (
+                                "long slim dagger from the corpse of The lamia"
+                            )
+                        }
+                    ],
+                }
+            ),
+        }
+    ]
+
+    repaired = _repair_preserved_primary_weapon_from_segments(
+        state,
+        segments,
+        gear_catalog=GearCatalog({long_dagger.vnum: long_dagger}),
+        character_class="thief",
+        subclass="ninja",
+    )
+
+    assert repaired[_PRESERVED_PRIMARY_WEAPON_VNUM_KEY] == 5252
 
 
 def test_campaign_recovers_permanent_trainer_rejections_at_current_level(
@@ -46120,6 +53535,23 @@ def test_campaign_selects_sack_phase_from_persisted_inventory(
     )
     assert without_food.policy_id == "restock-provisions"
 
+    without_food_with_cash_after_flight_expiry = runner._policy_for_state(
+        {
+            "level": 8,
+            "world_boot_id": "boot-1",
+            "inventory": [[{"short_desc": "a buffalo water skin"}]],
+            "currencies": {"silver": 2, "copper": 18},
+            "affects": [],
+            "campaign_flight_funding_required": True,
+            "campaign_flight_loan_attempted": True,
+            "stats": {"carry_wt": 102, "maxcarry_wt": 250},
+        }
+    )
+    assert (
+        without_food_with_cash_after_flight_expiry.policy_id
+        == "restock-provisions"
+    )
+
     urgent_food_with_full_loot = runner._policy_for_state(
         {
             "level": 8,
@@ -49071,6 +56503,68 @@ def test_level_eighteen_mage_recovery_can_collect_both_source_potions(
     assert captured["use_sanctuary_potions"] is False
 
 
+def test_second_reserve_refill_forces_two_potions_without_invisibility(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                config_path,
+                {"level": 24, "xp": 332_517},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+            current_state={
+                "level": 24,
+                "world_boot_id": "boot-1",
+                "campaign_sanctuary_second_reserve_refill": {
+                    "boot_id": "boot-1",
+                    "level": 24,
+                    "policy_id": (
+                        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+                    ),
+                    "policy_revision": (
+                        _SANCTUARY_SECOND_RESERVE_REFILL_REVALIDATION_REVISION
+                    ),
+                    "requested_potion_count": 2,
+                    "status": "attempted",
+                },
+            },
+            source_world=world,
+            character_level=24,
+        )
+    )
+
+    stops = captured["fastwalk_hunt_stops"]
+    target_stops = [stop for stop in stops if stop.target is not None]
+    assert target_stops
+    assert all(
+        stop.required_items == ("purple potion", "purple potion")
+        for stop in target_stops
+    )
+    assert captured["fastwalk_kill_limit"] == 2
+    assert captured["use_sanctuary_potions"] is False
+
+
 def test_level_sixteen_mage_sanctuary_recovery_rejects_hazardous_deep_route(
     tmp_path,
     monkeypatch,
@@ -49284,16 +56778,24 @@ def test_level_twenty_four_thief_deep_moria_uses_safe_carrier_locator(
     )
 
     stops = captured["fastwalk_hunt_stops"]
-    assert len(stops) == 10
+    expected = moria_deep_sanctuary_potion_hunt_stops()
+    assert len(stops) == len(expected) == 11
     assert stops[0].actions == ("where hobgoblin",)
-    assert [stop.route_vnums[-1] for stop in stops[1:]] == [
-        "4064", "4063", "4069", "4073", "4074", "4072", "4071", "4070", "4068",
-    ]
-    assert all(stop.target == "large hobgoblin" for stop in stops[1:])
-    assert all(stop.pre_entry_scan_room_vnums == ("4064",) for stop in stops[1:])
-    assert any("4058" in stop.route_vnums for stop in stops[1:])
-    assert sum(len(stop.route_vnums) for stop in stops[1:]) <= 24
-    assert all("4103" not in stop.route_vnums for stop in stops)
+    assert tuple(stop.route_vnums for stop in stops) == tuple(
+        stop.route_vnums for stop in expected
+    )
+    assert stops[1].route_vnums[-1] == "4152"
+    assert all(
+        stop.target == "large hobgoblin"
+        for stop in stops
+        if stop.target is not None
+    )
+    assert all(
+        stop.source_mobile_vnum == 4055
+        for stop in stops
+        if stop.target is not None
+    )
+    assert all("4062" not in stop.route_vnums for stop in stops)
     assert all("4114" not in stop.route_vnums for stop in stops)
     assert captured["fastwalk_require_invisibility"] is False
     route = captured["fastwalk_route"]
@@ -49491,6 +56993,54 @@ def test_campaign_liquidates_loot_in_a_safe_dedicated_segment(
         "liquidate_loot": True,
         "emergency_provision_sale": False,
     }
+
+
+def test_campaign_does_not_force_emergency_sale_when_food_is_carried(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    captured: dict[str, object] = {}
+    state = {
+        "name": "Campaignmage",
+        "level": 8,
+        "xp": 25_000,
+        "world_boot_id": "boot-1",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        _PROVISION_FUNDING_REQUIRED_KEY: True,
+    }
+
+    async def fake_policy_segment(character, profile_path, policy, **kwargs):
+        captured.update(kwargs)
+        return _record_segment_run(database, profile_path, dict(state))
+
+    monkeypatch.setattr(
+        "dd4tester.campaign._run_policy_segment",
+        fake_policy_segment,
+    )
+
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        result = asyncio.run(
+            CampaignRunner(spec, config_path)._run_starter(
+                storage,
+                campaign_id,
+                state,
+                storage.campaign_totals(campaign_id),
+                policy_for(8, "mage", has_sellable_loot=True),
+            )
+        )
+
+    assert result.status == "ready"
+    assert captured["emergency_provision_sale"] is False
 
 
 def test_campaign_return_home_preserves_emergency_sale_mode(
@@ -49736,6 +57286,72 @@ def test_negative_fame_does_not_override_thief_primary_rearm(
     rearm_policy = runner._policy_for_state(state)
     assert rearm_policy.policy_id == "rearm-primary-weapon"
     assert rearm_policy.execution == "rearm-weapon"
+
+
+def test_preserved_weapon_rearm_precedes_liquidation_when_better_weapon_is_carried(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    spec = replace(
+        load_campaign_spec(config_path),
+        character=replace(
+            load_campaign_spec(config_path).character,
+            character_class="thief",
+        ),
+    )
+    runner = CampaignRunner(spec, config_path)
+    jewel = ObjectSource(
+        3701,
+        "jewel-studded dagger",
+        "a jewel-studded dagger",
+        5,
+        (0, 2, 3, 11),
+        0,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 5), (19, 5)),
+    )
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 1), (19, 1)),
+    )
+    runner._gear_catalog = GearCatalog(
+        {jewel.vnum: jewel, long_dagger.vnum: long_dagger}
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._campaign_should_liquidate_loot",
+        lambda *args, **kwargs: True,
+    )
+    state = {
+        "level": 24,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "hp": 334,
+        "max_hp": 334,
+        "move": 380,
+        "max_move": 380,
+        "campaign_has_weapon": True,
+        "campaign_worn_equipment": ["a long slim dagger"],
+        "campaign_primary_weapon": "a long slim dagger",
+        "campaign_preserved_primary_weapon_vnum": 5252,
+        "campaign_empty_equipment_categories": [],
+        "inventory": [
+            [{"short_desc": "a jewel-studded dagger"}],
+            [{"short_desc": "a big pot pie"}],
+        ],
+        "affects": [],
+    }
+
+    policy = runner._policy_for_state(state)
+
+    assert policy.policy_id == "rearm-primary-weapon"
+    assert policy.execution == "rearm-weapon"
 
 
 def test_campaign_empty_wield_slot_overrides_stale_piercing_primary(
@@ -52485,6 +60101,84 @@ def test_unavailable_policy_reports_fame_reserve_cooldown_before_unrelated_crowd
     assert "Negative fame blocks city service" in result.message
     assert "source-ranked-cure-critical-reserve-2-100" in result.message
     assert "temporarily crowded" not in result.message
+
+
+@pytest.mark.parametrize(
+    ("defer_stall_for_reset", "expected_status"),
+    [(False, "blocked"), (True, "ready")],
+)
+def test_protection_frontier_wait_is_opt_in_for_long_runner(
+    tmp_path,
+    defer_stall_for_reset,
+    expected_status,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    unavailable = ProgressionPolicy(
+        policy_id="source-ranked-hunt-unavailable-24",
+        minimum_level=24,
+        maximum_level=24,
+        status="unavailable",
+        execution=None,
+        summary=(
+            "Protection recovery is required, but the sanctuary route is on a "
+            "current-reboot cooldown or has a terminal failure; no "
+            "independent source-safe current-band route is available."
+        ),
+        evidence=(),
+        practice_skill=None,
+    )
+    state = {
+        "level": 24,
+        "xp": 332_229,
+        "world_boot_id": "boot-1",
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 24,
+            "policy_id": "source-ranked-hunt-fame-recovery-24",
+            "trigger": "hard_health_floor",
+        },
+    }
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name=spec.name,
+            config_path=config_path.resolve(),
+            character_profile_path=spec.character_profile,
+            target_level=spec.target_level,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase=unavailable.policy_id,
+            reason="ready",
+            state=state,
+        )
+
+    async def should_not_connect(*_args) -> RunResult:
+        pytest.fail("protected unavailable frontier must not open a segment")
+
+    class ProtectionFrontierRunner(CampaignRunner):
+        def _policy_for_state(self, current_state) -> ProgressionPolicy:
+            return unavailable
+
+    result = asyncio.run(
+        ProtectionFrontierRunner(
+            spec,
+            config_path,
+            segment_runner=should_not_connect,
+            defer_stall_for_reset=defer_stall_for_reset,
+        ).run()
+    )
+
+    assert result.status == expected_status
+    assert result.awaiting_area_reset is (expected_status == "ready")
+    with RunStorage(database) as storage:
+        checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+    assert checkpoint is not None
+    assert checkpoint["reason"] == (
+        "awaiting_area_reset" if expected_status == "ready" else "awaiting_policy"
+    )
 
 
 @pytest.mark.parametrize(
@@ -55371,6 +63065,60 @@ def test_campaign_opens_executable_source_ranked_fallback_at_unregistered_level(
     assert state[_SOURCE_RANKED_CANDIDATE_KEY]["mobile_vnum"] == 8100
 
 
+def test_campaign_does_not_reconnect_after_blocked_field_city_departure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    candidate = _source_test_candidate(
+        target="a current-band target",
+        level_range=(80, 84),
+        status="fresh",
+        mobile_vnum=8100,
+        room_vnum=8101,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        lambda state, **_kwargs: candidate,
+    )
+    state = {
+        "level": 81,
+        "world_boot_id": "boot-1",
+        "room_vnum": "3054",
+        "room_name": "By the Temple Altar",
+        "room_flags": ["safe", "healing"],
+        "hp": 1000,
+        "max_hp": 1000,
+        "mana": 1000,
+        "max_mana": 1000,
+        "move": 1000,
+        "max_move": 1000,
+        "affects": [],
+        "inventory": [[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a buffalo water skin"},
+        ]],
+        "campaign_empty_equipment_categories": [],
+        "campaign_has_weapon": True,
+        "campaign_field_city_preflight": {
+            "stopped_before_departure": True,
+            "outbound_index": 0,
+            "complete": True,
+            "blocked": True,
+            "level": 81,
+            "boot_id": "boot-1",
+        },
+    }
+
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _FIELD_CITY_ROUTE_BLOCKED_POLICY_ID
+    assert selected.execution is None
+    assert _SOURCE_RANKED_CANDIDATE_KEY not in state
+
+
 def test_campaign_passes_dynamic_frontier_flag_at_level_twenty_one_and_above(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -57304,3 +65052,235 @@ def test_policy_revision_preserves_unexhausted_sanctuary_transit_attempt() -> No
 
     assert policy_id in migrated["campaign_research_results"]
     assert _SANCTUARY_COMBAT_ONLY_TRANSIT_REVALIDATION_KEY not in migrated
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ({"level": 24, "progress": {"alignment": "1000"}}, 1000),
+        ({"level": 9, "progress": {"alignment": 50000}}, None),
+        ({"level": 24, "progress": {"alignment": 50000}}, None),
+        ({"level": 24, "progress": {"alignment": 1001}}, None),
+        ({"level": 24, "progress": {}}, None),
+    ],
+)
+def test_state_alignment_excludes_masked_or_invalid_gmcp_values(state, expected):
+    assert _state_alignment(state) == expected
+
+
+def test_source_flight_selector_binds_circus_container_chain() -> None:
+    plan = _select_source_flight_reserve_plan(
+        {"level": 24, "max_hp": 334, "max_move": 380},
+        source_directory=Path("runs/dd4-source/server/area"),
+    )
+
+    assert plan is not None
+    candidate, placement = plan
+    assert candidate.mobile_vnum == 4420
+    assert candidate.room_vnum == 4448
+    assert placement.object_vnum == 4442
+    assert placement.container_object_vnums == (4440,)
+    assert placement.required_key_object_vnums == (4441,)
+    assert placement.required_key_source_mobile_vnums == (4420,)
+
+
+def test_source_flight_record_keeps_ambiguous_clear_keyword_source_bound() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    plan = _select_source_flight_reserve_plan(
+        {"level": 24, "max_hp": 334, "max_move": 380},
+        source_directory=Path("runs/dd4-source/server/area"),
+    )
+    assert plan is not None
+    candidate, placement = plan
+
+    record = _source_resource_reserve_record(
+        world,
+        world.objects[4442],
+        required_spell="fly",
+        candidate=candidate,
+        placement=placement,
+    )
+
+    assert record is not None
+    assert record["effect"] == "flight"
+    assert record["command_keyword"] == "clear"
+    assert record["object_vnum"] == 4442
+    assert record["container_object_vnums"] == [4440]
+
+
+def test_source_flight_dispatch_builds_ticket_to_chest_sequence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+    spec = load_campaign_spec(config_path)
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    plan = _select_source_flight_reserve_plan(
+        {"level": 24, "max_hp": 334, "max_move": 380},
+        source_directory=Path("runs/dd4-source/server/area"),
+    )
+    assert plan is not None
+    candidate, placement = plan
+    captured: dict[str, object] = {}
+
+    class FakeRunner:
+        def __init__(self, character, profile_path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return _record_segment_run(
+                database,
+                spec.character_profile,
+                {"level": 24},
+            )
+
+    monkeypatch.setattr("dd4tester.campaign.StarterBotRunner", FakeRunner)
+
+    asyncio.run(
+        _run_policy_segment(
+            spec.character,
+            spec.character_profile,
+            replace(
+                _SOURCE_RANKED_FLIGHT_RESERVE_POLICY,
+                minimum_level=24,
+                maximum_level=24,
+            ),
+            current_state={
+                "level": 24,
+                "max_hp": 334,
+                "max_move": 380,
+                "move": 380,
+                "affects": [],
+            },
+            source_world=world,
+            character_level=24,
+            source_flight_candidate=candidate,
+            source_flight_placement=placement,
+        )
+    )
+
+    route = captured["fastwalk_route"]
+    assert isinstance(route, Fastwalk)
+    assert route.commands == (
+        "south", "south", "east", "east", "east", "south", "south",
+        "south", "south",
+    )
+    stops = captured["fastwalk_hunt_stops"]
+    assert isinstance(stops, tuple)
+    assert [stop.route_vnums[-1] for stop in stops] == [
+        "4402", "4415", "4428", "4440", "4448", "4440",
+    ]
+    assert stops[0].actions == ("buy ticket",)
+    assert stops[4].source_mobile_vnum == 4420
+    assert stops[4].source_loot_object_vnums == (4441,)
+    assert stops[5].action_required_object_vnums == (4442,)
+    assert stops[5].required_active_affects == ("fly", "levitation")
+
+
+def test_source_flight_merge_requires_live_activation_evidence() -> None:
+    policy = replace(
+        _SOURCE_RANKED_FLIGHT_RESERVE_POLICY,
+        policy_id="source-ranked-flight-reserve-circus-4442-24",
+        minimum_level=24,
+        maximum_level=24,
+    )
+    previous = {
+        _FLIGHT_FUNDING_REQUIRED_KEY: True,
+        _FLIGHT_FUNDING_RETRY_KEY: True,
+    }
+    current = {
+        "level": 24,
+        "world_boot_id": "boot-1",
+        _SOURCE_CONSUMABLE_SPELL_KEY: "fly",
+        "campaign_fastwalk_required_object_vnums": [4442],
+        _SOURCE_RESOURCE_RESERVES_KEY: {
+            "flight": {
+                "effect": "flight",
+                "spell": "fly",
+                "mode": "potion",
+                "object_vnum": 4442,
+                "activation_verified": True,
+                "verified_active_affect": "fly",
+            },
+        },
+    }
+
+    merged = _merge_campaign_research_result(previous, current, policy=policy)
+
+    result = merged["campaign_research_results"][policy.policy_id]
+    assert result["required_object_acquired"] is True
+    assert result["required_object_vnums"] == [4442]
+    assert result["viable"] is True
+    assert _FLIGHT_FUNDING_REQUIRED_KEY not in merged
+    assert _FLIGHT_FUNDING_RETRY_KEY not in merged
+
+
+def test_source_flight_merge_retries_without_verified_affect() -> None:
+    policy = replace(
+        _SOURCE_RANKED_FLIGHT_RESERVE_POLICY,
+        policy_id="source-ranked-flight-reserve-circus-4442-24-unverified",
+        minimum_level=24,
+        maximum_level=24,
+    )
+
+    merged = _merge_campaign_research_result(
+        {},
+        {
+            "level": 24,
+            "world_boot_id": "boot-1",
+            _SOURCE_CONSUMABLE_SPELL_KEY: "fly",
+            "campaign_fastwalk_required_object_vnums": [4442],
+            _SOURCE_RESOURCE_RESERVES_KEY: {
+                "flight": {
+                    "effect": "flight",
+                    "spell": "fly",
+                    "mode": "potion",
+                    "object_vnum": 4442,
+                    "activation_verified": False,
+                },
+            },
+        },
+        policy=policy,
+    )
+
+    result = merged["campaign_research_results"][policy.policy_id]
+    assert result["flight_activation_unverified"] is True
+    assert result["required_object_acquired"] is False
+    assert result["viable"] is False
+    assert result["retryable_failure"] is True
+
+
+def test_source_flight_merge_records_ticket_reputation_refusal() -> None:
+    policy = replace(
+        _SOURCE_RANKED_FLIGHT_RESERVE_POLICY,
+        policy_id="source-ranked-flight-reserve-circus-ticket-refused-24",
+        minimum_level=24,
+        maximum_level=24,
+    )
+
+    merged = _merge_campaign_research_result(
+        {},
+        {
+            "level": 24,
+            "world_boot_id": "boot-1",
+            "campaign_shop_rearm_blocked_by_reputation": True,
+            "campaign_fastwalk_abort_reason": (
+                "field expedition did not acquire required item(s): a ticket"
+            ),
+        },
+        policy=policy,
+    )
+
+    result = merged["campaign_research_results"][policy.policy_id]
+    assert result["reputation_blocked"] is True
+    assert result["route_hazard"] == (
+        "field expedition did not acquire required item(s): a ticket"
+    )
+    assert result["retryable_failure"] is True
+    assert merged["campaign_research_absence_cooldowns"][policy.policy_id] == 3

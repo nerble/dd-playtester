@@ -26,6 +26,126 @@ Dorrik's comparison consumed 286.28 connected seconds plus a 180-second reset
 wait. These characters ended safely at healer 3054. Safe logout is a
 reliability result, not an XP result. No improved throughput is established.
 
+## Current Continuation: 2026-09-14
+
+The latest source pull is `80cad011b8c17b5ffc8828edae9182271bf7e46e`.
+Kestrel is level 24 at **331,264 XP** in healer room **3054**, checkpoint
+**41370**, with GMCP alignment **1000** and GMCP fame **-12**. Run **13235**
+completed the source-ranked Moria route and acquired a purple sanctuary potion.
+Runs **13236-13256** recorded bounded route, fame, provision, and
+flight-funding outcomes; run **13256** reached the Green Dragon under the
+improved-output revalidation gate, observed **576 HP**, withdrew after gas
+nausea, and lost **385 XP** without a kill or fame change. Runs **13257-13258**
+then completed safe Crystal food-reserve routes and acquired one grain reserve.
+
+The source audit now records why this route cannot be retried: `act_obj.c`
+rejects every shop purchase below zero fame, while the exact flight reserve
+begins with the shop-dependent ticket action. Policy revision **298** persists
+that refusal as `reputation_blocked`, blocks the reserve while fame is negative,
+keeps `--retry-stalled` limited to dynamic route hazards, and mirrors
+`fight.c`'s `ACT_IS_FAMOUS` fame branch. It registers Green Dragon mobile
+**6112** as a one-shot source-famous gas probe only when sanctuary, the exact
+route and HP budget, and healer mobile **3012**'s nausea recovery all pass. Run
+**13256** completed that probe: live GMCP reported **576 HP** against the
+**342-point** conservative output ceiling, so Kestrel withdrew and lost **385
+XP** without a kill or fame change. Alignment remained **1000**, distinct from
+fame **-12**. The exact policy is closed for this boot. `quest.c` independently
+rejects a fresh `quest request` below zero fame, so quests cannot repair
+Kestrel's current negative fame; only a completed kill quest awards positive
+fuzzy fame. The campaign now requires freshly observed nonnegative fame before
+requesting a new quest and fails closed when fame is unknown, while allowing an
+already active quest to complete. The full offline suite passes **5,756 tests**,
+and compilation passes. Revision **301** also fixes the policy handoff so a
+future eligible improved-output retry carries its protected sanctuary opener
+into the live stop builder; it does not reset the consumed one-shot evidence.
+
+The starter route fix preserves an explicit room **4152** transit-recovery
+waypoint when a positive `where` result identifies a later target. That absent-
+carrier route shape is covered by offline regression tests; this live segment
+found the carrier in its reset room. A new source-ranked admission still
+handles the remaining level-24 frontier: passive, nominal-current-level
+targets whose source load fuzz reaches two levels above the character may
+receive one sanctuary-protected HP-fuzz probe. The negative-fame selector now
+has the separate Green Dragon gas contract above; that live probe is now
+closed by its measured HP and loss. Sustained progression, arbitrary race/class
+coverage, and HERO 100 remain unproved.
+
+## Current Continuation: 2026-09-13
+
+Kestrel remains level 24 at **332,319 XP** in healer room **3054** after
+checkpoint **40782**. The refreshed DD4 source is
+`80cad011b8c17b5ffc8828edae9182271bf7e46e`. Runs 13154 and 13156 repaired the
+funding loop in live evidence: 16 carried items and a residual purse sold for
+**307 copper** through four safe Midgaard shops. Run 13155 completed a
+source-backed maintenance funding kill for **40 XP** and **52 copper**, with a
+safe healer return. Runs 13157-13158 waited/preflighted the exact source
+target and found it absent. Run 13159 then completed a source-backed low-band
+funding kill for **50 XP** and extracted its coins, bringing the balance to
+**1,046 copper-equivalent**; run 13160 donated the unaccepted purse after
+extraction. Run **13161** used the repaired post-reset capacity entitlement for
+one exact Moria carrier probe; the carrier was absent, no XP or loss occurred,
+and the character returned safely to healer room **3054** at checkpoint
+**40782**. The current-reboot sanctuary route remains exhausted and the prior
+Magic Shop refusal remains durable. Cash alone therefore does not reopen the
+protected progression frontier.
+
+The execution repair makes `emergency_provision_sale` depend on actual food
+absence, so a stale funding marker cannot create a repeated healer-to-shop
+detour when provisions are already carried. The full offline suite passes
+**5,695 tests**, and compilation passes. The shared source estimator now
+credits DD4's `do_knife_toss` face-hit double only for target records whose
+parsed body form proves eyes; unknown anatomy remains uncredited and the
+target-independent Kestrel envelope remains 318. The campaign is correctly
+waiting for fresh sanctuary evidence or a new reboot rather than retrying the
+exhausted route or treating the successful maintenance kill as progression.
+The generic reset entitlement is source-narrowed to this audited carrier,
+spent once at segment start, and closed by the live absence result.
+This establishes maintenance and liveness evidence, not sustained progression
+or HERO proof.
+
+Astrevo is level 8 at **31,366 XP** at checkpoint **40901**. Runs **13179** and
+**13181** added 180 and 118 XP from source-ranked current-band routes; runs
+**13180**, **13182**, and **13184** recorded bounded absence or crowd outcomes,
+while **13183** and **13185** retained the finite funding boundary. Run
+**13185** captured an exact source sentinel one room before its registered
+reset room, and run **13186** live-validated the one-shot endpoint handoff.
+The reset-aware continuation then used one configured wait: run **13187**
+completed a funding segment without XP, and run **13188** withdrew from a
+fresh endpoint after a two-mobile crowd. Astrevo returned safely to healer
+room **3054** with no death or XP loss. The level-10 trainer transition and
+sustained progression gate remain open.
+
+The route-only retry is intentionally narrower than ordinary protection or
+output recovery. It requires no target combat, no objective kill, full recovery,
+and one source-labelled below-band transit hazard in the saved segment. A fresh
+same-level source candidate must still pass source identity, route, movement,
+HP, output, and crowd gates. The marker is consumed before connection, cleared
+by a productive result, and closed after another failure. This is a bounded
+evidence repair, not a general retry loop or progression permission.
+
+### Source-Material Encounter Admission: September 13, 2026
+
+The ordinary source-ranked hunt now has a narrow, opt-in path for one exact
+unarmed bystander alongside one exact current-band target. Both source mobiles
+must be ordinary, non-aggressive, non-scripted, non-special, reset-bounded, and
+covered by known HP and damage modifiers. The room must provide unique selectors
+and fresh easy-kill considers; the combined worst-case source HP, incoming
+damage, practiced mana cost, and six-action window must fit before combat.
+Protected, required-loot, familiar, source-coin, armed, hazardous, unknown, and
+extra-mobile cases remain closed. Live GMCP identities are rechecked after the
+opener, and movement, reconnect, expiry, scope drift, or a failed reprice
+clears the admission. Focused regressions pass **201 tests** and the full suite
+passes **5,687 tests**. This is offline and replay evidence only; no live
+two-mobile kill or new progression claim is made.
+
+Sustained positive progression, the level-10 trainer transition, and HERO proof
+remain open acceptance gates. Run 13099 confirmed a live mayor but rejected
+its 664-HP ceiling against Kestrel's 318-point output budget after a 385-XP
+loss. Run 13102 then found the wandering drunk in the Chaplain route's
+source-registered preflight and returned safely after bounded waits. The new
+protected-special opener remains source- and regression-tested, but has not yet
+produced a live combat exchange.
+
 ## Current Continuation: 2026-09-10
 
 Kestrel is the active frontier at level 24 with 332,552 XP and fame -12. Run
@@ -2233,7 +2353,643 @@ wasp instances alongside the route. The required-loot crowd gate withdrew
 before combat, recalled, recovered at healer **3054**, and quit cleanly. There
 was no death, loss, kill, or XP change. Kestrel's latest checkpoint is **40031**
 at level **24** and **332,692 XP**, with one purple reserve; the upgrade cooldown
-is six bounded segments. The full offline suite passes **5,477 tests**, and
+is six bounded segments. The full offline suite passes **5,480 tests**, and
 compilation is clean. This is concrete route-safety evidence, not sustained
 progression; the next acceptance gate remains a protected productive
 current-band journey with positive whole-session XP.
+
+### Protected HP-Fuzz Admission (September 10)
+
+The source mirror advanced to revision **1cd1ad5**. Runs **12985-12986** then
+refreshed source-verified food state and exercised the next current-band
+frontier. Run 12986 used the exact source-ranked `where drunk` locator to reach
+the Solace Secretary route, but the loaded target's source HP ceiling remained
+above Kestrel's fixed knife-toss budget. It withdrew before combat and left the
+same-reboot loss evidence intact; Kestrel is level **24** at **332,692 XP** at
+checkpoint **40039** in healer room 3054.
+
+This exposed a real planning boundary: a source HP range can straddle the
+character's current ceiling even when the target is otherwise current-band and
+worth testing. The campaign now filters plain high-HP candidates unless an
+audited live probe path exists. A narrow sanctuary-protected path admits one
+bounded GMCP damage-window probe when the source lower HP bound fits the
+player's source combat output and the route satisfies the existing locator
+contract. The live target ceiling must still fit the fixed source action
+budget; sanctuary changes incoming damage, not the kill authority. Dangerous
+endpoint specials, armed targets, unknown route hazards, consider rejection,
+and current-policy loss records remain blocking evidence.
+
+Offline selector, campaign, and timing regressions pass; the broader affected
+suite passes **2,789 tests** and compilation is clean. No live run is claimed
+for the new protected path yet because the current persisted Secretary policy
+already has a same-reboot loss record. The next useful live gate is a fresh
+current-band target with this admission, followed by a productive kill and
+positive whole-session XP.
+
+### Cross-Class Continuation And Key Classification (September 11)
+
+The next bounded invocations kept the roster moving without forcing an unsafe
+target. Dorrik completed flight preparation, then reached the source-ranked
+Sentinel and Abyss endpoints; both targets were absent and he returned alive
+to healer room 3054 at level 25. Serevian completed the piercing-weapon
+repair route but did not confirm the source-required bear claws after an
+unrelated field combat caused a safe return. Astrevo reached the Circus and
+killed the Bearded Lady for **140 XP**, with no damage or loss, before a later
+city-route obstruction deferred another attempt. The positive run also exposed
+a real inventory bug: the hairy key is source-defined as `ITEM_KEY` with a
+hold flag, and the stance planner incorrectly wore it. The planner now
+excludes keys from carried additions and removes an already-worn key while
+retaining legitimate pouches. Focused equipment tests cover both cases. This
+improves reusable inventory correctness; it does not change combat authority
+or establish sustained progression. The next gate remains a repeatable
+positive mage/thief journey and a level transition. Astrevo's next New Ofcol
+attempt found a source-observed crowd at Gallow Hill and withdrew without
+combat or loss, preserving the prior positive XP evidence.
+The source combat registry now adds infernalist `hellfire` and witch `wither`
+with source-derived damage bounds, mana costs, and acknowledgement nouns. The
+starter can select either spell only from the matching legal subclass and
+positive observed proficiency; offline coverage is not live subclass proof.
+The full offline suite now passes **5,515 tests** after the key-classification
+regression coverage was added.
+
+### Sanctuary Reserve Revalidation And Alignment Guards (September 11)
+
+The previous second-reserve handoff exposed a real persistence edge: its failed
+result survived, but the marker requesting the corrective run did not. Policy
+revision **273** recognizes only that exact same-boot, same-level evidence,
+nests the failed result under the new pending marker, and preserves loss,
+attempt, protection, and source-location evidence. The corrected route requires
+two total purple reserves, consumes neither during collection, and closes after
+the normal healer return. A below-band target remains disallowed for XP; it can
+be admitted here only as the exact source-required resource objective.
+
+Run **13016** live-validated the repair. Segment **12566** selected
+`source-ranked-sanctuary-recovery-2-100`, reached source mobile **4055** in
+Moria, and considered the exact target before killing it. The live kill yielded
+**110 XP** and object **4050**, the second purple potion; the character stowed
+it, sacrificed the corpse, recalled, slept at healer room **3054**, saved, and
+quit. Checkpoint **40159** records level 24 at **332,627 XP**, two verified
+purple reserves, no death, and no new XP loss. This is successful recovery
+evidence, not sustained progression.
+
+The source alignment guard now mirrors DD4's good-alignment join rule while
+rejecting GMCP's pre-level-10 alignment sentinel as proof of goodness. Harmless
+source-registered bystanders can therefore be ignored only when their specials,
+aggression, and alignment all pass the source-backed gate. These alignment
+changes have offline coverage; they have not been claimed as live HERO proof.
+
+The campaign regression suite passes **1,421** tests, the affected
+cross-module suite passes **1,766**, and the full offline suite passes **5,515**.
+Compilation and conversation-log validation are clean. Kestrel remains level
+24, and sustained positive whole-session XP plus HERO remain unproved.
+
+### Current Frontier Update: Exact GMCP HP Budget (September 11, 2026)
+
+The bounded Cyclops revalidation exposed a concrete ordering defect in the
+shared starter. Run **13018** reached source mobile **9202** in room **9204**;
+the live GMCP enemy record was authoritative at **407/407 HP**, while the
+source-audited Kestrel thief output covered **318 HP** (`backstab` opener plus
+bounded `knife toss` actions). The old endpoint path had already validated the
+matching enemy but did not pass that record into the live budget helper, so it
+quaffed sanctuary and opened before withdrawing from the aggressive engagement.
+The run produced no kill or death and a net **-338 XP** result; checkpoint
+**40172** is alive at healer room **3054** with **332,289 XP**. Both the loss and
+the live HP evidence remain in SQLite and the transcript.
+
+The endpoint now passes its exact `Char.Enemies` match, target, and stop into
+the budget helper before sanctuary or opener dispatch. A regression test covers
+the 407-HP/318-budget case. The Cyclops is closed for level 24 rather than
+reprobed: because it is aggressive, arrival combat can make a corrective flee
+cost XP even when the opener is suppressed. The affected shared suite passes
+**2,979 tests**; the full offline suite passes **5,523 tests**. The next work item is
+to find a source-executable current-band target and measure positive whole-run
+XP, not to widen the level band or manufacture a retry.
+
+### Current Frontier Update: Protected Level Ceiling (September 11, 2026)
+
+The selector now exposes Mr. Smithy (source mobile **2413**, Stables room
+**2406**) as a bounded Kestrel probe. His nominal level is 25, but source HP
+fuzz permits a live level through 27 and an estimated HP range of **316-945**.
+The ordinary protected HP-fuzz helper remains intentionally narrow; the new
+wrapper admits only a source-safe sentinel whose nominal level is character
+level plus one, with sanctuary, route, lower-bound output, and live-level
+checks intact. The resulting stop carries a level offset of two and the exact
+GMCP endpoint check still rejects any load above Kestrel's **318-point**
+backstab-plus-knife-toss budget before sanctuary or opener dispatch.
+
+Runs **13019-13028** added no progression kill but did preserve useful
+boundaries: food and sanctuary recovery succeeded, the Forest wandering bear
+route failed to acquire its required claws, Circus and Mirror Realm fame
+targets were too strong, New Ofcol was absent in bounded search, and source
+inspection confirmed that negative fame rejects new quest requests before
+target generation. Kestrel remains level 24 at **332,469 XP**, alive at healer
+room **3054**, checkpoint **40205**. The affected campaign, starter, and
+progression suite passes **3,341 tests**; the prior full **5,523-test** result
+predates the two newest regression cases. The next experiment is one bounded
+Mr. Smithy live probe, followed by a productive whole-session route only when
+the loaded target fits the measured output budget.
+
+### Latest Frontier Correction And Gear Route Audit (September 11, 2026)
+
+Run **13029** tested the level-ceiling Mr. Smithy candidate and observed a
+passive **474/474 HP** load while Kestrel's source-audited thief budget was
+**318**. The retreat cost **384 net XP**; the loss is durable evidence, not a
+retry signal. Runs **13030-13032** restored food and sanctuary reserves. Run
+**13033** returned Dorrik safely after a below-band rolling-rock maintenance
+kill for **150 XP**, with no objective kill. Kestrel remains level 24 at
+**332,185 XP** in healer room 3054, checkpoint **40225**; the current selector
+is honestly unavailable until a new source-approved route or gear improvement
+is found.
+
+`rank_gear_sources` now audits direct ground-reset equipment with the shared
+ground-stash route safety logic. This closes a proof gap where a bare graph
+shortest path could look executable despite route hazards. `promising` means a
+clean reachable source route; `caution` carries observations; `reject` carries
+autonomy blocks; `source-only` remains analysis-only for future or unranked
+mob placements. The full offline suite passes **5,541 tests** and the affected
+suite passes **3,635 tests**. This is planning progress, not HERO evidence.
+
+### Source Carrier Acquisition Contract (September 11, 2026)
+
+The equipment planner now has a separate executable path for mob-carried and
+mob-equipped upgrades. It admits only a source-ranked placement paired with a
+matching hunt candidate: exact source mobile, room, and object; one mobile and
+room spawn; an exact bounded route; no blocked special, crowd, or route hazard;
+and fitting level, live HP, movement, sanctuary, protection, provision, and
+funding gates. The campaign performs one bounded kill, verifies the required
+object, then issues the exact loot and equip commands. Below-band targets are
+allowed only for this source-required loot objective and are never progression
+XP. Offline regressions cover both the source ranking and the targeted
+post-kill route; live carrier acquisition remains unproved.
+
+The current source audit found one Kestrel carrier placement: horseshoes from
+passive Mr. Smithy (mobile **2413**, room **2406**), whose estimated HP range
+of **316-945** does not fit Kestrel's measured **318-point** thief budget.
+Dorrik has no executable carrier placement in the current report. Aeloria has
+two shield placements; the wounded goblin has a fitting raw HP range but its
+route still has a source preflight hazard, while Bardoosh exceeds her HP
+ceiling. All three saved checkpoints still have recovery or funding blockers,
+so no live carrier attempt was launched. The next useful gate is to clear
+those prerequisites and measure one safe gear acquisition before claiming any
+broader progression.
+
+### Current Source Correction: Inherited Mobile HP Modifiers (September 11, 2026)
+
+DD4 source commit **1cd1ad5** added inherited and per-mobile HP modifiers.
+The playtester now parses the template scalar, the optional area-file
+`MobHPMod` override, and the resolved effective value. It applies that scalar
+after the source level and rank roll, including the server's minimum and spawn
+cap behavior, before target, encounter, city-transit, or campaign budget
+checks. The current `sets.are` mobile resolves template **+50** to its explicit
+area override **+25**; Kestrel's and Aeloria's currently audited carrier
+mobiles resolve to **0**. Regression coverage now exercises inheritance,
+override, current-source parsing, adjusted candidate HP ranges, and an
+unresolved-template rejection. An unresolved template remains unknown and is
+rejected by target, transit, city, encounter, and campaign gates rather than
+falling back to neutral HP. The full offline suite passes **5,543 tests** and
+the affected suite passes **3,637**; this closes a source-estimation gap but
+adds no live progression or HERO proof.
+
+### Current Frontier Correction: Required-Loot Absence Recovery (September 11, 2026)
+
+The Forest bear-claw expedition already recorded a bounded required-loot
+withdrawal and 36 source-absent Kodiak sightings in run **13023**, but
+maintenance reconciliation discarded those transient fields before checkpoint
+40225. Startup now reads the exact completed terminal event for the latest
+same-level, same-reboot Forest segment, restores the absence result and route
+hazard, removes the stale cleared-policy flag, and installs the registered
+three-reset-wait cooldown. The selector honors that cooldown for both direct and
+explicit retry paths; no target, carrier, item acquisition, progression XP, or
+HERO claim is created by this repair. The full offline suite passes **5,546**
+tests and compilation is clean.
+
+### Current Frontier Correction: Passive HP-Fuzz Probe Liveness (September 11, 2026)
+
+The source admission helper previously rejected every passive mobile in the
+sanctuary-backed HP-fuzz path, even though the safe source contract permits an
+exact `consider` followed by sanctuary and an opener before the first live
+`Char.Enemies` HP snapshot. The campaign now admits only a source-identified,
+non-scripted, unarmed, non-special passive target with an exact selector; the
+starter routes that case through the normal consider path and keeps the live
+HP ceiling and fixed output budget authoritative after the opener. Scripted,
+armed, special, ambiguous, and unaudited-route cases remain rejected. Focused
+campaign and starter regressions pass, including the old source-less negative
+case; compilation is clean and the full offline suite passes **5,547 tests**.
+Offline selection now finds the source-validated passive golem route as the
+next Kestrel hunt after maintenance, but no live kill, sustained XP, or HERO
+evidence is claimed by this change.
+
+### Alignment Evidence Correction: September 11, 2026
+
+The DD4 source audit resolves the alignment concern. `update.c` sends the
+character's clamped alignment in `Char.Worth` at level 10 and above, and the
+literal `50000` mask below level 10. Run 13036 captured `1000` at Kestrel's
+level 24, so the wire data was accurate. The local policy error was treating
+the NPC hunt target's alignment as the player in `violence_update`. The gate
+now uses only a revealed player value, mirrors the source's exact 350
+`IS_GOOD` check for generic bystander assistance, and keeps the guard special's
+separate 300 threshold for its own path. Unknown, masked, and invalid values
+remain fail-closed. New focused tests cover raw GMCP preservation, campaign
+state normalization, target/player separation, and good or masked bystanders.
+The full offline suite passes **5,560 tests** after the policy revision bump;
+no live route was repeated for this correction.
+
+### Target-Specific Output Revalidation: September 11, 2026
+
+The current durable checkpoint is **40247**. Kestrel is level 24 at **331,489
+XP**, alive in healer room **3054**, after run **13039** rearmed the source
+school jewel-studded dagger. The shared source estimator, using the live skill
+ledger, damroll, swiftness, and weapon state, gives a conservative **396-point**
+opening-plus-repeat ceiling. Run **13034** observed source mobile **1303**, the
+passive golem, at **545/545 HP** against the prior **318-point** budget. The
+new weapon therefore improves the envelope but does not make that target
+eligible yet; no live retry was launched.
+
+The previous loss record now has a target-specific evidence path. Startup
+repair and future live aborts can retain the exact mobile, room, HP, old output
+budget, weapon, reboot, and source revision. A strictly stronger current
+envelope can open one exact plain-target revalidation only when the target is
+still current-band and every route, movement, funding, protection, and live
+identity gate passes. The marker is consumed at segment start and an
+interruption, failure, second loss, reboot, or source refresh closes it. Five
+focused campaign regressions and **303** source-ranked regressions pass; this
+is bounded policy coverage, not live revalidation, sustained progression, or
+HERO proof.
+
+### Cross-Class Readiness Inspection: September 12, 2026
+
+The new read-only `show-combat-readiness` command combines the durable
+checkpoint, current-reboot kill history, source combat estimator, hunt ranking,
+and gear provenance. It makes the distinction between source-band, autonomous
+safe, and output-fitting targets explicit, then lists durable constraints and
+stronger but blocked gear placements. Kestrel's current report reproduces the
+**396-point** ceiling and finds no target passing all three offline filters;
+Dorrik's level-25 report has a **1,092-point** kick envelope and 14 such
+targets, while Astrevo's level-8 mage report has a **216-point** chill-touch
+envelope and 11. These are planning signals only: the command never grants
+live dispatch permission, and the campaign's fresh route, consider, resource,
+protection, and loss gates remain authoritative.
+
+### Familiar Probe Withdrawal Acceptance (September 12, 2026)
+
+The live follow-up to the opening-death counterexample confirmed a distinct
+timing failure. Run **13052** ordered the owned pony to attack Granny Jenkins,
+then cast a spell; the pony's next automatic round killed her before the
+player's withdrawal command was processed, so the encounter awarded zero
+objective XP. The repair is source-scoped: when the audited player output
+covers the target HP ceiling, the runner permits one familiar probe, requires
+the positive attack acknowledgement, orders `flee`, confirms the pony's
+departure, and only then opens player combat. Stronger or underfunded targets
+retain the normal familiar path.
+
+Run **13053** live-proved the sequence on the same source-ranked target. The
+pony attacked once and withdrew, Astrevo then killed Granny Jenkins personally
+for **168 objective XP**, looted and returned to healer room 3054. Checkpoint
+**40298** is level 8 at **29,505 XP**. Focused regressions and the repository
+suite pass **5,580 tests**; compilation is clean. This closes the timing fix's
+live-acceptance gate, but does not prove sustained progression or HERO.
+
+### Failed Familiar Withdrawal Guard (September 12, 2026)
+
+Run **13057** supplied the next counterexample. The source-scoped probe issued
+three flee/sleep withdrawal pairs for the charmed pony, but DD4 never emitted
+positive departure or sleep evidence. The bounded helper exhausted its budget;
+however, its no-command return was allowed to fall through to the player's
+spell selector. Granny Jenkins was therefore finished by the player after
+familiar damage for only **28 XP**, while the terminal record correctly carried
+the withdrawal failure. This is not useful progression evidence.
+
+The starter now handles a newly exhausted withdrawal immediately, marks the
+field stop skipped, and enters the ordinary healer return in that same
+decision cycle. The focused familiar/starter set passes **1,521 tests**, the
+full suite passes **5,581 tests**, and compilation is clean. Run **13058**
+stopped safely at a city-route obstruction before combat, so live proof of the
+exact failed-withdrawal branch is still open. No claim of sustained progression
+or HERO is made.
+
+### Continued Level-8 Progression (September 12, 2026)
+
+Runs **13059-13061** added **280 XP** through two clean Circus kills (+172
+and +108) and one target-absent rejection. A subsequent source-ranked check
+stopped at the city-route preflight, and later selection correctly held at
+provision funding because no source-safe current-reboot funding target was
+available. Astrevo's durable checkpoint is **40329**, level 8 at **30,108 XP**,
+alive in healer room 3054 with five pies, water, and full resources. These are
+positive local progression observations but not yet sustained-progression
+proof; HERO remains unproved.
+
+### Source Attack-Damage Audit (September 12, 2026)
+
+The pinned DD4 source advanced from `1cd1ad5` to `c8c4ddc` and now resolves
+inherited/archetype and area `MobDamMod` values, applying the result to every
+positive NPC attack in `one_hit()` before resistance, sanctuary, and critical
+arithmetic. The tester now parses that same scalar, scales per-strike peak,
+expected, and critical estimates, and carries it through encounter, route,
+city, familiar, candidate-checkpoint, and inspection paths. Unknown source
+resolution fails closed. Focused regressions cover goat's +20 template value,
+area overrides, sanctuary ordering, and unknown values; this is source-model
+coverage only and does not claim new live progression or HERO proof.
+
+The refreshed-source live follow-up remained bounded. Run **13064** selected
+the exact level-25 tree-sprite policy for Dorrik, found the target absent at
+room 18564, and returned safely to healer room 3054 with no XP credited. The
+next invocation recorded the existing sanctuary-recovery cooldown at
+checkpoint **40351** without opening a connection. These observations confirm
+target absence and cooldown handling, not new progression; Dorrik remains
+level 25 at **379,568 XP** and HERO remains unproved.
+
+### Public HERO API Liveness: September 12, 2026
+
+The command-line HERO runner already used a 180-second segment cap, but the
+Python `run_hero_request` wrapper could be called without one. Its default now
+matches the CLI, and an explicitly missing cap is normalized to the same bound;
+implicit reset waits remain disabled for bounded calls. Focused HERO/CLI tests
+and the full repository suite pass **5,590 tests**. This removes a liveness
+failure mode for library callers, but it is not live progression or HERO proof.
+
+### Current Kestrel Frontier: Alignment Parity And Reset Retry (September 12, 2026)
+
+Runs **13089-13090** tested the paired food-reserve rule. Run 13089 exposed
+premature consumption after the first object-only stop; the starter now retains
+all outstanding reserve items until the complete paired route is satisfied.
+Run 13090 then returned one verified toadstool without eating it when its
+companion was not source-safe under the movement budget. Runs **13091-13092**
+used one bounded reset retry: the Moria sanctuary carrier was absent on the
+live route, and the follow-up world-time probe completed safely. Kestrel's
+current checkpoint is **40475**, level 24 at **331,669 XP**, full health in
+healer room **3054**, with GMCP alignment **1000**.
+
+The current source checkout is `c8c4ddc`. Its ordinary thief estimator gives a
+**318-point** conservative opener-plus-repeat ceiling. The readiness report
+finds 93 autonomous-safe candidates and 1,154 output-fitting candidates, but
+zero passing all three filters. Moria's purple-potion placement remains
+source-rejected because its reset permits two matching carriers. The public
+inspection commands now read nested GMCP alignment consistently with campaign
+gates and show the interpreted value. This corrects inspection parity and
+preserves the fail-closed frontier; no new kill, sustained positive
+whole-session XP, level gain, or HERO proof is claimed.
+The full offline suite passes **5,618 tests**, including **66** CLI tests;
+compilation and conversation-log validation are clean.
+
+### Current Frontier: Lockpick Funding And Fine-Dagger Preparation (September 13, 2026)
+
+The source mirror now resolves revision `622d5de`. Policy revision **282** adds
+the missing economic step for the next Kestrel upgrade: a level-24+ Thief who
+still needs the 1,000-copper lockpick may take one bounded, below-band kill of
+Shargugh (mobile **6115**) in room **6100** for source-reset iron ring object
+**6114**. The route is 12 commands and 56 movement, and its source
+`spec_drunk` hazard requires the explicit `where drunk` preflight. The exact
+carrier, reset, HP/output, inventory, capacity, route, and safe-sale gates are
+preserved; the ring run is maintenance evidence and contributes no progression
+XP. The fine-dagger route, live acquisition, sustained positive whole-session
+XP, and HERO 100 remain unproved. The full offline suite passes **5,645 tests**
+and compilation is clean.
+
+### Moria Locator Recheck: September 13, 2026
+
+Run **13119** supplied a useful liveness counterexample. `where hobgoblin`
+reported two large-hobgoblin carriers in `The maze`, but the room listing at
+source room **4063** was empty. Source inspection confirms mobile **4055** is
+not sentinel: it can wander while staying in Moria, and DD4's locator output
+does not include room VNUMs. The starter now gives a positive, source-mapped
+same-room locator refresh one extra `look` before closing the endpoint. This
+does not bypass target visibility or `consider`, and the live run still proves
+neither a kill nor progression. The full offline suite passes **5,646 tests**.
+
+### Moria Southern-Maze Locator Coverage: September 13, 2026
+
+The follow-up live segments sharpened the frontier. Run **13120** recorded the
+source-verified Shargugh funding carrier as absent; run **13121** found mobile
+4055 in Moria but ended without the required potion. The source route audit
+now recognizes the three reachable rooms sharing `The maze`: **4063**,
+**4066**, and **4065**. It intentionally excludes the western poisoner and
+sentinel branch (**4057**, **4058**, **4062**) and the aggressive branch at
+**4067**. The widened map preserves the one-relocation limit and normal exact
+listing, visibility, identity, consider, HP, hazard, and required-loot gates.
+Policy revision **283** reopened only the prior same-boot, no-loss level-24
+terminal result, preserving its old attempt evidence. Live run **13124** then
+followed the widened graph, killed source mobile **4055**, acquired the required
+purple potion, and returned Kestrel safely to healer room **3054** for **100 XP**
+without a death. Maintenance runs **13122** and **13123** acquired `some grain`
+from Crystal rooms **10036** and **10038** without changing XP. This is bounded
+live acceptance and supply evidence only; sustained progression and HERO proof
+remain unproved. Kestrel is level 24 at **331,279 XP**. The full offline suite
+passes **5,648 tests**.
+
+### Lockpick Funding Shortfall Selection: September 13, 2026
+
+The latest implementation closes a policy handoff gap exposed after the
+Moria acceptance run. When the level-24 Thief still needs the source lockpick,
+the selected `provision-funding` policy is retained instead of falling through
+to a generic unavailable source frontier. The funding selector also ranks
+eligible coin carriers against the exact known shortfall, so an audited carrier
+with enough coins wins over an insufficient small purse. Existing risk gates
+remain authoritative; the real Solace carrier with 3,400 source coins is still
+blocked by multiple route attackers without a sanctuary reserve.
+
+Run **13125** provided live maintenance evidence: Midget, mobile **4408**, was
+killed for **40** below-band XP and **50** copper, followed by safe return to
+healer room **3054**. Runs **13126-13127** completed Circus and Mirror Realm
+fame-recovery checks without changing XP. Run **13128** then killed the second
+permitted large-hobgoblin carrier, acquired the required purple potion, and
+added **100** XP with safe return. Kestrel is level 24 at **331,419 XP** with
+checkpoint **40618**. The full offline suite passes **5,650 tests** and
+compilation is clean. No sustained progression or HERO proof is claimed.
+
+### Funding Handoff Repair And Live Guard Attempt: September 13, 2026
+
+The latest regression exposed a policy-ordering failure: a stale
+`empty-money-container` exclusion was converted into an unavailable frontier
+before the active lockpick and flight shortfalls could select a funding
+carrier. The campaign now preserves that explicit maintenance handoff only
+for a fed, alive, non-combat state; source candidate selection still enforces
+the ordinary route, identity, movement, protection, output, and saleability
+gates.
+
+Run **13132** completed the repaired handoff against patrolling guard mobile
+**9400** in room **9400**, producing **90** below-band maintenance XP and **1
+copper** of realized proceeds with no death or XP loss. Kestrel returned to
+healer room **3054** at checkpoint **40633**, level 24 and **331,599 XP**. The
+next policy correctly requests a second purple sanctuary reserve before the
+lockpick funding loop reopens. Focused tests and the full **5,651-test** suite
+pass; this remains bounded maintenance evidence, not sustained progression or
+HERO proof.
+
+### Lockpick Shortfall Ahead Of Flight Retry: September 13, 2026
+
+Runs **13133-13135** closed the next maintenance loop. Run 13133 reached the
+second permitted Moria carrier, acquired the second purple sanctuary reserve,
+and added **100** XP with a safe return to healer room **3054**. Runs 13134 and
+13135 exercised the Circus and Mirror Realm fame routes; both recorded
+retryable source boundaries without a kill, XP change, death, or loss. Kestrel
+is level 24 at **331,699 XP**, checkpoint **40642**, with **527 copper** toward
+the source-recorded **1,000-copper** Shadow Keep lockpick.
+
+The checkpoint exposed one more policy-ordering edge: a pending flight retry
+could be selected before the active lockpick shortfall reached
+`provision-funding`, after which the fame fallback collapsed to an unavailable
+frontier. The campaign now gives the concrete lockpick shortfall precedence
+over `buy-flight` and `buy-optional-flight` in a fed, alive, non-combat state.
+The existing source-ranked selector still owns all candidate identity, route,
+movement, protection, output, saleability, and below-band gates. The direct
+checkpoint audit now selects `provision-funding`; the full offline suite passes
+**5,652 tests** and compilation is clean. This is a liveness/maintenance repair,
+not sustained progression or HERO proof.
+
+### Funding Precedence Live Check: September 13, 2026
+
+Run **13136** validated the repaired ordering in a live session. The campaign
+selected `provision-funding` despite the pending flight retry, reached the
+source-backed on-duty guard (mobile **9401**), and recorded **110** bounded
+maintenance XP plus **1 copper** with no sale, death, or XP loss. Kestrel
+returned to healer room **3054** at checkpoint **40645**, level 24 and
+**331,809 XP**. The ending state has one verified purple sanctuary reserve and
+**528 copper** toward the **1,000-copper** Shadow Keep lockpick; the protected
+fight therefore correctly reopens Moria sanctuary recovery before the next
+funding attempt.
+
+This is evidence that the liveness repair reaches an executable maintenance
+route, not evidence of positive progression. The full offline suite passes
+**5,652 tests**, compilation and diff checks are clean, and the next live
+decision remains bounded by the source-ranked funding and protection gates.
+
+### Moria Reserve Recheck: September 13, 2026
+
+Run **13137** re-entered the source-ranked Moria sanctuary-recovery route after
+the protected funding attempt consumed one of Kestrel's two verified purple
+reserves. The required second purple was not present, so the segment ended
+cleanly with no kill, XP change, death, or loss and returned to healer room
+**3054** at checkpoint **40649**. Kestrel remains level 24 at **331,809 XP**
+with **528 copper** toward the **1,000-copper** Shadow Keep lockpick.
+
+The direct checkpoint audit now rotates back to `provision-funding`; the pending
+flight retry no longer hides that active lockpick objective. This is a bounded
+source boundary and policy-liveness evidence only. The full offline suite
+remains at **5,652 passed tests**, with compilation and diff checks clean;
+sustained progression and HERO proof remain unproved.
+
+### Funding Rotation And Current State: September 13, 2026
+
+Runs **13138-13141** continued the repaired lockpick-funding loop without
+repeating a completed carrier. The cook's boy (mobile **9404**), cook (mobile
+**9403**), large orc (mobile **4005**), and Katrina the Shepherd (mobile
+**2405**) each passed the live source, route, combat, and recovery gates. They
+produced **60, 80, 60, and 50** maintenance XP respectively, plus **1 copper**
+each; no item sale, death, or XP loss occurred. Kestrel returned to healer room
+**3054** after every segment and now sits at checkpoint **40664**, level 24,
+**332,059 XP**, with **532 copper-equivalent** and no purple reserve.
+
+The active `provision-funding` policy remains correct because the source-verified
+Shadow Keep lockpick costs **1,000 copper-equivalent** and is required before
+the level-26 fine-dagger upgrade. The pending flight retry remains secondary to
+that concrete shortfall. These runs are useful maintenance and source-route
+evidence, but the current-band output gate still has no executable target;
+sustained positive whole-session progression and HERO 100 remain unproved.
+
+### Loose Sanctuary Reserve Precedence: September 13, 2026
+
+Run **13142** confirmed the reboot-local flight price (**131 copper**) but the
+Magic Shop still refused Kestrel at fame **-12**. Run **13143** then completed
+the source-ranked Moria carrier route, adding **90** maintenance XP and one
+purple potion before returning safely to healer room **3054**. The potion was
+initially loose in inventory, and the selector could incorrectly prioritize an
+excluded money-container policy over repacking it for combat. The policy graph
+now gives `audit-combat-pouch` precedence over inventory cleanup and funding
+whenever this source-verified reserve is loose; the existing pouch command and
+acknowledgement gates remain unchanged.
+
+Run **13144** live-validated the repair: the potion was placed in the worn
+combat pouch, Kestrel stayed level 24 at checkpoint **40674** and **332,149 XP**,
+and no death, loss, or XP change occurred. He now has one verified purple
+reserve and **532 copper-equivalent** toward the Shadow Keep lockpick. The full
+offline suite passes **5,653 tests**. This is a concrete safety and policy
+liveness repair, not sustained progression or HERO proof.
+
+### Below-Band Source Provenance Repair And Reset-Aware Funding: September 13, 2026
+
+Runs **13145** and **13147** recorded bounded no-change funding scans around
+the reset wait. Runs **13146** and **13148** then completed the source-ranked
+Circus Midget route for **40** below-band maintenance XP each, with safe healer
+returns and no death or XP loss. Run 13146 exposed an evidence defect: an exact
+below-band source stop was matched, but `StarterBotRunner` omitted its source
+mobile VNUM and policy ID because it was correctly marking the kill
+non-objective. The runner now preserves both fields without promoting the kill
+to progression evidence; a regression covers the distinction. Kestrel is at
+checkpoint **40724**, level 24, **332,229 XP**, healer room **3054**, no
+verified purple reserve, and **639 copper-equivalent** toward the source
+lockpick. The full suite passes **5,656 tests**. The execution layer also now
+prevents an empty funding scan from falling through to a flight purchase while
+the lockpick shortfall is active. This remains maintenance and evidence-quality
+progress, not sustained progression or HERO proof.
+
+### Protection Wait Liveness Repair: September 13, 2026
+
+The previously blocked Kestrel checkpoint exposed a reset-aware liveness gap:
+the generic wait branch recognized only summaries beginning with
+`No source-safe current-band`, while the exact no-reserve protection boundary
+has a more specific summary. The runner now recognizes that boundary by its
+source-ranked unavailable policy, current protection marker, and explicit
+reset-aware option. Capped runs remain blocked; reset-aware runs checkpoint
+`awaiting_area_reset` without opening a gameplay segment. The outer runner then
+waits once for the configured reset interval and uses a maintenance-only
+world-time probe before reconsidering live policy selection.
+
+The live proof completed that path at checkpoint **40717**, waited **180
+seconds**, completed world-time run **13150** without a new reboot, and stopped
+at `provision-funding` checkpoint **40724** without repeating the refused flight
+purchase. Kestrel remains level 24 at **332,229 XP**, with **639
+copper-equivalent** and no verified purple reserve. The full offline suite
+passes **5,656 tests**; sustained progression and HERO proof remain unproved.
+
+### Source Refresh And Special-Contract Audit: September 13, 2026
+
+The DD4 source mirror was pulled to `80cad011b8c17b5ffc8828edae9182271bf7e46e`.
+The refresh adds the explicit `AFF_MINDLESS` trait and confirms three weighted
+mobile-special slots with body/archetype inheritance and area `#SPECIALS`
+`M`/`N`/`P` overrides. The parser now tracks nested C initializer braces,
+preserves probability vectors, and includes inherited template procedures in
+route hazard analysis. Source smoke parsing finds 4,138 mobiles and 1,629
+effective special-bearing mobiles. The full offline suite passes **5,692
+tests**. Existing live evidence remains tied to its recorded `622d5de` source
+revision until a resumed campaign refreshes it; no new live progression or
+HERO proof is claimed.
+
+### Displaced-Sentinel Revalidation: September 13, 2026
+
+The source-verified sentinel handoff is now live-validated. Run **13186**
+consumed the exact pending revalidation after the initial crowded room,
+continued along the already-vetted outbound step, checked the registered reset
+room, observed a new two-mobile crowd, and returned safely through recall and
+the healer. The marker closed with outcome `no_kill`; Astrevo remains level 8
+at **31,366 XP** in healer room **3054**, checkpoint **40886**, with no XP loss
+or progression credit. The outer campaign wait is now covered by the same
+one-shot marker, so this changed-input retry cannot replay in the same boot.
+This is navigation and liveness evidence, not sustained progression or HERO
+proof; the next attempt returns to normal frontier rotation. The full offline
+suite now passes **5,695 tests**.
+
+### Reset-Aware Continuation: September 13, 2026
+
+The next bounded autonomous cycle used its one configured area-reset wait
+exactly once. Run **13187** completed a funding segment without XP change;
+run **13188** selected a fresh route, confirmed its target at the endpoint,
+then withdrew when a two-mobile crowd failed the normal field gate. Astrevo
+returned to healer room **3054** at checkpoint **40901**, still level 8 at
+**31,366 XP**, without death or XP loss. This is supervisor liveness and
+negative-route evidence; the next invocation must rotate from the recorded
+crowd rather than replaying the closed route.
+
+### Protected Gas Probe Action Window: September 14, 2026
+
+The exact source-famous Green Dragon recovery contract now has a bounded
+runtime distinction from ordinary output estimates. The offline source model
+and all pre-sanctuary gates still use the normal twelve-action estimate. After
+the live runner has observed sanctuary, healer nausea recovery, the exact
+`spec_breath_gas` procedure, and the source-approved route, it may use the
+existing finite **36-action** probe horizon. This is not a global damage-budget
+increase and does not authorize generic specials or an unbounded combat loop.
+The campaign policy is revision **300**. The full offline suite passes **5,762
+tests**, compilation is clean, and the bounded resume advanced Kestrel's
+checkpoint to **41351** without opening another live segment. He remains
+blocked at level 24 with fame **-12** pending a new executable output or fame
+route.
