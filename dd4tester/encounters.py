@@ -133,6 +133,25 @@ class SourcePairEncounter:
         return tuple(value for value in self.selectors if value not in self.defeated)
 
 
+@dataclass
+class SourceMaterialEncounter:
+    """A primary target with one source-verified room bystander."""
+
+    budget: EncounterBudget
+    target: str
+    target_selector: str
+    target_vnum: int
+    bystander: str
+    bystander_selector: str
+    bystander_vnum: int
+    room_vnum: str
+    stop_index: int
+    level: int
+    boot_id: str | None
+    prepared_at: float
+    started_at: float | None = None
+
+
 def source_solo_budget(
     world: WorldSource, mobile_vnum: int, *, character_level: int,
     hp: int, max_hp: int, mana: int, max_mana: int,
@@ -147,6 +166,10 @@ def source_solo_budget(
     mobile = world.mobiles.get(mobile_vnum)
     if mobile is None or mobile.aggressive:
         return SourcePairBudget(False, "missing or aggressive solo source target")
+    if not mobile.hp_modifier_known:
+        return SourcePairBudget(False, "source mobile HP modifier is unavailable")
+    if not mobile.damage_modifier_known:
+        return SourcePairBudget(False, "source mobile damage modifier is unavailable")
     resets = [reset for reset in world.mob_resets if reset.mobile_vnum == mobile_vnum]
     if not resets or max(reset.maximum_count for reset in resets) > 4:
         return SourcePairBudget(False, "missing or excessive source reset population")
@@ -158,7 +181,11 @@ def source_solo_budget(
         return SourcePairBudget(False, "no useful easy-kill source intersection")
     if not 0 < hp <= max_hp or hp < ceil(max_hp * .95):
         return SourcePairBudget(False, "solo admission requires near-full health")
-    hp_ceiling = _mobile_base_hp_range((lower, upper), rank=mobile.rank)[1]
+    hp_ceiling = _mobile_base_hp_range(
+        (lower, upper),
+        rank=mobile.rank,
+        hp_modifier=mobile.hp_modifier,
+    )[1]
     budget = active_encounter_budget(
         world, [{"isnpc": mobile_vnum, "level": upper, "hp": hp_ceiling, "maxhp": hp_ceiling}],
         character_level=character_level, hp=hp, max_hp=max_hp,
@@ -188,6 +215,10 @@ def source_pair_budget(
     mobile = world.mobiles.get(mobile_vnum)
     if mobile is None or output is None or output.conservative_damage <= 0:
         return SourcePairBudget(False, "missing source mobile or executable damage")
+    if not mobile.hp_modifier_known:
+        return SourcePairBudget(False, "source mobile HP modifier is unavailable")
+    if not mobile.damage_modifier_known:
+        return SourcePairBudget(False, "source mobile damage modifier is unavailable")
     if (
         mobile.aggressive or mobile.programs or mobile.non_corporeal
         or mobile.costs_fame or world.mobile_specials.get(mobile_vnum)
@@ -205,11 +236,32 @@ def source_pair_budget(
         return SourcePairBudget(False, "source range has no useful easy-kill intersection")
     if not 0 < hp <= max_hp or hp < ceil(max_hp * .95):
         return SourcePairBudget(False, "pair admission requires fresh near-full health")
-    hp_ceiling = _mobile_base_hp_range((lower, upper), rank=mobile.rank)[1]
+    hp_ceiling = _mobile_base_hp_range(
+        (lower, upper),
+        rank=mobile.rank,
+        hp_modifier=mobile.hp_modifier,
+    )[1]
     actions = 2 * ceil(hp_ceiling / output.conservative_damage)
-    peak = 2 * _mobile_peak_round_damage(upper, wielding=False, dual_wielding=False)
-    reserve = max(ceil(max_hp * .4), 2 * _mobile_critical_hit_damage(upper, wielding=False))
-    probe_damage = 4 * mobile_expected_round_damage(upper, wielding=False, dual_wielding=False)
+    peak = 2 * _mobile_peak_round_damage(
+        upper,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
+    reserve = max(
+        ceil(max_hp * .4),
+        2 * _mobile_critical_hit_damage(
+            upper,
+            wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        ),
+    )
+    probe_damage = 4 * mobile_expected_round_damage(
+        upper,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
     mana_cost = (actions + 2) * output.resource_cost if output.resource == "mana" else 0
     values = dict(
         mobile_vnums=(mobile_vnum, mobile_vnum), actions=actions,
@@ -314,6 +366,10 @@ def active_encounter_budget(
             or world.mobile_specials.get(vnum) or vnum in world.shopkeepers
         ):
             return EncounterBudget(False, "enemy requires a separate source-special policy")
+        if not mobile.hp_modifier_known:
+            return EncounterBudget(False, "source mobile HP modifier is unavailable")
+        if not mobile.damage_modifier_known:
+            return EncounterBudget(False, "source mobile damage modifier is unavailable")
         if any(
             slot in {WEAR_WIELD, WEAR_DUAL}
             and (
@@ -327,10 +383,24 @@ def active_encounter_budget(
         if not any(reset.mobile_vnum == vnum for reset in world.mob_resets):
             return EncounterBudget(False, "missing source reset equipment evidence")
         actions = ceil(enemy_hp / output.conservative_damage)
-        incoming = mobile_expected_round_damage(level, wielding=False, dual_wielding=False)
+        incoming = mobile_expected_round_damage(
+            level,
+            wielding=False,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
         members.append((vnum, actions, incoming))
-        peak += _mobile_peak_round_damage(level, wielding=False, dual_wielding=False)
-        critical += _mobile_critical_hit_damage(level, wielding=False)
+        peak += _mobile_peak_round_damage(
+            level,
+            wielding=False,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+        critical += _mobile_critical_hit_damage(
+            level,
+            wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
 
     actions = sum(member[1] for member in members)
     expected = max(
@@ -360,3 +430,91 @@ def active_encounter_budget(
     elif output.resource != "actions" or output.resource_cost:
         return EncounterBudget(False, "unsupported action resource", **values)
     return EncounterBudget(True, "live ordinary encounter fits the finishing budget", **values)
+
+
+def source_multi_encounter_budget(
+    world: WorldSource,
+    mobile_vnums: Sequence[int],
+    *,
+    character_level: int,
+    hp: int,
+    max_hp: int,
+    mana: int,
+    max_mana: int,
+    output: SourceCombatOutput | None,
+) -> EncounterBudget:
+    """Price two exact easy-band source mobiles before either one engages.
+
+    The caller must separately bind unique room selectors and fresh easy-kill
+    considers. Use the upper source level and HP bounds for both mobiles so
+    this admission never relies on concealed live values for the bystander.
+    """
+    if len(mobile_vnums) != 2 or len(set(mobile_vnums)) != 2:
+        return EncounterBudget(False, "source material encounter needs two distinct mobiles")
+    if output is None or output.conservative_damage <= 0:
+        return EncounterBudget(False, "no executable source-backed damage action")
+    if character_level <= 0 or not 0 < hp <= max_hp or hp < ceil(max_hp * .95):
+        return EncounterBudget(False, "source material admission requires near-full health")
+
+    enemies: list[dict[str, int | str]] = []
+    for mobile_vnum in mobile_vnums:
+        mobile = world.mobiles.get(mobile_vnum)
+        if mobile is None:
+            return EncounterBudget(False, "source material mobile is unavailable")
+        if (
+            mobile.aggressive or mobile.programs or mobile.non_corporeal
+            or mobile.costs_fame or world.mobile_specials.get(mobile_vnum)
+            or mobile_vnum in world.shopkeepers
+        ):
+            return EncounterBudget(False, "source material mobile requires a separate hazard policy")
+        if not mobile.hp_modifier_known:
+            return EncounterBudget(False, "source mobile HP modifier is unavailable")
+        if not mobile.damage_modifier_known:
+            return EncounterBudget(False, "source mobile damage modifier is unavailable")
+        resets = [
+            reset for reset in world.mob_resets
+            if reset.mobile_vnum == mobile_vnum
+        ]
+        if not resets or max(reset.maximum_count for reset in resets) > 4:
+            return EncounterBudget(False, "source material mobile has no bounded reset population")
+        if any(
+            slot in {WEAR_WIELD, WEAR_DUAL}
+            and (
+                (item := world.objects.get(object_vnum)) is None
+                or item.item_type == ITEM_WEAPON
+            )
+            for reset in resets
+            for slot, object_vnum in reset.equipment
+        ):
+            return EncounterBudget(False, "source material mobile retains the armed-target gate")
+        lower, upper = _mobile_level_range(mobile.level)
+        lower = max(lower, character_level - 4)
+        upper = min(upper, character_level - 2)
+        if lower <= 0 or lower > upper:
+            return EncounterBudget(False, "source material mobile has no easy-band level intersection")
+        hp_ceiling = _mobile_base_hp_range(
+            (lower, upper),
+            rank=mobile.rank,
+            hp_modifier=mobile.hp_modifier,
+        )[1]
+        enemies.append({
+            "isnpc": str(mobile_vnum),
+            "level": str(upper),
+            "hp": str(hp_ceiling),
+            "maxhp": str(hp_ceiling),
+        })
+
+    budget = active_encounter_budget(
+        world,
+        enemies,
+        character_level=character_level,
+        hp=hp,
+        max_hp=max_hp,
+        mana=mana,
+        max_mana=max_mana,
+        output=output,
+    )
+    return replace(
+        budget,
+        reason="source-estimated two-mobile encounter: " + budget.reason,
+    )

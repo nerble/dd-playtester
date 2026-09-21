@@ -2,7 +2,11 @@ from dataclasses import replace
 
 import pytest
 
-from dd4tester.encounters import active_encounter_budget, source_pair_budget
+from dd4tester.encounters import (
+    active_encounter_budget,
+    source_multi_encounter_budget,
+    source_pair_budget,
+)
 from dd4tester.hunt_candidates import (
     ITEM_WEAPON, WEAR_WIELD, MobileProgram, MobileSource, MobReset,
     ObjectSource, SourceCombatOutput, WorldSource,
@@ -91,6 +95,20 @@ def test_active_encounter_preserves_source_hazard_and_equipment_gates(hazard):
     assert not _budget(world=world).allowed
 
 
+def test_active_encounter_rejects_unknown_mobile_damage_modifier():
+    world = _world()
+    world.mobiles[1] = replace(
+        world.mobiles[1],
+        damage_modifier=None,
+        damage_modifier_known=False,
+    )
+
+    budget = _budget(world=world)
+
+    assert not budget.allowed
+    assert "damage modifier is unavailable" in budget.reason
+
+
 def test_active_encounter_physical_damage_does_not_require_mana_or_credit_backstab():
     output = SourceCombatOutput("kick", 10, 15, 20, "actions", 0, 12,
                                 opening_conservative_damage=1000)
@@ -149,3 +167,66 @@ def test_source_pair_does_not_bypass_source_hazards(hazard):
         world, 1, character_level=8, hp=113, max_hp=113, mana=324, max_mana=324,
         output=SourceCombatOutput("chill touch", 18, 23, 28, "mana", 25, 18),
     ).allowed
+
+
+def _source_multi(**overrides):
+    world = _world()
+    world.mobiles[1] = replace(world.mobiles[1], level=5)
+    world.mobiles[2] = replace(world.mobiles[2], level=3)
+    params = dict(
+        character_level=8,
+        hp=240,
+        max_hp=240,
+        mana=324,
+        max_mana=324,
+        output=SourceCombatOutput("chill touch", 28, 35, 42, "mana", 25, 28),
+    )
+    params.update(overrides)
+    return source_multi_encounter_budget(world, (1, 2), **params)
+
+
+def test_source_multi_prices_two_distinct_easy_band_mobiles():
+    budget = _source_multi()
+
+    assert budget.allowed
+    assert budget.mobile_vnums == (1, 2)
+    assert budget.actions > 0
+    assert budget.expected_incoming > 0
+    assert "two-mobile encounter" in budget.reason
+
+
+@pytest.mark.parametrize("hazard", [
+    "special", "aggressive", "program", "armed", "missing_reset", "population",
+])
+def test_source_multi_preserves_source_hazard_boundaries(hazard):
+    world = _world()
+    world.mobiles[1] = replace(world.mobiles[1], level=5)
+    world.mobiles[2] = replace(world.mobiles[2], level=3)
+    if hazard == "special":
+        world.mobile_specials[2] = ("spec_poison",)
+    elif hazard == "aggressive":
+        world.mobiles[2] = replace(world.mobiles[2], act_flags=32)
+    elif hazard == "program":
+        world.mobiles[2] = replace(
+            world.mobiles[2],
+            programs=(MobileProgram("fight_prog", "100", ("mpkill $n",)),),
+        )
+    elif hazard == "missing_reset":
+        world.mob_resets = world.mob_resets[:1]
+    elif hazard == "population":
+        world.mob_resets[1] = replace(world.mob_resets[1], maximum_count=5)
+    else:
+        world.mob_resets[1] = replace(world.mob_resets[1], equipment=((WEAR_WIELD, 999),))
+
+    budget = source_multi_encounter_budget(
+        world,
+        (1, 2),
+        character_level=8,
+        hp=113,
+        max_hp=113,
+        mana=324,
+        max_mana=324,
+        output=SourceCombatOutput("chill touch", 18, 23, 28, "mana", 25, 18),
+    )
+
+    assert not budget.allowed

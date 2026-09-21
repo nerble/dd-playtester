@@ -33,6 +33,11 @@ class CombatCapability:
 # live practice listing, current resources, and target gates confirm it.
 BASE_COMBAT_CAPABILITIES: Mapping[str, tuple[CombatCapability, ...]] = {
     "mage": (
+        CombatCapability("acid blast", "spell", "magic.c:spell_acid_blast"),
+        CombatCapability("fireball", "spell", "magic.c:spell_fireball"),
+        CombatCapability("lightning bolt", "spell", "magic.c:spell_lightning_bolt"),
+        CombatCapability("shocking grasp", "spell", "magic.c:spell_shocking_grasp"),
+        CombatCapability("colour spray", "spell", "magic.c:spell_colour_spray"),
         CombatCapability("burning hands", "spell", "magic.c:spell_burning_hands"),
         CombatCapability("chill touch", "spell", "magic.c:spell_chill_touch"),
         CombatCapability("magic missile", "spell", "magic.c:spell_magic_missile"),
@@ -147,6 +152,24 @@ SUBCLASS_COMBAT_CAPABILITIES: Mapping[str, tuple[CombatCapability, ...]] = {
             estimated=False,
         ),
     ),
+    "warlock": (
+        CombatCapability(
+            "warcry",
+            "skill",
+            "act_move.c:do_warcry",
+            estimated=False,
+            role="setup",
+        ),
+    ),
+    "templar": (
+        CombatCapability(
+            "warcry",
+            "skill",
+            "act_move.c:do_warcry",
+            estimated=False,
+            role="setup",
+        ),
+    ),
     "vampire": (
         CombatCapability(
             "disarm",
@@ -183,6 +206,30 @@ SUBCLASS_COMBAT_CAPABILITIES: Mapping[str, tuple[CombatCapability, ...]] = {
             estimated=False,
         ),
     ),
+    "ninja": (
+        CombatCapability(
+            "decapitate",
+            "skill",
+            "fight.c:do_decapitate",
+            estimated=False,
+        ),
+    ),
+    "bounty hunter": (
+        CombatCapability(
+            "stun",
+            "skill",
+            "fight.c:do_stun",
+            estimated=False,
+            role="control",
+        ),
+        CombatCapability(
+            "berserk",
+            "skill",
+            "fight.c:do_berserk",
+            estimated=False,
+            role="setup",
+        ),
+    ),
     "necromancer": (
         CombatCapability("harm", "spell", "magic.c:spell_harm"),
     ),
@@ -192,6 +239,16 @@ SUBCLASS_COMBAT_CAPABILITIES: Mapping[str, tuple[CombatCapability, ...]] = {
     "knight": (
         CombatCapability("flamestrike", "spell", "magic.c:spell_flamestrike"),
     ),
+    "infernalist": (
+        CombatCapability(
+            "hellfire",
+            "spell",
+            "magic.c:spell_hells_fire",
+        ),
+    ),
+    "witch": (
+        CombatCapability("wither", "spell", "magic.c:spell_wither"),
+    ),
     "monk": (
         CombatCapability("agitation", "spell", "magic.c:spell_agitation"),
         CombatCapability("mind thrust", "spell", "magic.c:spell_mind_thrust"),
@@ -199,6 +256,33 @@ SUBCLASS_COMBAT_CAPABILITIES: Mapping[str, tuple[CombatCapability, ...]] = {
     "werewolf": (
         CombatCapability("wolfbite", "skill", "sft.c:do_wolfbite"),
         CombatCapability("ravage", "skill", "sft.c:do_ravage"),
+    ),
+    "bard": (
+        CombatCapability(
+            "chant of battle",
+            "skill",
+            "skill.c:do_chant",
+            estimated=False,
+            role="setup",
+        ),
+    ),
+    "engineer": (
+        CombatCapability(
+            "trigger",
+            "skill",
+            "skill.c:do_trigger",
+            estimated=False,
+            role="setup",
+        ),
+    ),
+    "runesmith": (
+        CombatCapability(
+            "pyro rune",
+            "skill",
+            "skill.c:do_inscribe; magic.c:spell_runic_flames",
+            estimated=False,
+            role="setup",
+        ),
     ),
 }
 

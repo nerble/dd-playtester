@@ -78,6 +78,21 @@ def test_one_verified_interruption_can_finish_and_cannot_be_reused(world):
     assert transit.status == "aborted"
 
 
+def test_city_admission_expires_after_leaving_the_route():
+    transit = CityShopTransit(status="admitted", started_at=100.0)
+    transit.leave_route("101")
+    assert transit.status == "idle"
+    assert transit.started_at is None
+    assert transit.reason is None
+
+
+def test_city_admission_remains_active_inside_the_route():
+    transit = CityShopTransit(status="admitted", started_at=100.0)
+    transit.leave_route("3014")
+    assert transit.status == "admitted"
+    assert transit.started_at == 100.0
+
+
 @pytest.mark.parametrize("boundary", [
     "crowd", "wrong-id", "missing-id", "too-high", "missing-level", "large-hp",
     "missing-hp", "low-health", "nutrition", "timeout", "runtime", "wrong-room",
@@ -164,6 +179,40 @@ def test_public_flight_adapter_passes_only_current_source_permission(world, monk
         current_state=current, source_world=world,
     ))
     assert bool(captured.get("allow_bounded_city_shop_transit")) is not aborted
+
+
+def test_public_funding_adapter_passes_current_source_permission(world, monkeypatch):
+    from dd4tester import campaign
+
+    captured = {}
+
+    class Runner:
+        def __init__(self, spec, path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return "finished"
+
+    monkeypatch.setattr(campaign, "StarterBotRunner", Runner)
+    bot = policy(world)
+    current = {**state().to_dict(), "world_boot_id": "boot"}
+    candidate = campaign._select_provision_funding_candidate(
+        current,
+        character_level=8,
+        boot_kill_counts={},
+        boot_id="boot",
+        source_directory=Path("runs/dd4-source/server/area"),
+        gear_catalog=None,
+        boot_kill_counts_by_mobile_vnum={},
+        prefer_completed_funding_candidate=True,
+    )
+    assert candidate is not None
+    asyncio.run(campaign._run_policy_segment(
+        bot.spec, Path("unused.yaml"), campaign._PROVISION_FUNDING_POLICY,
+        current_state=current, source_world=world, character_level=8,
+        provision_funding_candidate=candidate,
+    ))
+    assert captured.get("allow_bounded_city_shop_transit") is True
 
 
 def test_transit_checkpoint_never_contains_a_resumable_timer():

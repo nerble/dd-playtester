@@ -91,6 +91,60 @@ def test_mage_buys_unlocked_damage_spell_before_optional_utility() -> None:
     assert [choice.skill for choice in choices] == ["burning hands"]
 
 
+def test_mage_continues_source_evocation_chain_after_burning_hands() -> None:
+    choices = plan_training(
+        "mage",
+        _listing(
+            "magic missile: 36%    chill touch: 36%    evocation magiks: 49%    "
+            "burning hands: 35%",
+            "shocking grasp: 0%    faerie fire: 0%",
+            physical=0,
+            intellectual=2,
+        ),
+        character_level=18,
+    )
+
+    assert [choice.skill for choice in choices] == ["evocation magiks"]
+    assert choices[0].target_percent == 60
+
+
+def test_mage_advances_known_gateway_before_dependent_spell_is_listed() -> None:
+    choices = plan_training(
+        "mage",
+        _listing(
+            "illusion magiks: 36%    evocation magiks: 49%    "
+            "protective magiks: 44%    armor: 30%",
+            "enchantment magiks: 0%    summoning magiks: 0%    "
+            "mana control disciplines: 0%    ventriloquate: 0%",
+            physical=2,
+            intellectual=2,
+        ),
+        character_level=18,
+        stop_after_skill="shocking grasp",
+    )
+
+    assert [choice.skill for choice in choices] == ["evocation magiks"]
+    assert choices[0].target_percent == 60
+    assert choices[0].utility == "damage-gateway"
+
+
+def test_mage_uses_exact_spell_prerequisites_before_lightning_bolt() -> None:
+    choices = plan_training(
+        "mage",
+        _listing(
+            "magic missile: 36%    chill touch: 36%    evocation magiks: 60%    "
+            "burning hands: 35%",
+            "shocking grasp: 0%    lightning bolt: 0%",
+            physical=0,
+            intellectual=2,
+        ),
+        character_level=18,
+    )
+
+    assert [choice.skill for choice in choices] == ["shocking grasp"]
+    assert choices[0].target_percent == 30
+
+
 def test_level_sixteen_mage_learns_faerie_fire_as_a_damage_debuff() -> None:
     choices = plan_training(
         "mage",

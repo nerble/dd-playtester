@@ -5,8 +5,8 @@ import pytest
 from dd4tester.fastwalks import expand_fastwalk, route_named, routes_for_level
 
 
-def test_expand_fastwalk_expands_repeated_directions_and_commands() -> None:
-    assert expand_fastwalk("2s3e2se;open east;e") == (
+def test_expand_fastwalk_expands_repeated_directions_and_door_commands() -> None:
+    assert expand_fastwalk("2s3e2se;open east;unlock west;pick west;e") == (
         "south",
         "south",
         "east",
@@ -16,11 +16,16 @@ def test_expand_fastwalk_expands_repeated_directions_and_commands() -> None:
         "south",
         "east",
         "open east",
+        "unlock west",
+        "pick west",
         "east",
     )
 
 
-@pytest.mark.parametrize("notation", ["0s", "2", "2q", "s;;e", "say hello"])
+@pytest.mark.parametrize(
+    "notation",
+    ["0s", "2", "2q", "s;;e", "say hello", "open", "unlock", "pick"],
+)
 def test_expand_fastwalk_rejects_malformed_segments(notation: str) -> None:
     with pytest.raises(ValueError):
         expand_fastwalk(notation)

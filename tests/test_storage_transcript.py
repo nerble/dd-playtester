@@ -4,10 +4,95 @@ from pathlib import Path
 
 from dd4tester.storage import (
     RunStorage,
+    _CAMPAIGN_LARGE_DATABASE_HISTORY_LIMIT,
     _SQLITE_BUSY_TIMEOUT_MS,
     _SQLITE_JOURNAL_MODE,
+    _bounded_campaign_history_limit,
 )
+
+
+def test_read_only_storage_does_not_run_schema_writes(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="test",
+            scenario_path=tmp_path / "scenario.yaml",
+        )
+
+    with RunStorage(database, read_only=True) as storage:
+        run = storage.get_run(run_id)
+        assert run is not None
+        assert storage.read_only is True
 from dd4tester.transcript import TranscriptRecorder
+
+
+def test_large_database_campaign_history_limit_is_small_and_explicit(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("dd4tester.storage._campaign_database_is_large", lambda _path: True)
+
+    assert _CAMPAIGN_LARGE_DATABASE_HISTORY_LIMIT == 8
+    assert _bounded_campaign_history_limit(tmp_path / "runs.sqlite3", 256) == 8
+
+
+def test_large_database_game_event_history_uses_the_bounded_segment_tail(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("dd4tester.storage._campaign_database_is_large", lambda _path: True)
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="campaign",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+
+    for sequence in range(1, 10):
+        run_id = storage.create_run(
+            scenario_name=f"segment-{sequence}",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase=f"phase-{sequence}",
+            start_state={"level": 2},
+        )
+        storage.record_event(
+            run_id,
+            kind="game_event",
+            payload={
+                "type": "training_completed",
+                "data": {"skill": "counterbalance", "sequence": sequence},
+            },
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=run_id,
+            end_state={"level": 2},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+        storage.finish_run(run_id, status="success")
+
+    events = storage.list_campaign_game_events(
+        campaign_id,
+        skill="counterbalance",
+        event_types=("training_completed",),
+    )
+
+    assert [json.loads(row["payload_json"])["data"]["sequence"] for row in events] == list(
+        range(2, 10)
+    )
+    legacy_events = storage.list_campaign_game_events(
+        campaign_id,
+        skill="counterbalance",
+        event_types=("training_completed",),
+        segment_limit=4096,
+    )
+    assert len(legacy_events) == 9
 
 
 def test_storage_and_transcript_record_run_events(tmp_path) -> None:
@@ -92,6 +177,23 @@ def test_storage_and_transcript_record_run_events(tmp_path) -> None:
     assert run_sales[0]["id"] == sale_id
 
 
+def test_storage_lists_recent_events_in_chronological_order(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        run_id = storage.create_run(
+            scenario_name="forest",
+            scenario_path=Path("character.yaml"),
+        )
+        for index in range(3):
+            storage.record_event(
+                run_id,
+                kind="response",
+                payload={"index": index},
+            )
+        recent = storage.list_recent_events(run_id, limit=2)
+
+    assert [json.loads(row["payload_json"])["index"] for row in recent] == [1, 2]
+
+
 def test_storage_finds_latest_campaign_checkpoint_for_character(tmp_path) -> None:
     database = tmp_path / "runs.sqlite3"
     with RunStorage(database) as storage:
@@ -142,6 +244,20 @@ def test_storage_uses_wal_for_shared_campaign_database(tmp_path) -> None:
 
     assert journal_mode.casefold() == _SQLITE_JOURNAL_MODE.casefold()
     assert synchronous == 1
+
+
+def test_storage_indexes_campaign_phase_history_for_bounded_repair(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        indexes = {
+            row["name"]
+            for row in storage.connection.execute(
+                "PRAGMA index_list(campaign_segments)"
+            )
+        }
+        assert storage.campaign_phase_index_available() is True
+
+    assert "idx_campaign_segments_campaign_phase" in indexes
 
 
 def test_state_snapshots_commit_their_recovery_boundary(tmp_path) -> None:
@@ -455,6 +571,57 @@ def test_storage_filters_campaign_game_events_by_level_and_skill(tmp_path) -> No
     storage.close()
 
 
+def test_large_database_game_event_queries_use_compact_index(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="campaign",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="training",
+        start_state={"level": 24},
+    )
+    run_id = storage.create_run(
+        scenario_name="starter:Kestrel",
+        scenario_path=tmp_path / "character.yaml",
+    )
+    storage.connection.execute(
+        "UPDATE campaign_segments SET run_id = ? WHERE id = ?",
+        (run_id, segment_id),
+    )
+    storage.connection.commit()
+    storage.record_event(
+        run_id,
+        kind="game_event",
+        payload={
+            "type": "equipment_preparation_completed",
+            "data": {"skill": "counterbalance", "weapon_vnum": 1234},
+        },
+    )
+    storage.finish_run(run_id, status="success")
+
+    monkeypatch.setattr(
+        "dd4tester.storage._CAMPAIGN_PHASE_INDEX_BUILD_MAX_BYTES",
+        0,
+    )
+    events = storage.list_campaign_game_events(
+        campaign_id,
+        skill="COUNTERBALANCE",
+        event_types=("equipment_preparation_completed",),
+    )
+
+    assert len(events) == 1
+    assert events[0]["character_level"] == 24
+    assert json.loads(events[0]["payload_json"])["data"]["weapon_vnum"] == 1234
+    storage.close()
+
+
 def test_character_snapshot_lookups_are_indexed_and_case_insensitive(tmp_path) -> None:
     database = tmp_path / "runs.sqlite3"
     storage = RunStorage(database)
@@ -576,11 +743,15 @@ def test_storage_timeout_closes_unbound_campaign_run(tmp_path) -> None:
         scenario_name="fastwalk-shadow-keep:Kestrel",
         scenario_path=tmp_path / "character.yaml",
     )
+    running_segments = storage.list_recent_campaign_segments(
+        campaign_id, limit=1,
+    )
 
     closed_segments = storage.fail_campaign_after_timeout(
         campaign_id,
         reason="bounded runner timeout",
         character_name="Kestrel",
+        running_segments=running_segments,
     )
     run = storage.get_run(run_id)
     segment = storage.list_campaign_segments(campaign_id)[0]
@@ -816,3 +987,30 @@ def test_storage_persists_below_band_kill_as_non_objective(tmp_path) -> None:
     assert len(kills) == 1
     assert kills[0]["below_useful_band"] == 1
     assert kills[0]["objective_eligible"] == 0
+
+
+def test_storage_persists_route_gate_kill_classification(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    run_id = storage.create_run(
+        scenario_name="moria-sanctuary-route-gate:Ararisa",
+        scenario_path=Path("profile.yaml"),
+    )
+
+    storage.record_mob_kill(
+        run_id,
+        character_name="Ararisa",
+        boot_id="boot-1",
+        mob_name="the snake",
+        xp_gained=35,
+        source_mobile_vnum=4053,
+        source_policy_id="moria-sanctuary-route-gate",
+        below_useful_band=True,
+        objective_eligible=False,
+        route_gate=True,
+    )
+
+    kills = storage.list_mob_kills_for_run(run_id)
+    storage.close()
+
+    assert len(kills) == 1
+    assert kills[0]["route_gate"] == 1

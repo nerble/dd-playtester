@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-SOURCE_SPECIAL_AUDIT_REVISION = "1b759f5"
+SOURCE_SPECIAL_AUDIT_REVISION = "79a76852013b2fc8ee4efdb9c12d82b6f1fd3633"
 
 
 @dataclass(frozen=True)
@@ -103,6 +103,7 @@ TRANSIT_SAFE_COMBAT_ONLY_SPECIALS = frozenset(
         "spec_uzollru",
         "spec_vampire",
         "spec_warrior",
+        "spec_wraith",
     }
 )
 """Specials whose source code only acts after combat has started."""
@@ -142,11 +143,16 @@ POST_OBJECTIVE_HAZARD_SPECIALS = frozenset(
         "spec_cast_cleric",
         "spec_cast_mage",
         "spec_cast_undead",
+        "spec_wraith",
     }
 )
 """Audited specials that make a below-band post-kill pursuer unsafe."""
 
 _STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
+    # ``spell_gas_breath`` calls ``spell_nausea`` after its damage pulse when
+    # the target fails the source save.  The effect is cleared by
+    # ``spell_cure_poison`` at the Midgaard adept.
+    "spec_breath_gas": ("nausea",),
     # special.c chooses blindness without a level gate, then adds curse and
     # dispel magic to the higher-level cleric spell pool.
     "spec_cast_cleric": ("blindness", "curse", "dispel magic"),
@@ -198,6 +204,9 @@ _STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
     # has engaged the mobile, but its dirt kick can blind and its trip/circle
     # choices can disrupt the fight or add one extra ordinary hit.
     "spec_assassin": ("blindness", "trip"),
+    # Wraith phasing is not itself a status effect, but its combat special
+    # delegates to the source Energy Drain procedure after materialisation.
+    "spec_wraith": ("energy drain",),
 }
 
 _ZERO_BONUS_SPECIALS = frozenset(
@@ -231,6 +240,7 @@ _MODERATE_BONUS_SPECIALS = frozenset(
         "spec_small_whale",
         "spec_uzollru",
         "spec_warrior",
+        "spec_wraith",
     }
 )
 _STRONG_BONUS_SPECIALS = frozenset(

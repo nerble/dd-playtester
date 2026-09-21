@@ -345,6 +345,80 @@ class QuestSnapshot:
         }
 
 
+def fame_from_state(state: Mapping[str, Any]) -> int | None:
+    """Return GMCP ``Char.Stats`` fame without confusing it with alignment."""
+    stats = state.get("stats")
+    if isinstance(stats, Mapping):
+        fame = stats.get("fame")
+        try:
+            return int(fame)
+        except (TypeError, ValueError):
+            pass
+    fame = state.get("fame")
+    try:
+        return int(fame) if fame is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def quest_request_fame_allowed(state: Mapping[str, Any]) -> bool:
+    """Return whether a fresh quest request passes DD4's fame gate."""
+    fame = fame_from_state(state)
+    return fame is not None and fame >= 0
+
+
+def quest_request_blocker(
+    state: Mapping[str, Any],
+    *,
+    quest: QuestSnapshot | None = None,
+) -> str | None:
+    """Explain why ``quest request`` cannot be issued on this state."""
+    current = quest or snapshot_quest_status(
+        state.get("quest_status")
+        if isinstance(state.get("quest_status"), Mapping)
+        else None
+    )
+    if current.active:
+        return "a quest is already active"
+    if current.nextquest > 0:
+        return f"quest cooldown has {current.nextquest} minute(s) remaining"
+    fame = fame_from_state(state)
+    if fame is None:
+        return "live fame is unavailable; do not request a quest"
+    if fame < 0:
+        return "DD4 rejects new quest requests while fame is below zero"
+    return None
+
+
+def quest_fame_recovery_status(
+    state: Mapping[str, Any],
+    *,
+    quest: QuestSnapshot | None = None,
+) -> str:
+    """Describe the source-backed fame outcome of the quest path."""
+    current = quest or snapshot_quest_status(
+        state.get("quest_status")
+        if isinstance(state.get("quest_status"), Mapping)
+        else None
+    )
+    fame = fame_from_state(state)
+    if current.active and current.complete and current.kind == "kill":
+        return "this completed kill quest awards a positive fuzzy fame reward"
+    if fame is None:
+        return "unavailable: live fame is unknown"
+    if fame < 0:
+        if current.active and current.kind == "kill":
+            return (
+                "fresh requests are blocked below zero fame, but this active "
+                "kill quest can award positive fuzzy fame on completion"
+            )
+        return "blocked: DD4 rejects new quest requests while fame is below zero"
+    return (
+        "only a completed kill quest awards positive fuzzy fame; object, "
+        "retrieve, and hoard quests award no fame"
+    )
+
+
 def _int(value: Any, default: int = 0) -> int:
     try:
         return int(value)

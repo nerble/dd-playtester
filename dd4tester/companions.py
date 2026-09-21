@@ -148,7 +148,12 @@ class FamiliarWithdrawal:
         self.last_order = "flee"
         self.acknowledged_at = None
         self.buffer = ""
-        return f"order {self.selector} flee"
+        # DD4 deliberately gives NPC flee a random no-op unless the argument
+        # is "Fear". A source-defined charmed pony cannot leave its master,
+        # so force the flee path to reach stop_fighting before confirming the
+        # in-place handoff with a positive sleep message.
+        flee_argument = " Fear" if self.settle_in_place else ""
+        return f"order {self.selector} flee{flee_argument}"
 
     def evidence(self) -> dict[str, object]:
         return {

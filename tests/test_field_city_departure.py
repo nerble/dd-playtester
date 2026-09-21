@@ -4,7 +4,11 @@ from pathlib import Path
 import pytest
 
 from dd4tester.character import CharacterSpec
-from dd4tester.city_travel import field_city_route_rooms, observed_guard_safe_alignment
+from dd4tester.city_travel import (
+    field_city_route_rooms,
+    observed_guard_safe_alignment,
+    revealed_gmcp_alignment,
+)
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import WorldSource, load_world_source
 from dd4tester.starter import FieldHuntStop, StarterPolicy
@@ -26,6 +30,17 @@ def test_revealed_alignment_matches_guard_threshold(value):
     assert observed_guard_safe_alignment(value, level=10)
     assert observed_guard_safe_alignment(value, level=24)
     assert not observed_guard_safe_alignment(value, level=9)
+
+
+@pytest.mark.parametrize(
+    ("value", "level", "expected"),
+    [("1000", "24", 1000), (-347, 10, -347), (50000, 9, None),
+     (50000, 10, None), (1001, 24, None), ("bad", 24, None)],
+)
+def test_revealed_gmcp_alignment_preserves_only_authoritative_values(
+    value, level, expected,
+):
+    assert revealed_gmcp_alignment(value, level=level) == expected
 
 
 def test_source_city_scope_includes_refill_and_actual_route_only(world):
@@ -93,6 +108,35 @@ def test_run_12792_city_departure_checks_before_moving(world, monkeypatch, chara
     assert not bot.fastwalk_recall_started
     assert not bot.magic_shop_invisibility_attempted
     assert bot.city_shop_transit.status == "idle"
+
+
+def test_bounded_city_transit_can_admit_a_funding_departure(world, monkeypatch):
+    bot, state, _ = setup(world, monkeypatch)
+    bot.allow_bounded_city_shop_transit = True
+    handled, decision = bot._field_city_departure_decision(state)
+    assert (handled, decision) == (False, None)
+    assert bot.city_shop_transit.status == "admitted"
+
+
+@pytest.mark.parametrize(
+    ("need_food", "need_drink", "command"),
+    [(True, False, "eat pie"), (False, True, "drink skin")],
+)
+def test_field_departure_consumes_carried_provisions_before_city_preflight(
+    world, monkeypatch, need_food, need_drink, command,
+):
+    bot, state, _ = setup(world, monkeypatch)
+    bot.needs_food = need_food
+    bot.needs_drink = need_drink
+    state = replace(
+        state,
+        inventory=[
+            {"short_desc": "a big pot pie"},
+            {"short_desc": "a buffalo water skin"},
+        ],
+    )
+    handled, decision = bot._field_city_departure_decision(state)
+    assert handled and decision.command == command
 
 
 @pytest.mark.parametrize("response", [

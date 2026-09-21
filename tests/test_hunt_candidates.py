@@ -10,7 +10,9 @@ from dd4tester.hunt_candidates import (
     ACT_DIE_IF_MASTER_GONE,
     ACT_LOSE_FAME,
     ACT_SENTINEL,
+    ACT_STAY_AREA,
     ACT_UNDEAD,
+    AFF_MINDLESS,
     AFF_DETECT_MAGIC,
     AFF_CONFUSION,
     BODY_HUGE,
@@ -23,10 +25,13 @@ from dd4tester.hunt_candidates import (
     PART_HEAD,
     PART_MANY_ARMS,
     ITEM_FOOD,
+    ITEM_ARMOR,
     ITEM_MONEY,
+    ITEM_PILL,
     ITEM_SCROLL,
     ITEM_STAFF,
     ITEM_WAND,
+    ITEM_WEAPON,
     ExitSource,
     MobileSource,
     MobileTemplateSource,
@@ -39,7 +44,9 @@ from dd4tester.hunt_candidates import (
     WorldSource,
     money_value,
     castable_spell_names,
+    pill_spell_names,
     potion_spell_names,
+    resource_effects_for_object,
     resource_activation_for_object,
     rank_resource_sources,
     source_combat_readiness,
@@ -63,13 +70,16 @@ from dd4tester.hunt_candidates import (
     source_route_movement_cost,
     source_route_requires_flight,
     source_route_hazard_rejections,
+    source_room_level_rejection,
     source_safe_route_to_room,
     source_safe_route_to_room_with_origin,
     source_class_teacher_route,
     source_class_teacher_skill,
     source_mobile_can_join_player_fight,
+    source_mobile_can_join_target_fight,
     source_mobile_route_aggressor_is_bounded,
     source_mobile_route_program_attacker_is_bounded,
+    _source_key_carrier_resets,
     source_subclass_teacher_route,
     source_subclass_teacher_skill,
     WEAR_HOLD,
@@ -371,6 +381,109 @@ def test_resource_source_report_includes_mob_equipped_resources() -> None:
     assert placements[0].source_kind == "mob-equipped"
     assert placements[0].object_vnum == 50
     assert placements[0].source_mobile_vnum == 100
+
+
+def test_source_only_resource_reports_locked_route_key_provenance() -> None:
+    sanctuary = ObjectSource(
+        50,
+        "flask holy water",
+        "a flask of holy water",
+        10,
+        (17,),
+        500,
+        value_strings=("17", "sanctuary", "", ""),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "templar",
+                "a grand templar",
+                5,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+            200: MobileSource(
+                200,
+                "mayor",
+                "the mayor",
+                5,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            ),
+        },
+        objects={50: sanctuary},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 3002, 6, 3133)},
+            ),
+            3002: RoomSource(3002, "resource room", "test.are"),
+            3003: RoomSource(3003, "mayor room", "test.are"),
+        },
+        mob_resets=[
+            MobReset(100, 3002, 1, (50,)),
+            MobReset(200, 3003, 1, (3133,)),
+        ],
+    )
+
+    [placement] = rank_resource_sources(
+        world,
+        character_level=5,
+        effect="sanctuary",
+        include_all_areas=True,
+    )
+
+    assert placement.status == "source-only"
+    assert placement.route == ()
+    assert placement.source_analysis_route == (
+        "unlock south",
+        "open south",
+        "south",
+    )
+    assert placement.route_key_object_vnums == (3133,)
+    assert placement.route_key_source_mobile_vnums == (200,)
+    assert any(
+        "source route key 3133 has no independently reachable carrier reset"
+        in note
+        for note in placement.autonomy_rejections
+    )
+
+
+def test_source_resource_report_rejects_locked_nested_sanctuary_container() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    placements = rank_resource_sources(
+        world,
+        character_level=25,
+        effect="sanctuary",
+        include_all_areas=True,
+    )
+
+    placement = next(
+        placement
+        for placement in placements
+        if placement.object_vnum == 27287
+        and placement.source_kind == "ground-container"
+        and placement.room_vnum == 27638
+    )
+    assert placement.status == "reject"
+    assert placement.route
+    assert placement.container_object_vnums == (27323,)
+    assert placement.required_key_object_vnums == (27324,)
+    assert placement.required_key_source_mobile_vnums == (27234,)
+    assert any("source container is locked" in note for note in placement.hazards)
+    assert any(
+        "requires an explicit key acquisition plan" in note
+        for note in placement.autonomy_rejections
+    )
 
 
 def test_resource_source_report_orders_live_risk_statuses() -> None:
@@ -1010,6 +1123,12 @@ def test_source_search_models_master_bound_and_confused_mobiles() -> None:
 def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
     area = parse_area_file(FIXTURE)
 
+    assert (
+        area.rooms[3001].area_low_level,
+        area.rooms[3001].area_high_level,
+        area.rooms[3001].area_low_enforced,
+        area.rooms[3001].area_high_enforced,
+    ) == (1, 10, 0, 100)
     assert area.mobiles[100].level == 3
     assert area.mobiles[100].aggressive is True
     assert area.objects[200].source_cost == 100
@@ -1026,6 +1145,135 @@ def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
     assert (area.objects[202].load_level_min, area.objects[202].load_level_max) == (
         1,
         4,
+    )
+
+
+def test_key_carrier_query_preserves_neighboring_reset_provenance() -> None:
+    world = WorldSource(
+        mob_resets=[
+            MobReset(6500, 6505, 4, (6504, 6505, 6502)),
+            MobReset(6500, 6505, 4, (6504, 6505)),
+        ],
+    )
+
+    matches = _source_key_carrier_resets(
+        world,
+        (6502,),
+        mobile_vnums=(6500,),
+        room_vnums=(6505,),
+    )
+
+    assert matches == (world.mob_resets[0],)
+
+
+def test_area_parser_mirrors_dd4_door_lock_type_mapping(tmp_path: Path) -> None:
+    area_file = tmp_path / "doors.are"
+    area_file.write_text(
+        """#ROOMS
+#1
+Origin~
+Origin~
+0 0 0
+D0
+~
+~
+-1 0 2
+D1
+~
+~
+2 0 3
+D2
+~
+~
+10 0 4
+S
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+
+    area = parse_area_file(area_file, include_objects=False)
+
+    assert area.rooms[1].exits["north"].flags == 0
+    assert area.rooms[1].exits["north"].closed is False
+    assert area.rooms[1].exits["east"].flags == 33
+    assert area.rooms[1].exits["south"].flags == 257
+
+
+def test_enforced_area_gate_blocks_source_target_and_route() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guard",
+                "a guarded sentinel",
+                5,
+                ACT_SENTINEL,
+                0,
+                "gated.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "midgaard.are",
+                exits={"east": ExitSource("east", 3002, 0, -1)},
+            ),
+            3002: RoomSource(
+                3002,
+                "gated room",
+                "gated.are",
+                area_low_level=5,
+                area_high_level=10,
+                area_low_enforced=10,
+                area_high_enforced=100,
+            ),
+        },
+        mob_resets=[MobReset(100, 3002, 1, ())],
+    )
+
+    assert source_room_level_rejection(world.rooms[3002], 9) == (
+        "area access requires level 10-100"
+    )
+    assert rank_hunt_candidates(
+        world,
+        character_level=9,
+        include_xp_only=True,
+        include_all_areas=True,
+    ) == []
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+    assert candidate.room_vnum == 3002
+    assert source_route_hazard_rejections(
+        world,
+        (3001, 3002),
+        character_level=9,
+    ) == (
+        "route crosses an inaccessible source area in room 3002: "
+        "area access requires level 10-100",
+    )
+
+
+def test_source_marked_safety_area_is_inaccessible_to_heroes() -> None:
+    room = RoomSource(
+        99,
+        "restricted",
+        "restricted.are",
+        area_low_level=-4,
+        area_high_level=-4,
+        area_low_enforced=0,
+        area_high_enforced=100,
+    )
+
+    assert source_room_level_rejection(room, 100) == (
+        "area is source-marked player-inaccessible"
     )
 
 
@@ -1171,6 +1419,9 @@ def test_source_mobile_template_catalog_matches_dd4_resolution(tmp_path: Path) -
         | PART_HEAD
     )
     assert elemental.xp_modifier == 5
+    assert elemental.hp_modifier == 50
+    assert elemental.damage_modifier == 0
+    assert templates["goat"].damage_modifier == 20
 
     area_file = tmp_path / "templated.are"
     area_file.write_text(
@@ -1192,11 +1443,12 @@ A fire elemental is here.~
         encoding="latin-1",
     )
 
-    mobile = parse_area_file(
+    area = parse_area_file(
         area_file,
         include_objects=False,
         mobile_templates=templates,
-    ).mobiles[100]
+    )
+    mobile = area.mobiles[100]
     assert mobile.template_name == "fire_elemental"
     assert mobile.template_species == "elemental"
     assert mobile.area_act_flags == 0
@@ -1204,6 +1456,211 @@ A fire elemental is here.~
     assert mobile.affected_flags & AFF_DETECT_MAGIC
     assert mobile.body_form_flags == elemental.body_form_flags
     assert mobile.xp_modifier == 5
+    assert mobile.template_hp_modifier == 50
+    assert mobile.area_hp_modifier is None
+    assert mobile.hp_modifier == 50
+    assert mobile.template_damage_modifier == 0
+    assert mobile.area_damage_modifier is None
+    assert mobile.damage_modifier == 0
+    assert area.mobile_specials[100] == elemental.specials
+
+
+def test_current_source_resolves_sets_ghoul_template_and_special() -> None:
+    source_root = Path("runs/dd4-source/server")
+    templates = load_mobile_template_catalog(source_root / "src")
+
+    area = parse_area_file(
+        source_root / "area" / "sets.are",
+        include_objects=False,
+        mobile_templates=templates,
+    )
+    mobile = area.mobiles[2700]
+    assert mobile.template_name == "ghoul"
+    assert mobile.template_species == "humanoid"
+    assert mobile.template_hp_modifier == 0
+    assert mobile.hp_modifier == 0
+    assert area.mobile_specials.get(2700, ()) == ("spec_ghoul",)
+
+
+def test_area_special_overrides_resolve_against_template_slots(
+    tmp_path: Path,
+) -> None:
+    templates = load_mobile_template_catalog(
+        Path("runs/dd4-source/server/src")
+    )
+    area_file = tmp_path / "special_overrides.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+fire elemental~
+the fire elemental~
+A fire elemental is here.~
+~
+0 0 0 S
+5 0 0 0d0+0 0d0+0
+0 0
+8 8 0
+< fire_elemental~ common~
+#0
+#OBJECTS
+#0
+#RESETS
+#0
+#SPECIALS
+N 100 2 spec_poison
+P 100 20 30 50
+S
+""",
+        encoding="latin-1",
+    )
+
+    area = parse_area_file(
+        area_file,
+        include_objects=False,
+        mobile_templates=templates,
+    )
+
+    assert area.mobile_specials[100] == (
+        "spec_breath_fire",
+        "spec_poison",
+    )
+
+
+def test_source_mindless_trait_is_explicit() -> None:
+    area = parse_area_file(FIXTURE)
+    area.mobiles[100] = replace(
+        area.mobiles[100],
+        affected_flags=AFF_MINDLESS,
+    )
+
+    assert area.mobiles[100].mindless
+
+
+def test_mobile_hp_modifier_area_override_matches_dd4_scalar_resolution(
+    tmp_path: Path,
+) -> None:
+    templates = load_mobile_template_catalog(
+        Path("runs/dd4-source/server/src")
+    )
+    area_file = tmp_path / "hp_override.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+fire elemental~
+the fire elemental~
+A fire elemental is here.~
+~
+0 0 0 S
+5 0 0 0d0+0 0d0+0
+0 0
+8 8 0
+< fire_elemental~ common~
+MobHPMod 25
+MobDamMod 35
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+
+    mobile = parse_area_file(
+        area_file,
+        include_objects=False,
+        mobile_templates=templates,
+    ).mobiles[100]
+
+    assert mobile.template_hp_modifier == 50
+    assert mobile.area_hp_modifier == 25
+    assert mobile.hp_modifier == 25
+    assert mobile.template_damage_modifier == 0
+    assert mobile.area_damage_modifier == 35
+    assert mobile.damage_modifier == 35
+
+
+def test_current_source_sets_hp_modifier_is_zero() -> None:
+    source_root = Path("runs/dd4-source/server")
+    templates = load_mobile_template_catalog(source_root / "src")
+    mobile = parse_area_file(
+        source_root / "area" / "sets.are",
+        include_objects=False,
+        mobile_templates=templates,
+    ).mobiles[2700]
+
+    assert mobile.template_name == "ghoul"
+    assert mobile.template_hp_modifier == 0
+    assert mobile.area_hp_modifier is None
+    assert mobile.hp_modifier == 0
+    assert mobile.template_damage_modifier == 0
+    assert mobile.damage_modifier == 0
+
+
+def test_unresolved_mobile_template_hp_modifier_fails_closed(tmp_path: Path) -> None:
+    area_file = tmp_path / "unknown_template.are"
+    area_file.write_text(
+        """#MOBILES
+#100
+unknown guardian~
+the unknown guardian~
+An unknown guardian is here.~
+~
+0 0 0 S
+5 0 0 0d0+0 0d0+0
+0 0
+8 8 0
+< missing_template~ common~
+#0
+#OBJECTS
+#0
+""",
+        encoding="latin-1",
+    )
+
+    mobile = parse_area_file(
+        area_file,
+        include_objects=False,
+        mobile_templates={},
+    ).mobiles[100]
+
+    assert mobile.hp_modifier is None
+    assert mobile.hp_modifier_known is False
+    assert mobile.damage_modifier is None
+    assert mobile.damage_modifier_known is False
+
+
+def test_candidate_ranking_rejects_unresolved_mobile_template_hp_modifier() -> None:
+    area = parse_area_file(FIXTURE)
+    area.mobiles[100] = replace(
+        area.mobiles[100],
+        hp_modifier=None,
+        hp_modifier_known=False,
+        damage_modifier=None,
+        damage_modifier_known=False,
+    )
+    world = WorldSource(
+        mobiles=area.mobiles,
+        objects=area.objects,
+        rooms=area.rooms,
+        mob_resets=area.mob_resets,
+        room_object_resets=area.room_object_resets,
+        container_contents=area.container_contents,
+        mobile_specials=area.mobile_specials,
+    )
+
+    candidate = next(
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=7,
+            include_xp_only=True,
+            include_all_areas=True,
+        )
+        if item.mobile_vnum == 100
+    )
+
+    assert candidate.status == "reject"
+    assert "source mobile HP modifier is unavailable" in candidate.autonomy_rejections
+    assert "source mobile damage modifier is unavailable" in candidate.autonomy_rejections
 
 
 def test_mobile_template_area_masks_cancel_inherited_flags(tmp_path: Path) -> None:
@@ -1271,6 +1728,61 @@ def test_candidate_ranking_uses_mobile_rank_for_hp_estimates() -> None:
 
     assert candidate.rank == "elite"
     assert candidate.estimated_base_hp_range == (40, 325)
+
+
+def test_candidate_ranking_applies_mobile_hp_modifier() -> None:
+    area = parse_area_file(FIXTURE)
+    area.mobiles[100] = replace(area.mobiles[100], hp_modifier=50)
+    world = WorldSource(
+        mobiles=area.mobiles,
+        objects=area.objects,
+        rooms=area.rooms,
+        mob_resets=area.mob_resets,
+        room_object_resets=area.room_object_resets,
+        container_contents=area.container_contents,
+        mobile_specials=area.mobile_specials,
+    )
+
+    candidate = next(
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=7,
+            include_xp_only=True,
+            include_all_areas=True,
+        )
+        if item.mobile_vnum == 100
+    )
+
+    assert candidate.estimated_base_hp_range == (12, 97)
+
+
+def test_candidate_ranking_applies_mobile_damage_modifier() -> None:
+    area = parse_area_file(FIXTURE)
+    area.mobiles[100] = replace(area.mobiles[100], damage_modifier=25)
+    world = WorldSource(
+        mobiles=area.mobiles,
+        objects=area.objects,
+        rooms=area.rooms,
+        mob_resets=area.mob_resets,
+        room_object_resets=area.room_object_resets,
+        container_contents=area.container_contents,
+        mobile_specials=area.mobile_specials,
+    )
+
+    candidate = next(
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=7,
+            include_xp_only=True,
+            include_all_areas=True,
+        )
+        if item.mobile_vnum == 100
+    )
+
+    assert candidate.source_damage_modifier == 25
+    assert candidate.estimated_peak_round_damage == 75
 
 
 def test_candidate_ranking_preserves_source_body_form_flags() -> None:
@@ -1483,6 +1995,33 @@ A thick black potion is here.~
     assert potion_spell_names(item) == ("cure critical",)
 
 
+def test_area_parser_preserves_pill_spell_names(tmp_path: Path) -> None:
+    area_file = tmp_path / "pills.are"
+    area_file.write_text(
+        """#OBJECTS
+#4151
+nectar~
+nectar~
+A vial of nectar is lying here.~
+~
+26 0 1
+12~ sanctuary~ giant strength~ armor~
+1 80000 500
+#0
+""",
+        encoding="latin-1",
+    )
+
+    item = parse_area_file(area_file).objects[4151]
+
+    assert item.value_strings == ("12", "sanctuary", "giant strength", "armor")
+    assert pill_spell_names(item) == (
+        "sanctuary",
+        "giant strength",
+        "armor",
+    )
+
+
 def test_area_parser_preserves_staff_spell_names() -> None:
     item = ObjectSource(
         5302,
@@ -1501,6 +2040,7 @@ def test_area_parser_preserves_staff_spell_names() -> None:
     ("item_type", "expected"),
     (
         (10, ("potion", "quaff", False, True, False, None)),
+        (ITEM_PILL, ("pill", "eat", False, True, False, None)),
         (ITEM_SCROLL, ("scroll", "recite", True, True, False, None)),
         (ITEM_WAND, ("wand", "zap", True, False, True, "self")),
         (ITEM_STAFF, ("staff", "brandish", True, False, True, None)),
@@ -1555,6 +2095,46 @@ def test_resource_activation_can_request_exact_spell_from_multi_spell_object() -
     assert activation.spell == "cure critical"
     assert activation.command == "zap"
     assert activation.consumes_charge is True
+
+
+def test_pill_is_a_source_resource_with_eat_activation() -> None:
+    item = ObjectSource(
+        5305,
+        "nectar",
+        "nectar",
+        ITEM_PILL,
+        (12, 0, 1),
+        80000,
+        value_strings=("12", "sanctuary", "giant strength", "armor"),
+    )
+
+    assert resource_effects_for_object(item) == ("sanctuary",)
+    activation = resource_activation_for_object(item, effect="sanctuary")
+
+    assert activation is not None
+    assert activation.mode == "pill"
+    assert activation.command == "eat"
+    assert activation.consumes_object is True
+
+
+def test_protection_is_a_distinct_source_resource_effect() -> None:
+    item = ObjectSource(
+        5304,
+        "protection potion",
+        "a protection potion",
+        10,
+        (12, 1, 1, 0),
+        200,
+        value_strings=("10", "protection", "", ""),
+    )
+
+    assert resource_effects_for_object(item) == ("protection",)
+    activation = resource_activation_for_object(item, effect="protection")
+
+    assert activation is not None
+    assert activation.spell == "protection"
+    assert activation.command == "quaff"
+    assert activation.consumes_object is True
 
 
 def test_area_parser_records_direct_coin_stash_resets(tmp_path: Path) -> None:
@@ -1694,6 +2274,74 @@ def test_rank_coin_stashes_rejects_a_reachable_aggressive_wanderer() -> None:
     assert "an aggressive wanderer inside the useful XP band can reach the route" in (
         candidates[0].autonomy_rejections
     )
+
+
+def test_direct_stash_hazard_search_is_cached_across_stashes(monkeypatch) -> None:
+    world = WorldSource(
+        mobiles={
+            200: MobileSource(
+                200,
+                "wanderer",
+                "a wandering guard",
+                1,
+                ACT_AGGRESSIVE | ACT_STAY_AREA,
+                0,
+                "target.are",
+                room_description="A wandering guard watches the road.",
+            )
+        },
+        objects={
+            100: ObjectSource(
+                100,
+                "coins",
+                "a pile of coins",
+                ITEM_MONEY,
+                (50, 45, 6, 0),
+                0,
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 3002, 0, -1)},
+            ),
+            3002: RoomSource(
+                3002,
+                "First treasury",
+                "target.are",
+                exits={"north": ExitSource("north", 3003, 0, -1)},
+            ),
+            3003: RoomSource(3003, "Second treasury", "target.are"),
+        },
+        mob_resets=[MobReset(200, 3002, 1, ())],
+        room_object_resets=[
+            RoomObjectReset(100, 3002),
+            RoomObjectReset(100, 3003),
+        ],
+    )
+    calls = 0
+    original = source_mobile_search_rooms
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.source_mobile_search_rooms",
+        counted,
+    )
+
+    candidates = rank_coin_stashes(
+        world,
+        character_level=20,
+        include_all_areas=True,
+    )
+
+    assert len(candidates) == 2
+    assert calls == 1
 
 
 def test_rank_coin_stashes_rejects_a_large_below_band_route_crowd() -> None:
@@ -2459,7 +3107,7 @@ def test_candidate_admits_bounded_below_band_aggressive_route_mobile() -> None:
     )
 
 
-def test_bounded_route_aggressor_rejects_an_armed_source_reset() -> None:
+def test_bounded_route_aggressor_accepts_a_low_risk_wielded_weapon() -> None:
     world = WorldSource(
         mobiles={
             200: MobileSource(
@@ -2472,14 +3120,129 @@ def test_bounded_route_aggressor_rejects_an_armed_source_reset() -> None:
                 "target.are",
             )
         },
+        objects={
+            9001: ObjectSource(
+                9001,
+                "short sword",
+                "a short sword",
+                ITEM_WEAPON,
+                (0, 2, 6, 3),
+                100,
+            )
+        },
+        mob_resets=[MobReset(200, 7001, 1, (), ((16, 9001),))],
+    )
+
+    assert source_mobile_route_aggressor_is_bounded(
+        world,
+        world.mobiles[200],
+        character_level=24,
+        character_max_hp=334,
+    )
+
+
+def test_bounded_route_aggressor_ignores_source_listed_armor() -> None:
+    mobile = MobileSource(
+        200,
+        "orc",
+        "the armored orc",
+        2,
+        ACT_AGGRESSIVE,
+        0,
+        "target.are",
+    )
+    world = WorldSource(
+        mobiles={200: mobile},
+        objects={
+            9001: ObjectSource(
+                9001,
+                "metal pipe",
+                "a metal pipe",
+                ITEM_WEAPON,
+                (0, 0, 4, 7),
+                0,
+            ),
+            9002: ObjectSource(
+                9002,
+                "iron cap",
+                "an iron cap",
+                ITEM_ARMOR,
+                (0, 0, 0, 0),
+                0,
+            ),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, (), ((WEAR_WIELD, 9001), (6, 9002))),
+        ],
+    )
+
+    assert source_mobile_route_aggressor_is_bounded(
+        world,
+        mobile,
+        character_level=9,
+        character_max_hp=150,
+    )
+
+
+def test_bounded_route_aggressor_accepts_inert_combat_only_special() -> None:
+    mobile = MobileSource(
+        200,
+        "undead guard",
+        "the undead guard",
+        17,
+        ACT_AGGRESSIVE,
+        0,
+        "target.are",
+    )
+    world = WorldSource(
+        mobiles={200: mobile},
+        mob_resets=[MobReset(200, 7001, 1, ())],
+        mobile_specials={200: ("spec_cast_undead",)},
+    )
+
+    assert not source_mobile_route_aggressor_is_bounded(
+        world,
+        mobile,
+        character_level=24,
+    )
+    assert source_mobile_route_aggressor_is_bounded(
+        world,
+        mobile,
+        character_level=30,
+    )
+
+
+def test_bounded_route_aggressor_rejects_a_high_risk_armed_source_reset() -> None:
+    world = WorldSource(
+        mobiles={
+            200: MobileSource(
+                200,
+                "goblin",
+                "the armed goblin",
+                9,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            )
+        },
+        objects={
+            9001: ObjectSource(
+                9001,
+                "short sword",
+                "a short sword",
+                ITEM_WEAPON,
+                (0, 2, 6, 3),
+                100,
+            )
+        },
         mob_resets=[MobReset(200, 7001, 1, (), ((16, 9001),))],
     )
 
     assert not source_mobile_route_aggressor_is_bounded(
         world,
         world.mobiles[200],
-        character_level=18,
-        character_max_hp=218,
+        character_level=24,
+        character_max_hp=334,
     )
 
 
@@ -2555,6 +3318,20 @@ def test_armed_mobile_damage_keeps_ordinary_peak_separate_from_critical_burst() 
     assert _mobile_critical_hit_damage(14, wielding=True) == 72
 
 
+def test_mobile_damage_modifier_scales_each_attack_before_round_bounds() -> None:
+    assert _mobile_peak_round_damage(
+        14,
+        wielding=True,
+        dual_wielding=False,
+        damage_modifier=25,
+    ) == 225
+    assert _mobile_critical_hit_damage(
+        14,
+        wielding=True,
+        damage_modifier=25,
+    ) == 90
+
+
 def test_mobile_expected_round_damage_mirrors_npc_follow_up_chances() -> None:
     assert mobile_expected_round_damage(
         18,
@@ -2580,6 +3357,20 @@ def test_sanctuary_mobile_damage_halves_each_strike_before_round_totals() -> Non
         wielding=False,
         dual_wielding=False,
     ) == 174
+
+
+def test_sanctuary_applies_mobile_damage_modifier_before_mitigation() -> None:
+    assert mobile_sanctuary_peak_round_damage(
+        33,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=25,
+    ) == 210
+    assert mobile_sanctuary_critical_hit_damage(
+        33,
+        wielding=False,
+        damage_modifier=25,
+    ) == 70
 
 
 def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -> None:
@@ -3260,6 +4051,48 @@ def test_candidate_allows_source_trivial_room_companion(monkeypatch) -> None:
     assert "target room has a dangerous reset companion" not in candidate.autonomy_rejections
 
 
+def test_candidate_allows_passive_high_level_companion_outside_join_window(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 8, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "maid",
+                "the passive maid",
+                45,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, ()),
+            MobReset(200, 7001, 1, ()),
+        ],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    candidate = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+    )[0]
+
+    assert candidate.autonomous_safe
+    assert "room companion: the passive maid L45 (up to 1)" in candidate.hazards
+    assert "target room has a dangerous reset companion" not in candidate.autonomy_rejections
+
+
 def test_fleshmonger_cook_companion_is_source_capable_assister() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
@@ -3695,6 +4528,183 @@ def test_autonomous_filter_rejects_a_reachable_combat_joining_guard(
     assert (
         "a higher-level combat-joining special can reach the route"
         in candidate.autonomy_rejections
+    )
+
+
+def test_autonomous_filter_allows_verified_positive_alignment_good_guard(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "target",
+                "the positive target",
+                8,
+                0,
+                0,
+                "target.are",
+            ),
+            200: MobileSource(
+                200,
+                "guard",
+                "the source guard",
+                8,
+                1 << 6,
+                1000,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(
+                7001,
+                "Target room",
+                "target.are",
+                exits={"east": ExitSource("east", 7002, 0, -1)},
+            ),
+            7002: RoomSource(
+                7002,
+                "Guard post",
+                "target.are",
+                exits={"west": ExitSource("west", 7001, 0, -1)},
+            ),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, ()),
+            MobReset(200, 7002, 1, ()),
+        ],
+        mobile_specials={200: ("spec_guard",)},
+    )
+
+    [candidate] = [
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=8,
+            character_alignment=1000,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    ]
+
+    assert candidate.autonomous_safe
+    assert (
+        "source-backed good-alignment guard cannot join positive-alignment "
+        "player: "
+        "the source guard"
+        in candidate.hazards
+    )
+    assert "a higher-level combat-joining special can reach the route" not in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_autonomous_filter_allows_good_alignment_combat_special_companion(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "target",
+                "the positive target",
+                8,
+                0,
+                0,
+                "target.are",
+            ),
+            200: MobileSource(
+                200,
+                "dragon",
+                "the source dragon",
+                8,
+                0,
+                1000,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, ()),
+            MobReset(200, 7001, 1, ()),
+        ],
+        mobile_specials={200: ("spec_breath_any",)},
+    )
+
+    [candidate] = [
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=8,
+            character_alignment=1000,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    ]
+
+    assert candidate.autonomous_safe
+    assert (
+        "source-backed good-alignment companion cannot join positive-alignment "
+        "player: "
+        "the source dragon"
+        in candidate.hazards
+    )
+    assert "target room has a dangerous reset companion" not in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_alignment_assistance_gate_uses_player_alignment_not_target_alignment() -> None:
+    guard = MobileSource(
+        200, "guard", "the guard", 8, 0, 0, "target.are",
+    )
+    good_guard = replace(guard, alignment=1000)
+    target = MobileSource(
+        100, "target", "the good target", 8, 0, 1000, "target.are",
+    )
+    world = WorldSource(mobiles={100: target, 200: guard})
+
+    assert source_mobile_can_join_player_fight(
+        world, guard, character_level=8, character_alignment=1000,
+    )
+    assert source_mobile_can_join_target_fight(
+        world, guard, target, character_level=8, character_alignment=1000,
+    )
+    assert not source_mobile_can_join_player_fight(
+        world, good_guard, character_level=8, character_alignment=1000,
+    )
+
+
+def test_masked_player_alignment_keeps_good_bystander_possible() -> None:
+    guard = MobileSource(
+        200, "guard", "the good guard", 8, 0, 1000, "target.are",
+    )
+    world = WorldSource(mobiles={200: guard})
+
+    assert source_mobile_can_join_player_fight(
+        world, guard, character_level=8, character_alignment=50000,
     )
 
 
@@ -4430,6 +5440,90 @@ def test_source_combat_output_uses_the_audited_mage_formula() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("spell", "expected"),
+    [
+        (
+            "shocking grasp",
+            SourceCombatOutput(
+                action="shocking grasp",
+                minimum_damage=46,
+                expected_damage=51,
+                maximum_damage=56,
+                resource="mana",
+                resource_cost=15,
+                conservative_damage=40,
+                source_reference="magic.c:spell_shocking_grasp",
+            ),
+        ),
+        (
+            "lightning bolt",
+            SourceCombatOutput(
+                action="lightning bolt",
+                minimum_damage=18,
+                expected_damage=63,
+                maximum_damage=90,
+                resource="mana",
+                resource_cost=15,
+                conservative_damage=50,
+                source_reference="magic.c:spell_lightning_bolt",
+            ),
+        ),
+        (
+            "colour spray",
+            SourceCombatOutput(
+                action="colour spray",
+                minimum_damage=18,
+                expected_damage=63,
+                maximum_damage=90,
+                resource="mana",
+                resource_cost=15,
+                conservative_damage=50,
+                source_reference="magic.c:spell_colour_spray",
+            ),
+        ),
+        (
+            "fireball",
+            SourceCombatOutput(
+                action="fireball",
+                minimum_damage=9,
+                expected_damage=63,
+                maximum_damage=108,
+                resource="mana",
+                resource_cost=15,
+                conservative_damage=50,
+                source_reference="magic.c:spell_fireball",
+            ),
+        ),
+        (
+            "acid blast",
+            SourceCombatOutput(
+                action="acid blast",
+                minimum_damage=9,
+                expected_damage=81,
+                maximum_damage=144,
+                resource="mana",
+                resource_cost=20,
+                conservative_damage=64,
+                source_reference="magic.c:spell_acid_blast",
+            ),
+        ),
+    ],
+)
+def test_source_combat_output_uses_the_next_audited_mage_spells(
+    spell: str,
+    expected: SourceCombatOutput,
+) -> None:
+    output = source_combat_output_estimate(
+        character_level=18,
+        character_class="mage",
+        known_skills=(spell,),
+        known_skill_levels={spell: 30},
+    )
+
+    assert output == expected
+
+
 def test_source_combat_output_uses_base_psionic_agitation() -> None:
     output = source_combat_output_estimate(
         character_level=30,
@@ -4544,6 +5638,36 @@ def test_source_combat_output_does_not_invent_ranger_shoot_without_a_bow() -> No
                 resource_cost=20,
                 conservative_damage=108,
                 source_reference="magic.c:spell_flamestrike",
+            ),
+        ),
+        (
+            "psionic",
+            "infernalist",
+            "hellfire",
+            SourceCombatOutput(
+                action="hellfire",
+                minimum_damage=90,
+                expected_damage=195,
+                maximum_damage=300,
+                resource="mana",
+                resource_cost=20,
+                conservative_damage=156,
+                source_reference="magic.c:spell_hells_fire",
+            ),
+        ),
+        (
+            "psionic",
+            "witch",
+            "wither",
+            SourceCombatOutput(
+                action="wither",
+                minimum_damage=60,
+                expected_damage=165,
+                maximum_damage=270,
+                resource="mana",
+                resource_cost=20,
+                conservative_damage=132,
+                source_reference="magic.c:spell_wither",
             ),
         ),
         (
@@ -4997,6 +6121,44 @@ def test_source_combat_output_models_learned_knife_toss_for_thief() -> None:
         conservative_damage=14,
         source_reference="fight.c:do_knife_toss",
     )
+
+
+def test_source_combat_output_models_knife_toss_face_hit_for_eyed_target() -> None:
+    output = source_combat_output_estimate(
+        character_level=24,
+        character_class="thief",
+        known_skills=("knife toss",),
+        known_skill_levels={"knife toss": 75},
+        target_body_form_flags=0,
+    )
+
+    assert output == SourceCombatOutput(
+        action="knife toss",
+        minimum_damage=13,
+        expected_damage=20,
+        maximum_damage=72,
+        resource="actions",
+        resource_cost=0,
+        conservative_damage=16,
+        source_reference=(
+            "fight.c:do_knife_toss; plus fight.c:do_knife_toss/face_hit"
+        ),
+    )
+
+
+def test_source_combat_output_does_not_invent_knife_toss_face_hit_without_eyes() -> None:
+    output = source_combat_output_estimate(
+        character_level=24,
+        character_class="thief",
+        known_skills=("knife toss",),
+        known_skill_levels={"knife toss": 75},
+        target_body_form_flags=BODY_NO_EYES,
+    )
+
+    assert output is not None
+    assert output.expected_damage == 18
+    assert output.maximum_damage == 36
+    assert output.source_reference == "fight.c:do_knife_toss"
 
 
 def test_source_combat_output_models_circle_only_with_a_piercing_weapon() -> None:

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from dd4tester.observations import ObservationParser
 
 
@@ -299,6 +301,37 @@ def test_text_observations_recognize_existing_room_combat() -> None:
     assert combat[0].data["target"] == "Olog"
 
 
+@pytest.mark.parametrize(
+    "text, target",
+    [
+        (
+            "A small troll grunts as he takes a swing at you.\n",
+            "A small troll",
+        ),
+        ("The large troll grunts and swings at you.\n", "The large troll"),
+        (
+            "A brawler takes a swing at you as you enter.\n",
+            "A brawler",
+        ),
+        (
+            "The dwarf stops swinging his pick at the floor and swings at you instead!\n",
+            "The dwarf",
+        ),
+    ],
+)
+def test_text_observations_recognize_source_aggression_swing_messages(
+    text: str,
+    target: str,
+) -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(text)
+
+    combat = [event for event in events if event.type == "combat_started"]
+    assert combat
+    assert combat[0].data["target"] == target
+
+
 def test_experience_reward_is_not_recorded_as_an_item() -> None:
     parser = ObservationParser()
 
@@ -377,6 +410,26 @@ def test_gmcp_observations_track_changes_without_duplicate_events() -> None:
         "previous": 2,
     }
     assert duplicate == []
+
+
+def test_text_look_does_not_clear_color_coded_gmcp_room_identity() -> None:
+    parser = ObservationParser()
+
+    entered = parser.feed_gmcp(
+        'Room.Info {"name":"{cThe Ocean Deep{x","vnum":"27073",'
+        '"exits":{"u":"27032","e":"27075"}}'
+    )
+    text_events = parser.feed_text(
+        "The Ocean Deep\n"
+        "[Exits: east up]\n"
+    )
+
+    assert [event.type for event in entered] == ["room_entered"]
+    assert not any(
+        event.type in {"room_entered", "room_updated"}
+        for event in text_events
+    )
+    assert parser._room_vnum == "27073"
 
 
 def test_gmcp_quest_snapshot_tracks_points_and_deduplicates() -> None:

@@ -8,9 +8,279 @@ and autonomously reach the requested level, up to HERO 100. Preserve progress,
 explain the experience, and support direct Telnet and visible Mudlet operation.
 
 **Not complete:** no HERO character is proved. Highest actual frontier is 25;
-the fresh-creation track is 8. The active goal remains this master objective.
+the fresh-creation track is 9. The active goal remains this master objective.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
+
+The ordinary fame gate is now recorded precisely: `fight.c` uses
+`victim.level - player.level > 5`, which means at least six levels higher. The
+source-famous `ACT_IS_FAMOUS` branch is separate. The +9 value shown by the
+readiness report is a diagnostic horizon, not a game ceiling; live fame
+selection searches the source range through HERO before applying its safety
+gates. Kestrel's latest bounded
+Green Dragon attempts (runs **13407-13408**) did not recover fame: one stopped
+on the live HP/output gate, and the sanctuary-protected retry encountered gas,
+with a recorded **385 XP** loss before safe healer recovery. Run **13409** then
+replenished one purple sanctuary reserve through the bounded Moria route; this
+added 100 maintenance XP and did not change fame or progression level.
+
+### Funding loss gate: September 21, 2026
+
+Run **13691** took Dorrik (level 25) to the source-ranked Highlander funding
+target. The live `consider` was viable and sanctuary was used, but a critical
+hit forced a bounded withdrawal at 257/569 HP; DD4 charged **419 XP** and fame
+remained **0**. The persisted loss ledger now excludes that candidate for the
+current reboot, and the next policy check finds no safe replacement funding
+route. This was a provision-funding attempt, not fame recovery: an ordinary
+fame target for Dorrik would need to be level **31 or higher**.
+
+### Bounded sale-buyer retry: September 21, 2026
+
+Run **13693** completed the source-backed Moria large-orc funding attempt for
+Dorrik, yielding **50 maintenance XP**, one yellow-and-green ring, and one
+copper from the sacrificed corpse. The follow-up sale run **13694** recorded
+the ring refused by the Leather Shop, then tried the other safe armour buyer
+once; the Armoury also refused it, so the ring was donated and the balance
+remained **4 silver, 8 copper**. DD4 uses the same uninterested text for several
+shop-side causes, so the runner now preserves the refusal, excludes tried
+shops, and permits exactly one alternate compatible buyer before donation. This
+is funding evidence only; no progression XP or fame is claimed.
+
+### Protection-aware funding rotation: September 21, 2026
+
+The campaign now recognizes a current-reboot absent flight-funding attempt even
+when reset repair has exposed an older reusable carrier. From a fed healer
+checkpoint with protection recovery still required and the sanctuary budget
+terminal, it makes one source-output-gated ordinary current-band selection
+instead of repeating either funding target. Existing route, movement,
+sanctuary, consider, live-identity, and finite-action gates remain in force;
+an empty ordinary frontier becomes a no-socket checkpoint. The regression
+models Dorrik's Midget/Moria mismatch and passes with the focused campaign
+tests; compilation is clean.
+
+Runs **13699-13701** then produced bounded live evidence: 60 maintenance XP
+from the large orc, a clean absent-Midget retry, and a same-reboot `time`
+probe. The following policy selection correctly found no admissible ground
+progression target and opened no gameplay socket. Dorrik remains level 25 at
+**382,940 XP**, with sanctuary reacquisition or a stronger source-safe combat
+envelope still required. HERO 100 remains unproved.
+
+Aeloria's run **13703** separately completed the source-ranked Haon food reserve
+and returned safely to healer room **3054** at checkpoint **42595**. It added no
+XP; the next level-18 lemming-smithy candidate is below-band with a hard route
+preflight, so it remains research-only rather than a weak XP expedition.
+
+### Multi-character continuation and key-route audit: September 21, 2026
+
+Aeloria's level-18 mage repair reopened the local trainer and the server
+accepted two `evocation magiks` practices, moving 49% to 58% with no Mage's
+Laboratory sleep. The subsequent familiar-backed Arachnos guardian attempt
+lost the familiar and withdrew after DD4 deducted 232 XP (net checkpoint
+change -152); the exact retry is now closed for this reboot. A bounded lemming
+smithy probe found the endpoint empty and recorded a three-segment absence
+cooldown. Kestrel completed a safe level-24 grain reserve route, but fame
+remains -12 and no ordinary +6 target passed admission. Dorrik's tree-sprite
+and Abyss routes both returned safely without XP, leaving the level-25
+frontier unavailable rather than replaying stale targets.
+
+The source resource audit now distinguishes a locked route from an acquisition
+plan. The level-18 sanctuary flask (object 2008) on grand templar 2015 in
+room 2025 is reached through key 6502; its source carriers are dwarven guard
+6500 and wraith 6502. Raw reset provenance now keeps the key attached only to
+the keyed guard reset in rooms 6505 and 6540; adjacent same-mobile guard
+resets do not inherit it, and the wraith remains a separate mobile category.
+The key route is retained as source evidence, but its carrier
+level/capacity/output gates fail for Aeloria, so no live sanctuary permission
+is inferred. A route key whose source resets are all beyond the
+recall-reachable graph is now labelled as a circular acquisition dependency.
+
+### Reset-boundary funding handoff: September 21, 2026
+
+Run **13702** supplied live counterevidence to the first protection-aware
+funding regression: automatic reset repair removed Dorrik's current-boot
+absent-Midget marker, and policy selection reopened the same empty carrier.
+The repair now preserves that marker only for the exact combination of pending
+flight funding, current protection recovery, and terminal sanctuary attempts.
+It still clears the transient attempt list and leaves the ordinary
+source-output-gated fallback in charge. The new boundary test and the full
+campaign suite pass **1,608 tests**. Bounded run **13704** found no new reboot
+and therefore did not exercise a live reset wait; the reset handoff remains
+unit-proved and awaits fresh area-reset or reboot evidence.
+
+### Automatic frontier liveness probe: September 21, 2026
+
+An unavailable policy at a healthy healer checkpoint now opens one bounded
+`world-time-probe` automatically, even in a one-segment invocation. The probe
+records DD4's authoritative `time` reboot marker, saves, and quits; it does not
+hunt, clear cooldowns, or claim XP. A durable probe checkpoint prevents repeat
+connections on the same frontier, while the existing reset-aware retry remains
+the only path that can probe again after a real area-reset wait. Live run
+**13646** validated this with Aeloria: the current reboot remained
+`Fri Sep 4 06:19:51 2026`, checkpoint **42459**, level 18, with no XP change.
+This is a liveness improvement, not progression or HERO proof.
+
+### World-time completion liveness repair: September 21, 2026
+
+Live run **13705** found a second liveness edge in the maintenance probe. After
+`time` and `save` completed at healer room **3054**, a stale local combat flag
+allowed the ordinary healer-recovery branch to alternate `sleep` and `stand`
+until the 180-second segment boundary. The starter now gives a completed probe
+priority over optional recovery, and clears that local flag only after the
+authoritative room state confirms no combat and no mobiles in the source-safe
+healer room. City-shop observation remains ahead of logout when explicitly
+requested, and actual combat or an occupied room still blocks the shortcut.
+
+The new regression covers the hungry, wounded, runtime-boundary shape and the
+full starter suite passes **1,445 tests**. Direct live run **13708** verified the
+fix with six commands (`time`, `save`, and `quit` after login), returning Dorrik
+to healer room **3054** at full health without a stand/sleep loop. No new reboot,
+fame change, or HERO
+progression was observed; the next frontier remains sanctuary reacquisition or
+a stronger source-safe level-25 combat envelope.
+
+### Aggressive endpoint entry correction: September 21, 2026
+
+Serevian's source-ranked air run exposed a timing hole: the source griffin in
+room **1037** was plain `ACT_AGGRESSIVE` and auto-attacked on entry, before the
+runner could issue its deliberate attack or use live `consider`; a nearby fairy
+dragon then caused the bounded withdrawal and DD4 charged **99 XP**. The route
+builder now carries a source-proven plain aggressive endpoint mobile in the
+invisibility identity, so an already-selected route must establish fresh
+invisibility before crossing the room. Scripted, detecting, special, unknown,
+capacity-rejected, HP-over-budget, and live combat hazards remain blocked or
+authoritative. The new regression preserves the griffin's separate capacity
+rejection and verifies the route identity; the full offline suite passes
+**5,903 tests**. No new live XP or HERO proof is claimed.
+
+### TARGETMODE identity boundary: September 21, 2026
+
+Run **13663** safely exercised the source-ranked New Ofcol cow research route.
+The source graph shows both wandering mobile **613** and sentinel mobile **614**
+can reach Barn room **620**. DD4's live `TARGETMODE` response exposed two cows
+as ephemeral process-wide selectors **#372** and **#373**, with identical live
+descriptions; those selectors are not source VNUMs. The runner therefore kept
+the source-ambiguous stop closed, returned to healer room **3054**, and recorded
+no kill, XP change, or loss. This confirms that exact selector presence alone
+cannot authorize a source-identified target when same-name instances remain
+indistinguishable; a unique live description or source identity is still
+required. It is identity-safety evidence, not progression or HERO proof.
+
+### Area door semantics: September 21, 2026
+
+The source parser now follows `runs/dd4-source/server/src/db.c` when reading
+area `D` records. Their second field is DD4's lock type: raw `-1` and `0`
+produce an ordinary open exit, while type `2` expands to
+`EX_ISDOOR | EX_PICKPROOF`. This corrected the source route graph and moved the
+Dwarven Catacombs sanctuary plan back to research-only status. Its west door in
+room `6505` is closed, locked, and pickproof; `pick lock` cannot bypass it, so
+the selector rejects the route for both trained and untrained thieves until a
+separate source-proven key acquisition path is implemented. The parser smoke
+test and source policy regression preserve this fail-closed boundary. No live
+XP or HERO evidence follows from the correction.
+
+## Current Continuation: September 21, 2026
+
+Serevian's bounded funding run acquired the Moria yellow-and-green ring, then
+live liquidation showed both the Leather Worker and Armourer refusing it. The
+source object is poisoned (`ITEM_POISONED`), so it was never valid sale funding.
+The planner now rejects poisoned source loot before dispatch. Funding kills
+remain durable audit evidence but contribute zero to policy progress, fame
+history, or HERO metrics. Checkpoint **42044** is safe at healer **3054** with
+the stale Moria research result removed; the next executable step requires a
+fresh funding carrier or another source-safe progression route.
+
+### Forest route liveness correction: September 21, 2026
+
+Kestrel's live Forest required-loot gate observed the source poison-swarm crowd
+at room 18027 and withdrew without combat. The resulting current-reboot hazard
+was persisted, but the funding-preemption selector could still reopen the same
+maintenance route on a later resume. Selection now treats that exact hazard as
+a quarantine: ordinary resumes rotate to the available frontier or return a
+bounded unavailable result, while only the separately evidenced healer-origin
+recheck may reopen the route once. The live regression stopped at checkpoint
+**42402** with no duplicate Forest run, no XP change, and no new live socket.
+The full offline suite passes **5,883 tests**.
+
+### Readiness admission audit: September 21, 2026
+
+The offline readiness report now separates an offensive HP-ceiling fit from
+the campaign's full dispatch admission. Each target records source HP
+admission, sanctuary requirement and availability, and final `admission_fit`.
+This corrected a misleading level-25 report where Mr Smithy fit the raw damage
+ceiling but still failed the survival/output-reserve gate. Dorrik's bounded
+resume at checkpoint **42404** therefore opened no gameplay socket and retained
+the real blocker: sanctuary reacquisition or a stronger, source-safe combat
+envelope is required before the next productive route.
+
+### Level-25 frontier and maze liveness: September 21, 2026
+
+Dorrik's bounded continuation reached checkpoint **42416** at level 25 with
+381,533 XP. One finite 60-second area-reset wait completed, but `time`
+confirmed the same DD4 reboot and no current-band route reopened. The live
+Abyss copepod policy withdrew at its movement reserve without combat or XP;
+the tree-sprite policy remained unavailable. The readiness report now makes
+the boundary explicit: the three unprotected admission-fit candidates are
+source level 18-22 maintenance targets, while current-band targets require a
+sanctuary reserve or fail the survival/output gate. They are not progression
+targets and must not be counted as XP evidence.
+
+The source audit of the Sahuagin Market purple potion also remains analysis
+only. The potion is nested in a locked display case; its glass key is carried
+by level-35 shopkeeper Bilani, whose scripted cleric special makes this an
+unproved high-risk acquisition rather than a level-25 sanctuary route. The
+campaign therefore remains fail-closed until a legitimate reserve or stronger
+combat envelope is evidenced. The resource inspection CLI now preserves that
+chain explicitly as container 27323, key 27324, and carrier 27234, and marks
+the placement with a locked-container autonomy rejection.
+
+The live maze navigator had an unreachable unexpected-room rebase branch. It
+now clears stale DFS state once and continues from the observed room within
+the existing eight-rebase bound. The starter suite passes **1,440 tests**, the
+campaign suite passes **1,581 tests**, and the complete offline suite passes
+**5,883 tests** after the repair.
+
+### Abyss safe-fido navigation revalidation: September 21, 2026
+
+Policy revision **307** now treats source-audited `spec_fido` rooms as
+non-combat hazards during Abyss randomized-route planning. The offline planner
+for Dorrik's copepod reset at room **7548** no longer blocks the fido bridge;
+the route remains statically safe and estimates 96 flying movement. A narrow,
+source-revision-tagged migration preserved the prior 7544 result and sentinel
+cooldown while reopening only the preferred 7548 result for one retry.
+
+The bounded resume did not open a gameplay socket because Dorrik has no
+sanctuary reserve and the target's audited HP range is **242-713** against his
+**569** HP ceiling. Its protection gate remains authoritative; checkpoint
+**42456** is safe at healer **3054**, level 25, with no XP change. The marker
+remains pending for a legitimate protection/resource handoff. This is route
+evidence only, not progression or HERO proof. The complete offline suite now
+passes **5,890 tests**; compilation is clean.
+
+### Familiar-backed Aeloria revalidation: September 21, 2026
+
+Aeloria's level-18 mage checkpoint **42421** has learned `summon familiar`,
+and the exact source Guardian policy (`source-ranked-hunt-arachnos-6313-6367-18`)
+passes the existing familiar damage, route, mana, isolation, and source
+identity gates. The prior hard-health withdrawal had no XP loss, so the
+campaign now arms one durable familiar-backed revalidation for that exact
+same-boot target. It is consumed at dispatch and closed after one result;
+ordinary fame still requires a target at least six levels higher, and this
+repair does not widen that rule. Run **13629** live-validated the path: the
+familiar was summoned and grouped, the Guardian died for **607 XP**, and
+Aeloria recalled and slept in healer room **3054** with no death or XP loss.
+Checkpoint **42423** records `completed_kill=true` and a succeeded, single-use
+revalidation marker. HERO remains unproved; the next segment must select a new
+current-band policy rather than replaying this target.
+
+### Kestrel fame prerequisite boundary: September 21, 2026
+
+Kestrel's bounded resume reached checkpoint **42426** at level 24 with fame
+**-12**. One finite area-reset wait reopened the source-ranked Moria sanctuary
+reserve, but the carrier route produced no potion; the exact reboot-scoped
+recheck budget is now exhausted and the character returned safely to healer
+room **3054**. The fame selector remains source-correct: an ordinary recovery
+target must have a live level at least **six higher**, so Kestrel needs a
+level-30-or-higher target. No fame change or progression XP is claimed.
 
 ## Delivered Foundations
 
@@ -20,6 +290,10 @@ order; dated run evidence belongs there, not in an expanding policy changelog.
 - Run/campaign reports with evidence-grounded commentary and persona metadata.
 - Public `hero` entry point, resumable campaigns, credentials, bounds, and recovery.
 - Shared source-backed combat, training, equipment, travel, and resource policies.
+- Source resource analysis recognizes DD4 `ITEM_PILL` objects such as Olympus
+  nectar, emits exact `eat` activation, and handles live success/failure
+  acknowledgements without leaving a reserve pending. This remains source
+  evidence until a bounded live acquisition proves the route.
 - Bounded campaign startup that reuses a current-level live training audit and
   reserves historical event scans for legacy checkpoints.
 - Source-ranked gear acquisition report with separate equipment-reset
@@ -27,9 +301,17 @@ order; dated run evidence belongs there, not in an expanding policy changelog.
   Executable planners cover direct ground resets and exact source carriers;
   carrier execution still requires a matching hunt candidate and post-kill
   loot/equip action, and live acquisition remains unproved.
+- Exact TARGETMODE selectors now bind case-normalized live room descriptions to
+  the source mobile prototype before a same-name attack. Protection recovery can
+  retain one independent low-fuzz plain fallback after the ordinary ranking
+  floor, but same-boot below-band evidence remains a hard exclusion.
 - Read-only `show-combat-readiness` report for cross-class output envelopes,
   durable campaign constraints, current-band target fit, and gear blockers.
-  It is diagnostic evidence only and cannot authorize live dispatch.
+  It is diagnostic evidence only and cannot authorize live dispatch. Its fame
+  view exposes DD4's ordinary +6-or-higher rule separately from the current
+  bounded +9 research horizon and
+  source-famous branch, so a missing fame route is visible rather than hidden
+  by the normal current-band target list.
 - Required-loot maintenance withdrawals retain bounded raw terminal absence
   evidence and recover it on startup, with a reset-scoped cooldown before the
   exact route can be reconsidered.
@@ -75,7 +357,7 @@ order; dated run evidence belongs there, not in an expanding policy changelog.
   and permits one healer-side relief/retry when a live capacity claim is
   rejected for weight. The source-ranked last-policy fallback honors exhausted,
   throughput-limited, and current-reboot crowd evidence.
- - Policy revision 301 admits one sanctuary-protected damage-window probe for a
+ - Policy revision 302 admits one sanctuary-protected damage-window probe for a
   passive nominal-current-level target whose DD4 load-time HP fuzz reaches two
   levels above the character. It also mirrors `fight.c`'s `ACT_IS_FAMOUS` fame
   branch and registers the exact Green Dragon 6112 gas-breath candidate for
@@ -89,6 +371,43 @@ order; dated run evidence belongs there, not in an expanding policy changelog.
    Revision 301 also carries the improved-output fame retry through the stop
    builder so the live sanctuary opener is reachable when its one-shot evidence
    and reserve gates pass.
+ - Revision 302 keeps an already-reconciled level-24 Moria recovery checkpoint
+   on the dedicated 11-stop route instead of collapsing it into the generic
+   single-room reserve executor. Run 13275 live-validated that route through
+   rooms 4064, 4152, 4071, and the remaining bounded locator stops; the carrier
+   was absent, so no acquisition or progression is claimed.
+ - Policy revision 303 makes healer recovery explicit for active poison at room
+   3054. It reopens one exact Forest claw retry despite the
+   old protection marker, then consumes that exception at segment start; a live
+   poison-swarm crowd at room 18027 still forces withdrawal.
+ - Policy revision 306 carries the exact source upper level bound into every
+   generated stop for a sanctuary-backed, required-loot gear carrier. This
+   closes a route-construction gap when load-time level fuzz reaches the
+   source-recorded upper bound, without authorizing unprotected combat or
+   changing the ordinary +6 fame rule; live acquisition remains unproved.
+ - Runtime preparation now reuses the already-loaded immutable source catalog
+   across resource and frontier selector passes and emits level-aware progress
+   while no gameplay socket is open. This addresses large-database resume
+   liveness without changing combat admission or progression proof.
+ - Policy revision 305 makes the exact Shadow Keep fine-dagger maintenance plan
+  available at level 24. Its source-identified level-26 smuggler is admitted
+  only through the plan's explicit +2 level ceiling, sanctuary protection,
+  lower-bound output check, and finite live damage probe. This does not widen
+  ordinary fame recovery, whose target window still starts at +6 levels.
+- Revision 305 also permits an ordinary fame target with wider source HP fuzz
+  when sanctuary is verified and the player output covers the source lower
+  bound. The live stop still requires GMCP HP and damage-window confirmation;
+  this is an admission improvement, not evidence of a fame kill.
+- A separate source-ranked aggressive HP-fuzz probe now covers only a plain,
+  unarmed, unscripted aggressive target whose exact source route preflight and
+  bounded transit checks pass. Sanctuary, source lower-bound output, and a
+  finite live damage window are required; this does not widen ordinary fame
+  recovery or authorize generic aggressive targets.
+- Admitted caster encounters now have a finite live spell fallback: after two
+  weak preferred-spell attempts, the damage probe can measure the next
+  practiced source-registered damage spell. The rotation is encounter-local
+  and retains all source, mana, incoming-damage, and withdrawal gates; it is
+  not evidence of a kill until live XP and return state are recorded.
 - The exact source Circus flight reserve is now reputation-aware. Its first
   action is a shopkeeper `buy ticket`, and DD4's `do_buy` rejects every shop
   purchase below zero fame. Live refusal evidence is persisted as a structured
@@ -103,20 +422,21 @@ does not mean every race/class or level band works end to end.
 1. Continue Kestrel beyond level 24 with measured current-band encounters and
    positive whole-session net XP; use a source-executable target or gear
    upgrade after recovery and funding gates clear, without reopening closed,
-   over-budget targets. The source mirror is `80cad01`, and the current source
+   over-budget targets. The source mirror is `bee610c`, and the current source
    estimator still reports a 318-point target-independent school-dagger
-   envelope. Kestrel is level 24 at **331,264 XP**, safely at healer room
-   **3054**, with checkpoint **41370**. Runs **13257-13258** completed safe
-   Crystal food-reserve segments and acquired one grain reserve. Run **13256**
-   attempted the source-famous Green Dragon after the output revalidation gate;
-   Green loaded at **576 HP**, Kestrel withdrew after gas nausea, and DD4
-   applied a **385 XP** loss without a kill or fame gain. The Green policy is
-   closed for this boot, and the sanctuary route remains on current-reboot
-   cooldown. Revision **301** now also carries a future eligible improved-output
-   fame retry through the protected stop builder; it does not reset the consumed
-   one-shot marker. The next gate is fresh source-supported reserve or fame
-   evidence, followed by positive whole-session progression. No higher-band
-   route is authorized.
+   envelope. Ordinary fame recovery requires a victim at least six levels above
+   the player, so level-24 Kestrel needs a source level-30-or-higher target.
+   If sanctuary is reacquired, the newly unlocked level-24 Shadow Keep
+   fine-dagger plan is the next output-improvement route; it is not fame or XP
+   permission and must still pass its live HP and damage-window checks.
+   Kestrel is level 24 at **330,969 XP**, safely at healer room **3054**, with
+   checkpoint **41526**. Run **13275** exercised the corrected
+   11-stop Moria route through the second carrier room **4071**, but the purple
+   potion was absent. A new quest request cannot repair fame at **-12** because
+   DD4 rejects requests below zero fame; only a completed kill quest would award
+   positive fuzzy fame. The next gate is a source-supported fame-positive kill
+   or stronger gear/output route, followed by positive whole-session
+   progression. No higher-band route is authorized.
 2. Advance the fresh character from level 8 to 9 and through the level-10
    trainer transition without adding name-specific behavior.
 3. Demonstrate three consecutive bounded public invocations with positive
@@ -126,23 +446,29 @@ does not mean every race/class or level band works end to end.
    the existing thief, mage, and warrior campaigns at their actual frontiers,
    then expand only after the shared loop proves productive.
 
-## Current Status (September 14)
+## Current Status (September 15)
 
-The latest source pull is `80cad011b8c17b5ffc8828edae9182271bf7e46e`.
-Kestrel's latest durable checkpoint is **41370**, level 24 at **331,264 XP**
-in healer room **3054**, after runs **13235-13258**. Runs **13257-13258**
-completed safe Crystal food-reserve routes and acquired one grain reserve. Run
-**13256** reached the source-famous Green Dragon under the improved-output
+The latest source pull is `bee610c4081a1d2c1d7c8ee80343a337079be024`.
+Kestrel's latest durable checkpoint is **41526**, level 24 at **330,969 XP**
+in healer room **3054**. Run **13275** opened the corrected deep Moria plan
+and checked both source carrier rooms plus the bounded locator chain; the
+carrier was absent and no XP, fame, or reserve changed. The latest bounded
+policy pass returned without opening a gameplay socket or changing XP. Run
+**13289** then returned safely to the healer in six commands without XP
+progress. Run **13256**
+reached the source-famous Green Dragon under the improved-output
 revalidation gate; GMCP reported **576 HP**, Kestrel withdrew after gas nausea,
-and DD4 applied a **385 XP** loss without a kill or fame change. Alignment is
-**1000**, distinct from fame **-12**. The checkpoint preserves the loss,
-reputation block, and sanctuary cooldown, so no closed policy is replayed at
-this boot. Revision **301** fixes the retry-to-stop handoff for a future
-eligible Green probe; it does not reset consumed evidence. The full offline
-suite passes **5,762 tests**; sustained progression, the level-10 fresh-
-character gate, and HERO 100 remain unproved. `show-combat-readiness` exposes
-the separate alignment and fame values, quest readiness, and source-backed
-fame outcome.
+and DD4 applied a **385 XP** loss without a kill or fame change. Runs **13277**
+and **13278** exercised the revision-303 healer recovery and exact Forest
+retry: poison was cured at room **3054**, `where kodiak` found the carrier in
+the River bed, and the connecting room **18027** contained a live poison-swarm
+crowd. The bounded retry withdrew safely without XP loss or claw acquisition.
+The campaign policy revision is **306**. Alignment is
+**1000**, distinct from fame **-12**. DD4 rejects new quest requests below zero
+fame, so the next recovery choice must be a source-proven fame-positive kill or
+stronger gear/output route. The full campaign suite passes **5,796 tests** and
+clean compilation; sustained progression, the level-10 fresh-character gate,
+and HERO 100 remain unproved.
 
 ## Current Status (September 13)
 
@@ -1084,3 +1410,207 @@ retry-exhausted, throughput-limited, or current-reboot crowd evidence. Run
 **31,513 XP** in healer room **3054**, with a safe city-departure deferral and
 no new loss. The full offline suite passes **5,701 tests**; sustained
 progression, the level-10 trainer transition, and HERO remain open.
+
+### Deep Moria Resume And Level-24 Frontier: September 14, 2026
+
+Bounded deep Moria sanctuary runs now persist one verified same-boot route
+cursor when a runtime cap interrupts a quiet waypoint. A later invocation may
+rebuild only the audited bridge from room 4064 to that waypoint and continue
+the unfinished leg; combat, route hazards, explicit aborts, malformed cursors,
+and reboot changes invalidate the cursor. Unit, campaign, and checkpoint
+storage coverage protects this contract, and the full offline suite passes
+**5,770 tests** with clean compilation.
+
+Live runs **13263-13264** confirmed the 4064 large-hobgoblin target absent,
+including after one bounded reset wait. Run **13265** then completed the deep
+Moria circuit, killed the exact large hobgoblin with Kestrel's piercing weapon,
+and added **100** maintenance XP without loss or death. Runs **13266-13267**
+tested the independent Circus and Mirror Realm fame routes; the former
+rejected the ticket clerk at a 1,353 HP ceiling against the 318-point output
+budget, while the latter rejected the moose on live `consider`. Kestrel is
+level **24** at **331,364 XP**, safe in healer room **3054**, and fame remains
+**-12**. The next engineering frontier is accessible damage/gear improvement;
+HERO proof remains open.
+
+### Deep Moria Dispatcher Reconciliation: September 15, 2026
+
+Policy revision **302** prevents an already-reconciled level-24 Moria recovery
+from falling back to the generic one-room reserve executor. Live run **13275**
+opened all **11** source-audited stops, including rooms **4064**, **4152**,
+**4071**, and **4074**, then returned safely to healer **3054** without finding
+the purple potion or changing XP, fame, or reserve state. The old terminal
+result remains nested in the checkpoint for auditability. The full campaign
+suite passes **1,539 tests**; sustained progression and HERO proof remain open.
+
+### Text-Only Combat Engagement Guard: September 15, 2026
+
+DD4 area files use aggression descriptions including “grunts as he takes a
+swing at you”. The observation parser now maps these source-backed variants
+to `combat_started`, preventing the starter from continuing familiar setup
+after a target has already engaged during route arrival. The full suite passes
+**5,808 tests** with clean compilation.
+
+Live run **13320** captured the original failure and two 50-XP losses; its
+incidental kill was excluded. Run **13321** then stopped safely at the Moria
+pre-entry crowd, and run **13322** added **232 XP** from Granny Jenkins. The
+following three-segment batch added **196 XP** from two gnome-woman kills.
+Astrevo is at checkpoint **41669**, level **9**, with **33,387 XP**. The
+ordinary fame gate remains six or more levels above the player, and HERO 100
+is unproved.
+
+### Level-9 Fame And Sanctuary Frontier: September 16, 2026
+
+The policy graph now preserves DD4's strict ordinary fame threshold: the
+victim must be at least six levels above the player. A required-loot sanctuary
+carrier one level above the character is included in source ranking, allowing
+the level-9 Moria carrier to be considered. When an ordinary current-band
+target needs protection, level 9 and other pre-deep-band characters use the
+shallow Moria recovery policy; the established level-16/17 blindness-special
+and level-19+ deep policies are unchanged.
+
+The full offline suite passes **5,810 tests** with clean compilation. Astrevo
+remains safely checkpointed at **41690**, level **9**, with **33,691 XP**;
+the current reboot's bounded reset waits are exhausted. The next live attempt
+must wait for fresh reboot evidence rather than replaying the closed frontier.
+
+### Fresh Source Target Probability Guard: September 16, 2026
+
+Fresh autonomous ordinary targets now need at least a 50% source-fuzz
+probability of landing in the useful XP band before they can consume a field
+segment. This keeps the HELP FAME six-level rule effective during source
+ranking as well as at live `consider` time. Productive routes and explicit
+familiar, invisibility, and revalidation probes retain their own bounded
+exceptions. The complete campaign module passes **1,558 tests**; the next
+frontier remains a fresh executable route beyond the current level-18 blocker.
+
+### Flight Frontier Preference: September 16, 2026
+
+The no-flight fallback now compares fresh candidates by useful source-fuzz
+probability. A ground target no longer displaces a materially stronger
+flight-required target merely because it avoids flight preparation; productive
+ground routes and equal-band ground choices retain priority. This aligns the
+selector with DD4 movement economics and the master XP-per-time objective.
+
+### Mage Output Chain Extension: September 20, 2026
+
+The source-backed mage plan no longer stops at burning hands. The capability
+registry, combat timing acknowledgements, and output estimator now cover
+shocking grasp, lightning bolt, colour spray, fireball, and acid blast with
+their DD4 prerequisites, mana costs, and save/resistance-aware bounds. Training
+gate entries carry the dependent skill and only advance when the live teacher
+listing exposes that next step, preventing premature practice spending. Shield
+and stone-skin prerequisite gates are recorded as well. Focused capability,
+timing, training, and output tests pass; the chain remains offline evidence
+until a bounded Aeloria run validates a live transition.
+
+The level-18 audit in run **13420** recorded the teacher's learnable list as
+`ventriloquate`, `summoning magiks`, `enchantment magiks`, and `mana control
+disciplines`. None is a current mage damage or mitigation gateway, so Aeloria
+retained two physical and two intellectual practices and returned to healer
+room **3054**. The negative listing is now durable campaign evidence and will
+be rechecked only when the level or reboot scope changes.
+
+### Live Gear Hazard Quarantine And Thief Rotation: September 20, 2026
+
+Run **13424** exposed a gap in the Thalos long-dagger maintenance contract:
+an aggressive wandering lamia entered the route, disarmed Serevian, and caused
+**339 XP** of bounded withdrawal loss before healer recovery. The route is now
+registered as an isolated, sanctuary-required carrier objective, and all three
+progression entry points refuse it without a verified sanctuary reserve. Runs
+**13425-13426** proved the repair: Serevian safely rearmed with the Midgaard
+dagger, then killed the level-11 Air griffin for **270 eligible XP**. Run
+**13427** recorded a clean New Ofcol absence and rotated without replaying the
+area. The fame rule remains the HELP FAME six-level threshold, and HERO 100 is
+still unproved.
+
+Run **13428** then exposed a liveness defect after a below-band Circus funding
+target fled: the follow-up absence response left the resource stop open until
+the progress watchdog fired. The starter now closes that stop only when an
+engagement has started, the target is absent on the bounded re-check, and the
+stop is explicitly source-coin or required-loot work. Offline coverage is
+green at **1,432 starter tests**, **537 progression tests**, and clean
+compilation. Live run **13430** regressed the repaired funding route: Serevian
+killed the source-verified Midget for **40 non-progression XP**, recovered the
+purse coins, returned safely to healer **3054**, and checkpointed at level 11
+with **51,118 XP**. Follow-up runs **13431-13436** completed cleanup and flight
+preparation, added **332** and **248** eligible XP from two further griffin
+segments, and recorded two clean New Ofcol rotations. Serevian is now at
+checkpoint **41954** with **51,698 XP**. HERO 100 remains unproved.
+
+### Locator Route Re-rooting: September 20, 2026
+
+Run **13436** exposed a source-ranked locator defect: after a positive `where`
+result removed intermediate target stops, a later destination could retain a
+route VNUM relative to an older origin. The live runner reached room **621**
+and then treated room **632** as a direct exit even though the audited source
+path returns through rooms **618**, **668**, **611**, **608**, **605**, **602**,
+**601**, and **625**.
+
+The starter now re-roots compacted destination-guided segments against the
+source graph only when every replacement room is already present in the
+registered route evidence. Closed-door and randomized paths remain
+fail-closed, and missing source paths still use the ordinary live-exit abort.
+The exact disconnected-waypoint replay is covered by the starter suite.
+
+Offline verification is green at **1,433 starter tests** and **1,566 campaign
+tests**, with clean source reproduction and compilation. Run **13439** resumed
+Serevian safely at checkpoint **41963**, level **11**, with **51,748 XP** in
+healer room **3054**; the current reboot's exhausted sanctuary boundary
+prevented another gameplay socket. HERO 100 remains unproved, and the next
+live frontier is still a fresh executable level-11 route.
+
+### Skipped-Stop Re-root And Live Identity Evidence: September 20, 2026
+
+Run **13445** exercised the next failure shape after locator narrowing. The
+citizen circuit reached rooms **637**, **642**, **646**, and **647** after the
+live source-identity gate found both citizen VNUMs **617** and **618** reachable
+in the same room. The runner correctly skipped the ambiguous target and
+re-rooted the following registered stop from the actual live waypoint, so it
+never repeated the prior impossible room-**632** to room-**651** transition.
+
+The segment returned safely to healer room **3054** at checkpoint **41975**,
+level **11**, with **51,748 XP** and no kill, death, or XP loss. The route repair
+is restricted to source-registered rooms and leaves unproven or closed paths
+fail-closed. The ordinary HELP FAME rule remains unchanged: ordinary fame
+targets begin at player level plus six; source-famous targets are separate.
+Fresh practice repair is also bounded behind active provision-funding and
+affordable-flight gates so urgent resources retain priority. Verification is
+**1,434 starter tests** and **1,566 campaign tests**. HERO 100 remains unproved.
+
+### Runtime-Boundary Cleanup And Funding Evidence: September 20, 2026
+
+Runtime-boundary cleanup now takes precedence over stale consider, equipment,
+and route-wait acknowledgements once the live character is commandable and
+combat-free. This preserves the bounded recall, room-3001 north step, healer
+recovery, save, and quit path instead of misclassifying safe cleanup as a
+`no policy decision` watchdog failure. The full starter suite is green at
+**1,435 tests**, with clean compilation.
+
+Run **13446** remains the historical failure; run **13447** proves the cleanup
+repair. Run **13448** killed source mobile **4408** (the Midget) for required
+funding, yielding **30 XP** and coins. Run **13450** acquired Katrina the
+Shepherd's required funding drop for **50 XP**. Run **13452** found Katrina
+present at room **2415**, rejected her with live `consider` as below-band, and
+returned without combat, loss, or XP change at checkpoint **41988**, level
+**11**, **51,828 XP**. HERO 100 remains unproved.
+### Bounded Last-Chance Frontier Probes: September 20, 2026
+
+The ordinary fame rule is now recorded exactly as DD4's HELP entry and source
+logic require: `victim.level - player.level > 5`, making level 31 the first
+ordinary fame band for Dorrik at level 25. Fame recovery is not being conflated
+with ordinary XP progression or the separate source-famous path.
+
+Campaign selection now keeps measured productive repeats and fresh candidates
+with at least 50% useful source-level fuzz probability ahead of weaker probes.
+Only after those pools are exhausted, and only with a populated source world,
+may one fresh candidate in the 25-50% range be tried. The live level and
+`consider` response decide XP; below-band results never receive progression
+credit.
+
+Runs **13465-13466** exercised this bounded frontier for Dorrik at level 25.
+The tree sprite was absent; the copepod route reached its Abyss movement
+reserve before the endpoint. Both segments returned safely to healer room
+**3054**, with no death, loss, or XP credit. Checkpoint **42027** is therefore
+a durable route/resource boundary, not HERO evidence. The next live work is to
+improve protection acquisition and shorten source-audited routes before trying
+another current-band progression target.

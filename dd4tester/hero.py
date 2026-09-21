@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from .campaign import (
+    DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
     DEFAULT_RESET_WAIT_SECONDS,
     CampaignResult,
     run_campaign_file,
@@ -42,6 +43,7 @@ from .scenario import load_yaml_mapping
 
 
 DEFAULT_HERO_WORKSPACE = Path("runs/heroes")
+DEFAULT_AUTONOMOUS_RESET_WAITS = 3
 _MANIFEST_SCHEMA = 1
 _NAME_SYLLABLES = (
     "al",
@@ -448,13 +450,20 @@ async def run_hero_request(
     segments: int = 10000,
     reset_retries: int | None = None,
     reset_wait: float = DEFAULT_RESET_WAIT_SECONDS,
-    max_segment_runtime: float | None = None,
+    max_segment_runtime: float | None = DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
     retry_stalled: bool = False,
     progress_callback: Callable[[str], None] | None = None,
     target_level: int = 100,
     password: str | None = None,
     remember_password: bool = False,
 ) -> tuple[HeroPreparation, CampaignResult]:
+    # Keep the public HERO API bounded even when a caller explicitly passes
+    # None. Longer runs remain available as explicit positive overrides.
+    effective_max_segment_runtime = (
+        DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS
+        if max_segment_runtime is None
+        else max_segment_runtime
+    )
     preparation = prepare_hero_request(
         request,
         source=source,
@@ -513,14 +522,116 @@ async def run_hero_request(
             reset_retries=(
                 reset_retries
                 if reset_retries is not None
-                else (0 if max_segment_runtime is not None else segments)
+                else (0 if effective_max_segment_runtime is not None else segments)
             ),
             reset_wait=reset_wait,
-            max_segment_runtime=max_segment_runtime,
+            max_segment_runtime=effective_max_segment_runtime,
             retry_stalled=retry_stalled,
             progress_callback=progress_callback,
         )
     return preparation, result
+
+
+async def run_hero_until_target(
+    request: HeroRequest,
+    *,
+    source: str | Path | None = None,
+    workspace: Path = DEFAULT_HERO_WORKSPACE,
+    force_new: bool = False,
+    cycles: int = 10000,
+    reset_retries: int | None = None,
+    reset_wait: float = DEFAULT_RESET_WAIT_SECONDS,
+    max_reset_waits: int = DEFAULT_AUTONOMOUS_RESET_WAITS,
+    max_segment_runtime: float | None = DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
+    retry_stalled: bool = False,
+    progress_callback: Callable[[str], None] | None = None,
+    target_level: int = 100,
+    password: str | None = None,
+    remember_password: bool = False,
+) -> tuple[HeroPreparation, CampaignResult]:
+    """Continue bounded HERO workers until success or a durable frontier.
+
+    Each cycle owns one normal bounded campaign segment. Reset waits are a
+    separate total budget so an unchanged world or a missing source target
+    returns a resumable checkpoint instead of spinning forever.
+    """
+    if cycles < 1:
+        raise ValueError("cycles must be positive")
+    if max_reset_waits < 0:
+        raise ValueError("max_reset_waits cannot be negative")
+    if reset_retries is not None and reset_retries < 0:
+        raise ValueError("reset_retries cannot be negative")
+
+    waits_used = 0
+    reset_wait_in_progress = False
+    preparation: HeroPreparation | None = None
+    result: CampaignResult | None = None
+
+    def relay_progress(message: str) -> None:
+        nonlocal reset_wait_in_progress, waits_used
+        waiting_for_reset = message.startswith("Waiting for DD4 area reset:")
+        if waiting_for_reset and not reset_wait_in_progress:
+            waits_used += 1
+        reset_wait_in_progress = waiting_for_reset
+        if progress_callback is not None:
+            progress_callback(message)
+
+    for cycle in range(1, cycles + 1):
+        if progress_callback is not None:
+            progress_callback(
+                f"Starting autonomous HERO cycle {cycle}/{cycles}; "
+                f"reset waits used={waits_used}/{max_reset_waits}."
+            )
+        available_waits = max(0, max_reset_waits - waits_used)
+        cycle_reset_retries = (
+            (1 if reset_retries is None else reset_retries)
+            if available_waits
+            else 0
+        )
+        cycle_reset_retries = min(cycle_reset_retries, available_waits)
+        preparation, result = await run_hero_request(
+            request,
+            source=source,
+            workspace=workspace,
+            force_new=force_new and cycle == 1,
+            segments=1,
+            reset_retries=cycle_reset_retries,
+            reset_wait=reset_wait,
+            max_segment_runtime=max_segment_runtime,
+            retry_stalled=retry_stalled,
+            progress_callback=relay_progress,
+            target_level=target_level,
+            password=password,
+            remember_password=remember_password and cycle == 1,
+        )
+
+        level = _result_level(result)
+        if progress_callback is not None:
+            progress_callback(
+                f"Completed autonomous HERO cycle {cycle}/{cycles}: "
+                f"status={result.status}; level={level}; "
+                f"reset waits used={waits_used}/{max_reset_waits}."
+            )
+        if result.status == "success" or level >= target_level:
+            return preparation, result
+        if result.status != "ready":
+            return preparation, result
+        if result.awaiting_area_reset:
+            if waits_used >= max_reset_waits or cycle_reset_retries == 0:
+                return preparation, result
+            continue
+        if not result.ready_for_next_segment:
+            return preparation, result
+
+    assert preparation is not None and result is not None
+    return preparation, result
+
+
+def _result_level(result: CampaignResult) -> int:
+    try:
+        return int(result.state.get("level", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _generated_character_password() -> str:

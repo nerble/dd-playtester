@@ -2,6 +2,7 @@ from pathlib import Path
 
 from dd4tester.equipment import (
     GearCatalog,
+    ITEM_KEY,
     STANCE_COMBAT,
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
@@ -10,6 +11,7 @@ from dd4tester.equipment import (
     item_category,
     item_command_keyword,
     item_keyword,
+    is_releasable_funding_item,
     is_bow,
     is_capacity_infrastructure,
     is_digging_tool,
@@ -19,12 +21,16 @@ from dd4tester.equipment import (
     normalize_item_name,
     plan_stance_swaps,
     protects_from_sale,
+    rank_executable_carrier_gear_sources,
+    rank_executable_ground_gear_sources,
     rank_gear_sources,
     stance_score,
+    weapon_combat_score,
     weapon_damage_score,
     weapon_preference_for_character,
 )
 from dd4tester.hunt_candidates import (
+    ACT_AGGRESSIVE,
     ACT_SENTINEL,
     ExitSource,
     MobileSource,
@@ -56,6 +62,20 @@ def _item(
         wear_flags=1 << wear_bit,
         affects=affects,
     )
+
+
+def test_poisoned_source_loot_is_not_treated_as_sale_funding() -> None:
+    poisoned_ring = ObjectSource(
+        4000,
+        "ring yellow green",
+        "a yellow and green ring",
+        9,
+        (0, 0, 16387, 0),
+        50,
+        extra_flags=1 << 14,
+    )
+
+    assert is_releasable_funding_item(poisoned_ring) is False
 
 
 def test_rank_gear_sources_ranks_a_source_equipped_upgrade() -> None:
@@ -182,6 +202,193 @@ def test_rank_gear_sources_keeps_thief_primary_weapon_piercing() -> None:
     assert by_vnum[dagger.vnum].weapon_role == "preferred"
 
 
+def test_rank_gear_sources_audits_direct_ground_route() -> None:
+    current = _item(40, "small dagger", wear_bit=13)
+    upgrade = _item(50, "needle dagger", wear_bit=13)
+    world = WorldSource(
+        objects={upgrade.vnum: upgrade},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "equipment room", "test.are"),
+        },
+        room_object_resets=[RoomObjectReset(upgrade.vnum, 200)],
+    )
+
+    placements = rank_gear_sources(
+        world,
+        character_level=5,
+        character_class="thief",
+        current_items=(current,),
+        include_all_areas=True,
+    )
+
+    assert len(placements) == 1
+    placement = placements[0]
+    assert placement.status == "promising"
+    assert placement.route == ("south",)
+    assert placement.route_vnums == ("3001", "200")
+    assert placement.autonomy_rejections == ()
+
+
+def test_rank_executable_ground_gear_sources_keeps_only_safe_current_upgrades() -> None:
+    current = ObjectSource(
+        40,
+        "small dagger",
+        "a small dagger",
+        5,
+        (0, 1, 1, 2),
+        10,
+        wear_flags=1 << 13,
+    )
+    upgrade = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        100,
+        wear_flags=1 << 13,
+        weight=1,
+    )
+    cursed = ObjectSource(
+        51,
+        "cursed dagger",
+        "a cursed dagger",
+        5,
+        (0, 9, 20, 2),
+        100,
+        wear_flags=1 << 13,
+        extra_flags=1 << 61,
+    )
+    world = WorldSource(
+        objects={upgrade.vnum: upgrade, cursed.vnum: cursed},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "equipment room", "test.are"),
+        },
+        room_object_resets=[
+            RoomObjectReset(upgrade.vnum, 200),
+            RoomObjectReset(cursed.vnum, 200),
+        ],
+    )
+
+    placements = rank_executable_ground_gear_sources(
+        world,
+        character_level=5,
+        character_class="warrior",
+        current_items=(current,),
+        include_all_areas=True,
+    )
+
+    assert [placement.object_vnum for placement in placements] == [upgrade.vnum]
+    assert placements[0].route == ("south",)
+
+
+def test_rank_executable_carrier_gear_sources_keeps_exact_safe_carriers() -> None:
+    current = _item(40, "small dagger", wear_bit=13)
+    upgrade = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        100,
+        wear_flags=1 << 13,
+        weight=1,
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guard",
+                "a quiet guard",
+                5,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            )
+        },
+        objects={upgrade.vnum: upgrade},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "guard post", "test.are"),
+        },
+        mob_resets=[
+            MobReset(100, 200, 1, (), equipment=((WEAR_WIELD, upgrade.vnum),)),
+        ],
+    )
+
+    placements = rank_executable_carrier_gear_sources(
+        world,
+        character_level=5,
+        character_class="warrior",
+        current_items=(current,),
+        include_all_areas=True,
+    )
+
+    assert [placement.object_vnum for placement in placements] == [upgrade.vnum]
+    assert placements[0].source_mobile_vnum == 100
+    assert placements[0].route == ("south",)
+
+
+def test_rank_gear_sources_rejects_hazardous_direct_ground_route() -> None:
+    current = _item(40, "small dagger", wear_bit=13)
+    upgrade = _item(50, "needle dagger", wear_bit=13)
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "aggressor",
+                "a hostile guard",
+                5,
+                ACT_AGGRESSIVE,
+                0,
+                "test.are",
+            )
+        },
+        objects={upgrade.vnum: upgrade},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "equipment room", "test.are"),
+        },
+        mob_resets=[MobReset(100, 200, 1, ())],
+        room_object_resets=[RoomObjectReset(upgrade.vnum, 200)],
+    )
+
+    placements = rank_gear_sources(
+        world,
+        character_level=5,
+        character_class="thief",
+        current_items=(current,),
+        include_all_areas=True,
+    )
+
+    assert len(placements) == 1
+    placement = placements[0]
+    assert placement.status == "reject"
+    assert "stash room has an aggressive reset" in placement.autonomy_rejections
+
+
 def test_consumables_marked_holdable_are_not_equipment_objects() -> None:
     potion = ObjectSource(
         1,
@@ -206,6 +413,26 @@ def test_consumables_marked_holdable_are_not_equipment_objects() -> None:
     assert is_equipment_object(potion) is False
     assert is_equipment_object(water_skin) is False
     assert is_equipment_object(sword) is True
+
+
+def test_keys_are_not_added_to_or_retained_by_stance_gear() -> None:
+    key = ObjectSource(
+        4402,
+        "key hairy",
+        "a hairy key",
+        ITEM_KEY,
+        (4422, 0, 0, 0),
+        1,
+        wear_flags=1 | (1 << 14),
+    )
+
+    removals, additions = plan_stance_swaps([key], [], STANCE_COMBAT)
+    assert removals == []
+    assert additions == []
+
+    removals, additions = plan_stance_swaps([], [key], STANCE_COMBAT)
+    assert removals == [key]
+    assert additions == []
 
 
 def test_item_normalization_discards_ephemeral_targetmode_selector() -> None:
@@ -481,6 +708,31 @@ def test_combat_stance_compares_weapon_dice_plus_damroll() -> None:
     )
 
 
+def test_weapon_combat_score_prefers_damroll_bonus_over_small_dice_gap() -> None:
+    jewel_dagger = ObjectSource(
+        3701,
+        "jewel-studded dagger",
+        "a jewel-studded dagger",
+        5,
+        (0, 2, 3, 11),
+        0,
+        affects=((18, 5), (19, 5)),
+        wear_flags=1 | (1 << 13),
+    )
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        affects=((18, 1), (19, 1)),
+        wear_flags=1 | (1 << 13),
+    )
+
+    assert weapon_combat_score(jewel_dagger) > weapon_combat_score(long_dagger)
+
+
 def test_catalog_matches_source_room_description_to_object() -> None:
     armor = ObjectSource(
         4530,
@@ -591,6 +843,40 @@ def test_combat_stance_prefers_piercing_weapon_for_backstab() -> None:
 
     assert removals == [sword]
     assert additions == [dagger]
+
+
+def test_required_worn_weapon_survives_combat_stance_reconciliation() -> None:
+    jewel = ObjectSource(
+        3701,
+        "jewel-studded dagger",
+        "a jewel-studded dagger",
+        5,
+        (0, 2, 3, 11),
+        0,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 5), (19, 5)),
+    )
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 1), (19, 1)),
+    )
+
+    removals, additions = plan_stance_swaps(
+        [jewel],
+        [long_dagger],
+        STANCE_COMBAT,
+        weapon_preference="piercing",
+        required_worn_items=[long_dagger],
+    )
+
+    assert removals == []
+    assert additions == []
 
 
 def test_recovery_stance_keeps_a_thief_piercing_primary() -> None:

@@ -82,6 +82,195 @@ def _inspect(policy: StarterPolicy, state: CharacterState) -> None:
     assert not policy.consider_response_pending
 
 
+def _source_material(
+    policy: StarterPolicy,
+    state: CharacterState,
+    *,
+    allow_source_coins: bool = False,
+    allow_coin_bystander: bool = False,
+) -> None:
+    for vnum in (100, 101):
+        policy.source_world.mobiles[vnum] = replace(
+            policy.source_world.mobiles[vnum], hp_modifier=-50,
+        )
+    policy.source_world.mob_resets = [
+        MobReset(100, 200, 1, ()),
+        MobReset(101, 200, 1, ()),
+    ]
+    policy.fastwalk_hunt_stops = (replace(
+        policy.fastwalk_hunt_stops[0],
+        source_mobile_room_description=(
+            policy.source_world.mobiles[100].room_description
+        ),
+        source_policy_id="source-ranked-hunt-test-100-200-8",
+        source_target_armed=False,
+        allow_source_bystander_encounter=True,
+        allow_below_band_for_source_coins=allow_source_coins,
+        allow_source_coin_bystander_encounter=allow_coin_bystander,
+    ),)
+    policy.known_skills = {"chill touch"}
+    policy.known_skill_levels = {"chill touch": 35}
+
+
+def _prepare_source_material(monkeypatch):
+    policy, state = _encounter()
+    _source_material(policy, state)
+    state.hp = state.max_hp = 240
+    clock = [100.0]
+    monkeypatch.setattr(starter.time, "monotonic", lambda: clock[0])
+    decision = policy._consider_fastwalk_target(state)
+    assert decision.command == "consider #11"
+    policy.after_command(decision)
+    policy.observe_text("A midget looks like an easy kill.\n")
+    policy.observe_events([GameEvent("prompt_seen", "gmcp", {})], state)
+    decision = policy._consider_fastwalk_target(state)
+    assert decision.command == "consider #10"
+    assert policy.source_material_encounter is not None
+    policy.after_command(decision)
+    policy.observe_text("The illusionist looks like an easy kill.\n")
+    policy.observe_events([GameEvent("prompt_seen", "gmcp", {})], state)
+    opener = policy._consider_fastwalk_target(state)
+    assert opener.command == "kill #10"
+    policy.after_command(opener)
+    policy.combat_command_window.acknowledged_at = 100.0
+    policy.combat_command_window.ready_at = 0.0
+    state.in_combat = True
+    state.enemies = [[{
+        "name": "the illusionist", "isnpc": "100", "level": "5",
+        "hp": "20", "maxhp": "55",
+    }]]
+    policy.observe_events([
+        GameEvent("enemies_changed", "gmcp", {"value": state.enemies}),
+    ], state)
+    policy.prompt_ready = True
+    return policy, state, clock
+
+
+def test_source_material_admission_allows_one_safe_distinct_bystander(monkeypatch):
+    policy, state, _clock = _prepare_source_material(monkeypatch)
+
+    handled, decision = policy._active_encounter_decision(state)
+
+    assert handled
+    assert decision is not None and decision.command.startswith("cast 'chill touch'")
+    assert policy.active_encounter_vnums == frozenset({100, 101})
+    assert policy.fastwalk_encounter_budgets[-1]["mode"] == "source-material-live"
+
+
+@pytest.mark.parametrize("allow_coin_bystander", [False, True])
+def test_source_coin_bystander_admission_is_explicit_and_budgeted(
+    monkeypatch, allow_coin_bystander,
+):
+    policy, state = _encounter()
+    _source_material(
+        policy,
+        state,
+        allow_source_coins=True,
+        allow_coin_bystander=allow_coin_bystander,
+    )
+    state.hp = state.max_hp = 240
+    clock = [100.0]
+    monkeypatch.setattr(starter.time, "monotonic", lambda: clock[0])
+
+    decision = policy._consider_fastwalk_target(state)
+    assert decision.command == "consider #11"
+    policy.after_command(decision)
+    policy.observe_text("A midget looks like an easy kill.\n")
+    policy.observe_events([GameEvent("prompt_seen", "gmcp", {})], state)
+
+    decision = policy._consider_fastwalk_target(state)
+    if allow_coin_bystander:
+        assert decision.command == "consider #10"
+        assert policy.source_material_encounter is not None
+    else:
+        assert decision.command == "look"
+        assert policy.source_material_encounter is None
+
+
+def test_source_material_admission_accepts_the_joining_bystander(monkeypatch):
+    policy, state, _clock = _prepare_source_material(monkeypatch)
+    policy.unapproved_field_attacker = "a midget"
+    state.enemies[0].append({
+        "name": "a midget", "isnpc": "101", "level": "5",
+        "hp": "10", "maxhp": "45",
+    })
+    policy.observe_events([
+        GameEvent("enemies_changed", "gmcp", {"value": state.enemies}),
+    ], state)
+
+    assert policy._source_material_bystander_is_admitted(
+        "a midget", state,
+    )
+    policy.unapproved_field_attacker = None
+    policy.between_round_action_issued = False
+    policy.between_round_action_ready_at = 0
+    handled, decision = policy._active_encounter_decision(state)
+
+    assert handled
+    assert decision is not None and "2-enemy" in decision.reason
+    assert policy.active_encounter_vnums == frozenset({100, 101})
+
+
+def test_source_material_live_fails_closed_without_source_world(monkeypatch):
+    policy, state, _clock = _prepare_source_material(monkeypatch)
+    policy.source_world = None
+
+    handled, decision = policy._active_encounter_decision(state)
+
+    assert handled
+    assert decision is not None and decision.command == "flee"
+    assert "lost its source world" in decision.reason
+    assert policy.source_material_encounter is None
+
+
+def test_source_material_preparation_fails_closed_without_room_selectors(monkeypatch):
+    policy, state = _encounter()
+    _source_material(policy, state)
+    decision = policy._consider_fastwalk_target(state)
+    assert decision.command == "consider #11"
+    policy.after_command(decision)
+    policy.observe_text("A midget looks like an easy kill.\n")
+    policy.observe_events([GameEvent("prompt_seen", "gmcp", {})], state)
+    policy.room_target_selectors.pop("200")
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None and decision.command == "look"
+    assert policy.source_material_encounter is None
+
+
+@pytest.mark.parametrize("change", [
+    "disabled", "special", "armed", "expired", "low_health",
+])
+def test_source_material_admission_preserves_rejection_boundaries(monkeypatch, change):
+    policy, state = _encounter()
+    _source_material(policy, state)
+    decision = policy._consider_fastwalk_target(state)
+    assert decision.command == "consider #11"
+    policy.after_command(decision)
+    policy.observe_text("A midget looks like an easy kill.\n")
+    policy.observe_events([GameEvent("prompt_seen", "gmcp", {})], state)
+
+    if change == "disabled":
+        policy.fastwalk_hunt_stops = (replace(
+            policy.fastwalk_hunt_stops[0],
+            allow_source_bystander_encounter=False,
+        ),)
+    elif change == "special":
+        policy.source_world.mobile_specials[101] = ("spec_poison",)
+    elif change == "armed":
+        policy.source_world.mob_resets[1] = MobReset(101, 200, 1, ((16, 999),))
+    elif change == "expired":
+        policy.bystander_consider_results["#11"]["expires_at"] = 0
+    else:
+        state.hp = 100
+
+    decision = policy._consider_fastwalk_target(state)
+    assert decision is not None and decision.command == "look"
+    assert policy.source_material_encounter is None
+
+
+
 @pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])
 @pytest.mark.parametrize("response", [
     "A midget is no match for you.\n",
@@ -107,6 +296,32 @@ def test_bystander_consider_unblocks_only_ordinary_target_consider(
         "source_mobile_vnum": 101, "boot_id": "test-boot",
         "below_assistance_band": True,
     }]
+
+
+def test_good_alignment_combat_special_bystander_is_ignored_for_good_player() -> None:
+    policy, state = _encounter()
+    world = policy.source_world
+    world.mobiles[100] = replace(world.mobiles[100], alignment=1000)
+    world.mobiles[101] = replace(
+        world.mobiles[101], level=8, alignment=1000,
+    )
+    world.mobile_specials[101] = ("spec_breath_any",)
+    policy.source_mobile_vnums_by_target_room["midget"] = {"200": (101,)}
+    policy.source_mobile_level_ranges_by_vnum[101] = (6, 10)
+    state.progress["alignment"] = 1000
+    state.level = 10
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "consider #10"
+    assert policy.fastwalk_crowded is False
+    assert policy._source_mobile_name_is_non_assisting_target_bystander(
+        "illusionist",
+        "midget",
+        state,
+        policy.fastwalk_hunt_stops[0],
+    )
 
 
 def test_bystander_consider_accepts_split_response_without_target_contamination() -> None:

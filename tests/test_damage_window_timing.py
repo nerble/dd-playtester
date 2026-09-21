@@ -139,6 +139,27 @@ def test_short_sampling_window_preserves_source_hp_fuzz_ceiling(willow_probe):
     assert "HP ceiling" in policy.fastwalk_abort_reason
 
 
+def test_protected_hp_fuzz_probe_rejects_live_target_above_source_budget(
+    willow_probe,
+):
+    policy, state, clock = willow_probe
+    policy.fastwalk_hunt_stops = (replace(
+        policy.fastwalk_hunt_stops[0],
+        allow_protected_hp_fuzz_probe=True,
+        source_target_hp_ceiling=660,
+        source_combat_conservative_damage=31,
+        source_combat_opening_conservative_damage=24,
+    ),)
+    replay_12767(policy, state, clock)
+    clock[0] = 6.5
+
+    decision = policy._damage_window_probe_decision(state)
+
+    assert decision is not None and decision.command == "flee"
+    assert "protected source-backed kick" in policy.fastwalk_abort_reason
+    assert "live target HP ceiling is 740" in policy.fastwalk_abort_reason
+
+
 def test_rearming_probe_resets_elapsed_budget(willow_probe):
     policy, state, clock = willow_probe
     replay_12767(policy, state, clock)

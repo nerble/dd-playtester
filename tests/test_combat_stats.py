@@ -5,6 +5,7 @@ import pytest
 from dd4tester.campaign import _source_ranked_caster_output_for_state
 from dd4tester.hunt_candidates import (
     ITEM_WEAPON, ObjectSource, WorldSource, _observed_combat_stat,
+    _source_dex_swiftness,
     source_combat_output_estimate,
 )
 from dd4tester.observations import ObservationParser
@@ -20,6 +21,19 @@ def test_unobserved_combat_stat_is_not_a_numeric_bonus(value):
 def test_revealed_combat_stat_retains_its_sign(value):
     assert _observed_combat_stat(value) == value
     assert _observed_combat_stat(str(value)) == value
+
+
+@pytest.mark.parametrize(
+    ("current_dex", "expected"),
+    [(3, -3), (15, 0), (18, 1), (27, 4), (31, 6)],
+)
+def test_source_dexterity_swiftness_matches_const_table(current_dex, expected):
+    assert _source_dex_swiftness(current_dex) == expected
+
+
+@pytest.mark.parametrize("current_dex", [None, 50000, "bad", True, -1, 32])
+def test_unknown_source_dexterity_grants_no_swiftness(current_dex):
+    assert _source_dex_swiftness(current_dex) is None
 
 
 @pytest.mark.parametrize("character_class,skills", [

@@ -277,6 +277,46 @@ def test_source_aggression_route_requires_fresh_live_invisibility(source_world):
     )
 
 
+def test_source_aggression_route_without_invisibility_fails_closed(source_world):
+    route = replace(
+        route_named("moria"),
+        route_invisibility_source_mobile_vnums=(1001,),
+    )
+    policy = StarterPolicy(
+        CharacterSpec.from_mapping(
+            {"name": "Testchar", "race": "human", "gender": "female", "class": "warrior"}
+        ),
+        "unused",
+        source_world=source_world,
+        fastwalk_route=route,
+    )
+    state = CharacterState(
+        level=11,
+        hp=218,
+        max_hp=218,
+        mana=628,
+        max_mana=628,
+        move=312,
+        max_move=320,
+        room_vnum="3001",
+        position=7,
+        affects=[],
+    )
+
+    decision = policy._fastwalk_invisibility_decision(
+        state,
+        failure_command="north",
+        failure_reason="return",
+        cast_reason="cast",
+        abort_reason="abort",
+    )
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert policy.fastwalk_returning
+    assert policy.fastwalk_abort_reason == "abort"
+
+
 def test_source_aggression_route_casts_only_at_origin_and_recalls_after_wearoff(
     source_world,
 ):

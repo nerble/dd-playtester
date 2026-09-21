@@ -241,6 +241,10 @@ def test_real_source_smithy_with_miner_and_confirmed_familiar_reaches_order_then
     assert policy.next_decision(state) is None
     policy.observe_text("Ok.\n\r")
     decision = policy._fastwalk_research_decision(state)
+    assert decision.command == "order #42 flee Fear"
+    policy.after_command(decision)
+    policy.observe_text("The pony has fled!\n\rOk.\n\r")
+    decision = policy._fastwalk_research_decision(state)
     assert decision.command.endswith("#18435")
     assert decision.command.startswith(("kill ", "cast "))
 
@@ -255,6 +259,28 @@ def test_displaced_identity_does_not_ignore_dangerous_bystanders():
     assert decision.command == "look"
     assert policy.fastwalk_crowded
     assert not policy.fastwalk_attack_started
+
+
+def test_crowded_displaced_sentinel_resumes_registered_reset_room():
+    policy, state = approach()
+    policy.source_mobile_targets["a dangerous visitor waits here."] = ("dangerous visitor",)
+    policy.after_command(BotDecision("look", "refresh the complete room listing"))
+    policy.observe_text(ROOM_TEXT + "[#999] A dangerous visitor waits here.\n\r")
+    policy.observe_events([GameEvent("room_updated", "gmcp", {"vnum": "29964"})], state)
+
+    first = policy._fastwalk_research_decision(state)
+
+    assert first is not None and first.command == "look"
+    assert policy.fastwalk_crowded
+    policy.after_command(first)
+    policy.observe_text(ROOM_TEXT + "[#999] A dangerous visitor waits here.\n\r")
+    policy.observe_events([GameEvent("room_updated", "gmcp", {"vnum": "29964"})], state)
+
+    resumed = policy._fastwalk_research_decision(state)
+
+    assert resumed is not None and resumed.command == "open east"
+    assert policy.fastwalk_intercept_returning is False
+    assert policy.fastwalk_outbound_index == 2
 
 
 def test_displaced_identity_does_not_override_low_health():

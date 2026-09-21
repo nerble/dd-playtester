@@ -15,6 +15,7 @@ from dd4tester.hero import (
     load_existing_hero_request,
     prepare_hero_request,
     run_hero_request,
+    run_hero_until_target,
 )
 
 
@@ -45,7 +46,7 @@ const struct race_struct race_table[MAX_RACE] =
 '''
 
 
-def test_hero_uses_segment_budget_for_default_reset_retries(
+def test_hero_uses_bounded_segment_budget_and_no_default_reset_wait(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -97,7 +98,8 @@ def test_hero_uses_segment_budget_for_default_reset_retries(
 
     assert result.status == "ready"
     assert captured["segments"] == 17
-    assert captured["reset_retries"] == 17
+    assert captured["reset_retries"] == 0
+    assert captured["max_segment_runtime"] == 180
     assert captured["retry_stalled"] is False
 
 
@@ -249,6 +251,157 @@ def test_hero_disables_default_reset_retries_for_bounded_runs(
 
     assert captured["segments"] == 17
     assert captured["reset_retries"] == 0
+
+
+def test_hero_normalizes_explicitly_missing_runtime_cap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "resumed": True,
+            "character": type(
+                "Character",
+                (),
+                {"password_env": "DD4_VALORA_PASSWORD"},
+            )(),
+        },
+    )()
+
+    async def fake_campaign(path, **options):
+        captured.update(options)
+        return CampaignResult(1, "ready", 2, "checkpoint", {"level": 8})
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            max_segment_runtime=None,
+            password="test-password",
+        )
+    )
+
+    assert captured["max_segment_runtime"] == 180
+    assert captured["reset_retries"] == 0
+
+
+def test_autonomous_hero_continues_ready_cycles_and_limits_reset_waits(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    progress: list[str] = []
+    prepared = object()
+    results = iter(
+        (
+            CampaignResult(
+                1,
+                "ready",
+                1,
+                "field segment completed; Campaign checkpointed for the next "
+                "verified segment.",
+                {"level": 8, "xp": 100},
+            ),
+            CampaignResult(
+                1,
+                "ready",
+                2,
+                "Campaign checkpointed while awaiting the field area reset.",
+                {"level": 8, "xp": 100},
+            ),
+        )
+    )
+
+    async def fake_request(request, **options):
+        calls.append(options)
+        if len(calls) == 2:
+            callback = options["progress_callback"]
+            for elapsed in (30, 42, 42):
+                callback(
+                    f"Waiting for DD4 area reset: {elapsed}/42s; "
+                    "the healer checkpoint remains durable."
+                )
+        return prepared, next(results)
+
+    monkeypatch.setattr("dd4tester.hero.run_hero_request", fake_request)
+
+    preparation, result = asyncio.run(
+        run_hero_until_target(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            cycles=5,
+            reset_wait=42,
+            max_reset_waits=1,
+            progress_callback=progress.append,
+            password="test-password",
+        )
+    )
+
+    assert preparation is prepared
+    assert result.checkpoint_id == 2
+    assert len(calls) == 2
+    assert calls[0]["segments"] == 1
+    assert calls[0]["reset_retries"] == 1
+    assert calls[1]["reset_retries"] == 1
+    assert calls[0]["force_new"] is False
+    assert any("reset waits used=1/1" in message for message in progress)
+    assert not any("reset waits used=2/1" in message for message in progress)
+
+
+def test_autonomous_hero_stops_on_blocked_result(tmp_path: Path, monkeypatch) -> None:
+    calls = 0
+    prepared = object()
+
+    async def fake_request(request, **options):
+        nonlocal calls
+        calls += 1
+        return prepared, CampaignResult(
+            1,
+            "blocked",
+            3,
+            "no executable route",
+            {"level": 19},
+        )
+
+    monkeypatch.setattr("dd4tester.hero.run_hero_request", fake_request)
+
+    preparation, result = asyncio.run(
+        run_hero_until_target(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            cycles=5,
+            password="test-password",
+        )
+    )
+
+    assert preparation is prepared
+    assert result.status == "blocked"
+    assert calls == 1
 
 
 def test_hero_uses_plaintext_password_only_for_campaign_process(

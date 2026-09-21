@@ -100,6 +100,7 @@ class ProgressionContext:
     needs_money_container_extraction: bool = False
     needs_combat_pouch_repack: bool = False
     has_food: bool = True
+    can_attempt_food_restock: bool = False
     needs_provision_funding: bool = False
     has_emergency_provision_sale: bool = False
     needs_return_home: bool = False
@@ -114,6 +115,7 @@ class ProgressionContext:
     needs_war_dog_collar: bool = False
     needs_foundry_set_circlet: bool = False
     needs_training_repair: bool = False
+    needs_source_gear: bool = False
     needs_intermediate_piercing_weapon_upgrade: bool = False
     intermediate_piercing_weapon_upgrade_source_safe: bool = True
     intermediate_piercing_weapon_upgrade_attempted: bool = False
@@ -1770,6 +1772,33 @@ _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_SOURCE_RANKED_DWARVEN_SANCTUARY_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-sanctuary-dwarven-catacombs-26-100",
+    minimum_level=26,
+    maximum_level=100,
+    status="research",
+    execution="dwarven-catacombs-sanctuary-hunt",
+    summary=(
+        "Research the source-defined Dwarven Catacombs sanctuary reserve; "
+        "the current source marks its entrance pickproof, so no thief "
+        "lockpick dispatch is authorized."
+    ),
+    evidence=(
+        "DD4 source places object 2008, holy water, on the grand templar "
+        "reset in room 2025.",
+        "The closed west exit in room 6505 uses area D lock type 2, and "
+        "db.c maps that type to EX_ISDOOR | EX_PICKPROOF.",
+        "act_move.c rejects pick lock against a pickproof door, so the "
+        "previous positive pick-lock plan was based on an incorrect bitmask "
+        "interpretation of the area record.",
+        "The source key 6502 is not independently acquired by this policy; "
+        "the selector therefore fails closed until a separately source-proven "
+        "key route exists.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
 _SOURCE_RANKED_CURE_CRITICAL_RESERVE_POLICY = ProgressionPolicy(
     policy_id="source-ranked-cure-critical-reserve-2-100",
     minimum_level=2,
@@ -1813,6 +1842,35 @@ _SOURCE_RANKED_FOOD_RESERVE_POLICY = ProgressionPolicy(
     ),
     practice_skill=None,
     segment_kill_limit=0,
+)
+
+_SOURCE_RANKED_FLIGHT_RESERVE_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-flight-reserve-2-100",
+    minimum_level=2,
+    maximum_level=100,
+    status="research",
+    execution="source-ranked-flight-reserve",
+    summary=(
+        "Acquire and activate a source-verified flight potion from a bounded "
+        "nested-container route when city flight service is unavailable."
+    ),
+    evidence=(
+        "The source Circus reset places clear potion 4442 inside ground chest "
+        "4440 in room 4448.",
+        "Chest 4440 names key 4441, and tightrope walker 4420 in the same "
+        "room carries that key.",
+        "The bounded route buys ticket 4400 at room 4402, unlocks the Big Top, "
+        "opens the high-wire and trailer doors, isolates the exact key carrier, "
+        "extracts the potion, and verifies its live fly affect.",
+        "The ticket is a shop purchase: DD4's act_obj.c rejects every shop buy "
+        "when fame is below zero, so the route is unavailable until fame is "
+        "restored or a different ticket acquisition is source-proven.",
+        "The carrier's three-instance reset capacity is an acquisition-only "
+        "exception; the live stop still requires one exact isolated target and "
+        "the kill is never counted as progression XP.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=None,
 )
 
 _FAME_RECOVERY_CIRCUS_POLICY = ProgressionPolicy(
@@ -2440,6 +2498,29 @@ _UNAVAILABLE_POLICY = ProgressionPolicy(
     execution=None,
     summary="No evidence-backed route, combat loop, or recovery plan has been registered.",
     evidence=(),
+    practice_skill=None,
+)
+
+_SOURCE_GEAR_ACQUISITION_POLICY = ProgressionPolicy(
+    policy_id="source-gear-acquisition",
+    minimum_level=2,
+    maximum_level=100,
+    status="verified",
+    execution="source-gear-acquisition",
+    summary=(
+        "Acquire one exact, source-audited equipment upgrade from a safe "
+        "ground reset or carrier before returning to the progression frontier."
+    ),
+    evidence=(
+        "The equipment planner ranks class-usable objects by combat, pre-level, "
+        "or recovery stance and preserves their reset-derived level evidence.",
+        "The executable path admits direct ground resets with a healer-origin "
+        "route, or a single-instance mob-carried/equipped object paired with a "
+        "source-ranked carrier and the same route safety gates as ordinary hunts.",
+        "The live executor collects the exact source VNUM, applies the planned "
+        "wear action, audits eq all, and returns to the healer before reevaluating "
+        "the character's loadout; live carrier success remains unproved.",
+    ),
     practice_skill=None,
 )
 
@@ -3346,9 +3427,11 @@ _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY = ProgressionPolicy(
 _GENERIC_SOURCE_RANKED_LEVEL_MINIMUM = 11
 
 # Fixed research bands are bounded probes, not a progression ceiling. Once a
-# character is level 21 or higher and its registered band is exhausted, the
-# campaign runner may open the reusable source-ranked frontier.
-_DYNAMIC_SOURCE_FRONTIER_MINIMUM_LEVEL = 21
+# character is level 18 or higher and its registered 16-to-20 band is
+# exhausted, the campaign runner may open the reusable source-ranked frontier.
+# This keeps the first generic continuation aligned with the live level-18
+# candidate ranker instead of leaving a proven character idle until level 21.
+_DYNAMIC_SOURCE_FRONTIER_MINIMUM_LEVEL = 18
 
 # A character can exhaust the level-6 to 10 tutorial routes before reaching
 # level 10. The source catalog and live safety gates already support this
@@ -5680,6 +5763,7 @@ def policy_for(
     needs_money_container_extraction: bool = False,
     needs_combat_pouch_repack: bool = False,
     has_food: bool = True,
+    can_attempt_food_restock: bool = False,
     needs_provision_funding: bool = False,
     has_emergency_provision_sale: bool = False,
     needs_return_home: bool = False,
@@ -5694,6 +5778,7 @@ def policy_for(
     needs_war_dog_collar: bool = False,
     needs_foundry_set_circlet: bool = False,
     needs_training_repair: bool = False,
+    needs_source_gear: bool = False,
     needs_intermediate_piercing_weapon_upgrade: bool = False,
     intermediate_piercing_weapon_upgrade_source_safe: bool = True,
     intermediate_piercing_weapon_upgrade_attempted: bool = False,
@@ -5746,6 +5831,7 @@ def policy_for(
         needs_money_container_extraction=needs_money_container_extraction,
         needs_combat_pouch_repack=needs_combat_pouch_repack,
         has_food=has_food,
+        can_attempt_food_restock=can_attempt_food_restock,
         needs_provision_funding=needs_provision_funding,
         has_emergency_provision_sale=has_emergency_provision_sale,
         needs_return_home=needs_return_home,
@@ -5760,6 +5846,7 @@ def policy_for(
         needs_war_dog_collar=needs_war_dog_collar,
         needs_foundry_set_circlet=needs_foundry_set_circlet,
         needs_training_repair=needs_training_repair,
+        needs_source_gear=needs_source_gear,
         needs_intermediate_piercing_weapon_upgrade=(
             needs_intermediate_piercing_weapon_upgrade
         ),
@@ -5857,6 +5944,11 @@ def policy_for(
             )
             or quest_requires_action
         )
+        # quest.c rejects every new request while fame is negative, before it
+        # generates a target. Treat the observed reputation block as the
+        # source-backed eligibility gate, but let an already active quest
+        # finish so a temporary reputation change cannot strand it.
+        and (quest_requires_action or not context.shop_rearm_blocked_by_reputation)
         and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
     ):
         required = context.quest_level_qp_required
@@ -6108,6 +6200,7 @@ def policy_for(
         or (
             selected.policy_id == _THALOS_LONG_DAGGER_UPGRADE_POLICY.policy_id
             and context.intermediate_piercing_weapon_upgrade_source_safe
+            and context.has_sanctuary_potion
             and context.shop_rearm_blocked_by_reputation
             and (
                 not context.has_weapon
@@ -6119,6 +6212,10 @@ def policy_for(
             and context.piercing_weapon_upgrade_retry_allowed
             and context.needs_piercing_weapon_upgrade
             and not context.piercing_weapon_upgrade_attempted
+            and not _research_absence_cooldown_active(
+                context,
+                _FOREST_BEAR_CLAWS_UPGRADE_POLICY.policy_id,
+            )
         )
         or (
             selected.policy_id == _LIQUIDATE_LOOT_POLICY.policy_id
@@ -6181,6 +6278,8 @@ _FLIGHT_FUNDING_PREPURCHASE_EXECUTIONS = frozenset(
         "recover-foundry-set-circlet",
         "upgrade-piercing-weapon",
         "provision-funding",
+        "source-gear-acquisition",
+        "source-ranked-hunt",
     }
 )
 
@@ -6203,6 +6302,7 @@ _HANDOFF_BLOCKING_EXECUTIONS = frozenset(
         "buy-flight",
         "borrow-flight",
         "provision-funding",
+        "source-gear-acquisition",
         "audit-combat-pouch",
         "choose-subclass",
         "recall-point-acquire",
@@ -6212,10 +6312,20 @@ _HANDOFF_BLOCKING_EXECUTIONS = frozenset(
 
 def select_policy(context: ProgressionContext) -> ProgressionPolicy:
     selected = _select_policy(context)
+    if (
+        context.needs_money_container_extraction
+        and context.has_sellable_loot
+        and selected.policy_id == _EMPTY_MONEY_CONTAINER_POLICY.policy_id
+        and selected.policy_id in context.excluded_policy_ids
+    ):
+        # A same-reboot failed or quarantined extraction must not strand
+        # carried funding loot. Keep extraction ahead of sales when it is
+        # executable, but liquidate the loot when that handoff is blocked.
+        return _LIQUIDATE_LOOT_POLICY
     if context.has_flight:
         return selected
     if (
-        context.can_attempt_flight_purchase
+        (context.can_attempt_flight_purchase or context.can_attempt_food_restock)
         and not context.flight_purchase_failed
         and not context.has_food
         and not context.needs_return_home
@@ -6227,15 +6337,21 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _RESTOCK_POLICY
     if (
         context.can_attempt_flight_purchase
-        and not context.flight_purchase_failed
         and context.flight_funding_retry_pending
         and not context.needs_return_home
         and context.has_food
         and selected.execution in _FLIGHT_FUNDING_PREPURCHASE_EXECUTIONS
+        and (
+            not context.flight_purchase_failed
+            or not context.flight_loan_attempted
+        )
     ):
         # Do not spend newly secured flight money on optional maintenance such
-        # as rearming or outfit recovery.  Finish the pending flight purchase
+        # as rearming or outfit recovery. Finish the pending flight purchase
         # first, then return to those maintenance policies with active flight.
+        # A prior unaffordable purchase leaves the failure flag set; once the
+        # funding segment makes the quoted price affordable, allow this one
+        # bounded retry before considering a bank loan or another hunt.
         return _BUY_FLIGHT_POLICY
     if (
         context.can_attempt_flight_purchase
@@ -6316,8 +6432,28 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _BANK_EXCESS_COIN_POLICY
     if context.needs_capacity_relief:
         return _VAULT_SPARE_GEAR_POLICY
+    if context.needs_combat_pouch_repack:
+        # A loose sanctuary reserve must be placed in the worn pouch before
+        # inventory cleanup or any field-funding fight can consume the
+        # character's safety margin.
+        return _AUDIT_COMBAT_POUCH_POLICY
     if context.needs_money_container_extraction:
         return _EMPTY_MONEY_CONTAINER_POLICY
+    if (
+        context.needs_training_repair
+        and context.has_food
+        and not context.needs_provision_funding
+    ):
+        # DD4 converts unused practices when the character logs out.  A
+        # freshly awarded practice therefore outranks carried loot and
+        # optional flight preparation; the trainer route must get a chance
+        # before the next checkpoint can discard that capability.
+        return replace(
+            _TRAINING_DEFICIT_REPAIR_POLICY,
+            minimum_level=normalized_level,
+            maximum_level=normalized_level,
+            practice_skill=context.practice_skill,
+        )
     if context.has_sellable_loot:
         # Clear carried drops before buying a replacement weapon. This also
         # handles full item-count capacity, which weight-only rearm checks do
@@ -6333,6 +6469,7 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         and context.character_class == "thief"
         and 10 <= normalized_level <= 29
         and context.intermediate_piercing_weapon_upgrade_source_safe
+        and context.has_sanctuary_potion
         and (
             not context.has_weapon
             or context.needs_intermediate_piercing_weapon_upgrade
@@ -6392,8 +6529,6 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _RECALL_POINT_AUDIT_POLICY
     if context.needs_recall_point:
         return _RECALL_POINT_POLICY
-    if context.needs_combat_pouch_repack:
-        return _AUDIT_COMBAT_POUCH_POLICY
     if context.needs_subclass_selection:
         return replace(
             _CHOOSE_SUBCLASS_POLICY,
@@ -6420,6 +6555,13 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
     if context.needs_training_repair:
         return replace(
             _TRAINING_DEFICIT_REPAIR_POLICY,
+            minimum_level=normalized_level,
+            maximum_level=normalized_level,
+            practice_skill=context.practice_skill,
+        )
+    if context.needs_source_gear:
+        return replace(
+            _SOURCE_GEAR_ACQUISITION_POLICY,
             minimum_level=normalized_level,
             maximum_level=normalized_level,
             practice_skill=context.practice_skill,
@@ -6473,6 +6615,7 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         thief_weapon_upgrade_band
         and context.needs_intermediate_piercing_weapon_upgrade
         and context.intermediate_piercing_weapon_upgrade_source_safe
+        and context.has_sanctuary_potion
         and not context.intermediate_piercing_weapon_upgrade_attempted
     ):
         return replace(
@@ -6483,6 +6626,10 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         thief_weapon_upgrade_band
         and context.needs_piercing_weapon_upgrade
         and not context.piercing_weapon_upgrade_attempted
+        and not _research_absence_cooldown_active(
+            context,
+            _FOREST_BEAR_CLAWS_UPGRADE_POLICY.policy_id,
+        )
     ):
         if (
             not context.has_flight

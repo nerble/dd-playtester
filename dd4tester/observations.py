@@ -18,6 +18,14 @@ def valid_enemy_snapshot(value: Any, *, depth: int = 0) -> bool:
 
 
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_MUD_COLOR_CODE = re.compile(r"\{[A-Za-z0-9]")
+
+
+def _normalized_room_name(value: str) -> str:
+    """Compare GMCP and text room titles without DD4 colour markup."""
+    return " ".join(_MUD_COLOR_CODE.sub("", value).split()).casefold()
+
+
 _ROOM = re.compile(r"^Room:\s*(?P<name>.+)$", re.IGNORECASE)
 _EXITS = re.compile(r"^\[Exits:\s*(?P<exits>[^\]]*)\]$", re.IGNORECASE)
 _PROMPT = re.compile(
@@ -51,6 +59,15 @@ _OUTGOING_COMBAT = re.compile(
 )
 _INCOMING_COMBAT = re.compile(
     r"^\s*(?P<target>.+?) (?:(?:attacks|engages) you|is here,\s*fighting you)"
+    r"(?:[.!]|$)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_INCOMING_SWING = re.compile(
+    r"^\s*(?P<target>.+?) "
+    r"(?:grunts as (?:he|she|it|they) takes a swing at you"
+    r"|grunts and swings at you"
+    r"|takes a swing at you(?: as you enter)?"
+    r"|stops swinging .+? and swings at you instead)"
     r"(?:[.!]|$)",
     re.IGNORECASE | re.MULTILINE,
 )
@@ -601,7 +618,11 @@ class ObservationParser:
                 if health_event is not None:
                     events.append(health_event)
 
-        combat = _OUTGOING_COMBAT.search(text) or _INCOMING_COMBAT.search(text)
+        combat = (
+            _OUTGOING_COMBAT.search(text)
+            or _INCOMING_COMBAT.search(text)
+            or _INCOMING_SWING.search(text)
+        )
         if combat:
             events.append(
                 GameEvent(
@@ -757,7 +778,7 @@ class ObservationParser:
         data = self._gmcp_data(package, payload)
         name = str(payload.get("name", "")).strip() if isinstance(payload, dict) else ""
         vnum = str(payload.get("vnum", "")).strip() if isinstance(payload, dict) else ""
-        normalized_name = name.casefold()
+        normalized_name = _normalized_room_name(name)
         if normalized_name and vnum:
             self._known_room_vnums_by_name.setdefault(normalized_name, set()).add(vnum)
         previous_room_exits = self._last_room_exits
@@ -785,7 +806,7 @@ class ObservationParser:
             if not previous_room_exits and isinstance(exits, dict) and exits:
                 return GameEvent("room_updated", "gmcp", data)
             return None
-        self._room_name = name.casefold() or None
+        self._room_name = _normalized_room_name(name) or None
         self._room_vnum = vnum or None
         event_type = "room_updated" if same_room else "room_entered"
         return GameEvent(event_type, "gmcp", data)
@@ -800,7 +821,7 @@ class ObservationParser:
         if self._same_room(name, ""):
             return None
         inferred_vnum = self._infer_text_room_vnum(name)
-        self._room_name = name.casefold()
+        self._room_name = _normalized_room_name(name)
         self._room_vnum = inferred_vnum
         self._last_room_exits = {}
         data: dict[str, Any] = {"name": name, "text": text}
@@ -820,7 +841,7 @@ class ObservationParser:
 
     def _infer_text_room_vnum(self, name: str) -> str | None:
         """Recover a text-only room from an unambiguous known exit edge."""
-        normalized_name = name.casefold()
+        normalized_name = _normalized_room_name(name)
         edge_candidates = {
             destination
             for destination in self._last_room_exits.values()
@@ -835,7 +856,7 @@ class ObservationParser:
         return None
 
     def _same_room(self, name: str, vnum: str) -> bool:
-        if self._room_name != name.casefold():
+        if self._room_name != _normalized_room_name(name):
             return False
         return not vnum or not self._room_vnum or self._room_vnum == vnum
     def _health_event(

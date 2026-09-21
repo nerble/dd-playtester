@@ -1,7 +1,7 @@
 {
   "source": {
     "repository": "https://github.com/fromage-fraser/dd4",
-    "revision": "f703daa2a5a9728e85a638cd0043208ffbddaa1c",
+    "revision": "99d6a4e615e789b7b3f569fe328110d9dc661de5",
     "scope": "level-30 subclass leveling priorities"
   },
   "prerequisite_class_aliases": {
@@ -88,16 +88,16 @@
       "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_flamestrike and cure spells", "server/src/fight.c: do_joust"]
     },
     "infernalist": {
-      "strategy": "Follow the shortest dark-magik damage chain while retaining the psionic base's mana reserve.",
-      "practice_policy": "Raise dark magiks for dark ritual and steal strength, then continue through abyssal hand and chaos blast.",
-      "highest_value_skills": ["dark magiks", "dark ritual", "steal strength", "abyssal hand", "chaos blast"],
-      "automation_gaps": ["Summoned demons and soul mechanics need follower, alignment, resource, and replacement policies."],
+      "strategy": "Build the dark-magik prerequisites toward the source-defined single-target hellfire spell while retaining the psionic base's mana reserve.",
+      "practice_policy": "Raise dark magiks through its staged 30/50/65/80/90/95 gates; learn demon flames and infernal fury when exposed, then improve hellfire. Keep corpse, alignment, hold, area, and random-damage effects research-gated.",
+      "highest_value_skills": ["dark magiks", "demon flames", "infernal fury", "hellfire"],
+      "automation_gaps": ["Demon flames, infernal fury, corpse/alignment effects, and chaos blast still need target, area, alignment, and resource policies."],
       "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_dark_ritual and spell_steal_strength"]
     },
     "witch": {
       "strategy": "Use a familiar to absorb pressure once follower control exists; otherwise favor inherited psionic damage and passive second attack.",
       "practice_policy": "Raise second attack when offered; reserve summoning and death practices until their follower controllers are enabled.",
-      "highest_value_skills": ["second attack", "summoning magiks", "summon familiar", "death magiks", "animate dead"],
+      "highest_value_skills": ["second attack", "summoning magiks", "summon familiar", "death magiks", "wither", "animate dead"],
       "automation_gaps": ["Familiar and animated-dead play need grouping, ordering, tank selection, corpse use, and replacement policies."],
       "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/magic.c: spell_summon_familiar and spell_animate_dead"]
     },
@@ -226,18 +226,25 @@
     ],
     "infernalist": [
       {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "unlocks dark ritual", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
-      {"skill": "dark ritual", "type": "intellectual", "target": 45, "utility": "damage", "reason": "starts the subclass's dark combat chain", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_dark_ritual"]},
+      {"skill": "dark ritual", "type": "intellectual", "target": 45, "utility": "setup", "reason": "is a source-defined corpse and alignment effect, not a repeatable damage action", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_dark_ritual"]},
       {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 50, "utility": "damage-gateway", "reason": "unlocks steal strength", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
-      {"skill": "steal strength", "type": "intellectual", "target": 60, "utility": "damage", "reason": "damages and weakens the target while opening abyssal hand", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_steal_strength"]},
+      {"skill": "steal strength", "type": "intellectual", "target": 60, "utility": "debuff", "reason": "weakens the target and strengthens the caster; the source implementation does not deal damage", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_steal_strength"]},
       {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 65, "utility": "damage-gateway", "reason": "completes the abyssal-hand group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
-      {"skill": "abyssal hand", "type": "intellectual", "target": 45, "utility": "damage", "reason": "continues the direct dark-damage chain", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_abyssal_hand"]},
-      {"skill": "chaos blast", "type": "intellectual", "target": 45, "utility": "damage", "reason": "provides a later high-value dark attack", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_chaos_blast"]}
+      {"skill": "abyssal hand", "type": "intellectual", "target": 45, "utility": "control", "reason": "holds a target for later interaction but is not a direct damage spell", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_abyssal_hand"]},
+      {"skill": "chaos blast", "type": "intellectual", "target": 45, "utility": "damage", "reason": "is a high-variance evil-only opener that requires a full-health target and remains unsafe to automate", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_chaos_blast"]},
+      {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 80, "utility": "damage-gateway", "reason": "reaches the demon-flames prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
+      {"skill": "demon flames", "type": "intellectual", "target": 45, "utility": "debuff", "reason": "applies the source-defined faerie-fire debuff needed for infernal fury", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_demon_flames"]},
+      {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 90, "utility": "damage-gateway", "reason": "reaches the infernal-fury prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
+      {"skill": "infernal fury", "type": "intellectual", "target": 45, "utility": "damage", "reason": "is an area attack that remains gated until crowd and alignment policies are implemented", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/magic.c: spell_infernal_fury"]},
+      {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 95, "utility": "damage-gateway", "reason": "completes the source hellfire group prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},
+      {"skill": "hellfire", "source_skill": "hells fire", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds the source-defined single-target hellfire spell after the infernal fury prerequisite chain", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c", "server/src/const.c: skill_table hellfire", "server/src/magic.c: spell_hells_fire"]}
     ],
     "witch": [
       {"skill": "second attack", "type": "physical", "target": 45, "utility": "damage", "reason": "adds an automatic attack after witch base reaches its source gate", "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/fight.c: multi_hit"]},
       {"skill": "summoning magiks", "source_skill": "group summoning", "type": "intellectual", "target": 50, "utility": "sustain-gateway", "reason": "unlocks summon familiar", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c"]},
       {"skill": "summon familiar", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "creates a follower that can contribute damage and absorb attacks", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/magic.c: spell_summon_familiar"]},
       {"skill": "death magiks", "source_skill": "group death", "type": "intellectual", "target": 90, "utility": "damage-gateway", "reason": "unlocks animate dead and later death effects", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c"]},
+      {"skill": "wither", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds the source-defined single-target life-drain spell once the death-magik prerequisite is available", "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/const.c: skill_table wither", "server/src/magic.c: spell_wither"]},
       {"skill": "animate dead", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "turns a corpse into another combat follower", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-witch.c", "server/src/magic.c: spell_animate_dead"]}
     ],
     "werewolf": [

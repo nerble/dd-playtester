@@ -15,18 +15,25 @@ ACK_TIMEOUT_SECONDS = 10.0
 # const.c damage nouns for the registered direct spells. Authorization stays
 # in combat_capabilities; these names only recognize commands already issued.
 SPELL_NOUNS = {
+    "acid blast": "acid blast", "fireball": "fireball",
+    "lightning bolt": "lightning bolt", "shocking grasp": "shocking grasp",
+    "colour spray": "colour spray",
     "burning hands": "burning hand", "chill touch": "chilling touch",
     "magic missile": "spell", "cause light": "spell",
     "cause serious": "spell", "cause critical": "spell",
     "psychic crush": "psychic crush", "agitation": "agitation",
     "mind thrust": "mind thrust", "harm": "harm spell",
     "wither": "withering grasp", "flamestrike": "flamestrike",
+    "hellfire": "hellfire",
 }
 SPELL_MIN_MANA = {
+    "acid blast": 20, "fireball": 15, "lightning bolt": 15,
+    "shocking grasp": 15, "colour spray": 15,
     "burning hands": 15, "chill touch": 10, "magic missile": 5,
     "cause light": 15, "cause serious": 17, "cause critical": 20,
     "psychic crush": 15, "agitation": 10, "mind thrust": 8,
     "harm": 35, "wither": 20, "flamestrike": 20,
+    "hellfire": 20,
 }
 
 
@@ -123,6 +130,7 @@ class CombatCommandWindow:
 
 def anticipatory_companion_withdrawal(
     *, enemy_hp: int, enemy_max_hp: int, companion_level: int,
+    companion_damage_modifier: int | None = 0,
     player_hp: int, player_max_hp: int, mana: int, max_mana: int,
     source_peak: int, source_critical: int, action_damage: int,
     action_cost: int, maximum_actions: int, expected_incoming_per_round: int,
@@ -136,6 +144,7 @@ def anticipatory_companion_withdrawal(
         min(enemy_hp, enemy_max_hp, companion_level, player_hp, player_max_hp,
             max_mana, source_peak, source_critical, action_damage, action_cost,
             maximum_actions, expected_incoming_per_round) <= 0
+        or companion_damage_modifier is None
         or enemy_hp > enemy_max_hp or player_hp > player_max_hp
         or player_hp < ceil(player_max_hp * .8)
         or enemy_hp > player_hp // 2 or enemy_hp > enemy_max_hp * .75
@@ -149,6 +158,9 @@ def anticipatory_companion_withdrawal(
     if (actions + 1) * expected_incoming_per_round >= player_hp - health_reserve:
         return False
     reserve = 2 * mobile_expected_round_damage(
-        companion_level, wielding=False, dual_wielding=False,
+        companion_level,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=companion_damage_modifier,
     )
     return enemy_hp <= reserve

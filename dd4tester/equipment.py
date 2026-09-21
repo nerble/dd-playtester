@@ -17,6 +17,7 @@ from .hunt_candidates import (
     ObjectSetSource,
     ObjectSource,
     _mobile_level_range,
+    _rank_direct_ground_stashes,
     _reset_object_vnums,
     _shortest_paths_from,
     load_object_set_sources,
@@ -38,10 +39,12 @@ ITEM_DIGGER = 6
 ITEM_PAINT = 28
 ITEM_POTION = 10
 ITEM_DRINK_CONTAINER = 17
+ITEM_KEY = 18
 ITEM_FOOD = 19
 ITEM_NODROP = 1 << 7
 ITEM_NOREMOVE = 1 << 12
 ITEM_INVENTORY = 1 << 13
+ITEM_POISONED = 1 << 14
 ITEM_BODY_PART = 1 << 26
 ITEM_LANCE = 1 << 27
 ITEM_BOW = 1 << 30
@@ -51,7 +54,7 @@ BLUNT_DAMAGE_TYPES = frozenset({6, 7, 8})
 DIGGING_DAMAGE_TYPES = frozenset({5, 14, 17})
 
 _NON_EQUIPMENT_TYPES = frozenset(
-    {ITEM_POTION, ITEM_DRINK_CONTAINER, ITEM_FOOD}
+    {ITEM_POTION, ITEM_DRINK_CONTAINER, ITEM_KEY, ITEM_FOOD}
 )
 
 # ``str_app`` from DD4 const.c. Values are (to-hit, to-damage).
@@ -153,6 +156,13 @@ class GearSourcePlacement:
     hazards: tuple[str, ...] = ()
     autonomy_rejections: tuple[str, ...] = ()
     weapon_role: str = "not_applicable"
+    route_vnums: tuple[str, ...] = ()
+    estimated_move_cost: int = 0
+    estimated_flying_move_cost: int = 0
+    requires_flight: bool = False
+    # Optional named plan for a source-backed acquisition that has more than
+    # one preparation step (for example, buying a tool before a carrier hunt).
+    source_gear_plan: str | None = None
 
 
 class GearCatalog:
@@ -338,6 +348,21 @@ def rank_gear_sources(
             (candidate.mobile_vnum, candidate.room_vnum),
             candidate,
         )
+    direct_ground_candidates = _rank_direct_ground_stashes(
+        world,
+        character_level=character_level,
+        include_all_areas=include_all_areas,
+        object_filter=lambda item: item.vnum in selected_vnums,
+        object_value=lambda _item: 1,
+        object_keyword=lambda item: (
+            item.keywords.split()[0] if item.keywords.split() else "object"
+        ),
+        target="equipment stash",
+    )
+    direct_ground_by_room = {
+        candidate.room_vnum: candidate
+        for candidate in direct_ground_candidates
+    }
     direct_paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
 
     def fallback_hazards(mobile: Any) -> tuple[str, ...]:
@@ -443,6 +468,26 @@ def rank_gear_sources(
                 hazards=tuple(dict.fromkeys(hazards)),
                 autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
                 weapon_role=weapon_role(item, weapon_preference),
+                route_vnums=(
+                    tuple(str(room_vnum) for room_vnum in direct_paths[room.vnum][1])
+                    if room.vnum in direct_paths
+                    else ()
+                ),
+                estimated_move_cost=(
+                    int(candidate.estimated_move_cost)
+                    if candidate is not None
+                    else 0
+                ),
+                estimated_flying_move_cost=(
+                    int(candidate.estimated_flying_move_cost)
+                    if candidate is not None
+                    else 0
+                ),
+                requires_flight=(
+                    bool(candidate.requires_flight)
+                    if candidate is not None
+                    else False
+                ),
             )
         )
 
@@ -491,7 +536,7 @@ def rank_gear_sources(
             room=room,
             maximum_count=reset.maximum_count,
             source_level_range=item_level_range(item),
-            candidate=None,
+            candidate=direct_ground_by_room.get(room.vnum),
         )
 
     status_order = {"promising": 0, "caution": 1, "source-only": 2, "reject": 3}
@@ -508,6 +553,110 @@ def rank_gear_sources(
         ),
         reverse=True,
     )
+
+
+def rank_executable_ground_gear_sources(
+    world: WorldSource,
+    *,
+    character_level: int,
+    character_class: str,
+    subclass: str | None = None,
+    stance: str = STANCE_COMBAT,
+    level_gain_priorities: tuple[str, ...] = (),
+    current_items: Iterable[ObjectSource] = (),
+    include_all_areas: bool = False,
+    character_max_hp: int | None = None,
+    recall_origins: Mapping[int, int] | None = None,
+    require_no_flight: bool = False,
+) -> list[GearSourcePlacement]:
+    """Return exact ground-reset upgrades that the runner can execute.
+
+    Mob-carried and source-only placements remain useful for analysis, but
+    they need a separate carrier or shop contract before autonomous pickup is
+    safe. This helper is deliberately narrower: it admits only direct ground
+    resets whose route audit has no autonomy rejection and whose object is
+    wearable at the current level.
+    """
+    placements = rank_gear_sources(
+        world,
+        character_level=character_level,
+        character_class=character_class,
+        subclass=subclass,
+        stance=stance,
+        level_gain_priorities=level_gain_priorities,
+        current_items=current_items,
+        include_all_areas=include_all_areas,
+        character_max_hp=character_max_hp,
+        recall_origins=recall_origins,
+    )
+    executable: list[GearSourcePlacement] = []
+    for placement in placements:
+        item = world.objects.get(placement.object_vnum)
+        if (
+            placement.source_kind != "ground-reset"
+            or not placement.better_than_current
+            or placement.status not in {"promising", "caution"}
+            or placement.autonomy_rejections
+            or not placement.route_vnums
+            or item is None
+            or not is_releasable_funding_item(item)
+            or item.effective_level > character_level
+            or (require_no_flight and placement.requires_flight)
+        ):
+            continue
+        executable.append(placement)
+    return executable
+
+
+def rank_executable_carrier_gear_sources(
+    world: WorldSource,
+    *,
+    character_level: int,
+    character_class: str,
+    subclass: str | None = None,
+    stance: str = STANCE_COMBAT,
+    level_gain_priorities: tuple[str, ...] = (),
+    current_items: Iterable[ObjectSource] = (),
+    include_all_areas: bool = False,
+    character_max_hp: int | None = None,
+    recall_origins: Mapping[int, int] | None = None,
+    require_no_flight: bool = False,
+) -> list[GearSourcePlacement]:
+    """Return safe upgrades that require defeating a source-listed carrier.
+
+    The returned placement is still only an equipment plan.  The campaign
+    must pair it with the matching source hunt candidate before live combat.
+    """
+    placements = rank_gear_sources(
+        world,
+        character_level=character_level,
+        character_class=character_class,
+        subclass=subclass,
+        stance=stance,
+        level_gain_priorities=level_gain_priorities,
+        current_items=current_items,
+        include_all_areas=include_all_areas,
+        character_max_hp=character_max_hp,
+        recall_origins=recall_origins,
+    )
+    executable: list[GearSourcePlacement] = []
+    for placement in placements:
+        item = world.objects.get(placement.object_vnum)
+        if (
+            placement.source_kind not in {"mob-carried", "mob-equipped"}
+            or placement.source_mobile_vnum is None
+            or not placement.better_than_current
+            or placement.status not in {"promising", "caution"}
+            or placement.autonomy_rejections
+            or not placement.route
+            or item is None
+            or not is_releasable_funding_item(item)
+            or item.effective_level > character_level
+            or (require_no_flight and placement.requires_flight)
+        ):
+            continue
+        executable.append(placement)
+    return executable
 
 
 def normalize_item_name(value: str) -> str:
@@ -606,6 +755,11 @@ def stance_score(
         armor=item.values[0] if item.item_type == 9 and item.values else 0,
         weapon=weapon_damage_score(item),
     )
+
+
+def weapon_combat_score(item: ObjectSource) -> tuple[int, ...]:
+    """Rank a weapon by source dice and positive combat bonuses."""
+    return stance_score(item, STANCE_COMBAT)
 
 
 def weapon_preference_for_character(
@@ -760,6 +914,7 @@ def is_releasable_funding_item(item: ObjectSource) -> bool:
         ITEM_NODROP
         | ITEM_NOREMOVE
         | ITEM_INVENTORY
+        | ITEM_POISONED
         | ITEM_BODY_PART
         | ITEM_CURSED
     )
@@ -794,7 +949,7 @@ def character_can_use_item(
 
 
 def is_equipment_object(item: ObjectSource) -> bool:
-    """Exclude consumables that DD4 marks as holdable from gear planning."""
+    """Exclude functional carried objects from stance gear planning."""
     return item.item_type not in _NON_EQUIPMENT_TYPES
 
 
@@ -1183,20 +1338,60 @@ def plan_stance_swaps(
     weapon_preference: str | None = None,
     object_sets: Iterable[ObjectSetSource] = (),
     current_strength: int | None = None,
+    required_worn_items: Iterable[ObjectSource] = (),
 ) -> tuple[list[ObjectSource], list[ObjectSource]]:
-    """Return worn removals and carried additions needed for a stance."""
-    carried_items = list(carried)
+    """Return worn removals and carried additions needed for a stance.
+
+    ``required_worn_items`` is a narrow escape hatch for a route that has
+    explicitly verified an item in a wear slot.  Such an item remains in the
+    loadout while the rest of the stance can still be optimized normally.
+    """
+    carried_items = [item for item in carried if is_equipment_object(item)]
     worn_items = list(worn)
+    worn_equipment = [item for item in worn_items if is_equipment_object(item)]
     desired_loadout = _desired_loadout(
         carried_items,
-        worn_items,
+        worn_equipment,
         stance,
         level_gain_priorities=level_gain_priorities,
         weapon_preference=weapon_preference,
         object_sets=tuple(object_sets),
         current_strength=current_strength,
     )
-    desired = _loadout_items(desired_loadout)
+    desired = list(_loadout_items(desired_loadout))
+    required = [
+        item
+        for item in required_worn_items
+        if is_equipment_object(item) and item_category(item) is not None
+    ]
+    retained_required: Counter[int] = Counter()
+    for required_item in required:
+        if (
+            retained_required[required_item.vnum]
+            < desired.count(required_item)
+        ):
+            retained_required[required_item.vnum] += 1
+            continue
+        category = item_category(required_item)
+        same_category = [
+            index
+            for index, item in enumerate(desired)
+            if item_category(item) == category
+        ]
+        capacity = _CATEGORY_CAPACITY.get(category or "", 1)
+        if len(same_category) < capacity:
+            desired.append(required_item)
+        else:
+            replacement_index = min(
+                same_category,
+                key=lambda index: stance_score(
+                    desired[index],
+                    stance,
+                    level_gain_priorities=level_gain_priorities,
+                ),
+            )
+            desired[replacement_index] = required_item
+        retained_required[required_item.vnum] += 1
     removals: list[ObjectSource] = []
     additions: list[ObjectSource] = []
     desired_counts = Counter(item.vnum for item in desired)

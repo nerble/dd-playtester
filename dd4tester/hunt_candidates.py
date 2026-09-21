@@ -47,6 +47,17 @@ MOBILE_RANK_HP_MULTIPLIERS = {
     "world": 30,
 }
 
+# ``MobHPMod`` and ``MobDamMod`` are signed percentages applied after the
+# level/rank calculation or attack calculation in DD4.  These limits mirror
+# the source constants in ``merc.h``.
+MOBILE_HP_MOD_MIN = -99
+MOBILE_DAMAGE_MOD_MIN = -99
+MOBILE_SPAWN_HP_LIMIT = ((1 << 31) - 1) // 100
+MOBILE_ATTACK_DAMAGE_LIMIT = ((1 << 31) - 1) // 1000
+MOBILE_TEMPLATE_UNSET = -(1 << 31)
+MOBILE_SPECIAL_SLOTS = 3
+MOBILE_SPECIAL_AUTO = -1
+
 # These values mirror DD4's ``body_form`` bits in ``merc.h``.  Keep the raw
 # value on source records so anatomy-sensitive actions can make an explicit
 # decision instead of inferring from a mobile's display name.
@@ -115,6 +126,7 @@ AFF_BLIND = 1 << 0
 AFF_DETECT_INVIS = 1 << 3
 AFF_DETECT_MAGIC = 1 << 4
 AFF_NON_CORPOREAL = 1 << 28
+AFF_MINDLESS = 1 << 49
 
 ROOM_NO_MOB = 1 << 2
 ROOM_NO_RECALL = 1 << 13
@@ -149,9 +161,18 @@ ITEM_TREASURE = 8
 ITEM_WEAPON = 5
 ITEM_ARMOR = 9
 ITEM_POTION = 10
+ITEM_PILL = 26
 ITEM_CONTAINER = 15
 ITEM_FOOD = 19
 ITEM_MONEY = 20
+ITEM_LOCK_PICK = 35
+
+# Container flags from ``merc.h``.  A nested resource is not loose ground
+# loot: a closed or locked container needs an explicit extraction plan.
+CONT_CLOSEABLE = 1
+CONT_PICKPROOF = 2
+CONT_CLOSED = 4
+CONT_LOCKED = 8
 
 _CASTABLE_ITEM_TYPES = frozenset({ITEM_SCROLL, ITEM_WAND, ITEM_STAFF})
 
@@ -204,6 +225,29 @@ _DIRECTIONS = {
     4: "up",
     5: "down",
 }
+# DD4's area format stores a door *type* in the second field of a ``D``
+# record. ``db.c`` expands that type into exit flags; it is not a bitmask.
+_SOURCE_EXIT_FLAGS_BY_LOCK_TYPE = {
+    1: 1,    # EX_ISDOOR
+    2: 33,   # EX_ISDOOR | EX_PICKPROOF
+    3: 17,   # EX_ISDOOR | EX_BASHPROOF
+    4: 49,   # EX_ISDOOR | EX_PICKPROOF | EX_BASHPROOF
+    5: 65,   # EX_ISDOOR | EX_PASSPROOF
+    6: 97,   # EX_ISDOOR | EX_PICKPROOF | EX_PASSPROOF
+    7: 81,   # EX_ISDOOR | EX_BASHPROOF | EX_PASSPROOF
+    8: 113,  # EX_ISDOOR | EX_PICKPROOF | EX_BASHPROOF | EX_PASSPROOF
+    9: EX_WALL,
+    10: 257,  # EX_ISDOOR | EX_SECRET
+    11: 369,  # EX_ISDOOR | EX_PICKPROOF | EX_BASHPROOF | EX_PASSPROOF | EX_SECRET
+    12: 256,  # EX_SECRET
+}
+
+
+def _source_exit_flags_for_lock_type(lock_type: int) -> int:
+    """Mirror ``db.c``'s ``locks`` switch for an area ``D`` record."""
+    return _SOURCE_EXIT_FLAGS_BY_LOCK_TYPE.get(int(lock_type), 0)
+
+
 _TILDE_VALUE = re.compile(r"(-?\d+)")
 _MOBILE_TEACHING = re.compile(
     r"^\s*&\s*(?P<percent>\d+)\s+'(?P<skill>[^']+)'\s*$",
@@ -371,6 +415,18 @@ def _source_skill_percent(
         return max(0, min(100, int(raw_percent)))
     except (TypeError, ValueError):
         return 0
+
+
+def _source_knife_toss_face_hit_percent(
+    skill_percent: int,
+    target_body_form_flags: int | None,
+) -> int:
+    """Return DD4's proven knife-toss face-hit probability in percent."""
+    if body_form_has_eyes(target_body_form_flags) is not True:
+        return 0
+    # ``do_knife_toss`` succeeds when ``chance < learned`` and doubles the
+    # damage when that same roll is ``<= 10``. ``number_percent`` rolls 1..100.
+    return min(10, max(0, int(skill_percent) - 1))
 
 
 def _source_c_trunc_divide(numerator: int, denominator: int) -> int:
@@ -565,6 +621,26 @@ def _observed_combat_stat(value: object) -> int | None:
     except (TypeError, ValueError, OverflowError):
         return None
     return None if number == 50000 else number
+
+
+# This mirrors ``dex_app[].toswift`` in ``server/src/const.c``.  The live
+# ``Char.Stats`` packet calls the permanent stat ``dex`` and the current,
+# equipment-adjusted value ``dex_mod``; combat uses the latter via
+# ``get_curr_dex``.
+_SOURCE_DEX_SWIFTNESS = (
+    -5, -4, -4, -3, -3, -2, -2, -1,
+    -1, -1, -1, 0, 0, 0, 0, 0,
+    0, 0, 1, 1, 2, 2, 2, 3,
+    3, 3, 4, 4, 4, 5, 5, 6,
+)
+
+
+def _source_dex_swiftness(current_dex: object) -> int | None:
+    """Return DD4's dexterity contribution to an extra attack roll."""
+    dexterity = _observed_combat_stat(current_dex)
+    if dexterity is None or not 0 <= dexterity < len(_SOURCE_DEX_SWIFTNESS):
+        return None
+    return _SOURCE_DEX_SWIFTNESS[dexterity]
 
 
 def source_combat_output_estimate(
@@ -922,15 +998,30 @@ def source_combat_output_estimate(
             minimum = base + 1
             maximum = base + level
             successful_expected = base + (level + 1) // 2
+            face_hit_percent = (
+                _source_knife_toss_face_hit_percent(
+                    skill_percent,
+                    target_body_form_flags,
+                )
+                if action == "knife toss"
+                else 0
+            )
             expected = max(
                 1,
-                int(successful_expected * skill_percent / 100.0),
+                int(
+                    successful_expected
+                    * (skill_percent + face_hit_percent)
+                    / 100.0
+                ),
             )
             reference = (
                 "fight.c:do_kick"
                 if action == "kick"
                 else "fight.c:do_knife_toss"
             )
+            if face_hit_percent > 0:
+                maximum *= 2
+                reference += "; plus fight.c:do_knife_toss/face_hit"
             resource_cost = 0
         elif action == "circle":
             if (
@@ -1053,6 +1144,39 @@ def source_combat_output_estimate(
             expected = 15 + (dice_count * 2)
             reference = "magic.c:spell_burning_hands"
             resource_cost = 15
+        elif action == "shocking grasp":
+            minimum = 10 + (2 * level)
+            maximum = 20 + (2 * level)
+            expected = 15 + (2 * level)
+            reference = "magic.c:spell_shocking_grasp"
+            resource_cost = 15
+        elif action in {"lightning bolt", "colour spray"}:
+            # Both spells use dice(level, 4) + level.  DD4's save or
+            # resistance path halves the damage, so retain the halved raw
+            # floor while keeping the source maximum visible.
+            minimum = level
+            maximum = 5 * level
+            expected = (7 * level) // 2
+            reference = (
+                "magic.c:spell_lightning_bolt"
+                if action == "lightning bolt"
+                else "magic.c:spell_colour_spray"
+            )
+            resource_cost = 15
+        elif action in {"fireball", "acid blast"}:
+            # Fireball and acid blast are dice(level, 6/8).  Their source
+            # save/resistance checks can halve the result; the conservative
+            # floor models that branch without lowering the raw ceiling.
+            sides = 6 if action == "fireball" else 8
+            minimum = level // 2
+            maximum = sides * level
+            expected = ((sides + 1) * level) // 2
+            reference = (
+                "magic.c:spell_fireball"
+                if action == "fireball"
+                else "magic.c:spell_acid_blast"
+            )
+            resource_cost = 15 if action == "fireball" else 20
         elif action == "chill touch":
             minimum = 10 + level
             maximum = 20 + level
@@ -1113,6 +1237,14 @@ def source_combat_output_estimate(
             maximum = 6 * level
             expected = 9 * level // 2
             reference = "magic.c:spell_flamestrike"
+            resource_cost = 20
+        elif action == "hellfire":
+            # spell_hells_fire uses dice(level, 8) plus two damage per level.
+            # Its source command is named ``hellfire`` in the skill table.
+            minimum = 3 * level
+            maximum = 10 * level
+            expected = 13 * level // 2
+            reference = "magic.c:spell_hells_fire"
             resource_cost = 20
         elif action == "agitation":
             damage_by_level = (
@@ -1350,6 +1482,23 @@ class MobileTemplateSource:
     affected_flags: int = 0
     body_form_flags: int = 0
     xp_modifier: int = 0
+    hp_modifier: int = 0
+    damage_modifier: int = 0
+    # Resolved DD4 template special slots and their source probability policy.
+    # A slot name is empty when the template explicitly clears it.
+    special_names: tuple[str | None, ...] = (None, None, None)
+    special_chances: tuple[int, ...] = (
+        MOBILE_SPECIAL_AUTO,
+        MOBILE_SPECIAL_AUTO,
+        MOBILE_SPECIAL_AUTO,
+    )
+
+    @property
+    def specials(self) -> tuple[str, ...]:
+        return _effective_mobile_special_names(
+            self.special_names,
+            self.special_chances,
+        )
 
 
 @dataclass(frozen=True)
@@ -1382,6 +1531,19 @@ class MobileSource:
     area_act_flags: int | None = None
     area_affected_flags: int | None = None
     area_body_form_flags: int | None = None
+    # Source scalar layers used by ``create_mobile``.  ``None`` means the
+    # area record omitted ``MobHPMod`` or explicitly requested inheritance.
+    template_hp_modifier: int = 0
+    area_hp_modifier: int | None = None
+    hp_modifier: int | None = 0
+    hp_modifier_known: bool = True
+    # DD4 applies this percentage to each positive attack routed through
+    # ``one_hit``.  ``None`` means a referenced source template was not
+    # resolved and therefore cannot authorize a safety estimate.
+    template_damage_modifier: int = 0
+    area_damage_modifier: int | None = None
+    damage_modifier: int | None = 0
+    damage_modifier_known: bool = True
 
     @property
     def aggressive(self) -> bool:
@@ -1408,6 +1570,11 @@ class MobileSource:
     @property
     def confused(self) -> bool:
         return bool(self.affected_flags & AFF_CONFUSION)
+
+    @property
+    def mindless(self) -> bool:
+        """Mirror DD4's explicit ``AFF_MINDLESS`` trait."""
+        return bool(self.affected_flags & AFF_MINDLESS)
 
     @property
     def non_corporeal(self) -> bool:
@@ -1579,6 +1746,13 @@ class RoomSource:
     random_exits: bool = False
     room_flags: int = 0
     sector_type: int = 0
+    # DD4 applies these area-wide access values in ``act_move.c`` before a
+    # player enters the destination room. Synthetic fixtures leave them unset
+    # so they retain the older unrestricted route semantics.
+    area_low_level: int | None = None
+    area_high_level: int | None = None
+    area_low_enforced: int | None = None
+    area_high_enforced: int | None = None
 
     @property
     def no_mob(self) -> bool:
@@ -1607,6 +1781,34 @@ def _reset_object_vnums(reset: MobReset) -> tuple[int, ...]:
                 *(object_vnum for _wear_location, object_vnum in reset.equipment),
             )
         )
+    )
+
+
+def _source_key_carrier_resets(
+    world: WorldSource,
+    key_object_vnums: Collection[int],
+    *,
+    mobile_vnums: Collection[int] = (),
+    room_vnums: Collection[int] = (),
+) -> tuple[MobReset, ...]:
+    """Return raw reset entries that actually load one of the given keys.
+
+    Keep this query on the unaggregated reset stream.  DD4 applies each ``M``
+    reset separately, so merging two same-mobile/same-room entries can make a
+    key appear on every instance even when only the first reset's ``G``
+    command loads it.
+    """
+    keys = {int(vnum) for vnum in key_object_vnums}
+    mobiles = {int(vnum) for vnum in mobile_vnums}
+    rooms = {int(vnum) for vnum in room_vnums}
+    if not keys:
+        return ()
+    return tuple(
+        reset
+        for reset in world.mob_resets
+        if (not mobiles or reset.mobile_vnum in mobiles)
+        and (not rooms or reset.room_vnum in rooms)
+        and keys.intersection(_reset_object_vnums(reset))
     )
 
 
@@ -1720,6 +1922,7 @@ class HuntCandidate:
     route_origin_recall_index: int = 0
     route_origin_room_vnum: int = RECALL_VNUM
     undead: bool = False
+    source_damage_modifier: int | None = 0
 
     @property
     def autonomous_safe(self) -> bool:
@@ -1750,6 +1953,19 @@ class ResourcePlacement:
     hazards: tuple[str, ...] = ()
     autonomy_rejections: tuple[str, ...] = ()
     activation: "ResourceActivation | None" = None
+    # A resource may be reset inside one or more source containers rather than
+    # directly on a mobile or room. Keep the chain explicit so a runner can
+    # prove the acquisition commands instead of treating nested contents as
+    # loose ground loot.
+    container_object_vnums: tuple[int, ...] = ()
+    required_key_object_vnums: tuple[int, ...] = ()
+    required_key_source_mobile_vnums: tuple[int, ...] = ()
+    # A source placement can be visible but unreachable from recall because a
+    # route door is locked. Keep that route separate from ``route``: it is
+    # diagnostic evidence only and must never be dispatched as a live plan.
+    source_analysis_route: tuple[str, ...] = ()
+    route_key_object_vnums: tuple[int, ...] = ()
+    route_key_source_mobile_vnums: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1771,8 +1987,101 @@ class ResourceActivation:
     target: str | None = None
 
 
+def source_room_level_rejection(
+    room: RoomSource | None,
+    character_level: int,
+) -> str | None:
+    """Return DD4's source access rejection for one destination room.
+
+    ``act_move.c`` enforces the fourth-value area band on every move and also
+    treats ``-4 -4`` areas as player-inaccessible safety zones. Keep this
+    separate from mobile combat hazards so a legal target is not confused with
+    an area the character cannot enter at all.
+    """
+    if room is None or character_level > 100:
+        return None
+    if room.area_low_level == -4 and room.area_high_level == -4:
+        return "area is source-marked player-inaccessible"
+    if room.area_low_enforced is None or room.area_high_enforced is None:
+        return None
+    if (
+        character_level < room.area_low_enforced
+        or character_level > room.area_high_enforced
+    ):
+        return (
+            "area access requires level "
+            f"{room.area_low_enforced}-{room.area_high_enforced}"
+        )
+    return None
+
+
+def _source_container_access_notes(
+    world: WorldSource,
+    container_object_vnums: Collection[int],
+    required_key_object_vnums: Collection[int],
+    required_key_source_mobile_vnums: Collection[int],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Describe source container barriers without authorizing extraction.
+
+    Resource reports are also used as audit evidence.  A nested potion must
+    therefore retain the source container's closed/locked state and its key
+    provenance; otherwise a locked display case can look like a safe ground
+    stash to a later selector.
+    """
+    hazards: list[str] = []
+    rejections: list[str] = []
+    for container_vnum in container_object_vnums:
+        container = world.objects.get(container_vnum)
+        if container is None or container.item_type != ITEM_CONTAINER:
+            rejections.append(
+                f"source container {container_vnum} is not a parsed container"
+            )
+            continue
+        flags = (
+            int(container.values[1])
+            if len(container.values) > 1
+            else None
+        )
+        if flags is None:
+            rejections.append(
+                f"source container {container_vnum} has unknown flags"
+            )
+            continue
+        if flags & CONT_CLOSED:
+            hazards.append(
+                f"source container is closed: {container.short_description} "
+                f"({container_vnum})"
+            )
+        if flags & CONT_LOCKED:
+            hazards.append(
+                f"source container is locked: {container.short_description} "
+                f"({container_vnum})"
+            )
+            rejections.append(
+                f"source container {container_vnum} requires an explicit key "
+                "acquisition plan"
+            )
+    if required_key_object_vnums:
+        key_text = ",".join(str(vnum) for vnum in required_key_object_vnums)
+        carrier_text = ",".join(
+            str(vnum) for vnum in required_key_source_mobile_vnums
+        ) or "none"
+        hazards.append(
+            f"source container keys {key_text}; source carriers {carrier_text}"
+        )
+        if not required_key_source_mobile_vnums:
+            rejections.append(
+                f"source container key {key_text} has no same-area source carrier"
+            )
+    return (
+        tuple(dict.fromkeys(hazards)),
+        tuple(dict.fromkeys(rejections)),
+    )
+
+
 _RESOURCE_EFFECT_SPELLS = {
     "sanctuary": frozenset({"sanctuary"}),
+    "protection": frozenset({"protection"}),
     "healing": frozenset(
         {
             "cure blindness",
@@ -1794,9 +2103,16 @@ _RESOURCE_EFFECT_ALIASES = {
     "levitation": "flight",
     "travel": "flight",
 }
-_RESOURCE_EFFECT_ORDER = ("sanctuary", "healing", "flight", "food")
+_RESOURCE_EFFECT_ORDER = (
+    "sanctuary",
+    "protection",
+    "healing",
+    "flight",
+    "food",
+)
 _RESOURCE_EFFECT_SPELL_ORDER = {
     "sanctuary": ("sanctuary",),
+    "protection": ("protection",),
     "healing": (
         "power heal",
         "heal",
@@ -1839,6 +2155,13 @@ def potion_spell_names(item: ObjectSource) -> tuple[str, ...]:
     return _encoded_spell_names(item)
 
 
+def pill_spell_names(item: ObjectSource) -> tuple[str, ...]:
+    """Return normalized source spell names encoded on a pill prototype."""
+    if item.item_type != ITEM_PILL:
+        return ()
+    return _encoded_spell_names(item)
+
+
 def resource_effects_for_object(
     item: ObjectSource,
     *,
@@ -1848,7 +2171,7 @@ def resource_effects_for_object(
 
     ``food`` is deliberately limited to the same positive, non-poisonous
     direct-food rule used by :func:`rank_food_stashes`.  Spell effects are
-    read from the source-encoded potion, scroll, wand, or staff values.
+    read from the source-encoded potion, pill, scroll, wand, or staff values.
     """
     normalized = " ".join(str(effect).casefold().split())
     normalized = _RESOURCE_EFFECT_ALIASES.get(normalized, normalized)
@@ -1866,7 +2189,11 @@ def resource_effects_for_object(
         and normalized in {"all", "food"}
     ):
         effects.append("food")
-    spell_names = set(potion_spell_names(item)) | set(castable_spell_names(item))
+    spell_names = (
+        set(potion_spell_names(item))
+        | set(pill_spell_names(item))
+        | set(castable_spell_names(item))
+    )
     for name in _RESOURCE_EFFECT_ORDER:
         if name == "food" or (normalized not in {"all", name}):
             continue
@@ -1883,11 +2210,12 @@ def resource_activation_for_object(
 ) -> ResourceActivation | None:
     """Return DD4's source command contract for one positive object effect.
 
-    ``do_quaff`` consumes a potion, ``do_recite`` consumes a held scroll,
-    ``do_brandish`` spends a held staff charge, and ``do_zap`` spends a held
-    wand charge.  The command is deliberately descriptive rather than a
-    ready-to-send selector: duplicate live objects still require the normal
-    source/VNUM-aware keyword resolution at execution time.
+    ``do_quaff`` consumes a potion, ``do_eat`` consumes a pill,
+    ``do_recite`` consumes a held scroll, ``do_brandish`` spends a held staff
+    charge, and ``do_zap`` spends a held wand charge. The command is
+    deliberately descriptive rather than a ready-to-send selector: duplicate
+    live objects still require the normal source/VNUM-aware keyword resolution
+    at execution time.
     """
     normalized = " ".join(str(effect).casefold().split())
     normalized = _RESOURCE_EFFECT_ALIASES.get(normalized, normalized)
@@ -1912,7 +2240,11 @@ def resource_activation_for_object(
             normalized = spell_effect
     if normalized not in _RESOURCE_EFFECT_SPELL_ORDER:
         return None
-    spell_names = set(potion_spell_names(item)) | set(castable_spell_names(item))
+    spell_names = (
+        set(potion_spell_names(item))
+        | set(pill_spell_names(item))
+        | set(castable_spell_names(item))
+    )
     spell = requested_spell or next(
         (
             candidate
@@ -1930,6 +2262,15 @@ def resource_activation_for_object(
             spell=spell,
             command="quaff",
             mode="potion",
+            requires_hold=False,
+            consumes_object=True,
+            consumes_charge=False,
+        )
+    if item.item_type == ITEM_PILL:
+        return ResourceActivation(
+            spell=spell,
+            command="eat",
+            mode="pill",
             requires_hold=False,
             consumes_object=True,
             consumes_charge=False,
@@ -1976,11 +2317,12 @@ def rank_resource_sources(
 ) -> list[ResourcePlacement]:
     """List source resource placements with routes and hazard evidence.
 
-    The report keeps shop stock, mob-carried objects, and direct ground resets
-    distinct.  A matching hunt or ground-stash candidate contributes the same
-    route, status, and hazard annotations used by campaign selection; a
-    source placement without a current-level candidate remains visible as
-    ``source-only`` rather than being silently discarded.
+    The report keeps shop stock, mob-carried objects, direct ground resets,
+    and nested ground-container contents distinct. A matching hunt or
+    ground-stash candidate contributes the same route, status, and hazard
+    annotations used by campaign selection; a source placement without a
+    current-level candidate remains visible as ``source-only`` rather than
+    being silently discarded.
     """
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -2074,6 +2416,9 @@ def rank_resource_sources(
         maximum_count: int,
         source_level_range: tuple[int, int],
         candidate: HuntCandidate | None,
+        container_object_vnums: tuple[int, ...] = (),
+        required_key_object_vnums: tuple[int, ...] = (),
+        required_key_source_mobile_vnums: tuple[int, ...] = (),
     ) -> None:
         placement_key = (
             item.vnum,
@@ -2081,6 +2426,7 @@ def rank_resource_sources(
             source_mobile_vnum,
             room.vnum,
             maximum_count,
+            container_object_vnums,
         )
         if placement_key in placement_keys:
             return
@@ -2088,20 +2434,85 @@ def rank_resource_sources(
         if candidate is None:
             path = direct_paths.get(room.vnum)
             route = path[0] if path is not None else ()
+            source_route_rooms: tuple[int, ...] = ()
+            source_analysis_route: tuple[str, ...] = ()
+            route_key_object_vnums: tuple[int, ...] = ()
+            route_key_source_mobile_vnums: tuple[int, ...] = ()
+            hazards: tuple[str, ...] = ()
+            autonomy_rejections: tuple[str, ...] = ()
+            if path is not None:
+                source_route_rooms = path[1]
+            if path is None:
+                analysis_path = _shortest_source_analysis_path(
+                    world.rooms,
+                    RECALL_VNUM,
+                    room.vnum,
+                )
+                if analysis_path is not None:
+                    (
+                        source_analysis_route,
+                        analysis_rooms,
+                        _analysis_closed_doors,
+                        route_key_object_vnums,
+                    ) = analysis_path
+                    source_route_rooms = analysis_rooms
+                    route_key_source_mobile_vnums = _source_key_carriers(
+                        world,
+                        route_key_object_vnums,
+                    )
+                    autonomy_rejections = (
+                        *autonomy_rejections,
+                        *_source_route_key_acquisition_rejections(
+                            world,
+                            route_key_object_vnums,
+                            directly_reachable_rooms=direct_paths.keys(),
+                        ),
+                    )
             status = "source-only"
             route_origin = 0
-            hazards = ()
-            autonomy_rejections = ()
+            area_rejections = tuple(
+                rejection
+                for path_room_vnum in source_route_rooms[1:]
+                if (
+                    rejection := source_room_level_rejection(
+                        world.rooms.get(path_room_vnum),
+                        character_level,
+                    )
+                ) is not None
+            )
+            if area_rejections:
+                hazards = tuple(
+                    f"source route area gate: {rejection}"
+                    for rejection in area_rejections
+                )
+                autonomy_rejections = area_rejections
             if source_mobile_vnum is not None:
                 mobile = world.mobiles.get(source_mobile_vnum)
                 if mobile is not None:
-                    hazards = fallback_mobile_hazards(mobile)
+                    hazards = tuple(
+                        dict.fromkeys(
+                            (*hazards, *fallback_mobile_hazards(mobile))
+                        )
+                    )
         else:
             route = candidate.route
+            source_analysis_route = ()
+            route_key_object_vnums = ()
+            route_key_source_mobile_vnums = ()
             status = candidate.status
             route_origin = candidate.route_origin_recall_index
             hazards = candidate.hazards
             autonomy_rejections = candidate.autonomy_rejections
+        container_hazards, container_rejections = _source_container_access_notes(
+            world,
+            container_object_vnums,
+            required_key_object_vnums,
+            required_key_source_mobile_vnums,
+        )
+        hazards = tuple(dict.fromkeys((*hazards, *container_hazards)))
+        autonomy_rejections = tuple(
+            dict.fromkeys((*autonomy_rejections, *container_rejections))
+        )
         for effect_name in resource_effects_for_object(
             item,
             effect=normalized_effect,
@@ -2131,6 +2542,14 @@ def rank_resource_sources(
                     hazards=tuple(dict.fromkeys(hazards)),
                     autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
                     activation=activation,
+                    container_object_vnums=container_object_vnums,
+                    required_key_object_vnums=required_key_object_vnums,
+                    required_key_source_mobile_vnums=(
+                        required_key_source_mobile_vnums
+                    ),
+                    source_analysis_route=source_analysis_route,
+                    route_key_object_vnums=route_key_object_vnums,
+                    route_key_source_mobile_vnums=route_key_source_mobile_vnums,
                 )
             )
 
@@ -2187,6 +2606,113 @@ def rank_resource_sources(
             source_level_range=item_level_range(item),
             candidate=direct_by_room.get(room.vnum),
         )
+
+    # ``P`` resets place an object inside a container loaded by an ``O``
+    # reset. Preserve the source chain and any container key requirement. A
+    # nested object is never promoted to an executable loose-ground route by
+    # this report alone; callers still need to validate the route and perform
+    # the source-proven extraction actions. Build every target path once per
+    # root: the old root/target traversal repeated the same graph walk for
+    # every matching resource and made all-area reports needlessly unbounded.
+    container_roots = {
+        reset.object_vnum
+        for reset in world.room_object_resets
+        if reset.object_vnum in world.container_contents
+    }
+    container_paths_by_root: dict[
+        int, dict[int, tuple[tuple[int, ...], ...]]
+    ] = {}
+
+    for root_vnum in container_roots:
+        paths_by_target: dict[int, list[tuple[int, ...]]] = {}
+
+        def walk(
+            current: int,
+            ancestors: tuple[int, ...],
+        ) -> None:
+            if current in ancestors:
+                return
+            next_ancestors = (*ancestors, current)
+            for child_vnum in world.container_contents.get(current, ()):
+                if child_vnum in selected_vnums:
+                    paths_by_target.setdefault(child_vnum, []).append(
+                        next_ancestors
+                    )
+                if child_vnum in world.container_contents:
+                    walk(child_vnum, next_ancestors)
+
+        walk(root_vnum, ())
+        container_paths_by_root[root_vnum] = {
+            target_vnum: tuple(paths)
+            for target_vnum, paths in paths_by_target.items()
+        }
+
+    direct_container_candidates = _rank_direct_ground_stashes(
+        world,
+        character_level=character_level,
+        include_all_areas=include_all_areas,
+        object_filter=lambda candidate: candidate.vnum in container_roots,
+        object_value=lambda _candidate: 1,
+        object_keyword=lambda candidate: _food_object_keyword(candidate),
+        target="resource container",
+    )
+    direct_container_by_room = {
+        candidate.room_vnum: candidate
+        for candidate in direct_container_candidates
+    }
+    for reset in world.room_object_resets:
+        room = world.rooms.get(reset.room_vnum)
+        root = world.objects.get(reset.object_vnum)
+        if (
+            room is None
+            or root is None
+            or reset.object_vnum not in container_roots
+            or (allowed_areas is not None and room.area_file not in allowed_areas)
+        ):
+            continue
+        paths_by_target = container_paths_by_root.get(root.vnum, {})
+        for item in selected_objects:
+            for container_chain in paths_by_target.get(item.vnum, ()):
+                key_vnums = tuple(
+                    dict.fromkeys(
+                        int(container.values[2])
+                        for container_vnum in container_chain
+                        if (container := world.objects.get(container_vnum))
+                        is not None
+                        and container.item_type == ITEM_CONTAINER
+                        and len(container.values) > 2
+                        and int(container.values[2]) > 0
+                    )
+                )
+                key_mobile_vnums = tuple(
+                    sorted(
+                        {
+                            mob_reset.mobile_vnum
+                            for mob_reset in world.mob_resets
+                            if (
+                                (key_room := world.rooms.get(mob_reset.room_vnum))
+                                is not None
+                                and key_room.area_file == room.area_file
+                            )
+                            and set(key_vnums).intersection(
+                                _reset_object_vnums(mob_reset)
+                            )
+                        }
+                    )
+                )
+                append_placement(
+                    item,
+                    source_kind="ground-container",
+                    source_mobile_vnum=None,
+                    source_mobile="",
+                    room=room,
+                    maximum_count=reset.maximum_count,
+                    source_level_range=item_level_range(item),
+                    candidate=direct_container_by_room.get(room.vnum),
+                    container_object_vnums=container_chain,
+                    required_key_object_vnums=key_vnums,
+                    required_key_source_mobile_vnums=key_mobile_vnums,
+                )
 
     status_order = {
         "promising": 0,
@@ -2316,6 +2842,7 @@ def _split_c_initializer_fields(row: str) -> tuple[str, ...]:
     fields: list[str] = []
     start = 0
     parentheses = 0
+    braces = 0
     quoted = False
     escaped = False
     for position, char in enumerate(row):
@@ -2333,7 +2860,11 @@ def _split_c_initializer_fields(row: str) -> tuple[str, ...]:
             parentheses += 1
         elif char == ")":
             parentheses = max(0, parentheses - 1)
-        elif char == "," and parentheses == 0:
+        elif char == "{":
+            braces += 1
+        elif char == "}":
+            braces = max(0, braces - 1)
+        elif char == "," and parentheses == 0 and braces == 0:
             fields.append(row[start:position].strip())
             start = position + 1
     fields.append(row[start:].strip())
@@ -2343,6 +2874,127 @@ def _split_c_initializer_fields(row: str) -> tuple[str, ...]:
 def _c_string_literal(value: str) -> str | None:
     match = re.fullmatch(r'\s*"((?:\\.|[^"\\])*)"\s*', value, re.DOTALL)
     return None if match is None else match.group(1)
+
+
+_UNPARSED_SOURCE_SPECIAL = "__unparsed_source_special__"
+
+
+def _parse_c_special_name(expression: str) -> str | None:
+    literal = _c_string_literal(expression)
+    if literal is not None:
+        return literal
+    if expression.strip().casefold() == "null":
+        return None
+    # A source parser failure must remain a hazard, not silently become an
+    # empty special slot that could authorize an unsafe route.
+    return _UNPARSED_SOURCE_SPECIAL
+
+
+def _parse_c_special_names(
+    fields: tuple[str, ...],
+    start: int,
+) -> tuple[str | None, ...]:
+    return tuple(
+        _parse_c_special_name(fields[start + offset])
+        if start + offset < len(fields)
+        else None
+        for offset in range(MOBILE_SPECIAL_SLOTS)
+    )
+
+
+def _parse_c_special_chances(
+    expression: str | None,
+    macros: Mapping[str, int],
+    *,
+    default: tuple[int, ...],
+) -> tuple[int, ...]:
+    if expression is None:
+        return default
+    normalized = " ".join(expression.split()).casefold()
+    if normalized == "mob_special_chances_inherit":
+        return (MOBILE_TEMPLATE_UNSET,) * MOBILE_SPECIAL_SLOTS
+    if normalized == "mob_special_chances_auto":
+        return (MOBILE_SPECIAL_AUTO,) * MOBILE_SPECIAL_SLOTS
+    if not (expression.strip().startswith("{") and expression.strip().endswith("}")):
+        return default
+    values = _split_c_initializer_fields(expression.strip()[1:-1])
+    if len(values) != MOBILE_SPECIAL_SLOTS:
+        return default
+    parsed = tuple(
+        _parse_c_integer_expression(value, macros)
+        for value in values
+    )
+    if any(value is None for value in parsed):
+        return default
+    return tuple(int(value) for value in parsed)
+
+
+def _resolve_template_special_names(
+    species_names: tuple[str | None, ...],
+    archetype_names: tuple[str | None, ...],
+) -> tuple[str | None, ...]:
+    resolved: list[str | None] = []
+    for species_name, archetype_name in zip(
+        species_names,
+        archetype_names,
+        strict=True,
+    ):
+        # ``None`` means inherit; an empty string explicitly clears the slot.
+        resolved.append(
+            species_name
+            if archetype_name is None
+            else (archetype_name or None)
+        )
+    return tuple(resolved)
+
+
+def _resolve_template_special_chances(
+    species_chances: tuple[int, ...],
+    archetype_chances: tuple[int, ...],
+) -> tuple[int, ...]:
+    inherit = (MOBILE_TEMPLATE_UNSET,) * MOBILE_SPECIAL_SLOTS
+    if archetype_chances != inherit:
+        return archetype_chances
+    if species_chances != inherit:
+        return species_chances
+    return (MOBILE_SPECIAL_AUTO,) * MOBILE_SPECIAL_SLOTS
+
+
+def _effective_mobile_special_names(
+    names: Iterable[str | None],
+    chances: Iterable[int],
+) -> tuple[str, ...]:
+    normalized_names = tuple(names)
+    normalized_chances = tuple(chances)
+    nonempty = tuple(
+        name
+        for name in normalized_names
+        if name is not None and name != ""
+    )
+    if not nonempty:
+        return ()
+    if len(normalized_names) != MOBILE_SPECIAL_SLOTS or len(normalized_chances) != MOBILE_SPECIAL_SLOTS:
+        return tuple(dict.fromkeys(nonempty))
+    if normalized_chances in {
+        (MOBILE_TEMPLATE_UNSET,) * MOBILE_SPECIAL_SLOTS,
+        (MOBILE_SPECIAL_AUTO,) * MOBILE_SPECIAL_SLOTS,
+    }:
+        return tuple(dict.fromkeys(nonempty))
+    if any(chance < 0 or chance > 100 for chance in normalized_chances):
+        return tuple(dict.fromkeys(nonempty))
+    if sum(normalized_chances) not in {0, 100}:
+        return tuple(dict.fromkeys(nonempty))
+    return tuple(
+        dict.fromkeys(
+            name
+            for name, chance in zip(
+                normalized_names,
+                normalized_chances,
+                strict=True,
+            )
+            if name is not None and name != "" and chance > 0
+        )
+    )
 
 
 @lru_cache(maxsize=4)
@@ -2361,7 +3013,19 @@ def load_mobile_template_catalog(
         return {}
     mob_text = mob_path.read_text(encoding="latin-1")
     macros = _load_c_integer_macros(header_path.read_text(encoding="latin-1"))
-    species_by_name: dict[str, tuple[str, int, int, int]] = {}
+    species_by_name: dict[
+        str,
+        tuple[
+            str,
+            int,
+            int,
+            int,
+            int,
+            int,
+            tuple[str | None, ...],
+            tuple[int, ...],
+        ],
+    ] = {}
     for row in _c_initializer_rows(mob_text, "species_table"):
         fields = _split_c_initializer_fields(row)
         if len(fields) < 4:
@@ -2369,11 +3033,29 @@ def load_mobile_template_catalog(
         name = _c_string_literal(fields[0])
         if not name:
             continue
+        species_special_names = _parse_c_special_names(fields, 16)
+        species_special_chances = _parse_c_special_chances(
+            fields[19] if len(fields) > 19 else None,
+            macros,
+            default=(MOBILE_TEMPLATE_UNSET,) * MOBILE_SPECIAL_SLOTS,
+        )
         species_by_name[name.casefold()] = (
             name,
             _parse_c_integer_expression(fields[1], macros) or 0,
             _parse_c_integer_expression(fields[2], macros) or 0,
             _parse_c_integer_expression(fields[3], macros) or 0,
+            (
+                _parse_c_integer_expression(fields[8], macros)
+                if len(fields) > 8
+                else MOBILE_TEMPLATE_UNSET
+            ),
+            (
+                _parse_c_integer_expression(fields[9], macros)
+                if len(fields) > 9
+                else MOBILE_TEMPLATE_UNSET
+            ),
+            species_special_names,
+            species_special_chances,
         )
 
     templates: dict[str, MobileTemplateSource] = {}
@@ -2388,6 +3070,30 @@ def load_mobile_template_catalog(
         species = species_by_name.get(species_name.casefold())
         if species is None:
             continue
+        archetype_hp_modifier = (
+            _parse_c_integer_expression(fields[11], macros)
+            if len(fields) > 11
+            else MOBILE_TEMPLATE_UNSET
+        )
+        archetype_damage_modifier = (
+            _parse_c_integer_expression(fields[12], macros)
+            if len(fields) > 12
+            else MOBILE_TEMPLATE_UNSET
+        )
+        archetype_special_names = _parse_c_special_names(fields, 19)
+        archetype_special_chances = _parse_c_special_chances(
+            fields[23] if len(fields) > 23 else None,
+            macros,
+            default=(MOBILE_TEMPLATE_UNSET,) * MOBILE_SPECIAL_SLOTS,
+        )
+        special_names = _resolve_template_special_names(
+            species[6],
+            archetype_special_names,
+        )
+        special_chances = _resolve_template_special_chances(
+            species[7],
+            archetype_special_chances,
+        )
         templates[name.casefold()] = MobileTemplateSource(
             name=name,
             species=species[0],
@@ -2397,7 +3103,23 @@ def load_mobile_template_catalog(
             ^ (_parse_c_integer_expression(fields[5], macros) or 0),
             body_form_flags=species[3]
             ^ (_parse_c_integer_expression(fields[6], macros) or 0),
-            xp_modifier=_parse_c_integer_expression(fields[-1], macros) or 0,
+            xp_modifier=(
+                _parse_c_integer_expression(
+                    fields[22] if len(fields) > 22 else fields[-1],
+                    macros,
+                )
+                or 0
+            ),
+            hp_modifier=_resolve_template_scalar(
+                species[4],
+                archetype_hp_modifier,
+            ),
+            damage_modifier=_resolve_template_scalar(
+                species[5],
+                archetype_damage_modifier,
+            ),
+            special_names=special_names,
+            special_chances=special_chances,
         )
     return templates
 
@@ -2488,6 +3210,7 @@ def parse_area_file(
     mobile_templates: Mapping[str, MobileTemplateSource] | None = None,
 ) -> AreaSource:
     lines = path.read_text(encoding="latin-1").splitlines()
+    area_levels = _parse_area_level_bounds(lines)
     sections = _section_ranges(lines)
     mobiles = (
         _parse_mobiles(
@@ -2515,6 +3238,13 @@ def parse_area_file(
         lines,
         sections.get("#SHOPS"),
     )
+    if area_levels is not None:
+        low_level, high_level, low_enforced, high_enforced = area_levels
+        for room in rooms.values():
+            room.area_low_level = low_level
+            room.area_high_level = high_level
+            room.area_low_enforced = low_enforced
+            room.area_high_enforced = high_enforced
     if include_resets:
         (
             mob_resets,
@@ -2538,6 +3268,8 @@ def parse_area_file(
         mobile_specials = _parse_mobile_specials(
             lines,
             sections.get("#SPECIALS"),
+            mobiles=mobiles,
+            mobile_templates=mobile_templates,
         )
     return AreaSource(
         path,
@@ -2550,6 +3282,22 @@ def parse_area_file(
         mobile_specials,
         frozenset(shopkeepers),
     )
+
+
+def _parse_area_level_bounds(
+    lines: Collection[str],
+) -> tuple[int, int, int, int] | None:
+    """Parse DD4's four numeric area-header level values."""
+    for raw_line in tuple(lines)[:6]:
+        fields = raw_line.split()
+        if len(fields) != 4:
+            continue
+        try:
+            values = tuple(int(field) for field in fields)
+        except ValueError:
+            continue
+        return (values[0], values[1], values[2], values[3])
+    return None
 
 
 def _bounded_borderline_route_aggressor(
@@ -2575,6 +3323,7 @@ def _bounded_borderline_route_aggressor(
         or mobile.vnum in world.shopkeepers
         or mobile.act_flags & ACT_NO_EXPERIENCE
         or world.mobile_specials.get(mobile.vnum)
+        or not mobile.damage_modifier_known
     ):
         return False
     source_capacity = max(
@@ -2602,10 +3351,12 @@ def _bounded_borderline_route_aggressor(
         maximum_level,
         wielding=wielding,
         dual_wielding=dual_wielding,
+        damage_modifier=mobile.damage_modifier,
     )
     critical_hit_damage = _mobile_critical_hit_damage(
         maximum_level,
         wielding=wielding or dual_wielding,
+        damage_modifier=mobile.damage_modifier,
     )
     return (
         peak_round_damage < character_max_hp
@@ -2623,16 +3374,38 @@ def source_mobile_route_aggressor_is_bounded(
     """Return whether one below-band route aggressor may be finished once.
 
     This is deliberately narrower than the ordinary ten-level movement
-    cutoff.  It is for source-identified, unarmed mobiles that can only make
-    a small incidental interruption: scripted attacks, unsafe specials,
-    armed resets, and useful-band loads remain rejected.  Without a live HP
-    ceiling the older ten-level rule remains the fail-closed fallback.
+    cutoff.  It is for source-identified mobiles that can only make a small
+    incidental interruption: scripted attacks, unsafe specials, dual-wielded
+    or otherwise ambiguous equipment, and useful-band loads remain rejected.
+    A single source-listed wielded weapon is admitted only when its stricter
+    peak and critical-damage bounds fit the character's transit reserve.
+    Additional source-listed armor is inert for this damage bound and is
+    accepted when its object type is known; a second weapon or unknown
+    equipment remains ambiguous and is rejected.
+    Without a live HP ceiling the older ten-level rule remains the fail-closed
+    fallback.
     """
-    if not mobile.aggressive or mobile.attack_programs:
+    if (
+        not mobile.aggressive
+        or mobile.attack_programs
+        or not mobile.damage_modifier_known
+    ):
         return False
-    specials = set(world.mobile_specials.get(mobile.vnum, ()))
+    specials = {
+        str(special).strip().casefold()
+        for special in world.mobile_specials.get(mobile.vnum, ())
+    }
     if specials and not specials <= SAFE_NONCOMBAT_SPECIALS:
-        return False
+        # ``update.c`` skips ordinary aggression when the player is more
+        # than ten levels above the mobile. Combat-only specials such as
+        # ``spec_cast_undead`` also require ``victim->fighting == ch`` in
+        # ``special.c``, so they cannot affect this transit at that gap.
+        maximum_level = _mobile_level_range(mobile.level)[1]
+        if not (
+            specials <= TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+            and character_level > maximum_level + 10
+        ):
+            return False
     maximum_level = _mobile_level_range(mobile.level)[1]
     if maximum_level > character_level - 5:
         return False
@@ -2641,18 +3414,63 @@ def source_mobile_route_aggressor_is_bounded(
         for reset in world.mob_resets
         if reset.mobile_vnum == mobile.vnum
     ]
-    if any(reset.equipment for reset in resets):
+    if not resets:
+        # Synthetic and legacy callers may provide only the mobile identity.
+        # Preserve their older level-only fallback; parsed ranked candidates
+        # always originate from a concrete reset and take the strict branch.
+        if character_max_hp is None or character_max_hp <= 0:
+            return maximum_level <= character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+        peak_round_damage = _mobile_peak_round_damage(
+            maximum_level,
+            wielding=False,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+        critical_hit_damage = _mobile_critical_hit_damage(
+            maximum_level,
+            wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+        return (
+            peak_round_damage * 100
+            <= int(character_max_hp * _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO * 100)
+            and critical_hit_damage * 100
+            <= int(
+                character_max_hp * _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO * 100
+            )
+        )
+    wielding = False
+    dual_wielding = False
+    for reset in resets:
+        for wear_location, object_vnum in tuple(reset.equipment):
+            if wear_location == WEAR_DUAL:
+                dual_wielding = True
+                continue
+            item = world.objects.get(object_vnum)
+            if wear_location == WEAR_WIELD:
+                if wielding or item is None or item.item_type != ITEM_WEAPON:
+                    return False
+                wielding = True
+                continue
+            if item is None or item.item_type != ITEM_ARMOR:
+                # Held objects, unknown prototypes, and non-armor equipment
+                # can change the interruption in ways this envelope does not
+                # model. Keep those source proofs closed.
+                return False
+    if dual_wielding:
         return False
     if character_max_hp is None or character_max_hp <= 0:
         return maximum_level <= character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
     peak_round_damage = _mobile_peak_round_damage(
         maximum_level,
-        wielding=False,
-        dual_wielding=False,
+        wielding=wielding,
+        dual_wielding=dual_wielding,
+        damage_modifier=mobile.damage_modifier,
     )
     critical_hit_damage = _mobile_critical_hit_damage(
         maximum_level,
-        wielding=False,
+        wielding=wielding,
+        damage_modifier=mobile.damage_modifier,
     )
     return (
         peak_round_damage * 100
@@ -2686,6 +3504,8 @@ def source_mobile_route_program_attacker_is_bounded(
         or mobile.costs_fame
         or mobile.vnum in world.shopkeepers
         or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+        or not mobile.hp_modifier_known
+        or not mobile.damage_modifier_known
     ):
         return False
     attack_programs = mobile.attack_programs
@@ -2721,15 +3541,18 @@ def source_mobile_route_program_attacker_is_bounded(
     _, maximum_hp = _mobile_base_hp_range(
         _mobile_level_range(mobile.level),
         rank=mobile.rank,
+        hp_modifier=mobile.hp_modifier,
     )
     peak_round_damage = _mobile_peak_round_damage(
         maximum_level,
         wielding=False,
         dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
     )
     critical_hit_damage = _mobile_critical_hit_damage(
         maximum_level,
         wielding=False,
+        damage_modifier=mobile.damage_modifier,
     )
     return (
         maximum_hp <= character_max_hp
@@ -2757,7 +3580,9 @@ def rank_hunt_candidates(
     level_ceiling_offset: int | None = None,
     include_all_areas: bool = False,
     required_loot_object_vnums: Collection[int] = (),
+    route_key_object_vnums: Collection[int] = (),
     recall_origins: Mapping[int, int] | None = None,
+    character_alignment: int | None = None,
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -2792,8 +3617,15 @@ def rank_hunt_candidates(
         if index < 0 or room_vnum not in world.rooms:
             continue
         recall_origin_rooms[index] = room_vnum
+    route_key_vnums = {
+        int(object_vnum) for object_vnum in route_key_object_vnums
+    }
     recall_paths_by_origin = {
-        index: _shortest_paths_from(world.rooms, room_vnum)
+        index: _shortest_paths_from(
+            world.rooms,
+            room_vnum,
+            unlockable_key_vnums=route_key_vnums,
+        )
         for index, room_vnum in recall_origin_rooms.items()
     }
     wanderer_reachability = {
@@ -2841,6 +3673,7 @@ def rank_hunt_candidates(
             world.rooms,
             room_vnum,
             blocked_rooms=route_hazard_rooms - {room_vnum},
+            unlockable_key_vnums=route_key_vnums,
         )
         for index, room_vnum in recall_origin_rooms.items()
     }
@@ -2864,6 +3697,13 @@ def rank_hunt_candidates(
         for index, paths in recall_paths_by_origin.items():
             direct = paths.get(room_vnum)
             if direct is None:
+                continue
+            if any(
+                source_room_level_rejection(world.rooms.get(path_room), character_level)
+                for path_room in direct[1][1:]
+            ):
+                # ``act_move.c`` checks the destination room before moving;
+                # do not rank a target behind an enforced area gate.
                 continue
             selected = direct
             if route_hazard_rooms.intersection(direct[1][:-1]):
@@ -2918,6 +3758,8 @@ def rank_hunt_candidates(
             or mobile.act_flags & ACT_NO_EXPERIENCE
         ):
             continue
+        if source_room_level_rejection(room, character_level) is not None:
+            continue
         reset_object_vnums = _reset_object_vnums(reset)
         required_loot_objects = tuple(
             world.objects[object_vnum]
@@ -2956,6 +3798,7 @@ def rank_hunt_candidates(
         hp_range = _mobile_base_hp_range(
             level_range,
             rank=mobile.rank,
+            hp_modifier=mobile.hp_modifier,
         )
         peak_round_damage = _mobile_peak_round_damage(
             level_range[1],
@@ -2967,6 +3810,7 @@ def rank_hunt_candidates(
                 wear_location == WEAR_DUAL
                 for wear_location, _ in equipped_weapon_slots
             ),
+            damage_modifier=mobile.damage_modifier,
         )
         minimum_peak_round_damage = _mobile_peak_round_damage(
             level_range[0],
@@ -2978,10 +3822,12 @@ def rank_hunt_candidates(
                 wear_location == WEAR_DUAL
                 for wear_location, _ in equipped_weapon_slots
             ),
+            damage_modifier=mobile.damage_modifier,
         )
         critical_hit_damage = _mobile_critical_hit_damage(
             level_range[1],
             wielding=bool(equipped_weapon_slots),
+            damage_modifier=mobile.damage_modifier,
         )
         sellable = [
             item
@@ -3035,6 +3881,18 @@ def rank_hunt_candidates(
         route_attack_program_mobile_vnums: set[int] = set()
         route_special_mobile_vnums: set[int] = set()
         dangerous = False
+        if not mobile.hp_modifier_known:
+            hazards.append("source mobile HP modifier is unavailable")
+            autonomy_rejections.append(
+                "source mobile HP modifier is unavailable"
+            )
+            dangerous = True
+        if not mobile.damage_modifier_known:
+            hazards.append("source mobile damage modifier is unavailable")
+            autonomy_rejections.append(
+                "source mobile damage modifier is unavailable"
+            )
+            dangerous = True
         normalized_target = _normalize_name(mobile.short_description)
         boot_kills = (
             mobile_kill_counts.get(mobile.vnum, 0)
@@ -3084,7 +3942,44 @@ def rank_hunt_candidates(
                 world,
                 companion,
                 character_level=character_level,
+                character_alignment=character_alignment,
             )
+            companion_is_source_capable = source_mobile_can_join_player_fight(
+                world,
+                companion,
+                character_level=character_level,
+            )
+            if (
+                not companion_can_join
+                and companion_is_source_capable
+                and _source_mobile_has_combat_joining_special(
+                    world,
+                    companion.vnum,
+                )
+            ):
+                hazards.append(
+                    "source-backed good-alignment guard cannot join "
+                    "positive-alignment player: "
+                    f"{companion.short_description}"
+                )
+                continue
+            companion_is_good_alignment_safe = (
+                not companion_can_join
+                and not companion.aggressive
+                and not companion.attack_programs
+                and set(companion_specials).issubset(
+                    SAFE_NONCOMBAT_SPECIALS | TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+                )
+                and companion.alignment >= 350
+                and _source_character_is_good_alignment(character_alignment)
+            )
+            if companion_is_good_alignment_safe:
+                hazards.append(
+                    "source-backed good-alignment companion cannot join "
+                    "positive-alignment player: "
+                    f"{companion.short_description}"
+                )
+                continue
             # A source-proven below-band mobile cannot make this useful-band
             # target an unsafe crowd.  This remains true when its special is
             # capable of a bounded nuisance effect; the field runner must
@@ -3104,9 +3999,13 @@ def rank_hunt_candidates(
                     f"{companion.short_description}"
                 )
                 continue
+            # ``violence_update`` rejects a passive ordinary bystander more
+            # than six levels above the player before it can join the fight.
+            # Keep that source level window authoritative: only aggression,
+            # specials, programs, or an actual source-capable join path make
+            # this endpoint dangerous.
             if (
                 companion.aggressive
-                or companion_level_range[1] > character_level
                 or companion_specials
                 or companion.attack_programs
             ):
@@ -3291,6 +4190,26 @@ def rank_hunt_candidates(
         for index in sorted(reachable_wanderers):
             hazard, hazard_reset = wandering_aggressors[index]
             if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
+                continue
+            if (
+                _source_mobile_has_combat_joining_special(world, hazard.vnum)
+                and source_mobile_can_join_player_fight(
+                    world,
+                    hazard,
+                    character_level=character_level,
+                )
+                and not source_mobile_can_join_player_fight(
+                    world,
+                    hazard,
+                    character_level=character_level,
+                    character_alignment=character_alignment,
+                )
+            ):
+                hazards.append(
+                    "source-backed good-alignment guard cannot join "
+                    "positive-alignment player: "
+                    f"{hazard.short_description}"
+                )
                 continue
             unsafe_special = _source_mobile_has_unsafe_special(
                 world,
@@ -3616,6 +4535,7 @@ def rank_hunt_candidates(
                 requires_flight=requires_flight,
                 route_origin_recall_index=route_origin_recall_index,
                 route_origin_room_vnum=route_origin_room_vnum,
+                source_damage_modifier=mobile.damage_modifier,
             )
         )
 
@@ -3736,6 +4656,72 @@ def _parse_mobile_template_name(
     return None
 
 
+def _parse_mobile_hp_modifier(
+    lines: list[str],
+    start: int,
+    end: int,
+) -> int | None:
+    """Parse DD4's optional per-mobile ``MobHPMod`` scalar."""
+    modifier: int | None = None
+    found = False
+    for line in lines[start:end]:
+        parts = line.split()
+        if not parts or parts[0].casefold() != "mobhpmod":
+            continue
+        found = True
+        if len(parts) != 2:
+            raise ValueError("MobHPMod requires one signed percentage value")
+        value = parts[1]
+        if value.casefold() == "inherit":
+            modifier = None
+            continue
+        if not re.fullmatch(r"[+-]?\d+", value):
+            raise ValueError(f"invalid MobHPMod value: {value}")
+        modifier = int(value)
+        if not MOBILE_HP_MOD_MIN <= modifier <= (1 << 31) - 1:
+            raise ValueError(f"MobHPMod is outside the source range: {value}")
+    return modifier if found else None
+
+
+def _parse_mobile_damage_modifier(
+    lines: list[str],
+    start: int,
+    end: int,
+) -> int | None:
+    """Parse DD4's optional per-mobile ``MobDamMod`` scalar."""
+    modifier: int | None = None
+    found = False
+    for line in lines[start:end]:
+        parts = line.split()
+        if not parts or parts[0].casefold() != "mobdammod":
+            continue
+        found = True
+        if len(parts) != 2:
+            raise ValueError("MobDamMod requires one signed percentage value")
+        value = parts[1]
+        if value.casefold() == "inherit":
+            modifier = None
+            continue
+        if not re.fullmatch(r"[+-]?\d+", value):
+            raise ValueError(f"invalid MobDamMod value: {value}")
+        modifier = int(value)
+        if not MOBILE_DAMAGE_MOD_MIN <= modifier <= (1 << 31) - 1:
+            raise ValueError(f"MobDamMod is outside the source range: {value}")
+    return modifier if found else None
+
+
+def _resolve_template_scalar(
+    species_value: int | None,
+    archetype_value: int | None,
+) -> int:
+    """Mirror DD4's explicit archetype, species, then neutral resolution."""
+    if archetype_value is not None and archetype_value != MOBILE_TEMPLATE_UNSET:
+        return archetype_value
+    if species_value is not None and species_value != MOBILE_TEMPLATE_UNSET:
+        return species_value
+    return 0
+
+
 def _parse_mobiles(
     lines: list[str],
     bounds: tuple[int, int] | None,
@@ -3802,6 +4788,32 @@ def _parse_mobiles(
         template_body_form_flags = (
             template.body_form_flags if template is not None else 0
         )
+        template_hp_modifier = (
+            template.hp_modifier if template is not None else 0
+        )
+        area_hp_modifier = _parse_mobile_hp_modifier(
+            lines,
+            index,
+            record_end,
+        )
+        hp_modifier_known = (
+            template_name is None
+            or template is not None
+            or area_hp_modifier is not None
+        )
+        template_damage_modifier = (
+            template.damage_modifier if template is not None else 0
+        )
+        area_damage_modifier = _parse_mobile_damage_modifier(
+            lines,
+            index,
+            record_end,
+        )
+        damage_modifier_known = (
+            template_name is None
+            or template is not None
+            or area_damage_modifier is not None
+        )
         effective_body_form_flags = (
             None
             if body_form_flags is None
@@ -3830,6 +4842,30 @@ def _parse_mobiles(
             area_act_flags=area_act_flags,
             area_affected_flags=area_affected_flags,
             area_body_form_flags=area_body_form_flags,
+            template_hp_modifier=template_hp_modifier,
+            area_hp_modifier=area_hp_modifier,
+            hp_modifier=(
+                (
+                    area_hp_modifier
+                    if area_hp_modifier is not None
+                    else template_hp_modifier
+                )
+                if hp_modifier_known
+                else None
+            ),
+            hp_modifier_known=hp_modifier_known,
+            template_damage_modifier=template_damage_modifier,
+            area_damage_modifier=area_damage_modifier,
+            damage_modifier=(
+                (
+                    area_damage_modifier
+                    if area_damage_modifier is not None
+                    else template_damage_modifier
+                )
+                if damage_modifier_known
+                else None
+            ),
+            damage_modifier_known=damage_modifier_known,
         )
         index = record_end
     return mobiles
@@ -4064,7 +5100,7 @@ def _parse_rooms(
                 room.exits[direction] = ExitSource(
                     direction,
                     int(exit_parts[2]),
-                    int(exit_parts[0]),
+                    _source_exit_flags_for_lock_type(int(exit_parts[0])),
                     int(exit_parts[1]),
                 )
             elif token == "E":
@@ -4278,25 +5314,106 @@ def _parse_shopkeepers(
 def _parse_mobile_specials(
     lines: list[str],
     bounds: tuple[int, int] | None,
+    *,
+    mobiles: Mapping[int, MobileSource] | None = None,
+    mobile_templates: Mapping[str, MobileTemplateSource] | None = None,
 ) -> dict[int, tuple[str, ...]]:
     if bounds is None:
-        return {}
-    index, end = bounds
-    specials: dict[int, list[str]] = {}
+        index, end = 0, 0
+    else:
+        index, end = bounds
+    missing = object()
+    name_overrides: dict[int, list[object]] = {}
+    chance_overrides: dict[int, tuple[int, ...]] = {}
+
+    def names_for(vnum: int) -> list[object]:
+        return name_overrides.setdefault(
+            vnum,
+            [missing] * MOBILE_SPECIAL_SLOTS,
+        )
+
+    def parse_name(value: str) -> str | None | object:
+        normalized = value.casefold()
+        if normalized == "inherit":
+            return missing
+        if normalized == "none":
+            return ""
+        return value
+
     while index < end:
         parts = lines[index].split()
         index += 1
-        if (
-            len(parts) >= 3
-            and parts[0] == "M"
-            and _all_ints(parts[1:2])
-            and parts[2].startswith("spec_")
-        ):
-            specials.setdefault(int(parts[1]), []).append(parts[2])
-    return {
-        mobile_vnum: tuple(dict.fromkeys(values))
-        for mobile_vnum, values in specials.items()
-    }
+        if len(parts) < 2 or parts[0] not in {"M", "N", "P"}:
+            continue
+        if not _all_ints(parts[1:2]):
+            continue
+        vnum = int(parts[1])
+        if parts[0] == "M":
+            if len(parts) < 3:
+                continue
+            name = parse_name(parts[2])
+            overrides = names_for(vnum)
+            if name is missing:
+                overrides[:] = [missing] * MOBILE_SPECIAL_SLOTS
+                chance_overrides.pop(vnum, None)
+            elif name == "":
+                overrides[:] = [""] * MOBILE_SPECIAL_SLOTS
+                chance_overrides[vnum] = (0,) * MOBILE_SPECIAL_SLOTS
+            else:
+                overrides[:] = [name, "", ""]
+                chance_overrides[vnum] = (100, 0, 0)
+            continue
+        if parts[0] == "N":
+            if len(parts) < 4 or not _all_ints(parts[2:3]):
+                continue
+            slot = int(parts[2])
+            if not 1 <= slot <= MOBILE_SPECIAL_SLOTS:
+                continue
+            names_for(vnum)[slot - 1] = parse_name(parts[3])
+            continue
+        if len(parts) < 3:
+            continue
+        policy = _parse_c_special_chances(
+            "{ " + ", ".join(parts[2:]) + " }",
+            {},
+            default=(MOBILE_SPECIAL_AUTO,) * MOBILE_SPECIAL_SLOTS,
+        )
+        # The source treats an all-word ``inherit`` policy as template
+        # inheritance; ``auto`` is an explicit automatic distribution.
+        if parts[2].casefold() == "inherit":
+            chance_overrides.pop(vnum, None)
+        else:
+            chance_overrides[vnum] = policy
+
+    resolved: dict[int, tuple[str, ...]] = {}
+    source_mobiles = mobiles or {}
+    for vnum, mobile in source_mobiles.items():
+        template = (
+            mobile_templates.get(mobile.template_name)
+            if mobile_templates is not None and mobile.template_name is not None
+            else None
+        )
+        names = list(
+            template.special_names
+            if template is not None
+            else (None,) * MOBILE_SPECIAL_SLOTS
+        )
+        chances = (
+            template.special_chances
+            if template is not None
+            else (MOBILE_SPECIAL_AUTO,) * MOBILE_SPECIAL_SLOTS
+        )
+        overrides = name_overrides.get(vnum)
+        if overrides is not None:
+            for slot, value in enumerate(overrides):
+                if value is not missing:
+                    names[slot] = value  # type: ignore[assignment]
+        if vnum in chance_overrides:
+            chances = chance_overrides[vnum]
+        effective = _effective_mobile_special_names(names, chances)
+        if effective:
+            resolved[vnum] = effective
+    return resolved
 
 
 def _shortest_path(
@@ -4451,6 +5568,16 @@ def _source_route_hazard_rejections(
     )
     resets_by_room = _resets_by_room(world)
     rejections: list[str] = []
+    for room_vnum in path_room_sequence[1:]:
+        access_rejection = source_room_level_rejection(
+            world.rooms.get(room_vnum),
+            character_level,
+        )
+        if access_rejection is not None:
+            rejections.append(
+                f"route crosses an inaccessible source area in room {room_vnum}: "
+                f"{access_rejection}"
+            )
     for room_vnum in path_room_set:
         for reset in resets_by_room.get(room_vnum, ()):
             mobile = world.mobiles.get(reset.mobile_vnum)
@@ -4871,6 +5998,29 @@ def _source_mobile_has_combat_joining_special(
     )
 
 
+def source_mobile_can_join_target_fight(
+    world: WorldSource,
+    mobile: MobileSource,
+    target: MobileSource,
+    *,
+    character_level: int | None = None,
+    character_alignment: int | None = None,
+) -> bool:
+    """Compatibility wrapper for the player-fight source gate.
+
+    The field runner's target is an NPC, but DD4's ``violence_update`` branch
+    tests the alignment of the *player* being attacked. The NPC target's
+    alignment is relevant only to a separate NPC-versus-NPC guard-special
+    path, so it must not make a field companion look harmless.
+    """
+    return source_mobile_can_join_player_fight(
+        world,
+        mobile,
+        character_level=character_level,
+        character_alignment=character_alignment,
+    )
+
+
 def _source_mobile_is_combat_hazard(
     world: WorldSource,
     mobile: MobileSource,
@@ -4920,9 +6070,11 @@ def _shortest_paths_from(
     origin: int,
     *,
     blocked_rooms: set[int] | frozenset[int] = frozenset(),
+    unlockable_key_vnums: Collection[int] = (),
 ) -> dict[int, tuple[tuple[str, ...], tuple[int, ...], int]]:
     if origin not in rooms:
         return {}
+    key_vnums = {int(vnum) for vnum in unlockable_key_vnums}
     paths: dict[int, tuple[tuple[str, ...], tuple[int, ...], int]] = {}
     queue: list[tuple[int, int, tuple[str, ...], tuple[int, ...], int]] = [
         (0, origin, (), (origin,), 0)
@@ -4941,7 +6093,11 @@ def _shortest_paths_from(
                 # An open exit may retain EX_LOCKED in DD4's source. Players
                 # and mobiles can traverse it; only a closed-and-locked door
                 # is inaccessible to the route planner.
-                or (exit_source.closed and exit_source.locked)
+                or (
+                    exit_source.closed
+                    and exit_source.locked
+                    and exit_source.key_vnum not in key_vnums
+                )
             ):
                 continue
             door_cost = 1 if exit_source.closed else 0
@@ -4951,6 +6107,8 @@ def _shortest_paths_from(
                 continue
             best_cost[exit_source.destination] = next_cost
             next_commands = commands
+            if exit_source.closed and exit_source.locked:
+                next_commands += (f"unlock {direction}",)
             if exit_source.closed:
                 next_commands += (f"open {direction}",)
             next_commands += (direction,)
@@ -4965,6 +6123,145 @@ def _shortest_paths_from(
                 ),
             )
     return paths
+
+
+def _shortest_source_analysis_path(
+    rooms: Mapping[int, RoomSource],
+    origin: int,
+    target: int,
+) -> tuple[tuple[str, ...], tuple[int, ...], int, tuple[int, ...]] | None:
+    """Find a source-analysis route while recording locked-door keys.
+
+    This helper deliberately differs from the executable route planner:
+    locked doors are traversable only on paper, and the returned route is
+    never passed to campaign dispatch. It exists so reports can explain why a
+    source placement is ``source-only`` instead of silently showing no path.
+    """
+    if origin not in rooms or target not in rooms:
+        return None
+    queue: list[
+        tuple[
+            int,
+            int,
+            tuple[str, ...],
+            tuple[int, ...],
+            int,
+            tuple[int, ...],
+        ]
+    ] = [(0, origin, (), (origin,), 0, ())]
+    best_cost = {origin: 0}
+    while queue:
+        cost, room_vnum, commands, visited_rooms, closed_doors, required_keys = (
+            heapq.heappop(queue)
+        )
+        if cost != best_cost.get(room_vnum):
+            continue
+        if room_vnum == target:
+            return commands, visited_rooms, closed_doors, required_keys
+        room = rooms[room_vnum]
+        for direction, exit_source in sorted(room.exits.items()):
+            if exit_source.destination not in rooms:
+                continue
+            door_cost = 1 if exit_source.closed else 0
+            random_cost = 20 if room.random_exits else 0
+            next_cost = cost + 1 + door_cost + random_cost
+            if next_cost >= best_cost.get(exit_source.destination, 1_000_000):
+                continue
+            next_commands = commands
+            next_keys = required_keys
+            if exit_source.closed and exit_source.locked:
+                if exit_source.key_vnum > 0:
+                    next_commands += (f"unlock {direction}",)
+                    next_keys = tuple(
+                        dict.fromkeys((*required_keys, exit_source.key_vnum))
+                    )
+            if exit_source.closed:
+                next_commands += (f"open {direction}",)
+            next_commands += (direction,)
+            best_cost[exit_source.destination] = next_cost
+            heapq.heappush(
+                queue,
+                (
+                    next_cost,
+                    exit_source.destination,
+                    next_commands,
+                    visited_rooms + (exit_source.destination,),
+                    closed_doors + door_cost,
+                    next_keys,
+                ),
+            )
+    return None
+
+
+def _source_key_carriers(
+    world: WorldSource,
+    key_object_vnums: Collection[int],
+) -> tuple[int, ...]:
+    """Return source mobile VNUMs that reset with any required route key."""
+    return tuple(
+        sorted(
+            {
+                reset.mobile_vnum
+                for reset in _source_key_carrier_resets(
+                    world,
+                    key_object_vnums,
+                )
+            }
+        )
+    )
+
+
+def _source_route_key_acquisition_rejections(
+    world: WorldSource,
+    key_object_vnums: Collection[int],
+    *,
+    directly_reachable_rooms: Collection[int],
+) -> tuple[str, ...]:
+    """Explain route keys whose source placements are themselves unreachable.
+
+    A source-analysis path can cross a locked door even when the only reset
+    entries for that door's key are on the far side of the same door. Such a
+    route is useful evidence, but it is not an acquisition plan. Record the
+    circular dependency explicitly so resource selectors cannot mistake it
+    for an ordinary missing live observation.
+    """
+    reachable = {int(room_vnum) for room_vnum in directly_reachable_rooms}
+    rejections: list[str] = []
+    for raw_key_vnum in key_object_vnums:
+        try:
+            key_vnum = int(raw_key_vnum)
+        except (TypeError, ValueError):
+            continue
+        if key_vnum <= 0:
+            continue
+        carrier_rooms = {
+            reset.room_vnum
+            for reset in world.mob_resets
+            if key_vnum in _reset_object_vnums(reset)
+        }
+        ground_rooms = {
+            reset.room_vnum
+            for reset in world.room_object_resets
+            if reset.object_vnum == key_vnum
+        }
+        if reachable.intersection(carrier_rooms | ground_rooms):
+            continue
+        if carrier_rooms:
+            rejections.append(
+                f"source route key {key_vnum} has no independently "
+                "reachable carrier reset"
+            )
+        elif ground_rooms:
+            rejections.append(
+                f"source route key {key_vnum} has no independently "
+                "reachable ground reset"
+            )
+        else:
+            rejections.append(
+                f"source route key {key_vnum} has no source carrier or "
+                "ground reset"
+            )
+    return tuple(dict.fromkeys(rejections))
 
 
 _SUBCLASS_SOURCE_SKILL_ALIASES = {
@@ -5346,11 +6643,17 @@ def _mobile_level_range(source_level: int) -> tuple[int, int]:
     return max(1, source_level - 2), source_level + 2
 
 
+def _source_character_is_good_alignment(value: int | None) -> bool:
+    """Mirror ``IS_GOOD`` for a revealed player alignment only."""
+    return type(value) is int and 350 <= value <= 1000
+
+
 def source_mobile_can_join_player_fight(
     world: WorldSource,
     mobile: MobileSource,
     *,
     character_level: int | None = None,
+    character_alignment: int | None = None,
 ) -> bool:
     """Mirror the source conditions for an NPC joining a player fight.
 
@@ -5359,7 +6662,10 @@ def source_mobile_can_join_player_fight(
     function is player level minus three through plus six; a source range is
     eligible when any fuzzy load can fall inside it.  ``ACT_NO_FIGHT`` is not
     excluded because DD4 still puts that mobile into combat and permits
-    effects such as fireshield.
+    effects such as fireshield. Once the player's alignment is revealed,
+    DD4's exact ``IS_GOOD(ch) && IS_GOOD(victim)`` branch prevents a good
+    bystander from joining a good player's fight. Unknown or masked alignment
+    remains possible and therefore fails closed.
     """
     if mobile.vnum in world.shopkeepers:
         return False
@@ -5376,6 +6682,10 @@ def source_mobile_can_join_player_fight(
             or minimum_level > character_level + 6
         ):
             return False
+    if mobile.alignment >= 350 and _source_character_is_good_alignment(
+        character_alignment
+    ):
+        return False
     return True
 
 
@@ -5440,16 +6750,30 @@ def _mobile_base_hp_range(
     level_range: tuple[int, int],
     *,
     rank: str | None = None,
+    hp_modifier: int | None = 0,
 ) -> tuple[int, int]:
-    """Mirror ``create_mobile``'s area HP roll and prototype rank bonus."""
+    """Mirror ``create_mobile``'s level, rank, and source HP adjustment."""
     low, high = level_range
     multiplier = MOBILE_RANK_HP_MULTIPLIERS.get(
         str(rank or "common").casefold(),
         1,
     )
-    return (
+    base_range = (
         (low * 8 + low * low // 4) * multiplier,
         (high * 8 + high * high) * multiplier,
+    )
+    if hp_modifier is None:
+        # An unresolved source template is never allowed to look like a
+        # neutral mobile. Callers separately reject this state; the range is
+        # conservative for reports that still need to display it.
+        return (1, MOBILE_SPAWN_HP_LIMIT)
+    modifier = max(MOBILE_HP_MOD_MIN, hp_modifier)
+    return tuple(
+        min(
+            MOBILE_SPAWN_HP_LIMIT,
+            max(1, base_hp * (100 + modifier) // 100),
+        )
+        for base_hp in base_range
     )
 
 
@@ -5458,10 +6782,17 @@ def _mobile_peak_round_damage(
     *,
     wielding: bool,
     dual_wielding: bool,
+    damage_modifier: int | None = 0,
 ) -> int:
     """Return the raw upper bound when every possible NPC strike lands."""
-    unarmed_hit = _mobile_normal_hit_damage(level, wielding=False)
-    weapon_hit = _mobile_normal_hit_damage(level, wielding=True)
+    unarmed_hit = _apply_mobile_damage_modifier(
+        _mobile_normal_hit_damage(level, wielding=False),
+        damage_modifier,
+    )
+    weapon_hit = _apply_mobile_damage_modifier(
+        _mobile_normal_hit_damage(level, wielding=True),
+        damage_modifier,
+    )
     cycle_damage = weapon_hit if wielding else unarmed_hit
     if dual_wielding:
         cycle_damage += weapon_hit
@@ -5475,11 +6806,32 @@ def _mobile_normal_hit_damage(level: int, *, wielding: bool) -> int:
     return unarmed_hit + (unarmed_hit // 2 if wielding else 0)
 
 
+def _apply_mobile_damage_modifier(
+    damage: int,
+    damage_modifier: int | None,
+) -> int:
+    """Mirror DD4's per-attack ``dam_mod`` scaling and arithmetic cap."""
+    if damage <= 0:
+        return damage
+    if damage_modifier is None:
+        # Unknown template inheritance is not a neutral estimate.  Returning
+        # the source's per-attack cap keeps downstream gates fail-closed while
+        # still allowing diagnostic rows to be rendered.
+        return MOBILE_ATTACK_DAMAGE_LIMIT
+    modifier = max(MOBILE_DAMAGE_MOD_MIN, int(damage_modifier))
+    scaled = damage * (100 + modifier) // 100
+    return min(
+        MOBILE_ATTACK_DAMAGE_LIMIT,
+        max(1, scaled),
+    )
+
+
 def mobile_expected_round_damage(
     level: int,
     *,
     wielding: bool,
     dual_wielding: bool,
+    damage_modifier: int | None = 0,
 ) -> int:
     """Return a conservative source-derived NPC damage-per-round estimate.
 
@@ -5492,11 +6844,16 @@ def mobile_expected_round_damage(
     level = max(1, int(level))
     base_damages = range(level // 2, level * 3 // 2 + 1)
     damage_values = tuple(
-        damage
-        + level // 4
-        + (damage + level // 4) // 2
-        if wielding
-        else damage + level // 4
+        _apply_mobile_damage_modifier(
+            (
+                damage
+                + level // 4
+                + (damage + level // 4) // 2
+                if wielding
+                else damage + level // 4
+            ),
+            damage_modifier,
+        )
         for damage in base_damages
     )
     if not damage_values:
@@ -5505,9 +6862,12 @@ def mobile_expected_round_damage(
     damage_count = len(damage_values)
     if dual_wielding:
         weapon_values = tuple(
-            damage
-            + level // 4
-            + (damage + level // 4) // 2
+            _apply_mobile_damage_modifier(
+                damage
+                + level // 4
+                + (damage + level // 4) // 2,
+                damage_modifier,
+            )
             for damage in base_damages
         )
         # NPC dual wielding uses a 90-percent source chance.
@@ -5524,9 +6884,17 @@ def mobile_expected_round_damage(
     return max(1, (numerator + denominator - 1) // denominator)
 
 
-def _mobile_critical_hit_damage(level: int, *, wielding: bool) -> int:
+def _mobile_critical_hit_damage(
+    level: int,
+    *,
+    wielding: bool,
+    damage_modifier: int | None = 0,
+) -> int:
     """Mirror DD4's NPC critical, which doubles one ordinary hit."""
-    return _mobile_normal_hit_damage(level, wielding=wielding) * 2
+    return 2 * _apply_mobile_damage_modifier(
+        _mobile_normal_hit_damage(level, wielding=wielding),
+        damage_modifier,
+    )
 
 
 def mobile_sanctuary_peak_round_damage(
@@ -5534,6 +6902,7 @@ def mobile_sanctuary_peak_round_damage(
     *,
     wielding: bool,
     dual_wielding: bool,
+    damage_modifier: int | None = 0,
 ) -> int:
     """Return a source upper bound after DD4 sanctuary mitigation.
 
@@ -5541,8 +6910,14 @@ def mobile_sanctuary_peak_round_damage(
     applied, so integer division belongs inside the attack loop rather than
     on the completed raw round total.
     """
-    unarmed_hit = _mobile_normal_hit_damage(level, wielding=False) // 2
-    weapon_hit = _mobile_normal_hit_damage(level, wielding=True) // 2
+    unarmed_hit = _apply_mobile_damage_modifier(
+        _mobile_normal_hit_damage(level, wielding=False),
+        damage_modifier,
+    ) // 2
+    weapon_hit = _apply_mobile_damage_modifier(
+        _mobile_normal_hit_damage(level, wielding=True),
+        damage_modifier,
+    ) // 2
     cycle_damage = weapon_hit if wielding else unarmed_hit
     if dual_wielding:
         cycle_damage += weapon_hit
@@ -5554,9 +6929,16 @@ def mobile_sanctuary_critical_hit_damage(
     level: int,
     *,
     wielding: bool,
+    damage_modifier: int | None = 0,
 ) -> int:
     """Return one critical-hit upper bound after sanctuary mitigation."""
-    return (_mobile_normal_hit_damage(level, wielding=wielding) // 2) * 2
+    return (
+        _apply_mobile_damage_modifier(
+            _mobile_normal_hit_damage(level, wielding=wielding),
+            damage_modifier,
+        )
+        // 2
+    ) * 2
 
 
 def _wandering_aggressors(
@@ -5646,6 +7028,10 @@ def _rank_direct_ground_stashes(
         grouped.setdefault(reset.room_vnum, []).append(reset)
 
     ranked: list[HuntCandidate] = []
+    # A wandering mobile's source-reachable rooms do not depend on the
+    # destination stash. Cache them across stash routes; otherwise a full
+    # world gear scan repeats the same graph search once per stash.
+    mobile_search_rooms_cache: dict[int, tuple[int, ...]] = {}
     for room_vnum, resets in grouped.items():
         path = paths.get(room_vnum)
         room = world.rooms.get(room_vnum)
@@ -5665,6 +7051,16 @@ def _rank_direct_ground_stashes(
 
         hazards: list[str] = []
         rejections: list[str] = []
+        for path_room_vnum in path_rooms[1:]:
+            access_rejection = source_room_level_rejection(
+                world.rooms.get(path_room_vnum),
+                character_level,
+            )
+            if access_rejection is not None:
+                rejections.append(
+                    f"route crosses an inaccessible source area in room "
+                    f"{path_room_vnum}: {access_rejection}"
+                )
         probabilistic_route_program_vnums: list[int] = []
         for path_room_vnum in path_rooms:
             for reset in resets_by_room.get(path_room_vnum, ()):
@@ -5777,7 +7173,10 @@ def _rank_direct_ground_stashes(
                 if mobile.aggressive or mobile.attack_programs
                 else {room_vnum}
             )
-            reachable = set(source_mobile_search_rooms(world, mobile_vnum))
+            reachable = mobile_search_rooms_cache.get(mobile_vnum)
+            if reachable is None:
+                reachable = source_mobile_search_rooms(world, mobile_vnum)
+                mobile_search_rooms_cache[mobile_vnum] = reachable
             if hazard_rooms.isdisjoint(reachable):
                 continue
             if _source_mobile_has_safe_noncombat_special(world, mobile_vnum):

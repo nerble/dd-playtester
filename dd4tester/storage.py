@@ -12,14 +12,41 @@ from .lease import CampaignLease, CampaignLeaseBusyError, campaign_lease_path
 _CAMPAIGN_EVENT_HISTORY_LIMIT = 256
 _SQLITE_BUSY_TIMEOUT_MS = 30_000
 _SQLITE_JOURNAL_MODE = "WAL"
+_CAMPAIGN_PHASE_INDEX_BUILD_MAX_BYTES = 1_000_000_000
+# Full campaign state is intentionally JSON-heavy. Keep large shared
+# databases from turning a bounded row tail into an oversized memory/read
+# operation during autonomous resume. Eight rows cover the latest interrupted
+# segment plus the short retry/no-progress window without making a cold
+# startup scan hundreds of megabytes of JSON.
+_CAMPAIGN_LARGE_DATABASE_HISTORY_LIMIT = 8
+
+
+def _campaign_database_is_large(path: Path) -> bool:
+    try:
+        return path.stat().st_size > _CAMPAIGN_PHASE_INDEX_BUILD_MAX_BYTES
+    except OSError:
+        return False
+
+
+def _bounded_campaign_history_limit(path: Path, requested: int) -> int:
+    if _campaign_database_is_large(path):
+        return min(requested, _CAMPAIGN_LARGE_DATABASE_HISTORY_LIMIT)
+    return requested
 
 
 class RunStorage:
-    def __init__(self, path: Path, *, event_commit_interval: int = 25) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        event_commit_interval: int = 25,
+        read_only: bool = False,
+    ) -> None:
         if event_commit_interval < 1:
             raise ValueError("event_commit_interval must be at least 1")
         self.path = path
         self.event_commit_interval = event_commit_interval
+        self.read_only = read_only
         self._events_since_commit = 0
         self._recent_campaign_segments_cache: dict[
             tuple[int, int], list[sqlite3.Row]
@@ -27,6 +54,22 @@ class RunStorage:
         self._recent_campaign_checkpoints_cache: dict[
             tuple[int, int], list[sqlite3.Row]
         ] = {}
+        if read_only:
+            if not self.path.is_file():
+                raise FileNotFoundError(self.path)
+            database_uri = f"file:{self.path.resolve().as_posix()}?mode=ro"
+            self.connection = sqlite3.connect(
+                database_uri,
+                uri=True,
+                timeout=_SQLITE_BUSY_TIMEOUT_MS / 1000,
+            )
+            self.connection.row_factory = sqlite3.Row
+            self.connection.execute(
+                f"PRAGMA busy_timeout = {_SQLITE_BUSY_TIMEOUT_MS}"
+            )
+            self.connection.execute("PRAGMA foreign_keys = ON")
+            return
+
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # Several character campaigns share the durable database.  Wait for
         # a bounded interval when another process is committing instead of
@@ -71,6 +114,21 @@ class RunStorage:
                 kind TEXT NOT NULL,
                 payload_json TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS campaign_game_event_index (
+                event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+                run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                skill TEXT,
+                payload_json TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_campaign_game_event_index_run_id
+            ON campaign_game_event_index(run_id, event_id);
+
+            CREATE INDEX IF NOT EXISTS idx_campaign_game_event_index_filters
+            ON campaign_game_event_index(run_id, event_type, skill, event_id);
 
             CREATE TABLE IF NOT EXISTS state_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,6 +213,7 @@ class RunStorage:
                 source_policy_id TEXT,
                 below_useful_band INTEGER NOT NULL DEFAULT 0,
                 objective_eligible INTEGER NOT NULL DEFAULT 1,
+                route_gate INTEGER NOT NULL DEFAULT 0,
                 timestamp TEXT NOT NULL
             );
 
@@ -259,8 +318,39 @@ class RunStorage:
                 "ALTER TABLE mob_kills ADD COLUMN objective_eligible "
                 "INTEGER NOT NULL DEFAULT 1"
             )
+        if "route_gate" not in mob_kill_columns:
+            self.connection.execute(
+                "ALTER TABLE mob_kills ADD COLUMN route_gate "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
         self.connection.commit()
+        self._ensure_campaign_phase_index()
         self._events_since_commit = 0
+
+    def _ensure_campaign_phase_index(self) -> None:
+        """Build the phase index only during bounded-size schema setup."""
+        try:
+            database_size = self.path.stat().st_size
+        except OSError:
+            return
+        if database_size > _CAMPAIGN_PHASE_INDEX_BUILD_MAX_BYTES:
+            return
+        self.connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_campaign_segments_campaign_phase
+            ON campaign_segments(campaign_id, phase, sequence)
+            """
+        )
+        self.connection.commit()
+
+    def campaign_phase_index_available(self) -> bool:
+        """Return whether phase-scoped campaign history can use its index."""
+        return any(
+            row["name"] == "idx_campaign_segments_campaign_phase"
+            for row in self.connection.execute(
+                "PRAGMA index_list(campaign_segments)"
+            )
+        )
 
     def create_run(self, *, scenario_name: str, scenario_path: Path) -> int:
         cursor = self.connection.execute(
@@ -315,6 +405,30 @@ class RunStorage:
             (run_id, event_timestamp, kind, json.dumps(payload, sort_keys=True)),
         )
         event_id = int(cursor.lastrowid)
+        if kind == "game_event":
+            event_type = payload.get("type")
+            data = payload.get("data")
+            skill = data.get("skill") if isinstance(data, dict) else None
+            if isinstance(event_type, str) and event_type.strip():
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO campaign_game_event_index (
+                        event_id, run_id, timestamp, event_type, skill,
+                        payload_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_id,
+                        run_id,
+                        event_timestamp,
+                        event_type,
+                        skill.casefold()
+                        if isinstance(skill, str)
+                        else None,
+                        json.dumps(payload, sort_keys=True),
+                    ),
+                )
         command = payload.get("command") if kind == "command" else None
         if isinstance(command, str):
             run = self.connection.execute(
@@ -547,19 +661,34 @@ class RunStorage:
         *,
         reason: str,
         character_name: str | None = None,
+        running_segments: Collection[Any] | None = None,
     ) -> int:
-        """Close orphaned work for one campaign before it is resumed."""
-        running_segments = list(
-            self.connection.execute(
-                """
-                SELECT id, run_id, started_at
-                FROM campaign_segments
-                WHERE campaign_id = ? AND status = 'running'
-                ORDER BY id
-                """,
-                (campaign_id,),
+        """Close orphaned work for one campaign before it is resumed.
+
+        Resume already loads a bounded newest-segment tail. Reuse that tail
+        when supplied; filtering the wide segment table by status can scan
+        gigabytes of historical JSON when the shared database is large.
+        """
+        if running_segments is None:
+            running_segments = list(
+                self.connection.execute(
+                    """
+                    SELECT id, run_id, started_at
+                    FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
+                    WHERE campaign_id = ? AND status = 'running'
+                    ORDER BY sequence DESC
+                    LIMIT 1
+                    """,
+                    (campaign_id,),
+                )
             )
-        )
+        else:
+            running_segments = [
+                row
+                for row in running_segments
+                if int(row["campaign_id"]) == campaign_id
+                and row["status"] == "running"
+            ][:1]
         if not running_segments:
             return 0
 
@@ -579,14 +708,18 @@ class RunStorage:
             )
             for row in self.connection.execute(
                 """
-                SELECT id, scenario_name
+                SELECT id, scenario_name, started_at, status
                 FROM runs
-                WHERE status = 'running' AND started_at >= ?
+                ORDER BY id DESC
+                LIMIT 1024
                 """,
-                (segment_started_at,),
             ):
-                if str(row["scenario_name"]).casefold().endswith(
-                    character_suffixes
+                if (
+                    row["status"] == "running"
+                    and str(row["started_at"]) >= segment_started_at
+                    and str(row["scenario_name"]).casefold().endswith(
+                        character_suffixes
+                    )
                 ):
                     run_ids.add(int(row["id"]))
         if run_ids:
@@ -622,25 +755,109 @@ class RunStorage:
         self._invalidate_campaign_history(campaign_id)
         return int(cursor.rowcount)
 
+    def recover_campaign(
+        self,
+        campaign_id: int,
+        *,
+        reason: str,
+        character_name: str | None = None,
+    ) -> tuple[int, int, int]:
+        """Recover one campaign without scanning the shared run history.
+
+        The global recovery command is useful for small databases, but it is
+        an unsafe maintenance primitive once many characters share a large
+        event store.  This path only reads the campaign's newest running
+        segment and its associated transcript, then repairs that campaign.
+        """
+        campaign = self.get_campaign(campaign_id)
+        if campaign is None:
+            raise KeyError(f"campaign {campaign_id} does not exist")
+
+        running_segments = list(
+            self.connection.execute(
+                """
+                SELECT id, campaign_id, run_id, started_at, status
+                FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
+                WHERE campaign_id = ? AND status = 'running'
+                ORDER BY sequence DESC
+                LIMIT 1
+                """,
+                (campaign_id,),
+            )
+        )
+        repaired_events = 0
+        for segment in running_segments:
+            if segment["run_id"] is None:
+                continue
+            repaired_events += self.repair_run_events_from_transcript(
+                int(segment["run_id"])
+            )
+
+        if running_segments:
+            recovered_runs = sum(
+                1 for segment in running_segments if segment["run_id"] is not None
+            )
+            segments = self.recover_interrupted_campaign_segments(
+                campaign_id,
+                reason=reason,
+                character_name=character_name,
+                running_segments=running_segments,
+            )
+            return repaired_events, recovered_runs, segments
+
+        lease = CampaignLease(
+            campaign_lease_path(
+                self.path,
+                Path(str(campaign["config_path"])),
+            )
+        )
+        try:
+            lease.acquire()
+        except CampaignLeaseBusyError:
+            return repaired_events, 0, 0
+        try:
+            cursor = self.connection.execute(
+                """
+                UPDATE campaigns
+                SET status = 'ready', error = ?, updated_at = ?
+                WHERE id = ? AND status = 'running'
+                """,
+                (reason, _now(), campaign_id),
+            )
+            self.connection.commit()
+            return repaired_events, 0, int(cursor.rowcount)
+        finally:
+            lease.release()
+
     def fail_campaign_after_timeout(
         self,
         campaign_id: int,
         *,
         reason: str,
         character_name: str | None = None,
+        running_segments: Collection[Any] | None = None,
     ) -> int:
         """Close one campaign's running records after its bounded runner expires."""
-        running_segments = list(
-            self.connection.execute(
-                """
-                SELECT id, run_id, started_at
-                FROM campaign_segments
-                WHERE campaign_id = ? AND status = 'running'
-                ORDER BY id
-                """,
-                (campaign_id,),
+        if running_segments is None:
+            running_segments = list(
+                self.connection.execute(
+                    """
+                    SELECT id, run_id, started_at
+                    FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
+                    WHERE campaign_id = ? AND status = 'running'
+                    ORDER BY sequence DESC
+                    LIMIT 1
+                    """,
+                    (campaign_id,),
+                )
             )
-        )
+        else:
+            running_segments = [
+                row
+                for row in running_segments
+                if int(row["campaign_id"]) == campaign_id
+                and row["status"] == "running"
+            ][:1]
         run_ids = {
             int(row["run_id"])
             for row in running_segments
@@ -656,14 +873,18 @@ class RunStorage:
             )
             for row in self.connection.execute(
                 """
-                SELECT id, scenario_name, started_at
+                SELECT id, scenario_name, started_at, status
                 FROM runs
-                WHERE status = 'running' AND started_at >= ?
+                ORDER BY id DESC
+                LIMIT 1024
                 """,
-                (segment_started_at,),
             ):
                 scenario_name = str(row["scenario_name"]).casefold()
-                if scenario_name.endswith(character_suffixes):
+                if (
+                    row["status"] == "running"
+                    and str(row["started_at"]) >= segment_started_at
+                    and scenario_name.endswith(character_suffixes)
+                ):
                     run_ids.add(int(row["id"]))
         timestamp = _now()
         if run_ids:
@@ -762,6 +983,27 @@ class RunStorage:
             (run_id, limit) if limit is not None else (run_id,),
         )
         return list(cursor.fetchall())
+
+    def list_recent_events(
+        self,
+        run_id: int,
+        *,
+        limit: int = 512,
+    ) -> list[sqlite3.Row]:
+        """Return a bounded chronological tail of one run's evidence."""
+        if limit < 1:
+            raise ValueError("event limit must be positive")
+        cursor = self.connection.execute(
+            """
+            SELECT id, run_id, timestamp, kind, payload_json
+            FROM events
+            WHERE run_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (run_id, limit),
+        )
+        return list(reversed(cursor.fetchall()))
 
     def get_latest_run_kill_event(self, run_id: int) -> sqlite3.Row | None:
         """Read the latest kill ledger without materializing a run's transcript."""
@@ -981,10 +1223,14 @@ class RunStorage:
         """Return filtered game events for a campaign in one indexed join."""
         if segment_limit < 1:
             raise ValueError("segment_limit must be positive")
-        clauses = [
-            "e.kind = 'game_event'",
-        ]
-        parameters: list[Any] = [campaign_id, segment_limit]
+        effective_segment_limit = (
+            _bounded_campaign_history_limit(self.path, segment_limit)
+            if segment_limit <= _CAMPAIGN_EVENT_HISTORY_LIMIT
+            else segment_limit
+        )
+        large_database = _campaign_database_is_large(self.path)
+        clauses = [] if large_database else ["e.kind = 'game_event'"]
+        parameters: list[Any] = [campaign_id, effective_segment_limit]
         if level is not None:
             clauses.append(
                 "CAST(json_extract(s.start_state_json, '$.level') AS INTEGER) = ?"
@@ -992,15 +1238,37 @@ class RunStorage:
             parameters.append(level)
         if skill is not None:
             clauses.append(
-                "lower(json_extract(e.payload_json, '$.data.skill')) = ?"
+                "i.skill = ?" if large_database
+                else "lower(json_extract(e.payload_json, '$.data.skill')) = ?"
             )
             parameters.append(skill.casefold())
         if event_types:
             placeholders = ", ".join("?" for _ in event_types)
             clauses.append(
-                f"json_extract(e.payload_json, '$.type') IN ({placeholders})"
+                (
+                    f"i.event_type IN ({placeholders})"
+                    if large_database
+                    else f"json_extract(e.payload_json, '$.type') IN ({placeholders})"
+                )
             )
             parameters.extend(event_types)
+        if large_database:
+            source = (
+                "campaign_game_event_index AS i "
+                "INDEXED BY idx_campaign_game_event_index_run_id"
+            )
+            select = (
+                "i.event_id AS id, i.run_id, i.timestamp, "
+                "'game_event' AS kind, i.payload_json"
+            )
+            join_condition = "i.run_id = s.run_id"
+        else:
+            source = "events AS e INDEXED BY idx_events_run_id"
+            select = "e.id, e.run_id, e.timestamp, e.kind, e.payload_json"
+            join_condition = "e.run_id = s.run_id"
+        where = f"WHERE {join_condition}"
+        if clauses:
+            where += " AND " + " AND ".join(clauses)
         cursor = self.connection.execute(
             f"""
             WITH recent_segments AS MATERIALIZED (
@@ -1010,13 +1278,13 @@ class RunStorage:
                 ORDER BY sequence DESC
                 LIMIT ?
             )
-            SELECT e.id, e.run_id, e.timestamp, e.kind, e.payload_json,
+            SELECT {select},
                    CAST(json_extract(s.start_state_json, '$.level') AS INTEGER)
                        AS character_level
             FROM recent_segments AS s
-            CROSS JOIN events AS e INDEXED BY idx_events_run_id
-            WHERE e.run_id = s.run_id AND {' AND '.join(clauses)}
-            ORDER BY e.id
+            CROSS JOIN {source}
+            {where}
+            ORDER BY id
             """,
             parameters,
         )
@@ -1168,6 +1436,7 @@ class RunStorage:
         source_policy_id: str | None = None,
         below_useful_band: bool = False,
         objective_eligible: bool | None = None,
+        route_gate: bool = False,
         timestamp: str | None = None,
     ) -> int:
         if objective_eligible is None:
@@ -1177,9 +1446,9 @@ class RunStorage:
             INSERT INTO mob_kills (
                 run_id, character_name, boot_id, mob_name, xp_gained,
                 source_mobile_vnum, source_policy_id, below_useful_band,
-                objective_eligible, timestamp
+                objective_eligible, route_gate, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -1191,6 +1460,7 @@ class RunStorage:
                 source_policy_id,
                 int(below_useful_band),
                 int(objective_eligible),
+                int(route_gate),
                 timestamp or _now(),
             ),
         )
@@ -1206,7 +1476,7 @@ class RunStorage:
             """
             SELECT id, run_id, character_name, boot_id, mob_name,
                    xp_gained, source_mobile_vnum, source_policy_id,
-                   below_useful_band, objective_eligible, timestamp
+                   below_useful_band, objective_eligible, route_gate, timestamp
             FROM mob_kills
             WHERE run_id = ?
             ORDER BY id
@@ -1226,7 +1496,7 @@ class RunStorage:
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
                        xp_gained, source_mobile_vnum, source_policy_id,
-                       below_useful_band, objective_eligible, timestamp
+                       below_useful_band, objective_eligible, route_gate, timestamp
                 FROM mob_kills
                 WHERE character_name = ?
                 ORDER BY id
@@ -1520,6 +1790,29 @@ class RunStorage:
         return list(cursor.fetchall())
 
     def campaign_totals(self, campaign_id: int) -> sqlite3.Row:
+        if self.read_only:
+            cached = self.connection.execute(
+                """
+                SELECT segment_count, command_count, duration_seconds
+                FROM campaign_usage
+                WHERE campaign_id = ?
+                """,
+                (campaign_id,),
+            ).fetchone()
+            if cached is not None:
+                return cached
+            # Read-only reports must not materialize a missing cache row in a
+            # shared database. Return the same aggregate shape without a write.
+            return self.connection.execute(
+                """
+                SELECT COUNT(*) AS segment_count,
+                       COALESCE(SUM(command_count), 0) AS command_count,
+                       COALESCE(SUM(duration_seconds), 0) AS duration_seconds
+                FROM campaign_segments
+                WHERE campaign_id = ?
+                """,
+                (campaign_id,),
+            ).fetchone()
         self._ensure_campaign_usage(campaign_id)
         cursor = self.connection.execute(
             """
@@ -1715,24 +2008,42 @@ class RunStorage:
         """Return a bounded tail in normal campaign sequence order."""
         if limit < 1:
             raise ValueError("limit must be positive")
-        cache_key = (campaign_id, limit)
+        effective_limit = _bounded_campaign_history_limit(self.path, limit)
+        cache_key = (campaign_id, effective_limit)
         cached = self._recent_campaign_segments_cache.get(cache_key)
         if cached is not None:
             return list(cached)
-        cursor = self.connection.execute(
+        # Select the bounded tail using the narrow campaign index before
+        # materializing the large state JSON columns.  Sorting full payloads
+        # made resume time grow with the entire shared campaign history.
+        id_rows = self.connection.execute(
             """
-            SELECT id, campaign_id, sequence, phase, run_id, started_at,
-                   finished_at, status, start_state_json, end_state_json,
-                   command_count, duration_seconds, error
+            SELECT id
             FROM campaign_segments
             WHERE campaign_id = ?
             ORDER BY sequence DESC
             LIMIT ?
             """,
-            (campaign_id, limit),
+            (campaign_id, effective_limit),
+        ).fetchall()
+        if not id_rows:
+            self._recent_campaign_segments_cache[cache_key] = []
+            return []
+        ids = tuple(int(row["id"]) for row in id_rows)
+        placeholders = ", ".join("?" for _ in ids)
+        rows = list(
+            self.connection.execute(
+                f"""
+                SELECT id, campaign_id, sequence, phase, run_id, started_at,
+                       finished_at, status, start_state_json, end_state_json,
+                       command_count, duration_seconds, error
+                FROM campaign_segments
+                WHERE id IN ({placeholders})
+                ORDER BY sequence, id
+                """,
+                ids,
+            ).fetchall()
         )
-        rows = list(cursor.fetchall())
-        rows.reverse()
         self._recent_campaign_segments_cache[cache_key] = rows
         return list(rows)
 
@@ -1768,23 +2079,38 @@ class RunStorage:
         """Return a bounded checkpoint tail in normal insertion order."""
         if limit < 1:
             raise ValueError("limit must be positive")
-        cache_key = (campaign_id, limit)
+        effective_limit = _bounded_campaign_history_limit(self.path, limit)
+        cache_key = (campaign_id, effective_limit)
         cached = self._recent_campaign_checkpoints_cache.get(cache_key)
         if cached is not None:
             return list(cached)
-        cursor = self.connection.execute(
+        id_rows = self.connection.execute(
             """
-            SELECT id, campaign_id, segment_id, run_id, phase, reason,
-                   created_at, state_json
+            SELECT id
             FROM campaign_checkpoints
             WHERE campaign_id = ?
             ORDER BY id DESC
             LIMIT ?
             """,
-            (campaign_id, limit),
+            (campaign_id, effective_limit),
+        ).fetchall()
+        if not id_rows:
+            self._recent_campaign_checkpoints_cache[cache_key] = []
+            return []
+        ids = tuple(int(row["id"]) for row in id_rows)
+        placeholders = ", ".join("?" for _ in ids)
+        rows = list(
+            self.connection.execute(
+                f"""
+                SELECT id, campaign_id, segment_id, run_id, phase, reason,
+                       created_at, state_json
+                FROM campaign_checkpoints
+                WHERE id IN ({placeholders})
+                ORDER BY id
+                """,
+                ids,
+            ).fetchall()
         )
-        rows = list(cursor.fetchall())
-        rows.reverse()
         self._recent_campaign_checkpoints_cache[cache_key] = rows
         return list(rows)
 
@@ -1928,7 +2254,8 @@ class RunStorage:
         self._events_since_commit = 0
 
     def close(self) -> None:
-        self.flush()
+        if not self.read_only:
+            self.flush()
         self.connection.close()
 
     def __enter__(self) -> "RunStorage":

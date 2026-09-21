@@ -1,8 +1,10 @@
+from dd4tester.archetypes import archetype_registry
 from dd4tester.combat_capabilities import (
     combat_capabilities_for,
     combat_capability_names,
     combat_skill_names,
     combat_spell_names,
+    SUBCLASS_COMBAT_CAPABILITIES,
 )
 
 
@@ -31,6 +33,47 @@ def test_brawler_action_contract_is_shared_and_deduplicated() -> None:
         "mage",
         observed_skills=("knife toss",),
     ) == ("knife toss",)
+
+
+def test_mage_exposes_the_source_evocation_progression_in_damage_order() -> None:
+    assert combat_spell_names("mage") == (
+        "acid blast",
+        "fireball",
+        "lightning bolt",
+        "shocking grasp",
+        "colour spray",
+        "burning hands",
+        "chill touch",
+        "magic missile",
+    )
+
+
+def test_infernalist_and_witch_expose_source_direct_damage_spells() -> None:
+    assert combat_spell_names("psionic", "infernalist") == (
+        "hellfire",
+        "psychic crush",
+        "agitation",
+        "mind thrust",
+    )
+    assert combat_spell_names("psionic", "witch") == (
+        "wither",
+        "psychic crush",
+        "agitation",
+        "mind thrust",
+    )
+    assert combat_spell_names("mage", "witch") == combat_spell_names("mage")
+
+
+def test_every_available_subclass_has_an_explicit_combat_contract() -> None:
+    registry = archetype_registry()
+
+    for subclass, profile in registry.subclasses.items():
+        if not profile.available:
+            continue
+        assert subclass in SUBCLASS_COMBAT_CAPABILITIES
+        capabilities = SUBCLASS_COMBAT_CAPABILITIES[subclass]
+        assert capabilities
+        assert all(item.source_reference for item in capabilities)
 
 
 def test_subclass_actions_are_ignored_for_a_wrong_base_class() -> None:

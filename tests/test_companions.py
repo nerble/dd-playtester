@@ -197,6 +197,7 @@ def test_indoor_combat_cannot_use_an_unconfirmed_companion(boundary):
 @pytest.mark.parametrize("level,hp,mana,mobile,room,waypoint,skill", [
     (8, 113, 324, 4005, 4022, "4002", "chill touch"),
     (18, 218, 628, 29953, 29966, "29950", "burning hands"),
+    (8, 113, 324, 609, 600, "3052", "chill touch"),
 ])
 def test_real_source_staging_contract_reaches_field_stops(level, hp, mana, mobile, room, waypoint, skill):
     world = campaign.load_world_source(Path("runs/dd4-source/server/area"), include_all_areas=True)
@@ -224,8 +225,58 @@ def test_real_source_staging_contract_reaches_field_stops(level, hp, mana, mobil
     assert target_stops
     assert all(s.require_familiar and not s.require_sanctuary for s in target_stops)
     assert all(s.familiar_staging_room_vnum == waypoint for s in target_stops)
+    if mobile == 609:
+        assert all(s.familiar_withdraw_before_opener for s in target_stops)
     state["campaign_known_skill_levels"].pop("summon familiar")
     assert not campaign._source_ranked_familiar_probe_allowed(target, state, character_level=level, source_world=world)
+
+
+def test_real_source_low_load_target_withdraws_familiar_before_player_opener():
+    world = campaign.load_world_source(
+        Path("runs/dd4-source/server/area"), include_all_areas=True,
+    )
+    skills = [
+        "armor", "chill touch", "magic missile", "protective magiks",
+        "summon familiar",
+    ]
+    levels = {
+        "armor": 36, "chill touch": 35, "magic missile": 35,
+        "protective magiks": 36, "summon familiar": 36,
+    }
+    state = {
+        "level": 9, "max_hp": 123, "max_mana": 351,
+        "character_class": "mage", "world_boot_id": "test-boot",
+        "campaign_known_skills": skills,
+        "campaign_known_skill_levels": levels,
+    }
+    candidate = next(
+        item
+        for item in campaign.rank_hunt_candidates(
+            world,
+            character_level=9,
+            character_class="mage",
+            known_skills=skills,
+            known_skill_levels=levels,
+            include_xp_only=True,
+            include_level_ceiling_candidates=True,
+            level_ceiling_offset=1,
+            include_all_areas=True,
+            character_max_hp=123,
+            recall_origins={0: 3001},
+        )
+        if item.mobile_vnum == 1501 and item.room_vnum == 1509
+    )
+
+    stops = [
+        stop
+        for stop in campaign._source_ranked_hunt_stops(
+            candidate, world, character_level=9, state=state,
+        )
+        if stop.source_mobile_vnum == 1501
+    ]
+
+    assert stops
+    assert all(stop.familiar_withdraw_before_opener for stop in stops)
 
 
 def test_wild_lookalike_is_not_exempted_with_the_owned_familiar():

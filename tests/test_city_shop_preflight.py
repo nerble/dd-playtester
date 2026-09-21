@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from dd4tester.character import CharacterSpec
+from dd4tester.shops import SAFE_MIDGAARD_SHOPS
 from dd4tester.starter import StarterPolicy
 from dd4tester.state import CharacterState
 from dd4tester.visibility import learned_invisibility_mana_cost
@@ -118,6 +119,23 @@ def test_persistent_hazard_stops_after_three_rechecks(shop):
     assert policy.city_shop_route_wait_due is None
     assert policy.magic_shop_route_blocked_by_drunk
     assert not policy.magic_shop_purchase_failed
+
+
+def test_blocked_sale_route_defers_only_that_shop(shop):
+    policy, state, clock = shop
+    weapon_shop = next(shop for shop in SAFE_MIDGAARD_SHOPS if shop.room_vnum == "3011")
+    armour_shop = next(shop for shop in SAFE_MIDGAARD_SHOPS if shop.room_vnum == "3020")
+    policy.sale_plan = [("sword", weapon_shop), ("armour", armour_shop)]
+    policy.magic_shop_route_blocked_by_drunk = True
+    policy.magic_shop_drunk_preflight_locations = ["The Weapon Shop"]
+
+    assert policy._defer_blocked_sale_routes()
+    assert policy.sale_plan == [("armour", armour_shop)]
+    assert policy.sale_index == 0
+    assert policy.sale_route_index == 0
+    assert policy.sale_phase == "outbound"
+    assert not policy.magic_shop_route_blocked_by_drunk
+    assert not policy.magic_shop_drunk_preflight_complete
 
 
 def test_runtime_boundary_interrupts_city_wait(shop):

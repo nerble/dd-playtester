@@ -19,6 +19,7 @@ from dd4tester.equipment import (
 )
 from dd4tester.fastwalks import Fastwalk, route_named
 from dd4tester.hunt_candidates import (
+    ACT_AGGRESSIVE,
     BODY_HUGE,
     BODY_NO_ARMS,
     BODY_NO_EYES,
@@ -27,10 +28,14 @@ from dd4tester.hunt_candidates import (
     MobileProgram,
     MobileSource,
     MobReset,
+    ExitSource,
+    ITEM_PILL,
     ITEM_POTION,
     ITEM_SCROLL,
     ObjectSource,
+    RoomSource,
     WorldSource,
+    source_route_hazard_rejections,
 )
 from dd4tester.hunt_candidates import load_world_source
 from dd4tester.hunt_candidates import parse_area_file
@@ -38,6 +43,7 @@ from dd4tester.mudlet import MudletConnection
 from dd4tester.observations import GameEvent, ObservationParser
 from dd4tester.shops import safe_shop_for_item
 from dd4tester.storage import RunStorage
+from dd4tester.training import PracticeListing
 from dd4tester.starter import (
     BotDecision,
     FieldHuntStop,
@@ -164,6 +170,8 @@ from dd4tester.starter import (
     moria_level_seven_orc_hunt_stops,
     moria_deep_sanctuary_potion_hunt_stops,
     moria_deep_sanctuary_potion_research_stops,
+    moria_deep_sanctuary_potion_source_route,
+    moria_deep_sanctuary_resume_stops,
     moria_sanctuary_potion_consider_stops,
     moria_sanctuary_potion_hunt_stops,
     mirror_realm_watchman_research_stops,
@@ -1549,6 +1557,46 @@ def test_field_circuit_pursues_registered_target_that_leaves_before_consider() -
     assert policy.consider_target is None
 
 
+def test_resource_target_that_flees_and_is_absent_closes_the_stop() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "Midget",
+                exact_target=True,
+                allow_below_band_for_source_coins=True,
+            ),
+        ),
+    )
+    policy.current_room = "4411"
+    policy.fastwalk_attack_target = "Midget"
+    policy.fastwalk_attack_started = True
+    policy.fastwalk_target_absent = True
+    policy.room_targets["4411"] = []
+
+    decision = policy._fastwalk_hunt_plan_decision(
+        CharacterState(
+            level=9,
+            hp=100,
+            max_hp=100,
+            mana=100,
+            max_mana=100,
+            move=100,
+            max_move=100,
+            room_vnum="4411",
+            position=7,
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_returning is True
+    assert policy.fastwalk_hunt_stop_index == 1
+    assert "fled and was absent" in (policy.fastwalk_abort_reason or "")
+
+
 def test_field_circuit_does_not_intercept_outside_current_source_route() -> None:
     policy = StarterPolicy(
         _spec(**{"class": "thief", "subclass": "ninja"}),
@@ -2434,6 +2482,79 @@ def test_source_ranked_hunt_skips_same_name_vnum_ambiguity_before_combat() -> No
     assert policy.consider_target is None
 
 
+def test_source_ranked_hunt_uses_targetmode_description_to_resolve_same_name_vnums() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None, "race": "drow"}),
+        "swordfish",
+        fastwalk_route=Fastwalk("source endpoint", 1, 100, "e"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "hierophant",
+                exact_target=True,
+                route_vnums=("8901",),
+                source_mobile_vnum=8901,
+                source_mobile_room_description="A hierophant stands here.",
+            ),
+        ),
+        source_mobile_vnums_by_target_room={
+            "hierophant": {"8901": (8900, 8901)},
+        },
+    )
+    policy.source_world = WorldSource(
+        mobiles={
+            8900: MobileSource(
+                8900,
+                "hierophant",
+                "the hierophant",
+                24,
+                0,
+                0,
+                "test.are",
+                "A hierophant is here, studying.",
+            ),
+            8901: MobileSource(
+                8901,
+                "hierophant",
+                "the hierophant",
+                24,
+                0,
+                0,
+                "test.are",
+                "A hierophant stands here.",
+            ),
+        },
+    )
+    policy.current_room = "8901"
+    policy.fastwalk_attack_target = "hierophant"
+    policy.room_targets["8901"] = ["hierophant"]
+    policy.room_target_counts["8901"] = {"hierophant": 1}
+    policy.room_target_selectors["8901"] = {
+        "hierophant": ["#8900", "#8901"],
+    }
+    policy.room_target_selector_descriptions["8901"] = {
+        "#8900": "A hierophant is here, studying.",
+        "#8901": "A hierophant stands here.",
+    }
+
+    decision = policy._consider_fastwalk_target(
+        CharacterState(
+            level=24,
+            hp=542,
+            max_hp=542,
+            mana=240,
+            max_mana=240,
+            move=380,
+            max_move=380,
+            room_vnum="8901",
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "consider #8901"
+    assert policy.fastwalk_abort_reason is None
+
+
 def test_fastwalk_skips_a_route_waypoint_that_is_already_current_room() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -2545,6 +2666,38 @@ def test_live_maze_backtrack_preserves_unexplored_parent_branch() -> None:
     ).command == "east"
 
 
+def test_live_maze_rebases_after_unexpected_room_without_repeating_stale_state() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    allowed = frozenset({"5007", "5027", "5030", "5031"})
+    state = CharacterState(room_vnum="5007", exits={"e": "5027"})
+
+    assert policy._live_maze_navigation_decision(
+        state,
+        context="test-maze-unexpected-room-rebase",
+        target="5031",
+        allowed_rooms=allowed,
+    ).command == "east"
+
+    # The server moved the character to a different room while the old
+    # backtrack was pending. A bounded rebase must discard the stale DFS
+    # frame and continue from the observed room exactly once.
+    policy.live_maze_backtrack_room = "5027"
+    state.room_vnum = "5030"
+    state.exits = {"w": "5031"}
+
+    decision = policy._live_maze_navigation_decision(
+        state,
+        context="test-maze-unexpected-room-rebase",
+        target="5031",
+        allowed_rooms=allowed,
+    )
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert policy.live_maze_rebases == 1
+    assert policy.live_maze_backtrack_room is None
+
+
 def test_gnome_treasurer_probe_collects_only_source_keyed_coins() -> None:
     (stop,) = gnome_treasurer_research_stops()
 
@@ -2618,6 +2771,161 @@ def _spec(**overrides: object) -> CharacterSpec:
     }
     values.update(overrides)
     return CharacterSpec.from_mapping(values)
+
+
+def _mage_combat_policy_for_spell_rotation() -> tuple[StarterPolicy, CharacterState]:
+    policy = StarterPolicy(
+        _spec(**{"class": "mage", "subclass": None}),
+        "swordfish",
+        known_skills=("burning hands", "chill touch", "magic missile"),
+        known_skill_levels={
+            "burning hands": 31,
+            "chill touch": 36,
+            "magic missile": 36,
+        },
+    )
+    policy.in_world = True
+    policy.combat_active = True
+    policy.active_target = "guardian"
+    policy.active_target_selector = "#6313"
+    return policy, CharacterState(
+        level=18,
+        hp=218,
+        max_hp=218,
+        mana=628,
+        max_mana=628,
+        position=6,
+        room_vnum="6367",
+        enemies=[
+            [{"name": "guardian", "level": "18", "hp": "294", "maxhp": "294"}]
+        ],
+        affects=[],
+    )
+
+
+def test_caster_rotates_to_next_practiced_spell_after_weak_probe() -> None:
+    policy, state = _mage_combat_policy_for_spell_rotation()
+
+    opener = policy._between_round_combat_decision(state)
+
+    assert opener is not None
+    assert opener.command == "cast 'burning hands' #6313"
+    assert policy.combat_spell_attempts == {"burning hands": 1}
+
+    policy.between_round_action_issued = False
+    policy.between_round_action_ready_at = 0
+    repeat = policy._between_round_combat_decision(state)
+    assert repeat is not None
+    assert repeat.command == "cast 'burning hands' #6313"
+    policy.between_round_action_issued = False
+    policy.field_combat_damage_probe_required = True
+    policy.field_combat_probe_target = "guardian"
+    policy.field_combat_probe_samples = 3
+    policy.field_combat_probe_total_damage = 20
+    policy.field_combat_probe_started_at = time.monotonic() - 20
+
+    assert policy._damage_window_probe_decision(state) is None
+    assert policy.combat_spell_rotation_spell == "chill touch"
+    assert policy.combat_spell_rotation_extensions_used == 1
+    assert policy.field_combat_probe_samples == 0
+
+    policy.between_round_action_ready_at = 0
+    fallback = policy._between_round_combat_decision(state)
+
+    assert fallback is not None
+    assert fallback.command == "cast 'chill touch' #6313"
+    assert policy.combat_spell_attempts == {
+        "burning hands": 2,
+        "chill touch": 1,
+    }
+
+
+def test_caster_keeps_preferred_spell_when_probe_output_is_healthy() -> None:
+    policy, state = _mage_combat_policy_for_spell_rotation()
+
+    opener = policy._between_round_combat_decision(state)
+
+    assert opener is not None
+    policy.between_round_action_issued = False
+    policy.between_round_action_ready_at = 0
+    repeat = policy._between_round_combat_decision(state)
+    assert repeat is not None
+    assert repeat.command == "cast 'burning hands' #6313"
+    policy.between_round_action_issued = False
+    policy.between_round_action_ready_at = 0
+    policy.field_combat_damage_probe_required = True
+    policy.field_combat_probe_target = "guardian"
+    policy.field_combat_probe_samples = 3
+    policy.field_combat_probe_total_damage = 100
+    policy.field_combat_probe_started_at = time.monotonic() - 20
+
+    assert policy._damage_window_probe_decision(state) is None
+    assert policy.combat_spell_rotation_spell == "burning hands"
+    assert policy.combat_spell_rotation_extensions_used == 0
+
+    repeat = policy._between_round_combat_decision(state)
+
+    assert repeat is not None
+    assert repeat.command == "cast 'burning hands' #6313"
+
+
+def test_required_practice_plan_follows_source_prerequisite_chain() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": None}),
+        "swordfish",
+        required_practice_skill="pick lock",
+        required_practice_type="physical",
+        required_practice_target_percent=60,
+        required_practice_prerequisites=(("thief base", 30),),
+    )
+
+    prerequisite = policy._required_practice_plan(
+        PracticeListing(
+            known={"thief base": 0},
+            learnable={"pick lock": 0},
+            physical_practices=3,
+            intellectual_practices=0,
+        )
+    )
+
+    assert prerequisite is not None
+    assert prerequisite[0].skill == "thief base"
+    assert prerequisite[0].target_percent == 30
+
+    target = policy._required_practice_plan(
+        PracticeListing(
+            known={"thief base": 30},
+            learnable={"pick lock": 0},
+            physical_practices=2,
+            intellectual_practices=0,
+        )
+    )
+
+    assert target is not None
+    assert target[0].skill == "pick lock"
+    assert target[0].target_percent == 60
+
+
+def test_required_practice_plan_fails_closed_when_trainer_omits_prerequisite() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": None}),
+        "swordfish",
+        required_practice_skill="pick lock",
+        required_practice_prerequisites=(("thief base", 30),),
+    )
+
+    plan = policy._required_practice_plan(
+        PracticeListing(
+            known={},
+            learnable={"pick lock": 0},
+            physical_practices=3,
+            intellectual_practices=0,
+        )
+    )
+
+    assert plan == ()
+    assert policy.failure is not None
+    assert "prerequisite" in policy.failure
 
 
 def test_configured_test_identity_is_applied_when_not_previously_recorded() -> None:
@@ -4143,6 +4451,179 @@ def test_high_health_warning_uses_longer_damage_window() -> None:
     assert "150 damage against 1000 HP" in (policy.fastwalk_abort_reason or "")
 
 
+def test_protected_exact_unarmed_target_gets_a_measured_zero_damage_extension() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the target",
+        exact_target=True,
+        source_mobile_vnum=100,
+        source_target_armed=False,
+        require_sanctuary=True,
+        require_damage_window_probe=True,
+        allow_protected_hp_fuzz_probe=True,
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_opening_conservative_damage=18,
+        source_combat_max_actions=12,
+        damage_window_minimum_fraction=0.25,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.active_target = stop.target
+    policy.active_target_selector = "#100"
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.field_combat_damage_probe_required = True
+
+    def state(target_hp: int) -> CharacterState:
+        return CharacterState(
+            level=24,
+            hp=334,
+            max_hp=334,
+            room_vnum="200",
+            affects=[[{"name": "sanctuary", "duration": "2"}]],
+            enemies=[
+                {
+                    "name": "the target",
+                    "isnpc": "100",
+                    "level": "22",
+                    "hp": str(target_hp),
+                    "maxhp": "605",
+                }
+            ],
+        )
+
+    policy._start_field_combat_damage_probe(state(605))
+    for target_hp in (575, 545, 515, 485, 455, 425):
+        current = state(target_hp)
+        policy._record_field_combat_damage_probe(current)
+
+    policy.field_combat_probe_started_at = time.monotonic() - 20
+    decision = policy._damage_window_probe_decision(current)
+
+    assert decision is None
+    assert policy.field_combat_damage_probe_required is False
+    assert policy.fastwalk_abort_reason is None
+
+
+def test_protected_zero_damage_extension_rejects_a_slow_projection() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the target",
+        exact_target=True,
+        source_mobile_vnum=100,
+        source_target_armed=False,
+        require_sanctuary=True,
+        require_damage_window_probe=True,
+        allow_protected_hp_fuzz_probe=True,
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.active_target = stop.target
+    policy.active_target_selector = "#100"
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.field_combat_damage_probe_required = True
+
+    def state(target_hp: int) -> CharacterState:
+        return CharacterState(
+            level=24,
+            hp=334,
+            max_hp=334,
+            room_vnum="200",
+            affects=[[{"name": "sanctuary", "duration": "2"}]],
+            enemies=[
+                {
+                    "name": "the target",
+                    "isnpc": "100",
+                    "level": "22",
+                    "hp": str(target_hp),
+                    "maxhp": "605",
+                }
+            ],
+        )
+
+    policy._start_field_combat_damage_probe(state(605))
+    for target_hp in (595, 585, 575, 565, 555, 545):
+        current = state(target_hp)
+        policy._record_field_combat_damage_probe(current)
+
+    policy.field_combat_probe_started_at = time.monotonic() - 20
+    decision = policy._damage_window_probe_decision(current)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "above the 36-action zero-damage ceiling" in (
+        policy.fastwalk_abort_reason or ""
+    )
+
+
+def test_protected_measured_damage_gets_one_near_threshold_extension() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the target",
+        exact_target=True,
+        source_mobile_vnum=6315,
+        source_target_armed=False,
+        require_sanctuary=True,
+        require_damage_window_probe=True,
+        allow_protected_hp_fuzz_probe=True,
+        source_combat_action="headbutt",
+        source_combat_conservative_damage=100,
+        source_combat_max_actions=12,
+        damage_window_minimum_fraction=0.25,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.active_target = stop.target
+    policy.active_target_selector = "#6315"
+    policy.fastwalk_hunt_stop_index = 0
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.field_combat_damage_probe_required = True
+    policy.field_combat_probe_total_damage = 248
+    policy.field_combat_probe_regenerated_hp = 39
+    policy.field_combat_probe_player_damage = 52
+    policy.field_combat_probe_samples = 3
+    policy.field_combat_probe_started_at = time.monotonic() - 7
+
+    state = CharacterState(
+        level=25,
+        hp=523,
+        max_hp=569,
+        room_vnum="6350",
+        affects=[[{"name": "sanctuary", "duration": "2"}]],
+        enemies=[
+            {
+                "name": "the target",
+                "isnpc": "6315",
+                "level": "26",
+                "hp": "608",
+                "maxhp": "856",
+            }
+        ],
+    )
+
+    decision = policy._damage_window_probe_decision(state)
+
+    assert decision is None
+    assert policy.field_combat_damage_probe_required is True
+    assert policy.field_combat_probe_measured_extension_used is True
+    assert policy.fastwalk_abort_reason is None
+
+
 def test_warning_target_probe_rejects_a_bad_damage_trade() -> None:
     policy = StarterPolicy(
         _spec(**{"class": "warrior", "subclass": None}),
@@ -4551,6 +5032,11 @@ def test_forest_bear_claws_upgrade_uses_source_route_and_live_safety_gates() -> 
     )
     assert all(stop.route_gate_allow_below_band for stop in river_stops)
     assert all(stop.route_gate_requires_locator_target for stop in river_stops)
+    assert all(stop.route_gate_crowd_retry_limit == 1 for stop in river_stops)
+    assert all(
+        stop.route_gate_crowd_retry_delay_seconds == 12.0
+        for stop in river_stops
+    )
     assert [stop.route_gate_room_vnums for stop in river_stops] == [
         ("18027", "18028"),
         ("18029",),
@@ -4692,6 +5178,60 @@ def test_forest_river_gate_accepts_one_source_poisoner_after_locator() -> None:
     assert policy.fastwalk_route_gate_source_vnum == 18002
 
 
+def test_forest_gate_poison_does_not_force_recall_before_carrier() -> None:
+    stops = forest_bear_claws_hunt_stops()
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=forest_bear_claws_hunt_route(),
+        fastwalk_attack_target="kodiak bear",
+        fastwalk_hunt_stops=stops,
+        source_mobile_level_ranges_by_vnum={
+            18002: (10, 10),
+            18003: (10, 10),
+        },
+        source_mobile_special_profiles_by_vnum={
+            18002: ("spec_poison",),
+            18003: ("spec_poison",),
+        },
+        source_mobile_aggressive_by_vnum={18002: True, 18003: True},
+        source_mobile_attack_programs_by_vnum={18002: False, 18003: False},
+    )
+    policy.current_room = "18027"
+    policy.fastwalk_hunt_stop_index = 1
+    policy.fastwalk_route_gate_recent_kill = True
+    policy.fastwalk_route_gate_completed_source_vnums = {18002}
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        move=167,
+        max_move=380,
+        position=7,
+        area="Forest",
+        room_vnum="18027",
+        room_flags=["danger"],
+        affects=[[{"duration": "3", "gives": "poison", "name": "poison"}]],
+    )
+
+    recovery = policy._fastwalk_route_gate_recovery_decision(state)
+
+    assert recovery is None
+    assert policy.fastwalk_route_gate_recent_kill is False
+    assert policy.fastwalk_returning is False
+    assert policy.fastwalk_abort_reason is None
+    assert "route gate poison tolerated while the required-loot carrier remained ahead" in (
+        policy.fastwalk_route_hazards
+    )
+
+    continuation = policy._field_poison_recall_decision(
+        state,
+        [{"name": "a swarm of wasps", "isnpc": "18003"}],
+    )
+
+    assert continuation is None
+
+
 def test_forest_river_gate_rejects_a_target_plus_source_poisoner_crowd() -> None:
     stops = forest_bear_claws_hunt_stops()
     policy = StarterPolicy(
@@ -4748,6 +5288,193 @@ def test_forest_river_gate_rejects_a_target_plus_source_poisoner_crowd() -> None
     )
 
 
+def test_forest_river_gate_retries_exact_source_poison_swarm_crowd_from_healer(
+    monkeypatch,
+) -> None:
+    now = [100.0]
+    monkeypatch.setattr(starter.time, "monotonic", lambda: now[0])
+    stops = forest_bear_claws_hunt_stops()
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=forest_bear_claws_hunt_route(),
+        fastwalk_attack_target="kodiak bear",
+        fastwalk_hunt_stops=stops,
+        source_mobile_vnums_by_target_room={
+            "swarm of mosquitoes": {"18027": (18002,)},
+            "swarm of wasps": {"18027": (18003,)},
+        },
+        source_mobile_level_ranges_by_vnum={
+            18002: (10, 10),
+            18003: (10, 10),
+        },
+        source_mobile_special_profiles_by_vnum={
+            18002: ("spec_poison",),
+            18003: ("spec_poison",),
+        },
+        source_mobile_aggressive_by_vnum={18002: True, 18003: True},
+        source_mobile_attack_programs_by_vnum={18002: False, 18003: False},
+    )
+    policy.in_world = True
+    policy.current_room = "18027"
+    policy.fastwalk_hunt_stop_index = 1
+    policy.fastwalk_hunt_move_index = len(stops[1].route_vnums)
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_locator_target_present_observed = True
+    policy.fastwalk_locator_where_locations = ("River bed",)
+    policy.room_target_counts["18027"] = {
+        "swarm of mosquitoes": 1,
+        "swarm of wasps": 3,
+    }
+    policy.return_home_recall_started = True
+    policy.pending_recall_origin = "18027"
+    policy.midgaard_logout_pending = True
+    policy.saved = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=234,
+        max_move=380,
+        position=7,
+        room_vnum="18027",
+        enemies=[],
+    )
+
+    decision = policy._fastwalk_route_gate_decision(state, [])
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert policy.fastwalk_route_gate_crowd_retry_pending is True
+    assert policy.fastwalk_route_gate_crowd_retry_attempts == {1: 1}
+    assert policy.fastwalk_route_gate_crowd_retry_due is None
+    assert policy.fastwalk_abort_reason == (
+        "required-loot route gate was accompanied by another live mobile"
+    )
+
+    healer = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=380,
+        max_move=380,
+        position=7,
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+    )
+    wait = policy._recovery_decision(healer)
+
+    assert wait is not None
+    assert wait.command == "sleep"
+    assert policy.fastwalk_route_gate_crowd_retry_due == 112.0
+
+    now[0] = 112.0
+    healer.position = 4
+    wake = policy._recovery_decision(healer)
+
+    assert wake is not None
+    assert wake.command == "stand"
+    policy.stand_confirmation_pending = False
+    healer.position = 7
+    departure = policy._recovery_decision(healer)
+
+    assert departure is not None
+    assert departure.command == "south"
+    assert policy.fastwalk_route_gate_crowd_retry_pending is False
+    assert policy.fastwalk_route_gate_crowd_retry_due is None
+    assert policy.fastwalk_hunt_stop_index == 0
+    assert policy.fastwalk_hunt_move_index == 0
+    assert policy.fastwalk_attack_target == "kodiak bear"
+    assert policy.return_home_recall_started is False
+    assert policy.pending_recall_origin is None
+    assert policy.pending_travel_origin is None
+    assert policy.midgaard_logout_pending is False
+    assert policy.saved is False
+
+
+def test_failed_return_does_not_fall_through_to_generic_logout_recall() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=forest_bear_claws_hunt_route(),
+        fastwalk_attack_target="kodiak bear",
+        fastwalk_hunt_stops=forest_bear_claws_hunt_stops(),
+        return_home=True,
+    )
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    policy.return_home_recall_started = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=289,
+        max_mana=283,
+        move=173,
+        max_move=380,
+        position=7,
+        room_name="Forest",
+        room_vnum="18027",
+        exits={"s": "18028"},
+        enemies=[],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is None
+    assert policy.failure == (
+        "recall recovery did not reach Midgaard from room 'Forest' (18027)"
+    )
+    assert policy.midgaard_logout_pending is False
+
+
+def test_active_fastwalk_return_reaches_emergency_recall_before_generic_logout() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=forest_bear_claws_hunt_route(),
+        fastwalk_attack_target="kodiak bear",
+        fastwalk_hunt_stops=forest_bear_claws_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    policy.return_home = True
+    policy.fastwalk_returning = True
+    policy.fastwalk_emergency_recall_pending = True
+    policy.fastwalk_abort_reason = (
+        "required-loot route gate was accompanied by another live mobile"
+    )
+    policy.current_room = "18027"
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=173,
+        max_move=380,
+        position=7,
+        room_name="Forest",
+        room_vnum="18027",
+        exits={"s": "18028"},
+        enemies=[],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_emergency_recall_pending is False
+    assert policy.failure is None
+
+
 def test_finite_forest_hunt_gets_a_derived_but_bounded_command_budget() -> None:
     route = forest_bear_claws_hunt_route()
     stops = forest_bear_claws_hunt_stops()
@@ -4757,6 +5484,7 @@ def test_finite_forest_hunt_gets_a_derived_but_bounded_command_budget() -> None:
     assert budget > 250
     assert budget == (
         2 * len(route.commands)
+        + 2 * len(route.commands)
         + sum(
             len(stop.route_vnums)
             + len(stop.route)
@@ -4776,30 +5504,180 @@ def test_thalos_dagger_upgrade_uses_isolated_reversible_carrier_routes() -> None
     assert stops[0].actions == ("where lamia",)
     assert stops[0].where_target == "lamia"
     assert stops[0].abort_if_where_target_absent is True
-    assert [stop.route_vnums[-1] for stop in stops[1:]] == [
+    assert stops[0].where_area_file == "thalos.are"
+    assert stops[0].where_source_mobile_vnum == 5201
+    assert stops[0].source_mobile_vnum is None
+    assert dict(stops[0].where_location_routes)["a back alley"] == (
+        "5239",
         "5240",
-        "5242",
+        "5243",
+        "5228",
+        "5223",
+    )
+    assert stops[0].preserve_where_route_waypoints is True
+    assert [stop.route_vnums[-1] for stop in stops[1:]] == [
+        "5239",
+        "5240",
+        "5241",
+        "5243",
+        "5209",
+        "5228",
         "5224",
-        "5225",
-        "5220",
-        "5237",
-        "5204",
-        "5203",
-        "5206",
-        "5221",
-        "5218",
-        "5216",
-        "5235",
-        "5205",
+        "5223",
     ]
-    assert all("5236" not in stop.route_vnums for stop in stops)
     assert all(stop.target == "strange lamia" for stop in stops)
     assert all(stop.command_keyword == "lamia" for stop in stops)
     assert all(stop.required_items == ("long slim dagger",) for stop in stops)
     assert all(stop.post_actions == ("wear long", "eq all") for stop in stops)
     assert all(stop.maximum_target_count == 1 for stop in stops)
+    assert all(stop.require_isolated for stop in stops)
+    assert all(stop.require_sanctuary for stop in stops)
     assert all(stop.maximum_level_offset == 0 for stop in stops)
     assert all(stop.allow_below_band_for_required_loot for stop in stops)
+    assert all(stop.source_mobile_vnum == 5201 for stop in stops[1:])
+    assert all(
+        stop.source_mobile_room_description
+        == "A strange lamia stands here waiting for her next meal."
+        for stop in stops[1:]
+    )
+    assert all(stop.source_peak_round_damage == 135 for stop in stops[1:])
+    assert all(stop.source_critical_hit_damage == 54 for stop in stops[1:])
+    assert all(
+        stop.source_policy_id == "thalos-long-dagger-upgrade-10-29"
+        for stop in stops[1:]
+    )
+    assert all(stop.source_target_armed is True for stop in stops[1:])
+    assert all(stop.source_loot_object_vnums == (5252,) for stop in stops[1:])
+    assert [stop.source_search_room_vnum for stop in stops[1:]] == [
+        "5239",
+        "5240",
+        "5241",
+        "5243",
+        "5209",
+        "5228",
+        "5224",
+        "5223",
+    ]
+    assert all(stop.source_reset_room_vnum is None for stop in stops[1:])
+
+
+def test_source_required_weapon_handoff_survives_stale_stance_reconciliation() -> None:
+    jewel = ObjectSource(
+        3701,
+        "jewel-studded dagger",
+        "a jewel-studded dagger",
+        5,
+        (0, 2, 3, 11),
+        0,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 5), (19, 5)),
+    )
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 1), (19, 1)),
+    )
+    stop = FieldHuntStop(
+        (),
+        "strange lamia",
+        required_items=("long slim dagger",),
+        post_actions=("wear long", "eq all"),
+        source_mobile_vnum=5201,
+        source_loot_object_vnums=(5252,),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        gear_catalog=GearCatalog({3701: jewel, 5252: long_dagger}),
+    )
+    policy.fastwalk_hunt_stop_killed = True
+    policy.fastwalk_hunt_post_action_index = 1
+    policy.fastwalk_required_primary_weapon_vnum = 5252
+    policy.gear_worn = [jewel]
+    policy.gear_audited = True
+    policy.gear_allowed_categories = {"wield"}
+    state = CharacterState(
+        area="Thalos",
+        level=24,
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        room_vnum="5201",
+        position=7,
+        inventory=[{"short_desc": "a long slim dagger", "quan": "1"}],
+    )
+
+    assert policy._gear_decision(state) is None
+    assert policy.gear_command_queue == []
+
+    policy.fastwalk_hunt_post_action_index = 2
+    policy.gear_worn = [long_dagger]
+    policy.gear_applied_stance = None
+    policy.gear_inventory_signature = ()
+
+    assert policy._gear_decision(state) is None
+    assert policy.gear_worn == [long_dagger]
+    assert policy.gear_command_queue == []
+
+
+def test_stronger_carried_weapon_beats_preserved_source_weapon() -> None:
+    jewel = ObjectSource(
+        3701,
+        "jewel-studded dagger",
+        "a jewel-studded dagger",
+        5,
+        (0, 2, 3, 11),
+        0,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 5), (19, 5)),
+    )
+    long_dagger = ObjectSource(
+        5252,
+        "long dagger slim",
+        "a long slim dagger",
+        5,
+        (0, 2, 5, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((18, 1), (19, 1)),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        city_rearm=True,
+        gear_catalog=GearCatalog({3701: jewel, 5252: long_dagger}),
+        preserved_primary_weapon_vnum=5252,
+    )
+    policy.primary_weapon_observed = True
+    policy.gear_worn = [jewel]
+    state = CharacterState(
+        area="Midgaard",
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=289,
+        max_mana=283,
+        move=380,
+        max_move=380,
+        room_name="Healer's Room",
+        room_vnum="3054",
+        position=7,
+        inventory=[{"short_desc": "a long slim dagger", "quan": "1"}],
+    )
+
+    assert policy._preferred_primary_weapon(state) == jewel
+    assert policy._city_rearm_source_weapon() == long_dagger
+    assert policy._city_rearm_decision(state) is None
+    assert policy.city_rearm_complete is True
 
 
 def test_thalos_lamia_locator_accepts_live_generic_where_rows() -> None:
@@ -5149,6 +6027,93 @@ def test_object_only_food_stop_does_not_match_an_empty_mobile_target() -> None:
 
     assert decision is not None
     assert decision.command == "look"
+
+
+def test_urgent_food_defers_eating_until_all_food_reserve_stops_are_met() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=Fastwalk(
+            "source food reserve",
+            1,
+            100,
+            "2s",
+            recall_after_loot=True,
+        ),
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), None, required_items=("a pie",)),
+            FieldHuntStop(
+                (),
+                None,
+                required_items=("a steak",),
+                route_vnums=("6100",),
+            ),
+        ),
+        urgent_food_acquisition=True,
+    )
+    hungry_state = CharacterState(
+        room_vnum="3054",
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        position=7,
+        hunger=-10,
+        inventory=[[{"short_desc": "a pie"}]],
+    )
+
+    deferred = policy._urgent_food_fastwalk_decision(hungry_state)
+
+    assert deferred is None or deferred.command != "eat pie"
+
+    reserve_state = replace(
+        hungry_state,
+        inventory=[[{"short_desc": "a pie"}, {"short_desc": "a steak"}]],
+    )
+    consume = policy._urgent_food_fastwalk_decision(reserve_state)
+
+    assert consume is not None
+    assert consume.command == "eat pie"
+
+
+def test_urgent_food_keeps_the_remaining_paired_reserve_after_consumption() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=Fastwalk(
+            "source food reserve",
+            1,
+            100,
+            "2s",
+            recall_after_loot=True,
+        ),
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), None, required_items=("a pie",)),
+            FieldHuntStop((), None, required_items=("a steak",)),
+        ),
+        urgent_food_acquisition=True,
+    )
+    policy.fastwalk_hunt_stop_index = 2
+    policy.needs_food = True
+    policy.urgent_food_consumed = True
+    state = CharacterState(
+        room_vnum="3054",
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        position=7,
+        hunger=-10,
+        inventory=[[{"short_desc": "a steak"}]],
+    )
+
+    decision = policy._urgent_food_fastwalk_decision(state)
+
+    assert decision is None or decision.command != "eat steak"
 
 
 def test_missing_noncombat_field_item_records_reset_absence() -> None:
@@ -6110,6 +7075,33 @@ def test_low_level_mage_target_can_use_source_proven_healer_recovery() -> None:
     )
 
 
+def test_famous_gas_target_can_use_source_proven_healer_poison_recovery() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the huge, green dragon",
+        command_keyword="green",
+        require_sanctuary=True,
+        source_mobile_vnum=6112,
+        source_specials=("spec_breath_gas",),
+        allow_healer_poison_recovery=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        source_mobile_level_ranges_by_vnum={6112: (23, 27)},
+    )
+
+    assert policy._source_status_recovery_issue(CharacterState(), stop) is None
+    assert "cure poison" in (
+        policy._source_status_recovery_issue(
+            CharacterState(),
+            replace(stop, allow_healer_poison_recovery=False),
+        )
+        or ""
+    )
+
+
 def test_blindness_recovery_uses_source_verified_potion_before_fleeing() -> None:
     potion = ObjectSource(
         4050,
@@ -6268,6 +7260,53 @@ def test_source_scroll_is_held_recited_and_consumed_once() -> None:
     assert decision.command == "recite scroll"
 
     policy.observe_text("You recite a sanctuary scroll.")
+    assert policy.verified_source_resources == {}
+    assert policy.pending_source_resource_effect is None
+
+
+def test_source_pill_is_eaten_and_consumed_once() -> None:
+    pill = ObjectSource(
+        926,
+        "nectar",
+        "a vial of nectar",
+        ITEM_PILL,
+        (12, 0, 1, 500),
+        80000,
+        value_strings=("12", "sanctuary", "giant strength", "armor"),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        gear_catalog=GearCatalog({pill.vnum: pill}),
+        verified_source_resources={
+            "sanctuary": {
+                "effect": "sanctuary",
+                "object_vnum": pill.vnum,
+                "object_description": "a vial of nectar",
+                "spell": "sanctuary",
+                "command": "eat",
+                "mode": "pill",
+                "requires_hold": False,
+                "consumes_object": True,
+                "consumes_charge": False,
+                "command_keyword": "nectar",
+                "charges_remaining": 1,
+            }
+        },
+    )
+    state = CharacterState(
+        hp=300,
+        max_hp=300,
+        in_combat=True,
+        inventory=[{"quan": 1, "short_desc": "a vial of nectar"}],
+        affects=[],
+    )
+
+    decision = policy._source_resource_decision(state, effect="sanctuary")
+
+    assert decision is not None
+    assert decision.command == "eat nectar"
+    policy.observe_text("You eat a vial of nectar. You feel protected.")
     assert policy.verified_source_resources == {}
     assert policy.pending_source_resource_effect is None
 
@@ -6530,6 +7569,106 @@ def test_where_relocation_rebases_each_source_leg_on_the_previous_room() -> None
         ("103",),
         ("102",),
     ]
+
+
+def test_source_locator_rebases_compacted_route_inside_registered_waypoints() -> None:
+    source_route = (621, 618, 668, 611, 608, 605, 602, 601, 625, 632)
+    rooms = {
+        room_vnum: RoomSource(
+            room_vnum,
+            f"Room {room_vnum}",
+            "new_ofcol.are",
+            {
+                "east": ExitSource("east", destination, 0, 0),
+            },
+        )
+        for room_vnum, destination in zip(source_route, source_route[1:])
+    }
+    rooms[source_route[-1]] = RoomSource(
+        source_route[-1],
+        f"Room {source_route[-1]}",
+        "new_ofcol.are",
+    )
+    source_world = WorldSource(rooms=rooms)
+    locator = FieldHuntStop(
+        (),
+        None,
+        where_target="citizen",
+        command_keyword="citizen",
+        actions=("where citizen",),
+        where_location_routes=(("citadel", ("632",)),),
+        preserve_where_route_waypoints=True,
+    )
+    target_stops = (
+        FieldHuntStop((), "citizen", route_vnums=("618",)),
+        FieldHuntStop((), "citizen", route_vnums=("621",)),
+        FieldHuntStop((), "citizen", route_vnums=("632",)),
+        # These approved waypoints were removed by the locator narrowing, but
+        # remain part of the registered route's source evidence.
+        FieldHuntStop(
+            (),
+            "citizen",
+            route_vnums=tuple(str(room) for room in source_route[1:]),
+        ),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        source_world=source_world,
+        fastwalk_hunt_stops=(locator, *target_stops),
+    )
+    policy.current_room = "621"
+    policy.fastwalk_hunt_action_index = 1
+
+    policy._narrow_fastwalk_stops_to_where_location(locator, "citadel")
+
+    assert policy.fastwalk_hunt_stops[3].route_vnums == tuple(
+        str(room) for room in source_route[1:]
+    )
+
+
+def test_skipped_source_stop_rebases_next_route_from_live_waypoint() -> None:
+    source_route = (100, 101, 102, 103, 104)
+    rooms = {
+        room_vnum: RoomSource(
+            room_vnum,
+            f"Room {room_vnum}",
+            "test.are",
+            {
+                "east": ExitSource("east", destination, 0, 0),
+            },
+        )
+        for room_vnum, destination in zip(source_route, source_route[1:])
+    }
+    rooms[source_route[-1]] = RoomSource(
+        source_route[-1],
+        f"Room {source_route[-1]}",
+        "test.are",
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        source_world=WorldSource(rooms=rooms),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "wanderer",
+                route_vnums=("101", "102", "103"),
+            ),
+            FieldHuntStop(
+                (),
+                "wanderer",
+                route_vnums=("104",),
+            ),
+        ),
+    )
+
+    policy._rebase_next_source_stop_after_skip(
+        CharacterState(room_vnum="102"),
+        1,
+    )
+
+    assert policy.fastwalk_hunt_stops[1].route_vnums == ("103", "104")
 
 
 def test_where_refresh_routes_to_latest_wanderer_room_after_full_search() -> None:
@@ -7828,6 +8967,23 @@ def test_moria_sanctuary_hunt_requires_high_health_and_enables_combat() -> None:
     assert stops[0].allow_below_band_for_required_loot is True
     assert stops[0].source_mobile_vnum == 4055
     assert stops[0].source_reset_room_vnum == "4064"
+    assert stops[0].source_loot_object_vnums == (4050,)
+
+
+def test_moria_level_twenty_recovery_uses_bounded_source_route_gates() -> None:
+    stops = moria_sanctuary_potion_hunt_stops(
+        allow_source_route_gates=True,
+    )
+
+    assert len(stops) == 1
+    stop = stops[0]
+    assert stop.maximum_where_relocations == 8
+    assert stop.route_gate_source_mobile_vnums == (4053, 4056, 4050)
+    assert stop.route_gate_allow_below_band is True
+    assert stop.route_gate_room_vnums == ("4058", "4057", "4062")
+    assert stop.route_gate_requires_locator_target is True
+    assert stop.required_items == ("purple potion",)
+    assert stop.allow_below_band_for_required_loot is True
 
 
 def test_moria_sanctuary_hunt_safe_variant_does_not_follow_wanderer() -> None:
@@ -7849,6 +9005,7 @@ def test_moria_sanctuary_hunt_safe_variant_does_not_follow_wanderer() -> None:
     assert stops[0].pre_entry_scan_hazard_source_mobile_vnums == (4051,)
     assert stops[0].source_mobile_vnum == 4055
     assert stops[0].source_reset_room_vnum == "4064"
+    assert stops[0].source_loot_object_vnums == (4050,)
 
 
 def test_required_loot_scan_blocks_wandering_hazard_before_endpoint_entry() -> None:
@@ -7904,6 +9061,57 @@ def test_required_loot_scan_blocks_wandering_hazard_before_endpoint_entry() -> N
     assert policy.fastwalk_crowded is True
     assert "4051" in (policy.fastwalk_abort_reason or "")
     assert "pre-entry scan" in (policy.fastwalk_abort_reason or "")
+
+
+def test_required_loot_scan_ignores_source_proven_safe_aggressor_at_level_24() -> None:
+    stop = FieldHuntStop(
+        ("down",),
+        "large hobgoblin",
+        exact_target=True,
+        source_mobile_vnum=4055,
+        required_items=("purple potion",),
+        allow_below_band_for_required_loot=True,
+        pre_entry_scan_room_vnums=("4064",),
+        pre_entry_scan_hazard_source_mobile_vnums=(4051,),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(stop,),
+        source_mobile_vnums_by_target_room={
+            "warrior": {"4064": (4051,)},
+        },
+        source_mobile_level_ranges_by_vnum={4051: (5, 9)},
+        source_mobile_can_join_by_vnum={4051: False},
+        source_mobile_aggressive_by_vnum={4051: True},
+        source_mobile_attack_programs_by_vnum={4051: False},
+        source_mobile_special_profiles_by_vnum={4051: ()},
+    )
+    policy.current_room = "4020"
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=300,
+        max_move=380,
+        position=7,
+        room_vnum="4020",
+        exits={"d": "4064"},
+        affects=[],
+    )
+
+    assert policy._fastwalk_hunt_plan_decision(state).command == "scan down"
+    policy.observe_text("A veteran warrior who is one room downwards.\n")
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "down"
+    assert policy.fastwalk_hunt_move_index == 1
+    assert policy.fastwalk_crowded is False
 
 
 def test_required_loot_scan_blocks_source_known_aggressive_orc_before_entry() -> None:
@@ -8058,6 +9266,146 @@ def test_moria_sanctuary_hunt_follows_wandering_locator_results() -> None:
     )
 
 
+def test_moria_deep_research_uses_source_audited_route(monkeypatch, tmp_path) -> None:
+    captured: dict[str, object] = {}
+    source_world = object()
+
+    class FakeRunner:
+        def __init__(self, *args, **kwargs) -> None:
+            captured.update(kwargs)
+
+        async def run(self):
+            return "bounded-result"
+
+    monkeypatch.setattr(starter, "load_character_spec", lambda _path: _spec())
+    monkeypatch.setattr(
+        starter,
+        "load_world_source",
+        lambda _directory, include_all_areas: source_world,
+    )
+    monkeypatch.setattr(starter, "StarterBotRunner", FakeRunner)
+
+    result = asyncio.run(
+        starter.run_moria_research_profile(
+            tmp_path / "character.yaml",
+            sanctuary_deep_hunt=True,
+        )
+    )
+
+    assert result == "bounded-result"
+    assert captured["source_world"] is source_world
+    assert captured["fastwalk_require_invisibility"] is False
+    assert captured["fastwalk_resume_scope"] == "moria-deep-sanctuary"
+    assert captured["fastwalk_hunt_stops"] == (
+        moria_deep_sanctuary_potion_hunt_stops()
+    )
+
+
+def test_moria_locator_relocates_to_reachable_southern_maze_after_refresh() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=stops,
+    )
+    policy.current_room = "4063"
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_where_relocation_query_active = True
+    policy.fastwalk_where_relocation_result_ready = True
+    policy.fastwalk_where_relocation_attempts = 1
+    policy.fastwalk_locator_target_present_observed = True
+    policy.fastwalk_locator_where_locations = ("The maze",)
+    policy.fastwalk_where_locations = ("The maze",)
+
+    decision = policy._fastwalk_where_relocation_decision(
+        CharacterState(
+            level=24,
+            hp=334,
+            max_hp=334,
+            mana=283,
+            max_mana=283,
+            move=380,
+            max_move=380,
+                position=7,
+                room_name="The maze",
+                room_vnum="4063",
+                exits={"east": "4064"},
+            )
+        )
+
+    assert decision is not None
+    assert decision.command == "east"
+    assert "source room 4064" in decision.reason
+    assert policy.fastwalk_hunt_looked is False
+    assert policy.fastwalk_target_absent is False
+    assert policy.fastwalk_hunt_stops[-1].route_vnums[-3:] == (
+        "4069",
+        "4066",
+        "4065",
+    )
+
+
+def test_moria_locator_narrows_initial_positive_result_to_all_safe_maze_stops() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=stops,
+    )
+    policy.current_room = "4014"
+    policy.fastwalk_hunt_action_index = 1
+
+    policy.observe_text(
+        "You detect the presence of:\n"
+        "The large hobgoblin          The maze\n"
+        "The large hobgoblin          The maze\n"
+        "\n<334/334 hits 289/283 mana 342/380 move [Moria]>"
+    )
+
+    assert policy.fastwalk_where_fallback_stops == ()
+    transit_index = next(
+        index
+        for index, stop in enumerate(policy.fastwalk_hunt_stops)
+        if stop.target is None and stop.allow_transit_recovery
+    )
+    assert policy.fastwalk_hunt_stops[transit_index].target is None
+    assert policy.fastwalk_hunt_stops[transit_index].allow_transit_recovery is True
+    assert policy.fastwalk_hunt_stops[transit_index].route_vnums[-1] == "4152"
+    assert [
+        stop.route_vnums[-1]
+        for stop in policy.fastwalk_hunt_stops[transit_index + 1:]
+        if stop.target is not None and stop.route_vnums
+    ] == ["4066", "4065"]
+
+
+def test_moria_locator_preserves_transit_boundary_for_large_cave_result() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=stops,
+    )
+    policy.current_room = "4064"
+    policy.fastwalk_hunt_action_index = 1
+
+    policy._narrow_fastwalk_stops_to_where_locations(
+        stops[0],
+        ("the large cave", "the maze"),
+    )
+
+    transit_index = next(
+        index
+        for index, stop in enumerate(policy.fastwalk_hunt_stops)
+        if stop.target is None and stop.allow_transit_recovery
+    )
+    transit = policy.fastwalk_hunt_stops[transit_index]
+    assert transit.target is None
+    assert transit.allow_transit_recovery is True
+    assert transit.route_vnums[-1] == "4152"
+    assert policy.fastwalk_hunt_stops[transit_index + 1].target == "large hobgoblin"
+    assert policy.fastwalk_hunt_stops[transit_index + 1].route_vnums[0] == "4152"
+
+
 def test_moria_sanctuary_safe_reset_can_require_two_potions() -> None:
     stops = moria_sanctuary_potion_hunt_stops(
         safe_reset_only=True,
@@ -8091,26 +9439,54 @@ def test_moria_double_reserve_keeps_searching_after_one_potion() -> None:
 def test_moria_deep_probe_uses_source_room_vnums_after_safe_reset() -> None:
     stops = moria_deep_sanctuary_potion_research_stops()
 
-    assert len(stops) == 11
+    assert len(stops) == 13
     assert stops[0].route == moria_sanctuary_potion_consider_stops()[0].route
     assert stops[0].actions == ("where hobgoblin",)
     assert stops[0].where_target == "large hobgoblin"
     assert stops[0].where_location_routes
     assert stops[0].where_relocation_routes
+    assert dict(stops[0].where_location_routes)["the maze"] == (
+        "4063",
+        "4066",
+        "4065",
+    )
+    maze_route = next(
+        route
+        for origin, label, route in stops[0].where_relocation_routes
+        if origin == "4014" and label == "the maze"
+    )
+    assert maze_route[:7] == (
+        "4015",
+        "4019",
+        "4026",
+        "4027",
+        "4020",
+        "4064",
+        "4063",
+    )
+    assert maze_route[-3:] == ("4069", "4066", "4065")
+    assert not set(maze_route).intersection({"4057", "4058", "4062", "4067"})
     assert stops[0].abort_if_where_target_absent is True
+    assert stops[0].continue_after_where_absent is True
     assert stops[0].abort_if_where_location_unknown is True
     assert stops[0].preserve_where_route_waypoints is True
     assert stops[0].consider_only is True
     assert stops[1].target is None
     assert stops[1].route == ()
-    assert stops[1].allow_transit_recovery is True
-    assert stops[1].route_vnums == (
-        "4064", "4020", "4027", "4026", "4019", "4015",
+    assert stops[1].allow_transit_recovery is False
+    assert stops[1].route_vnums == ("4064", "4020")
+    assert stops[2].target == "large hobgoblin"
+    assert stops[2].route_vnums == ("4020",)
+    assert stops[3].target is None
+    assert stops[3].allow_transit_recovery is True
+    assert stops[3].route_vnums == (
+        "4020", "4027", "4026", "4019", "4015",
             "4014", "4013", "4012", "4016", "4023", "4022",
-            "4021", "4115", "4114", "4109", "4106", "4103",
-            "4104", "4152",
+            "4024", "4059", "4060", "4061", "4056", "4054",
+            "4053", "4050", "4051", "4052", "4100", "4101",
+            "4102", "4103", "4104", "4152",
         )
-    assert tuple(stop.route_vnums for stop in stops[2:]) == (
+    assert tuple(stop.route_vnums for stop in stops[4:]) == (
         (
             "4152", "4153", "4157", "4158", "4162",
             "4166", "4167", "4171", "4074", "4072", "4071",
@@ -8124,21 +9500,151 @@ def test_moria_deep_probe_uses_source_room_vnums_after_safe_reset() -> None:
         ("4072", "4073"),
         ("4073", "4072", "4074"),
     )
-    assert all("4062" not in stop.route_vnums for stop in stops[2:])
-    assert all(stop.consider_only is True for stop in stops[2:])
-    assert all(stop.exact_target is True for stop in stops[2:])
-    assert all(stop.abort_after_consider_rejection for stop in stops[2:])
-    assert all(stop.where_target == "large hobgoblin" for stop in stops[2:])
-    assert all(stop.actions == ("where hobgoblin",) for stop in stops[2:])
-    assert all(stop.abort_if_where_target_absent for stop in stops[2:])
-    assert all(stop.abort_if_where_location_unknown for stop in stops[2:])
-    assert all(stop.preserve_where_route_waypoints for stop in stops[2:])
+    assert moria_deep_sanctuary_potion_source_route() == (
+        "4064", "4020", "4027", "4026", "4019", "4015",
+            "4014", "4013", "4012", "4016", "4023", "4022",
+            "4024", "4059", "4060", "4061", "4056", "4054",
+            "4053", "4050", "4051", "4052", "4100", "4101",
+            "4102", "4103", "4104", "4152",
+        )
+    target_stops = tuple(
+        stop for stop in stops[2:] if stop.target is not None
+    )
+    assert all("4062" not in stop.route_vnums for stop in target_stops)
+    assert all(stop.consider_only is True for stop in target_stops)
+    assert all(stop.exact_target is True for stop in target_stops)
+    assert all(stop.abort_after_consider_rejection for stop in target_stops)
+    assert all(stop.where_target == "large hobgoblin" for stop in target_stops)
+    assert all(stop.actions == ("where hobgoblin",) for stop in target_stops)
+    assert all(stop.abort_if_where_target_absent for stop in target_stops)
+    assert all(stop.continue_after_where_absent for stop in target_stops)
+    assert all(stop.abort_if_where_location_unknown for stop in target_stops)
+    assert all(stop.preserve_where_route_waypoints for stop in target_stops)
     assert all(stop.trivial_bystanders == (
         "snake",
         "warrior",
         "hobgoblin",
         "orc",
-    ) for stop in stops[2:])
+    ) for stop in target_stops)
+
+
+def test_moria_deep_route_uses_source_safe_level_24_bypass() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    route = moria_deep_sanctuary_potion_source_route()
+
+    assert "4114" not in route
+    assert "4062" not in route
+    assert source_route_hazard_rejections(
+        world,
+        tuple(int(room) for room in route),
+        character_level=24,
+        require_no_combat_hazards=True,
+    ) == ()
+    assert source_route_hazard_rejections(
+        world,
+        tuple(int(room) for room in route),
+        character_level=19,
+        require_no_combat_hazards=True,
+    )
+
+
+def test_moria_deep_resume_bridges_completed_transit_waypoint() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+    route = starter._MORIA_DEEP_SAFE_CARRIER_ROUTE_FROM_4064
+    waypoint_index = route.index("4152")
+
+    resumed, start_index = moria_deep_sanctuary_resume_stops(
+        stops,
+        {
+            "scope": "moria-deep-sanctuary",
+            "route_name": "moria",
+            "boot_id": "current-boot",
+            "room_vnum": "4152",
+            "route_index": waypoint_index,
+            "stop_index": 3,
+            "next_stop_index": 4,
+        },
+    )
+
+    assert start_index == 0
+    assert resumed[0].target is None
+    assert resumed[0].route_vnums == route[: waypoint_index + 1]
+    assert resumed[1].target == stops[4].target
+    assert resumed[1].route_vnums == stops[4].route_vnums
+
+
+def test_moria_deep_resume_finishes_an_interrupted_route_leg() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+    route = starter._MORIA_DEEP_SAFE_CARRIER_ROUTE_FROM_4064
+    room = "4157"
+    waypoint_index = route.index(room)
+    stop_route_index = stops[4].route_vnums.index(room)
+
+    resumed, _ = moria_deep_sanctuary_resume_stops(
+        stops,
+        {
+            "scope": "moria-deep-sanctuary",
+            "route_name": "moria",
+            "boot_id": "current-boot",
+            "room_vnum": room,
+            "route_index": waypoint_index,
+            "stop_index": 4,
+            "next_stop_index": 4,
+        },
+    )
+
+    assert resumed[0].route_vnums == route[: waypoint_index + 1]
+    assert resumed[1].target == stops[4].target
+    assert resumed[1].route_vnums == stops[4].route_vnums[stop_route_index:]
+
+
+def test_moria_deep_resume_rejects_a_route_mismatch() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+
+    resumed, start_index = moria_deep_sanctuary_resume_stops(
+        stops,
+        {
+            "scope": "moria-deep-sanctuary",
+            "route_name": "ambush",
+            "boot_id": "current-boot",
+            "room_vnum": "4152",
+            "route_index": 28,
+            "stop_index": 1,
+            "next_stop_index": 2,
+        },
+    )
+
+    assert resumed == stops
+    assert start_index == 0
+
+
+def test_moria_deep_policy_captures_only_a_confirmed_transit_cursor() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=stops,
+        fastwalk_resume_scope="moria-deep-sanctuary",
+    )
+    policy.world_boot_id = "current-boot"
+    policy.fastwalk_hunt_stop_index = 3
+    policy.fastwalk_hunt_move_index = len(stops[3].route_vnums)
+    policy.fastwalk_transit_recovery_completed_stop_index = 3
+    policy.current_room = "4152"
+
+    checkpoint = policy.fastwalk_resume_checkpoint(
+        CharacterState(level=24, room_vnum="4152", enemies=[])
+    )
+
+    assert checkpoint is not None
+    assert checkpoint["room_vnum"] == "4152"
+    assert checkpoint["stop_index"] == 3
+    assert checkpoint["next_stop_index"] == 4
+    assert checkpoint["route_complete"] is True
 
 
 def test_moria_transit_waypoint_matches_source_room_flags() -> None:
@@ -8160,8 +9666,10 @@ def test_moria_deep_hunt_preserves_required_loot_and_high_health_gates() -> None
         stop.route_vnums for stop in research
     )
     assert hunt[1].target is None
-    assert hunt[1].allow_transit_recovery is True
-    assert hunt[1].allow_transit_recovery_at_start is False
+    assert hunt[1].allow_transit_recovery is False
+    assert hunt[3].target is None
+    assert hunt[3].allow_transit_recovery is True
+    assert hunt[3].allow_transit_recovery_at_start is False
     assert all(stop.consider_only is False for stop in hunt if stop.target is not None)
     assert all(
         stop.minimum_health_ratio == 0.675
@@ -8188,7 +9696,260 @@ def test_moria_deep_hunt_preserves_required_loot_and_high_health_gates() -> None
         for stop in hunt
         if stop.target is not None
     )
+    assert all(
+        stop.source_loot_object_vnums == (4050,)
+        for stop in hunt
+        if stop.target is not None
+    )
+    assert research[0].source_reset_room_vnum == "4064"
+    assert hunt[0].source_reset_room_vnum == "4064"
     assert hunt[2].abort_if_where_target_absent is True
+    assert hunt[2].continue_after_where_absent is True
+
+
+def test_moria_deep_locator_continues_after_a_source_room_miss() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=moria_deep_sanctuary_potion_research_stops(),
+    )
+    first = replace(
+        policy.fastwalk_hunt_stops[0],
+        source_policy_id="moria-test-policy",
+    )
+    policy.fastwalk_hunt_stops = (first, *policy.fastwalk_hunt_stops[1:])
+    policy.current_room = "4064"
+    policy.fastwalk_hunt_move_index = len(first.route)
+    policy.fastwalk_hunt_action_index = len(first.actions)
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_where_response_observed = True
+    policy.last_response = "You fail to find anyone by that name."
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=289,
+        max_mana=289,
+        move=380,
+        max_move=380,
+        position=7,
+        room_vnum="4064",
+    )
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert "continue" in decision.reason
+    assert policy.fastwalk_hunt_stop_skipped is True
+    assert policy.fastwalk_returning is False
+    assert (
+        "moria-test-policy",
+        "4064",
+        "large hobgoblin",
+    ) in policy.fastwalk_source_absent_sightings
+
+    policy.fastwalk_hunt_looked = True
+    next_decision = policy._fastwalk_hunt_plan_decision(
+        replace(state, exits={"up": "4020"})
+    )
+
+    assert next_decision is not None
+    assert next_decision.command == "up"
+    assert policy.fastwalk_hunt_stop_index == 1
+
+
+def test_moria_deep_transit_stop_advances_to_the_next_locator() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=moria_deep_sanctuary_potion_research_stops(),
+    )
+    policy.current_room = "4152"
+    policy.fastwalk_hunt_stop_index = 3
+    policy.fastwalk_hunt_move_index = len(
+        policy.fastwalk_hunt_stops[3].route_vnums
+    )
+    policy.fastwalk_hunt_looked = True
+    policy.last_response = "The room is quiet."
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=289,
+        max_mana=289,
+        move=380,
+        max_move=380,
+        position=7,
+        room_flags=["indoors", "no_mob"],
+        room_vnum="4152",
+        exits={"east": "4153"},
+    )
+
+    completed = policy._fastwalk_hunt_plan_decision(state)
+
+    assert completed is not None
+    assert completed.command == "look"
+    assert policy.fastwalk_hunt_stop_skipped is True
+    assert policy.fastwalk_returning is False
+
+    next_decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert next_decision is not None
+    assert next_decision.command == "east"
+    assert policy.fastwalk_hunt_stop_index == 4
+
+
+def test_moria_deep_transit_boundary_reopens_before_low_move_recall() -> None:
+    stops = moria_deep_sanctuary_potion_research_stops()
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=stops,
+    )
+    policy.current_room = "4064"
+    policy.fastwalk_hunt_action_index = 1
+    policy.observe_text(
+        "You detect the presence of:\n"
+        "The large hobgoblin          The maze\n"
+        "\n<334/334 hits 289/283 mana 342/380 move [Moria]>"
+    )
+    policy.fastwalk_hunt_stop_index = 3
+    policy.fastwalk_hunt_move_index = 0
+    policy.fastwalk_hunt_stop_skipped = True
+
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=289,
+        max_mana=283,
+        move=11,
+        max_move=380,
+        position=7,
+        room_flags=["indoors", "no_mob"],
+        room_vnum="4152",
+        exits={"e": "4104", "s": "4153"},
+    )
+
+    audit = policy._fastwalk_hunt_plan_decision(state)
+
+    assert audit is not None
+    assert audit.command == "look"
+    assert policy.fastwalk_hunt_stop_index == 2
+    assert policy.fastwalk_hunt_stop_skipped is False
+
+    recover = policy._fastwalk_hunt_plan_decision(state)
+
+    assert recover is not None
+    assert recover.command == "sleep"
+
+
+def test_moria_deep_transit_reaches_waypoint_with_last_move_reserve() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=moria_deep_sanctuary_potion_research_stops(),
+    )
+    policy.current_room = "4104"
+    policy.fastwalk_hunt_stop_index = 3
+    policy.fastwalk_hunt_move_index = len(
+        policy.fastwalk_hunt_stops[3].route_vnums
+    ) - 1
+    policy.fastwalk_hunt_looked = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=289,
+        max_mana=289,
+        move=20,
+        max_move=380,
+        position=7,
+        room_vnum="4104",
+        exits={"east": "4103", "west": "4152"},
+    )
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert policy.fastwalk_returning is False
+
+
+def test_moria_deep_transit_waits_before_an_unaffordable_final_step() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=moria_deep_sanctuary_potion_research_stops(),
+    )
+    policy.current_room = "4104"
+    policy.fastwalk_hunt_stop_index = 3
+    policy.fastwalk_hunt_move_index = len(
+        policy.fastwalk_hunt_stops[3].route_vnums
+    ) - 1
+    policy.fastwalk_hunt_looked = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=289,
+        max_mana=289,
+        move=10,
+        max_move=380,
+        position=7,
+        room_vnum="4104",
+        exits={"east": "4103", "west": "4152"},
+    )
+
+    waiting = policy._fastwalk_hunt_plan_decision(state)
+
+    assert waiting is None
+    assert policy.fastwalk_transit_step_waiting is True
+    assert policy.fastwalk_transit_step_required_move == 20
+    assert policy.prompt_ready is False
+
+    ready = policy._fastwalk_hunt_plan_decision(replace(state, move=20))
+
+    assert ready is not None
+    assert ready.command == "west"
+    assert policy.fastwalk_transit_step_waiting is False
+
+
+def test_moria_deep_transit_wait_has_a_bounded_timeout() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=moria_deep_sanctuary_potion_research_stops(),
+    )
+    policy.current_room = "4104"
+    policy.fastwalk_hunt_stop_index = 3
+    policy.fastwalk_hunt_move_index = len(
+        policy.fastwalk_hunt_stops[3].route_vnums
+    ) - 1
+    policy.fastwalk_hunt_looked = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=289,
+        max_mana=289,
+        move=10,
+        max_move=380,
+        position=7,
+        room_vnum="4104",
+        exits={"east": "4103", "west": "4152"},
+    )
+
+    assert policy._fastwalk_hunt_plan_decision(state) is None
+    policy.fastwalk_transit_step_wait_deadline = time.monotonic() - 1
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert "wait expired" in decision.reason
+    assert policy.fastwalk_returning is True
 
 
 def test_moria_deep_hunt_can_require_a_second_purple_potion() -> None:
@@ -8201,7 +9962,7 @@ def test_moria_transit_recovery_requires_a_live_empty_no_mob_waypoint() -> None:
     policy = StarterPolicy(
         _spec(),
         "swordfish",
-        fastwalk_hunt_stops=(moria_deep_sanctuary_potion_research_stops()[1],),
+            fastwalk_hunt_stops=(moria_deep_sanctuary_potion_research_stops()[3],),
     )
     policy.fastwalk_hunt_looked = True
     policy.in_world = True
@@ -8228,7 +9989,7 @@ def test_moria_transit_recovery_sleeps_and_resumes_with_enough_movement() -> Non
     policy = StarterPolicy(
         _spec(),
         "swordfish",
-        fastwalk_hunt_stops=(moria_deep_sanctuary_potion_research_stops()[1],),
+            fastwalk_hunt_stops=(moria_deep_sanctuary_potion_research_stops()[3],),
     )
     policy.fastwalk_hunt_looked = True
     policy.in_world = True
@@ -13666,6 +15427,54 @@ def test_world_time_probe_does_not_wait_for_health_when_hungry() -> None:
     assert quit_decision.command == "quit"
 
 
+def test_world_time_probe_does_not_reopen_recovery_after_runtime_boundary() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        return_home=True,
+        world_time_probe=True,
+        title_configured=True,
+        description_configured=True,
+    )
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    policy.world_time_queried = True
+    policy.runtime_boundary_requested = True
+    policy.midgaard_logout_pending = True
+    policy.combat_active = True
+    state = CharacterState(
+        level=25,
+        hp=214,
+        max_hp=569,
+        mana=250,
+        max_mana=245,
+        move=442,
+        max_move=442,
+        hunger=-10,
+        thirst=29,
+        position=7,
+        area="Midgaard",
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        room_flags=["safe", "healing"],
+        inventory=[],
+    )
+
+    save = policy.next_decision(state)
+
+    assert save is not None
+    assert save.command == "save"
+    assert policy.combat_active is False
+    policy.after_command(save)
+    policy.prompt_ready = True
+
+    quit_decision = policy.next_decision(state)
+
+    assert quit_decision is not None
+    assert quit_decision.command == "quit"
+
+
 def test_urgent_food_route_eats_before_return_and_checkpoints_when_fed() -> None:
     food = ObjectSource(
         309,
@@ -13754,6 +15563,38 @@ def test_urgent_food_route_eats_before_return_and_checkpoints_when_fed() -> None
     assert save is not None
     assert save.command == "save"
     assert save.reason == "persist fed healer return"
+
+
+def test_urgent_food_route_fails_at_healer_when_gmcp_hunger_is_still_nonpositive() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=Fastwalk("source food", 1, 100, "s"),
+        urgent_food_acquisition=True,
+    )
+    policy.fastwalk_returning = True
+    policy.urgent_food_consumed = True
+    policy.needs_food = False
+    state = CharacterState(
+        room_vnum="3054",
+        hp=334,
+        max_hp=334,
+        mana=283,
+        max_mana=283,
+        move=380,
+        max_move=380,
+        position=7,
+        hunger=-2,
+        inventory=[],
+    )
+
+    decision = policy._urgent_food_fastwalk_decision(state)
+
+    assert decision is None
+    assert policy.failure == (
+        "urgent source-food route returned without restoring positive hunger "
+        "or retaining a food reserve"
+    )
 
 
 def test_resupply_wakes_and_eats_carried_food_before_general_work() -> None:
@@ -13937,7 +15778,7 @@ def test_liquidation_resupply_detour_returns_to_healer_before_replanning() -> No
     assert policy.sale_plan == []
 
 
-def test_liquidation_does_not_resume_shop_cursor_from_supplies_after_detour() -> None:
+def test_liquidation_discards_shop_cursor_after_supplies_detour() -> None:
     policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
     policy.in_world = True
     policy.liquidation_resupply_return_pending = True
@@ -13956,8 +15797,41 @@ def test_liquidation_does_not_resume_shop_cursor_from_supplies_after_detour() ->
         CharacterState(room_name="By the Temple Altar", room_vnum="3054")
     )
     assert policy.liquidation_resupply_return_pending is False
-    assert policy.sale_phase == "plan"
+    assert policy.sale_phase == "outbound"
     assert policy.sale_plan == []
+
+
+def test_liquidation_replans_at_healer_after_noop_resupply_check() -> None:
+    potion = ObjectSource(
+        5019,
+        "potion pink",
+        "a pink potion",
+        10,
+        (25, 1, 2, 0),
+        600,
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        emergency_provision_sale=True,
+        gear_catalog=GearCatalog({potion.vnum: potion}),
+    )
+    policy.in_world = True
+    policy.liquidation_resupply_return_pending = True
+
+    decision = policy._liquidate_loot_decision(
+        CharacterState(
+            room_name="By the Temple Altar",
+            room_vnum="3054",
+            inventory=[[{"short_desc": "a pink potion", "quan": "1"}]],
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "eq all"
+    assert policy.liquidation_resupply_return_pending is False
+    assert policy.sale_phase == "plan"
 
 
 def test_liquidation_does_not_interrupt_an_active_safe_shop_route() -> None:
@@ -17244,6 +19118,104 @@ def test_source_aggressive_transit_flees_before_issuing_a_combat_action() -> Non
     assert "aggressive transit attacker" in (policy.fastwalk_abort_reason or "")
 
 
+def test_source_ranked_route_allows_registered_borderline_transit_attacker() -> None:
+    weapon = ObjectSource(
+        18411,
+        "short sword",
+        "a short sword",
+        5,
+        (0, 6, 12, 11),
+        0,
+    )
+    armor = ObjectSource(
+        18412,
+        "iron cap",
+        "an iron cap",
+        9,
+        (0, 0, 0, 0),
+        0,
+    )
+    world = WorldSource(
+        mobiles={
+            18410: MobileSource(
+                18410,
+                "olog goblin",
+                "Olog",
+                2,
+                1 << 5,
+                -200,
+                "test.are",
+            ),
+        },
+        objects={18411: weapon, 18412: armor},
+        mob_resets=[
+            MobReset(
+                18410,
+                10029,
+                1,
+                (),
+                ((16, 18411), (6, 18412)),
+            ),
+        ],
+    )
+    route = replace(
+        route_named("foundry captain"),
+        route_bounded_borderline_source_mobile_vnums=(18410,),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        fastwalk_attack_target="the field target",
+        fastwalk_hunt_stops=(FieldHuntStop((), "the field target"),),
+        source_mobile_level_ranges_by_vnum={18410: (0, 4)},
+        source_mobile_special_profiles_by_vnum={18410: ()},
+        source_mobile_aggressive_by_vnum={18410: True},
+        source_mobile_attack_programs_by_vnum={18410: False},
+        source_world=world,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_outbound_index = 4
+    policy.current_room = "10029"
+    enemy = {
+        "name": "Olog",
+        "isnpc": "18410",
+        "level": "1",
+        "hp": "9",
+        "maxhp": "9",
+    }
+    state = CharacterState(
+        level=8,
+        hp=113,
+        max_hp=113,
+        mana=324,
+        max_mana=324,
+        room_name="A route waypoint",
+        room_vnum="10029",
+        position=7,
+        in_combat=True,
+        combat_target="Olog",
+        enemies=[[enemy]],
+    )
+    policy.observe_events(
+        [GameEvent("enemies_changed", "gmcp", {"value": [[enemy]]})],
+        state,
+    )
+    policy.active_target = "Olog"
+    policy.active_target_mobile_vnum = 18410
+    policy.combat_active = True
+    policy.fastwalk_attack_started = True
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command != "flee"
+    assert policy.fastwalk_transit_below_band_return_pending is True
+    assert policy.fastwalk_transit_below_band_resume_after_fight is True
+
+
 def test_ordinary_hunt_resumes_after_one_harmless_below_band_transit_attacker() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -20125,6 +22097,799 @@ def test_source_hp_fuzz_probe_withdraws_when_live_target_exceeds_budget() -> Non
     assert "HP ceiling 500" in (policy.fastwalk_abort_reason or "")
     assert "damage budget of 480" in (policy.fastwalk_abort_reason or "")
     assert policy.fastwalk_hunt_stop_skipped is True
+
+
+def test_source_special_hp_fuzz_probe_withdraws_before_opener_over_budget() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the cleric",
+        source_target_hp_ceiling=768,
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=40,
+        source_combat_max_actions=12,
+        require_sanctuary=True,
+        require_damage_window_probe=True,
+        allow_protected_special_hp_fuzz_probe=True,
+        source_specials=("spec_cast_cleric",),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "9204"
+    policy.enemy_snapshot_room = "9204"
+    policy.fastwalk_hunt_stop_index = 0
+    policy.active_target = stop.target
+    policy.active_target_mobile_vnum = 9202
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="9204",
+        enemies=[[
+            {
+                "name": "the cleric",
+                "level": "24",
+                "hp": "500",
+                "maxhp": "500",
+                "isnpc": "9202",
+            },
+        ]],
+    )
+
+    decision = policy._live_source_damage_budget_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "damage budget of 480" in (policy.fastwalk_abort_reason or "")
+    assert policy.fastwalk_hunt_stop_skipped is True
+
+
+def test_famous_gas_action_budget_waits_for_observed_sanctuary() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the green dragon",
+        exact_target=True,
+        source_mobile_vnum=6112,
+        require_sanctuary=True,
+        allow_protected_special_hp_fuzz_probe=True,
+        allow_healer_poison_recovery=True,
+        source_specials=("spec_breath_gas",),
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+        require_damage_window_probe=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "6143"
+    policy.enemy_snapshot_room = "6143"
+    policy.fastwalk_attack_target = stop.target
+    policy.active_target = stop.target
+    policy.active_target_mobile_vnum = stop.source_mobile_vnum
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        room_vnum="6143",
+        enemies=[[
+            {
+                "name": "the green dragon",
+                "level": "27",
+                "hp": "576",
+                "maxhp": "576",
+                "isnpc": "6112",
+            },
+        ]],
+    )
+
+    decision = policy._live_source_damage_budget_decision(state)
+
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "damage budget of 318" in (policy.fastwalk_abort_reason or "")
+
+    state.affects = [[{"name": "sanctuary", "duration": "2"}]]
+    assert policy._live_source_damage_budget_decision(state) is None
+
+
+def test_famous_gas_probe_uses_finite_sanctuary_action_extension() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the green dragon",
+        exact_target=True,
+        source_mobile_vnum=6112,
+        source_target_armed=False,
+        require_sanctuary=True,
+        allow_protected_special_hp_fuzz_probe=True,
+        allow_healer_poison_recovery=True,
+        source_specials=("spec_breath_gas",),
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+        require_damage_window_probe=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.active_target = stop.target
+    policy.active_target_selector = "#6112"
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.field_combat_damage_probe_required = True
+
+    def state(target_hp: int) -> CharacterState:
+        return CharacterState(
+            level=24,
+            hp=334,
+            max_hp=334,
+            room_vnum="6143",
+            affects=[[{"name": "sanctuary", "duration": "2"}]],
+            enemies=[
+                {
+                    "name": "the green dragon",
+                    "isnpc": "6112",
+                    "level": "27",
+                    "hp": str(target_hp),
+                    "maxhp": "576",
+                }
+            ],
+        )
+
+    policy._start_field_combat_damage_probe(state(576))
+    for target_hp in (514, 452, 390):
+        current = state(target_hp)
+        policy._record_field_combat_damage_probe(current)
+
+    policy.field_combat_probe_started_at = time.monotonic() - 7
+    decision = policy._damage_window_probe_decision(current)
+
+    assert decision is None
+    assert policy.field_combat_damage_probe_required is False
+    assert policy.fastwalk_abort_reason is None
+
+
+def test_source_special_endpoint_quaffs_sanctuary_before_opener() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the cleric",
+        exact_target=True,
+        source_mobile_vnum=9202,
+        require_sanctuary=True,
+        allow_protected_special_hp_fuzz_probe=True,
+        source_specials=("spec_cast_cleric",),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "9204"
+    policy.fastwalk_attack_target = stop.target
+    policy.room_target_counts["9204"] = {"the cleric": 1}
+    policy.combat_pouch_potions.update({"purple": 1})
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="9204",
+        enemies=[[
+            {
+                "name": "the cleric",
+                "level": "24",
+                "hp": "250",
+                "maxhp": "250",
+                "isnpc": "9202",
+            },
+        ]],
+    )
+
+    allowed, decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        "the cleric",
+        stop,
+    )
+
+    assert allowed is False
+    assert decision is not None
+    assert decision.command == "quaff purple"
+    assert policy.fastwalk_opening_potion_pending is True
+    assert policy.fastwalk_attack_started is True
+
+
+def test_source_special_endpoint_withdraws_before_sanctuary_when_live_hp_exceeds_budget() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the cyclops",
+        exact_target=True,
+        source_mobile_vnum=9202,
+        require_sanctuary=True,
+        allow_protected_special_hp_fuzz_probe=True,
+        source_specials=("spec_cast_cleric",),
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "9204"
+    policy.enemy_snapshot_room = "9204"
+    policy.fastwalk_attack_target = stop.target
+    policy.combat_pouch_potions.update({"purple": 1})
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="9204",
+        enemies=[[
+            {
+                "name": "the cyclops",
+                "level": "20",
+                "hp": "407",
+                "maxhp": "407",
+                "isnpc": "9202",
+            },
+        ]],
+    )
+
+    allowed, decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        "the cyclops",
+        stop,
+    )
+
+    assert allowed is False
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "HP ceiling 407" in (policy.fastwalk_abort_reason or "")
+    assert "damage budget of 318" in (policy.fastwalk_abort_reason or "")
+    assert policy.fastwalk_hunt_stop_skipped is True
+    assert policy.fastwalk_opening_potion_pending is False
+
+
+def test_protected_hp_fuzz_endpoint_withdraws_before_sanctuary_when_live_hp_exceeds_budget() -> None:
+    stop = FieldHuntStop(
+        (),
+        "Mr. Smithy",
+        exact_target=True,
+        source_mobile_vnum=2413,
+        require_sanctuary=True,
+        allow_protected_hp_fuzz_probe=True,
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+        source_target_hp_ceiling=945,
+        require_damage_window_probe=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "2406"
+    policy.enemy_snapshot_room = "2406"
+    policy.fastwalk_attack_target = stop.target
+    policy.combat_pouch_potions.update({"purple": 1})
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="2406",
+        enemies=[[
+            {
+                "name": "Mr. Smithy",
+                "level": "27",
+                "hp": "400",
+                "maxhp": "400",
+                "isnpc": "2413",
+            },
+        ]],
+    )
+
+    allowed, decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        "Mr. Smithy",
+        stop,
+    )
+
+    assert allowed is False
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "HP ceiling 400" in (policy.fastwalk_abort_reason or "")
+    assert "damage budget of 318" in (policy.fastwalk_abort_reason or "")
+    assert policy.fastwalk_hunt_stop_skipped is True
+    assert policy.fastwalk_opening_potion_pending is False
+
+
+def test_protected_hp_fuzz_consider_requires_live_hp_before_sanctuary() -> None:
+    stop = FieldHuntStop(
+        (),
+        "Mr. Smithy",
+        exact_target=True,
+        source_mobile_vnum=2413,
+        require_sanctuary=True,
+        allow_protected_hp_fuzz_probe=True,
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+        source_target_hp_ceiling=945,
+        require_damage_window_probe=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "2406"
+    policy.fastwalk_attack_target = stop.target
+    policy.consider_target = stop.target
+    policy.consider_target_selector = "#22843"
+    policy.consider_viable = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="2406",
+        enemies=[[]],
+    )
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_hunt_stop_skipped is True
+    assert policy.fastwalk_attack_started is False
+    assert policy.fastwalk_opening_potion_pending is False
+    assert "no authoritative live HP" in (policy.fastwalk_abort_reason or "")
+
+
+def test_protected_hp_fuzz_consider_opens_source_audited_passive_target() -> None:
+    stop = FieldHuntStop(
+        (),
+        "Mr. Smithy",
+        exact_target=True,
+        source_mobile_vnum=2413,
+        source_target_armed=False,
+        require_sanctuary=True,
+        allow_protected_hp_fuzz_probe=True,
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+        source_target_hp_ceiling=945,
+        require_damage_window_probe=True,
+    )
+    world = WorldSource(
+        mobiles={
+            2413: MobileSource(
+                2413,
+                "horse Smithy",
+                "Mr. Smithy",
+                25,
+                0,
+                500,
+                "ultima.are",
+            ),
+        },
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        source_world=world,
+    )
+    policy.current_room = "2406"
+    policy.fastwalk_attack_target = stop.target
+    policy.room_target_counts["2406"] = {stop.target: 1}
+    policy.room_target_selectors["2406"] = {stop.target: ["#22843"]}
+    policy.combat_pouch_potions.update({"purple": 1})
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="2406",
+        enemies=[[]],
+    )
+
+    decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        stop.target,
+        stop,
+    )[1]
+
+    assert decision is not None
+    assert decision.command == "consider #22843"
+    assert policy.consider_target == stop.target
+    assert policy.consider_target_selector == "#22843"
+
+    policy.consider_viable = True
+    decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        stop.target,
+        stop,
+    )[1]
+
+    assert decision is not None
+    assert decision.command == "quaff purple"
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_opening_potion_pending is True
+    assert policy.fastwalk_returning is False
+
+
+def test_protected_aggressive_hp_fuzz_consider_opens_exact_source_target() -> None:
+    stop = FieldHuntStop(
+        (),
+        "The Guardian",
+        exact_target=True,
+        source_mobile_vnum=9203,
+        source_target_armed=False,
+        require_sanctuary=True,
+        allow_protected_aggressive_hp_fuzz_probe=True,
+        protected_source_peak_round_damage=80,
+        protected_source_critical_hit_damage=64,
+        source_combat_action="burning hands",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+        source_target_hp_ceiling=513,
+        require_damage_window_probe=True,
+    )
+    world = WorldSource(
+        mobiles={
+            9203: MobileSource(
+                9203,
+                "guardian",
+                "The Guardian",
+                17,
+                ACT_AGGRESSIVE,
+                0,
+                "test.are",
+            ),
+        },
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "mage"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        source_world=world,
+    )
+    policy.current_room = "6367"
+    policy.fastwalk_attack_target = stop.target
+    policy.room_target_counts["6367"] = {stop.target: 1}
+    policy.room_target_selectors["6367"] = {stop.target: ["#9203"]}
+    policy.combat_pouch_potions.update({"purple": 1})
+    state = CharacterState(
+        level=18,
+        hp=218,
+        max_hp=218,
+        mana=628,
+        max_mana=628,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="6367",
+        enemies=[[]],
+    )
+
+    decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        stop.target,
+        stop,
+    )[1]
+
+    assert decision is not None
+    assert decision.command == "consider #9203"
+    policy.consider_viable = True
+    decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        stop.target,
+        stop,
+    )[1]
+
+    assert decision is not None
+    assert decision.command == "quaff purple"
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_opening_potion_pending is True
+    assert policy.fastwalk_returning is False
+
+
+def test_protected_aggressive_hp_fuzz_still_enforces_live_hp_budget() -> None:
+    stop = FieldHuntStop(
+        (),
+        "The Guardian",
+        exact_target=True,
+        source_mobile_vnum=9203,
+        source_target_armed=False,
+        require_sanctuary=True,
+        allow_protected_aggressive_hp_fuzz_probe=True,
+        protected_source_peak_round_damage=80,
+        protected_source_critical_hit_damage=64,
+        source_combat_action="burning hands",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+        source_target_hp_ceiling=513,
+        require_damage_window_probe=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "mage"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "6367"
+    policy.fastwalk_attack_target = stop.target
+    state = CharacterState(
+        level=18,
+        hp=218,
+        max_hp=218,
+        mana=628,
+        max_mana=628,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="6367",
+        enemies=[[
+            {
+                "name": "The Guardian",
+                "level": "17",
+                "hp": "400",
+                "maxhp": "400",
+                "isnpc": "9203",
+            },
+        ]],
+    )
+
+    allowed, decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        stop.target,
+        stop,
+    )
+
+    assert allowed is False
+    assert decision is not None
+    assert decision.command == "flee"
+    assert "HP ceiling 400" in (policy.fastwalk_abort_reason or "")
+    assert "damage budget of 318" in (policy.fastwalk_abort_reason or "")
+    assert policy.fastwalk_hunt_stop_skipped is True
+    assert policy.fastwalk_opening_potion_pending is False
+
+
+def test_protected_special_consider_opens_source_audited_nonentry_target() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the guard",
+        exact_target=True,
+        source_mobile_vnum=9202,
+        source_target_armed=False,
+        require_sanctuary=True,
+        allow_protected_special_hp_fuzz_probe=True,
+        source_specials=("spec_guard",),
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=25,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=18,
+        source_target_hp_ceiling=660,
+        require_damage_window_probe=True,
+    )
+    world = WorldSource(
+        mobiles={
+            9202: MobileSource(
+                9202,
+                "guard",
+                "the guard",
+                20,
+                0,
+                500,
+                "test.are",
+            ),
+        },
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        source_world=world,
+    )
+    policy.current_room = "9204"
+    policy.fastwalk_attack_target = stop.target
+    policy.room_target_counts["9204"] = {stop.target: 1}
+    policy.room_target_selectors["9204"] = {stop.target: ["#9202"]}
+    policy.combat_pouch_potions.update({"purple": 1})
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="9204",
+        enemies=[[]],
+    )
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "consider #9202"
+    policy.consider_viable = True
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "quaff purple"
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_opening_potion_pending is True
+    assert policy.fastwalk_returning is False
+
+
+def test_protected_special_consider_rejects_entry_attacking_target() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the guard",
+        exact_target=True,
+        source_mobile_vnum=9202,
+        source_target_armed=False,
+        require_sanctuary=True,
+        allow_protected_special_hp_fuzz_probe=True,
+        source_specials=("spec_guard",),
+    )
+    world = WorldSource(
+        mobiles={
+            9202: MobileSource(
+                9202,
+                "guard",
+                "the guard",
+                20,
+                1,
+                500,
+                "test.are",
+            ),
+        },
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        source_world=world,
+    )
+    policy.current_room = "9204"
+    policy.fastwalk_attack_target = stop.target
+    policy.consider_target = stop.target
+    policy.consider_target_selector = "#9202"
+    policy.consider_viable = True
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="9204",
+        enemies=[[]],
+    )
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_opening_potion_pending is False
+    assert "no authoritative live HP" in (policy.fastwalk_abort_reason or "")
+
+
+def test_protected_peak_consider_opens_one_armed_target_after_source_reserve() -> None:
+    stop = FieldHuntStop(
+        (),
+        "the mayor",
+        exact_target=True,
+        source_mobile_vnum=3143,
+        source_target_armed=True,
+        require_sanctuary=True,
+        allow_protected_hp_fuzz_probe=True,
+        allow_protected_armed_hp_fuzz_probe=True,
+        protected_source_peak_round_damage=192,
+        protected_source_critical_hit_damage=64,
+        source_combat_action="knife toss",
+        source_combat_conservative_damage=33,
+        source_combat_max_actions=12,
+        source_combat_opening_conservative_damage=0,
+        source_target_hp_ceiling=825,
+        require_damage_window_probe=True,
+    )
+    world = WorldSource(
+        mobiles={
+            3143: MobileSource(
+                3143,
+                "mayor",
+                "the mayor",
+                23,
+                0,
+                500,
+                "midgaard.are",
+            ),
+        },
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "thief", "subclass": "ninja"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        source_world=world,
+    )
+    policy.current_room = "3138"
+    policy.fastwalk_attack_target = stop.target
+    policy.room_target_counts["3138"] = {stop.target: 1}
+    policy.room_target_selectors["3138"] = {stop.target: ["#2436"]}
+    policy.consider_target = stop.target
+    policy.consider_target_selector = "#2436"
+    policy.consider_viable = True
+    policy.combat_pouch_potions.update({"purple": 1})
+    state = CharacterState(
+        level=24,
+        hp=334,
+        max_hp=334,
+        mana=100,
+        max_mana=100,
+        move=320,
+        max_move=320,
+        position=7,
+        room_vnum="3138",
+        enemies=[[]],
+    )
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "quaff purple"
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_opening_potion_pending is True
+    assert policy.fastwalk_returning is False
 
 
 def test_source_hp_fuzz_probe_rearms_after_success_and_counts_regeneration() -> None:
@@ -23203,6 +25968,42 @@ def test_runtime_boundary_continues_healer_route_after_recall_clears_combat() ->
     assert policy.combat_active is False
 
 
+def test_runtime_boundary_cleanup_overrides_stale_consider_ack_at_temple() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.runtime_boundary_requested = True
+    policy.midgaard_logout_pending = True
+    policy.return_home = True
+    policy.fastwalk_returning = True
+    policy.fastwalk_emergency_recall_pending = True
+    policy.consider_response_pending = True
+    temple = CharacterState(
+        area="Midgaard",
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        room_flags=["safe", "indoors"],
+        position=7,
+        hp=283,
+        max_hp=283,
+        mana=249,
+        max_mana=249,
+        move=94,
+        max_move=250,
+        enemies=None,
+        in_combat=False,
+    )
+
+    decision = policy.next_decision(temple)
+
+    assert decision is not None
+    assert decision.command == "north"
+
+
 def test_fame_recovery_accepts_the_source_bounded_high_consider_branch() -> None:
     stops = mirror_realm_fame_recovery_stops()
     policy = StarterPolicy(
@@ -25289,6 +28090,7 @@ def test_practice_listing_is_recorded_as_durable_training_audit() -> None:
         "boot_id": "boot-1",
         "level": 24,
         "known_skill_levels": {"magic missile": 54},
+        "learnable_skill_levels": {"invis": 0},
     }
 
 
@@ -25994,34 +28796,37 @@ def test_level_thirty_subclass_selection_uses_source_keyword_and_live_confirmati
     assert first is not None
     assert first.command == "south"
 
-    route = policy._level_ten_class_trainer(healer)
+    route = policy._level_30_subclass_trainer(healer)
     assert route is not None
+    open_room, open_direction = sorted(route.open_before)[0]
     locked = policy._subclass_selection_decision(
-        CharacterState(level=30, room_vnum="30247")
+        CharacterState(level=30, room_vnum=open_room)
     )
     assert locked is not None
-    assert locked.command == "open west"
+    assert locked.command == f"open {open_direction}"
     unlocked = policy._subclass_selection_decision(
-        CharacterState(level=30, room_vnum="30247")
+        CharacterState(level=30, room_vnum=open_room)
     )
     assert unlocked is not None
-    assert unlocked.command == "west"
+    assert unlocked.command == open_direction
 
     look = policy._subclass_selection_decision(
-        CharacterState(level=30, room_vnum="30248")
+        CharacterState(level=30, room_vnum=route.room_vnum)
     )
     assert look is not None
-    assert look.command == "look Seobagn"
-    policy.observe_text("Seobagn says, 'Choose your future wisely.'\n")
+    assert look.command == f"look {route.keyword}"
+    policy.observe_text(
+        f"{route.keyword} says, 'Choose your future wisely.'\n"
+    )
     change = policy._subclass_selection_decision(
-        CharacterState(level=30, room_vnum="30248")
+        CharacterState(level=30, room_vnum=route.room_vnum)
     )
     assert change is not None
     assert change.command == "change Nin"
 
     policy.observe_text("You have chosen the path of the Ninja.\n")
     confirmation = policy._subclass_selection_decision(
-        CharacterState(level=30, subclass="ninja", room_vnum="30248")
+        CharacterState(level=30, subclass="ninja", room_vnum=route.room_vnum)
     )
     assert confirmation is not None
     assert confirmation.command == "recall"
@@ -26087,7 +28892,11 @@ def test_level_thirty_subclass_selection_does_not_trust_success_text_alone() -> 
     )
     policy.subclass_change_step = 2
     policy.subclass_change_sent = True
-    state = CharacterState(level=30, room_vnum="30248")
+    route = policy._level_30_subclass_trainer(
+        CharacterState(level=30, room_vnum="3054")
+    )
+    assert route is not None
+    state = CharacterState(level=30, room_vnum=route.room_vnum)
 
     first = policy._subclass_selection_decision(state)
     assert first is not None
@@ -26505,6 +29314,46 @@ def test_vault_preflight_records_acknowledged_lodges_and_wears_claims() -> None:
     assert policy._vault_stow_decision(state).command == "score"
 
 
+def test_vault_retries_overweight_capacity_claim_after_worn_relief() -> None:
+    vest = ObjectSource(
+        9001,
+        "heavy vest",
+        "a heavy vest",
+        9,
+        (0, 0, 0, 0),
+        0,
+        weight=10,
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        vault_claim_items=("sack",),
+        vault_wear_claimed_items=True,
+        gear_catalog=GearCatalog({vest.vnum: vest}),
+    )
+    state = CharacterState(
+        room_name="Dragonhoard Bank, Midgaard Branch",
+        room_vnum="3007",
+        position=7,
+        stats={"carry_wt": 136, "maxcarry_wt": 140},
+    )
+
+    assert policy._vault_stow_decision(state).command == "claim sack"
+    policy.observe_text("Sack: you can't carry that much weight.\n\r")
+    assert policy._vault_stow_decision(state).command == "eq all"
+    policy.observe_text(
+        "<worn on body> a heavy vest\n\r"
+        "<worn on head> -\n\r"
+    )
+    assert policy._vault_stow_decision(state).command == "remove heavy"
+    assert policy._vault_stow_decision(state).command == "lodge heavy"
+    policy.observe_text("You lodge a heavy vest in your vault.\n\r")
+
+    assert policy._vault_stow_decision(state).command == "claim sack"
+    policy.observe_text("You get a large sack from your vault.\n\r")
+    assert policy._vault_stow_decision(state).command == "wear sack"
+
+
 def test_vault_preflight_donates_verified_empty_oversized_container_when_full() -> None:
     sack = ObjectSource(
         4529,
@@ -26717,6 +29566,8 @@ def test_forced_below_band_source_kill_is_incidental_and_excludes_policy() -> No
             "xp_gained": 80,
             "below_useful_band": True,
             "objective_eligible": False,
+            "source_mobile_vnum": 3507,
+            "source_policy_id": policy_id,
         }
     ]
     assert policy.objective_kills == []
@@ -28325,6 +31176,151 @@ def test_consider_only_fastwalk_allows_source_confirmed_active_below_band_mobile
     assert policy.fastwalk_abort_reason is None
 
 
+def test_direct_field_action_binds_exact_required_object_vnum() -> None:
+    potion = ObjectSource(
+        4442,
+        "clear potion",
+        "a clear potion",
+        ITEM_POTION,
+        (30, 0, 0, 0),
+        0,
+        value_strings=("30", "fly", "", ""),
+    )
+    stop = FieldHuntStop(
+        (),
+        None,
+        actions=("get clear chest",),
+        required_items=("a clear potion",),
+        action_required_object_vnums=(4442,),
+        source_loot_object_vnums=(4442,),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        gear_catalog=GearCatalog({4442: potion}),
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_looked = True
+    policy.last_response = "The chest is open.\n"
+    state = CharacterState(
+        room_vnum="4440",
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        inventory=[],
+    )
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision is not None
+    assert decision.command == "get clear chest"
+    assert policy.fastwalk_pending_required_item_vnum == 4442
+
+
+def test_required_field_effect_must_be_live_before_stop_completion() -> None:
+    potion = ObjectSource(
+        4442,
+        "clear potion",
+        "a clear potion",
+        ITEM_POTION,
+        (30, 0, 0, 0),
+        0,
+    )
+    stop = FieldHuntStop(
+        (),
+        None,
+        required_items=("a clear potion",),
+        required_active_affects=("fly", "levitation"),
+        source_loot_object_vnums=(4442,),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        gear_catalog=GearCatalog({4442: potion}),
+    )
+    policy.in_world = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_acquired_required_object_vnums.add(4442)
+    policy.last_response = "You inspect the opened chest.\n"
+    state = CharacterState(
+        room_vnum="4440",
+        position=7,
+        hp=100,
+        max_hp=100,
+        mana=100,
+        max_mana=100,
+        move=100,
+        max_move=100,
+        inventory=[],
+        affects=[],
+    )
+
+    missing_effect = policy._fastwalk_hunt_plan_decision(state)
+
+    assert missing_effect is not None
+    assert missing_effect.command == "recall"
+    assert policy.fastwalk_abort_reason == (
+        "field expedition did not activate required effect: fly, levitation"
+    )
+
+    policy.fastwalk_returning = False
+    policy.fastwalk_target_absent = False
+    policy.fastwalk_abort_reason = None
+    state.affects = [{"name": "fly"}]
+    completed = policy._fastwalk_hunt_plan_decision(state)
+
+    assert completed is not None
+    assert completed.command == "look"
+    assert policy.fastwalk_hunt_stop_skipped is True
+
+
+def test_flight_source_checkpoint_requires_live_affect() -> None:
+    potion = ObjectSource(
+        4442,
+        "clear potion",
+        "a clear potion",
+        ITEM_POTION,
+        (30, 0, 0, 0),
+        0,
+    )
+    reserve = {
+        "effect": "flight",
+        "object_vnum": 4442,
+        "object_description": "clear potion",
+        "mode": "potion",
+        "spell": "fly",
+        "command": "quaff",
+        "command_keyword": "clear",
+        "consumes_object": True,
+    }
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({4442: potion}),
+        source_resource_reserve=reserve,
+    )
+    policy.fastwalk_acquired_required_object_vnums.add(4442)
+
+    assert policy.source_resource_checkpoint() == {}
+
+    state = CharacterState(affects=[{"name": "fly"}])
+    checkpoint = policy.source_resource_checkpoint(state)
+
+    assert checkpoint["flight"]["object_vnum"] == 4442
+    assert checkpoint["flight"]["verified_active_affect"] == "fly"
+    assert checkpoint["flight"]["activation_verified"] is True
+
+
 def test_consider_only_fastwalk_waits_for_enemy_gmcp_after_text_attacker() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -28533,6 +31529,7 @@ def test_runtime_boundary_at_healer_still_sleeps_below_move_reserve() -> None:
 
 def test_runtime_boundary_uses_short_ack_timeout_only_at_safe_healer() -> None:
     policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
     policy.runtime_boundary_requested = True
     policy.midgaard_logout_pending = True
     # A kill can leave the policy lock set after live GMCP has already placed
@@ -28553,6 +31550,16 @@ def test_runtime_boundary_uses_short_ack_timeout_only_at_safe_healer() -> None:
     policy.midgaard_logout_pending = False
     assert starter._connection_inactivity_timeout(policy, 45.0) == 45.0
     assert starter._runtime_boundary_safe_healer(policy, healer) is False
+
+
+def test_silent_login_uses_short_timeout_without_changing_gameplay_timeout() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+
+    assert policy.in_world is False
+    assert starter._connection_inactivity_timeout(policy, 45.0) == 15.0
+
+    policy.in_world = True
+    assert starter._connection_inactivity_timeout(policy, 45.0) == 45.0
 
 
 def test_runtime_boundary_accepts_healer_room_arrival_without_prompt() -> None:
@@ -33188,13 +36195,23 @@ def test_fastwalk_pursues_and_reengages_a_fleeing_requested_target() -> None:
     assert attack is not None
     assert attack.command == "kill midget"
     policy.after_command(attack)
+    policy.consider_target = "midget"
+    policy.consider_target_selector = "#24017"
+    policy.consider_viable = True
     policy.observe_text(
         "Your pound scratches the Midget.\n"
         "The Midget leaves north.\n"
         "The Midget has fled!\n"
     )
+    policy.observe_events(
+        [GameEvent("enemies_changed", "gmcp", {"value": []})],
+        tent,
+    )
     policy.prompt_ready = True
 
+    assert policy.fastwalk_attack_started is True
+    assert policy.consider_target is None
+    assert policy.consider_viable is None
     pursuit = policy.next_decision(tent)
     assert pursuit is not None
     assert pursuit.command == "north"
@@ -33511,6 +36528,19 @@ def test_fastwalk_stows_source_identified_sanctuary_potion_before_recall() -> No
     assert sacrifice is not None
     assert sacrifice.command == "sacrifice corpse"
     assert policy.combat_pouch_potions == {"purple": 1}
+
+
+def test_source_verified_potion_stow_records_source_object_vnum() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.fastwalk_pending_verified_potion_keyword = "purple"
+    policy.fastwalk_pending_verified_potion_object_vnums = (4050,)
+
+    policy.observe_text("You put a purple potion in a small leather pouch.\n")
+
+    assert policy.combat_pouch_potions == {"purple": 1}
+    assert policy.verified_combat_pouch_potions == {"purple": 1}
+    assert policy.fastwalk_acquired_required_object_vnums == {4050}
+    assert policy.fastwalk_pending_verified_potion_object_vnums == ()
 
 
 def test_fastwalk_does_not_stow_an_unregistered_potion() -> None:
@@ -35455,6 +38485,43 @@ def test_fastwalk_recall_ignores_delayed_same_room_prompt_until_room_changes() -
     assert policy.pending_recall_origin is None
 
 
+def test_recall_uses_decision_state_when_parser_room_is_not_current() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("foundry captain"),
+        fastwalk_attack_target="Ushog",
+        return_home=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.midgaard_logout_pending = True
+    policy.runtime_boundary_requested = True
+    policy.return_home_recall_started = True
+    policy.current_room = None
+    state = CharacterState(
+        area="The Foundry",
+        room_name="Ushog's Quarters",
+        room_vnum="112",
+        hp=110,
+        max_hp=110,
+        move=105,
+        max_move=210,
+        position=7,
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "recall"
+    policy.after_command(decision, state)
+    policy.prompt_ready = True
+
+    assert policy.next_decision(state) is None
+    assert policy.pending_recall_origin == "112"
+    assert policy.failure is None
+
+
 def test_fastwalk_recall_accepts_midgaard_text_header_without_room_info() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -35953,6 +39020,47 @@ def test_liquidation_routes_from_healer_without_using_mage_laboratory() -> None:
     assert policy.sale_origin_room == "3054"
 
 
+def test_fixed_route_waits_for_authoritative_destination_after_prompt() -> None:
+    shop = safe_shop_for_item("some leather leg guards")
+    assert shop is not None
+
+    policy = StarterPolicy(_spec(), "swordfish", liquidate_loot=True)
+    policy.in_world = True
+    policy.login_authenticated = True
+    policy.prompt_ready = True
+    policy.sale_origin_room = "3054"
+    policy.sale_phase = "outbound"
+    policy.sale_plan = [("guards", shop)]
+    policy.sale_route_index = 4
+    policy.current_room = "3014"
+
+    market = CharacterState(
+        room_name="Market Square",
+        room_vnum="3014",
+        exits={"s": "3025", "w": "3013"},
+        position=7,
+    )
+    policy.after_command(BotDecision("south", "advance"), market)
+
+    # The prompt may be emitted before Room.Info for the movement arrives.
+    assert policy.pending_travel_destination == "3025"
+    assert policy.next_decision(market) is None
+    assert policy.sale_route_index == 4
+
+    common_square = CharacterState(
+        room_name="The Common Square",
+        room_vnum="3025",
+        exits={"w": "3024"},
+        position=7,
+    )
+    policy.prompt_ready = True
+    decision = policy.next_decision(common_square)
+
+    assert decision is not None
+    assert decision.command == "west"
+    assert policy.sale_route_index == 5
+
+
 def test_healer_origin_liquidation_uses_invisibility_before_city_crossing() -> None:
     policy = StarterPolicy(
         _spec(), "swordfish", liquidate_loot=True, known_skill_levels={"invis": 40},
@@ -36263,6 +39371,47 @@ def test_liquidation_retries_expendable_item_at_another_safe_shop() -> None:
     policy.observe_text("The armoury looks uninterested in some leather leg guards.\n")
 
     assert policy.donation_plan == ["guards"]
+
+
+def test_liquidation_retries_one_alternate_buyer_after_zero_value_refusal() -> None:
+    ring = ObjectSource(
+        4000,
+        "yellow green ring",
+        "a yellow and green ring",
+        9,
+        (0, 0, 0, 0),
+        50,
+        wear_flags=1 | (1 << 1),
+        level=20,
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        liquidate_loot=True,
+        gear_catalog=GearCatalog({ring.vnum: ring}),
+    )
+    shop = safe_shop_for_item("a yellow and green ring", item_type=9)
+    assert shop is not None
+    policy.sale_plan = [("ring", shop)]
+    policy.sale_phase = "sell"
+
+    policy.observe_text(
+        "The leather worker looks uninterested in a yellow and green ring.\n"
+    )
+
+    assert policy.sale_phase == "home"
+    alternate = policy.sale_plan[1][1]
+    assert policy.sale_plan == [("ring", shop), ("ring", alternate)]
+    assert alternate.name == "Armoury"
+    assert policy.donation_plan == []
+    assert policy.sale_identified_values == {"ring": 0}
+
+    policy.sale_index = 1
+    policy.sale_phase = "sell"
+    policy.observe_text("The armoury looks uninterested in a yellow and green ring.\n")
+
+    assert policy.sale_phase == "inventory"
+    assert policy.donation_plan == ["ring"]
 
 
 def test_liquidation_heals_and_destroys_every_no_drop_sale_copy() -> None:
@@ -39177,6 +42326,8 @@ def test_caster_classes_use_strongest_known_automated_spell(
         ("mage", "necromancer", "harm"),
         ("cleric", "druid", "wither"),
         ("warrior", "knight", "flamestrike"),
+        ("psionic", "infernalist", "hellfire"),
+        ("psionic", "witch", "wither"),
         ("brawler", "monk", "agitation"),
         ("brawler", "monk", "mind thrust"),
     ],
@@ -41817,6 +44968,154 @@ def test_source_field_mage_uses_familiar_before_player_opener() -> None:
     assert opener.command == "kill nobleman"
     assert policy.fastwalk_attack_started is True
     assert policy.combat_active is True
+
+
+def test_source_field_mage_withdraws_single_probe_before_player_opener() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "mage"}),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "a dwarven nobleman",
+                command_keyword="nobleman",
+                source_mobile_vnum=11518,
+                require_familiar=True,
+                familiar_withdraw_before_opener=True,
+                exact_target=True,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.fastwalk_attack_target = "a dwarven nobleman"
+    policy.consider_target = "a dwarven nobleman"
+    policy.consider_viable = True
+    policy.known_skills.update({"summon familiar", "magic missile"})
+    policy.known_skill_levels["summon familiar"] = 42
+    policy.source_world = _familiar_source_world()
+    state = CharacterState(
+        level=16,
+        hp=201,
+        max_hp=201,
+        mana=562,
+        max_mana=562,
+        position=7,
+        room_vnum="4519",
+        sector="field",
+    )
+
+    assert policy._familiar_precombat_decision(
+        state,
+        target="a dwarven nobleman",
+        command_keyword="nobleman",
+        allow_start=True,
+    ).command == "cast 'summon familiar'"
+    policy.observe_text(
+        "You raise your hands and the form of the pony appears before you.\n"
+    )
+    assert policy._familiar_precombat_decision(state).command == "look"
+    policy.observe_text(
+        "A field\n[Exits: north]\n[#42] A small pony stands here grazing.\n"
+        "<201/201 hits 462/562 mana 220/220 move [Test]> "
+    )
+    policy.room_target_selector_descriptions["4519"] = {
+        "#42": "a small pony stands here grazing.",
+    }
+    assert policy._familiar_precombat_decision(state).command == "group #42"
+    policy.observe_text("The pony joins your group.\n")
+    assert policy._familiar_precombat_decision(state).command == (
+        "order #42 kill nobleman"
+    )
+    policy.observe_text("Ok.\n")
+
+    withdrawal = policy._familiar_precombat_decision(state)
+    assert withdrawal is not None
+    assert withdrawal.command == "order #42 flee"
+    assert policy.fastwalk_attack_started is False
+    policy.observe_text("The pony has fled!\nOk.\n")
+
+    opener = policy._familiar_precombat_decision(state)
+    assert opener is not None
+    assert opener.command == "kill nobleman"
+    assert policy.fastwalk_attack_started is True
+    assert policy.familiar_active is False
+
+
+def test_source_field_mage_aborts_when_probe_familiar_will_not_withdraw() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "mage"}),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "a dwarven nobleman",
+                command_keyword="nobleman",
+                source_mobile_vnum=11518,
+                require_familiar=True,
+                familiar_withdraw_before_opener=True,
+                exact_target=True,
+            ),
+        ),
+    )
+    policy.in_world = True
+    policy.fastwalk_attack_target = "a dwarven nobleman"
+    policy.consider_target = "a dwarven nobleman"
+    policy.consider_viable = True
+    policy.known_skills.update({"summon familiar", "magic missile"})
+    policy.known_skill_levels["summon familiar"] = 42
+    policy.source_world = _familiar_source_world()
+    state = CharacterState(
+        level=16,
+        hp=201,
+        max_hp=201,
+        mana=562,
+        max_mana=562,
+        position=7,
+        room_vnum="4519",
+        sector="field",
+    )
+
+    assert policy._familiar_precombat_decision(
+        state,
+        target="a dwarven nobleman",
+        command_keyword="nobleman",
+        allow_start=True,
+    ).command == "cast 'summon familiar'"
+    policy.observe_text(
+        "You raise your hands and the form of the pony appears before you.\n"
+    )
+    assert policy._familiar_precombat_decision(state).command == "look"
+    policy.observe_text(
+        "A field\n[Exits: north]\n[#42] A small pony stands here grazing.\n"
+        "<201/201 hits 462/562 mana 220/220 move [Test]> "
+    )
+    policy.room_target_selector_descriptions["4519"] = {
+        "#42": "a small pony stands here grazing.",
+    }
+    assert policy._familiar_precombat_decision(state).command == "group #42"
+    policy.observe_text("The pony joins your group.\n")
+    assert policy._familiar_precombat_decision(state).command == (
+        "order #42 kill nobleman"
+    )
+
+    for _ in range(3):
+        policy.observe_text("Ok.\n")
+        decision = policy._familiar_precombat_decision(state)
+        if decision is not None and decision.command == "order #42 flee":
+            continue
+        break
+    policy.observe_text("Ok.\n")
+    decision = policy._familiar_precombat_decision(state)
+
+    assert policy.familiar_withdrawal.failure == (
+        "three withdrawal attempts lacked confirmation"
+    )
+    assert policy.fastwalk_hunt_stop_skipped is True
+    assert policy.fastwalk_returning is True
+    assert policy.familiar_precombat_step is None
+    assert decision is None or "cast" not in decision.command
 
 
 def test_resumed_policy_uses_durable_skills_before_field_decisions() -> None:
@@ -45033,6 +48332,64 @@ def test_starter_runner_bounds_blocked_credential_lookup(
         encoding="utf-8"
     )
     assert "credential_lookup_timeout" in transcript
+
+
+def test_starter_runner_records_initialization_phases_before_connecting(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    spec = _spec(
+        password_env="STARTER_TEST_PASSWORD",
+        max_commands=2,
+        max_runtime=2,
+        database=str(tmp_path / "runs.sqlite3"),
+        transcript_dir=str(tmp_path / "transcripts"),
+    )
+    monkeypatch.setenv("STARTER_TEST_PASSWORD", "not-for-transcripts")
+    monkeypatch.setattr(starter, "StarterPolicy", _LedgerProbePolicy)
+    runner = StarterBotRunner(
+        spec,
+        tmp_path / "starter.yaml",
+        connection_factory=lambda _spec: _OneReadConnection(),
+        gear_catalog=GearCatalog({}),
+        source_mobile_targets={},
+        source_mobile_level_ranges={},
+        source_mobile_level_ranges_by_vnum={},
+        source_mobile_vnums_by_target_room={},
+        source_mobile_special_profiles={},
+        source_mobile_special_profiles_by_vnum={},
+        source_mobile_non_assisting_by_target_room={},
+        source_mobile_can_join_by_vnum={},
+        source_mobile_aggressive_by_vnum={},
+        source_mobile_attack_programs_by_vnum={},
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic command budget"):
+        asyncio.run(runner.run())
+
+    transcript_path = next((tmp_path / "transcripts").glob("*.jsonl"))
+    events = [
+        json.loads(line)
+        for line in transcript_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    phases = [
+        event["payload"].get("phase")
+        for event in events
+        if event["kind"] == "state"
+        and event["payload"].get("state") == "runner_initialization"
+    ]
+    assert phases == [
+        "source_catalog_loading",
+        "source_catalog_loaded",
+        "policy_construction",
+        "policy_constructed",
+    ]
+    assert any(
+        event["kind"] == "state"
+        and event["payload"].get("state") == "connecting"
+        for event in events
+    )
 
 
 def test_starter_runner_bounds_connection_cleanup_when_cancelled(

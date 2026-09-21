@@ -43,27 +43,21 @@ def _storage(segments, checkpoints=()):
 def test_funding_view_uses_exact_carrier_not_inherited_field_abort():
     start, end = _fixture()
     views = _research_segment_views(None, _segment(start, end))
-    assert set(views) == {"provision-funding", POLICY}
-    assert views[POLICY]["_research_objective_kills"] == [KILL]
-    source = json.loads(views[POLICY]["end_state_json"])
-    assert source["campaign_fastwalk_abort_reason"] is None
-    assert not source["campaign_fastwalk_crowded"]
+    assert set(views) == {"provision-funding"}
+    assert views["provision-funding"]["_research_objective_kills"] == []
     assert json.loads(views["provision-funding"]["end_state_json"]) == end
 
 
 @pytest.mark.parametrize("existing", [True, False])
-def test_funding_reward_repairs_zero_xp_or_missing_source_result(existing):
+def test_funding_repair_does_not_promote_zero_xp_or_missing_source_result(existing):
     start, end = _fixture()
     current = deepcopy(end)
     if not existing:
         current["campaign_research_results"].pop(POLICY)
     st = _storage([_segment(start, end)])
     repaired = _repair_confirmed_research_kills(st, 1, current)
-    result = repaired["campaign_research_results"][POLICY]
-    assert result["objective_xp"] == result["max_objective_kill_xp"] == 175
-    assert result["completed_kill"] and result["consider_viable"]
-    assert not result.get("low_reward")
-    assert repaired["campaign_xp_loss_total"] == 68
+    result = repaired.get("campaign_research_results", {}).get(POLICY, {})
+    assert result.get("objective_xp", 0) == 0
     assert _repair_confirmed_research_kills(st, 1, repaired) == repaired
 
 
@@ -121,7 +115,7 @@ def test_invalid_funding_identity_is_not_a_source_target(key):
 
 
 @pytest.mark.parametrize("ordering", ["newer", "older", "equal", "unknown", "naive", "newer_reset"])
-def test_funding_kill_only_supersedes_an_explicitly_older_reset(ordering):
+def test_funding_kill_never_supersedes_a_cleared_source_result(ordering):
     start, end = _fixture()
     current = deepcopy(end)
     current["campaign_cleared_research_policies"] = [POLICY]
@@ -142,8 +136,8 @@ def test_funding_kill_only_supersedes_an_explicitly_older_reset(ordering):
     storage = _storage([_segment(start, end, started_at=began)], checkpoints)
     repaired = _repair_confirmed_research_kills(storage, 1, current)
     result = repaired["campaign_research_results"][POLICY]
-    assert (result.get("objective_xp") == 175) == (ordering == "newer")
-    assert (POLICY not in repaired.get("campaign_cleared_research_policies", [])) == (ordering == "newer")
+    assert result.get("objective_xp", 0) == 0
+    assert POLICY in repaired.get("campaign_cleared_research_policies", [])
     assert _repair_confirmed_research_kills(storage, 1, repaired) == repaired
 
 
@@ -203,10 +197,19 @@ def test_low_yield_funding_uses_existing_ground_fallback(tmp_path, monkeypatch, 
 
     monkeypatch.setattr(runner, "_select_source_ranked_candidate", ground)
     selected = runner._policy_for_state(state)
-    assert selected.execution == ("source-ranked-hunt" if boundary == "none" else "provision-funding")
+    expected_execution = (
+        "restock"
+        if boundary == "no_food"
+        else "source-ranked-hunt"
+        if boundary == "none"
+        else "provision-funding"
+    )
+    assert selected.execution == expected_execution
     if boundary == "none":
         assert calls == [True, True]
         assert not selected.requires_flight
+    if boundary == "no_food":
+        assert calls == []
     assert state["campaign_flight_funding_required"]
     assert state["campaign_flight_funding_retry_pending"]
 
@@ -243,9 +246,6 @@ def test_live_completion_records_carrier_xp_without_promoting_incidental_kill(tm
         result = asyncio.run(runner._run_starter(
             storage, cid, start, {"command_count": 0, "duration_seconds": 0}, _PROVISION_FUNDING_POLICY,
         ))
-    own = result.state["campaign_research_results"][POLICY]
-    if outcome == "success":
-        assert own["objective_xp"] == 175 and not own.get("low_reward")
-    else:
-        assert own["objective_xp"] == 0
+    own = result.state.get("campaign_research_results", {}).get(POLICY, {})
+    assert own.get("objective_xp", 0) == 0
     assert "source-ranked-hunt-midgaard-3064" not in result.state["campaign_research_results"]

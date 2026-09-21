@@ -6,7 +6,7 @@ from collections import Counter
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .autonomy import (
     audit_all_base_classes,
@@ -18,9 +18,20 @@ from .campaign import (
     DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
     DEFAULT_RESET_WAIT_SECONDS,
     CampaignResult,
+    _FAME_RECOVERY_MAX_LEVEL_DELTA,
+    _FAME_RECOVERY_MIN_LEVEL_DELTA,
+    _source_ranked_candidate_requires_sanctuary_for_state,
+    _source_ranked_caster_output_for_state,
+    _source_ranked_fame_level_window,
+    _source_ranked_hp_probe_admission_available,
+    _source_ranked_protected_aggressive_hp_fuzz_probe_allowed,
+    _source_ranked_protected_hp_fuzz_probe_allowed,
+    _source_ranked_protected_level_ceiling_hp_probe_allowed,
+    _state_has_sanctuary_reserve,
     run_campaign_file,
 )
 from .character import load_character_spec
+from .city_travel import revealed_gmcp_alignment
 from .credentials import (
     DEFAULT_LOGIN_CREDENTIAL,
     configure_character_password,
@@ -36,12 +47,14 @@ from .equipment import (
 )
 from .evidence import collect_run_evidence, render_evidence_json
 from .fastwalks import FASTWALKS, routes_for_level
-from .dd4_catalog import load_character_catalog
+from .dd4_catalog import _source_revision, load_character_catalog
 from .hero import (
+    DEFAULT_AUTONOMOUS_RESET_WAITS,
     HeroRequest,
     load_existing_hero_request,
     prepare_hero_request,
     run_hero_request,
+    run_hero_until_target,
 )
 from .hunt_candidates import (
     load_world_source,
@@ -60,7 +73,19 @@ from .mudlet import MudletBridge
 from .money import run_money_loop_profile
 from .prerequisites import known_skills, load_snapshot, requirements_for_skill
 from .progression import policy_for
-from .quests import recall_origins_from_state, recall_point_for_index
+from .quests import (
+    fame_from_state,
+    quest_fame_recovery_status,
+    quest_points_required_for_advance,
+    quest_points_shortfall_for_advance,
+    quest_request_blocker,
+    quest_request_fame_allowed,
+    questmaster_name_for_level,
+    questmaster_route_for_level,
+    recall_origins_from_state,
+    recall_point_for_index,
+    snapshot_quest_status,
+)
 from .report import (
     build_campaign_report,
     build_run_report,
@@ -97,6 +122,86 @@ from .training import (
 
 
 DEFAULT_DATABASE = Path("runs/dd4tester.sqlite3")
+# A historical campaign-character join deserializes JSON from every matching
+# checkpoint.  Keep inspection bounded for the shared database, which is
+# intentionally append-only and can grow into tens of gigabytes.
+_MAX_CAMPAIGN_CHARACTER_LOOKUP_BYTES = 2 * 1024 * 1024 * 1024
+
+
+def _inspection_alignment(state: Mapping[str, Any]) -> int | None:
+    """Read the authoritative GMCP alignment from a saved state snapshot."""
+    progress = state.get("progress")
+    if isinstance(progress, Mapping) and "alignment" in progress:
+        value = progress.get("alignment")
+        level = state.get("level")
+        if level is None:
+            level = progress.get("level")
+    else:
+        value = state.get("alignment")
+        level = state.get("level")
+    return revealed_gmcp_alignment(value, level=level)
+
+
+def _inspection_fame(state: Mapping[str, Any]) -> int | None:
+    """Read the current GMCP fame value without conflating it with alignment."""
+    return fame_from_state(state)
+
+
+def _latest_inspection_state(storage: RunStorage, character: str) -> dict[str, Any]:
+    """Load a named character without scanning shared snapshot JSON history."""
+    try:
+        database_size = storage.path.stat().st_size
+    except OSError:
+        database_size = 0
+    if database_size > _MAX_CAMPAIGN_CHARACTER_LOOKUP_BYTES:
+        # ``get_latest_character_state`` uses the expression index on
+        # state_snapshots.  The campaign merge below is richer, but its
+        # checkpoint-name join is not bounded on older shared databases.
+        return dict(storage.get_latest_character_state(character) or {})
+    campaign = storage.get_latest_campaign_for_character(character)
+    if campaign is None:
+        return dict(storage.get_latest_character_state(character) or {})
+    campaign_id = int(campaign["id"])
+    checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
+    if checkpoint is None:
+        return {}
+    try:
+        checkpoint_state = json.loads(checkpoint["state_json"])
+    except (TypeError, json.JSONDecodeError):
+        checkpoint_state = {}
+    if not isinstance(checkpoint_state, dict):
+        checkpoint_state = {}
+    run_ids: list[int] = []
+    if checkpoint["run_id"] is not None:
+        run_ids.append(int(checkpoint["run_id"]))
+    for segment in reversed(
+        storage.list_recent_campaign_segments(campaign_id, limit=8)
+    ):
+        if segment["run_id"] is None:
+            continue
+        run_id = int(segment["run_id"])
+        if run_id not in run_ids:
+            run_ids.append(run_id)
+    for run_id in run_ids:
+        snapshot = storage.get_latest_state_snapshot(run_id)
+        if snapshot is None:
+            continue
+        try:
+            live_state = json.loads(snapshot["state_json"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(live_state, dict):
+            continue
+        state = dict(live_state)
+        for key, value in checkpoint_state.items():
+            if key.startswith("campaign_") or key in {
+                "character_class",
+                "subclass",
+                "recall_origins",
+            } | _INSPECTION_CHECKPOINT_STATE_KEYS:
+                state[key] = value
+        return state
+    return dict(checkpoint_state)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -371,6 +476,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="hunt at most one isolated large hobgoblin for its sanctuary potion",
     )
+    moria_mode.add_argument(
+        "--sanctuary-deep-hunt",
+        action="store_true",
+        help=(
+            "use the source-audited level-24+ Moria carrier route for one "
+            "bounded sanctuary hunt"
+        ),
+    )
 
     fastwalks_parser = subcommands.add_parser(
         "show-fastwalks",
@@ -426,7 +539,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     resource_sources_parser = subcommands.add_parser(
         "show-resource-sources",
-        help="list source-backed healing, food, sanctuary, and flight resources",
+        help="list source-backed healing, food, sanctuary, protection, and flight resources",
     )
     resource_sources_parser.add_argument("--level", type=int, required=True)
     resource_sources_parser.add_argument(
@@ -434,6 +547,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(
             "all",
             "sanctuary",
+            "protection",
             "healing",
             "recovery",
             "flight",
@@ -521,6 +635,54 @@ def build_parser() -> argparse.ArgumentParser:
         "--all-areas",
         action="store_true",
         help="analyse every area file instead of the conservative starter-area set",
+    )
+    combat_readiness_parser = subcommands.add_parser(
+        "show-combat-readiness",
+        help="show source-backed combat output and current target blockers",
+    )
+    combat_readiness_parser.add_argument("--level", type=int, required=True)
+    combat_readiness_parser.add_argument(
+        "--class",
+        dest="character_class",
+        required=True,
+        help="base class used for source combat capabilities",
+    )
+    combat_readiness_parser.add_argument(
+        "--subclass",
+        help="optional subclass used for source combat capabilities",
+    )
+    combat_readiness_parser.add_argument(
+        "--character",
+        default="Ararisa",
+        help="character name used for saved state and current-reboot history, default: Ararisa",
+    )
+    combat_readiness_parser.add_argument(
+        "--source",
+        type=Path,
+        default=Path("runs/dd4-source/server/area"),
+        help="path to the DD4 server area directory",
+    )
+    combat_readiness_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    combat_readiness_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="maximum targets and gear upgrades to show, default: 10",
+    )
+    combat_readiness_parser.add_argument(
+        "--all-areas",
+        action="store_true",
+        help="analyse every area file instead of the conservative starter-area set",
+    )
+    combat_readiness_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable readiness JSON",
     )
     arena_research_parser.add_argument(
         "--target-level",
@@ -704,14 +866,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--segments",
         type=int,
         default=10000,
-        help="maximum checkpoint segments in this process, default: 10000",
+        help=(
+            "maximum checkpoint segments, or autonomous cycles, in this "
+            "process; default: 10000"
+        ),
+    )
+    hero_parser.add_argument(
+        "--autonomous",
+        action="store_true",
+        help=(
+            "continue bounded workers until the target or a durable blocker; "
+            "reset waits use a separate finite budget"
+        ),
     )
     hero_parser.add_argument(
         "--reset-retries",
         type=int,
         help=(
             "bounded retries after empty-area checkpoints; defaults to "
-            "--segments, or 0 when --max-segment-runtime is set"
+            "--segments without a runtime cap, or 0 for a bounded worker; "
+            "--autonomous defaults to one per cycle"
         ),
     )
     hero_parser.add_argument(
@@ -724,12 +898,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     hero_parser.add_argument(
+        "--max-reset-waits",
+        type=int,
+        default=DEFAULT_AUTONOMOUS_RESET_WAITS,
+        help=(
+            "total area-reset waits allowed by --autonomous, default: "
+            f"{DEFAULT_AUTONOMOUS_RESET_WAITS}"
+        ),
+    )
+    hero_parser.add_argument(
         "--max-segment-runtime",
         type=float,
-        default=None,
+        default=DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
         help=(
-            "optional cap for each live segment; omit it for the resumable "
-            "to-HERO runner"
+            "cap each live segment in seconds; default: "
+            f"{DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS:g}; use an explicit "
+            "larger value only for a bounded probe"
         ),
     )
     hero_parser.add_argument(
@@ -899,6 +1083,21 @@ def build_parser() -> argparse.ArgumentParser:
         default="runner process ended before the run could finish",
         help="failure reason to record",
     )
+    recover_runs_parser.add_argument(
+        "--campaign-id",
+        type=int,
+        help=(
+            "recover one campaign using indexed, campaign-scoped queries; "
+            "recommended for the shared large database"
+        ),
+    )
+    recover_runs_parser.add_argument(
+        "--character",
+        help=(
+            "character name used to bind an unlinked run during scoped "
+            "campaign recovery"
+        ),
+    )
 
     show_sales_parser = subcommands.add_parser(
         "show-sales",
@@ -1025,6 +1224,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_DATABASE,
         help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
+    show_campaign_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="maximum recent segments to print, default: 20",
     )
 
     show_policies_parser = subcommands.add_parser(
@@ -1330,11 +1535,12 @@ def main(argv: list[str] | None = None) -> int:
         try:
             result = asyncio.run(
                 run_moria_research_profile(
-                    args.profile,
-                    depth=args.depth,
-                    sanctuary_probe=args.sanctuary_probe,
-                    sanctuary_hunt=args.sanctuary_hunt,
-                )
+                args.profile,
+                depth=args.depth,
+                sanctuary_probe=args.sanctuary_probe,
+                sanctuary_hunt=args.sanctuary_hunt,
+                sanctuary_deep_hunt=args.sanctuary_deep_hunt,
+            )
             )
         except Exception as exc:
             print(f"Moria research failed: {exc}", file=sys.stderr)
@@ -1388,6 +1594,19 @@ def main(argv: list[str] | None = None) -> int:
             database=args.database,
             limit=args.limit,
             include_all_areas=args.all_areas,
+        )
+
+    if args.command == "show-combat-readiness":
+        return show_combat_readiness(
+            args.source,
+            level=args.level,
+            character_class=args.character_class,
+            subclass=args.subclass,
+            character=args.character,
+            database=args.database,
+            limit=args.limit,
+            include_all_areas=args.all_areas,
+            json_output=args.json,
         )
 
     if args.command == "configure-login":
@@ -1503,25 +1722,46 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 result = None
             else:
+                hero_runner = (
+                    run_hero_until_target
+                    if args.autonomous
+                    else run_hero_request
+                )
+                hero_options = dict(
+                    source=args.source,
+                    workspace=args.workspace,
+                    force_new=args.new,
+                    reset_retries=args.reset_retries,
+                    reset_wait=args.reset_wait,
+                    max_segment_runtime=args.max_segment_runtime,
+                    retry_stalled=args.retry_stalled,
+                    progress_callback=(
+                        _print_campaign_progress if args.progress else None
+                    ),
+                    target_level=args.target_level,
+                    password=args.password,
+                    remember_password=args.remember_password,
+                )
+                if args.autonomous:
+                    hero_options.update(
+                        cycles=args.segments,
+                        max_reset_waits=args.max_reset_waits,
+                    )
+                else:
+                    hero_options["segments"] = args.segments
                 preparation, result = asyncio.run(
-                    run_hero_request(
+                    hero_runner(
                         request,
-                        source=args.source,
-                        workspace=args.workspace,
-                        force_new=args.new,
-                        segments=args.segments,
-                        reset_retries=args.reset_retries,
-                        reset_wait=args.reset_wait,
-                        max_segment_runtime=args.max_segment_runtime,
-                        retry_stalled=args.retry_stalled,
-                        progress_callback=(
-                            _print_campaign_progress if args.progress else None
-                        ),
-                        target_level=args.target_level,
-                        password=args.password,
-                        remember_password=args.remember_password,
+                        **hero_options,
                     )
                 )
+        except KeyboardInterrupt:
+            print(
+                "HERO campaign interrupted; the durable checkpoint is preserved "
+                "for the next resume.",
+                file=sys.stderr,
+            )
+            return 130
         except Exception as exc:
             print(f"HERO campaign failed: {exc}", file=sys.stderr)
             return 1
@@ -1675,7 +1915,12 @@ def main(argv: list[str] | None = None) -> int:
         return show_runs(args.database, limit=args.limit)
 
     if args.command == "recover-runs":
-        return recover_runs(args.database, reason=args.reason)
+        return recover_runs(
+            args.database,
+            reason=args.reason,
+            campaign_id=args.campaign_id,
+            character=args.character,
+        )
 
     if args.command == "show-sales":
         return show_sales(args.database, character=args.character, limit=args.limit)
@@ -1705,7 +1950,11 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "show-campaign":
-        return show_campaign(args.campaign_id, database=args.database)
+        return show_campaign(
+            args.campaign_id,
+            database=args.database,
+            limit=args.limit,
+        )
 
     if args.command == "show-policies":
         return show_policies(args.level, args.character_class)
@@ -1785,7 +2034,7 @@ def show_runs(database: Path, *, limit: int) -> int:
         print(f"No run database found at {database.resolve()}", file=sys.stderr)
         return 1
 
-    with RunStorage(database) as storage:
+    with RunStorage(database, read_only=True) as storage:
         runs = storage.list_runs(limit=limit)
 
     print(f"Database: {database.resolve()}")
@@ -1811,10 +2060,44 @@ def show_runs(database: Path, *, limit: int) -> int:
     return 0
 
 
-def recover_runs(database: Path, *, reason: str) -> int:
+def recover_runs(
+    database: Path,
+    *,
+    reason: str,
+    campaign_id: int | None = None,
+    character: str | None = None,
+) -> int:
     if not database.exists():
         print(f"No run database found at {database.resolve()}", file=sys.stderr)
         return 1
+
+    if campaign_id is not None:
+        try:
+            with RunStorage(database) as storage:
+                repaired_events, recovered_runs, segments = (
+                    storage.recover_campaign(
+                        campaign_id,
+                        reason=reason,
+                        character_name=character,
+                    )
+                )
+        except KeyError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"Database: {database.resolve()}")
+        print(f"Campaign {campaign_id} recovered with indexed scoped queries.")
+        print(
+            f"Replayed {repaired_events} transcript event(s) across "
+            f"{1 if repaired_events else 0} run(s)."
+        )
+        print("Bound 0 interrupted campaign segment(s) to a run.")
+        print(f"Marked {recovered_runs} interrupted run(s) as failed.")
+        print(
+            f"Marked {segments} interrupted campaign segment(s) "
+            f"in campaign {campaign_id} as failed or ready."
+        )
+        return 0
+
     with RunStorage(database) as storage:
         repaired_runs, repaired_events = storage.repair_transcript_events()
         bound_segments = storage.bind_unlinked_campaign_runs()
@@ -1847,7 +2130,7 @@ def show_sales(database: Path, *, character: str, limit: int) -> int:
         print(f"No run database found at {database.resolve()}", file=sys.stderr)
         return 1
 
-    with RunStorage(database) as storage:
+    with RunStorage(database, read_only=True) as storage:
         sales = storage.list_loot_sales(character)
 
     print(f"Database: {database.resolve()}")
@@ -1902,15 +2185,17 @@ def show_hunt_candidates(
     boot_id: str | None = None
     kill_counts: Counter[str] = Counter()
     character_max_hp: int | None = None
+    character_alignment: int | None = None
+    character_fame: int | None = None
     recall_origins: dict[int, int] | None = None
     character_class: str | None = None
     character_subclass: str | None = None
     recorded_known_skills: tuple[str, ...] = ()
     recorded_known_skill_levels: dict[str, int] = {}
     if database.exists():
-        with RunStorage(database) as storage:
+        with RunStorage(database, read_only=True) as storage:
             boot_id = storage.latest_boot_id()
-            latest_state = storage.get_latest_character_state(character)
+            latest_state = _latest_inspection_state(storage, character)
             latest_state = dict(latest_state or {})
             campaign = storage.get_latest_campaign_for_character(character)
             if campaign is not None:
@@ -1931,6 +2216,8 @@ def show_hunt_candidates(
                             }:
                                 latest_state[key] = value
             if latest_state is not None:
+                character_alignment = _inspection_alignment(latest_state)
+                character_fame = _inspection_fame(latest_state)
                 recall_origins = recall_origins_from_state(latest_state)
                 raw_class = latest_state.get("character_class")
                 if isinstance(raw_class, str) and raw_class.strip():
@@ -1978,6 +2265,7 @@ def show_hunt_candidates(
         "boot_kill_counts": kill_counts,
         "include_xp_only": include_xp_only,
         "character_max_hp": character_max_hp,
+        "character_alignment": character_alignment,
         "include_all_areas": include_all_areas,
         "recall_origins": recall_origins,
     }
@@ -1998,6 +2286,14 @@ def show_hunt_candidates(
     print(f"Character: {character}, level {level}")
     print(f"Character class: {character_class or 'unknown'}")
     print(f"Character max HP: {character_max_hp or 'unknown'}")
+    print(
+        "Player alignment: "
+        + (str(character_alignment) if character_alignment is not None else "unknown")
+    )
+    print(
+        "Player fame: "
+        + (str(character_fame) if character_fame is not None else "unknown")
+    )
     print(f"Current reboot: {boot_id or 'unknown'}")
     if recall_origins:
         origin_names = []
@@ -2014,7 +2310,8 @@ def show_hunt_candidates(
         "move_cost\tflight_cost\trequires_flight\t"
         "room_spawns\tspawn_limit\t"
         "boot_kills\tloot\thazards\tautonomy_rejections\t"
-        "combat_readiness\tcombat_bonus\ttemplate\txp_modifier\tundead"
+        "combat_readiness\tcombat_bonus\ttemplate\txp_modifier\t"
+        "damage_modifier\tundead"
     )
     for candidate in candidates[:limit]:
         mobile = world.mobiles.get(candidate.mobile_vnum)
@@ -2100,6 +2397,11 @@ def show_hunt_candidates(
                     str(candidate.combat_readiness_bonus),
                     (mobile.template_name if mobile is not None else None) or "-",
                     str(mobile.xp_modifier if mobile is not None else 0),
+                    str(
+                        candidate.source_damage_modifier
+                        if candidate.source_damage_modifier is not None
+                        else "unknown"
+                    ),
                     "yes" if candidate.undead else "no",
                 ]
             )
@@ -2133,9 +2435,9 @@ def show_resource_sources(
     character_max_hp: int | None = None
     recall_origins: dict[int, int] | None = None
     if database.exists():
-        with RunStorage(database) as storage:
+        with RunStorage(database, read_only=True) as storage:
             boot_id = storage.latest_boot_id()
-            latest_state = storage.get_latest_character_state(character)
+            latest_state = _latest_inspection_state(storage, character)
             if latest_state is not None:
                 recall_origins = recall_origins_from_state(latest_state)
                 stored_level = latest_state.get("level")
@@ -2167,6 +2469,7 @@ def show_resource_sources(
         5: "weapon",
         9: "armour",
         10: "potion",
+        26: "pill",
         15: "container",
         19: "food",
         20: "money",
@@ -2193,7 +2496,9 @@ def show_resource_sources(
     print(
         "effect\tstatus\tobject_vnum\tobject\ttype\tsource_kind\t"
         "source_mobile\treset_room\tarea\tcount\tsource_levels\t"
-        "route_origin\troute\tactivation\thazards\tautonomy_rejections"
+        "route_origin\troute\tactivation\thazards\tautonomy_rejections\t"
+        "source_analysis_route\troute_key_objects\troute_key_sources\t"
+        "container_objects\tcontainer_keys\tcontainer_key_sources"
     )
     for placement in placements[:limit]:
         source_mobile = (
@@ -2237,6 +2542,29 @@ def show_resource_sources(
                     "; ".join(clean(value) for value in placement.hazards) or "-",
                     "; ".join(
                         clean(value) for value in placement.autonomy_rejections
+                    )
+                    or "-",
+                    ";".join(placement.source_analysis_route) or "-",
+                    ",".join(
+                        str(vnum) for vnum in placement.route_key_object_vnums
+                    )
+                    or "-",
+                    ",".join(
+                        str(vnum)
+                        for vnum in placement.route_key_source_mobile_vnums
+                    )
+                    or "-",
+                    ",".join(
+                        str(vnum) for vnum in placement.container_object_vnums
+                    )
+                    or "-",
+                    ",".join(
+                        str(vnum) for vnum in placement.required_key_object_vnums
+                    )
+                    or "-",
+                    ",".join(
+                        str(vnum)
+                        for vnum in placement.required_key_source_mobile_vnums
                     )
                     or "-",
                 )
@@ -2300,9 +2628,9 @@ def show_gear_sources(
         return []
 
     if database.exists():
-        with RunStorage(database) as storage:
+        with RunStorage(database, read_only=True) as storage:
             boot_id = storage.latest_boot_id()
-            latest_state = storage.get_latest_character_state(character)
+            latest_state = _latest_inspection_state(storage, character)
             if latest_state is not None:
                 recall_origins = recall_origins_from_state(latest_state)
                 stored_level = latest_state.get("level")
@@ -2414,6 +2742,756 @@ def show_gear_sources(
     return 0
 
 
+def _inspection_state_descriptions(value: object) -> list[str]:
+    """Extract item descriptions from the structured state snapshot."""
+    if isinstance(value, str):
+        try:
+            return _inspection_state_descriptions(json.loads(value))
+        except json.JSONDecodeError:
+            return []
+    if isinstance(value, Mapping):
+        descriptions: list[str] = []
+        for key in ("short_desc", "description", "name"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                descriptions.append(candidate)
+        for key, item in value.items():
+            if key not in {"short_desc", "description", "name"}:
+                descriptions.extend(_inspection_state_descriptions(item))
+        return descriptions
+    if isinstance(value, (list, tuple)):
+        descriptions: list[str] = []
+        for item in value:
+            descriptions.extend(_inspection_state_descriptions(item))
+        return descriptions
+    return []
+
+
+def _load_inspection_state(
+    database: Path,
+    character: str,
+) -> tuple[dict[str, Any], str | None, Counter[str]]:
+    """Load the same compact state/history view used by source reports."""
+    if not database.exists():
+        return {}, None, Counter()
+
+    with RunStorage(database, read_only=True) as storage:
+        state = _latest_inspection_state(storage, character)
+        campaign = storage.get_latest_campaign_for_character(character)
+        if campaign is not None:
+            checkpoint = storage.get_latest_campaign_checkpoint(int(campaign["id"]))
+            if checkpoint is not None:
+                try:
+                    checkpoint_state = json.loads(checkpoint["state_json"])
+                except (TypeError, json.JSONDecodeError):
+                    checkpoint_state = {}
+                if isinstance(checkpoint_state, dict):
+                    for key, value in checkpoint_state.items():
+                        if key.startswith("campaign_") or key in {
+                            "character_class",
+                            "subclass",
+                            "recall_origins",
+                        } | _INSPECTION_CHECKPOINT_STATE_KEYS:
+                            state[key] = value
+
+        boot_id = storage.latest_boot_id()
+        kill_counts: Counter[str] = Counter()
+        if boot_id is not None:
+            kill_counts.update(
+                str(row["mob_name"])
+                for row in storage.list_mob_kills(character, boot_id=boot_id)
+            )
+    return state, boot_id, kill_counts
+
+
+def _readiness_candidate_in_band(candidate: Any, level: int) -> bool:
+    minimum, maximum = candidate.estimated_level_range
+    if minimum <= 0 or maximum < minimum:
+        minimum, maximum = candidate.level - 2, candidate.level + 2
+    return maximum > level - 5 and minimum <= level + 1
+
+
+def _readiness_fame_window(
+    candidate: Any,
+    *,
+    level: int,
+    source_world: Any,
+) -> tuple[str, tuple[int, int]] | None:
+    """Return the source fame branch and usable level window for a target."""
+    mobiles = getattr(source_world, "mobiles", {})
+    mobile = mobiles.get(candidate.mobile_vnum) if hasattr(mobiles, "get") else None
+    awards_fame = bool(getattr(mobile, "awards_fame", False))
+    window = _source_ranked_fame_level_window(
+        candidate,
+        character_level=level,
+        awards_fame=awards_fame,
+    )
+    if window is None:
+        return None
+    return ("famous" if awards_fame else "ordinary", window)
+
+
+def _readiness_level_range(low: int, high: int) -> list[int]:
+    """Clip an inspection range to DD4's playable levels."""
+    clipped_low = max(1, low)
+    clipped_high = min(100, high)
+    return [clipped_low, clipped_high] if clipped_low <= clipped_high else []
+
+
+def _format_readiness_level_range(level_range: list[int]) -> str:
+    """Render an empty HERO-boundary range without indexing it."""
+    return (
+        f"{level_range[0]}-{level_range[1]}"
+        if level_range
+        else "none"
+    )
+
+
+def _format_optional_bool(value: bool | None) -> str:
+    """Render a three-state inspection flag without implying authorization."""
+    if value is None:
+        return "unknown"
+    return "yes" if value else "no"
+
+
+_INSPECTION_CHECKPOINT_STATE_KEYS = frozenset(
+    {
+        "combat_pouch_potions",
+        "verified_combat_pouch_potions",
+    }
+)
+
+
+def _readiness_candidate_record(
+    candidate: Any,
+    *,
+    level: int,
+    output_ceiling: int,
+    state: Mapping[str, Any],
+    source_world: Any,
+) -> dict[str, Any]:
+    source_minimum, source_maximum = candidate.estimated_level_range
+    hp_minimum, hp_maximum = candidate.estimated_base_hp_range
+    in_band = _readiness_candidate_in_band(candidate, level)
+    fame_window = _readiness_fame_window(
+        candidate,
+        level=level,
+        source_world=source_world,
+    )
+    output_fit = bool(output_ceiling and hp_maximum > 0 and hp_maximum <= output_ceiling)
+    protected_hp_probe = bool(
+        _source_ranked_protected_hp_fuzz_probe_allowed(
+            candidate,
+            state,
+            character_level=level,
+            source_world=source_world,
+        )
+        or _source_ranked_protected_aggressive_hp_fuzz_probe_allowed(
+            candidate,
+            state,
+            character_level=level,
+            source_world=source_world,
+        )
+        or (
+            source_maximum > level + 1
+            and _source_ranked_protected_level_ceiling_hp_probe_allowed(
+                candidate,
+                state,
+                character_level=level,
+                source_world=source_world,
+            )
+        )
+    )
+    source_hp_admission: bool | None = None
+    requires_sanctuary: bool | None = None
+    sanctuary_available: bool | None = None
+    admission_fit: bool | None = None
+    if (
+        isinstance(state.get("max_hp"), (int, float))
+        and int(state.get("max_hp") or 0) > 0
+        and source_world is not None
+    ):
+        try:
+            source_hp_admission = bool(
+                _source_ranked_hp_probe_admission_available(
+                    candidate,
+                    state,
+                    character_level=level,
+                    source_world=source_world,
+                )
+            )
+            requires_sanctuary = bool(
+                _source_ranked_candidate_requires_sanctuary_for_state(
+                    candidate,
+                    state,
+                    character_level=level,
+                    source_world=source_world,
+                )
+            )
+            sanctuary_available = bool(_state_has_sanctuary_reserve(state))
+            admission_fit = bool(
+                candidate.autonomous_safe
+                and in_band
+                and source_hp_admission
+                and (not requires_sanctuary or sanctuary_available)
+            )
+        except (AttributeError, TypeError, ValueError):
+            # Synthetic fixture candidates intentionally exercise the report
+            # without a complete source world. Keep those fields unknown
+            # rather than turning an inspection-only command into a hard
+            # failure.
+            pass
+    return {
+        "target": candidate.target,
+        "mobile_vnum": candidate.mobile_vnum,
+        "room_vnum": candidate.room_vnum,
+        "room": candidate.room_name,
+        "status": candidate.status,
+        "score": candidate.score,
+        "source_levels": [source_minimum, source_maximum],
+        "base_hp": [hp_minimum, hp_maximum],
+        "source_band": in_band,
+        "fame_kind": fame_window[0] if fame_window is not None else None,
+        "fame_window": (
+            list(fame_window[1]) if fame_window is not None else None
+        ),
+        "autonomous_safe": candidate.autonomous_safe,
+        "output_fit": output_fit,
+        "source_hp_admission": source_hp_admission,
+        "requires_sanctuary": requires_sanctuary,
+        "sanctuary_available": sanctuary_available,
+        "admission_fit": admission_fit,
+        "protected_hp_probe": protected_hp_probe,
+        "estimated_peak_round_damage": candidate.estimated_peak_round_damage,
+        "source_damage_modifier": getattr(candidate, "source_damage_modifier", 0),
+        "estimated_move_cost": candidate.estimated_move_cost,
+        "requires_flight": candidate.requires_flight,
+        "loot": list(candidate.loot),
+        "hazards": list(candidate.hazards),
+        "autonomy_rejections": list(candidate.autonomy_rejections),
+    }
+
+
+def _readiness_gear_record(placement: Any) -> dict[str, Any]:
+    source_minimum, source_maximum = placement.source_level_range
+    return {
+        "object_vnum": placement.object_vnum,
+        "object": placement.object_description,
+        "category": placement.category,
+        "weapon_role": placement.weapon_role,
+        "stance_rank": list(placement.stance_rank),
+        "better_than_current": placement.better_than_current,
+        "status": placement.status,
+        "source_kind": placement.source_kind,
+        "source_mobile_vnum": placement.source_mobile_vnum,
+        "source_mobile": placement.source_mobile,
+        "room_vnum": placement.room_vnum,
+        "room": placement.room_name,
+        "source_levels": [source_minimum, source_maximum],
+        "route": list(placement.route),
+        "requires_flight": placement.requires_flight,
+        "hazards": list(placement.hazards),
+        "autonomy_rejections": list(placement.autonomy_rejections),
+    }
+
+
+def _readiness_quest_record(
+    state: Mapping[str, Any],
+    *,
+    level: int,
+) -> dict[str, Any]:
+    """Summarize quest request, progression gates, and fame consequences."""
+    quest = snapshot_quest_status(
+        state.get("quest_status")
+        if isinstance(state.get("quest_status"), Mapping)
+        else None
+    )
+    request_blocker = quest_request_blocker(state, quest=quest)
+    required_points = quest_points_required_for_advance(level)
+    return {
+        "active": quest.active,
+        "complete": quest.complete,
+        "kind": quest.kind,
+        "countdown": quest.countdown,
+        "nextquest": quest.nextquest,
+        "quest_points": quest.points,
+        "total_quest_points": quest.total_points,
+        "level_gate_required_points": required_points,
+        "level_gate_shortfall": quest_points_shortfall_for_advance(
+            level,
+            quest.total_points,
+        ),
+        "target": {
+            "mob_vnum": quest.mob_vnum,
+            "object_vnum": quest.object_vnum,
+            "room_vnum": quest.room_vnum,
+            "name": quest.target_name,
+            "area": quest.area_name,
+        },
+        "questmaster": questmaster_name_for_level(level),
+        "questmaster_route": list(questmaster_route_for_level(level)),
+        "fame_gate_allowed": quest_request_fame_allowed(state),
+        "request_allowed": request_blocker is None,
+        "request_blocker": request_blocker,
+        "fame_recovery_status": quest_fame_recovery_status(
+            state,
+            quest=quest,
+        ),
+    }
+
+
+def _readiness_active_constraints(state: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Summarize durable gates without copying the entire checkpoint."""
+    labels = (
+        ("campaign_protection_recovery_required", "protection recovery"),
+        ("campaign_provision_funding_required", "provision funding"),
+        ("campaign_flight_funding_required", "flight funding"),
+        ("campaign_source_ranked_xp_loss_policies", "recorded XP-loss policies"),
+        ("campaign_below_band_policy_exclusions", "below-band exclusions"),
+        (
+            "campaign_source_ranked_combat_output_revalidation",
+            "combat-output revalidation",
+        ),
+    )
+    constraints: list[dict[str, Any]] = []
+    for key, label in labels:
+        value = state.get(key)
+        if not value:
+            continue
+        record: dict[str, Any] = {"key": key, "label": label}
+        if isinstance(value, Mapping):
+            record["kind"] = "mapping"
+            record["count"] = len(value)
+            record["entries"] = sorted(str(entry) for entry in value)[:20]
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            record["kind"] = "list"
+            record["count"] = len(value)
+        else:
+            record["kind"] = "value"
+            record["value"] = value
+        constraints.append(record)
+    fame = _inspection_fame(state)
+    if fame is not None and fame < 0:
+        constraints.append(
+            {
+                "key": "character_fame",
+                "label": "negative fame blocks new quests and shops",
+                "kind": "value",
+                "value": fame,
+            }
+        )
+    return constraints
+
+
+def show_combat_readiness(
+    source: Path,
+    *,
+    level: int,
+    character_class: str,
+    subclass: str | None,
+    character: str,
+    database: Path,
+    limit: int,
+    include_all_areas: bool = False,
+    json_output: bool = False,
+) -> int:
+    """Render an offline combat/readiness audit without authorizing a run."""
+    if level < 1 or level > 100:
+        print("--level must be between 1 and 100", file=sys.stderr)
+        return 2
+    if limit < 1:
+        print("--limit must be at least 1", file=sys.stderr)
+        return 2
+    try:
+        world = load_world_source(source, include_all_areas=include_all_areas)
+    except (OSError, ValueError) as exc:
+        print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
+        return 1
+    current_source_revision = _source_revision(source)
+
+    state, boot_id, kill_counts = _load_inspection_state(database, character)
+    report_state = dict(state)
+    report_state["character_class"] = character_class
+    if subclass is not None:
+        report_state["subclass"] = subclass
+    elif "subclass" not in report_state:
+        report_state["subclass"] = "none"
+
+    character_max_hp: int | None = None
+    if state.get("level") == level:
+        raw_max_hp = state.get("max_hp")
+        if isinstance(raw_max_hp, (int, float)) and raw_max_hp > 0:
+            character_max_hp = int(raw_max_hp)
+    recall_origins = recall_origins_from_state(state)
+    raw_known_skills = state.get("campaign_known_skills")
+    if isinstance(raw_known_skills, str):
+        known_skills: tuple[str, ...] = (raw_known_skills,)
+    elif isinstance(raw_known_skills, (list, tuple, set, frozenset)):
+        known_skills = tuple(str(skill) for skill in raw_known_skills)
+    else:
+        known_skills = ()
+    raw_skill_levels = state.get("campaign_known_skill_levels")
+    known_skill_levels = (
+        raw_skill_levels if isinstance(raw_skill_levels, Mapping) else {}
+    )
+    character_alignment = _inspection_alignment(state)
+    character_fame = _inspection_fame(state)
+    quest_record = _readiness_quest_record(state, level=level)
+
+    catalog = GearCatalog(getattr(world, "objects", {}))
+    current_items = catalog.match_many_usable(
+        [
+            *_inspection_state_descriptions(state.get("campaign_worn_equipment")),
+            *_equipment_descriptions(state.get("equipment")),
+            *_inspection_state_descriptions(state.get("inventory")),
+        ],
+        character_class=character_class,
+        subclass=subclass or state.get("subclass"),
+    )
+    try:
+        output = _source_ranked_caster_output_for_state(
+            report_state,
+            character_level=level,
+            source_world=world,
+        )
+    except (TypeError, ValueError):
+        output = None
+    output_ceiling = 0
+    output_record: dict[str, Any] | None = None
+    if output is not None:
+        output_ceiling = (
+            int(output.conservative_damage) * int(output.maximum_actions)
+            + int(output.opening_conservative_damage or 0)
+        )
+        output_record = {
+            "action": output.action,
+            "opening_action": output.opening_action,
+            "minimum_damage": output.minimum_damage,
+            "expected_damage": output.expected_damage,
+            "maximum_damage": output.maximum_damage,
+            "conservative_damage": output.conservative_damage,
+            "maximum_actions": output.maximum_actions,
+            "opening_conservative_damage": output.opening_conservative_damage,
+            "total_conservative_ceiling": output_ceiling,
+            "source_reference": output.source_reference,
+            "opening_source_reference": output.opening_source_reference,
+        }
+
+    try:
+        candidates = rank_hunt_candidates(
+            world,
+            character_level=level,
+            character_class=character_class,
+            character_subclass=subclass or state.get("subclass"),
+            known_skills=known_skills,
+            known_skill_levels=known_skill_levels,
+            boot_kill_counts=kill_counts,
+            include_xp_only=True,
+            include_below_band=True,
+            character_max_hp=character_max_hp,
+            include_level_ceiling_candidates=character_max_hp is not None,
+            level_ceiling_offset=(
+                _FAME_RECOVERY_MAX_LEVEL_DELTA
+                if character_max_hp is not None
+                else 1
+            ),
+            include_all_areas=include_all_areas,
+            recall_origins=recall_origins,
+            character_alignment=character_alignment,
+        )
+        placements = rank_gear_sources(
+            world,
+            character_level=level,
+            character_class=character_class,
+            subclass=subclass or state.get("subclass"),
+            stance=STANCE_COMBAT,
+            current_items=current_items,
+            character_max_hp=character_max_hp,
+            include_all_areas=include_all_areas,
+            recall_origins=recall_origins,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    candidate_records = [
+        _readiness_candidate_record(
+            candidate,
+            level=level,
+            output_ceiling=output_ceiling,
+            state=report_state,
+            source_world=world,
+        )
+        for candidate in candidates
+    ]
+    candidate_records.sort(
+        key=lambda record: (
+            record["source_band"],
+            record["autonomous_safe"],
+            record["output_fit"],
+            record["score"],
+        ),
+        reverse=True,
+    )
+    fame_records = [
+        record
+        for record in candidate_records
+        if record["fame_window"] is not None
+    ]
+    fame_records.sort(
+        key=lambda record: (
+            record["autonomous_safe"],
+            record["output_fit"],
+            record["protected_hp_probe"],
+            record["score"],
+        ),
+        reverse=True,
+    )
+    fame_summary = {
+        "ordinary_minimum_level_delta": _FAME_RECOVERY_MIN_LEVEL_DELTA,
+        "ordinary_maximum_level_delta": None,
+        "research_horizon_maximum_level_delta": _FAME_RECOVERY_MAX_LEVEL_DELTA,
+        "ordinary_level_rule": (
+            "victim level - character level > 5 (at least 6 levels higher)"
+        ),
+        "ordinary_level_range": _readiness_level_range(
+            level + _FAME_RECOVERY_MIN_LEVEL_DELTA,
+            100,
+        ),
+        "famous_level_rule": "ACT_IS_FAMOUS victim is less than 10 levels below",
+        "famous_level_range": _readiness_level_range(
+            level - 4,
+            100,
+        ),
+        "candidate_count": len(fame_records),
+        "ordinary_candidates": sum(
+            record["fame_kind"] == "ordinary" for record in fame_records
+        ),
+        "famous_candidates": sum(
+            record["fame_kind"] == "famous" for record in fame_records
+        ),
+        "autonomous_safe": sum(
+            bool(record["autonomous_safe"]) for record in fame_records
+        ),
+        "output_fit": sum(
+            bool(record["output_fit"]) for record in fame_records
+        ),
+        "safe_and_output_fit": sum(
+            bool(record["autonomous_safe"])
+            and bool(record["output_fit"])
+            for record in fame_records
+        ),
+        "admission_fit": sum(
+            bool(record["admission_fit"]) for record in fame_records
+        ),
+        "targets": fame_records[:limit],
+    }
+    better_placements = [
+        placement for placement in placements if placement.better_than_current
+    ]
+    report = {
+        "source": str(source.resolve()),
+        "source_revision": (
+            current_source_revision
+            or state.get("campaign_source_revision")
+            or "unknown"
+        ),
+        "character": character,
+        "level": level,
+        "character_class": character_class,
+        "subclass": subclass or state.get("subclass") or "none",
+        "database": str(database.resolve()),
+        "boot_id": boot_id or "unknown",
+        "character_max_hp": character_max_hp,
+        "character_alignment": character_alignment,
+        "character_fame": character_fame,
+        "quest": quest_record,
+        "observed_equipment_count": len(current_items),
+        "active_constraints": _readiness_active_constraints(state),
+        "output": output_record,
+        "target_summary": {
+            "total": len(candidate_records),
+            "source_band": sum(
+                bool(record["source_band"]) for record in candidate_records
+            ),
+            "autonomous_safe": sum(
+                bool(record["autonomous_safe"]) for record in candidate_records
+            ),
+            "output_fit": sum(
+                bool(record["output_fit"]) for record in candidate_records
+            ),
+            "protected_hp_probes": sum(
+                bool(record["protected_hp_probe"])
+                for record in candidate_records
+            ),
+            "safe_and_output_fit": sum(
+                bool(record["source_band"])
+                and bool(record["autonomous_safe"])
+                and bool(record["output_fit"])
+                for record in candidate_records
+            ),
+            "admission_fit": sum(
+                bool(record["admission_fit"]) for record in candidate_records
+            ),
+        },
+        "fame_summary": fame_summary,
+        "targets": candidate_records[:limit],
+        "gear_summary": {
+            "total_placements": len(placements),
+            "better_than_current": len(better_placements),
+        },
+        "gear_upgrades": [
+            _readiness_gear_record(placement)
+            for placement in better_placements[:limit]
+        ],
+        "live_authorization": False,
+    }
+    if json_output:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+
+    print("Combat readiness: offline source audit")
+    print(f"Source: {report['source']}")
+    print(
+        f"Character: {character}, level {level}, class {character_class}, "
+        f"subclass {report['subclass']}"
+    )
+    print(f"Source revision: {report['source_revision']}")
+    print(f"Current reboot: {report['boot_id']}")
+    print(f"Character max HP: {character_max_hp or 'unknown'}")
+    print(
+        "Player alignment: "
+        + (
+            str(character_alignment)
+            if character_alignment is not None
+            else "unknown"
+        )
+    )
+    print(
+        "Player fame: "
+        + (str(character_fame) if character_fame is not None else "unknown")
+    )
+    print(
+        "Quest request: "
+        + (
+            f"available via {quest_record['questmaster']}"
+            if quest_record["request_allowed"]
+            else f"blocked ({quest_record['request_blocker']})"
+        )
+    )
+    print(
+        "Quest points: "
+        f"{quest_record['total_quest_points']} total; "
+        f"next level gate shortfall {quest_record['level_gate_shortfall']}"
+    )
+    print(f"Quest fame path: {quest_record['fame_recovery_status']}")
+    if report["active_constraints"]:
+        print(
+            "Durable constraints: "
+            + ", ".join(
+                f"{constraint['label']}"
+                + (
+                    f" ({constraint['count']})"
+                    if "count" in constraint
+                    else ""
+                )
+                for constraint in report["active_constraints"]
+            )
+        )
+    else:
+        print("Durable constraints: none recorded")
+    if output_record is None:
+        print("Output: unassessed (no source-backed repeatable action)")
+    else:
+        print(
+            f"Output: {output_record['action']} at "
+            f"{output_record['conservative_damage']} damage x "
+            f"{output_record['maximum_actions']} actions; "
+            f"total ceiling {output_ceiling}"
+        )
+        if output_record["opening_action"]:
+            print(
+                f"Opening: {output_record['opening_action']} at "
+                f"{output_record['opening_conservative_damage']} conservative damage"
+            )
+    summary = report["target_summary"]
+    print(
+        "Targets: "
+        f"{summary['total']} total, {summary['source_band']} source-band, "
+        f"{summary['autonomous_safe']} autonomous-safe, "
+        f"{summary['output_fit']} output-fit, "
+        f"{summary['protected_hp_probes']} protected HP probes, "
+        f"{summary['admission_fit']} full-admission-fit"
+    )
+    fame = report["fame_summary"]
+    print(
+        "Fame bands: ordinary "
+        f"{_format_readiness_level_range(fame['ordinary_level_range'])}; "
+        "famous "
+        f"{_format_readiness_level_range(fame['famous_level_range'])}; "
+        f"{fame['candidate_count']} source candidates"
+    )
+    print(
+        "Fame research horizon: "
+        f"+{fame['research_horizon_maximum_level_delta']} levels"
+    )
+    print(f"Fame rule: ordinary targets require {fame['ordinary_level_rule']}")
+    print(
+        "Fame candidates: "
+        f"{fame['autonomous_safe']} autonomous-safe, "
+        f"{fame['output_fit']} output-fit, "
+        f"{fame['admission_fit']} full-admission-fit"
+    )
+    print(
+        "target\troom\tlevels\tbase_hp\tstatus\tsafe\toutput_fit\t"
+        "hp_admission\tsanctuary_required\tsanctuary_available\t"
+        "admission_fit\tprotected_probe\trejections"
+    )
+    for record in report["targets"]:
+        print(
+            "\t".join(
+                (
+                    f"{record['mobile_vnum']} {record['target']}",
+                    f"{record['room_vnum']} {record['room']}",
+                    f"{record['source_levels'][0]}-{record['source_levels'][1]}",
+                    f"{record['base_hp'][0]}-{record['base_hp'][1]}",
+                    record["status"],
+                    "yes" if record["autonomous_safe"] else "no",
+                    "yes" if record["output_fit"] else "no",
+                    _format_optional_bool(record["source_hp_admission"]),
+                    _format_optional_bool(record["requires_sanctuary"]),
+                    _format_optional_bool(record["sanctuary_available"]),
+                    _format_optional_bool(record["admission_fit"]),
+                    "yes" if record["protected_hp_probe"] else "no",
+                    "; ".join(record["autonomy_rejections"]) or "-",
+                )
+            )
+        )
+    print(f"Gear upgrades: {len(better_placements)} better placements")
+    if better_placements:
+        print("object\tcategory\tstatus\tsource\troom\trejections")
+        for record in report["gear_upgrades"]:
+            source_mobile = (
+                f"{record['source_mobile_vnum']} {record['source_mobile']}"
+                if record["source_mobile_vnum"] is not None
+                else record["source_kind"]
+            )
+            print(
+                "\t".join(
+                    (
+                        f"{record['object_vnum']} {record['object']}",
+                        record["category"],
+                        record["status"],
+                        source_mobile,
+                        f"{record['room_vnum']} {record['room']}",
+                        "; ".join(record["autonomy_rejections"]) or "-",
+                    )
+                )
+            )
+    print("Live authorization: no; this command only reports evidence and blockers.")
+    return 0
+
+
 def show_transcript(target: str, *, database: Path, raw: bool) -> int:
     transcript_path = _resolve_transcript_target(target, database)
     if transcript_path is None:
@@ -2443,7 +3521,7 @@ def show_state(run_id: int, *, database: Path, history: bool) -> int:
         print(f"No run database found at {database.resolve()}", file=sys.stderr)
         return 1
 
-    with RunStorage(database) as storage:
+    with RunStorage(database, read_only=True) as storage:
         run = storage.get_run(run_id)
         snapshots = (
             storage.list_state_snapshots(run_id)
@@ -2509,7 +3587,7 @@ def show_report(
         return 1
 
     try:
-        with RunStorage(database) as storage:
+        with RunStorage(database, read_only=True) as storage:
             report = build_run_report(
                 storage,
                 run_id,
@@ -2549,7 +3627,7 @@ def show_campaign_report(
         return 1
 
     try:
-        with RunStorage(database) as storage:
+        with RunStorage(database, read_only=True) as storage:
             report = build_campaign_report(
                 storage,
                 campaign_id,
@@ -2577,17 +3655,23 @@ def show_campaign_report(
     return 0
 
 
-def show_campaign(campaign_id: int, *, database: Path) -> int:
+def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
     if campaign_id < 1:
         print("campaign_id must be at least 1", file=sys.stderr)
+        return 2
+    if limit < 1:
+        print("--limit must be at least 1", file=sys.stderr)
         return 2
     if not database.exists():
         print(f"No run database found at {database.resolve()}", file=sys.stderr)
         return 1
 
-    with RunStorage(database) as storage:
+    with RunStorage(database, read_only=True) as storage:
         campaign = storage.get_campaign(campaign_id)
-        segments = storage.list_campaign_segment_summaries(campaign_id)
+        segments = storage.list_recent_campaign_segments(
+            campaign_id,
+            limit=limit,
+        )
         checkpoint = storage.get_latest_campaign_checkpoint(campaign_id)
 
     if campaign is None:
@@ -2607,6 +3691,9 @@ def show_campaign(campaign_id: int, *, database: Path) -> int:
             f"Checkpoint {checkpoint['id']}: {checkpoint['phase']} "
             f"({checkpoint['reason']}), level {state.get('level', '-')}"
         )
+    print(
+        f"recent segments (up to {limit}; newest segment last)"
+    )
     print("sequence\tphase\tstatus\trun\tcommands\tduration\terror")
     for segment in segments:
         print(
@@ -2816,7 +3903,7 @@ def collect_evidence(run_id: int, *, database: Path, output: Path | None) -> int
         print(f"No run database found at {database.resolve()}", file=sys.stderr)
         return 1
     try:
-        with RunStorage(database) as storage:
+        with RunStorage(database, read_only=True) as storage:
             rendered = render_evidence_json(collect_run_evidence(storage, run_id))
     except LookupError:
         print(f"No run with id {run_id} in {database.resolve()}", file=sys.stderr)
@@ -2840,7 +3927,7 @@ def _resolve_transcript_target(target: str, database: Path) -> Path | None:
         return None
 
     run_id = int(target)
-    with RunStorage(database) as storage:
+    with RunStorage(database, read_only=True) as storage:
         run = storage.get_run(run_id)
 
     if run is None:

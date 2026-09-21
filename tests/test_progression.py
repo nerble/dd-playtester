@@ -174,6 +174,34 @@ def test_training_repair_preempts_fame_and_flight_frontier_after_food() -> None:
     assert policy.status == "verified"
 
 
+def test_training_repair_preempts_loot_liquidation_after_a_level_up() -> None:
+    policy = policy_for(
+        11,
+        "thief",
+        has_food=True,
+        has_sellable_loot=True,
+        needs_training_repair=True,
+    )
+
+    assert policy.policy_id == "training-deficit-repair-10-100"
+    assert policy.execution == "training-deficit-repair"
+
+
+def test_source_gear_acquisition_is_a_bounded_maintenance_policy() -> None:
+    policy = policy_for(
+        8,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        needs_source_gear=True,
+    )
+
+    assert policy.policy_id == "source-gear-acquisition"
+    assert policy.execution == "source-gear-acquisition"
+    assert policy.minimum_level == 8
+    assert policy.maximum_level == 8
+
+
 def test_post_25_quest_point_shortfall_uses_goldmoon_route() -> None:
     policy = policy_for(
         29,
@@ -263,6 +291,44 @@ def test_junior_quest_shortfall_requests_suturb_quest() -> None:
     assert policy.execution == "quest-request"
     assert policy.executable is True
     assert "Suturb" in policy.summary
+
+
+def test_negative_reputation_does_not_request_quest() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        has_food=True,
+        has_weapon=True,
+        shop_rearm_blocked_by_reputation=True,
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+    )
+
+    assert policy.policy_id != "quest-request"
+    assert policy.execution != "quest-request"
+
+
+def test_negative_reputation_does_not_block_active_quest() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        has_food=True,
+        has_weapon=True,
+        shop_rearm_blocked_by_reputation=True,
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        quest_status={
+            "active": 1,
+            "complete": 0,
+            "status": "active",
+            "type": "kill",
+            "mob_vnum": 4517,
+            "room_vnum": 4514,
+        },
+    )
+
+    assert policy.policy_id == "quest-target-run"
+    assert policy.execution == "quest-target-run"
 
 
 def test_affordable_remote_recall_point_preempts_the_level_25_frontier() -> None:
@@ -416,6 +482,21 @@ def test_loose_sanctuary_reserve_selects_pouch_maintenance() -> None:
     assert policy.status == "verified"
 
 
+def test_loose_sanctuary_reserve_precedes_provision_funding() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        has_food=True,
+        has_sanctuary_potion=True,
+        needs_combat_pouch_repack=True,
+        needs_money_container_extraction=True,
+        needs_provision_funding=True,
+    )
+
+    assert policy.policy_id == "audit-combat-pouch"
+    assert policy.execution == "audit-combat-pouch"
+
+
 def test_unaffordable_provisions_select_source_funding_policy() -> None:
     policy = policy_for(
         18,
@@ -438,6 +519,22 @@ def test_affordable_flight_with_no_food_restock_before_funding() -> None:
         needs_provision_funding=True,
         has_flight=False,
         can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "restock-provisions"
+    assert policy.execution == "restock"
+    assert policy.executable is True
+
+
+def test_cash_on_hand_restock_precedes_funding_when_foodless() -> None:
+    policy = policy_for(
+        18,
+        "mage",
+        has_food=False,
+        can_attempt_food_restock=True,
+        needs_provision_funding=True,
+        has_flight=False,
+        can_attempt_flight_purchase=False,
     )
 
     assert policy.policy_id == "restock-provisions"
@@ -1233,6 +1330,20 @@ def test_money_container_extraction_precedes_loot_sales() -> None:
     assert policy.policy_id == "empty-money-container"
     assert policy.execution == "empty-money-container"
     assert policy.executable is True
+
+
+def test_excluded_money_container_extraction_falls_back_to_loot_sales() -> None:
+    policy = policy_for(
+        24,
+        "thief",
+        needs_money_container_extraction=True,
+        has_sellable_loot=True,
+        needs_provision_funding=True,
+        excluded_policy_ids=frozenset({"empty-money-container"}),
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
 
 
 def test_healer_recovery_precedes_thief_sanctuary_wait() -> None:
@@ -2484,6 +2595,7 @@ def test_negative_fame_unarmed_thief_retries_excluded_field_dagger() -> None:
         24,
         "thief",
         has_weapon=False,
+        has_sanctuary_potion=True,
         shop_rearm_blocked_by_reputation=True,
         needs_piercing_weapon=True,
         needs_intermediate_piercing_weapon_upgrade=True,
@@ -2502,6 +2614,7 @@ def test_negative_fame_fallback_weapon_retries_excluded_field_dagger() -> None:
         24,
         "thief",
         has_weapon=True,
+        has_sanctuary_potion=True,
         shop_rearm_blocked_by_reputation=True,
         needs_piercing_weapon=True,
         needs_intermediate_piercing_weapon_upgrade=True,
@@ -2818,6 +2931,7 @@ def test_thief_selects_thalos_intermediate_upgrade_after_blocked_forest() -> Non
     policy = policy_for(
         15,
         "thief",
+        has_sanctuary_potion=True,
         needs_intermediate_piercing_weapon_upgrade=True,
         needs_piercing_weapon_upgrade=True,
         piercing_weapon_upgrade_attempted=True,
@@ -2833,6 +2947,7 @@ def test_thief_skips_intermediate_upgrade_when_source_is_not_safe() -> None:
     policy = policy_for(
         15,
         "thief",
+        has_sanctuary_potion=True,
         needs_intermediate_piercing_weapon_upgrade=True,
         intermediate_piercing_weapon_upgrade_source_safe=False,
         needs_piercing_weapon_upgrade=True,
@@ -2930,6 +3045,51 @@ def test_thief_damage_gate_reopens_cleared_forest_upgrade() -> None:
 
     assert policy.policy_id == "forest-bear-claws-upgrade-10-29"
     assert policy.execution == "upgrade-piercing-weapon"
+
+
+def test_thief_forest_upgrade_waits_for_current_reboot_absence_cooldown() -> None:
+    policy_id = "forest-bear-claws-upgrade-10-29"
+    policy = policy_for(
+        24,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        piercing_weapon_upgrade_retry_allowed=True,
+        excluded_policy_ids={policy_id},
+        research_results={
+            policy_id: {
+                "absent": True,
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+        research_absence_cooldowns={policy_id: 3},
+        world_boot_id="boot-1",
+        has_flight=True,
+    )
+
+    assert policy.policy_id != policy_id
+
+    reopened = policy_for(
+        24,
+        "thief",
+        needs_piercing_weapon_upgrade=True,
+        piercing_weapon_upgrade_retry_allowed=True,
+        excluded_policy_ids={policy_id},
+        research_results={
+            policy_id: {
+                "absent": True,
+                "observed": False,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+        research_absence_cooldowns={},
+        world_boot_id="boot-1",
+        has_flight=True,
+    )
+
+    assert reopened.policy_id == policy_id
 
 
 def test_piercing_upgrade_does_not_override_other_class_policy() -> None:
@@ -5464,6 +5624,24 @@ def test_completed_flight_funding_retries_purchase_after_maintenance() -> None:
     assert policy.execution == "buy-flight"
 
 
+def test_completed_flight_funding_retries_affordable_failed_purchase_before_loan() -> None:
+    policy = policy_for(
+        18,
+        "warrior",
+        has_food=True,
+        needs_provision_funding=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        flight_purchase_failed=True,
+        flight_funding_retry_pending=True,
+        last_policy_id="source-ranked-hunt-fleshmonger-9403-9403-18",
+        world_boot_id="boot-1",
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
 def test_completed_flight_funding_waits_when_price_is_unaffordable() -> None:
     policy = policy_for(
         18,
@@ -5492,6 +5670,40 @@ def test_pending_flight_purchase_preempts_redundant_funding_when_stocked() -> No
         last_policy_id="source-ranked-hunt-dwarven-home-20504-20506-18",
         world_boot_id="boot-1",
     )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+def test_pending_flight_purchase_preempts_source_ranked_hunt_when_stocked(
+    monkeypatch,
+) -> None:
+    source_hunt = ProgressionPolicy(
+        policy_id="source-ranked-hunt-test",
+        minimum_level=18,
+        maximum_level=18,
+        status="verified",
+        execution="source-ranked-hunt",
+        summary="source-ranked test hunt",
+        evidence=(),
+        practice_skill="physical",
+    )
+    monkeypatch.setattr(
+        "dd4tester.progression._select_policy",
+        lambda context: source_hunt,
+    )
+
+    context = ProgressionContext.from_values(
+        18,
+        "mage",
+        has_food=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        flight_funding_retry_pending=True,
+        world_boot_id="boot-1",
+    )
+
+    policy = select_policy(context)
 
     assert policy.policy_id == "buy-flight-potion"
     assert policy.execution == "buy-flight"
@@ -6438,6 +6650,32 @@ def test_exhausted_level_twenty_one_band_opens_dynamic_source_frontier() -> None
     assert policy.execution == "source-ranked-hunt"
     assert policy.minimum_level == 24
     assert policy.maximum_level == 24
+
+
+def test_exhausted_level_eighteen_band_opens_dynamic_source_frontier() -> None:
+    exhausted_frontier = frozenset(
+        policy_id
+        for policy_id, registered in _POLICY_BY_ID.items()
+        if registered.execution
+        and registered.execution != "source-ranked-hunt"
+        and registered.minimum_level <= 18
+        and (
+            registered.maximum_level is None
+            or registered.maximum_level >= 16
+        )
+    )
+    policy = policy_for(
+        18,
+        "mage",
+        world_boot_id="boot-1",
+        excluded_policy_ids=exhausted_frontier,
+        source_ranked_fallback=True,
+    )
+
+    assert policy.policy_id == "source-ranked-hunt-10-100"
+    assert policy.execution == "source-ranked-hunt"
+    assert policy.minimum_level == 18
+    assert policy.maximum_level == 18
 
 
 def test_generic_deep_sanctuary_recovery_reopens_after_crowd_cooldown() -> None:

@@ -7,6 +7,7 @@ from dd4tester.hunt_candidates import _shortest_paths_from, load_world_source
 from dd4tester.quests import (
     GOLDMOON_QUESTMASTER_ROUTE_FROM_RECALL,
     QUESTMASTER_ROUTE_FROM_RECALL,
+    fame_from_state,
     recall_origins_from_state,
     recall_point_for_index,
     recall_point_for_name,
@@ -15,6 +16,9 @@ from dd4tester.quests import (
     quest_object_keyword,
     quest_points_required_for_advance,
     quest_points_shortfall_for_advance,
+    quest_fame_recovery_status,
+    quest_request_blocker,
+    quest_request_fame_allowed,
     quest_target_maximum_level_offset,
     questmaster_route_for_level,
     next_recall_point_to_buy,
@@ -55,6 +59,57 @@ def test_snapshot_quest_status_treats_live_retrieve_type_as_actionable() -> None
 
     assert quest.kind == "retrieve"
     assert quest.needs_target_run is True
+
+
+@pytest.mark.parametrize(
+    ("state", "allowed", "blocker"),
+    (
+        ({"stats": {"fame": "0"}}, True, None),
+        ({"stats": {"fame": "-12"}}, False,
+         "DD4 rejects new quest requests while fame is below zero"),
+        ({}, False, "live fame is unavailable; do not request a quest"),
+        (
+            {"stats": {"fame": "0"}, "quest_status": {"nextquest": 3}},
+            True,
+            "quest cooldown has 3 minute(s) remaining",
+        ),
+    ),
+)
+def test_fresh_quest_request_requires_current_nonnegative_fame(
+    state: dict[str, object],
+    allowed: bool,
+    blocker: str | None,
+) -> None:
+    assert quest_request_fame_allowed(state) is allowed
+    assert quest_request_blocker(state) == blocker
+
+
+def test_quest_fame_status_distinguishes_kill_from_object_rewards() -> None:
+    state = {"stats": {"fame": 0}}
+    negative_state = {"stats": {"fame": -12}}
+    kill = snapshot_quest_status(
+        {"active": 1, "complete": 1, "type": "kill", "mob_vnum": -1}
+    )
+    active_kill = snapshot_quest_status(
+        {"active": 1, "complete": 0, "type": "kill", "mob_vnum": 4517}
+    )
+    object_quest = snapshot_quest_status(
+        {"active": 1, "complete": 1, "type": "object", "object_vnum": 78}
+    )
+
+    assert fame_from_state(state) == 0
+    assert "positive fuzzy fame reward" in quest_fame_recovery_status(
+        state,
+        quest=kill,
+    )
+    assert "award no fame" in quest_fame_recovery_status(
+        state,
+        quest=object_quest,
+    )
+    assert "active kill quest can award" in quest_fame_recovery_status(
+        negative_state,
+        quest=active_kill,
+    )
 
 
 def test_questmaster_routes_cover_junior_and_post_25_bands() -> None:

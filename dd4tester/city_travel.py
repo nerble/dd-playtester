@@ -37,7 +37,9 @@ def bounded_city_shop_transit_available(
                  or prior.get("boot_id") == state.get("world_boot_id"))):
         return False
     mobile = world.mobiles.get(CITY_GREETER_VNUM)
-    return bool(mobile and mobile.area_file == "midgaard.are"
+    return bool(mobile and mobile.hp_modifier_known
+                and mobile.damage_modifier_known
+                and mobile.area_file == "midgaard.are"
                 and source_mobile_route_program_attacker_is_bounded(
                     world, mobile, character_level=level, character_max_hp=maximum_hp,
                 ))
@@ -52,18 +54,25 @@ def _number(value: Any) -> int | None:
         return None
 
 
-def observed_guard_safe_alignment(value: Any, *, level: Any) -> bool:
-    """Return whether GMCP proves the player clears DD4's guard threshold."""
+def revealed_gmcp_alignment(value: Any, *, level: Any) -> int | None:
+    """Return DD4's real alignment value, excluding the pre-level-10 mask."""
     alignment = _number(value)
     observed_level = _number(level)
-    return (
-        observed_level is not None
-        and observed_level >= GMCP_ALIGNMENT_REVEAL_LEVEL
-        and alignment is not None
-        and GMCP_ALIGNMENT_HIDDEN_VALUE != alignment
-        and ALIGNMENT_MIN <= alignment <= ALIGNMENT_MAX
-        and alignment >= GUARD_ASSIST_ALIGNMENT_CEILING
-    )
+    if (
+        observed_level is None
+        or observed_level < GMCP_ALIGNMENT_REVEAL_LEVEL
+        or alignment is None
+        or alignment == GMCP_ALIGNMENT_HIDDEN_VALUE
+        or not ALIGNMENT_MIN <= alignment <= ALIGNMENT_MAX
+    ):
+        return None
+    return alignment
+
+
+def observed_guard_safe_alignment(value: Any, *, level: Any) -> bool:
+    """Return whether GMCP proves the player clears DD4's guard threshold."""
+    alignment = revealed_gmcp_alignment(value, level=level)
+    return alignment is not None and alignment >= GUARD_ASSIST_ALIGNMENT_CEILING
 
 
 def field_city_route_rooms(
@@ -117,6 +126,16 @@ class CityShopTransit:
         if self.status == "fighting":
             self.status = "finished"
 
+    def leave_route(self, room_vnum: Any) -> None:
+        """Expire an unused or completed city admission after departure."""
+        if self.status not in {"admitted", "finished"}:
+            return
+        if str(room_vnum) in MAGIC_SHOP_ROUTE_ROOMS:
+            return
+        self.status = "idle"
+        self.started_at = None
+        self.reason = None
+
     def combat_allowed(
         self, world: WorldSource | None, state: Mapping[str, Any],
         enemies: list[dict[str, Any]], *, now: float, nutrition_ready: bool,
@@ -140,7 +159,11 @@ class CityShopTransit:
         else:
             mobile = world.mobiles[CITY_GREETER_VNUM]
             levels = _mobile_level_range(mobile.level)
-            maximum_enemy_hp = _mobile_base_hp_range(levels, rank=mobile.rank)[1]
+            maximum_enemy_hp = _mobile_base_hp_range(
+                levels,
+                rank=mobile.rank,
+                hp_modifier=mobile.hp_modifier,
+            )[1]
             level = _number(enemies[0].get("level"))
             enemy_hp = _number(enemies[0].get("maxhp"))
             hp, maximum_hp = _number(state.get("hp")), _number(state.get("max_hp"))

@@ -71,6 +71,11 @@ class Fastwalk:
     # Exact aggressive source mobiles whose update.c aggression check is
     # blocked only while fresh live invisibility remains confirmed.
     route_invisibility_source_mobile_vnums: tuple[int, ...] = ()
+    # A source-ranked route may carry one borderline level-4 reset whose
+    # maximum fuzzy level is below the useful-XP floor.  Runtime may finish
+    # that exact mobile once, but only when this route explicitly registers
+    # its source VNUM; ordinary routes never inherit the exception.
+    route_bounded_borderline_source_mobile_vnums: tuple[int, ...] = ()
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -86,9 +91,13 @@ def expand_fastwalk(notation: str) -> tuple[str, ...]:
         if not segment:
             raise ValueError(f"empty fastwalk segment in {notation!r}")
         if " " in segment:
-            if not segment.startswith("open ") or segment[5:] not in _DIRECTIONS.values():
+            command, direction = segment.split(None, 1)
+            if (
+                command not in {"open", "unlock", "pick"}
+                or direction not in _DIRECTIONS.values()
+            ):
                 raise ValueError(f"unsupported fastwalk command {segment!r}")
-            commands.append(segment)
+            commands.append(f"{command} {direction}")
             continue
 
         index = 0

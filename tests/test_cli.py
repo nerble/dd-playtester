@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import dd4tester.cli
 from dd4tester.campaign import CampaignResult
@@ -29,6 +30,35 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     assert "id\tstatus\tscenario" in captured.out
     assert "login" in captured.out
     assert "success" in captured.out
+
+
+def test_large_database_inspection_uses_indexed_snapshot_without_campaign_join(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[str] = []
+
+    class LargeStorage:
+        path = SimpleNamespace(
+            stat=lambda _self=None: SimpleNamespace(
+                st_size=dd4tester.cli._MAX_CAMPAIGN_CHARACTER_LOOKUP_BYTES + 1
+            )
+        )
+
+        def get_latest_character_state(self, character: str):
+            calls.append(f"snapshot:{character}")
+            return {"name": character, "level": 24}
+
+        def get_latest_campaign_for_character(self, _character: str):
+            raise AssertionError("large-database inspection must stay bounded")
+
+    state = dd4tester.cli._latest_inspection_state(
+        LargeStorage(),
+        "Kestrel",
+    )
+
+    assert state == {"name": "Kestrel", "level": 24}
+    assert calls == ["snapshot:Kestrel"]
 
 
 def test_autonomy_audit_can_compare_all_base_classes(capsys) -> None:
@@ -69,6 +99,421 @@ def test_autonomy_audit_rejects_subclass_with_all_classes(capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 2
     assert "cannot be combined" in captured.err
+
+
+def test_show_combat_readiness_reports_output_and_blockers(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="readiness",
+            scenario_path=tmp_path / "readiness.yaml",
+        )
+        storage.record_state_snapshot(
+            run_id,
+            source_event_id=None,
+            reason="prompt_seen",
+            state={
+                "name": "Ararisa",
+                "level": 10,
+                "max_hp": 100,
+                "progress": {"level": "10", "alignment": "1000"},
+                "stats": {"fame": "-12"},
+            },
+        )
+        storage.finish_run(run_id, status="success")
+    world = SimpleNamespace(objects={})
+    candidate = SimpleNamespace(
+        target="a test sentinel",
+        mobile_vnum=101,
+        room_vnum=202,
+        room_name="Test Room",
+        status="caution",
+        score=123.0,
+        estimated_level_range=(9, 11),
+        estimated_base_hp_range=(80, 140),
+        autonomous_safe=False,
+        estimated_peak_round_damage=20,
+        estimated_move_cost=10,
+        requires_flight=False,
+        loot=(),
+        hazards=("target special: spec_test",),
+        autonomy_rejections=("target has special procedure spec_test",),
+        source_damage_modifier=0,
+        estimated_min_peak_round_damage=1,
+        equipped_weapons=(),
+        specials=(),
+        route_preflight_hard_hazard=False,
+        route_hard_hazard_targets=(),
+        route_attack_program_mobile_vnums=(),
+        route_special_mobile_vnums=(),
+        is_coin_stash=False,
+        target_body_form_flags=(),
+    )
+    placement = SimpleNamespace(
+        object_vnum=303,
+        object_description="a test sword",
+        category="wield",
+        weapon_role="preferred",
+        stance_rank=(10,),
+        better_than_current=True,
+        status="source-only",
+        source_kind="mob-equipped",
+        source_mobile_vnum=101,
+        source_mobile="a test sentinel",
+        room_vnum=202,
+        room_name="Test Room",
+        source_level_range=(8, 12),
+        route=(),
+        requires_flight=False,
+        hazards=(),
+        autonomy_rejections=(),
+    )
+    output = SimpleNamespace(
+        action="knife toss",
+        opening_action="backstab",
+        minimum_damage=10,
+        expected_damage=20,
+        maximum_damage=30,
+        conservative_damage=16,
+        maximum_actions=4,
+        opening_conservative_damage=12,
+        source_reference="fight.c:test",
+        opening_source_reference="fight.c:backstab",
+    )
+    captured_alignment: dict[str, object] = {}
+    monkeypatch.setattr(dd4tester.cli, "load_world_source", lambda *args, **kwargs: world)
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_caster_output_for_state",
+        lambda *args, **kwargs: output,
+    )
+    def fake_rank(_world, **kwargs):
+        captured_alignment["value"] = kwargs["character_alignment"]
+        captured_alignment["level_ceiling_offset"] = kwargs["level_ceiling_offset"]
+        return [candidate]
+
+    monkeypatch.setattr(dd4tester.cli, "rank_hunt_candidates", fake_rank)
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "rank_gear_sources",
+        lambda *args, **kwargs: [placement],
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_revision",
+        lambda _source: "source-current",
+    )
+
+    exit_code = main(
+        [
+            "show-combat-readiness",
+            "--level",
+            "10",
+            "--class",
+            "thief",
+            "--source",
+            str(source),
+            "--database",
+            str(database),
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert exit_code == 0
+    assert report["source_revision"] == "source-current"
+    assert report["output"]["total_conservative_ceiling"] == 76
+    assert report["target_summary"] == {
+        "admission_fit": 0,
+        "autonomous_safe": 0,
+        "output_fit": 0,
+        "protected_hp_probes": 0,
+        "safe_and_output_fit": 0,
+        "source_band": 1,
+        "total": 1,
+    }
+    assert report["gear_upgrades"][0]["object_vnum"] == 303
+    assert report["live_authorization"] is False
+    assert report["character_alignment"] == 1000
+    assert report["character_fame"] == -12
+    assert report["fame_summary"]["ordinary_minimum_level_delta"] == 6
+    assert report["fame_summary"]["ordinary_maximum_level_delta"] is None
+    assert report["fame_summary"]["research_horizon_maximum_level_delta"] == 9
+    assert report["fame_summary"]["ordinary_level_range"] == [16, 100]
+    assert report["fame_summary"]["famous_level_range"] == [6, 100]
+    assert report["fame_summary"]["ordinary_level_rule"] == (
+        "victim level - character level > 5 (at least 6 levels higher)"
+    )
+    assert report["quest"]["fame_gate_allowed"] is False
+    assert report["quest"]["request_allowed"] is False
+    assert report["quest"]["request_blocker"] == (
+        "DD4 rejects new quest requests while fame is below zero"
+    )
+    assert report["quest"]["questmaster"] == "Suturb"
+    assert report["quest"]["level_gate_shortfall"] == 0
+    assert any(
+        constraint["key"] == "character_fame"
+        for constraint in report["active_constraints"]
+    )
+    assert captured_alignment["value"] == 1000
+    assert captured_alignment["level_ceiling_offset"] == 9
+
+
+def test_readiness_candidate_reports_protected_hp_probe(monkeypatch) -> None:
+    candidate = SimpleNamespace(
+        target="a protected sentinel",
+        mobile_vnum=101,
+        room_vnum=202,
+        room_name="Test Room",
+        status="caution",
+        score=123.0,
+        estimated_level_range=(18, 22),
+        estimated_base_hp_range=(225, 660),
+        autonomous_safe=True,
+        estimated_peak_round_damage=228,
+        estimated_move_cost=10,
+        requires_flight=True,
+        loot=(),
+        hazards=(),
+        autonomy_rejections=(),
+        source_damage_modifier=0,
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_protected_hp_fuzz_probe_allowed",
+        lambda *_args, **_kwargs: True,
+    )
+
+    record = dd4tester.cli._readiness_candidate_record(
+        candidate,
+        level=24,
+        output_ceiling=318,
+        state={},
+        source_world=object(),
+    )
+
+    assert record["protected_hp_probe"] is True
+
+
+def test_readiness_candidate_separates_offensive_output_from_full_admission(
+    monkeypatch,
+) -> None:
+    candidate = SimpleNamespace(
+        target="Mr Smithy",
+        mobile_vnum=2413,
+        room_vnum=2406,
+        room_name="Stables",
+        status="caution",
+        score=239.5,
+        estimated_level_range=(23, 27),
+        estimated_base_hp_range=(316, 945),
+        autonomous_safe=True,
+        estimated_peak_round_damage=276,
+        estimated_move_cost=81,
+        requires_flight=False,
+        loot=(),
+        hazards=(),
+        autonomy_rejections=(),
+        source_damage_modifier=0,
+    )
+    for helper in (
+        "_source_ranked_protected_hp_fuzz_probe_allowed",
+        "_source_ranked_protected_aggressive_hp_fuzz_probe_allowed",
+        "_source_ranked_protected_level_ceiling_hp_probe_allowed",
+    ):
+        monkeypatch.setattr(dd4tester.cli, helper, lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_hp_probe_admission_available",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_candidate_requires_sanctuary_for_state",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_state_has_sanctuary_reserve",
+        lambda _state: False,
+    )
+
+    record = dd4tester.cli._readiness_candidate_record(
+        candidate,
+        level=25,
+        output_ceiling=1092,
+        state={"max_hp": 569},
+        source_world=object(),
+    )
+
+    assert record["output_fit"] is True
+    assert record["source_hp_admission"] is False
+    assert record["requires_sanctuary"] is True
+    assert record["sanctuary_available"] is False
+    assert record["admission_fit"] is False
+
+
+def test_readiness_candidate_reports_exact_fame_branch_window(monkeypatch) -> None:
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_protected_level_ceiling_hp_probe_allowed",
+        lambda *_args, **_kwargs: False,
+    )
+    ordinary = SimpleNamespace(
+        target="an ordinary fame target",
+        mobile_vnum=101,
+        room_vnum=201,
+        room_name="Ordinary Room",
+        status="caution",
+        score=100.0,
+        estimated_level_range=(15, 20),
+        estimated_base_hp_range=(100, 300),
+        level=18,
+        autonomous_safe=True,
+        estimated_peak_round_damage=20,
+        estimated_move_cost=10,
+        requires_flight=False,
+        loot=(),
+        hazards=(),
+        autonomy_rejections=(),
+        source_damage_modifier=0,
+    )
+    famous = SimpleNamespace(
+        target="a famous target",
+        mobile_vnum=102,
+        room_vnum=202,
+        room_name="Famous Room",
+        status="caution",
+        score=100.0,
+        estimated_level_range=(5, 12),
+        estimated_base_hp_range=(60, 180),
+        level=10,
+        autonomous_safe=True,
+        estimated_peak_round_damage=20,
+        estimated_move_cost=10,
+        requires_flight=False,
+        loot=(),
+        hazards=(),
+        autonomy_rejections=(),
+        source_damage_modifier=0,
+    )
+    world = SimpleNamespace(
+        mobiles={
+            101: SimpleNamespace(awards_fame=False),
+            102: SimpleNamespace(awards_fame=True),
+        }
+    )
+
+    ordinary_record = dd4tester.cli._readiness_candidate_record(
+        ordinary,
+        level=10,
+        output_ceiling=300,
+        state={},
+        source_world=world,
+    )
+    famous_record = dd4tester.cli._readiness_candidate_record(
+        famous,
+        level=10,
+        output_ceiling=300,
+        state={},
+        source_world=world,
+    )
+
+    assert ordinary_record["fame_kind"] == "ordinary"
+    assert ordinary_record["fame_window"] == [16, 20]
+    assert famous_record["fame_kind"] == "famous"
+    assert famous_record["fame_window"] == [6, 12]
+
+
+def test_readiness_fame_window_stops_at_hero_level() -> None:
+    ordinary = SimpleNamespace(estimated_level_range=(100, 110))
+    famous = SimpleNamespace(estimated_level_range=(96, 110))
+
+    assert dd4tester.campaign._source_ranked_fame_level_window(
+        ordinary,
+        character_level=100,
+        awards_fame=False,
+    ) is None
+    assert dd4tester.campaign._source_ranked_fame_level_window(
+        famous,
+        character_level=100,
+        awards_fame=True,
+    ) == (96, 100)
+    assert dd4tester.campaign._source_ranked_fame_level_window(
+        SimpleNamespace(estimated_level_range=(106, 110)),
+        character_level=100,
+        awards_fame=False,
+        maximum_level_delta=9,
+    ) is None
+    assert dd4tester.cli._readiness_level_range(106, 109) == []
+    assert dd4tester.cli._readiness_level_range(96, 109) == [96, 100]
+
+
+def test_readiness_fame_window_requires_six_levels_for_ordinary_victims() -> None:
+    five_levels_high = SimpleNamespace(estimated_level_range=(15, 15))
+    six_levels_high = SimpleNamespace(estimated_level_range=(16, 16))
+
+    assert dd4tester.campaign._source_ranked_fame_level_window(
+        five_levels_high,
+        character_level=10,
+        awards_fame=False,
+    ) is None
+    assert dd4tester.campaign._source_ranked_fame_level_window(
+        six_levels_high,
+        character_level=10,
+        awards_fame=False,
+    ) == (16, 16)
+
+
+def test_inspection_state_merges_durable_pouch_ledger_from_checkpoint(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Kestrel to HERO",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        run_id = storage.create_run(
+            scenario_name="campaign",
+            scenario_path=tmp_path / "campaign.yaml",
+        )
+        storage.record_state_snapshot(
+            run_id,
+            source_event_id=None,
+            reason="prompt_seen",
+            state={"name": "Kestrel", "level": 24, "max_hp": 334},
+        )
+        storage.finish_run(run_id, status="success")
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=run_id,
+            phase="source-ranked-hunt",
+            reason="segment_complete",
+            state={
+                "name": "Kestrel",
+                "campaign_known_skills": ["backstab"],
+                "combat_pouch_potions": {"purple": 1},
+                "verified_combat_pouch_potions": {"purple": 1},
+            },
+        )
+
+    state, _boot_id, _kill_counts = dd4tester.cli._load_inspection_state(
+        database,
+        "Kestrel",
+    )
+
+    assert state["campaign_known_skills"] == ["backstab"]
+    assert state["combat_pouch_potions"] == {"purple": 1}
+    assert state["verified_combat_pouch_potions"] == {"purple": 1}
 
 
 def test_show_hunt_candidates_reuses_persisted_recall_origins(
@@ -122,6 +567,66 @@ def test_show_hunt_candidates_reuses_persisted_recall_origins(
     assert exit_code == 0
     assert captured_origins == [{0: 3001, 2: 28003}]
     assert "Recall origins: 0 Default recall, 2 Draagdim" in captured.out
+
+
+def test_show_hunt_candidates_uses_nested_gmcp_alignment(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="hunt",
+            scenario_path=tmp_path / "hunt.yaml",
+        )
+        storage.record_state_snapshot(
+            run_id,
+            source_event_id=None,
+            reason="prompt_seen",
+            state={
+                "name": "Ararisa",
+                "level": 10,
+                "progress": {"level": "10", "alignment": "1000"},
+                "stats": {"fame": "-12"},
+            },
+        )
+        storage.finish_run(run_id, status="success")
+
+    captured_alignment: dict[str, object] = {}
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "load_world_source",
+        lambda *_args, **_kwargs: WorldSource(),
+    )
+
+    def fake_rank(_world, **kwargs):
+        captured_alignment["value"] = kwargs["character_alignment"]
+        return []
+
+    monkeypatch.setattr(dd4tester.cli, "rank_hunt_candidates", fake_rank)
+
+    exit_code = main(
+        [
+            "show-hunt-candidates",
+            "--level",
+            "10",
+            "--character",
+            "Ararisa",
+            "--source",
+            str(source),
+            "--database",
+            str(database),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured_alignment["value"] == 1000
+    assert "Player alignment: 1000" in captured.out
+    assert "Player fame: -12" in captured.out
 
 
 def test_show_gear_sources_renders_source_and_hazard_fields(
@@ -396,7 +901,7 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
     )
     assert request.name == "Valora"
     assert captured_request["options"]["reset_retries"] is None
-    assert captured_request["options"]["max_segment_runtime"] is None
+    assert captured_request["options"]["max_segment_runtime"] == 180.0
     assert captured_request["options"]["target_level"] == 30
     assert captured_request["options"]["retry_stalled"] is True
     assert captured_request["options"]["password"] == "command-line-secret"
@@ -404,6 +909,105 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
     captured = capsys.readouterr()
     assert "awaiting the Mud School area reset" in captured.out
     assert "command-line-secret" not in captured.out
+
+
+def test_hero_command_dispatches_autonomous_supervisor(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    captured_options: dict[str, object] = {}
+
+    async def fake_hero(request, **kwargs):
+        captured_options.update(kwargs)
+        prepared = type(
+            "Prepared",
+            (),
+            {
+                "character": type(
+                    "Character",
+                    (),
+                    {
+                        "name": "Valora",
+                        "race": "human",
+                        "character_class": "mage",
+                    },
+                )(),
+                "manifest_path": tmp_path / "hero.json",
+                "profile_path": tmp_path / "character.yaml",
+                "campaign_path": tmp_path / "campaign.yaml",
+                "resumed": False,
+            },
+        )()
+        return prepared, CampaignResult(
+            4,
+            "ready",
+            9,
+            "checkpointed for the next verified segment",
+            {"level": 8},
+        )
+
+    monkeypatch.setattr(dd4tester.cli, "run_hero_until_target", fake_hero)
+
+    exit_code = main(
+        [
+            "hero",
+            "--name",
+            "Valora",
+            "--race",
+            "human",
+            "--sex",
+            "female",
+            "--class",
+            "mage",
+            "--autonomous",
+            "--segments",
+            "4",
+            "--max-reset-waits",
+            "2",
+            "--password",
+            "command-line-secret",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured_options["cycles"] == 4
+    assert captured_options["max_reset_waits"] == 2
+    assert "Valora (human mage)" in capsys.readouterr().out
+
+
+def test_hero_command_turns_keyboard_interrupt_into_resumable_stop(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    def interrupted_run(coro):
+        coro.close()
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(dd4tester.cli.asyncio, "run", interrupted_run)
+
+    exit_code = main(
+        [
+            "hero",
+            "--name",
+            "Valora",
+            "--race",
+            "human",
+            "--sex",
+            "female",
+            "--class",
+            "mage",
+            "--workspace",
+            str(tmp_path / "heroes"),
+            "--autonomous",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 130
+    assert "durable checkpoint is preserved" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_hero_command_infers_existing_identity_for_level_goal(
@@ -625,6 +1229,48 @@ def test_recover_runs_leaves_campaign_with_active_lease_untouched(
     assert campaign is not None
     assert campaign["status"] == "running"
     assert campaign["error"] is None
+
+
+def test_recover_runs_can_scope_one_campaign_without_global_recovery(
+    tmp_path,
+    capsys,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    config_path = tmp_path / "campaign.yaml"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Aeloria to HERO",
+            config_path=config_path,
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        storage.start_campaign_segment(
+            campaign_id,
+            phase="source-ranked-hunt-test",
+            start_state={"name": "Aeloria", "level": 18},
+        )
+
+    exit_code = main(
+        [
+            "recover-runs",
+            "--database",
+            str(database),
+            "--campaign-id",
+            str(campaign_id),
+            "--character",
+            "Aeloria",
+            "--reason",
+            "bounded worker stopped",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "indexed scoped queries" in captured.out
+    assert "campaign 1" in captured.out.casefold()
+    with RunStorage(database) as storage:
+        assert storage.get_campaign(campaign_id)["status"] == "failed"
+        assert storage.list_campaign_segments(campaign_id)[0]["status"] == "failed"
 
 
 def test_arena_research_passes_kill_limit_to_runner(tmp_path, capsys, monkeypatch) -> None:
@@ -1491,11 +2137,13 @@ def test_moria_research_command_runs_bounded_route(tmp_path, capsys, monkeypatch
         depth: int,
         sanctuary_probe: bool,
         sanctuary_hunt: bool,
+        sanctuary_deep_hunt: bool,
     ) -> RunResult:
         assert path == profile
         assert depth == 0
         assert sanctuary_probe is False
         assert sanctuary_hunt is False
+        assert sanctuary_deep_hunt is False
         return RunResult(12, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(
@@ -1524,11 +2172,13 @@ def test_moria_research_command_selects_sanctuary_probe(
         depth: int,
         sanctuary_probe: bool,
         sanctuary_hunt: bool,
+        sanctuary_deep_hunt: bool,
     ) -> RunResult:
         assert path == profile
         assert depth == 0
         assert sanctuary_probe is True
         assert sanctuary_hunt is False
+        assert sanctuary_deep_hunt is False
         return RunResult(
             22,
             "success",
@@ -1561,11 +2211,13 @@ def test_moria_research_command_selects_sanctuary_hunt(
         depth: int,
         sanctuary_probe: bool,
         sanctuary_hunt: bool,
+        sanctuary_deep_hunt: bool,
     ) -> RunResult:
         assert path == profile
         assert depth == 0
         assert sanctuary_probe is False
         assert sanctuary_hunt is True
+        assert sanctuary_deep_hunt is False
         return RunResult(
             23,
             "success",
@@ -1581,6 +2233,45 @@ def test_moria_research_command_selects_sanctuary_hunt(
     )
 
     assert main(["moria-research", str(profile), "--sanctuary-hunt"]) == 0
+
+
+def test_moria_research_command_selects_deep_sanctuary_hunt(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+
+    async def fake_moria_research(
+        path: Path,
+        *,
+        depth: int,
+        sanctuary_probe: bool,
+        sanctuary_hunt: bool,
+        sanctuary_deep_hunt: bool,
+    ) -> RunResult:
+        assert path == profile
+        assert depth == 0
+        assert sanctuary_probe is False
+        assert sanctuary_hunt is False
+        assert sanctuary_deep_hunt is True
+        return RunResult(
+            24,
+            "success",
+            tmp_path / "moria-sanctuary-deep-hunt.jsonl",
+            tmp_path / "runs.sqlite3",
+            {"level": 25},
+        )
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_moria_research_profile",
+        fake_moria_research,
+    )
+
+    assert (
+        main(["moria-research", str(profile), "--sanctuary-deep-hunt"])
+        == 0
+    )
 
 
 def test_show_fastwalks_filters_official_routes_by_level(capsys) -> None:
@@ -1628,7 +2319,7 @@ def test_show_hunt_candidates_reports_source_risk_and_spawn_limits(
     assert "move_cost\tflight_cost\trequires_flight" in captured.out
     assert "room_spawns\tspawn_limit\tboot_kills" in captured.out
     assert "autonomy_rejections" in captured.out
-    assert "template\txp_modifier\tundead" in captured.out
+    assert "template\txp_modifier\tdamage_modifier\tundead" in captured.out
     assert "caution\t" in captured.out
     assert "the dangerous guard" in captured.out
     assert "reachable wanderer: a cellar rat L3" in captured.out
@@ -1687,6 +2378,7 @@ def test_show_resource_sources_reports_exact_object_and_hazards(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "effect\tstatus\tobject_vnum\tobject" in captured.out
+    assert "container_objects\tcontainer_keys\tcontainer_key_sources" in captured.out
     assert "sanctuary\treject\t4050\ta purple potion\tpotion" in captured.out
     assert "4055 the large hobgoblin" in captured.out
     assert "4064 The tunnel" in captured.out
@@ -1985,6 +2677,33 @@ def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
     assert "Campaign 1: Rulemage to HERO" in captured.out
     assert "Checkpoint 1: starter (segment_complete), level 2" in captured.out
     assert "1\tstarter\tsuccess\t7\t42\t12.5s\t-" in captured.out
+    assert "recent segments (up to 20; newest segment last)" in captured.out
+
+
+def test_show_campaign_rejects_nonpositive_limit(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Rulemage to HERO",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+
+    exit_code = main(
+        [
+            "show-campaign",
+            str(campaign_id),
+            "--database",
+            str(database),
+            "--limit",
+            "0",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "--limit must be at least 1" in captured.err
 
 
 def test_show_policies_displays_evidence_and_practice_candidate(capsys) -> None:

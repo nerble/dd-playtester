@@ -1,8 +1,10 @@
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from dd4tester.campaign import (
+    _provision_funding_bounded_exception_allowed,
     _select_source_ranked_hunt_candidate,
     _source_ranked_capacity_research_candidate,
     _source_ranked_hunt_stops,
@@ -13,7 +15,7 @@ from dd4tester.campaign import (
 )
 from dd4tester.hunt_candidates import (
     ExitSource, HuntCandidate, MobileProgram, MobileSource, MobReset, RoomSource, WorldSource,
-    rank_hunt_candidates,
+    load_world_source, rank_hunt_candidates,
 )
 from dd4tester.character import CharacterSpec
 from dd4tester.fastwalks import Fastwalk
@@ -277,6 +279,61 @@ def test_capacity_endpoint_does_not_turn_bounded_greeter_into_route_veto(charact
     assert options["route_source_program_audited"]
     assert candidate.status == "reject"
     assert candidate.autonomy_rejections == ("target reset capacity exceeds one",)
+
+
+def test_flight_funding_accepts_only_the_audited_moria_route_preflight():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=8,
+            character_max_hp=113,
+            boot_kill_counts_by_mobile_vnum={4005: 5},
+            include_below_band=True,
+            include_all_areas=True,
+        )
+        if candidate.mobile_vnum == 4005 and candidate.room_vnum == 4022
+    )
+    state = {
+        "level": 8,
+        "max_hp": 113,
+        "world_boot_id": "boot-1",
+        "currencies": {"silver": 2, "copper": 0},
+        "campaign_magic_shop_flight_price": 131,
+    }
+
+    assert _source_ranked_route_program_candidate_allowed(
+        candidate,
+        character_level=8,
+        source_world=world,
+    )
+    assert _provision_funding_bounded_exception_allowed(
+        state,
+        candidate,
+        character_level=8,
+        boot_id="boot-1",
+        prefer_completed_funding_candidate=True,
+        source_world=world,
+    )
+    assert not _provision_funding_bounded_exception_allowed(
+        state,
+        candidate,
+        character_level=8,
+        boot_id="boot-1",
+        prefer_completed_funding_candidate=True,
+    )
+    assert not _provision_funding_bounded_exception_allowed(
+        state,
+        replace(candidate, route_preflight_target="an unknown greeter"),
+        character_level=8,
+        boot_id="boot-1",
+        prefer_completed_funding_candidate=True,
+        source_world=world,
+    )
 
 
 @pytest.mark.parametrize("changes", [

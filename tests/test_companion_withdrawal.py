@@ -104,6 +104,14 @@ def test_source_order_ack_follows_synchronous_interpret_without_player_wait():
     assert "WAIT_STATE" not in order
 
 
+def test_charmed_familiar_uses_dd4_fear_override_for_npc_flee():
+    text = Path("runs/dd4-source/server/src/fight.c").read_text(encoding="utf-8")
+    flee = text.split("void do_flee(", 1)[1].split("void do_bomb(", 1)[0]
+    assert 'number_bits(1) && str_cmp("Fear", argument)' in flee
+    withdrawal = FamiliarWithdrawal(selector="#1", settle_in_place=True)
+    assert withdrawal.next_command(now=0) == "order #1 flee Fear"
+
+
 @pytest.mark.parametrize("attack,expected", [
     ("The pony grazes Katrina the Shepherd.", True),
     ("Your pierce grazes Katrina the Shepherd.", False),
@@ -131,7 +139,7 @@ def test_run_12749_companion_kill_keeps_encounter_but_not_objective_xp(monkeypat
 
 def test_charmed_companion_requires_positive_sleep_not_departure():
     withdrawal = FamiliarWithdrawal(selector="#1", settle_in_place=True)
-    assert withdrawal.next_command(now=0) == "order #1 flee"
+    assert withdrawal.next_command(now=0) == "order #1 flee Fear"
     withdrawal.observe("Ok.\n", now=3)
     assert withdrawal.next_command(now=3) == "order #1 sleep"
     assert not withdrawal.confirmed
@@ -145,7 +153,7 @@ def test_failed_npc_flee_and_sleep_pair_retries_but_never_more_than_three_pairs(
     withdrawal = FamiliarWithdrawal(selector="#1", settle_in_place=True)
     for index in range(3):
         now = index * 2
-        assert withdrawal.next_command(now=now) == "order #1 flee"
+        assert withdrawal.next_command(now=now) == "order #1 flee Fear"
         withdrawal.observe("Ok.\n", now=now + .5)
         assert withdrawal.next_command(now=now + .5) == "order #1 sleep"
         withdrawal.observe("Ok.\n", now=now + 1)
@@ -169,7 +177,7 @@ def test_charmed_source_pony_selects_in_place_control(monkeypatch):
     )
     policy.familiar_active = True
     policy.familiar_preparation.selector = "#23700"
-    assert policy._between_round_combat_decision(state).command == "order #23700 flee"
+    assert policy._between_round_combat_decision(state).command == "order #23700 flee Fear"
     clock[0] = 3
     policy.observe_text("Ok.\n<113/113 hits 224/324 mana 197/220 move [Ultima]> ")
     assert policy._between_round_combat_decision(state).command == "order #23700 sleep"

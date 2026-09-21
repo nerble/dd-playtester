@@ -277,6 +277,7 @@ def build_campaign_report(
                     "source_policy_id": kill["source_policy_id"],
                     "below_useful_band": bool(kill["below_useful_band"]),
                     "objective_eligible": bool(kill["objective_eligible"]),
+                    "route_gate": bool(kill["route_gate"]),
                     "timestamp": kill["timestamp"],
                 }
             )

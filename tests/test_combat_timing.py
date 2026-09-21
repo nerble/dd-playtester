@@ -112,6 +112,12 @@ def test_fragile_live_target_withdraws_before_another_lagged_action():
     assert anticipatory_companion_withdrawal(**finish_args())
 
 
+def test_early_withdrawal_rejects_unknown_companion_damage_modifier():
+    assert not anticipatory_companion_withdrawal(
+        **(finish_args() | {"companion_damage_modifier": None})
+    )
+
+
 @pytest.mark.parametrize("changes", [
     {"enemy_hp": 40}, {"player_hp": 75}, {"enemy_max_hp": 30},
     {"source_peak": 113}, {"source_critical": 60}, {"action_damage": 1},
@@ -277,5 +283,5 @@ def test_real_source_katrina_stop_preserves_entry_gate_and_enables_short_finish(
     policy.familiar_active = True
     policy.familiar_preparation.selector = "#23679"
     decision = policy._between_round_combat_decision(live)
-    assert decision.command == "order #23679 flee"
+    assert decision.command == "order #23679 flee Fear"
     assert "short finishing reserve" in decision.reason

@@ -27,6 +27,7 @@ class TrainingPriority:
     practice_type: str
     target_percent: int
     minimum_level: int | None
+    unlock_skill: str | None
     utility: str
     reason: str
     automated: bool
@@ -91,6 +92,11 @@ def training_priorities() -> dict[str, tuple[TrainingPriority, ...]]:
                 minimum_level=(
                     int(item["minimum_level"])
                     if item.get("minimum_level") is not None
+                    else None
+                ),
+                unlock_skill=(
+                    _normalize(item["unlock_skill"])
+                    if item.get("unlock_skill") is not None
                     else None
                 ),
                 utility=str(item["utility"]),
@@ -256,6 +262,15 @@ def plan_training(
             or selected.practice_type in spent_types
             or budgets[selected.practice_type] <= 0
             or selected.skill not in skills
+            or (
+                selected.unlock_skill is not None
+                and selected.unlock_skill not in skills
+                and not (
+                    selected.skill in listing.known
+                    and priority_ceiling is not None
+                    and selected.unlock_skill == priority_ceiling
+                )
+            )
             or skills[selected.skill] >= selected.target_percent
             or (
                 character_level is not None
@@ -330,6 +345,11 @@ def _priorities_from_data(
                 minimum_level=(
                     int(item["minimum_level"])
                     if item.get("minimum_level") is not None
+                    else None
+                ),
+                unlock_skill=(
+                    _normalize(item["unlock_skill"])
+                    if item.get("unlock_skill") is not None
                     else None
                 ),
                 utility=str(item["utility"]),

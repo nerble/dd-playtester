@@ -25,6 +25,7 @@ def test_special_profiles_mirror_source_xp_bonus_tiers() -> None:
     assert source_special_xp_bonus("spec_demon") == 15
     assert source_special_xp_bonus("spec_grail") == 20
     assert source_special_xp_bonus("spec_cast_mage") == 10
+    assert source_special_xp_bonus("spec_wraith") == 10
 
 
 def test_special_profiles_distinguish_behavioral_risk() -> None:
@@ -34,6 +35,7 @@ def test_special_profiles_distinguish_behavioral_risk() -> None:
     assert source_special_profile("spec_guard").risk == "extra-attack"
     assert source_special_profile("spec_cast_judge").risk == "direct-damage"
     assert source_special_profile("spec_executioner").risk == "conditional-combat"
+    assert source_special_profile("spec_wraith").risk == "moderate-combat"
 
 
 def test_special_classification_sets_are_explicit() -> None:
@@ -43,6 +45,7 @@ def test_special_classification_sets_are_explicit() -> None:
     assert "spec_sahuagin_guard" in COMBAT_JOINING_SPECIALS
     assert "spec_thief" in ECONOMIC_SPECIALS
     assert "spec_cast_undead" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_wraith" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
     assert "spec_guard" in TRANSIT_SAFE_COMBAT_JOINING_SPECIALS
     assert "spec_spectral_minion" in TRANSIT_SAFE_RELOCATION_SPECIALS
     assert "spec_assassin" in TRANSIT_HAZARD_SPECIALS
@@ -52,6 +55,7 @@ def test_special_classification_sets_are_explicit() -> None:
 
 
 def test_source_caster_profiles_expose_status_effects_from_special_c() -> None:
+    assert source_special_status_effects("spec_breath_gas") == ("nausea",)
     assert source_special_status_effects("spec_cast_cleric") == (
         "blindness",
         "curse",
@@ -62,6 +66,7 @@ def test_source_caster_profiles_expose_status_effects_from_special_c() -> None:
         "blindness",
         "trip",
     )
+    assert source_special_status_effects("spec_wraith") == ("energy drain",)
     assert source_special_status_effects("spec_cast_druid", level=14) == ()
     assert source_special_status_effects("spec_cast_druid", level=15) == (
         "fear",
@@ -142,4 +147,5 @@ def test_transit_special_audit_distinguishes_route_and_combat_risk() -> None:
     assert source_special_is_transit_safe("spec_guard")
     assert not source_special_is_transit_safe("spec_thief")
     assert not source_special_is_transit_safe("spec_assassin")
+    assert source_special_is_transit_safe("spec_wraith")
     assert not source_special_is_transit_safe("spec_unknown")
