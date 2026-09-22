@@ -26,6 +26,113 @@ Dorrik's comparison consumed 286.28 connected seconds plus a 180-second reset
 wait. These characters ended safely at healer 3054. Safe logout is a
 reliability result, not an XP result. No improved throughput is established.
 
+## Current Continuation: 2026-09-22
+
+### Frontier observability repair
+
+Dorrik remains level **25** at **388,606 XP**, checkpoint **42991**, in healer
+room **3054**. The latest short connection was run **13850**, a deliberate
+world-time maintenance probe after the bounded reset wait. It authenticated,
+issued `time`, `save`, and `quit`, confirmed the unchanged reboot
+`Fri Sep 4 06:19:51 2026`, and did not attempt combat. The connection was
+therefore evidence collection, not a stalled progression segment.
+
+The source-ranked selector now persists a compact
+`campaign_source_ranked_frontier_diagnosis` whenever no target survives its
+offline gates. It records the candidate pool, current-band and autonomous-safe
+counts, sanctuary requirements, same-boot below-band exclusions, and the
+dominant rejection reasons. The first Dorrik diagnosis is 191 candidates, 17
+current-band, 8 autonomous-safe, 4 sanctuary-required, and 1 same-boot
+below-band exclusion. This makes the reboot-scoped blocker visible in the
+checkpoint and prevents interpreting a maintenance probe as failed gameplay.
+
+The engineering consequence is unchanged: do not bypass the sanctuary gate or
+reopen a known below-band target. Wait for a genuine reboot or collect fresh
+source-backed evidence, then resume the same campaign. The next code work is to
+use this diagnosis in operator-facing campaign reports and to validate the
+first post-reboot productive level-25 segment.
+
+The ordinary fame contract remains the strict `victim.level - player.level >
+5` test from `HELP FAME` and `fight.c`: a player at level 24 needs an ordinary
+target at level 30 or higher, and a player at level 25 needs level 31 or higher.
+This is separate from `ACT_IS_FAMOUS` targets and from ordinary XP-band logic.
+
+Astrevo's bounded continuation now ends at checkpoint **42897**, level **9**,
+**34,603 XP**, safely in healer room **3054**. Runs **13814** and **13817**
+found the source-registered Circus Midget absent, including after one permitted
+reset wait. Run **13815** completed the Moria large-orc funding route for **101**
+maintenance XP. Run **13816** removed the final poisoned ring after both shops
+offered zero; its incidental **10 XP** drunk kill is persisted as below-useful-
+band and is excluded from progression. No death or XP loss occurred.
+
+The fresh all-area level-9 catalog contains three autonomous-safe candidates:
+the Moria large orc, the Circus Midget, and Katrina the Shepherd. The poisoned
+Moria ring has now been proven non-tradeable and the Midget has a fresh absence
+marker. Foundry Uburz still has a prior live pre-consider aggression loss, so
+reopening it requires new bounded evidence rather than a general aggression
+bypass. The immediate engineering frontier is therefore a new source-validated
+funding/progression candidate or a better-supported Foundry probe. HERO 100 is
+not proved.
+
+### Engineering continuation: source-audited invisible funding
+
+The next code change is policy revision **320**. Provision-funding now carries
+the exact route-invisibility mobile VNUMs into `Fastwalk` and can admit one
+unarmed source carrier of a dynamic saleable drop, including a source-safe
+noncombat special such as `spec_fido`. This path still requires practiced live
+invisibility, source route/program proof, current-band, movement, HP/protection,
+saleability, and target identity gates. It is persisted as `funding_only`, so
+XP from the maintenance segment cannot advance the HERO objective. Armed
+ambush targets and the previously quarantined Foundry Uburz remain closed.
+
+The new path is offline-tested only. Astrevo's current level-9 HP ceiling does
+not yet satisfy the war-dog source HP/protection gate, so no new live permission
+or progression claim follows from this change. The full repository suite is
+**5,979 passed** in 448.62 seconds and compilation is clean; HERO 100 remains
+unproved.
+
+### Engineering continuation: source keyword identity repair
+
+Run **13818** safely reached the New Ofcol route but earned no XP because the
+visible `citizen` name could refer to source mobiles **617** or **618**. Their
+room text is identical, while source keywords `man` and `woman` distinguish
+the prototypes. Revision **321** now prefers a keyword that is unique among
+same-display prototypes and permits that keyword to resolve a live room only
+when it is unique among the source identities reachable there. A shared
+generic keyword remains fail-closed; legacy checkpoint candidates are
+refreshed from the current source catalog before route construction. The full
+repository suite passes **5,982 tests** with clean compilation. Serevian is
+level **11** at checkpoint **42900**; no new progression or HERO evidence is
+claimed. Run **13819** then reached the Circus Midget's Tent after the bounded
+reset wait, found the source target absent among unrelated wandering mobiles,
+and returned safely at checkpoint **42906** with no XP change. The selector
+repair remains offline identity evidence until a uniquely targetable live
+prototype is present.
+
+### Engineering continuation: bounded funding/protection handoff
+
+Revision **322** addresses a real selector ordering defect: an absent current-
+boot flight-funding carrier could be reconsidered before the remaining
+sanctuary recovery attempt. The runner now offers one source-validated,
+unarmed sanctuary carrier from the healer when all existing gates pass. If the
+source frontier has no safe carrier, the funding marker is preserved and the
+bounded reset-wait contract remains authoritative. Focused tests pass. Live
+runs **13828-13833** produced maintenance XP without death; **13834** rejected
+an ambiguous cow identity. Serevian is level **11**, checkpoint **42955**,
+53,384 XP; no level-12 or HERO claim is made. The full repository suite passes
+**5,983 tests** in 612.47 seconds, with clean compilation.
+
+### Engineering continuation: endpoint invisibility admission
+
+The latest Serevian checkpoint exposed a selector ordering defect. The source
+catalog marked the griffin endpoint's aggression as invisibility-blockable, but
+the candidate could still enter the capacity-research pool without learned
+`invis` or sufficient mana. Policy revision **323** rejects that exact
+endpoint shape before dispatch and before the safe-origin preflight. The
+existing familiar-probe contract remains a separate audited alternative, and
+ordinary route metadata is not treated as an invisibility requirement. The
+regression is offline evidence only; no new progression or HERO claim follows.
+
 ## Current Continuation: 2026-09-21
 
 The fame interpretation remains source-correct: ordinary recovery requires

@@ -3439,44 +3439,62 @@ def source_mobile_route_aggressor_is_bounded(
                 character_max_hp * _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO * 100
             )
         )
-    wielding = False
-    dual_wielding = False
+    # A mobile prototype can reset in more than one room. Equipment belongs
+    # to each reset instance; aggregating the rows would turn one sword on
+    # each of two separate spawns into a false dual-wielding profile.
+    reset_profiles: list[tuple[bool, bool]] = []
     for reset in resets:
+        reset_wielding = False
+        reset_dual_wielding = False
         for wear_location, object_vnum in tuple(reset.equipment):
             if wear_location == WEAR_DUAL:
-                dual_wielding = True
+                reset_dual_wielding = True
                 continue
             item = world.objects.get(object_vnum)
             if wear_location == WEAR_WIELD:
-                if wielding or item is None or item.item_type != ITEM_WEAPON:
+                if (
+                    reset_wielding
+                    or item is None
+                    or item.item_type != ITEM_WEAPON
+                ):
                     return False
-                wielding = True
+                reset_wielding = True
                 continue
             if item is None or item.item_type != ITEM_ARMOR:
                 # Held objects, unknown prototypes, and non-armor equipment
                 # can change the interruption in ways this envelope does not
                 # model. Keep those source proofs closed.
                 return False
-    if dual_wielding:
+        if reset_dual_wielding:
+            return False
+        reset_profiles.append((reset_wielding, reset_dual_wielding))
+    if any(dual_wielding for _wielding, dual_wielding in reset_profiles):
         return False
     if character_max_hp is None or character_max_hp <= 0:
         return maximum_level <= character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
-    peak_round_damage = _mobile_peak_round_damage(
-        maximum_level,
-        wielding=wielding,
-        dual_wielding=dual_wielding,
-        damage_modifier=mobile.damage_modifier,
+    peak_limit = int(
+        character_max_hp * _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO * 100
     )
-    critical_hit_damage = _mobile_critical_hit_damage(
-        maximum_level,
-        wielding=wielding,
-        damage_modifier=mobile.damage_modifier,
+    critical_limit = int(
+        character_max_hp * _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO * 100
     )
-    return (
-        peak_round_damage * 100
-        <= int(character_max_hp * _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO * 100)
-        and critical_hit_damage * 100
-        <= int(character_max_hp * _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO * 100)
+    return all(
+        _mobile_peak_round_damage(
+            maximum_level,
+            wielding=wielding,
+            dual_wielding=dual_wielding,
+            damage_modifier=mobile.damage_modifier,
+        )
+        * 100
+        <= peak_limit
+        and _mobile_critical_hit_damage(
+            maximum_level,
+            wielding=wielding,
+            damage_modifier=mobile.damage_modifier,
+        )
+        * 100
+        <= critical_limit
+        for wielding, dual_wielding in reset_profiles
     )
 
 
@@ -7906,7 +7924,14 @@ def _least_ambiguous_source_keyword(
     *,
     keyword_counts: Mapping[str, int] | None = None,
 ) -> str:
-    """Choose a source keyword that minimizes live ``where`` collisions."""
+    """Choose a source keyword that minimizes live ``where`` collisions.
+
+    Prefer a keyword that distinguishes this prototype from every other
+    prototype with the same visible short description.  DD4 can expose the
+    same room text for distinct mobiles (for example, male and female
+    citizens), so a globally uncommon keyword is not enough when a more
+    specific source keyword is available.
+    """
     tokens = tuple(
         dict.fromkeys(
             token.casefold()
@@ -7920,6 +7945,33 @@ def _least_ambiguous_source_keyword(
 
     if keyword_counts is None:
         keyword_counts = _source_keyword_counts(world)
+
+    normalized_short = _normalize_name(mobile.short_description)
+    same_display_keyword_counts: dict[str, int] = {}
+    for other in world.mobiles.values():
+        if _normalize_name(other.short_description) != normalized_short:
+            continue
+        other_tokens = {
+            token.casefold()
+            for token in re.findall(r"[A-Za-z0-9]+", other.keywords)
+        }
+        for token in other_tokens:
+            same_display_keyword_counts[token] = (
+                same_display_keyword_counts.get(token, 0) + 1
+            )
+    distinguishing_tokens = tuple(
+        token for token in tokens
+        if same_display_keyword_counts.get(token, 0) == 1
+    )
+    if distinguishing_tokens:
+        return min(
+            distinguishing_tokens,
+            key=lambda token: (
+                keyword_counts.get(token, 0),
+                -len(token),
+                tokens.index(token),
+            ),
+        )
 
     return min(
         tokens,

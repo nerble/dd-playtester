@@ -3691,6 +3691,31 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
             f"Checkpoint {checkpoint['id']}: {checkpoint['phase']} "
             f"({checkpoint['reason']}), level {state.get('level', '-')}"
         )
+        diagnosis = state.get("campaign_source_ranked_frontier_diagnosis")
+        if isinstance(diagnosis, Mapping):
+            print(
+                "Frontier diagnosis: "
+                f"{diagnosis.get('reason', 'unavailable')} "
+                f"(boot {diagnosis.get('boot_id', '-')})"
+            )
+            print(
+                "Frontier counts: "
+                f"candidates={diagnosis.get('candidate_count', 0)} "
+                f"current-band={diagnosis.get('current_band_count', 0)} "
+                f"autonomous-safe={diagnosis.get('autonomous_safe_count', 0)} "
+                f"sanctuary-required={diagnosis.get('sanctuary_required_count', 0)} "
+                f"no-sanctuary={diagnosis.get('no_sanctuary_count', 0)} "
+                f"below-band={diagnosis.get('same_boot_below_band_count', 0)}"
+            )
+            blockers = diagnosis.get("top_blockers")
+            if isinstance(blockers, list):
+                rendered_blockers = [
+                    f"{item.get('reason')}: {item.get('count')}"
+                    for item in blockers
+                    if isinstance(item, Mapping)
+                ]
+                if rendered_blockers:
+                    print("Frontier blockers: " + "; ".join(rendered_blockers))
     print(
         f"recent segments (up to {limit}; newest segment last)"
     )

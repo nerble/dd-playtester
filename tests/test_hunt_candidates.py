@@ -64,6 +64,7 @@ from dd4tester.hunt_candidates import (
     rank_hunt_candidates,
     rank_coin_stashes,
     rank_food_stashes,
+    _least_ambiguous_source_keyword,
     _source_mobile_identity,
     source_mobile_identities,
     source_mobile_search_rooms,
@@ -968,6 +969,16 @@ def test_candidate_uses_least_ambiguous_source_keyword() -> None:
     )
 
     assert candidates[0].target_keyword == "aruncus"
+
+
+def test_source_keyword_distinguishes_same_display_mobile_prototypes() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    assert _least_ambiguous_source_keyword(world, world.mobiles[617]) == "man"
+    assert _least_ambiguous_source_keyword(world, world.mobiles[618]) == "woman"
 
 
 def test_source_identity_distinguishes_same_short_name_mobile_prototypes() -> None:
@@ -3136,6 +3147,41 @@ def test_bounded_route_aggressor_accepts_a_low_risk_wielded_weapon() -> None:
     assert source_mobile_route_aggressor_is_bounded(
         world,
         world.mobiles[200],
+        character_level=24,
+        character_max_hp=334,
+    )
+
+
+def test_bounded_route_aggressor_evaluates_each_mobile_reset_separately() -> None:
+    mobile = MobileSource(
+        200,
+        "drow scout",
+        "the drow scout",
+        7,
+        ACT_AGGRESSIVE,
+        0,
+        "target.are",
+    )
+    sword = ObjectSource(
+        9001,
+        "short sword",
+        "a short sword",
+        ITEM_WEAPON,
+        (0, 2, 6, 3),
+        100,
+    )
+    world = WorldSource(
+        mobiles={200: mobile},
+        objects={9001: sword},
+        mob_resets=[
+            MobReset(200, 7001, 1, (), ((WEAR_WIELD, 9001),)),
+            MobReset(200, 7002, 1, (), ((WEAR_WIELD, 9001),)),
+        ],
+    )
+
+    assert source_mobile_route_aggressor_is_bounded(
+        world,
+        mobile,
         character_level=24,
         character_max_hp=334,
     )

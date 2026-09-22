@@ -68,6 +68,23 @@ def test_split_prompt_survives_a_quiet_read_between_telnet_chunks() -> None:
     assert events[0].data["area"] == "Midgaard"
 
 
+def test_split_ansi_reset_is_reassembled_before_prompt_parsing() -> None:
+    parser = ObservationParser()
+
+    first_events = parser.feed_text(
+        "Granny's Still Room\n"
+        "[Exits: east]\n"
+        "[#25651] Granny Jenkins is here, running the still.\n"
+        "<123/123 hits 351/351 mana 105/230 move [New Ofcol\x1b"
+    )
+    assert [event.type for event in first_events] == ["room_entered"]
+
+    events = parser.feed_text("[0m]> ")
+
+    prompt = next(event for event in events if event.type == "prompt_seen")
+    assert prompt.data["area"] == "New Ofcol"
+
+
 def test_text_observations_track_sleep_and_wake_posture() -> None:
     parser = ObservationParser()
 

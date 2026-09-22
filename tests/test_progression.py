@@ -2015,6 +2015,25 @@ def test_critical_coin_encumbrance_preempts_field_progression() -> None:
     assert policy.execution == "bank-excess-coins"
 
 
+def test_excluded_coin_deposit_liquidates_carried_funding_loot() -> None:
+    policy = select_policy(
+        ProgressionContext.from_values(
+            9,
+            "mage",
+            has_sellable_loot=True,
+            needs_coin_deposit=True,
+            needs_provision_funding=True,
+            has_food=True,
+            has_flight=False,
+            flight_funding_retry_pending=True,
+            excluded_policy_ids=frozenset({"bank-excess-coins"}),
+        )
+    )
+
+    assert policy.policy_id == "liquidate-loot"
+    assert policy.execution == "sell-loot"
+
+
 def test_stalled_level_seven_non_mage_uses_daycare_fallback() -> None:
     policy = policy_for(7, "thief", stalled_segments=1)
 

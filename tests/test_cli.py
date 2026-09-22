@@ -2680,6 +2680,48 @@ def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
     assert "recent segments (up to 20; newest segment last)" in captured.out
 
 
+def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Dorrik to HERO",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="source-ranked-hunt-unavailable-25",
+            reason="awaiting_area_reset",
+            state={
+                "level": 25,
+                "campaign_source_ranked_frontier_diagnosis": {
+                    "boot_id": "boot-1",
+                    "reason": "no executable source-ranked frontier",
+                    "candidate_count": 12,
+                    "current_band_count": 3,
+                    "autonomous_safe_count": 2,
+                    "sanctuary_required_count": 1,
+                    "no_sanctuary_count": 0,
+                    "same_boot_below_band_count": 1,
+                    "top_blockers": [
+                        {"reason": "sanctuary reserve required", "count": 1}
+                    ],
+                },
+            },
+        )
+
+    exit_code = main(["show-campaign", str(campaign_id), "--database", str(database)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Frontier diagnosis: no executable source-ranked frontier" in captured.out
+    assert "candidates=12 current-band=3 autonomous-safe=2" in captured.out
+    assert "Frontier blockers: sanctuary reserve required: 1" in captured.out
+
+
 def test_show_campaign_rejects_nonpositive_limit(tmp_path, capsys) -> None:
     database = tmp_path / "runs.sqlite3"
     with RunStorage(database) as storage:

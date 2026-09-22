@@ -1773,15 +1773,14 @@ _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY = ProgressionPolicy(
 )
 
 _SOURCE_RANKED_DWARVEN_SANCTUARY_POLICY = ProgressionPolicy(
-    policy_id="source-ranked-sanctuary-dwarven-catacombs-26-100",
-    minimum_level=26,
+    policy_id="source-ranked-sanctuary-dwarven-catacombs-25-100",
+    minimum_level=25,
     maximum_level=100,
     status="research",
     execution="dwarven-catacombs-sanctuary-hunt",
     summary=(
-        "Research the source-defined Dwarven Catacombs sanctuary reserve; "
-        "the current source marks its entrance pickproof, so no thief "
-        "lockpick dispatch is authorized."
+        "Acquire a source-defined Dwarven Catacombs sanctuary reserve through "
+        "the keyed, pickproof entrance."
     ),
     evidence=(
         "DD4 source places object 2008, holy water, on the grand templar "
@@ -1791,9 +1790,15 @@ _SOURCE_RANKED_DWARVEN_SANCTUARY_POLICY = ProgressionPolicy(
         "act_move.c rejects pick lock against a pickproof door, so the "
         "previous positive pick-lock plan was based on an incorrect bitmask "
         "interpretation of the area record.",
-        "The source key 6502 is not independently acquired by this policy; "
-        "the selector therefore fails closed until a separately source-proven "
-        "key route exists.",
+        "The raw reset stream places key 6502 on the exact dwarven guard reset "
+        "in room 6505. The route gate requires that source VNUM in the live "
+        "room, an isolated consider result, and successful corpse extraction "
+        "before the audited unlock command continues.",
+        "At level 25, source mobile 2011 is the only admitted route special: "
+        "its level-15 maximum load is exactly ten levels below the player, "
+        "its spec_cast_mage acts only after combat starts, and its source peak, "
+        "critical, and expected damage bounds fit the audited player ceiling. "
+        "A fresh GMCP VNUM is still required and the interruption is never XP.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -1884,8 +1889,8 @@ _FAME_RECOVERY_CIRCUS_POLICY = ProgressionPolicy(
         "sanctuary-protected Circus ticket clerk kill."
     ),
     evidence=(
-        "DD4 fight.c awards fame when an ordinary victim is at least six "
-        "live levels above the character and lacks ACT_LOSE_FAME.",
+        "HELP FAME and DD4 fight.c require an ordinary victim to be at least "
+        "six live levels above the character and lacking ACT_LOSE_FAME.",
         "Circus mobile 4400 is a level-31 sentinel, non-aggressive, "
         "single-reset shopkeeper with no special procedure, source weapon, "
         "or ACT_LOSE_FAME flag in room 4402.",
@@ -1912,8 +1917,8 @@ _FAME_RECOVERY_POLICY = ProgressionPolicy(
         "level-30 Mirror Realm animal kill."
     ),
     evidence=(
-        "DD4 fight.c awards fame when the victim is at least six live levels "
-        "above the character and does not carry ACT_LOSE_FAME.",
+        "HELP FAME and DD4 fight.c require the victim to be at least six live "
+        "levels above the character and not carry ACT_LOSE_FAME.",
         "Mirror Realm mobiles 19039 and 19048 are level-30 sentinel, "
         "non-aggressive, single-reset animals with no special procedure, no "
         "source weapon, and no ACT_LOSE_FAME flag.",
@@ -1936,8 +1941,8 @@ _FAME_RECOVERY_LOTUS_POLICY = ProgressionPolicy(
         "sanctuary-protected Lotus Temple chamber attendant kill."
     ),
     evidence=(
-        "DD4 fight.c awards fame when the victim is at least six live levels "
-        "above the character and does not carry ACT_LOSE_FAME.",
+        "HELP FAME and DD4 fight.c require the victim to be at least six live "
+        "levels above the character and not carry ACT_LOSE_FAME.",
         "Lotus Temple mobile 10736 is a level-32 sentinel, non-aggressive, "
         "single-reset mobile alone in room 10837 with no special procedure, "
         "no source weapon, and no ACT_LOSE_FAME flag.",
@@ -6321,6 +6326,16 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         # A same-reboot failed or quarantined extraction must not strand
         # carried funding loot. Keep extraction ahead of sales when it is
         # executable, but liquidate the loot when that handoff is blocked.
+        return _LIQUIDATE_LOOT_POLICY
+    if (
+        context.needs_coin_deposit
+        and context.has_sellable_loot
+        and selected.policy_id == _BANK_EXCESS_COIN_POLICY.policy_id
+        and selected.policy_id in context.excluded_policy_ids
+    ):
+        # A quarantined bank route must not strand carried drops or send the
+        # character back into the field. Sellable loot can reduce both the
+        # coin and flight shortfalls before the next bounded city handoff.
         return _LIQUIDATE_LOOT_POLICY
     if context.has_flight:
         return selected

@@ -21,6 +21,17 @@ _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _MUD_COLOR_CODE = re.compile(r"\{[A-Za-z0-9]")
 
 
+def strip_ansi_stream(text: str, pending_escape: str = "") -> tuple[str, str]:
+    """Strip complete ANSI sequences while retaining a split trailing escape."""
+    combined = pending_escape + text
+    last_escape = combined.rfind("\x1b")
+    if last_escape >= 0:
+        trailing = combined[last_escape:]
+        if _ANSI_ESCAPE.match(trailing) is None:
+            return _ANSI_ESCAPE.sub("", combined[:last_escape]), trailing
+    return _ANSI_ESCAPE.sub("", combined), ""
+
+
 def _normalized_room_name(value: str) -> str:
     """Compare GMCP and text room titles without DD4 colour markup."""
     return " ".join(_MUD_COLOR_CODE.sub("", value).split()).casefold()
@@ -182,6 +193,7 @@ class ObservationParser:
 
     def __init__(self, expected_character_name: str | None = None) -> None:
         self._pending_text = ""
+        self._pending_ansi_escape = ""
         self._line_break_leader: str | None = None
         self._health: int | float | None = None
         self._level: int | None = None
@@ -209,7 +221,11 @@ class ObservationParser:
         self.expected_character_name = _normalized_name(name)
 
     def feed_text(self, text: str) -> list[GameEvent]:
-        cleaned = self._normalize_line_breaks(_ANSI_ESCAPE.sub("", text))
+        cleaned, self._pending_ansi_escape = strip_ansi_stream(
+            text,
+            self._pending_ansi_escape,
+        )
+        cleaned = self._normalize_line_breaks(cleaned)
         self._pending_text += cleaned
         lines = self._pending_text.split("\n")
         self._pending_text = lines.pop()
@@ -265,6 +281,7 @@ class ObservationParser:
     def reset_connection(self) -> None:
         """Discard connection-scoped parsing state before a reconnect."""
         self._pending_text = ""
+        self._pending_ansi_escape = ""
         self._line_break_leader = None
         self._previous_line = None
         self._pending_experience_loss = None

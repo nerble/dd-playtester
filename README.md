@@ -3,10 +3,14 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current State: September 21, 2026
+## Current State: September 22, 2026
 
-Dorrik is the current highest live character: level 25, 382,950 XP, checkpoint
-42607, safely saved in healer room 3054 after run 13707. The source-ranked runner now permits
+Dorrik is the current highest live character: level 25, 388,606 XP, checkpoint
+42991, safely saved in healer room 3054. Runs 13848-13850 performed the
+maintenance-only world-time probe after the bounded reset wait; DD4 still reports
+the same reboot, `Fri Sep 4 06:19:51 2026`, so no XP or level changed. The
+latest probe opened a short authenticated connection, issued `time`, `save`, and
+`quit`, and then closed normally. The source-ranked runner now permits
 one bounded last-chance fresh probe when the only remaining candidate has a
 25-50% chance of landing in the useful XP band; productive routes and stronger
 fresh candidates always win first, and live `consider` remains authoritative.
@@ -20,9 +24,173 @@ Moria large-orc funding attempt, adding 50 maintenance XP, one ring, and one
 sacrificial copper without claiming progression XP. Direct sale run 13694 tried
 the Leather Shop and one alternate Armoury buyer; both refused the ring and it
 was donated, leaving 4 silver and 8 copper.
-Serevian's New Ofcol research route also stopped on exact source identity
-ambiguity, while Astrevo's funding frontier found no safe current-reboot target.
+Serevian's New Ofcol research route exposed an exact source identity ambiguity;
+the source audit proved VNUMs 617 and 618 are equivalent ordinary citizens, and
+revision 311 now reopens that result once with the live TARGETMODE alias recorded.
+His next bounded segment still has to clear flight funding first. The local DD4
+source mirror is now revision `7faf3f9`; the synchronization run found the
+same DD4 reboot identity and opened no gameplay socket.
 HERO 100 remains unproved.
+
+When a source-ranked frontier is unavailable, the checkpoint now retains a
+compact offline diagnosis under
+`campaign_source_ranked_frontier_diagnosis`. It records the reboot identity,
+current-band and autonomous-safe counts, sanctuary requirements, and same-boot
+below-band exclusions. Inspect the durable boundary with
+`python -m dd4tester show-campaign 7 --limit 12`, then use
+`show-combat-readiness --level 25 --class warrior --character Dorrik
+--all-areas --json` for the source candidate details. This diagnosis is
+observational only and never authorizes a live route.
+
+The September 22 continuation also fixed a live endpoint-combat parsing gap:
+DD4 can announce an attack as "grunts as he takes a swing at you," and the
+starter now recognizes that line, preserves the planned target, and runs the
+normal consider and source-identity gates instead of treating the attacker as
+unknown. A successful recall without an explicit combat-end message is now
+also treated as combat-free before healer recovery. The fixes are covered by
+the full 1,460-test starter suite, 1,642 campaign tests, and 5,973 repository
+tests, with clean compilation.
+
+Revision 319 reopened the exact stale Gnome Village result once. Run 13798
+proved the corrected swing parser but exposed the missing recall cleanup; run
+13799 then processed the live small troll identity and stopped at the
+independent familiar-loss gate, losing 80 XP before returning safely to healer
+room 3054. Astrevo is level 9 at 33,932 XP, checkpoint 42837; the Gnome route
+is quarantined for this reboot with that familiar-loss evidence. No fame or
+HERO claim is made from these results.
+
+The follow-up policy repair now rejects an aggressive or scripted endpoint
+unless the source proves an outdoor no-mob waypoint where the familiar can be
+summoned and identified before entry. This prevents entry combat from
+starting before the familiar can be prepared. Run 13802 then selected the
+staged New Ofcol route, killed Granny Jenkins for 118 XP, and returned to
+healer room 3054; Astrevo is level 9 at 34,050 XP, checkpoint 42844. The full
+campaign suite passes at 1,642 tests; HERO 100 remains unproved.
+
+Run 13803 then captured a useful transport boundary: Granny Jenkins was
+present in the live room response, but the ANSI reset and prompt arrived in
+different Telnet chunks. The parser now retains an incomplete ANSI escape
+between chunks, so the next prompt is parsed with the correct area and room
+instead of being mistaken for a malformed response. The bounded worker still
+returned safely at its runtime limit with no XP claim. Targeted observation and
+starter coverage is 1,503 tests; run 13804 confirmed the current reboot is
+unchanged and correctly selected the finite field-reset wait.
+
+Run 13805 then reached the source-ranked Moria endpoint and found the large orc
+in room 4019. DD4 also reported a second mobile in that room, so the live
+crowd gate stopped the fight before combat and the worker returned safely to
+healer room 3054. Astrevo remains level 9 at 34,050 XP, checkpoint 42851. This
+is positive target-location evidence, not progression credit, and the next
+invocation must rotate rather than replaying the unchanged crowd.
+
+Run 13806 rotated to the Circus and reached the Midget's Tent, but the Midget
+was absent while other circus mobiles were visible along the route. The worker
+returned safely and recorded a bounded target absence at checkpoint 42854;
+the area was not treated as globally empty and no XP was claimed.
+
+Run 13807 rechecked Moria and found the large orc in room 4025, but two
+source-registered garter snakes with `spec_poison` were present as well. The
+runner rejected that exact room before combat and returned safely. The target
+is live and locatable; this route instance is closed by its hazardous
+bystanders, not by an assumption that Moria is empty.
+
+Run 13808 stopped before opening a socket because the funding ledger is now
+explicit: Astrevo has 27 copper-equivalent, while the current observed fly
+price is 131 copper. The all-area source audit found only two direct coin
+stashes at level 9, both rejected by route or level hazards; the remaining
+local funding targets require fresh area evidence. One finite reset wait is
+the next action, not an unbounded funding retry.
+
+Runs 13809-13812 then collected four bounded Moria funding results after the
+area reset: the large orc supplied maintenance-only XP of **142**, **152**, and
+**148** on productive attempts, while one locator pass found it absent. Astrevo
+returned safely to healer room **3054** after every run, with no death or XP
+loss, and reached checkpoint **42880** at **34,492 XP**. The resulting rings are
+not a money loop: source object 4000 is poisoned, so both the Leather Shop and
+Armoury offered zero despite its nominal value. Run **13813** recorded that
+evidence, donated five copies, and left one for the next bounded cleanup pass.
+The selector now liquidates carried saleable loot when a quarantined
+`bank-excess-coins` route would otherwise send the character back to the field,
+and it never reserves a known -2 strength ring merely because a finger slot is
+empty. The current checkpoint is safe in healer room 3054 with **57
+copper-equivalent**; HERO 100 remains unproved.
+
+The full repository regression after this repair is **5,977 tests passed** in
+455 seconds; `python -m compileall -q dd4tester tests` also passes. No gameplay
+worker remains active; the long-running Python process is the intentional
+Discord streamer.
+
+Runs **13814-13817** then kept the continuation bounded. Run 13814 found the
+Circus Midget absent; run 13815 revalidated the Moria large orc and earned
+**101** maintenance XP, returning safely to healer room **3054** at checkpoint
+**42889**. Run 13816 removed the last poisoned ring after both compatible shops
+again offered zero; its incidental **10 XP** drunk kill is explicitly marked
+below-useful-band and does not count as progression. One finite post-reset wait
+then rechecked the Midget in run 13817 and found it absent again. Astrevo is
+safe at healer checkpoint **42897**, level **9**, **34,603 XP**, with no carried
+loot and no current source-safe funding target. The level-9 all-area catalog
+currently admits only the Moria large orc, Circus Midget, and Katrina; Foundry
+Uburz remains closed by prior live pre-consider aggression evidence. HERO 100
+remains unproved.
+
+### Source-Audited Invisible Funding: September 22, 2026
+
+Policy revision **320** carries source-proven route invisibility through the
+provision-funding selector and `Fastwalk` dispatch. It admits one exact,
+unarmed dynamic saleable drop, such as the source-safe war-dog collar route,
+only when practiced invisibility, every transit mobile identity, current-band,
+movement, HP/protection, saleability, and live target gates pass. The segment is
+recorded as `funding_only`, so any incidental XP cannot advance progression.
+Armed ambush endpoints and the previously quarantined Foundry Uburz remain
+closed; Astrevo's current HP ceiling still requires the ordinary protection
+gate, so this is offline executable coverage rather than new live permission.
+The full repository suite now passes **5,979 tests** in 448.62 seconds, with
+clean compilation. HERO 100 remains unproved.
+
+### Source Keyword Identity Repair: September 22, 2026
+
+Run **13818** safely reached the New Ofcol route but earned no XP because the
+visible `citizen` name could refer to source mobiles **617** or **618**. The
+source catalog confirms their distinct keywords are `man` and `woman`, while
+their room text is identical. Revision **321** now chooses a keyword that is
+unique among same-display prototypes and lets that exact keyword resolve a
+live room only when it is unique among the source identities reachable there;
+the shared generic keyword remains fail-closed. Legacy checkpoint candidates
+are refreshed before route construction. The full repository suite passes
+**5,982 tests**, compilation is clean, and Serevian remains level **11** at
+checkpoint **42900** with no new progression or HERO evidence. Run **13819**
+then reached the Circus Midget's Tent after the bounded reset wait, found the
+source target absent while unrelated mobiles wandered in, and returned safely
+at checkpoint **42906** with no XP change. The keyword repair is therefore
+offline identity evidence; no live target was promoted from it.
+
+### Bounded Funding and Protection Handoff: September 22, 2026
+
+Policy revision **322** closes a selector stall exposed by the level-11
+Serevian continuation. If a current-boot flight-funding carrier is absent while
+the protection-recovery sanctuary budget is not exhausted, the runner may make
+one source-validated sanctuary acquisition attempt before reopening that empty
+carrier. The branch requires the normal healer, food, no-combat, unarmed,
+movement, capacity, and source gates; if no safe sanctuary carrier exists, the
+funding marker remains and the finite reset-wait path is used. It never grants
+ordinary XP permission. The focused regression passes, and live runs
+**13828-13833** continued source-backed funding kills without death; run
+**13834** rejected an ambiguous New Ofcol cow identity and returned safely.
+Serevian is level **11** at checkpoint **42955** with **53,384 XP**; HERO 100
+remains unproved. The full repository suite now passes **5,983 tests** in
+612.47 seconds, with clean compilation.
+
+### Endpoint Invisibility Admission: September 22, 2026
+
+Policy revision **323** closes a source-ranked selector gap exposed by
+Serevian's level-11 route. A route whose aggressive endpoint is source-proven
+to be safe only while invisible cannot be selected for capacity or level-
+ceiling research unless the character has practiced `invis` and has enough
+current mana to cast it. The gate applies before any live connection or
+preparation, so an unprepared character is not sent to a route that will
+inevitably abort at the safe origin. The independently audited familiar-probe
+contract remains available, and ordinary route metadata or sanctuary routes do
+not inherit the restriction. HERO 100 remains unproved.
 
 Run 13702 exposed a reset-boundary defect: automatic funding repair cleared the
 current-boot absent-Midget marker before policy selection, so the same empty
@@ -39,6 +207,19 @@ selection and from the source-famous exception. The readiness report retains a
 bounded +9 research horizon for readable diagnostics, but the live fame
 selector now searches the complete source range through HERO; all existing
 route, output, sanctuary, isolation, and finite-action gates still apply.
+For the shallow Moria sanctuary endpoint, an adjacent scan that sees the
+source-registered warrior now receives one short, bounded re-scan before the
+route is abandoned. A repeated hazard still returns safely without combat or
+XP credit.
+
+The September 22 multi-character continuation kept the same boundaries
+visible. Aeloria's run **13780** reached lemming-smithy room **29966**, found
+the source target absent, and returned safely to healer room **3054** at
+checkpoint **42770** with no XP change. The one permitted reset wait then
+completed without a DD4 reboot; runs **13781-13782** confirmed the same boot
+marker and stopped at checkpoint **42773**. Dorrik remains level 25 and
+Kestrel remains level 24 with fame -12. No below-band kill, stale target
+replay, or unbounded retry was introduced.
 
 The latest multi-character evidence keeps the blockers concrete. Aeloria's
 trainer repair issued two accepted `evocation magiks` practices (49% -> 58%),
@@ -47,14 +228,36 @@ that retry is closed. Her lemming-smithy probe then found the source room empty
 and recorded a reset-scoped absence. Aeloria's live run **13703** then
 completed the Haon food reserve, acquired a toadstool and mushroom, and
 returned to healer room **3054** at checkpoint **42595** without XP change or
-loss; the next lemming-smithy route is below-band and hard-routed, so it remains
-closed. Kestrel completed a safe grain reserve
+loss. The later run **13780** reached the lemming-smithy endpoint and confirmed
+the target was absent; the one bounded reset wait in **13781-13782** found no
+new boot, so that frontier remains closed until fresh reset evidence. Kestrel completed a safe grain reserve
 route at level 24 but remains fame -12. Dorrik's tree-sprite and Abyss probes
 returned safely without XP. Dorrik's latest reserve run acquired grain and
 returned to healer room 3054 without XP or loss. Source analysis also finds a level-18 sanctuary
-flask on the grand templar in Dwarven Catacombs, but reaching it requires key
-6502; the source key carriers are not currently safe for Aeloria, so this is
-evidence rather than campaign permission.
+flask on the grand templar in Dwarven Catacombs. At level 25+, the selector now
+proves key 6502 on the exact dwarven guard resets in rooms 6505 and 6540 and
+registers a bounded live same-source key gate to exact TARGETMODE guard
+selectors, one at a time, before the holy-water route. Its source route checks
+the original doorway room, makes one `east east west west` detour to the
+alternate carrier room, and returns to the locked door. It stops once the key is carried;
+unknown or extra mobiles remain rejected. The route is now available at level
+25 with one source-specific transit exception for zombie mage 2011 at the
+strict ten-level aggression cutoff; GMCP identity, source damage bounds, good
+player alignment, and the non-XP maintenance boundary remain mandatory.
+Revision 312 reopens the previous same-boot crowd-abort evidence for this
+changed gate implementation. This is executable policy evidence, not live
+acquisition or progression proof yet. Revision 313 reopens only the matching
+same-boot transit-identity artifact, and revision 314 reopens the matching
+health-floor artifact after a gate-maintenance kill. Revision 315 recovers the
+exact same-boot key acquisition from the old selector-persistence crash, and
+revision 316 reopens only the same-boot reconnect loss without restoring the
+non-persistent key. Revision 317 records the alternate carrier-room route.
+Revision 318 records that DD4's same-prototype guards automatically join one
+another in combat, so the key gate first requires a verified sanctuary reserve;
+without one, the planner selects bounded Moria reserve recovery and stops after
+its finite attempt budget rather than entering the aggregate guard fight.
+None of these migrations relaxes the live selector, source, or bounded-attempt
+rules.
 
 **HERO 100 is not yet demonstrated.** Creation, tutorial play, reporting, and
 resumable campaigns work. The highest roster level is 25; active fresh-creation
@@ -68,9 +271,23 @@ level 18. The sale policy now preserves a generic shop refusal, tries one other
 source-compatible safe buyer, and donates only after that bounded retry also
 fails. Sustained progression and HERO proof remain open. Ordinary fame recovery
 for Kestrel still requires a level-30-or-higher target, plus a live sanctuary
-and output envelope. The focused offline suites pass **1,445 starter tests**
-and **1,608 campaign tests**. Live dispatch remains gated by source-safe route
+and output envelope. The focused offline suites pass **1,457 starter tests**
+and **1,633 campaign tests**. Live dispatch remains gated by source-safe route
 evidence.
+
+Serevian's run **13783** supplied a useful safety correction: two level-5
+hobgoblin soldiers shared Gnome Village room **1583**, but the old transit
+exception fought one before fleeing the second and losing 99 XP. Same-room
+source-known below-band crowds are now rejected before combat; only an isolated
+bounded interrupter can use the finite transit-fight path. The route remains
+closed for this reboot.
+
+Run **13784** then exercised the next New Ofcol policy after that repair. The
+live `where` result reached room **655**, where the ordinary `citizen` identity
+was source-ambiguous between mobile VNUMs **617** and **618**. The runner
+withdrew to healer room **3054** at checkpoint **42782** with no combat, kill,
+XP change, or loss, and marked that exact policy unavailable for this reboot.
+This is useful identity evidence, not progression proof.
 
 Runs **13699-13702** continued Dorrik's level-25 funding frontier. Run 13699
 added 60 maintenance XP from the large orc; the bounded reset retry in run
@@ -110,8 +327,8 @@ recheck remains bounded and evidence-gated. The live regression stopped at
 checkpoint **42402** with no duplicate Forest run, no new XP, and the existing
 sanctuary cooldown preserved.
 
-For ordinary fame recovery, `fight.c` requires the victim to be at least six
-levels above the player (`victim.level - player.level > 5`), so Kestrel's
+For ordinary fame recovery, `HELP FAME` and `fight.c` require the victim to be
+at least six levels above the player (`victim.level - player.level > 5`), so Kestrel's
 level-24 ordinary target window starts at source level 30. The source-famous
 `ACT_IS_FAMOUS` branch is a separate exception and is not evidence that a
 level-25 Green Dragon satisfies the ordinary window. The current source audit
@@ -148,9 +365,9 @@ Existing live checkpoints retain their recorded source revision until resumed.
 The source-area parser also mirrors `db.c`'s `D`-record lock-type mapping:
 the second field is a lock type, not an exit-flag bitmask. This reopens ordinary
 `-1` exits and correctly marks type-2 doors as `EX_PICKPROOF`. The Dwarven
-Catacombs sanctuary reserve is therefore source-only: its room-6505 entrance
-cannot be opened by `pick lock`, even after positive practice, and the old
-lockpick policy remains quarantined until a separately proven key route exists.
+Catacombs sanctuary reserve therefore uses key 6502 rather than `pick lock`:
+the room-6505 guard is an isolated, live-considered maintenance gate, and the
+key plus flask VNUMs remain bound to the required-loot audit.
 
 Source resource analysis now recognizes DD4 `ITEM_PILL` objects such as Olympus
 nectar, reports their exact `eat` activation, and clears the reserve only after
@@ -161,7 +378,7 @@ Maintenance-route hazards are now checked before Forest gear preemption and
 frontier retry selection. Current-reboot crowd evidence therefore closes the
 implicit retry path instead of consuming another zero-progress segment.
 
-The current campaign policy revision is 309. It preserves the source and live
+The current campaign policy revision is 317. It preserves the source and live
 GMCP gates while allowing a nominally current-level passive target whose DD4
 load-time HP fuzz reaches two levels above the character to receive one
 sanctuary-protected damage-window probe. This is a measured admission path,
@@ -171,6 +388,13 @@ or a carrier fight. For the exact source-famous Green Dragon gas contract,
 sanctuary plus healer nausea recovery can extend the live probe to the existing
 finite 36-action horizon after sanctuary is observed; the ordinary source
 estimate remains twelve actions and is unchanged before that point.
+
+Revision 311 also closes the New Ofcol identity gap exposed by run 13714.
+When multiple source VNUMs share one room and display name, the runner may use
+the exact live TARGETMODE selector only when every reachable prototype is
+source-identical, ordinary, unarmed, unspecialized, and has no loot or probe
+contract. The observed alias VNUM is persisted in the run and campaign state;
+materially different prototypes remain a hard rejection.
 
 Casters now retain a bounded fallback inside an admitted fight: after two weak
 uses of the preferred practiced damage spell, the live damage probe may measure
@@ -447,7 +671,9 @@ python -m dd4tester recover-runs --campaign-id 28 --character Aeloria
 ```
 
 The scoped command uses the campaign segment index and does not scan every
-historical run. The no-argument form remains available for small databases.
+historical run. It also closes a run row left marked `running` after its
+campaign segment has already failed. The no-argument form remains available
+for small databases.
 
 For unattended progression, use `hero --autonomous --progress`. Its worker
 and reset budgets are finite by design; increase them explicitly only when

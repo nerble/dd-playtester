@@ -363,6 +363,52 @@ def test_storage_binds_unique_interrupted_campaign_run(tmp_path) -> None:
     assert segment["run_id"] == run_id
 
 
+def test_storage_recovers_run_left_running_after_failed_campaign_segment(
+    tmp_path,
+) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="Dorrik to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="source-ranked-hunt",
+        start_state={"name": "Dorrik", "level": 25},
+    )
+    run_id = storage.create_run(
+        scenario_name="fastwalk-source-ranked-hunt:Dorrik",
+        scenario_path=tmp_path / "character.yaml",
+    )
+    storage.finish_campaign_segment(
+        segment_id,
+        status="failed",
+        run_id=run_id,
+        end_state={"name": "Dorrik", "level": 25},
+        command_count=1,
+        duration_seconds=1.0,
+        error="worker failed after segment cleanup",
+    )
+
+    repaired_events, recovered_runs, interrupted_segments = (
+        storage.recover_campaign(
+            campaign_id,
+            reason="orphaned run cleanup",
+        )
+    )
+    run = storage.get_run(run_id)
+    storage.close()
+
+    assert repaired_events == 0
+    assert recovered_runs == 1
+    assert interrupted_segments == 0
+    assert run is not None
+    assert run["status"] == "failed"
+    assert run["error"] == "orphaned run cleanup"
+
+
 def test_storage_lists_bounded_recent_campaign_history_in_sequence_order(
     tmp_path,
 ) -> None:
@@ -1007,6 +1053,7 @@ def test_storage_persists_route_gate_kill_classification(tmp_path) -> None:
         below_useful_band=True,
         objective_eligible=False,
         route_gate=True,
+        selector="#3901",
     )
 
     kills = storage.list_mob_kills_for_run(run_id)
@@ -1014,3 +1061,4 @@ def test_storage_persists_route_gate_kill_classification(tmp_path) -> None:
 
     assert len(kills) == 1
     assert kills[0]["route_gate"] == 1
+    assert kills[0]["selector"] == "#3901"

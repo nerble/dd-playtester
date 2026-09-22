@@ -74,7 +74,10 @@ count them as progression XP. A visibility-dependent route requires positive pra
 authorization plus a fresh affect; it cannot bypass detecting, scripted, or
 unknown mobiles. Combat-only specials follow source aggression cutoffs during
 transit; pre-combat, scripted, equipped, unknown, and engaged hazards remain
-blocked. A source HP range that crosses the character ceiling may use one
+blocked. A same-room crowd of source-known below-band transit mobiles is also
+a pre-combat hard rejection; only one isolated, source-validated bounded
+interrupter may enter the existing finite transit-fight path. A source HP range
+that crosses the character ceiling may use one
 sanctuary-protected GMCP damage-window probe only when its lower bound fits the
 audited player output and the exact route preflight is source-validated; the
 live target ceiling must still fit the fixed ordinary action budget. The exact
@@ -84,6 +87,15 @@ extends pre-sanctuary admission or creates an unbounded fight. Protection-
 recovery fallback cannot bypass that output gate in a live source-backed state
 with a known character class; source-less fixtures are not live authorization.
 AI personality generation does not authorize AI gameplay.
+Provision-funding may use one exact source-audited dynamic saleable drop
+behind practiced route invisibility only when the endpoint is unarmed, its
+specials are in the source noncombat allowlist, every transit aggressor is
+source-known and invisibility-blocked, and the ordinary current-band,
+movement, HP/protection, saleability, and live identity gates pass. Carry the
+route mobile VNUMs into `Fastwalk`, record the segment as `funding_only`, and
+exclude its XP from progression. Armed ambush targets, scripted or unknown
+transit hazards, rejected endpoints such as the live-quarantined Foundry
+Uburz, and repeat attempts remain closed.
 If a same-boot hard-health marker records a no-loss withdrawal and the exact
 source target now passes the strict familiar probe, a learned familiar may arm
 one exact revalidation. Consume it at source-hunt dispatch and close it after
@@ -99,6 +111,23 @@ revision markers. Current DD4 resolves three weighted mobile-special slots,
 body/archetype inheritance, area `#SPECIALS` `M`/`N`/`P` overrides, and the
 explicit `AFF_MINDLESS` trait. An unparsed special must remain a rejection,
 not an empty slot that authorizes a route.
+When multiple source prototypes can reach the same room under one ordinary
+target name, a live TARGETMODE selector may stand in for the missing
+prototype VNUM only when every reachable prototype has the same audited
+profile, is unarmed, has no special or loot contract, and the stop is not a
+probe, protected, bystander, or resource action. Record the actual live VNUM
+as alias evidence; any material difference remains a hard ambiguity.
+Before that equivalent-alias fallback, an exact source command keyword may
+resolve the expected prototype only when it is present on that prototype and
+absent from every other source prototype reachable in the exact room. Repair
+legacy candidate records from the current source keywords; a shared generic
+keyword such as `citizen` remains ambiguous.
+When a current-boot flight-funding carrier is absent while protection recovery
+still has a nonterminal sanctuary attempt, select exactly one source-validated
+sanctuary acquisition before reopening that empty funding route. If no safe
+sanctuary carrier exists, preserve the funding marker and wait through the
+normal bounded reset path; never turn this handoff into an unbounded retry or
+ordinary progression permission.
 GMCP `Char.Worth.alignment` is authoritative wire data: DD4 sends 50000 below
 level 10 and the actual server-clamped -1000..1000 value at level 10 and above.
 Never treat the sentinel as good alignment. A revealed value at or above 300
@@ -124,6 +153,10 @@ That exact changed-input shape may arm one persisted, same-boot revalidation;
 the outer crowd wait can open only its matching segment, which consumes the
 marker at start and closes it at the boundary. A fresh crowd, loss, hazard, or
 absent endpoint remains authoritative and cannot be bypassed.
+For a required-loot endpoint with an explicit source pre-entry scan, one
+configured short re-scan may wait for an adjacent wandering hazard to move;
+the second hazard remains a hard return, and this retry grants no combat or XP
+permission.
 Source gear planning must retain route audits for direct ground resets and
 carrier drops. A reachable, no-combat ground reset may be selected before a
 pending flight-funding loop; executable carrier candidates must match the source mobile,
@@ -137,6 +170,28 @@ required-loot maintenance attempt, never ordinary XP permission. A completed
 automatic area-reset wait may reopen one source-narrowed capacity probe for
 this exact carrier, consumed at persisted segment start; live absence closes
  it for that boot without XP credit.
+For the Dwarven Catacombs sanctuary reserve, room 6505 is pickproof and
+`pick lock` is never a bypass. The only current source-backed route uses key
+6502 from the raw room-6505 dwarven-guard reset (mobile 6500). Its live
+maintenance gate must resolve the exact source identity in room 6505 and use
+one live TARGETMODE selector at a time. The source-audited two-reset shape
+allows at most four same-prototype, passive, non-special guards in sequence;
+each requires its own below-band `consider`, exact selector, and corpse loot
+step. Stop as soon as key 6502 is carried, then issue the audited `unlock
+west`; gate kills are never progression XP. A missing selector, unknown or
+extra mobile, non-good alignment, or more than four guards remains a hard
+rejection.
+The exact Dwarven Catacombs required-loot route has one additional level-25
+transit exception: source mobile 2011, the wandering level-15 zombie with
+`spec_cast_mage`, may be tolerated only when the route registers that VNUM,
+the live GMCP enemy record confirms it, and the source HP/damage bounds still
+fit. It is one bounded transit interruption, never an endpoint target or XP
+kill; any extra, unidentified, or changed special remains a hard rejection.
+DD4's `violence_update` makes same-prototype guards join a player's fight, so
+the Dwarven key gate also requires a verified sanctuary reserve before dispatch.
+If the reserve is absent, select the bounded Moria reserve route first; after
+its reboot-scoped attempts are exhausted, checkpoint as unavailable rather
+than entering the aggregate guard fight. Revision 318 records this boundary.
 Nested resource reports must preserve every container VNUM, required key VNUM,
 and source key-carrier VNUM. Closed or locked containers are never treated as
 loose ground loot; a locked placement receives an explicit key-acquisition

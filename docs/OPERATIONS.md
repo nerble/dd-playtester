@@ -179,6 +179,34 @@ loss lower bound even without a captured penalty message. Do not add it twice
 to explicit loss counters, infer a death or command-level cause, or reopen a
 failed hunt while repairing the counter. Use saved per-segment baselines for
 idempotent history repair.
+Starter combat identity parsing must treat DD4's source-format swing messages
+("grunts as ... takes a swing at you", "grunts and swings at you", "takes a
+swing at you", and "stops swinging ... and swings at you instead") as incoming
+combat. Preserve the planned endpoint target and continue through the normal
+live consider, source VNUM, isolation, and damage gates; this is recognition
+evidence, not permission to bypass them.
+The streaming text path must also retain an incomplete ANSI escape when a
+Telnet response splits between chunks. Reassemble that escape before prompt
+and area extraction; otherwise a valid endpoint room can be recorded with a
+corrupted area name and the worker can reach its runtime boundary while
+waiting for an acknowledgement that was already on the wire. This is a
+transport/parser repair only and does not grant target or combat permission.
+When a successful combat recall returns the character to the Temple of
+Midgaard without an explicit combat-end line, clear the local combat target
+and combat-active flags before issuing the healer-room recovery step. A stale
+local target must not cause repeated recall commands or a watchdog failure;
+the live room and enemy state remain authoritative.
+For a familiar-backed source probe, an aggressive or scripted endpoint must
+also have a source-audited outdoor no-mob staging waypoint on the outbound
+route. If no such waypoint exists, reject the policy before travel; do not
+enter the endpoint and hope to summon after an automatic entry attack.
+For an ordinary source-ranked candidate whose endpoint aggression is blocked
+only by invisibility, require the learned class/subclass `invis` path and
+enough current mana before selecting the candidate, including for capacity or
+level-ceiling research. Reject it before opening a socket when that preparation
+is absent. The separately audited familiar-probe contract is an explicit
+alternative; unrelated route aggression and sanctuary recovery do not imply
+invisibility permission.
 Sanctuary attempt reconstruction must be idempotent. Rebuild the supplied
 segment history separately from the current saved counter, seeding an omitted
 prefix from the first segment's start. Retain a matching saved count as a floor
@@ -213,6 +241,8 @@ Ctrl+C is a bounded operator stop: the command exits 130 after the worker's
 durable checkpoint is preserved, and the next invocation resumes that
 checkpoint. Do not start a second worker while the interrupted process is
 still present; inspect the exact process and recover its campaign if required.
+Scoped recovery also closes a run row left marked `running` after its linked
+campaign segment has already failed, without scanning unrelated run history.
 
 When a deep Moria sanctuary segment reaches its runtime cap at a verified quiet
 waypoint, the worker records `campaign_fastwalk_resume_checkpoint` with the
@@ -221,6 +251,10 @@ only the audited bridge from room 4064 to that waypoint and continue the exact
 unfinished leg. Stale boots, malformed cursors, combat, route hazards, and
 explicit aborts invalidate the cursor and force the normal source-gated route
 selection.
+The normal success-return path must promote the starter's `fastwalk_resume_checkpoint`
+into those campaign keys before policy selection. Deep-route locator narrowing can compact
+the runtime stop tuple, so resume may re-anchor only on one unambiguous audited transit
+stop, endpoint, or route leg; ambiguous room matches remain closed.
 
 Check fresh SQLite events and process state to diagnose silence. JSONL size or
 stale metadata alone does not prove a hang. A pre-login socket gets a 15-second
@@ -269,8 +303,10 @@ must still be one isolated GMCP identity at or below the useful-XP floor with
 normal health, nutrition, consideration, and combat gates satisfied. Finish
 that single defensive interruption through the existing bounded transit-fight
 state machine, record it as maintenance, and then resume or return according
-to the route contract. Fixed routes, unregistered VNUMs, crowds, specials,
-programs, or useful-band live rolls remain withdrawal conditions.
+to the route contract. A same-room crowd of source-known below-band mobiles is
+rejected before combat; do not fight one member and flee the rest. Fixed routes,
+unregistered VNUMs, crowds, specials, programs, or useful-band live rolls remain
+withdrawal conditions.
 
 A world-time probe may recheck a recorded city-shop obstruction once from healer
 3054. Only a complete, positive off-route locator from that successful run,
@@ -322,6 +358,15 @@ unknown room occupancy remains a hard stop. An explicit city-route observation
 still runs before logout. This prevents a completed maintenance probe from
 reopening the generic sleep/stand loop at the runtime boundary.
 
+When source ranking finds no executable target, persist
+`campaign_source_ranked_frontier_diagnosis` in the checkpoint. This is an
+offline explanation only: it records the reboot, level, candidate counts,
+current-band and autonomous-safe counts, sanctuary requirements, and exact
+same-boot below-band exclusions. Inspect it with `show-campaign` or the
+campaign state report before deciding whether a reset wait or source refresh
+is justified. Never use the diagnosis to bypass a sanctuary, route, identity,
+or live-consider gate.
+
 When the two bounded current-reboot sanctuary carrier attempts are exhausted,
 arm `campaign_sanctuary_area_reset_recheck` only from a living, quiet healer
 checkpoint. The outer runner may wait once for the configured area-reset
@@ -357,6 +402,11 @@ but it may not consume a replacement potion or spend a full stale segment.
 Use exact source keywords and connection-local target IDs. Mobile, object,
 room, and object-set VNUM namespaces are distinct. Never restore pending
 commands, companion ownership, or timing rights from saved checkpoints.
+When several source prototypes share one visible target name, an exact command
+keyword may resolve the expected prototype only when it appears on that source
+prototype and on no other prototype reachable in the exact room. A shared
+generic keyword remains source-ambiguous; refresh persisted candidate keywords
+from the current source catalog before constructing a live route.
 Field route greeting checks may use fresh invisibility only for an exact
 source mobile whose ordinary GREET program requires `can_see`. Audit detection,
 source-level bounds, aggression, specials, scripts, and reset equipment; unknown
@@ -466,6 +516,13 @@ only the mapped accessible subset, never every room with that name. Preserve
 pre-entry scans, exact consideration, crowd/loot checks, and all loss/retry gates.
 Retain required familiar staging on the outbound prefix, the original city
 preflight, exact target/consider/crowd checks, and the normal reset fallback.
+For provision-funding, the same visibility contract may admit one exact
+unarmed carrier of a dynamic saleable drop, including a source-safe noncombat
+special such as `spec_fido`, only after the source current-band, movement,
+HP/protection, saleability, and live-identity gates pass. Carry every audited
+transit mobile VNUM into the `Fastwalk`, mark the segment `funding_only`, and
+exclude its XP from progression. Armed ambush endpoints, rejected targets,
+scripted or unknown transit hazards, and same-boot repeats remain closed.
 Do not shorten specialised transit-recovery plans a second time. An early
 locator changes travel order, not candidate eligibility, movement admission,
 search limits, retries, or loss history.
@@ -608,6 +665,17 @@ that exact run only. A completed funding action advances cooldown even when its
 XP delta is zero. An observed below-quote balance remains actionable despite a
 retry cooldown; negative fame must not override that safe funding path. None of
 these repairs authorize another target or promote low-value XP.
+
+Treat source objects flagged `ITEM_POISONED`, `ITEM_CURSED`, `ITEM_NODROP`, or
+`ITEM_NOREMOVE` as non-tradeable until live shop evidence proves otherwise.
+Their area-file value is not funding evidence. If a compatible shop returns
+zero, retain the refusal and use the bounded donation/sacrifice cleanup path;
+do not repeat the same shop route as a money loop. Likewise, an equipment
+object with a known negative stat modifier, especially a ring with `-2 str`,
+must not be retained solely to fill an empty wear slot. A quarantined
+`bank-excess-coins` handoff may fall back to liquidation when saleable surplus
+is present, but the resulting proceeds must still be observed before flight or
+food service is retried.
 
 Crowd assessment shares the existing three-probe, five-second-response budget
 across single and repeated mobile identities. Require complete, unique live
@@ -812,6 +880,12 @@ room listing, source identity, consider, crowd, HP, and combat gates still
 authorize any attack. Unknown labels, ambiguous source routes, stale absence,
 and exhausted rechecks retain the existing bounded return behavior.
 
+The shallow Moria sanctuary carrier has one additional source-configured
+endpoint re-scan when room 4064's adjacent scan sees the registered warrior
+4051. The runner waits briefly, rechecks the same room, and still recalls if
+the hazard remains. This is a navigation timing repair only: it never permits
+fighting the warrior, does not count XP, and does not widen the Moria route.
+
 For the deep Moria sanctuary route, the source mapping currently includes
 rooms **4063**, **4066**, and **4065** for the repeated `The maze` label. The
 reachable path to those rooms must not cross the source-registered poisoner or
@@ -833,6 +907,13 @@ with exact live identity and `consider` checks. Any gate kill is incidental and
 cannot earn progression XP. This does not widen the deep route, waive special
 or unknown hazards, or change the ordinary +6 fame rule; live validation waits
 for the next MUD area reset or reboot.
+
+For ordinary unarmed source-ranked targets, a same-room prototype ambiguity may
+be resolved only when all reachable source prototypes have identical audited
+combat, special, equipment, and reset-object profiles. TARGETMODE's exact live
+instance selector is then recorded with the observed alias VNUM. Resource,
+special, protected, bystander, and probe stops remain strict prototype-VNUM
+matches.
 
 ### Equipment Placement Admission
 
@@ -921,9 +1002,26 @@ DD4 area `D` records use their second field as a lock type, not as a raw exit
 flag bitmask. The source mirror follows `db.c`: type `2` includes
 `EX_PICKPROOF`, while `-1` and `0` leave the exit open/default. A source route
 through a type-2 door must remain rejected even when the character has positive
-`pick lock` practice; only a separately source-proven key route can change that
-result. The Dwarven Catacombs sanctuary plan is currently such research-only
-evidence, not a live campaign permission.
+`pick lock` practice. The Dwarven Catacombs sanctuary plan now uses the
+separately source-proven key 6502 on guard 6500 in rooms 6505 and 6540; its
+live maintenance gate still requires exact source identity, isolation,
+consider, and corpse-confirmed key extraction before `unlock west`. Each room
+has two raw M resets for source mobile 6500 and each reset has a maximum-count
+of four. The source route checks 6505, makes one `east east west west` detour
+to 6540, and returns to 6505 before unlocking. It still requires passive
+source profiles, known selectors, good player alignment, and no extra or
+unknown mobile. Revisions 313 and 314 reopen their exact same-boot artifacts;
+315 recovers the old selector-persistence acquisition, 316 reopens only the
+matching reconnect loss, and 317 records the alternate-room route. Revision
+318 additionally requires a verified sanctuary reserve before this gate is
+dispatchable, because DD4's same-prototype guards automatically join the
+fight. Without that reserve, select bounded Moria recovery first and stop as
+unavailable after its finite reboot-scoped attempts. These revisions do not
+broaden the live gate. At the exact level-25 frontier, source mobile 2011 is the only admitted transit special: its
+level-15 upper bound is exactly ten levels below the player, its
+`spec_cast_mage` acts only after combat begins, and its source damage bounds
+fit the player ceiling. The live route must confirm that VNUM through GMCP;
+the interruption is bounded maintenance combat and never progression XP.
 
 Revision **282** adds one narrow funding exception for this plan. If a level-24+
 Thief still needs the 1,000-copper source lockpick, the selector may choose
@@ -966,6 +1064,15 @@ single bounded frontier decision: sanctuary-required, route-hazard, output,
 consider, and live-identity gates remain authoritative. If no ordinary target
 passes them, checkpoint without opening gameplay; do not convert a below-band
 funding kill into progression XP.
+
+Revision **322** adds the preceding bounded branch for the nonterminal case:
+when a current-boot flight-funding carrier is absent and protection recovery
+still has a remaining sanctuary attempt, select one source-validated sanctuary
+carrier before reopening the empty funding route. The branch requires the
+healer checkpoint, food, no combat, no sanctuary reserve, and the ordinary
+source, movement, capacity, and unarmed-carrier gates. If the source selector
+finds no safe carrier, keep the funding marker and use the existing finite
+reset-wait path; do not manufacture a route or grant XP permission.
 
 Reset repair must not erase that absent-target evidence before the next policy
 selection. For the exact protection-starved, sanctuary-exhausted flight

@@ -76,6 +76,10 @@ class Fastwalk:
     # that exact mobile once, but only when this route explicitly registers
     # its source VNUM; ordinary routes never inherit the exception.
     route_bounded_borderline_source_mobile_vnums: tuple[int, ...] = ()
+    # One exact source special may be tolerated as a level-25 required-loot
+    # transit interruption.  The starter still requires its live GMCP VNUM;
+    # this never authorizes an endpoint or progression kill.
+    route_bounded_transit_special_mobile_vnums: tuple[int, ...] = ()
 
     @property
     def commands(self) -> tuple[str, ...]:

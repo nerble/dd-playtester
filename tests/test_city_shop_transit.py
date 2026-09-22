@@ -215,6 +215,38 @@ def test_public_funding_adapter_passes_current_source_permission(world, monkeypa
     assert captured.get("allow_bounded_city_shop_transit") is True
 
 
+def test_public_liquidation_adapter_passes_current_source_permission(world, monkeypatch):
+    from dd4tester import campaign
+
+    captured = {}
+
+    class Runner:
+        def __init__(self, spec, path, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return "finished"
+
+    monkeypatch.setattr(campaign, "StarterBotRunner", Runner)
+    bot = policy(world)
+    current = {
+        **state().to_dict(),
+        "world_boot_id": "boot",
+        CITY_TRANSIT_KEY: {"status": "admitted", "level": 8, "boot_id": "boot"},
+    }
+    result = asyncio.run(campaign._run_policy_segment(
+        bot.spec,
+        Path("unused.yaml"),
+        campaign._LIQUIDATE_LOOT_POLICY,
+        current_state=current,
+        source_world=world,
+    ))
+
+    assert result == "finished"
+    assert captured.get("liquidate_loot") is True
+    assert captured.get("allow_bounded_city_shop_transit") is True
+
+
 def test_transit_checkpoint_never_contains_a_resumable_timer():
     transit = CityShopTransit(status="fighting", started_at=100.0)
     proof = transit.evidence(level=8, boot_id="boot")[CITY_TRANSIT_KEY]

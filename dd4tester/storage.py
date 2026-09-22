@@ -214,6 +214,7 @@ class RunStorage:
                 below_useful_band INTEGER NOT NULL DEFAULT 0,
                 objective_eligible INTEGER NOT NULL DEFAULT 1,
                 route_gate INTEGER NOT NULL DEFAULT 0,
+                selector TEXT,
                 timestamp TEXT NOT NULL
             );
 
@@ -322,6 +323,10 @@ class RunStorage:
             self.connection.execute(
                 "ALTER TABLE mob_kills ADD COLUMN route_gate "
                 "INTEGER NOT NULL DEFAULT 0"
+            )
+        if "selector" not in mob_kill_columns:
+            self.connection.execute(
+                "ALTER TABLE mob_kills ADD COLUMN selector TEXT"
             )
         self.connection.commit()
         self._ensure_campaign_phase_index()
@@ -804,6 +809,42 @@ class RunStorage:
                 running_segments=running_segments,
             )
             return repaired_events, recovered_runs, segments
+
+        # A worker can fail after closing its campaign segment but before its
+        # run cleanup. Repair that orphaned run through the campaign index so
+        # scoped recovery does not leave a stale "running" row behind.
+        orphaned_runs = list(
+            self.connection.execute(
+                """
+                SELECT DISTINCT runs.id
+                FROM runs
+                JOIN campaign_segments
+                  ON campaign_segments.run_id = runs.id
+                WHERE campaign_segments.campaign_id = ?
+                  AND runs.status = 'running'
+                """,
+                (campaign_id,),
+            )
+        )
+        recovered_runs = len(orphaned_runs)
+        if orphaned_runs:
+            timestamp = _now()
+            run_ids = [int(row["id"]) for row in orphaned_runs]
+            placeholders = ", ".join("?" for _ in run_ids)
+            self.connection.execute(
+                f"""
+                UPDATE runs
+                SET finished_at = ?, status = 'failed', error = ?
+                WHERE status = 'running' AND id IN ({placeholders})
+                """,
+                (
+                    timestamp,
+                    reason,
+                    *run_ids,
+                ),
+            )
+            self.connection.commit()
+            return repaired_events, recovered_runs, 0
 
         lease = CampaignLease(
             campaign_lease_path(
@@ -1437,6 +1478,7 @@ class RunStorage:
         below_useful_band: bool = False,
         objective_eligible: bool | None = None,
         route_gate: bool = False,
+        selector: str | None = None,
         timestamp: str | None = None,
     ) -> int:
         if objective_eligible is None:
@@ -1446,9 +1488,9 @@ class RunStorage:
             INSERT INTO mob_kills (
                 run_id, character_name, boot_id, mob_name, xp_gained,
                 source_mobile_vnum, source_policy_id, below_useful_band,
-                objective_eligible, route_gate, timestamp
+                objective_eligible, route_gate, selector, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -1461,6 +1503,7 @@ class RunStorage:
                 int(below_useful_band),
                 int(objective_eligible),
                 int(route_gate),
+                selector,
                 timestamp or _now(),
             ),
         )
@@ -1476,7 +1519,8 @@ class RunStorage:
             """
             SELECT id, run_id, character_name, boot_id, mob_name,
                    xp_gained, source_mobile_vnum, source_policy_id,
-                   below_useful_band, objective_eligible, route_gate, timestamp
+                   below_useful_band, objective_eligible, route_gate,
+                   selector, timestamp
             FROM mob_kills
             WHERE run_id = ?
             ORDER BY id
@@ -1496,7 +1540,8 @@ class RunStorage:
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
                        xp_gained, source_mobile_vnum, source_policy_id,
-                       below_useful_band, objective_eligible, route_gate, timestamp
+                       below_useful_band, objective_eligible, route_gate,
+                       selector, timestamp
                 FROM mob_kills
                 WHERE character_name = ?
                 ORDER BY id
@@ -1508,7 +1553,8 @@ class RunStorage:
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
                        xp_gained, source_mobile_vnum, source_policy_id,
-                       below_useful_band, objective_eligible, timestamp
+                       below_useful_band, objective_eligible, route_gate,
+                       selector, timestamp
                 FROM mob_kills
                 WHERE character_name = ? AND boot_id = ?
                 ORDER BY id
