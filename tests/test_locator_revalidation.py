@@ -78,6 +78,37 @@ def offer(state, row, events, world, candidate):
     c._offer_source_locator_revalidations(state, (candidate,), world, (row,), {1000: events})
 
 
+def test_locator_event_loading_includes_only_current_funding_probe():
+    state = {
+        "level": 11,
+        "world_boot_id": "boot-1",
+        c._PROTECTION_RECOVERY_ORDINARY_FALLBACK_KEY: {
+            "attempted_policy_ids": ["fallback-1", "fallback-2"],
+        },
+        c._FLIGHT_FUNDING_GROUND_PROBE_KEY: {
+            "boot_id": "boot-1",
+            "level": 11,
+            "policy_id": POLICY,
+        },
+    }
+
+    assert c._source_locator_event_policy_ids(state) == {
+        "fallback-1",
+        "fallback-2",
+        POLICY,
+    }
+
+    state[c._FLIGHT_FUNDING_GROUND_PROBE_KEY] = {
+        "boot_id": "boot-1",
+        "level": 10,
+        "policy_id": POLICY,
+    }
+    assert c._source_locator_event_policy_ids(state) == {
+        "fallback-1",
+        "fallback-2",
+    }
+
+
 def test_one_expanded_search_preserves_old_attempt_and_combat_loss():
     state, row, events, world, candidate = setup()
     old = deepcopy(state)
@@ -101,6 +132,62 @@ def test_one_expanded_search_preserves_old_attempt_and_combat_loss():
         (candidate,), state, world=world, character_level=11, character_max_hp=186,
         allow_protection_recovery_fallback=True,
     ) is None
+
+
+def test_funding_ground_probe_reopens_exact_global_where_miss_once():
+    state, row, events, world, candidate = setup()
+    state.pop(c._PROTECTION_RECOVERY_KEY)
+    state.pop(c._PROTECTION_RECOVERY_ORDINARY_FALLBACK_KEY)
+    state[c._FLIGHT_FUNDING_GROUND_PROBE_KEY] = {
+        "boot_id": "boot-1",
+        "level": 11,
+        "policy_id": POLICY,
+    }
+    state["campaign_research_results"] = {
+        POLICY: {
+            "absent": True,
+            "boot_id": "boot-1",
+            "observed": False,
+            "viable": False,
+        }
+    }
+    state[c._RESEARCH_ABSENCE_COOLDOWN_KEY] = {POLICY: 3}
+
+    offer(state, row, events, world, candidate)
+
+    assert c._source_locator_revalidation_pending(state, POLICY)
+    marker = state[c._SOURCE_LOCATOR_REVALIDATIONS_KEY][POLICY]
+    assert marker["room_sweep_vnums"] == ["200", "201"]
+    assert not c._source_ranked_candidate_has_absence_cooldown(
+        candidate, state, character_level=11,
+    )
+    assert c._source_ranked_result_status(
+        candidate,
+        state,
+        character_level=11,
+    ) == "retryable"
+    selected = c._select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        world=world,
+        character_level=11,
+        character_max_hp=186,
+        allow_cooldown_retry=True,
+    )
+    assert selected == candidate
+
+    c._consume_source_locator_revalidation(state, POLICY)
+    offer(state, row, events, world, candidate)
+
+    assert not c._source_locator_revalidation_pending(state, POLICY)
+    assert c._source_ranked_candidate_has_absence_cooldown(
+        candidate, state, character_level=11,
+    )
+    assert c._source_ranked_result_status(
+        candidate,
+        state,
+        character_level=11,
+    ) == "cooldown"
 
 
 @pytest.mark.parametrize("change", [
@@ -159,6 +246,53 @@ def test_partial_vitals_and_unchanged_health_are_valid_evidence():
         event("game_event", type="health_changed", data={"package": "Char.Vitals", "current": 186}),
     ]
     assert proof(row, events)["query_room_vnum"] == "200"
+
+
+def test_locator_proof_scales_event_limit_with_bounded_command_count():
+    _, row, events, _, _ = setup()
+    for _ in range(32):
+        events.extend([
+            event("decision", command="look", category="research"),
+            event("command", command="look"),
+        ])
+    events.extend(
+        event("game_event", type="prompt_seen", data={})
+        for _ in range(450)
+    )
+    row["command_count"] = 33
+
+    evidence = proof(row, events)
+
+    assert evidence is not None
+    assert evidence["command_count"] == 33
+
+
+def test_locator_proof_accepts_only_noncombat_invisibility_and_deferred_training():
+    _, row, events, _, _ = setup()
+    events[1:1] = [
+        event("decision", command="cast invis", category="combat"),
+        event("command", command="cast invis"),
+        event("decision", command="remove collar", category="inventory"),
+        event("command", command="remove collar"),
+        event("decision", command="wear circlet", category="inventory"),
+        event("command", command="wear circlet"),
+        event(
+            "game_event",
+            type="training_deferred",
+            data={
+                "outcome": "deferred",
+                "preflight": True,
+                "reason": "trainer route hazard",
+            },
+        ),
+    ]
+    row["command_count"] = 4
+
+    assert proof(row, events) is not None
+
+    events[1] = event("decision", command="cast fireball", category="combat")
+    events[2] = event("command", command="cast fireball")
+    assert proof(row, events) is None
 
 
 @pytest.mark.parametrize("change", ["cooldown", "stay_area", "unsafe_neighbor", "new_boot", "failed_fallback", "missing_events"])

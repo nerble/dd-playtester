@@ -218,6 +218,47 @@ def test_storage_finds_latest_campaign_checkpoint_for_character(tmp_path) -> Non
     assert campaign["id"] == campaign_id
 
 
+def test_storage_finds_named_character_from_indexed_campaign_tails(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        aeloria_id = storage.create_campaign(
+            name="Aeloria to HERO",
+            config_path=Path("runs/heroes/aeloria/campaign.yaml"),
+            character_profile_path=Path("runs/heroes/aeloria/character.yaml"),
+            target_level=100,
+        )
+        dorrik_id = storage.create_campaign(
+            name="Dorrik to HERO",
+            config_path=Path("runs/heroes/dorrik/campaign.yaml"),
+            character_profile_path=Path("runs/heroes/dorrik/character.yaml"),
+            target_level=100,
+        )
+        for campaign_id, name, phase in (
+            (aeloria_id, "Aeloria", "old"),
+            (dorrik_id, "Dorrik", "first"),
+            (dorrik_id, "Dorrik", "latest"),
+        ):
+            storage.record_campaign_checkpoint(
+                campaign_id,
+                segment_id=None,
+                run_id=None,
+                phase=phase,
+                reason="segment_complete",
+                state={"name": name, "phase": phase},
+            )
+
+        checkpoint = storage.get_latest_campaign_checkpoint_for_character_bounded(
+            "dorrik"
+        )
+
+    assert checkpoint is not None
+    assert checkpoint["campaign_id"] == dorrik_id
+    assert json.loads(checkpoint["state_json"]) == {
+        "name": "Dorrik",
+        "phase": "latest",
+    }
+
+
 def test_storage_uses_bounded_busy_timeout_for_shared_campaign_database(
     tmp_path,
 ) -> None:

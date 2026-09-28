@@ -314,19 +314,24 @@ def rank_gear_sources(
     if not selected_objects:
         return []
 
-    current_by_category: dict[str, tuple[int, ...]] = {}
-    for item in current_items:
-        category = item_category(item)
-        if category is None:
-            continue
-        score = _stance_rank(
-            item,
+    current_loadout = _independent_loadout(
+        tuple(current_items),
+        (),
+        stance,
+        level_gain_priorities=level_gain_priorities,
+        weapon_preference=weapon_preference,
+    )
+    # An acquisition replaces the weakest selected slot, or fills an empty
+    # one. Already-carried alternatives count, including duplicate objects.
+    current_by_category = {
+        category: _stance_rank(
+            items[-1] if len(items) == _CATEGORY_CAPACITY.get(category, 1) else None,
             stance,
             level_gain_priorities=level_gain_priorities,
             weapon_preference=weapon_preference,
         )
-        if score > current_by_category.get(category, ()):
-            current_by_category[category] = score
+        for category, items in current_loadout.items()
+    }
 
     selected_vnums = {item.vnum for item in selected_objects}
     candidates = rank_hunt_candidates(
@@ -425,10 +430,16 @@ def rank_gear_sources(
             level_gain_priorities=level_gain_priorities,
             weapon_preference=weapon_preference,
         )
-        current_score = current_by_category.get(category, ())
-        better_than_current = (
-            not current_score or comparison_score > current_score
+        current_score = current_by_category.get(
+            category,
+            _stance_rank(
+                None,
+                stance,
+                level_gain_priorities=level_gain_priorities,
+                weapon_preference=weapon_preference,
+            ),
         )
+        better_than_current = comparison_score > current_score
         if candidate is None:
             path = direct_paths.get(room.vnum)
             route = path[0] if path is not None else ()

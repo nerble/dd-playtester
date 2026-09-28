@@ -116,6 +116,10 @@ def completed_visibility_revalidation():
         }],
         "campaign_fastwalk_where_relocation_attempts": 1,
         "campaign_fastwalk_route_hazards": [],
+        "campaign_fastwalk_route_preflight_complete": True,
+        "campaign_fastwalk_route_preflight_hazard_observed": False,
+        "campaign_fastwalk_route_preflight_inconclusive": False,
+        "campaign_fastwalk_route_preflight_locations": ["The Cartography Store"],
         "campaign_fastwalk_route_invisibility_checks": [{
             "destination": "3001",
             "from_room": "3001",
@@ -357,7 +361,7 @@ def test_fresh_segment_records_revalidation_outcome(acquired):
     assert result.get("fatal_failure") is not True
 
 
-def test_revision_244_opens_only_the_source_located_invisible_carrier_graph():
+def test_revision_246_opens_only_the_source_located_carrier_graph_after_clean_route_preflight():
     original = completed_visibility_revalidation()
     refreshed = _refresh_policy_revision(deepcopy(original))
 
@@ -376,13 +380,29 @@ def test_revision_244_opens_only_the_source_located_invisible_carrier_graph():
         "area_file": "moria.are",
         "scope": "current_area",
         "where_relocation_attempts": 1,
-        "city_invisibility_checks": 1,
+        "city_route_preflight_locations": ["The Cartography Store"],
     }
     assert marker["superseded_result"] == original[
         "campaign_research_results"
     ][POLICY]
     assert _sanctuary_invisible_carrier_revalidation_pending(refreshed)
     assert _refresh_policy_revision(deepcopy(refreshed)) == refreshed
+
+
+def test_invisibility_evidence_without_clean_route_preflight_does_not_reopen_carrier():
+    original = completed_visibility_revalidation()
+    for key in (
+        "campaign_fastwalk_route_preflight_complete",
+        "campaign_fastwalk_route_preflight_hazard_observed",
+        "campaign_fastwalk_route_preflight_inconclusive",
+        "campaign_fastwalk_route_preflight_locations",
+    ):
+        original.pop(key, None)
+
+    refreshed = _refresh_policy_revision(deepcopy(original))
+
+    assert _SANCTUARY_INVISIBLE_CARRIER_REVALIDATION_KEY not in refreshed
+    assert POLICY in refreshed.get("campaign_research_results", {})
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 {
   "source": {
     "repository": "https://github.com/fromage-fraser/dd4",
-    "revision": "99d6a4e615e789b7b3f569fe328110d9dc661de5",
+    "revision": "4cffee6551bda62b0c7accc439dfb5069712e2c0",
     "trainer": "Mud School Loremaster (mobile 3700)",
     "teacher_base_level": 1,
     "group_teaching_percent": 60,
@@ -21,11 +21,11 @@
       "source_refs": ["server/src/pre_reqs/pre_req-mage.c", "server/src/magic.c: spell_chill_touch, spell_magic_missile, and spell_summon_familiar", "server/src/act_comm.c: do_group and do_order", "server/src/act_move.c: flight movement cost"]
     },
     "cleric": {
-      "strategy": "Unlock cause serious for direct damage, then buy efficient self-healing that can extend field segments while preserving a fixed mana reserve; add passive attacks and shield mitigation as teachers expose them.",
-      "practice_policy": "Reach healing and harmful magiks 30%, cause light 30%, and cause serious first. Then raise cure light and cure serious to 30%; the combat controller permits at most two self-heals below 35% health while retaining 30% mana.",
-      "highest_value_skills": ["healing magiks", "harmful magiks", "cause light", "cause serious", "cure light", "cure serious", "second attack", "shield block"],
-      "automation_gaps": ["Protection and sanctuary are maintained when known; subclass-specific defensive spells remain source-gated by live skill listings."],
-      "source_refs": ["server/src/pre_reqs/pre_req-cleric.c", "server/src/magic.c: spell_cause_light, spell_cause_serious, spell_cure_light, and spell_cure_serious", "server/src/const.c: Cleric spell mana and beat costs", "server/src/fight.c: multi_hit and check_shield_block"]
+      "strategy": "Unlock cause serious for direct damage, then buy efficient self-healing that can extend field segments while preserving a fixed mana reserve; next establish protection and sanctuary before adding passive attacks and shield mitigation.",
+      "practice_policy": "Reach healing and harmful magiks 30%, cause light 30%, and cause serious first. Then raise cure light and cure serious to 30%; train protective magiks to 45%, protection to 40%, and sanctuary to 40% when each appears on the live teacher list. The combat controller permits at most two self-heals below 35% health while retaining 30% mana, and protection buffs remain subject to their casting reserve.",
+      "highest_value_skills": ["healing magiks", "harmful magiks", "cause light", "cause serious", "cure light", "cure serious", "protective magiks", "protection", "sanctuary", "second attack", "shield block"],
+      "automation_gaps": ["Protection and sanctuary now have source-backed training priorities and use the existing self-buff upkeep; subclass-specific defensive spells remain source-gated by live skill listings."],
+      "source_refs": ["server/src/pre_reqs/pre_req-cleric.c", "server/src/magic.c: spell_cause_light, spell_cause_serious, spell_cure_light, spell_cure_serious, spell_protection, and spell_sanctuary", "server/src/const.c: Cleric spell mana and beat costs", "server/src/fight.c: sanctuary damage reduction, multi_hit, and check_shield_block"]
     },
     "thief": {
       "strategy": "Buy passive attack frequency, unlock a high-damage backstab opener and its automatic double-backstab branch, then combine repeatable knife-toss damage with the source-backed third-attack chain before the longer disarm and circle chains.",
@@ -118,7 +118,9 @@
       {"skill": "cause serious", "type": "intellectual", "target": 30, "utility": "damage", "reason": "adds a 2d8 plus half-level combat spell after cause light and harmful magiks reach 30%", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: cause serious prerequisites", "server/src/const.c: skill_table cause serious", "server/src/magic.c: spell_cause_serious"]},
       {"skill": "cure light", "type": "intellectual", "target": 30, "utility": "sustain", "reason": "heals 4 plus 1d8 plus half-level HP, capped at 35, for 10 mana and supports bounded in-combat recovery", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: cure light requires cleric base 30", "server/src/const.c: skill_table cure light", "server/src/magic.c: spell_cure_light"]},
       {"skill": "cure serious", "type": "intellectual", "target": 30, "utility": "sustain", "reason": "heals 4 plus 3d8 plus half-level HP, capped at 50, for 15 mana and is more action-efficient than cure light", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: cure serious requires healing magiks 30 and cure light 30", "server/src/const.c: skill_table cure serious", "server/src/magic.c: spell_cure_serious"]},
-      {"skill": "protective magiks", "source_skill": "group protection", "type": "intellectual", "target": 45, "utility": "mitigation-gateway", "reason": "unlocks protection and sanctuary", "automated": false, "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: protection and sanctuary prerequisites", "server/area/helpfile.are: protective magiks"]},
+      {"skill": "protective magiks", "source_skill": "group protection", "type": "intellectual", "target": 45, "utility": "mitigation-gateway", "reason": "reaches the exact group prerequisite for sanctuary after unlocking protection", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: protection and sanctuary prerequisites", "server/area/helpfile.are: protective magiks"]},
+      {"skill": "protection", "type": "intellectual", "target": 40, "utility": "mitigation-gateway", "reason": "unlocks sanctuary and reduces damage from sufficiently opposed alignments", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: protection prerequisites", "server/src/magic.c: spell_protection", "server/src/fight.c: AFF_PROTECT damage reduction"]},
+      {"skill": "sanctuary", "type": "intellectual", "target": 40, "utility": "mitigation", "reason": "halves incoming damage while active; casting remains subject to its 75-mana cost and the live mana reserve", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: sanctuary prerequisites", "server/src/const.c: sanctuary mana cost", "server/src/magic.c: spell_sanctuary", "server/src/fight.c: AFF_SANCTUARY damage reduction"]},
       {"skill": "armor", "type": "intellectual", "target": 30, "utility": "mitigation", "reason": "applies a fixed 20-point armor-class improvement and is recast before field travel when absent", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: armor prerequisites", "server/src/const.c: skill_table armor", "server/src/magic.c: spell_armor"]},
       {"skill": "shield block", "type": "physical", "target": 40, "utility": "mitigation", "reason": "automatically blocks weapon attacks at half proficiency while a shield is equipped", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: shield block requires group defense 30", "server/area/helpfile.are: HELP SHIELD BLOCK", "server/src/fight.c: check_shield_block"]},
       {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 50, "utility": "damage-gateway", "reason": "reaches the exact group prerequisite for second attack", "source_refs": ["server/src/pre_reqs/pre_req-cleric.c: second attack requires group armed 50", "server/area/helpfile.are: HELP ARMED COMBAT KNOWLEDGE"]},

@@ -2730,6 +2730,26 @@ _SOURCE_RANKED_EARLY_FALLBACK_POLICY = replace(
 )
 
 
+_SOURCE_RANKED_STARTER_FALLBACK_POLICY = replace(
+    _SOURCE_RANKED_HUNT_POLICY,
+    policy_id="source-ranked-hunt-1-5",
+    minimum_level=1,
+    maximum_level=5,
+    summary=(
+        "After the registered creation and starter routes are unavailable, "
+        "rank source-defined current-band mobiles and run one bounded, "
+        "exact-target hunt."
+    ),
+    evidence=(
+        *_SOURCE_RANKED_HUNT_POLICY.evidence,
+        "This is a distinct level-1-to-5 evidence band. A below-band live "
+        "consider result closes only its exact reset for this level and "
+        "reboot; every admitted target retains the normal live identity, "
+        "route, output, and health gates.",
+    ),
+)
+
+
 _PLAINS_ARUNCUS_LEVEL_TWELVE_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="plains-aruncus-probe-12-13",
     minimum_level=12,
@@ -3432,17 +3452,14 @@ _MAHNTOR_ROCK_TOAD_HUNT_RESEARCH_POLICY = ProgressionPolicy(
 _GENERIC_SOURCE_RANKED_LEVEL_MINIMUM = 11
 
 # Fixed research bands are bounded probes, not a progression ceiling. Once a
-# character is level 18 or higher and its registered 16-to-20 band is
-# exhausted, the campaign runner may open the reusable source-ranked frontier.
-# This keeps the first generic continuation aligned with the live level-18
-# candidate ranker instead of leaving a proven character idle until level 21.
-_DYNAMIC_SOURCE_FRONTIER_MINIMUM_LEVEL = 18
+# registered route is unavailable, the campaign may open the reusable
+# source-ranked frontier at the character's current level. Candidate ranking
+# still applies the same source, route, identity, consider, and output gates.
+_DYNAMIC_SOURCE_FRONTIER_MINIMUM_LEVEL = 1
 
-# A character can exhaust the level-6 to 10 tutorial routes before reaching
-# level 10. The source catalog and live safety gates already support this
-# lower band, so allow the campaign fallback to open at level 6 without
-# changing the fixed tutorial policy ordering.
-_SOURCE_RANKED_FALLBACK_MINIMUM_LEVEL = 6
+# Source-ranked fallbacks are available throughout progression, but only after
+# the registered route is unavailable or exhausted.
+_SOURCE_RANKED_FALLBACK_MINIMUM_LEVEL = 1
 
 
 _MAHNTOR_ROCK_TOAD_CIRCUIT_POLICY = ProgressionPolicy(
@@ -6101,7 +6118,13 @@ def policy_for(
         context.protection_recovery_required
         and not low_level_ordinary_loss_can_rotate
         and not context.has_sanctuary_potion
-        and selected.execution not in _HANDOFF_BLOCKING_EXECUTIONS
+        and not (
+            selected.execution in _HANDOFF_BLOCKING_EXECUTIONS
+            and not (
+                selected.execution == _PROVISION_FUNDING_POLICY.execution
+                and context.has_food
+            )
+        )
     ):
         if (
             context.level >= 15
@@ -6185,11 +6208,12 @@ def policy_for(
         # A stale frontier must not outrank an actionable maintenance handoff.
         # Retryable maintenance (for example, newly acquired saleable loot)
         # is handled below even when an older checkpoint excluded its policy.
-        fallback_policy = (
-            _SOURCE_RANKED_EARLY_FALLBACK_POLICY
-            if context.level <= 10
-            else _SOURCE_RANKED_HUNT_POLICY
-        )
+        if context.level <= 5:
+            fallback_policy = _SOURCE_RANKED_STARTER_FALLBACK_POLICY
+        elif context.level <= 10:
+            fallback_policy = _SOURCE_RANKED_EARLY_FALLBACK_POLICY
+        else:
+            fallback_policy = _SOURCE_RANKED_HUNT_POLICY
         return replace(
             fallback_policy,
             minimum_level=context.level,
@@ -7365,6 +7389,18 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         if moria_xp is None or moria_xp > 0:
             return replace(
                 _MORIA_SANCTUARY_LEVEL_ELEVEN_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        mage_guard_id = _FLESHMONGER_MAGE_GUARD_LEVEL_TEN_RESEARCH_POLICY.policy_id
+        if (
+            context.character_class == "mage"
+            and context.last_policy_id
+            == _MORIA_SANCTUARY_LEVEL_ELEVEN_POLICY.policy_id
+            and mage_guard_id not in completed
+        ):
+            return replace(
+                _FLESHMONGER_MAGE_GUARD_LEVEL_TEN_RESEARCH_POLICY,
+                minimum_level=11,
                 practice_skill=context.practice_skill,
             )
         return replace(

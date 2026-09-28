@@ -32,9 +32,8 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     assert "success" in captured.out
 
 
-def test_large_database_inspection_uses_indexed_snapshot_without_campaign_join(
+def test_large_database_inspection_uses_latest_indexed_campaign_checkpoint(
     monkeypatch,
-    tmp_path,
 ) -> None:
     calls: list[str] = []
 
@@ -49,16 +48,34 @@ def test_large_database_inspection_uses_indexed_snapshot_without_campaign_join(
             calls.append(f"snapshot:{character}")
             return {"name": character, "level": 24}
 
-        def get_latest_campaign_for_character(self, _character: str):
-            raise AssertionError("large-database inspection must stay bounded")
+        def get_latest_campaign_checkpoint_for_character_bounded(
+            self,
+            character: str,
+        ):
+            calls.append(f"checkpoint:{character}")
+            return {
+                "state_json": json.dumps(
+                    {
+                        "name": character,
+                        "level": 24,
+                        "campaign_source_ranked_below_band_exclusions": [
+                            "known target"
+                        ],
+                    }
+                )
+            }
 
     state = dd4tester.cli._latest_inspection_state(
         LargeStorage(),
         "Kestrel",
     )
 
-    assert state == {"name": "Kestrel", "level": 24}
-    assert calls == ["snapshot:Kestrel"]
+    assert state == {
+        "name": "Kestrel",
+        "level": 24,
+        "campaign_source_ranked_below_band_exclusions": ["known target"],
+    }
+    assert calls == ["checkpoint:Kestrel"]
 
 
 def test_autonomy_audit_can_compare_all_base_classes(capsys) -> None:
@@ -187,7 +204,17 @@ def test_show_combat_readiness_reports_output_and_blockers(
         opening_source_reference="fight.c:backstab",
     )
     captured_alignment: dict[str, object] = {}
-    monkeypatch.setattr(dd4tester.cli, "load_world_source", lambda *args, **kwargs: world)
+    world_load_options: dict[str, object] = {}
+
+    def fake_load_world_source(*_args, **kwargs):
+        world_load_options.update(kwargs)
+        return world
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "load_world_source",
+        fake_load_world_source,
+    )
     monkeypatch.setattr(
         dd4tester.cli,
         "_source_ranked_caster_output_for_state",
@@ -228,6 +255,10 @@ def test_show_combat_readiness_reports_output_and_blockers(
     captured = capsys.readouterr()
     report = json.loads(captured.out)
     assert exit_code == 0
+    assert world_load_options == {
+        "include_all_areas": False,
+        "include_all_objects": True,
+    }
     assert report["source_revision"] == "source-current"
     assert report["output"]["total_conservative_ceiling"] == 76
     assert report["target_summary"] == {
@@ -237,6 +268,7 @@ def test_show_combat_readiness_reports_output_and_blockers(
         "protected_hp_probes": 0,
         "safe_and_output_fit": 0,
         "source_band": 1,
+        "source_gate_fit": 0,
         "total": 1,
     }
     assert report["gear_upgrades"][0]["object_vnum"] == 303
@@ -344,6 +376,31 @@ def test_readiness_candidate_separates_offensive_output_from_full_admission(
         "_state_has_sanctuary_reserve",
         lambda _state: False,
     )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_useful_fuzz_probability",
+        lambda *_args, **_kwargs: 0.4,
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_candidate_excluded_by_below_band_evidence",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_plain_aggressive_target_invisibility_allowed",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_invisibility_route_candidate_allowed",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "_source_ranked_familiar_probe_allowed",
+        lambda *_args, **_kwargs: False,
+    )
 
     record = dd4tester.cli._readiness_candidate_record(
         candidate,
@@ -358,6 +415,73 @@ def test_readiness_candidate_separates_offensive_output_from_full_admission(
     assert record["requires_sanctuary"] is True
     assert record["sanctuary_available"] is False
     assert record["admission_fit"] is False
+    assert record["source_gate_fit"] is False
+    assert record["useful_xp_probability"] == 0.4
+    assert "live consider evidence says this target is below the useful XP band" in record[
+        "campaign_rejections"
+    ]
+    assert (
+        "aggressive target requires a practiced invisibility route or familiar"
+        in record["campaign_rejections"]
+    )
+
+
+def test_readiness_candidate_reports_exact_same_boot_protection_loss(
+    monkeypatch,
+) -> None:
+    candidate = SimpleNamespace(
+        area_file="new_ofcol.are",
+        target="a sluggish Dragonhoard teller",
+        mobile_vnum=635,
+        room_vnum=800,
+        room_name="Dragonhoard Bank, Ofcol Branch",
+        route_origin_recall_index=0,
+        level=20,
+        status="caution",
+        score=154.0,
+        estimated_level_range=(18, 22),
+        estimated_base_hp_range=(225, 660),
+        autonomous_safe=True,
+        estimated_peak_round_damage=228,
+        estimated_move_cost=123,
+        requires_flight=False,
+        loot=(),
+        hazards=(),
+        autonomy_rejections=(),
+        source_damage_modifier=0,
+    )
+    for helper in (
+        "_source_ranked_protected_hp_fuzz_probe_allowed",
+        "_source_ranked_protected_aggressive_hp_fuzz_probe_allowed",
+        "_source_ranked_protected_level_ceiling_hp_probe_allowed",
+    ):
+        monkeypatch.setattr(
+            dd4tester.cli,
+            helper,
+            lambda *_args, **_kwargs: False,
+        )
+
+    record = dd4tester.cli._readiness_candidate_record(
+        candidate,
+        level=21,
+        output_ceiling=408,
+        state={
+            "world_boot_id": "boot-1",
+            "campaign_protection_recovery_required": {
+                "boot_id": "boot-1",
+                "level": 21,
+                "policy_id": "source-ranked-hunt-new-ofcol-635-800-21",
+                "xp_delta": -334,
+            },
+        },
+        source_world=None,
+    )
+
+    assert record["source_policy_id"] == "source-ranked-hunt-new-ofcol-635-800-21"
+    assert (
+        "this exact source reset already caused a 334 XP loss this reboot"
+        in record["campaign_rejections"]
+    )
 
 
 def test_readiness_candidate_reports_exact_fame_branch_window(monkeypatch) -> None:
@@ -699,7 +823,7 @@ def test_show_gear_sources_renders_source_and_hazard_fields(
     assert "target equips a needle dagger\t-\tpreferred" in captured.out
 
 
-def test_show_gear_sources_matches_json_encoded_current_equipment(
+def test_show_gear_sources_counts_inventory_without_duplicating_worn_gear(
     tmp_path,
     capsys,
     monkeypatch,
@@ -730,7 +854,8 @@ def test_show_gear_sources_matches_json_encoded_current_equipment(
                 "level": 5,
                 "max_hp": 50,
                 "equipment": '{"wield": {"name": "a needle dagger"}}',
-                "inventory": '[{"short_desc": "some grain"}]',
+                "campaign_worn_equipment": ["a needle dagger"],
+                "inventory": '[{"quan": "2", "short_desc": "a needle dagger"}]',
             },
         )
 
@@ -766,7 +891,7 @@ def test_show_gear_sources_matches_json_encoded_current_equipment(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert captured_options["character_max_hp"] == 50
-    assert captured_options["current_items"] == [current]
+    assert captured_options["current_items"] == [current, current, current]
     assert "Character max HP: 50" in captured.out
 
 
@@ -2704,8 +2829,18 @@ def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
                     "current_band_count": 3,
                     "autonomous_safe_count": 2,
                     "sanctuary_required_count": 1,
-                    "no_sanctuary_count": 0,
+                    "no_sanctuary_count": 1,
                     "same_boot_below_band_count": 1,
+                    "no_sanctuary_candidates": [{
+                        "policy_id": "source-ranked-hunt-example-25",
+                        "selection_pool": "recent-mobile-kill",
+                        "target": "a plain target",
+                        "mobile_vnum": 103,
+                        "area_file": "example.are",
+                        "room_vnum": 203,
+                        "room_name": "The Test Room",
+                        "level_range": [24, 26],
+                    }],
                     "top_blockers": [
                         {"reason": "sanctuary reserve required", "count": 1}
                     ],
@@ -2720,6 +2855,9 @@ def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
     assert "Frontier diagnosis: no executable source-ranked frontier" in captured.out
     assert "candidates=12 current-band=3 autonomous-safe=2" in captured.out
     assert "Frontier blockers: sanctuary reserve required: 1" in captured.out
+    assert "No-sanctuary frontier options (diagnostic only):" in captured.out
+    assert "a plain target [103] at The Test Room" in captured.out
+    assert "pool=recent-mobile-kill" in captured.out
 
 
 def test_show_campaign_rejects_nonpositive_limit(tmp_path, capsys) -> None:

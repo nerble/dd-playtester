@@ -771,6 +771,52 @@ def test_cleric_adds_source_efficient_healing_after_damage_chain() -> None:
     assert choices[0].target_percent == 30
 
 
+def test_cleric_unlocks_protection_after_damage_and_healing_priorities() -> None:
+    choices = plan_training(
+        "cleric",
+        _listing(
+            "healing magiks: 30%    harmful magiks: 30%    "
+            "cause light: 30%    cause serious: 30%    cure light: 30%    "
+            "cure serious: 30%",
+            "protective magiks: 0%",
+            physical=0,
+            intellectual=1,
+        ),
+    )
+
+    assert [choice.skill for choice in choices] == ["protective magiks"]
+    assert choices[0].target_percent == 45
+
+
+def test_cleric_trains_protection_before_sanctuary() -> None:
+    protection = plan_training(
+        "cleric",
+        _listing(
+            "healing magiks: 30%    harmful magiks: 30%    "
+            "cause light: 30%    cause serious: 30%    cure light: 30%    "
+            "cure serious: 30%    protective magiks: 45%",
+            "protection: 0%    sanctuary: 0%",
+            physical=0,
+            intellectual=1,
+        ),
+    )
+    sanctuary = plan_training(
+        "cleric",
+        _listing(
+            "healing magiks: 30%    harmful magiks: 30%    "
+            "cause light: 30%    cause serious: 30%    cure light: 30%    "
+            "cure serious: 30%    protective magiks: 45%    protection: 40%",
+            "sanctuary: 0%",
+            physical=0,
+            intellectual=1,
+        ),
+    )
+
+    assert [choice.skill for choice in protection] == ["protection"]
+    assert [choice.skill for choice in sanctuary] == ["sanctuary"]
+    assert sanctuary[0].target_percent == 40
+
+
 def test_brawler_unlocks_punch_before_maxing_passive_damage() -> None:
     gateway = plan_training(
         "brawler",

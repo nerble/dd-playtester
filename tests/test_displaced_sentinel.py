@@ -229,7 +229,7 @@ def real_source_approach():
     return policy, state
 
 
-def test_real_source_smithy_with_miner_and_confirmed_familiar_reaches_order_then_opener():
+def test_real_source_smithy_with_miner_and_confirmed_familiar_reaches_player_opener():
     policy, state = real_source_approach()
     decision = policy._fastwalk_research_decision(state)
     assert decision.command == "consider #18435"
@@ -241,12 +241,9 @@ def test_real_source_smithy_with_miner_and_confirmed_familiar_reaches_order_then
     assert policy.next_decision(state) is None
     policy.observe_text("Ok.\n\r")
     decision = policy._fastwalk_research_decision(state)
-    assert decision.command == "order #42 flee Fear"
-    policy.after_command(decision)
-    policy.observe_text("The pony has fled!\n\rOk.\n\r")
-    decision = policy._fastwalk_research_decision(state)
-    assert decision.command.endswith("#18435")
-    assert decision.command.startswith(("kill ", "cast "))
+    assert decision.command == "cast 'burning hands' #18435"
+    assert policy.familiar_active
+    assert not policy.familiar_disengagement_attempted
 
 
 def test_displaced_identity_does_not_ignore_dangerous_bystanders():

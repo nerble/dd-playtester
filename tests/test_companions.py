@@ -5,13 +5,34 @@ import pytest
 
 from dd4tester.character import CharacterSpec
 from dd4tester.companions import (
-    FamiliarPreparation, familiar_staging_room, learned_familiar_available,
+    FamiliarPreparation,
+    FamiliarWithdrawal,
+    familiar_kill_credits_owner_xp,
+    familiar_staging_room,
+    learned_familiar_available,
 )
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import ExitSource, MobileSource, MobReset, RoomSource, WorldSource
 from dd4tester.starter import FieldHuntStop, StarterPolicy, _normalize_mobile_line
 from dd4tester.state import CharacterState
 import dd4tester.campaign as campaign
+
+
+@pytest.mark.parametrize(
+    ("character_class", "subclass", "credited"),
+    [
+        ("mage", None, False),
+        ("mage", "warlock", False),
+        ("mage", "necromancer", True),
+        ("psionic", "witch", True),
+        ("shifter", None, True),
+        ("shifter", "werewolf", True),
+    ],
+)
+def test_familiar_kill_xp_credit_matches_dd4_source_whitelist(
+    character_class, subclass, credited,
+):
+    assert familiar_kill_credits_owner_xp(character_class, subclass) is credited
 
 
 DESCRIPTION = "A small pony stands here grazing."
@@ -91,6 +112,24 @@ def test_preparation_requires_positive_fragmented_acknowledgements():
     assert "buffer" not in preparation.evidence()
 
 
+def test_in_place_familiar_withdrawal_requires_sleep_not_flee() -> None:
+    withdrawal = FamiliarWithdrawal(selector="#42", settle_in_place=True)
+
+    assert withdrawal.next_command(now=1) == "order #42 flee Fear"
+    withdrawal.observe(
+        "The pony leaves west.\nThe pony has fled!\nOk.\n",
+        now=2,
+    )
+
+    assert withdrawal.confirmed is False
+    assert withdrawal.next_command(now=2) == "order #42 sleep"
+    withdrawal.observe("Ok.\n", now=3)
+    assert withdrawal.confirmed is False
+    withdrawal.observe("The pony sleeps.\n", now=3.5)
+
+    assert withdrawal.confirmed is True
+
+
 @pytest.mark.parametrize("reply", [
     "", "The sun slowly disappears in the west.\n",
     "Someone says 'You fail to correctly recite the spell!'\n",
@@ -107,13 +146,42 @@ def test_failed_summon_never_groups_or_retries(reply):
     assert preparation.next_command({}, NORMALIZED, now=31) is None
 
 
-@pytest.mark.parametrize("selectors", [{}, {"#42": NORMALIZED, "#43": NORMALIZED}, {"pony": NORMALIZED}])
-def test_missing_or_ambiguous_companion_identity_stops(selectors):
+def test_preparation_recovers_mount_selector_from_fresh_listing_when_room_cache_misses():
     preparation = FamiliarPreparation()
     preparation.next_command({}, NORMALIZED, mana=324)
     preparation.observe(SUMMONED)
     assert preparation.next_command({}, NORMALIZED) == "look"
-    preparation.observe(LISTING)
+    preparation.observe(LISTING.replace("[#42]", "[#27586] <Mount>"))
+    assert preparation.next_command({}, NORMALIZED, room_vnum="3030") == "group #27586"
+    preparation.observe("The pony joins your group.\n")
+    assert preparation.next_command({}, NORMALIZED) is None
+    assert preparation.present({}, NORMALIZED, room_vnum="3030")
+
+
+@pytest.mark.parametrize(
+    ("listing", "selectors"),
+    [
+        (
+            LISTING.replace("[#42] A small pony stands here grazing.\n", ""),
+            {},
+        ),
+        (
+            LISTING.replace(
+                "[#42] A small pony stands here grazing.\n",
+                "[#42] A small pony stands here grazing.\n"
+                "[#43] A small pony stands here grazing.\n",
+            ),
+            {},
+        ),
+        (LISTING, {"#42": NORMALIZED, "#43": NORMALIZED}),
+    ],
+)
+def test_missing_or_ambiguous_companion_identity_stops(listing, selectors):
+    preparation = FamiliarPreparation()
+    preparation.next_command({}, NORMALIZED, mana=324)
+    preparation.observe(SUMMONED)
+    assert preparation.next_command({}, NORMALIZED) == "look"
+    preparation.observe(listing)
     assert preparation.next_command(selectors, NORMALIZED) is None
     assert preparation.failure
 
@@ -226,6 +294,8 @@ def test_real_source_staging_contract_reaches_field_stops(level, hp, mana, mobil
     assert all(s.require_familiar and not s.require_sanctuary for s in target_stops)
     assert all(s.familiar_staging_room_vnum == waypoint for s in target_stops)
     if mobile == 609:
+        assert all(s.familiar_withdraw_before_opener for s in target_stops)
+    if mobile == 29953:
         assert all(s.familiar_withdraw_before_opener for s in target_stops)
     state["campaign_known_skill_levels"].pop("summon familiar")
     assert not campaign._source_ranked_familiar_probe_allowed(target, state, character_level=level, source_world=world)
@@ -364,6 +434,102 @@ def outdoor_fixture():
     return policy, state
 
 
+def test_familiar_is_not_sent_into_source_hunt_without_explicit_authorization():
+    policy = policy_fixture()
+    policy.fastwalk_hunt_stops = (
+        replace(
+            policy.fastwalk_hunt_stops[0],
+            target="sullen bard",
+            source_mobile_vnum=3504,
+            require_familiar=False,
+            familiar_withdraw_before_opener=False,
+        ),
+    )
+    policy.consider_viable = True
+    state = CharacterState(level=9, room_vnum="3577", position=7, mana=351)
+
+    decision = policy._familiar_precombat_decision(
+        state, target="the bard", allow_start=True,
+    )
+
+    assert decision is None
+    assert policy.familiar_preparation.stage == "idle"
+    assert policy.familiar_active is False
+
+
+def test_real_midennir_bard_hunt_does_not_start_an_unapproved_familiar():
+    world = campaign.load_world_source(
+        Path("runs/dd4-source/server/area"), include_all_areas=True,
+    )
+    skills = [
+        "armor", "chill touch", "magic missile", "protective magiks",
+        "summon familiar",
+    ]
+    levels = {skill: 35 for skill in skills}
+    levels["summon familiar"] = 36
+    state = {
+        "level": 9,
+        "max_hp": 123,
+        "max_mana": 351,
+        "character_class": "mage",
+        "world_boot_id": "test-boot",
+        "campaign_known_skills": skills,
+        "campaign_known_skill_levels": levels,
+    }
+    candidate = next(
+        item
+        for item in campaign.rank_hunt_candidates(
+            world,
+            character_level=9,
+            character_class="mage",
+            known_skills=skills,
+            known_skill_levels=levels,
+            include_xp_only=True,
+            include_level_ceiling_candidates=True,
+            level_ceiling_offset=1,
+            include_all_areas=True,
+            character_max_hp=123,
+            recall_origins={0: 3001},
+        )
+        if item.mobile_vnum == 3504 and item.room_vnum == 3577
+    )
+    stops = campaign._source_ranked_hunt_stops(
+        candidate, world, character_level=9, state=state,
+    )
+    assert stops
+    assert all(
+        not stop.require_familiar and not stop.familiar_withdraw_before_opener
+        for stop in stops
+    )
+
+    policy = StarterPolicy(
+        CharacterSpec.from_mapping({
+            "name": "Testmage", "race": "human", "gender": "female",
+            "class": "mage",
+        }),
+        "fixture-password",
+        source_world=world,
+        fastwalk_route=Fastwalk("bard", 3001, 3577, "south"),
+        fastwalk_hunt_stops=stops,
+        known_skills=skills,
+        known_skill_levels=levels,
+    )
+    policy.in_world = True
+    policy.consider_viable = True
+    policy.fastwalk_attack_target = candidate.target
+    character_state = CharacterState(
+        level=9, room_vnum="3577", position=7, mana=351,
+    )
+
+    decision = policy._familiar_precombat_decision(
+        character_state, target=candidate.target, allow_start=True,
+    )
+
+    assert decision is None
+    assert policy.familiar_preparation.stage == "idle"
+    assert policy.familiar_active is False
+
+
 def test_run_12741_failed_outdoor_summon_retries_then_confirms_exact_ownership():
     policy, state = outdoor_fixture()
     first = policy._familiar_precombat_decision(state, target="guardian", command_keyword="#99", allow_start=True)
@@ -431,6 +597,34 @@ def test_staged_familiar_uses_same_bounded_recitation_retry():
     policy.observe_text("You fail to correctly recite the spell!\n")
     assert policy._familiar_staging_decision(replace(state, mana=274)).command == "cast 'summon familiar'"
     assert not policy.fastwalk_returning and not policy.familiar_unavailable
+
+
+def test_runtime_boundary_waits_for_queued_familiar_group_acknowledgement():
+    policy = policy_fixture()
+    state = CharacterState(
+        level=8,
+        room_vnum="2",
+        position=7,
+        mana=324,
+        sector="hills",
+        room_flags=["no_mob"],
+    )
+    assert policy._familiar_staging_decision(state).command == "cast 'summon familiar'"
+    policy.observe_text(SUMMONED)
+    assert policy._familiar_staging_decision(state).command == "look"
+    policy.observe_text(LISTING)
+    policy.room_target_selector_descriptions["2"] = {"#42": NORMALIZED}
+    assert policy._familiar_staging_decision(state).command == "group #42"
+
+    policy.request_runtime_boundary(state)
+    assert policy.runtime_boundary_familiar_grace_until is not None
+    assert policy._familiar_staging_decision(state) is None
+    assert policy.familiar_preparation.stage == "grouping"
+
+    policy.observe_text("The pony joins your group.\n")
+    assert policy._familiar_staging_decision(state) is None
+    assert policy.familiar_preparation.stage == "ready"
+    assert policy.familiar_active
 
 
 def test_staging_hook_does_not_abort_endpoint_preparation():

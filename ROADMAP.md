@@ -7,11 +7,300 @@ name/personality, and credentials when resuming, create or resume a character
 and autonomously reach the requested level, up to HERO 100. Preserve progress,
 explain the experience, and support direct Telnet and visible Mudlet operation.
 
-**Not complete:** no HERO character is proved. Highest actual frontier is 25;
-the active fresh-creation tracks are Serevian at 11 and Astrevo at 9. The
-active goal remains this master objective.
+**Not complete:** no HERO character is proved. Highest actual frontier is 26;
+the active fresh-creation tracks include Serevian at 11, Fenanallor at 8, and
+Astrevo at 9. The active goal remains this master objective.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
+
+### Current campaign status: September 28, 2026
+
+Dorrik reached level 26. Run **15413** last observed **444,941 XP** and
+**8,659 XP** to level 27, back at the Midgaard healer; its worker interruption
+was recovered before resuming. Pouch accounting now waits for a complete
+reply across transport chunks, with a five-second healer-return boundary.
+Run **15414** has exercised the normal empty-pouch response; split-response and
+timeout cases are written but await the next permitted regression batch.
+Continue current-band XP and remove recurring preparation overhead. Regression
+work is limited to one batch per local day and is not a daily requirement.
+
+The evening roster pass added **661 net XP** over seven live segments with no
+level gains or recorded losses. Paired-slot acquisition ranking now recognizes
+upgrades to the weaker second item and correctly counts existing gear. Next,
+address lost combat opportunities: run **15423** stalled after Ivan fled because
+the target-check reply was not acknowledged. That reply now releases the wait;
+fresh source identity also supports differing combat and room names. The saved
+failure cases remain unrun, and improved live pursuit is not yet proved.
+Serevian's healthy one-kill return in **15421** had no second currently eligible
+Moria target; raising the kill limit alone would not improve it. Preserve the
+separate one-shot resource and probe contracts.
+
+### September 27 snapshot
+
+No HERO result is proved; the highest actual frontier is level 25. Ararisa is
+level 11 at **48,577 XP**, saved at the Midgaard Healer in room **3054**,
+checkpoint **45761**. The active roster frontiers are Aeloria 18, Ararisa 11,
+Astrevo 9, Corararfen 8, Dorrik 25, Fenanallor 8, Kestrel 24, Praelarran 21,
+and Serevian 11.
+
+Ararisa's run **14871** secured the two-item food reserve but earned no XP.
+Run **14872** stopped at `bank-excess-coins` before login, with zero game
+commands and no XP change. The MUD accepted TCP but sent no login greeting on
+the bounded retries or the later five-second probe; no character action
+occurred. The login-only timeout is now five seconds, with the existing bounded
+retry, while the in-game timeout remains unchanged. Its focused test was
+updated but not rerun.
+
+The strongest plausible level-11 source candidate is the Gnome-area small
+troll (#1507, room **1524**): source level 8, one reset, aggressive, unarmed,
+and without a special. It remains caution-only. A live `consider` must reject
+any response equivalent to five or more levels below; the route also requires
+a fresh `where` check for the Drunk and the ordinary output, health, and action
+limits. No live combat is authorized by the source estimate alone. When the
+MUD sends its greeting again, resume the saved Ararisa campaign and return to
+current-band XP work after any required maintenance step.
+
+An earlier Ararisa campaign batch added **507 net XP**, from **44,302** to
+**44,809**: run **14511** (+151) against the fanatic monk and run **14514**
+(+356) against the Gnome cook. Run **14512** was loot liquidation. Run
+**14513** killed the Miden'nir bard but awarded no XP because the familiar kept
+attacking after the bot ordered it to flee. Its transcript exposed a parser
+edge: DD4 appends a health comparison after the exact source-matched "easy
+kill" sentence, while the solo-consider recognizer required the entire line to
+match. The recognizer now accepts trailing text after that exact sentence; its
+focused regression is covered by **69 passing tests** in
+`tests/test_considered_solo.py`. Live run **14514** confirmed the companion
+left before the player's spell delivered the kill and full XP. This validates
+the withdrawal and XP-credit path; the exact bard wording has offline test
+coverage, not a repeated live attempt. The earlier run **14504** confirmed
+that an area-local `where` miss in Dragon Cult can use one source-audited
+crossing and follow the exact Midgaard route through rooms **3024, 3025, 3026,
+3045, 3046, and 3219** to the guild. Ararisa remains level 10 at checkpoint
+**44715**, **3,691 XP** from level 11. The full suite remains deferred during
+this progression batch; no HERO result is proved.
+
+Subsequent bounded work added **169 XP** in run **14515**, moving Ararisa to
+**44,978 XP**. Run **14516** exposed a split bank-response bug: a 500-coin loan
+was confirmed, but the following prompt replaced its confirmation before the
+policy checked it. A short response buffer now preserves that bank exchange;
+the two focused loan tests pass. The loan raised her purse from 1 gold, 2 silver
+to 6 gold, 2 silver, while the bank reported **3,985 coins owed** and a 50%
+share of future shop sales until repayment.
+
+Runs **14519-14520** earned no XP: live `consider` rejected the war dog as no
+match, and the Gnome cook attempt stopped when the familiar could not be
+confirmed safely in place. Run **14521** then started a Cult fight inside the
+Midgaard transit corridor before its city-interruption gate rejected the
+target. Ararisa fled, losing 88 XP and receiving 27 for damage, a **61 XP net
+loss** to **44,917**. The policy now blocks proactive field and familiar
+openers inside that corridor; its focused city-transit tests pass **35/35**.
+Run **14522** completed the Moria sanctuary route without XP. Run **14523** was
+interrupted at Temple Square before combat; run **14524** recovered and saved
+Ararisa at healer room **3054**, level 10, **44,917 XP**, full health. The full
+suite remains deferred; the HERO objective is still unproved.
+
+The prior bounded roster pass had three net XP gains: Ararisa reached level 10
+at **43,306 XP**, checkpoint **44644** (run **14491**, +83); Corararfen was
+level 8 at **26,664 XP**, checkpoint **44650** (run **14492**, +223 in Moria);
+Fenanallor was level 7 at **20,733 XP**, checkpoint **44654** (run **14493**,
++256 in New Ofcol). All three saved at healer room **3054**; none levelled.
+
+Corararfen's runs **14488-14490** repeatedly found the wandering drunk blocking
+the selected Circus/New Ofcol routes and returned safely; the route checks
+quarantined those exact paths. The next roster segment took the distinct Moria
+route and earned XP. The one-pass rotation deferred Aeloria, Dorrik, Kestrel,
+and Serevian before login at their exhausted protection gates, and deferred
+Astrevo and Praelarran at their funding/frontier blockers. This confirms that
+the roster can keep progressing where a route is executable without repeatedly
+opening blocked high-level sessions. The full suite remains deferred.
+
+The source-mapped Midgaard detour has movement, exact-location, and route-hazard
+gates, followed by a fresh live `where` check; 50 focused tests pass. Run
+**14420** found the drunk at the bank entrance, Levee, and Main Street, so the
+level-7 source-bounded transit gate correctly refused the detour. The same route
+qualifies offline at level 8 if live locations still match (129 movement on
+foot or 45 flying), but it is not live-proved. A one-round roster pass screened
+all nine characters; only Fenanallor connected, ended safely without XP, and
+checkpointed at **44447**. The others were deferred before login at their
+recorded route, sanctuary, funding, or protection blockers. The full suite
+remains deferred.
+
+Ordinary wanderer searches now default to eight nearby safe target rooms even
+when a caller omits the limit; the complete source map remains available for
+hazards and exact live `where` results. Five focused locator tests pass. This is
+offline implementation evidence, not new live XP; the full suite stays deferred.
+
+The gear planner also no longer treats an empty finger slot as making a
+negative-stat ring an upgrade. In the current DD4 source, Moria ring **4000**
+has **-2 strength** and now ranks below an empty slot, so it is excluded from
+executable carrier upgrades. Four focused equipment tests pass; this is gear
+selection evidence only, not new XP or live loot proof.
+
+Recent live work produced confirmed XP on four characters without losses.
+Ararisa is level 10 at **42,828 XP**, checkpoint **44370**, 5,672 XP from level
+11. This batch started at 41,882 XP/checkpoint **44342** and added **946 XP**:
+Ambush traveller runs **14381**, **14385**, and **14390** earned 137, 240, and
+177 XP; Gremlin Lord run **14387** earned 392 XP. Later Gremlin Lord runs
+**14392-14393** yielded no recorded XP, so do not repeat without fresh target
+or reward evidence. Run **14384** killed the Miden'nir bard but recorded no XP;
+the Cult hunts in **14383** and **14391** recorded no XP (**14383**'s target
+was absent). Live `consider` correctly rejected Granny Jenkins as no match in
+**14386**. These no-gain checks do not establish a code defect. The earlier
+funding trip recovered Katrina's sword and Lum, but liquidation raised cash
+only from 1 silver and 1 copper to 2 silver and 10 copper; it is not yet a
+useful flight funding loop.
+
+Corararfen's latest confirmed live total is level 8 at **25,388 XP**: run
+**14363** added 92 XP in the Mud School arena and run **14376** added 113 XP in
+the Circus. Run **14364** found Mud School empty. Run 14376 used the separate
+level-10 `validation-all` track; the level-100 `validation` campaign remains at
+checkpoint **44280**, blocked by the same-boot Moria crowd. Do not mistake the
+test-track checkpoint **44331** for the HERO campaign checkpoint.
+
+Fenanallor's earlier checkpoint was level 6 at **18,935 XP**, checkpoint
+**44334**. Circus runs **14365-14366** earned 45 and 124 XP; the daycare ring,
+Sword Swallower, and repeat Bobby attempts then earned none. Leave those
+same-boot targets closed.
+Praelarran remains level 21 at **233,527 XP**, checkpoint **44075**; Aeloria,
+Dorrik, Kestrel, and Serevian likewise had no current safe route and were
+deferred before login. Astrevo had no safe funding target. These individual
+blockers do not justify waiting globally for a reboot. The focused rotation
+configuration test passes; the full regression suite remains deferred while
+we continue with changed routes and live evidence.
+
+### Current blockers and combat work: September 24, 2026
+
+Dorrik is level 25 at 405,281 XP (checkpoint 44076), Kestrel level 24 at
+329,349 XP (checkpoint 44066, fame -12), and Aeloria level 18 at 162,145 XP
+(checkpoint 44077). HERO 100 remains unproved. Run 14152's diamond-golem probe
+measured 86 damage dealt against 132 received; Dorrik withdrew and ended 168 XP
+lower. Run 14153 stopped before its Solace target because the source-registered
+drunk was at Temple Square, with no XP change. The parsed room-exit graph has
+no open or unlocked path to that target avoiding that room. Do not repeat
+without changed route evidence.
+
+All four affected campaigns record an already-dispatched sanctuary recheck with
+no reserve. Actual resumes now return a durable blocked checkpoint without
+another reset wait or gameplay connection. This prevents a repeated wait, but
+does not solve the missing sanctuary resource or create XP permission. The next
+campaign priority is a genuinely new, source-safe reserve route or an executable
+current-band target supported by live route, identity, consider, and output
+evidence.
+
+The exact Moria ring flight-funding route now admits its two source-verified
+wimpy transit mobiles only with the live character damage bound, the `where
+drunk` preflight, and existing crowd and finite-fight checks. The relevant
+source-population tests pass (**63 passed**) and the focused Moria funding test
+passes. This is not live proof: Corararfen's latest bounded resume stopped
+before connecting at level 8, checkpoint **44081**, **24,953 XP**, because no
+source-safe current-band hunt was available. HERO and Moria ring acquisition
+remain unproved; the full suite is deferred.
+
+Praelarran's live funding route did make concrete progress: run **14266**
+collected two Gnome treasury piles totaling **6 gold, 49 silver, and 151
+copper** (1,241 copper-equivalent), and run **14267** bought flight. His next
+source-ranked Queen Spider route found the target but also three huge poisonous
+spiders in its room; the safety gate withdrew without XP or loss. The following
+selection found sanctuary recovery on cooldown and stopped before reconnecting.
+This proves a funding loop and hazard response, not sustained leveling.
+
+The combat loop now rotates through available, source-registered between-round
+attacks, so a practiced kick is no longer starved by headbutt. Four focused
+campaign checks and six starter checks pass, and changed modules compile; this
+rotation is not yet live-proven. The full suite remains deferred until a larger
+coherent batch is ready. No regression result or offline shortlist is HERO
+proof.
+
+The source-ranked fallback now opens from level 1 after a registered route is
+unavailable; levels 1-5 use a distinct band label and the normal exact-target,
+route, live-consider, useful-XP, output, and health gates. A registered arena
+route can hand off only when same-level, same-boot below-band evidence has
+closed it. Ten focused tests passed; the full suite remains deferred.
+Fenanallor advanced from level 5 at 12,292 XP (checkpoint **44082**) to level
+6 at 14,809 XP (checkpoint **44116**), gaining **2,517 XP** without waiting
+for a reboot. Level-5 source-ranked hunts added **1,932 XP**; the level-6 Mud
+School and cult-fanatic routes added **323** and **262 XP**. His later quest
+request and one-time world-time check added no XP; no new reboot marker appeared,
+and the latest checkpoint has no autonomous-safe current-band route. Two empty
+wear slots remain after a basic-outfit attempt. This proves low-band progression
+through level 6, not progress beyond it or HERO.
+
+The new `hero-rotation` command gives each saved campaign one bounded segment
+per pass, then defers blocked or failed entries so another character still gets
+a turn. A live pass on September 24 completed in about a minute with no XP or
+level changes: four campaigns hit an already-spent sanctuary recheck, Praelarran
+was on a protection-recovery cooldown, and Astrevo had no safe funding target.
+The roster now contains nine unfinished tracks, including the previously
+omitted Ararisa, Corararfen, and Fenanallor campaigns. These per-character
+route and resource blockers do not mean XP work should stop until a global MUD
+reboot.
+
+Corararfen's cleric campaign is now level **8**, saved at **24,953 XP** in
+checkpoint **44081**. An earlier hunting batch added **291 GMCP-confirmed XP**
+from two distinct Mud School boar resets; lizard, daycare, wolf, and return-home
+segments added none. A field-city preflight had also been falsely blocked by a
+drunk in Temple Square, which one Mud School route does not cross. The route
+now lists only rooms it actually traverses, and the 65 focused departure tests
+pass. The full suite remains deferred until a larger coherent batch. This is
+early-band progress, not proof beyond level 8.
+
+### Progress persistence and combat-readiness: September 24, 2026
+
+Reconnect recovery corrected Fenanallor's actual saved state. Run 14075 reached
+level 11 (52,153 XP), but the live connection failed before that segment could
+save. Runs 14073-14074 had last saved level 4 (9,076 XP); reconnect run 14078
+therefore loaded level 4 and safely saved it at healer room 3054. Treat the
+level-11 result as transient live evidence, not current character progress.
+The starter now requests a save on first verified progress after login and on
+each later XP/level change, including during combat; DD4 source confirms `save`
+is available at any position and writes the character file. Three focused
+regression tests cover initial save, changed-vs-duplicate progress, and the
+level-1 save restriction. Live runs 14079-14094 confirmed that earned XP
+survived bounded session endings: Fenanallor reached level 5 and was saved
+at 12,292 XP in healer room 3054, with full health and mana. The latest hunt
+added 250 XP in six kills; a reconnect verified his saved total. Reboot-sensitive
+bonuses may affect efficiency for particular mobs, but progression must continue
+on other eligible targets rather than pausing globally.
+
+Dorrik remains level 25 at 392,314 XP, fame 0, checkpoint 43669. In run 14099,
+`where dolphin` placed the mobile in The Ocean Deep, but the next room check
+found no exact target; Dorrik never attacked. The starter now uses its one
+allowed location refresh after the first mapped-room miss, instead of waiting
+for the full search. The full starter suite passes with this change (**1,483
+tests**); the related campaign and progression tests had passed (**4,145**) just
+before it. Runs 14102-14104 completed three food-reserve routes safely with no
+XP. Run 14105 followed one area-reset wait and confirmed the same DD4 boot, so
+this exact frontier remains closed by its safety evidence. The MUD login has
+recovered; a reboot is not a general requirement for progression.
+
+Praelarran remains level 21 at 233,527 XP. His offline report showed three
+source candidates, but the live campaign correctly admitted none; run 14106
+confirmed the same boot after one bounded area wait. Kestrel remains level 24
+at fame -12, and his current fame audit found no target that fits his damage
+limit. These checks identify separate character-specific blockers, not a reason
+to stop all character work.
+
+Offline review also fixed two readiness-report gaps: the combat report had
+omitted source objects outside its starter-area object set, and the source
+damage estimate for a ranger's `shoot` opening omitted DD4's two-times bow-hit
+bonus and practiced `accuracy` bonus. The report now loads all objects without
+widening its hunt areas; the estimator follows `fight.c` and counts accuracy
+only when observed. The affected campaign, CLI, and source-candidate modules
+passed 1,978 tests before the new persistence change; the four persistence and
+healer-checkpoint tests then passed separately. This is offline evidence, not
+live bow acquisition or new XP. The source-listed Ambush bow (4540) remains
+caution-only because goblin traffic makes its route unsafe under current gates.
+
+### Same-boot progression: September 23, 2026
+
+Fenanallor advanced from level 4 (7,937 XP) to level 11 (52,153 XP), a net
+44,216 XP, without a MUD reboot. Astrevo also gained 474 XP on the same boot.
+This confirms that a recent reboot is not a general requirement for XP. A
+cooldown or missing target belongs to that character's exact route; when one
+frontier closes, check another eligible character or policy without bypassing
+its safety gates. Fenanallor's last saved state is alive, standing, not in
+combat, and at full health in the Mud School arena. Run 14076 could not observe
+a login banner during homeward recovery, so recovery remains the next action.
 
 ### Reboot-scoped frontier diagnosis: September 22, 2026
 
@@ -466,11 +755,12 @@ The full offline suite passes **5,883 tests**.
 
 ### Readiness admission audit: September 21, 2026
 
-The offline readiness report now separates an offensive HP-ceiling fit from
-the campaign's full dispatch admission. Each target records source HP
-admission, sanctuary requirement and availability, and final `admission_fit`.
-This corrected a misleading level-25 report where Mr Smithy fit the raw damage
-ceiling but still failed the survival/output-reserve gate. Dorrik's bounded
+The offline readiness report separates an offensive HP-ceiling fit from its
+source-gate fit, including source HP admission and sanctuary availability.
+That source-gate result is not the campaign's final dispatch decision: live
+target history and route checks can still reject a candidate. This corrected a
+misleading level-25 report where Mr Smithy fit the raw damage ceiling but still
+failed the survival/output-reserve gate. Dorrik's bounded
 resume at checkpoint **42404** therefore opened no gameplay socket and retained
 the real blocker: sanctuary reacquisition or a stronger, source-safe combat
 envelope is required before the next productive route.
@@ -482,7 +772,7 @@ Dorrik's bounded continuation reached checkpoint **42416** at level 25 with
 confirmed the same DD4 reboot and no current-band route reopened. The live
 Abyss copepod policy withdrew at its movement reserve without combat or XP;
 the tree-sprite policy remained unavailable. The readiness report now makes
-the boundary explicit: the three unprotected admission-fit candidates are
+the boundary explicit: the three unprotected source-gate candidates are
 source level 18-22 maintenance targets, while current-band targets require a
 sanctuary reserve or fail the survival/output gate. They are not progression
 targets and must not be counted as XP evidence.
@@ -1877,3 +2167,194 @@ reserve before the endpoint. Both segments returned safely to healer room
 a durable route/resource boundary, not HERO evidence. The next live work is to
 improve protection acquisition and shorten source-audited routes before trying
 another current-band progression target.
+
+### Retry Cooldown And Roster Check: September 24, 2026
+
+Runs **14161** and **14163** repeated the level-9 Ambush goblin route while its
+same-boot failure cooldown was active. Both runs summoned the pony but found it
+was not present in the target pit, so they withdrew without a kill or XP. The
+generic cooldown override now reopens genuinely absent resets only; an observed
+retryable failure stays closed unless its exact one-use revalidation is active.
+Campaign policy revision **326** records the change. Six focused campaign tests
+passed, including absent-reset rotation and the bounded timeout recheck; the
+full suite is deferred until a larger batch.
+
+Astrevo remains level **9** at **35,282 XP**. Checkpoint **43841** stopped at
+the real flight-funding shortage, so no identical hunt was opened. Dorrik
+remains level **25** at **405,281 XP**. Run **14164** confirmed the same
+September 4 reboot; the all-areas readiness audit found three post-loss target
+candidates, all already excluded by live below-band evidence. Other promising
+level-25 targets still require sanctuary, and the single post-reset Moria
+recheck is spent. No XP or HERO proof is claimed for these checks.
+
+### Bounded Level-Seven Progress And Healer Recovery: September 25, 2026
+
+Fenanallor is level **7** at **19,459 XP**, safely checkpointed at **44467**.
+Runs **14424**, **14425**, and **14427** killed source-ranked Moria orcs and
+Granny Jenkins for **309 total XP**. The Moria route checked its next mapped
+room after run **14427**'s orc kill, found no target, then returned to the
+healer; no death or XP-loss message was recorded. Run **14426** attempted the
+Daycare ring route but withdrew when its source-registered teddy-bear hazard
+blocked confirmation of the doll. It gained no XP or ring and is not an
+immediate retry.
+
+Run **14423** had found the Daycare nanny and received an easy live `consider`,
+but a broad cleric-special estimate stopped the fight for lack of a carried
+cure. The source nanny is level **5** (load range **3-7**); the current gate
+charged it for spells unavailable at that level. Healer-backed blindness
+recovery is now limited to source-verified, non-scripted clerics below the
+curse threshold, with a recall-safe area and level-accurate damage bounds.
+Run **14421** also exposed a missing route from an intermediate Moria waypoint
+to a positive exact `where` result; that locator now follows safe, unique-room
+routes while retaining the eight-room blind-search cap.
+
+Twelve focused campaign, starter, and locator tests pass, including the
+no-recall and curse boundaries. The full suite remains deferred until a larger
+implementation batch. The Daycare recovery change still needs a fresh bounded
+live confirmation. HERO 100 remains unproved.
+
+### Level-Ten Combat Acknowledgement And Progress: September 26, 2026
+
+Run **14528** exposed a live-name mismatch: the campaign addressed `human boy`,
+while DD4 reported the exact enemy as `The stunned boy`. The spell acknowledgement
+timed out, the between-round spell loop did not engage, and the character withdrew
+at the existing health gate after a small **22 XP** gain. Combat acknowledgement
+now prefers the current GMCP name when exactly one enemy is present; crowded rooms
+keep the narrower source-name match. A focused replay of the exact DD4 response
+passes, alongside the existing spell-rotation tests.
+
+Run **14529** met `The small boy`; live `consider` said he was no match, so the
+campaign correctly skipped combat and awarded no XP. Run **14530** then killed
+Granny Jenkins for **145 XP**. The live combat tracker acknowledged all three
+actions with zero timeouts. Ararisa is level **10** at **45,218 XP**, alive and
+fully recovered at healer room **3054**. This is evidence of level-ten progress,
+not HERO completion. The full suite remains deferred until a larger coherent
+implementation batch.
+
+Run **14531** bought and quaffed a light-blue flight potion for the observed
+price of **131 copper**, then returned to healer room **3054** at full health.
+This was preparation only and earned no XP; the price is reboot-sensitive and
+must not be treated as fixed.
+
+Run **14532** recorded no sale proceeds, so the empty liquidation route should
+not be repeated without new saleable loot. Run **14533** stopped the exact
+Daycare ring errand at its source-registered toy-soldier and stuffed-bear
+hazards before confirming the old doll. No ring or XP was gained; Ararisa
+returned safely to healer room **3054**. Do not retry this route until fresh
+boot, route, or hazard evidence changes.
+
+After the safe skip of the no-match small boy and the unmeasured-HP bard, run
+**14535** repeated Granny Jenkins for **130 XP**. The combat tracker acknowledged
+both actions with zero timeouts, and Ararisa returned at full health to healer
+room **3054**. Her current level-ten total is **45,348 XP**. This confirms a
+useful current-band repeat, but does not justify an unlimited single-target
+loop; continue comparing live XP per completed segment.
+
+Run **14536** found Katrina's route unable to reach its registered endpoint;
+the campaign quarantined that route and safely returned without combat. Run
+**14537** then killed Granny Jenkins for **205 XP**. Four combat actions were
+acknowledged with no timeouts, and Ararisa returned at full health to healer
+room **3054**. She is now level **10** at **45,553 XP**, a net gain of **636 XP**
+from the start of this work block. Level 11 and HERO 100 remain unproved.
+
+### Roster Rotation And Frontier Closures: September 26, 2026
+
+One configured rotation pass checked all nine character campaigns. Aeloria,
+Dorrik, Kestrel, and Serevian opened no live session because their level-band
+policy frontier or sanctuary reserve was unavailable; Astrevo had no safe
+funding target. Praelarran was held at the current-reboot sanctuary cooldown.
+Corararfen's Circus route stopped at the Midgaard drunk preflight without
+combat. Ararisa's outfit check made no XP change.
+
+After two new Jenkins kills, run **14545** found fresh liquidation inventory:
+a pair of leather leg guards sold for **24 copper**. XP did not change, and
+Ararisa returned safely to healer room **3054**. This is distinct from the
+earlier empty sale attempt **14532**; do not repeat liquidation again without
+new loot evidence.
+
+Fenanallor's saved state was already **20,733 XP** in earlier run **14493**;
+the rotation did not add **1,274 XP**. Run **14544** lost its field connection
+before combat and safely returned to healer room **3054** with the same XP.
+Run **14538** likewise stopped before Moria entry at a source-registered
+warrior; **14539** found Granny Jenkins absent; **14540** skipped the easy-
+consider hobgoblin cook because live HP was unavailable; and **14541** refused
+the Ambush route because invisibility had no fresh duration. None of these
+opened combat or earned XP. Keep the full suite deferred while addressing the
+highest-value executable frontier; no reboot-wide pause is justified.
+
+The single route-only revalidation for Katrina then repeated the same endpoint
+failure. Run **14546** reached New Magincia's moongate and summoned the pony,
+but recalled before the registered final route steps; it never reached Katrina
+or opened combat. Ararisa returned alive at full health to healer room **3054**
+with unchanged **45,553 XP**. Close this route for the current boot; do not
+dispatch another retry without changed route evidence.
+
+Runs **14547-14548** show why segment time must match route length. The
+150-second cap returned Ararisa just before acting at King Boo's room. The
+single longer attempt reached room **160**, confirmed King Boo absent, and
+returned safely to healer room **3054** at unchanged **45,553 XP**. Close this
+target for the current boot and let the campaign select another eligible
+current-level policy; do not repeat this empty endpoint.
+
+Runs **14549-14550** found Boos the Gremlin in room **153** and Booz the
+Gremlin in room **156**, but live `consider` classified both below band. The
+bot correctly skipped both fights, recorded no XP, and returned safely to the
+healer with full health and movement. Close these exact targets for Ararisa's
+current level and boot; other eligible targets remain available.
+
+Runs **14551-14552** exposed a campaign-history bug: stale provision-funding
+kill metadata for Katrina could erase a newer same-boot route-failure result
+with the same policy ID, making the route appear fresh and causing it to be
+selected twice. Funding cleanup now preserves current-boot negative evidence
+and its cooldown while still removing stale positive funding proof. Four
+focused funding-repair tests pass. A local policy preview now retains the
+Katrina quarantine and selects the Moria hobgoblin route; no full suite was
+run.
+
+Run **14553** confirmed the selected Moria target, the small beat-up hobgoblin,
+was present but below band by live `consider`. No combat or XP was recorded;
+Ararisa returned to healer room **3054** at full HP with **92/240 movement**.
+Keep this exact target closed at the current level and recover movement before
+the next field segment.
+
+Run **14554** reached the distinct Moria orc in room **4028**, but live
+`consider` again placed it below band. The planned continuation then lacked a
+GMCP exit to room **4019**. No combat or XP was recorded; Ararisa returned to
+healer room **3054** at full health and movement. The all-area readiness report
+shows the large orc in room **4022** at 80% useful-XP probability, but it
+requires sanctuary; keep that gate closed until a reserve is available.
+
+### Progress Focus And Bounded Passive Probe: September 27, 2026
+
+The daily regression limit is a ceiling, not a task: spend nearly all work on
+implementation and executable character progress. Today's one focused pytest
+batch had already run before this work, so no additional regression tests were
+started.
+
+The bounded roster rotation advanced Corararfen from **29,293** to **29,373
+XP** (+80) after a Circus kill. Fenanallor's interrupted route was recovered
+back to the Midgaard healer and safely saved at **27,070 XP**. The other
+rotation entries were blocked, maintenance-only, or ended without XP; Kestrel
+and Dorrik remain at levels **24** and **25** without an executable frontier.
+
+Ararisa's level-11 Gnome cook attempt (run **14926**) reached the exact passive
+target; live `consider` called it an easy kill, but the runner withdrew before
+combat because it did not have the required large current-health lead. Source
+HP was **46-153** against **145** player HP, and audited spell output was **348**.
+The existing protection-recovery admission had already passed source, route,
+damage, and same-boot gates, so the final opener check was stricter than its
+bounded fallback. A single opener is now allowed only for that exact fixed,
+passive, unarmed, program-free, special-free source endpoint when its full HP
+ceiling fits audited output. GMCP damage evidence and the existing finite
+withdrawal rules still decide whether the fight continues. Focused tests were
+added but not run under today's test cap; HERO 100 remains unproved.
+
+Run **14927** did not exercise that new opener; policy rotation selected a
+different Ambush target. The familiar opened first, but withdrawal was not
+positively confirmed. The bot then tried combat `recall`, which failed, and
+followed with `flee`; Ararisa returned to healer room **3054** and saved at
+**48,443 XP**, down **171 XP** from the prior checkpoint. DD4 source confirms
+that a failed combat recall costs **50 XP** and a successful flee costs the
+level-based amount. Do not repeat the unchanged Ambush target. The passive
+probe still needs an eligible live confirmation, and the withdrawal sequence
+is a separate improvement opportunity.

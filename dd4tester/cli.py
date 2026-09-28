@@ -20,13 +20,20 @@ from .campaign import (
     CampaignResult,
     _FAME_RECOVERY_MAX_LEVEL_DELTA,
     _FAME_RECOVERY_MIN_LEVEL_DELTA,
+    _PROTECTION_RECOVERY_KEY,
     _source_ranked_candidate_requires_sanctuary_for_state,
     _source_ranked_caster_output_for_state,
+    _source_ranked_candidate_excluded_by_below_band_evidence,
     _source_ranked_fame_level_window,
     _source_ranked_hp_probe_admission_available,
+    _source_ranked_invisibility_route_candidate_allowed,
+    _source_ranked_plain_aggressive_target_invisibility_allowed,
     _source_ranked_protected_aggressive_hp_fuzz_probe_allowed,
     _source_ranked_protected_hp_fuzz_probe_allowed,
     _source_ranked_protected_level_ceiling_hp_probe_allowed,
+    _source_ranked_policy_id,
+    _source_ranked_useful_fuzz_probability,
+    _source_ranked_familiar_probe_allowed,
     _state_has_sanctuary_reserve,
     run_campaign_file,
 )
@@ -93,9 +100,11 @@ from .report import (
     render_json,
     render_markdown,
 )
+from .rotation import run_campaign_rotation
 from .runner import run_scenario_file
 from .starter import (
     _equipment_descriptions,
+    _inventory_descriptions,
     run_ambush_research_profile,
     run_arena_research_profile,
     run_guildmaster_research_profile,
@@ -148,15 +157,24 @@ def _inspection_fame(state: Mapping[str, Any]) -> int | None:
 
 
 def _latest_inspection_state(storage: RunStorage, character: str) -> dict[str, Any]:
-    """Load a named character without scanning shared snapshot JSON history."""
+    """Load a named character without scanning large run or checkpoint history."""
     try:
         database_size = storage.path.stat().st_size
     except OSError:
         database_size = 0
     if database_size > _MAX_CAMPAIGN_CHARACTER_LOOKUP_BYTES:
-        # ``get_latest_character_state`` uses the expression index on
-        # state_snapshots.  The campaign merge below is richer, but its
-        # checkpoint-name join is not bounded on older shared databases.
+        # Inspect one indexed checkpoint per campaign instead of joining every
+        # checkpoint's JSON name across the append-only history.
+        checkpoint = storage.get_latest_campaign_checkpoint_for_character_bounded(
+            character
+        )
+        if checkpoint is not None:
+            try:
+                checkpoint_state = json.loads(checkpoint["state_json"])
+            except (TypeError, json.JSONDecodeError):
+                checkpoint_state = {}
+            if isinstance(checkpoint_state, dict):
+                return checkpoint_state
         return dict(storage.get_latest_character_state(character) or {})
     campaign = storage.get_latest_campaign_for_character(character)
     if campaign is None:
@@ -316,7 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     guildmaster_parser = subcommands.add_parser(
         "guildmaster-research",
-        help="read the teacher clue and inspect a Midgaard class trainer",
+        help="read the teacher clue and inspect the trainer for the current level band",
     )
     guildmaster_parser.add_argument(
         "profile",
@@ -779,22 +797,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hero_parser.add_argument(
         "--race",
-        help="DD4 race name; inferred from an existing named hero workspace",
+        help=(
+            "DD4 race name; inferred from a named hero workspace or saved "
+            "campaign"
+        ),
     )
     hero_parser.add_argument(
         "--sex",
         default=None,
         help=(
             "cosmetic DD4 sex: male, female, or neuter; inferred for an "
-            "existing named hero and otherwise defaults to neuter"
+            "existing named hero or campaign and otherwise defaults to neuter"
         ),
     )
     hero_parser.add_argument(
         "--class",
         dest="character_class",
         help=(
-            "DD4 base class name; inferred from an existing named hero "
-            "workspace"
+            "DD4 base class name; inferred from a named hero workspace or "
+            "saved campaign"
         ),
     )
     hero_parser.add_argument(
@@ -933,6 +954,40 @@ def build_parser() -> argparse.ArgumentParser:
         "--prepare-only",
         action="store_true",
         help="validate and write durable configuration without connecting",
+    )
+
+    rotation_parser = subcommands.add_parser(
+        "hero-rotation",
+        help="run one bounded campaign segment for each configured character",
+    )
+    rotation_parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("matrices/active-hero-rotation.yaml"),
+        help=(
+            "rotation YAML; relative campaign paths resolve from that file, "
+            "default: matrices/active-hero-rotation.yaml"
+        ),
+    )
+    rotation_parser.add_argument(
+        "--rounds",
+        type=int,
+        default=1,
+        help="maximum passes through the roster, default: 1 (max: 1000)",
+    )
+    rotation_parser.add_argument(
+        "--max-segment-runtime",
+        type=float,
+        default=DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
+        help=(
+            "live time cap per character segment in seconds; default: "
+            f"{DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS:g}"
+        ),
+    )
+    rotation_parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="print bounded progress while the roster is being processed",
     )
 
     subcommands.add_parser(
@@ -1672,6 +1727,8 @@ def main(argv: list[str] | None = None) -> int:
             character_name = args.username
         try:
             stored_request = None
+            if args.new and (not args.race or not args.character_class):
+                raise ValueError("--new requires both --race and --class")
             if not args.race or not args.character_class:
                 if not character_name:
                     raise ValueError(
@@ -1711,6 +1768,16 @@ def main(argv: list[str] | None = None) -> int:
                     args.mudlet_directory
                     if args.mudlet_directory is not None
                     else (stored_request.mudlet_directory if stored_request else None)
+                ),
+                legacy_profile_path=(
+                    stored_request.legacy_profile_path
+                    if stored_request is not None
+                    else None
+                ),
+                legacy_campaign_path=(
+                    stored_request.legacy_campaign_path
+                    if stored_request is not None
+                    else None
                 ),
             )
             if args.prepare_only:
@@ -1770,7 +1837,14 @@ def main(argv: list[str] | None = None) -> int:
             f"({preparation.character.race} "
             f"{preparation.character.character_class})"
         )
-        print(f"Manifest: {preparation.manifest_path}")
+        print(
+            "Manifest: "
+            + (
+                str(preparation.manifest_path)
+                if preparation.manifest_path is not None
+                else "legacy campaign record"
+            )
+        )
         print(f"Profile: {preparation.profile_path}")
         print(f"Campaign: {preparation.campaign_path}")
         print("Prepared: resumed" if preparation.resumed else "Prepared: new")
@@ -1795,6 +1869,50 @@ def main(argv: list[str] | None = None) -> int:
         print("Subclasses:")
         for option in catalog.subclasses:
             print(f"  {option.base_class}: {option.name}")
+        return 0
+
+    if args.command == "hero-rotation":
+        try:
+            rotation = asyncio.run(
+                run_campaign_rotation(
+                    args.config,
+                    rounds=args.rounds,
+                    max_segment_runtime=args.max_segment_runtime,
+                    progress_callback=(
+                        _print_campaign_progress if args.progress else None
+                    ),
+                )
+            )
+        except KeyboardInterrupt:
+            print(
+                "Character rotation interrupted; campaign checkpoints are "
+                "preserved for the next run.",
+                file=sys.stderr,
+            )
+            return 130
+        except Exception as exc:
+            print(f"Character rotation failed: {exc}", file=sys.stderr)
+            return 1
+
+        print(f"Rotation: {rotation.spec.name}")
+        print(f"Target level: {rotation.spec.target_level}")
+        for attempt in rotation.attempts:
+            if attempt.result is None:
+                print(
+                    f"{attempt.entry_id} (round {attempt.cycle}): deferred; "
+                    f"{attempt.error}"
+                )
+                continue
+            state = attempt.result.state
+            print(
+                f"{attempt.entry_id} (round {attempt.cycle}): "
+                f"{attempt.result.status}; level={state.get('level', '-')} "
+                f"xp={state.get('xp', '-')}"
+            )
+        for entry_id, reason in rotation.deferred_entry_reasons.items():
+            print(f"Deferred {entry_id}: {reason}")
+        if rotation.completed_entry_ids:
+            print("Completed: " + ", ".join(rotation.completed_entry_ids))
         return 0
 
     if args.command == "matrix-coverage":
@@ -2643,11 +2761,13 @@ def show_gear_sources(
                     character_max_hp = int(raw_max_hp)
                 current_items = catalog.match_many_usable(
                     [
-                        *state_descriptions(
-                            latest_state.get("campaign_worn_equipment")
+                        *(
+                            _equipment_descriptions(latest_state.get("equipment"))
+                            or state_descriptions(
+                                latest_state.get("campaign_worn_equipment")
+                            )
                         ),
-                        *_equipment_descriptions(latest_state.get("equipment")),
-                        *state_descriptions(latest_state.get("inventory")),
+                        *_inventory_descriptions(latest_state.get("inventory")),
                     ],
                     character_class=character_class,
                     subclass=subclass,
@@ -2906,6 +3026,36 @@ def _readiness_candidate_record(
     requires_sanctuary: bool | None = None
     sanctuary_available: bool | None = None
     admission_fit: bool | None = None
+    campaign_rejections: list[str] = []
+    useful_xp_probability: float | None = None
+    try:
+        source_policy_id = _source_ranked_policy_id(
+            candidate,
+            character_level=level,
+        )
+    except (AttributeError, TypeError, ValueError):
+        source_policy_id = None
+    protection = state.get(_PROTECTION_RECOVERY_KEY)
+    if (
+        source_policy_id is not None
+        and isinstance(protection, Mapping)
+        and protection.get("boot_id") == state.get("world_boot_id")
+        and protection.get("level") in {None, level}
+        and protection.get("policy_id") == source_policy_id
+    ):
+        try:
+            loss = int(protection.get("xp_delta"))
+        except (TypeError, ValueError):
+            loss = 0
+        campaign_rejections.append(
+            (
+                f"this exact source reset already caused a {abs(loss)} XP loss "
+                "this reboot"
+                if loss < 0
+                else "this exact source reset has an active protection-recovery "
+                "marker this reboot"
+            )
+        )
     if (
         isinstance(state.get("max_hp"), (int, float))
         and int(state.get("max_hp") or 0) > 0
@@ -2935,6 +3085,39 @@ def _readiness_candidate_record(
                 and source_hp_admission
                 and (not requires_sanctuary or sanctuary_available)
             )
+            useful_xp_probability = _source_ranked_useful_fuzz_probability(
+                candidate,
+                character_level=level,
+            )
+            if _source_ranked_candidate_excluded_by_below_band_evidence(
+                candidate,
+                state,
+                character_level=level,
+            ):
+                campaign_rejections.append(
+                    "live consider evidence says this target is below the useful XP band"
+                )
+            if (
+                _source_ranked_plain_aggressive_target_invisibility_allowed(
+                    candidate,
+                    source_world,
+                )
+                and not _source_ranked_invisibility_route_candidate_allowed(
+                    candidate,
+                    state,
+                    character_level=level,
+                    source_world=source_world,
+                )
+                and not _source_ranked_familiar_probe_allowed(
+                    candidate,
+                    state,
+                    character_level=level,
+                    source_world=source_world,
+                )
+            ):
+                campaign_rejections.append(
+                    "aggressive target requires a practiced invisibility route or familiar"
+                )
         except (AttributeError, TypeError, ValueError):
             # Synthetic fixture candidates intentionally exercise the report
             # without a complete source world. Keep those fields unknown
@@ -2946,6 +3129,7 @@ def _readiness_candidate_record(
         "mobile_vnum": candidate.mobile_vnum,
         "room_vnum": candidate.room_vnum,
         "room": candidate.room_name,
+        "source_policy_id": source_policy_id,
         "status": candidate.status,
         "score": candidate.score,
         "source_levels": [source_minimum, source_maximum],
@@ -2961,6 +3145,9 @@ def _readiness_candidate_record(
         "requires_sanctuary": requires_sanctuary,
         "sanctuary_available": sanctuary_available,
         "admission_fit": admission_fit,
+        "source_gate_fit": admission_fit,
+        "useful_xp_probability": useful_xp_probability,
+        "campaign_rejections": campaign_rejections,
         "protected_hp_probe": protected_hp_probe,
         "estimated_peak_round_damage": candidate.estimated_peak_round_damage,
         "source_damage_modifier": getattr(candidate, "source_damage_modifier", 0),
@@ -3103,7 +3290,11 @@ def show_combat_readiness(
         print("--limit must be at least 1", file=sys.stderr)
         return 2
     try:
-        world = load_world_source(source, include_all_areas=include_all_areas)
+        world = load_world_source(
+            source,
+            include_all_areas=include_all_areas,
+            include_all_objects=True,
+        )
     except (OSError, ValueError) as exc:
         print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
         return 1
@@ -3141,9 +3332,11 @@ def show_combat_readiness(
     catalog = GearCatalog(getattr(world, "objects", {}))
     current_items = catalog.match_many_usable(
         [
-            *_inspection_state_descriptions(state.get("campaign_worn_equipment")),
-            *_equipment_descriptions(state.get("equipment")),
-            *_inspection_state_descriptions(state.get("inventory")),
+            *(
+                _equipment_descriptions(state.get("equipment"))
+                or _inspection_state_descriptions(state.get("campaign_worn_equipment"))
+            ),
+            *_inventory_descriptions(state.get("inventory")),
         ],
         character_class=character_class,
         subclass=subclass or state.get("subclass"),
@@ -3333,6 +3526,9 @@ def show_combat_readiness(
             "admission_fit": sum(
                 bool(record["admission_fit"]) for record in candidate_records
             ),
+            "source_gate_fit": sum(
+                bool(record["source_gate_fit"]) for record in candidate_records
+            ),
         },
         "fame_summary": fame_summary,
         "targets": candidate_records[:limit],
@@ -3421,7 +3617,11 @@ def show_combat_readiness(
         f"{summary['autonomous_safe']} autonomous-safe, "
         f"{summary['output_fit']} output-fit, "
         f"{summary['protected_hp_probes']} protected HP probes, "
-        f"{summary['admission_fit']} full-admission-fit"
+        f"{summary['source_gate_fit']} source-gate-fit"
+    )
+    print(
+        "This source shortlist does not include live route checks or all "
+        "same-boot target history."
     )
     fame = report["fame_summary"]
     print(
@@ -3440,12 +3640,12 @@ def show_combat_readiness(
         "Fame candidates: "
         f"{fame['autonomous_safe']} autonomous-safe, "
         f"{fame['output_fit']} output-fit, "
-        f"{fame['admission_fit']} full-admission-fit"
+        f"{fame['admission_fit']} source-gate-fit"
     )
     print(
         "target\troom\tlevels\tbase_hp\tstatus\tsafe\toutput_fit\t"
         "hp_admission\tsanctuary_required\tsanctuary_available\t"
-        "admission_fit\tprotected_probe\trejections"
+        "source_gate_fit\tuseful_xp\tprotected_probe\trejections"
     )
     for record in report["targets"]:
         print(
@@ -3461,9 +3661,16 @@ def show_combat_readiness(
                     _format_optional_bool(record["source_hp_admission"]),
                     _format_optional_bool(record["requires_sanctuary"]),
                     _format_optional_bool(record["sanctuary_available"]),
-                    _format_optional_bool(record["admission_fit"]),
+                    _format_optional_bool(record["source_gate_fit"]),
+                    (
+                        "unknown"
+                        if record["useful_xp_probability"] is None
+                        else f"{record['useful_xp_probability']:.0%}"
+                    ),
                     "yes" if record["protected_hp_probe"] else "no",
-                    "; ".join(record["autonomy_rejections"]) or "-",
+                    "; ".join(
+                        (*record["autonomy_rejections"], *record["campaign_rejections"])
+                    ) or "-",
                 )
             )
         )
@@ -3716,6 +3923,29 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                 ]
                 if rendered_blockers:
                     print("Frontier blockers: " + "; ".join(rendered_blockers))
+            no_sanctuary_candidates = diagnosis.get("no_sanctuary_candidates")
+            if isinstance(no_sanctuary_candidates, list) and no_sanctuary_candidates:
+                print("No-sanctuary frontier options (diagnostic only):")
+                for candidate in no_sanctuary_candidates:
+                    if not isinstance(candidate, Mapping):
+                        continue
+                    levels = candidate.get("level_range", ())
+                    level_text = (
+                        f"{levels[0]}-{levels[1]}"
+                        if isinstance(levels, (list, tuple)) and len(levels) == 2
+                        else "unknown level"
+                    )
+                    print(
+                        "  "
+                        f"{candidate.get('target', 'unknown target')} "
+                        f"[{candidate.get('mobile_vnum', '-')}] at "
+                        f"{candidate.get('room_name', 'unknown room')} "
+                        f"({candidate.get('area_file', '-')}:"
+                        f"{candidate.get('room_vnum', '-')}); "
+                        f"levels {level_text}; "
+                        f"pool={candidate.get('selection_pool', 'unknown')}; "
+                        f"policy={candidate.get('policy_id', '-')}"
+                    )
     print(
         f"recent segments (up to {limit}; newest segment last)"
     )

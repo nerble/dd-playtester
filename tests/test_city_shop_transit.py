@@ -9,8 +9,9 @@ from dd4tester.character import CharacterSpec
 from dd4tester.city_travel import (
     CITY_TRANSIT_KEY, CityShopTransit, bounded_city_shop_transit_available,
 )
+from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import load_world_source
-from dd4tester.starter import StarterPolicy
+from dd4tester.starter import FieldHuntStop, StarterPolicy
 from dd4tester.state import CharacterState
 
 
@@ -60,6 +61,31 @@ def test_shop_preflight_admits_source_bounded_transit_without_a_cast(world):
     assert not bot.magic_shop_invisibility_attempted
 
 
+def test_loot_sale_still_locates_drunk_when_bounded_transit_is_available(world):
+    bot = policy(world)
+
+    decision = bot._midgaard_city_shop_preflight_decision(
+        state(), operation="loot liquidation",
+    )
+
+    assert decision is not None and decision.command == "where drunk"
+    assert bot.city_shop_transit.status == "idle"
+
+
+def test_field_departure_locates_drunk_before_using_bounded_transit(world):
+    bot = policy(world)
+    bot.field_city_preflight_active = True
+
+    decision = bot._midgaard_city_shop_preflight_decision(
+        state(),
+        operation="field departure and fountain refill",
+        route_rooms=("temple square",),
+    )
+
+    assert decision is not None and decision.command == "where drunk"
+    assert bot.city_shop_transit.status == "idle"
+
+
 @pytest.mark.parametrize("changes", [{"hp": 70}, {"position": 4}, {"level": 7}])
 def test_departure_retains_live_readiness_gates(world, changes):
     bot = policy(world)
@@ -91,6 +117,54 @@ def test_city_admission_remains_active_inside_the_route():
     transit.leave_route("3014")
     assert transit.status == "admitted"
     assert transit.started_at == 100.0
+
+
+def test_active_city_transit_defers_proactive_field_hunts():
+    transit = CityShopTransit(status="admitted")
+    assert not transit.allows_proactive_hunt("3014")
+    assert transit.allows_proactive_hunt("9850")
+    transit.leave_route("9850")
+    assert transit.allows_proactive_hunt("3014")
+
+
+def test_live_field_target_cannot_start_familiar_or_player_combat_in_city_transit():
+    spec = CharacterSpec.from_mapping({
+        "name": "Testmage", "race": "human", "gender": "female", "class": "mage",
+    })
+    target = "a fanatic monk"
+    bot = StarterPolicy(
+        spec,
+        "fixture-password",
+        fastwalk_route=Fastwalk("field route", 1, 100, "n"),
+        fastwalk_hunt_stops=(FieldHuntStop(
+            (), target, exact_target=True, source_mobile_vnum=9808,
+            require_familiar=True,
+        ),),
+    )
+    bot.city_shop_transit.admit()
+    bot.fastwalk_attack_target = target
+    bot.fastwalk_targetmode_configured = True
+    bot.consider_target = target
+    bot.consider_viable = True
+    bot.room_targets["3014"] = [target]
+    bot.room_target_counts["3014"] = {target: 1}
+    bot.room_target_selectors["3014"] = {target: ["#26963"]}
+    city_room = replace(
+        state(), room_vnum="3014", room_name="Market Square", sector="city",
+    )
+
+    familiar = bot._familiar_precombat_decision(
+        city_room, target=target, allow_start=True,
+    )
+    assert familiar is not None and familiar.command == "look"
+    assert bot.familiar_precombat_step is None
+    assert bot.fastwalk_hunt_stop_skipped
+
+    bot.fastwalk_hunt_stop_skipped = False
+    player = bot._consider_fastwalk_target(city_room)
+    assert player is not None and player.command == "look"
+    assert not bot.fastwalk_attack_started
+    assert not bot.combat_active
 
 
 @pytest.mark.parametrize("boundary", [

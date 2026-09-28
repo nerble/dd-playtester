@@ -11,7 +11,7 @@ from typing import Any, Collection, Mapping
 _LOCATOR_NONCOMBAT_VERBS = frozenset({
     "north", "south", "east", "west", "up", "down", "n", "s", "e", "w", "u", "d",
     "look", "where", "eq", "equipment", "inventory", "time", "score", "practice",
-    "config", "sneak", "fill", "drink", "eat", "get", "put", "recall", "sleep",
+    "config", "sneak", "fill", "drink", "eat", "get", "put", "wear", "remove", "recall", "sleep",
     "rest", "stand", "wake", "save", "quit", "vis", "affect", "affects",
 })
 _LOCATOR_NONCOMBAT_EVENTS = frozenset({
@@ -20,6 +20,7 @@ _LOCATOR_NONCOMBAT_EVENTS = frozenset({
     "stats_changed", "inventory_changed", "equipment_changed", "quest_status_changed",
     "recall_points_changed",
 })
+_LOCATOR_NONCOMBAT_COMMANDS = frozenset({"cast invis"})
 
 
 def single_area_locator_miss(
@@ -32,7 +33,18 @@ def single_area_locator_miss(
     reset_room: int,
 ) -> dict[str, Any] | None:
     """Prove a completed, noncombat, one-area miss from bounded run evidence."""
-    if not events or len(events) > 512 or segment["status"] != "success":
+    try:
+        command_count = segment["command_count"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    if (
+        not events
+        or isinstance(command_count, bool)
+        or not isinstance(command_count, int)
+        or not 1 <= command_count <= 128
+        or len(events) > min(2048, max(512, command_count * 16))
+        or segment["status"] != "success"
+    ):
         return None
     try:
         start = json.loads(segment["start_state_json"] or "{}")
@@ -75,16 +87,30 @@ def single_area_locator_miss(
                 command = str(payload.get("command", ""))
                 decisions.append(command)
                 if payload.get("category") != "authentication":
-                    verb = command.strip().casefold().split(" ", 1)[0]
-                    if verb not in _LOCATOR_NONCOMBAT_VERBS:
+                    normalized_command = command.strip().casefold()
+                    verb = normalized_command.split(" ", 1)[0]
+                    if (
+                        verb not in _LOCATOR_NONCOMBAT_VERBS
+                        and normalized_command not in _LOCATOR_NONCOMBAT_COMMANDS
+                    ):
                         return None
-                    if command.strip().casefold() == f"where {keyword.casefold()}":
+                    if normalized_command == f"where {keyword.casefold()}":
                         query_rooms.append(str(room or ""))
             elif row["kind"] == "game_event":
-                if payload.get("type") not in _LOCATOR_NONCOMBAT_EVENTS:
-                    return None
                 data = payload.get("data") or {}
                 if not isinstance(data, dict):
+                    return None
+                deferred_training = (
+                    payload.get("type") == "training_deferred"
+                    and data.get("preflight") is True
+                    and data.get("outcome") == "deferred"
+                    and "trainer route hazard"
+                    in str(data.get("reason") or "").casefold()
+                )
+                if (
+                    payload.get("type") not in _LOCATOR_NONCOMBAT_EVENTS
+                    and not deferred_training
+                ):
                     return None
                 if data.get("package") == "Room.Info" and data.get("vnum") is not None:
                     room = str(data["vnum"])

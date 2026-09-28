@@ -560,6 +560,23 @@ def test_protected_negative_recovery_keeps_flight_funding_deferred() -> None:
     assert policy.execution == "provision-funding"
 
 
+def test_fed_flight_funding_yields_to_sanctuary_recovery() -> None:
+    policy = policy_for(
+        21,
+        "warrior",
+        world_boot_id="boot-1",
+        has_food=True,
+        has_flight=False,
+        needs_provision_funding=True,
+        flight_funding_retry_pending=True,
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+    )
+
+    assert policy.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert policy.execution == "moria-sanctuary-hunt"
+
+
 def test_excluded_source_funding_remains_available_for_required_loot() -> None:
     policy = policy_for(
         18,
@@ -2772,6 +2789,27 @@ def test_level_ten_mage_rotates_from_empty_moria_to_guard_research() -> None:
 
     assert policy.policy_id == "fleshmonger-mage-guard-kill-research-10-11"
     assert policy.status == "research"
+    assert policy.execution == "fleshmonger-guard-hunt"
+    assert policy.segment_kill_limit == 1
+    assert policy.executable
+
+
+def test_level_eleven_mage_tries_guard_after_empty_moria_route() -> None:
+    policy = policy_for(
+        11,
+        "mage",
+        subclass="warlock",
+        has_large_sack=True,
+        policy_xp_deltas={
+            "fleshmonger-guard-probe-10-12": 0,
+            "moria-sanctuary-11-12": 0,
+        },
+        last_policy_id="moria-sanctuary-11-12",
+    )
+
+    assert policy.policy_id == "fleshmonger-mage-guard-kill-research-10-11"
+    assert policy.minimum_level == 11
+    assert policy.maximum_level == 11
     assert policy.execution == "fleshmonger-guard-hunt"
     assert policy.segment_kill_limit == 1
     assert policy.executable
@@ -10900,3 +10938,21 @@ def test_level_six_exhausted_tutorial_opens_source_ranked_fallback() -> None:
     assert policy.minimum_level == 6
     assert policy.maximum_level == 6
     assert "early-progression evidence band" in " ".join(policy.evidence)
+
+
+def test_level_five_exhausted_starter_opens_source_ranked_fallback() -> None:
+    policy = policy_for(
+        5,
+        "ranger",
+        has_food=True,
+        has_weapon=True,
+        excluded_policy_ids=frozenset({"mud-school-2-6"}),
+        world_boot_id="boot-1",
+        source_ranked_fallback=True,
+    )
+
+    assert policy.policy_id == "source-ranked-hunt-1-5"
+    assert policy.execution == "source-ranked-hunt"
+    assert policy.minimum_level == 5
+    assert policy.maximum_level == 5
+    assert "level-1-to-5 evidence band" in " ".join(policy.evidence)

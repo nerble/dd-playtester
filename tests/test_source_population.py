@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from dd4tester.campaign import (
     _source_ranked_segment_kill_limit,
 )
 from dd4tester.hunt_candidates import (
+    ACT_WIMPY,
     ExitSource, HuntCandidate, MobileProgram, MobileSource, MobReset, RoomSource, WorldSource,
     load_world_source, rank_hunt_candidates,
 )
@@ -262,6 +264,22 @@ def _population_route():
     return candidate, world
 
 
+def test_xp_route_preflights_greeter_whose_level_fuzz_reaches_below_band():
+    candidate, world = _population_route()
+    candidate = replace(candidate, status="caution", autonomy_rejections=())
+
+    options = _source_ranked_route_program_fastwalk_options(
+        world,
+        candidate,
+        {"max_hp": 113},
+        character_level=8,
+    )
+
+    assert options["route_preflight_command"] == "where drunk"
+    assert options["route_preflight_target"] == "the drunk"
+    assert options["route_preflight_hard_hazard"] is True
+
+
 @pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])
 def test_capacity_endpoint_does_not_turn_bounded_greeter_into_route_veto(character_class):
     candidate, world = _population_route()
@@ -306,11 +324,26 @@ def test_flight_funding_accepts_only_the_audited_moria_route_preflight():
         "campaign_magic_shop_flight_price": 131,
     }
 
-    assert _source_ranked_route_program_candidate_allowed(
+    assert not _source_ranked_route_program_candidate_allowed(
         candidate,
         character_level=8,
         source_world=world,
     )
+    assert _source_ranked_route_program_candidate_allowed(
+        candidate,
+        character_level=8,
+        source_world=world,
+        allow_bounded_moria_transit=True,
+        character_max_hp=113,
+    )
+    route_options = _source_ranked_route_program_fastwalk_options(
+        world,
+        candidate,
+        {"max_hp": 113},
+        character_level=8,
+        allow_bounded_moria_transit=True,
+    )
+    assert route_options["route_preflight_command"] == "where drunk"
     assert _provision_funding_bounded_exception_allowed(
         state,
         candidate,
@@ -333,6 +366,84 @@ def test_flight_funding_accepts_only_the_audited_moria_route_preflight():
         boot_id="boot-1",
         prefer_completed_funding_candidate=True,
         source_world=world,
+    )
+
+
+def test_moria_funding_transit_exception_requires_exact_wimpy_route_evidence():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=8,
+            character_max_hp=113,
+            boot_kill_counts_by_mobile_vnum={4005: 5},
+            include_below_band=True,
+            include_all_areas=True,
+        )
+        if candidate.mobile_vnum == 4005 and candidate.room_vnum == 4022
+    )
+    args = {
+        "character_level": 8,
+        "source_world": world,
+        "allow_bounded_moria_transit": True,
+        "character_max_hp": 113,
+    }
+    assert _source_ranked_route_program_candidate_allowed(candidate, **args)
+    assert not _source_ranked_route_program_candidate_allowed(
+        candidate, **{**args, "character_max_hp": None},
+    )
+    assert not _source_ranked_route_program_candidate_allowed(
+        replace(
+            candidate,
+            route_aggressive_mobile_vnums=(3062, 3066, 9999),
+        ),
+        **args,
+    )
+    assert not _source_ranked_route_program_candidate_allowed(
+        replace(
+            candidate,
+            autonomy_rejections=candidate.autonomy_rejections
+            + ("an unreviewed route hazard",),
+        ),
+        **args,
+    )
+    unsafe_world = deepcopy(world)
+    fido = unsafe_world.mobiles[3062]
+    unsafe_world.mobiles[3062] = replace(
+        fido,
+        act_flags=fido.act_flags & ~ACT_WIMPY,
+    )
+    assert not _source_ranked_route_program_candidate_allowed(
+        candidate,
+        **{**args, "source_world": unsafe_world},
+    )
+    unsafe_world = deepcopy(world)
+    fido = unsafe_world.mobiles[3062]
+    unsafe_world.mobiles[3062] = replace(
+        fido,
+        programs=(MobileProgram("greet_prog", "100", ("mpkill $n",)),),
+    )
+    assert not _source_ranked_route_program_candidate_allowed(
+        candidate,
+        **{**args, "source_world": unsafe_world},
+    )
+    unsafe_world = deepcopy(world)
+    reset_index = next(
+        index
+        for index, reset in enumerate(unsafe_world.mob_resets)
+        if reset.mobile_vnum == 3062
+    )
+    unsafe_world.mob_resets[reset_index] = replace(
+        unsafe_world.mob_resets[reset_index],
+        equipment=((0, 3365),),
+    )
+    assert not _source_ranked_route_program_candidate_allowed(
+        candidate,
+        **{**args, "source_world": unsafe_world},
     )
 
 

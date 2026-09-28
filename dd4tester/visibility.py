@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Mapping
 
 from .archetypes import archetype_registry
@@ -12,43 +11,6 @@ from .specials import SAFE_NONCOMBAT_SPECIALS
 
 _AFF_DETECT_INVIS = 1 << 3
 _APPLY_DETECT_INVIS = 29
-
-
-def invisibility_blocks_source_greet(
-    world: WorldSource | None, mobile_vnum: int | None, *, target: str,
-) -> bool:
-    """Audit mob_prog.c:greet visibility, never ALL_GREET or general combat."""
-    if world is None or mobile_vnum is None:
-        return False
-    mobile = world.mobiles.get(mobile_vnum)
-    if (
-        mobile is None or mobile.aggressive or not mobile.attack_programs
-        or mobile.affected_flags & _AFF_DETECT_INVIS
-        or _mobile_level_range(mobile.level)[1] > 100  # handler.c: can_see
-        or world.mobile_specials.get(mobile_vnum)
-        or " ".join(mobile.short_description.casefold().split())
-        != " ".join(target.casefold().split())
-        or any(program.trigger != "greet_prog" for program in mobile.attack_programs)
-    ):
-        return False
-    resets = [reset for reset in world.mob_resets if reset.mobile_vnum == mobile_vnum]
-    if not resets or any(reset.equipment or reset.object_vnums for reset in resets):
-        return False
-    # Do not infer visibility from an unaudited script that can cast, load,
-    # equip, or otherwise change the observer's detection capabilities.
-    for program in mobile.programs:
-        for raw in program.commands:
-            command = " ".join(raw.casefold().split())
-            if command == "mpkill $n" and program.trigger == "greet_prog":
-                continue
-            if re.fullmatch(r"if rand\(\d+\)", command):
-                continue
-            if command in {"else", "endif", "dance", "sing"}:
-                continue
-            if command.startswith(("say ", "yell ", "emote ")):
-                continue
-            return False
-    return True
 
 
 def invisibility_blocks_source_aggression(

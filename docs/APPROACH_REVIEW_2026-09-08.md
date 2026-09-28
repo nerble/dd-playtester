@@ -5,7 +5,8 @@
 The master goal is unchanged: a generic request for a legal race/class/subclass
 must create or resume a character and reach HERO 100 autonomously. Cosmetic sex
 is preserved, not a separate coverage dimension. No character has reached HERO.
-The highest frontier is Dorrik at 25; the fresh-creation track, Astrevo, is at 9.
+The highest frontier is Dorrik at 25; active fresh-creation tracks include
+Serevian at 11, Fenanallor at 6, and Astrevo at 9.
 
 Telnet/GMCP, credentials, checkpoints, source inspection, training, equipment,
 recovery, and the public `hero` command are useful foundations. The missing
@@ -25,6 +26,256 @@ that more defensive decisions necessarily reduce total progression risk.
 Dorrik's comparison consumed 286.28 connected seconds plus a 180-second reset
 wait. These characters ended safely at healer 3054. Safe logout is a
 reliability result, not an XP result. No improved throughput is established.
+
+## September 28 Evening Continuation
+
+The bounded roster pass completed runs **15416-15422** with **661 net XP**:
+Ararisa +234, Astrevo +106, Serevian +209, and Velnor +112. These were four
+confirmed target kills, not incidental resource XP. Aeloria gathered food;
+Corararfen and Fenanallor earned no XP. Dorrik, Kestrel, and Praelarran were
+deferred before login at their recorded route/protection blockers. No character
+levelled. All seven live segments ended at healer room **3054**, fully healed,
+with no recorded XP loss.
+
+Connected time, including travel and recovery, was **617.76 seconds**; the
+interval from the first segment start to the final finish was **755.82 seconds**.
+That is approximately **64.2 net XP per connected minute**, or **52.5 per elapsed
+minute**. Productive, but still too much overhead for sustained HERO progression.
+
+Source gear ranking was incorrectly comparing acquisitions with only the best
+item in each category. It now uses the weakest selected slot after accounting
+for category capacity and carried spares. Inspection no longer double-counts
+the structured and textual descriptions of worn gear, and inventory quantities
+are preserved. Kestrel's second war-dog collar is now identified as a damage
+upgrade; its route and protection requirements remain unchanged. No new gear
+acquisition has been live-proved. Focused cases are written but not run; the
+daily regression allowance is not reopened.
+
+Next concrete throughput issue: run **15421** recalled after its fixed one-kill
+budget with Serevian at **172/186 HP**, full mana, **240/250 movement**, and
+adequate food/water. Investigate continuation to another eligible, source-audited
+target within the existing 180-second segment. Retain separate one-shot probes,
+resource objectives, exact targeting, crowd checks, and combat budgets; this
+observation is not permission to repeat a missing or rejected target.
+
+The follow-up source check found only one currently admissible Moria prototype
+for Serevian, so raising that trip's kill limit would not add an executable
+target. Cross-prototype wandering circuits remain closed pending actual-origin
+routing and isolated locator state; do not build or enable them merely to raise
+the reported kill budget.
+
+Run **15423** reached Ivan and opened combat, but Ivan fled. At **166/186 HP**
+the bot issued `consider strongman`, received DD4's `They're not here.`, and
+waited until the segment boundary because the ordinary acknowledgement matcher
+omitted absence replies. The fix completes that request through the existing
+bounded refresh path, without treating absence as below-band evidence. Fresh
+source encounter identity can now also match a combat short name that differs
+from the room description when recording a departure. The scoped failure cases
+are saved but unrun. Run **15424** liquidated loot; both segments ended at the
+healer with **54,043 XP**, no net XP gain. Live pursuit improvement remains
+unproved; switch the next campaign block to another character instead of
+repeating the same unsuccessful trip.
+
+Ararisa then completed runs **15425-15426**. The war dog and the cook both
+returned below-band live considerations, including a newly loaded cook after
+the earlier productive kill. No combat was authorized. She remains level 11 at
+**48,949 XP**, full **145/145 HP**, healer room **3054**, checkpoint **47167**.
+These four follow-up segments produced no net XP or recorded XP loss. The
+implementation repair is progress on a demonstrated stall, not evidence of
+improved hunting throughput. No regression tests were run in this work block.
+
+## Earlier Continuation: 2026-09-25
+
+One bounded roster rotation and follow-up work kept progression moving on the
+unchanged September 4 DD4 boot. Fenanallor advanced from **14,809** to **18,766
+XP** (**+3,957**) and is level 6, 284 XP from level 7. He ended safe at healer
+room **3054**. A daycare route also recovered an amber potion; this is useful
+gear evidence, not progression XP.
+
+The final selection stopped without another connection. Live `where` confirmed
+the wild boar absent from room **3729**; the distinct room **3736** policy was
+already on its saved same-boot cooldown, so it was not freshly checked. The
+offline all-area readiness audit found 1,315 targets, 885 source-band, 67
+output-fit, and **zero autonomous-safe** candidates for Fenanallor's current
+level. Treat that shortlist as source evidence, not live permission. No full
+regression suite was run; the work block prioritized bounded play and the
+specific blocker check, with the suite still deferred.
+
+Dorrik's next bounded resume reached policy selection, chose
+`source-ranked-hunt-unavailable-25`, and checkpointed campaign **7** at
+**44170** (level 25, **405,281 XP**) before opening a gameplay connection. It
+used no reset wait and gained no XP. The offline all-area readiness report
+listed **98** autonomous-safe candidates and **4** source-gate fits, but these
+counts omit live route checks and same-boot history; the campaign selector
+admitted none. The sanctuary inventory showed 69 source placements, but no new
+carrier passed the current level, route, and key/container limits. Source-only
+entries remain research, not permission. The full suite remains deferred.
+
+Fenanallor then used the one authorized **180-second** area wait and a
+maintenance-only `time` probe. Run **14313** confirmed the same September 4
+boot, so there was no reset and no XP; checkpoint **44172** remains safely at
+the healer. Praelarran's one-segment resume also stopped before login because
+the only apparent non-sanctuary source fit, Ofcol teller **635**, is blocked by
+its same-boot hard-health loss of **334 XP**. Do not retry it on the strength
+of the offline source shortlist.
+
+The other near-level tracks are not currently free to hunt: Astrevo is at
+level 9, **35,282 XP**, with 4,418 to level 10 and three ground-XP fallback
+attempts spent; Ararisa was at level 10, **41,341 XP**, with 7,159 to level 11,
+no coins, three ground fallbacks spent, and a hard-health recovery marker.
+Flight funding was short for both. These statuses justify moving to a genuinely
+new safe source or resource route, not another full regression run or a blind
+same-boot retry. No full suite was run in this work block.
+
+The subsequent one-round roster rotation finished all nine characters without
+opening a gameplay connection or earning XP. It saved checkpoints **44173**
+(Aeloria), **44174** (Corararfen), **44175** (Dorrik), **44176** (Kestrel), and
+**44177** (Serevian); Ararisa, Astrevo, Fenanallor, and Praelarran stayed at
+their existing checkpoints. An offline source ranking for Aeloria at level 18
+found no autonomous-safe target. Its caution-ranked alternatives include
+below-band targets, aggressive transit, or dangerous specials, so this report
+does not authorize a live attempt. Do not repeat the unchanged rotation; move
+to a distinct resource or route implementation task. No full regression suite
+was run.
+
+### Latest Field Follow-Up: September 25, 2026
+
+Ararisa is now level 10 at **43,014 XP**, checkpoint **44410**. Fenanallor is
+level 7 at **19,150 XP**, checkpoint **44437**, safe at healer room **3054**.
+Run **14408** added **61 XP**. Runs **14415-14420** added none: the live drunk
+kept appearing on the selected Moria, New Ofcol, or Circus route, and each
+campaign returned safely before a target fight. Buying and using a flight
+potion also produced no XP. Run **14420** confirmed the drunk in the bank
+entrance, Levee, and Main Street; the route preflight waited its bounded turns
+and checkpointed safely.
+
+The runner now has one source-mapped detour for a reported drunk location that
+blocks only the Midgaard portion of a hunt route. It must preserve the same
+outside-city waypoint, pass the source hazard and movement checks, avoid every
+reported room, and repeat the live locator before departure. Fifty focused
+route and checkpoint tests pass. The recent live stops were either on the
+route beyond the city or had no safe detour, so this behavior is not yet live-
+proved. At Fenanallor's level 7, the drunk fails the source-bounded transit
+gate; the same exact city detour passes that gate offline at level 8, needing
+129 movement on foot or 45 while flying if the live locations still match.
+That is a future route condition, not permission or live proof. A one-round
+roster pass then screened all nine characters: only Fenanallor connected, and
+that segment ended safely with no XP. Other entries stopped at their recorded
+funding, crowd, or sanctuary blockers. No full suite was run; HERO remains
+unproved.
+
+### City-Route Retry And Target Outcome: September 25, 2026
+
+Added one exact recheck for Dorrik's level-25 Solace Secretary fallback after
+run **14153** ended at the healer with full health, unchanged XP, and no combat
+because the Drunk was reported at Temple Square. One focused test passed, and
+the changed modules compiled; the full suite remains deferred.
+
+Run **14463** consumed that one-shot retry. Fresh `where drunk` evidence placed
+the mobile at the Tinker's Shop, Cartography Store, and Practice Yard; the
+chosen route avoided those rooms and reached the Secretary. The live target was
+**715 HP**: Dorrik dealt **119** and received **126** before fleeing, losing
+**419 XP** and earning **119** partial-damage XP (**-300 net**). He returned
+fully healed. The exact policy now has same-boot loss evidence and must not be
+repeated without materially improved offense or protection.
+
+Fenanallor's run **14461** earned **133 XP** from the Bearded Lady. The next
+different Circus policy, run **14464**, found the Sword Swallower but also two
+source-identified bystanders that were not below the safe assistance band, so
+it correctly withdrew before combat and earned no XP. Continue by selecting a
+different eligible policy, not by repeating this crowded room. No full
+regression suite was run during this work block.
+
+### Stay-area locator follow-up
+
+The source-registered Mud School boar (mobile **3713**) has DD4's stay-area
+movement flag and resets in rooms **3729** and **3736**. Runs **14300-14312**
+earned **1,925 XP** across boar and daycare routes; the final two boar segments
+missed at their reset anchors. The source-ranked planner already prepared an
+eight-room bounded search, but its `where`-absence setting returned before the
+search could run. The locator now advances into those stops after a same-area
+miss. Positive `where` results still require a source-mapped safe route, and
+each room retains its live hazard and exact-target checks. The shared hunt
+builder now applies the eight-room limit by default as well, so direct callers
+cannot accidentally use the broad source-search limit for blind checks. Five
+focused locator tests cover both stay-area and cross-area wanderers, preserve
+an explicit wider override, and confirm that the full map remains available to
+the locator. This is offline implementation evidence only: the exact live
+route remains on a same-boot reset cooldown, no live kill from these changes
+is claimed, and the full suite remains deferred.
+
+## Current Continuation: 2026-09-23
+
+The MUD still reports the September 4 boot. That did not prevent progression:
+Fenanallor advanced from level 4 at 7,937 XP to level 11 at 52,153 XP (net
+44,216 XP), and Astrevo gained 474 XP. Fenanallor's school run then lost its
+connection after bounded retries. The saved state is alive, standing, not in
+combat, and at full health in the Mud School arena. Return-home run **14076**
+could not observe a login banner, so the next action is recovery, not another
+hunt.
+
+This corrects the overly broad reading of the September 22 frontier diagnosis:
+same-boot protection and route cooldowns close only the affected character's
+exact policy. They are not a program-wide reason to wait for a MUD reboot.
+After the three bounded Astrevo funding fallbacks were spent, its Midget
+funding target was absent; that produced no XP and should not be reported as
+progress. Praelarran's sanctuary route also remains closed by its own same-boot
+evidence. Continue another eligible character or policy when one frontier is
+closed, while preserving each route's existing safety gates. No HERO result is
+proved.
+
+## Current Continuation: 2026-09-24
+
+Fenanallor's stored run reached level 11, but that was not the character's last
+server save. Runs **14073-14074** had saved level 4 (9,076 XP); run **14075**
+reached level 11 (52,153 XP) and then lost its connection before saving. After
+bounded return-home failures **14076-14077**, run **14078** reconnected to the
+server's level-4 save, returned safely to healer room **3054**, and saved there.
+The level-11 result is transient live evidence, not current progression. This
+is an unsaved-progress failure, not a reboot requirement.
+
+The starter now requests a save on first verified progress after login and
+after each subsequent XP or level change. DD4 source confirms saving is
+available at any position. Live runs **14079-14094** confirmed that saved XP
+survives bounded session endings: Fenanallor advanced from level 4 to level 5
+and is now at **12,292 XP** in healer room **3054**, with full health and mana.
+Run **14094** added **250 XP** from six kills; a later reconnect confirmed the
+saved total. A recent reboot may improve particular kill or spawn opportunities,
+but it is not a general XP prerequisite; continue with other eligible targets
+while waiting for an exact reboot-scoped policy to reopen.
+
+Dorrik remains the highest character at level **25**, **392,314 XP**, fame **0**,
+checkpoint **43669**. Offline review found **104** autonomous-safe options and
+**9** that also fit the full admission checks. Run **14099** produced no kill:
+`where dolphin` named The Ocean Deep, but the next room check found no exact
+target, so Dorrik never attacked. The source confirms that this mobile can
+wander. The starter now uses its one allowed location refresh after the first
+mapped-room miss, instead of waiting for the full area search. Its focused
+regression and all **1,483** starter tests pass. Runs **14102-14104** completed
+three food-reserve routes safely without XP; run **14105** confirmed the same
+DD4 boot after one bounded area-reset wait. The level-25 frontier is still
+closed by its same-boot protection evidence, not by a program-wide reboot wait.
+The MUD login recovered, and the source mirror is current.
+
+Praelarran remains level **21**, **233,527 XP**, checkpoint **43674**. The
+offline report had three source candidates, but live selection approved none;
+run **14106** confirmed the same boot after one bounded area wait. Kestrel is
+level **24** at fame **-12**; the refreshed fame audit found no target within
+his current damage limits. These are character-specific frontiers, not proof
+that progression is complete or that other characters should stop.
+
+The larger set of affected campaign and progression tests passed **4,145**
+before this final narrow change. Compilation is clean.
+
+Offline source work fixed two gaps affecting ranger selection. The readiness
+report now includes object prototypes from the full source catalog without
+expanding its hunt-area scan. The source combat estimate now applies
+`fight.c`'s `shoot` damage multiplier and observed `accuracy` proficiency to a
+ranger's equipped-bow opening. All **1,978** tests in the affected campaign,
+CLI, and source-candidate modules passed. These results improve inspection and
+admission estimates; they do not prove live bow acquisition or a productive
+campaign segment. The Ambush short bow **4540** is a real source placement, but
+the route's goblin traffic remains a hard rejection under current safety rules.
 
 ## Current Continuation: 2026-09-22
 
@@ -46,11 +297,11 @@ current-band, 8 autonomous-safe, 4 sanctuary-required, and 1 same-boot
 below-band exclusion. This makes the reboot-scoped blocker visible in the
 checkpoint and prevents interpreting a maintenance probe as failed gameplay.
 
-The engineering consequence is unchanged: do not bypass the sanctuary gate or
-reopen a known below-band target. Wait for a genuine reboot or collect fresh
-source-backed evidence, then resume the same campaign. The next code work is to
-use this diagnosis in operator-facing campaign reports and to validate the
-first post-reboot productive level-25 segment.
+Do not bypass the sanctuary gate or reopen a known below-band target. A genuine
+reboot may refresh this exact frontier, but it is not a prerequisite for XP on
+other eligible frontiers. Continue productive same-boot campaigns while keeping
+the diagnosis available for this character; validate Dorrik's frontier only
+when its own evidence changes.
 
 The ordinary fame contract remains the strict `victim.level - player.level >
 5` test from `HELP FAME` and `fight.c`: a player at level 24 needs an ordinary
@@ -3278,3 +3529,28 @@ path remains the only subsequent probe path. Live run **13646** validated the
 new selection for Aeloria at level 18 and recorded the same DD4 boot
 (`Fri Sep 4 06:19:51 2026`) with no XP change. Focused campaign coverage is
 green at **9 tests**; this improves liveness only and does not claim HERO proof.
+
+### Duplicate Workspace Resume And Level-6 Route Evidence: September 26, 2026
+
+Named HERO resume now selects a checkpointed campaign when duplicate request
+folders share one identity and target horizon, but only when every other
+matching folder is confirmed to have no campaign record. Conflicting tracked
+campaigns and unreadable history remain errors. The public
+`hero --name Morjornelmor --prepare-only` command resolved to the single saved
+campaign; the new regression case was added but not run under the daily test
+limit. The edited module and test file compile.
+
+The bounded roster rotation recorded no level gains. Morjornelmor's Dragon Cult
+attempt found the level-7 fanatic, but the co-resident receptionist joined the
+fight. The runner fled, recorded **60 partial XP** against a **49 XP** flee loss,
+and confirmed no kill. A recovery turn and same-boot time probe earned no XP;
+the saved level-6 checkpoint now has no executable current-band route. This is
+useful crowd and route evidence, not progression proof; HERO 100 remains
+unproved.
+
+Kestrel's level-24 readiness audit confirms that negative fame blocks quests
+and shop purchases. Its two source-famous candidates have no output-fit or
+source-gate-fit result. The apparent piercing crystal dagger is a ground reset
+in room **11231**, which also resets the Crystal Dragon; it remains source-only
+and is not an executable gear route. No reset wait or live fight is authorized
+by this diagnostic.

@@ -38,6 +38,31 @@ editing the streamer. Launch background helpers hidden, without console windows.
 
 ## Authorization And Fail-Fast Behavior
 
+Ordinary `consider` replies have a request-local 2,000-character buffer and a
+five-second response limit. DD4's absence reply, `They're not here.`, completes
+the pending request and enters the existing bounded target-refresh path, even
+when split across reads. Retain that absence until a new request; later room
+chatter must not erase it. An unanswered check ends the hunt through normal
+combat/death recovery and healer logout, without inventing absent or below-band
+evidence. When a combat name differs from a room description, a flee
+may match the source short name only through a fresh, same-room, same-level,
+same-boot encounter identity for the registered prototype; pursuit bounds and
+destination checks remain unchanged.
+
+Combat-pouch audits at departure, repacking, and logout share a bounded reply
+buffer. Require the complete contents listing before replacing either potion
+ledger; unrelated room or healer text is not an empty-pouch observation. After
+five seconds without confirmation, preserve the previous ledger and return to
+healer logout without hunting or retrying the audit. A confirmed empty listing
+does clear old quantities. Newly discovered potion keywords still require the
+existing source-safety checks; ambiguous potions require retained provenance.
+
+Gear acquisition uses the same per-category capacities as stance selection.
+Compare a candidate with the weakest selected slot, or an empty slot, after
+including carried alternatives. Preserve actual duplicate-item quantities, but
+never add the structured equipment snapshot to its duplicate textual summary.
+An improved rank is not permission to bypass source route or combat gates.
+
 Routine repository, source refresh, tests, live runs, and exact process audits
 are already authorized. Use ordinary available tools; do not ask again or
 manufacture an escalation. If an external permission review times out, retry
@@ -69,16 +94,23 @@ output or safety blockers. This report is diagnostic only; it never grants live
 dispatch permission.
 
 The report's `output_fit` field is only the offensive source HP-ceiling check.
-For the campaign-equivalent gate, use `source_hp_admission` together with
-`requires_sanctuary`, `sanctuary_available`, and `admission_fit`. A target can
-be output-fit while still being correctly rejected because its upper HP/damage
-envelope cannot be survived without sanctuary. These fields are inspection
-evidence only and do not authorize a live route.
+`source_gate_fit` combines source safety, source-level band, HP admission, and
+sanctuary availability. It is not the campaign's final dispatch decision: it
+does not include every live route check, same-boot consider record, target
+cooldown, or current useful-XP probability. The report shows useful-XP
+probability and known below-band or invisibility blockers where available, but
+these fields remain inspection evidence and never authorize a live route.
 
 Refresh the DD4 source periodically, roughly daily during active work. Use a
 bounded ordinary pull, preserve source pins and revision evidence, and defer
 network failure rather than blocking development. Source area files and C code
 are legitimate game knowledge. Never modify the upstream game to make a test pass.
+Source refreshes clear source-derived routes and cooldowns, but preserve exact
+XP-loss records and observed absent-target results from the current MUD boot,
+along with the matching absence cooldowns. A local source update must not erase
+live evidence and silently reopen a failed fight or an expensive empty route;
+evidence from an older boot is discarded, and stale source estimates still
+cannot authorize a retry.
 The estimator mirrors the pinned source's inherited and area `MobHPMod` and
 `MobDamMod` scalars. `MobDamMod` is applied to each positive NPC attack before
 sanctuary or critical arithmetic; an unresolved scalar is a hard rejection for
@@ -115,13 +147,56 @@ the protected live stop; a live kill and fame change must still be recorded
 before any policy is treated as proven.
 The current ordinary fame search uses a bounded +9 research horizon, but DD4's
 actual rule is `victim.level - player.level > 5`, or at least six levels higher,
-with no game-enforced upper limit. Revision **305**
-additionally permits a plain candidate whose source
-HP range crosses the player's maximum HP when sanctuary is verified and the
-audited player output covers only the source lower bound. The resulting stop
-is sanctuary-backed and always requires a live GMCP HP/damage-window probe;
-the live upper bound must still fit the finite action budget or the bot
-withdraws before an unfinishable fight.
+with no game-enforced upper limit. Revision **305** additionally permits a
+plain candidate whose source HP range crosses the player's maximum HP when
+sanctuary is verified and the audited player output covers only the source
+lower bound. The resulting stop is sanctuary-backed and always requires a
+live GMCP HP/damage-window probe. A plain, unarmed current-band target may
+also receive one unprotected version of that probe when its source HP range
+fits the audited output: if the whole range is below the player's HP ceiling,
+the upper bound must fit; if it crosses that ceiling, both the lower bound and
+the uncertainty above the player's HP ceiling must fit one output window. A
+passive endpoint does not waive this check. Any transit program must be one
+exact low-level mobile that can be located with `where`. A nominally same-level
+target may retain one additional level of source load-time fuzz only when its
+audited range reaches character level minus two, and its maximum remains
+within character level plus two. This does not open armed, special, unknown, or
+unresolved hazards. The live target HP ceiling must still fit the finite action
+budget before combat continues. A plain, unprotected probe may finish a live
+target that falls just short of the warning fraction only when the target's
+remaining HP and projected incoming damage fit that same bounded action budget
+and health reserve. The exception ends the probe; it does not create a general
+combat retry or override a special, armed, crowded, or unresolved target.
+DD4's `do_consider` health wording compares current hit points. In the general
+case, only `you are currently much healthier than` (a lead greater than 100
+current HP) can authorize the passive pre-combat fallback when live enemy HP
+is unavailable. `currently healthier`, `slightly healthier`, and `teensy bit`
+alone do not authorize it. A source-vetted protection-recovery fallback has one
+narrow exception: the exact endpoint must be a fixed, passive, unarmed mobile
+with no source program or special, and its full source HP ceiling must fit the
+audited player damage budget. The candidate must already pass the ordinary
+source HP-range, incoming-damage, route, and same-boot attempt gates. This
+allows one bounded opener to obtain live GMCP and damage-window evidence; it
+does not authorize continuing combat. Run **14041** remains the reason not to
+generalize from small health leads: a teensy-bit result preceded zero observed
+damage and a **419 XP** loss against the diamond golem. The normal live damage
+window and withdrawal path remain authoritative after any permitted opener.
+
+Revision **324** adds one narrow Mage fallback: a practiced familiar may open
+an otherwise sanctuary-gated endpoint when fresh source evidence proves that
+invisibility blocks every transit aggressor. The endpoint must be a stationary,
+non-aggressive, unscripted source mobile no more than five source levels below
+the player, with at most one weapon and an audited staging room. This is a
+bounded familiar probe, not a lower-band XP exception; the live target,
+damage, output, and route gates still decide whether the fight proceeds.
+After an unrelated current-level loss, one plain unarmed target may use the
+same bounded probe when the audited output covers its lower HP bound and the
+uncertainty above the player's HP ceiling, while the target's source peak stays
+below the tighter half-HP limit. The route must be the exact source-locatable
+program exception; known transit specials are allowed only when source verifies
+noncombat behavior and confirms the mobile has no program or reset-loaded gear.
+Unknown or combat-capable specials remain blocked. GMCP HP and the damage
+window still decide whether combat continues.
 Revision **306** carries the source-recorded upper level bound into every
 generated stop for an exact sanctuary-backed required-loot gear carrier. This
 is route construction only: it does not authorize unprotected combat, broaden
@@ -169,6 +244,14 @@ Source policy selection must reuse the immutable world catalog loaded during
 campaign setup; do not reparse all area files for each selector fallback. Emit
 level-aware preparation progress before expensive frontier passes, and keep
 those passes bounded by the campaign outer deadline before opening gameplay.
+After a source-audited crossing into one neighboring area, retain only locator
+routes rooted at the new room and already vetted within that area. Allow at most
+one further locator refresh and clear the neighbor-crossing fields; exact
+in-area routes remain usable, but a second area crossing is never implied. Run
+**14504** live-validated this path: a Dragon Cult miss routed through Midgaard
+rooms **3024, 3025, 3026, 3045, 3046, and 3219** to the guild, where Ararisa
+earned **240 XP** and returned safely. The focused neighbor-locator test covers
+both populated and empty source-mapped routes.
 When startup already has the newest campaign-segment tail, pass it to
 interruption and timeout cleanup; status-only scans over the full JSON-heavy
 segment table are not an acceptable live-resume path. On the shared large
@@ -179,12 +262,26 @@ loss lower bound even without a captured penalty message. Do not add it twice
 to explicit loss counters, infer a death or command-level cause, or reopen a
 failed hunt while repairing the counter. Use saved per-segment baselines for
 idempotent history repair.
+Damage-window trade checks compare target damage after observed target healing
+against player damage net of observed in-window HP recovery. Future health
+reserve projections still use gross player damage, so a single recovery tick
+does not make the bot assume healing will continue.
 Starter combat identity parsing must treat DD4's source-format swing messages
 ("grunts as ... takes a swing at you", "grunts and swings at you", "takes a
 swing at you", and "stops swinging ... and swings at you instead") as incoming
 combat. Preserve the planned endpoint target and continue through the normal
 live consider, source VNUM, isolation, and damage gates; this is recognition
 evidence, not permission to bypass them.
+For a pending `kill` opener, a matching target's "dodges your attack" or
+"parries your attack" line also confirms that the opener resolved. Keep the
+normal combat wait before dispatching a between-round skill. This does not
+acknowledge spells, unrelated mobiles, or incoming NPC attacks; all target,
+output, and survival gates remain in force.
+For a source-ranked spell action in a room with exactly one current GMCP enemy,
+use that live enemy's displayed name when matching the action response. The
+campaign keyword and DD4's combat display can differ (for example, `human boy`
+versus `The stunned boy`). In a crowded room, retain the exact source/target
+identity; never accept a generic damage line as acknowledgement.
 The streaming text path must also retain an incomplete ANSI escape when a
 Telnet response splits between chunks. Reassemble that escape before prompt
 and area extraction; otherwise a valid endpoint room can be recorded with a
@@ -200,6 +297,9 @@ For a familiar-backed source probe, an aggressive or scripted endpoint must
 also have a source-audited outdoor no-mob staging waypoint on the outbound
 route. If no such waypoint exists, reject the policy before travel; do not
 enter the endpoint and hope to summon after an automatic entry attack.
+Also reject a private destination with a source-reset mobile: DD4 checks room
+occupancy when the follower enters, so the target and player can prevent the
+pony from following even though the player entered successfully.
 For an ordinary source-ranked candidate whose endpoint aggression is blocked
 only by invisibility, require the learned class/subclass `invis` path and
 enough current mana before selecting the candidate, including for capacity or
@@ -262,7 +362,13 @@ banner/creation-prompt bound; an authenticated worker gets the configured
 45-second inactivity bound and one bounded reconnect. If it remains silent,
 close only that exact worker and preserve interruption evidence. Never kill
 unrelated Python or Codex processes. An observation timeout is not proof of
-worker exit.
+worker exit. If the bounded failure occurred before any command was sent,
+checkpoint the segment as `ready` with transport-unavailable evidence; do not
+mark a route hazardous, alter XP, or wait for a reboot. If commands were sent,
+checkpoint the exact live state as `ready`, add the connection-loss homeward
+handoff, and require the next invocation to recover at healer room 3054 before
+selecting another route. These resumable transport boundaries stop the current
+invocation and never authorize an autonomous retry spin.
 
 ## Gameplay And Evidence
 
@@ -271,12 +377,32 @@ not the Mage's Laboratory. Wake to eat/drink during sleep when needed; never
 change equipment asleep. Never log out in Purgatory: recover the corpse, loot,
 restore gear, leave the portal, then hand off once to healer recovery.
 
+On DD4, an invisibility affect at duration 0 can still be active until the next
+30-second affect update, and `spell_invis` rejects a recast while that affect
+remains. For a source-registered visibility route starting at recall, do not
+cast or travel on a duration below 2: go north to room 3054, sleep, and check
+at most twice at 30-second intervals. Once GMCP removes the affect, wake, return
+south to recall, and cast again. If it remains after the bounded checks, stop
+at the healer; never enter the route without fresh observed invisibility.
+
+Optional loot-sale trips must use a fresh live `where drunk` check, even when
+the source-bounded city-transit exception is otherwise available. A shop visit
+does not justify accepting a greet attack: the cityguard may join the drunk's
+fight, turning a small kill into a costly withdrawal. A source estimate or an
+older route clearance is not a substitute for the live check.
+
 Field recall is an asynchronous command: keep it in flight until a real
 Temple-of-Midgaard room response or equivalent authoritative room update is
 observed. The runner may use the decision-time `CharacterState` room as the
 recall origin when the text parser is one event batch behind; a missing
 immediate response is not an immediate recall failure. The normal bounded
 inactivity and reconnect watchdogs still apply.
+
+If a flee fails during a recallable emergency, try fleeing once more when the
+character is still at least half healthy and an enemy is still present. This
+single retry avoids paying an unnecessary recall penalty while combat is still
+active. Poison, low health, no-recall rooms, and a second failed flee use the
+existing direct-return path instead; never spin on repeated escape attempts.
 
 Optimize useful kills and net XP per complete journey. Keep attacking viable
 targets until a meaningful health, protection, nutrition, movement, or runtime
@@ -287,6 +413,12 @@ evidence, a bounded safe route, and an explicit missing-resource objective; its
 XP is maintenance evidence, never progression evidence. Retain source risk,
 crowd, consider, and observed loss gates. Repeated attempts need changed
 evidence.
+
+Continue pursuing eligible current-band XP regardless of how recently the MUD
+rebooted. A reboot can improve a particular target's XP or refresh a reset-based
+resource, but it is never a general reason to pause hunting. Wait only for a
+specific reset-dependent objective; if that route is cooling down or exhausted,
+choose another worthwhile policy that passes the same live safety gates.
 
 When an urgent source-ranked food run starts with no carried food, the planner
 may chain a distinct, same-area source food reset when the complete route still
@@ -332,23 +464,95 @@ sacrifice the item according to the normal release rules.
 The same rule applies to a field-city departure that stopped after its bounded
 healer waits. Persist `campaign_field_city_preflight` with its level, reboot,
 locations, stop evidence, and exact policy ID. A same-level, same-reboot
-continuation selects an unavailable cooldown for that recorded policy; an
-alternate source-ranked route receives its own bounded preflight. Checkpoints
-without a policy ID remain globally conservative and require fresh world-time
-or route evidence. The checkpoint merge keeps a policy-scoped stop through a
-safe healer recovery, so maintenance cannot accidentally reopen the same
-blocked route. This prevents replaying an unchanged obstruction while keeping
-route rotation live.
+continuation cools down that exact route while another source-ranked route may
+run its own bounded preflight. Legacy checkpoints without a policy ID do not
+close the whole source frontier: the selected candidate may make one normal
+preflight, and its policy ID is saved before the live segment so an interrupted
+attempt cannot blindly reconnect to that route. Confirmed blocks accumulate in
+a level- and reboot-scoped policy ledger, surviving healer recovery without
+reopening earlier failed routes. A level change or reboot expires that ledger.
+The route check still grants no permission to cross a live hazard or engage a
+target; all existing movement, health, transit, and combat gates remain active.
+
+If a live `where drunk` result blocks only the Midgaard prefix of a
+healer-origin hunt route, the runner may try one source-mapped detour to the
+same first outside-city waypoint. This applies both when the healer departure
+check finds the Drunk and when a fresh route-level locator at room 3001 finds
+it, even if no separate healer-side preflight ran. Every reported room name must
+map to the Midgaard source map; the detour must avoid those rooms, add no more
+than 16 commands, pass source hazard checks except for the exact bounded drunk,
+and leave enough movement for the revised route plus its 15-point reserve. The
+player must be at least 95% healthy. Unknown locations, a matching location
+later on the target route, custom return commands, or any other hazard refuse
+the detour. The runner then repeats `where drunk` on the revised route before
+moving; a continued obstruction uses the ordinary bounded waits and cooldown.
+A recent level-8 Circus attempt found the Drunk at Lusty Ogres
+Tavern, Main Street, and the Mage's Guild entrance, then returned safely
+without engaging a target. The exact mapped bypass is admitted only when the
+fresh route-level locator is clear of its rooms; that check does not depend on
+an earlier healer-side flag. Existing XP, health, movement, and route gates
+remain authoritative. No successful live detour or HERO proof is claimed.
+
+Field-city obstruction checks must use only the rooms traversed by the selected
+route, not a fixed list of nearby rooms. The Mud School path from healer room
+3054 goes through Temple room 3001 and then north; it does not cross Temple
+Square room 3005, so a drunk there must not block that route. Routes that do
+cross room 3005 still require the registered live `where drunk` check.
+The source-bounded city-transit shortcut does not replace this preflight for
+field XP routes; check the selected route from the healer and again at recall
+before crossing any reported room. DD4's Drunk greet program attacks visible
+entrants regardless of alignment, so a revealed good alignment is not a bypass;
+only a fresh, practiced invisibility affect can suppress that greet trigger.
+
+An automatic world-time probe must not preempt progression once the checkpoint
+already has an authoritative reboot identity and a same-boot source policy
+result. In that state, the next invocation must rotate to another executable
+current-band route or report the actual protection/output/route blocker. The
+single legacy probe remains available only when boot or policy evidence is
+missing, or when an explicit reset-wait/shared-boot revalidation requires it.
+
+This is not a blanket reboot requirement for XP. DD4 assigns a mobile's fuzzy
+level when the area data loads, so a same-reboot live below-band observation
+keeps that exact reset policy closed. A separate reset room for the same mobile
+may load a different level, but it must pass its own fresh live `where` and
+`consider` before combat. A later reboot matters only when all remaining
+source-ranked targets are closed by their exact-reset evidence or by an
+exhausted protection reserve; otherwise the selector continues with any
+independent current-band route immediately.
+
+A source-ranked hunt recorded as a same-boot retryable failure with a positive
+cooldown is not an ordinary retry. Keep it out of normal ranking until its
+cooldown ages or new evidence changes the route. The generic cooldown switch may
+reopen a genuinely absent reset; retryable route or combat failures require
+their matching one-use timeout, protection, familiar, route-loss, or other
+source-audited revalidation. If a summoned companion does not reach the target
+room, rotate to another route instead of repeating the same approach unchanged.
+
+When a source-ranked route-program preflight finds its registered hazard in a
+specific live room, the next same-boot selection may arm one narrow detour if
+the room label maps to exactly one source room in the route origin's area and
+the alternate path stays within the existing detour bound. The route still
+runs its normal `where` preflight and all identity, crowd, consider, movement,
+and combat gates. An off-route wandering result is evidence only and does not
+block travel; an absent endpoint earns no XP but does not create a reboot-wide
+pause. Ambiguous labels, missing paths, or a second changed hazard remain
+closed.
+
+When no high-confidence fresh route remains, a source-safe current-band target
+with a material useful-XP fuzz probability may outrank capacity research. The
+ordinary below-band floor still applies, and research or resource probes never
+count as progression XP.
 
 An exact same-level, same-reboot protection marker with no sanctuary reserve
 and no executable independent current-band route is also a reset boundary. A
 runner invoked with explicit reset retries returns `ready` with
 `awaiting_area_reset` and opens no gameplay segment; the outer runner waits
-once for the configured interval, then opens only the maintenance world-time
-probe. A capped invocation remains `blocked`. This preserves the protection
-requirement and prevents repeated invocations from becoming a terminal
-liveness failure or silently buying flight against a higher-priority funding
-objective.
+once for the configured interval, then opens the maintenance world-time probe
+only if no independent executable current-band route remains. Any such route
+still takes priority and earns XP immediately. A capped invocation remains
+`blocked`. This preserves the protection requirement and prevents repeated
+invocations from becoming a terminal liveness failure or silently buying
+flight against a higher-priority funding objective.
 
 Once a world-time probe has observed `time` and is back in healer room 3054,
 save and quit take precedence over optional health, mana, hunger, or movement
@@ -378,7 +582,19 @@ reopen the route again during that reboot; acquisition or a new reboot remains
 the only other reopening event. A source checkout refresh must preserve this
 spent marker and attempt evidence: it may invalidate source-derived route
 results, but it must not let generic protection fallback or an automatic
-capacity probe silently re-dispatch the exhausted Moria route.
+capacity probe silently re-dispatch the exhausted Moria route. The autonomous
+outer runner must honor that persisted boundary across process restarts; a
+spent recheck is a durable blocker, not permission to start another area-reset
+wait.
+
+Flight funding must not strand a healthy, fed character after its safe carrier,
+one ground probe, bounded current-band XP rotation, alternate funding targets,
+and available bank loan are exhausted. From a fully recovered healer
+checkpoint, the campaign may then re-run normal selection without the funding
+override and take an executable registered policy for the current level.
+Preserve the funding marker; this handoff grants no combat permission and does
+not bypass the selected policy's route, identity, consider, output, or health
+gates. Do not wait for a reboot solely because flight remains unfunded.
 
 Flight-shopping transit can use the existing source-bounded greeter assessment
 with fresh departure readiness. Permit only one isolated, exact source-VNUM
@@ -390,6 +606,9 @@ allowance; missing reboot evidence cannot reopen it. Bind a short run's missing
 stamp to the campaign's known reboot when merging fresh evidence. Do not erase
 field losses, reopen real purchase failures, add loans, or count these weak
 defensive kills as objective XP.
+Do not start a proactive field fight or familiar attack while still inside this
+city corridor. Only a cityguard that attacks first may enter the exact live
+source-VNUM combat check above; resume ordinary hunting after leaving the route.
 
 If the Magic Shop purchase policy reaches the healer while `fly` or
 `levitation` is still active, the worker must sleep until the existing affect
@@ -407,17 +626,13 @@ keyword may resolve the expected prototype only when it appears on that source
 prototype and on no other prototype reachable in the exact room. A shared
 generic keyword remains source-ambiguous; refresh persisted candidate keywords
 from the current source catalog before constructing a live route.
-Field route greeting checks may use fresh invisibility only for an exact
-source mobile whose ordinary GREET program requires `can_see`. Audit detection,
-source-level bounds, aggression, specials, scripts, and reset equipment; unknown
-or ALL_GREET cases do not qualify. Require current-connection GMCP effects with
-at least two observed ticks remaining. An exact invisibility-loss message
-revokes the exemption even while an old affect record remains; reapplication
-needs both its positive message and fresh GMCP. Preserve pending scan ownership,
-unrelated hazard checks, combat/emergency returns, losses, and retry budgets.
-Skipped visibility checks are audit evidence, not completed preflight or cached
-scan permission; never restore them from checkpoints. Report locator locations
-separately from the room where the command was issued.
+Every route containing a registered GREET or other source program must complete
+its exact `where` preflight and adjacent-room scans, even while the character is
+invisible. Leave if the named attacker is found on the planned route; invisibility
+does not waive detection, scripts, or unknown hazards. Fresh invisibility is
+limited to separately audited ordinary aggression with no relevant programs.
+Record locator results separately from the room where the command was issued,
+and never treat a skipped scan or old visibility note as completed preflight.
 
 Revision 243 grants one revalidation only for the exact current-level/reboot
 sanctuary failure produced by the obsolete visible-GREET check. Archive that
@@ -427,8 +642,9 @@ the fresh result. Do not remove the prior XP loss, protection requirement, or
 attempt count. Absence, route failure, interruption, or death does not authorize
 another attempt.
 
-Revision 244 grants one further revalidation only when revision 243 positively
-located the invisible carrier but the old graph could not reach it. Consume the
+Revision 246 grants one further revalidation only when revision 243 positively
+located the carrier and a fresh, completed route `where` preflight found no
+planned-route hazard. Old invisibility notes alone do not qualify. Consume the
 marker before connection and preserve every earlier failure. A practiced,
 source-authorized invisibility route may request two sanctuary potions only when
 two reachable carrier resets prove that capacity. During this recovery errand,
@@ -543,6 +759,15 @@ Register and test skills before dispatch; positive practice, equipment,
 resources, target state, and safety gates remain mandatory. Honor existing
 gear-mode, provision, corpse, trainer, and prerequisite contracts in the archive.
 
+Campaign policy revision **334** enables the cleric protection chain after its
+existing damage and healing priorities: protective magiks 45%, protection 40%,
+then sanctuary 40%, each only when a fresh live teacher listing offers it.
+Protection reduces damage only against sufficiently opposed alignments;
+sanctuary halves damage while active but costs 75 mana. Existing buff upkeep,
+proficiency, and mana-reserve checks remain authoritative. The revision makes
+older trainer audits stale so the next eligible segment can inspect the teacher
+again; it does not grant practice or spell-use permission by itself.
+
 A familiar may kill during the synchronous opening order, before a player
 attack or enemy snapshot exists. Adopt that completed encounter only from a
 pending order in the same room, exact unique source target/selector, positive
@@ -592,16 +817,36 @@ withdrawal before the player's opener. This is a timing guard against the
 familiar taking the next automatic round, not extra combat authority. Keep
 the normal familiar requirement for stronger or underfunded targets, and
 retain exact ownership, selector, room, source, and live outcome checks.
+Before issuing the familiar's attack, audit every open exit it could randomly
+choose when fleeing. Each destination must admit NPCs and have no source-known
+aggressor, combat program, unsafe special, or mobile that can join the fight;
+one safe exit does not make the others safe. DD4 rejects no-mob destinations
+before stopping the familiar's fight. If the handoff is optional, proceed solo
+only under the registered player-output proof; otherwise reject the stop before
+the attack.
 Run 13053 is live evidence for the handoff and +168 player XP on Granny
 Jenkins; it does not establish sustained progression or HERO proof.
-DD4's source-defined pony is charmed and cannot leave its master in the same
-room. Its withdrawal command therefore uses the source-recognized `flee Fear`
-argument to bypass the NPC random no-op, then requires `The pony sleeps.` as
-positive in-place evidence. `Ok.` alone remains only order acceptance.
-If the withdrawal budget is exhausted without departure or positive in-place
-sleep, abort the stop and enter the normal healer return. A no-command result
-from the retry helper is still a failure boundary; it must not fall through to
-the player's damage selector in the same decision cycle.
+Although `mounts.are` sets the pony prototype's `AFF_CHARM` bit, `db.c` removes
+that bit while loading every mobile prototype. `spell_summon_familiar` only
+adds the created mount as a follower, so the live pony can leave its master.
+Use `order <exact selector> flee Fear` to bypass the NPC random no-op, and
+require the exact `The pony has fled!` departure before the player's opener.
+`Ok.` alone is only order acceptance; do not issue a sleep order after the
+pony has left. Allow five seconds for confirmation. If withdrawal is
+unconfirmed, abort the stop and make one direct recall attempt when legal. If
+flee is unavoidable, issue it once; after it succeeds, continue the bounded
+return instead of fleeing again because a snapshot or pursuer remains. A
+no-command result from the retry helper is still a failure boundary; it must
+not fall through to the player's damage selector or resume automatic combat
+actions. In-place sleep is valid only for a separately verified charmed
+companion that remains in the room.
+
+DD4's `fight.c` awards a familiar's finishing blow to its owner only for the
+witch, infernalist, necromancer, knight, and werewolf subclasses, or an
+unsubclassed shifter. For other class/subclass combinations, start the ordinary
+familiar withdrawal at 65% target HP instead of 45%, giving the player more
+room to secure the XP. This changes only the handoff timing; target admission,
+combat budgets, and emergency recovery remain unchanged.
 
 Treat source aggression text such as `grunts as he takes a swing at you`,
 `grunts and swings at you`, and `takes a swing at you as you enter` as
@@ -655,6 +900,22 @@ Compare an exact same-reboot latest gross sale with a known current flight
 shortfall only as an income upper bound. A low-yield funding preference may
 yield to an already executable ground hunt, never skip food or protection,
 add a loan, or manufacture another reset allowance.
+When a live funding candidate has no audited coin balance or measured
+same-reboot proceeds covering the shortfall, a failed funding route, including a
+completed kill whose liquidation produces no sale proceeds, may hand back to an
+executable source-ranked current-band ground hunt without flight for at most
+three attempts at that level and reboot. Persist its policy identity before
+dispatch, then return to the funding handoff; do not turn the exception into a
+ground-hunt loop or wait for reboot while safe current-band XP remains
+available.
+There is one more exact funding route for the current flight shortfall: the
+Gnome treasury in room 1570 contains source money objects 1516 and 1517 worth
+1,240 coins. The route crosses eight reset entries for level-3 hobgoblin
+guards, but DD4's `update.c` skips aggression when the player is more than ten
+levels above the mobile. Admit this stash only when the source rooms, object
+VNUMs, crowd limits, route-program audit, movement budget, and shortfall all
+match. Record it as `funding_only`; it is never ordinary XP permission, and a
+changed crowd or source identity closes it.
 
 Funding completion and objective eligibility are separate ledgers. A source-
 identified below-band kill may complete an explicitly selected provision-funding
@@ -733,6 +994,15 @@ above 300 is necessary for the `spec_guard` special's own assistance path;
 `violence_update` is a separate gate and suppresses a good bystander only
 when both the bystander and player meet the exact 350 `IS_GOOD` threshold.
 Use the player's alignment for player fights, not the NPC target's alignment.
+A source-ranked target carrying exactly `spec_guard` is admitted past the
+target-special gate only when the target and revealed player both meet that
+350 threshold. Its source headbutt/smash/kick peak is included in the ordinary
+damage budget; unknown alignment, mixed target specials, and every other target
+special remain rejected. A guard elsewhere in the room is different: its
+`spec_guard` code can attack a player fighting an NPC whose alignment is below
+300, including a good player fighting a neutral target. Keep that bystander
+route closed rather than treating the `violence_update` good-alignment rule as
+protection from the guard's separate special.
 The GMCP and MSDP server paths differ; this is not evidence of corrupted
 transport. Field city preflight shares the existing three 12-second healer
 waits and locator parser, scoped to the actual source route plus fountain. A
@@ -822,6 +1092,15 @@ consume sanctuary before the exact opener and obtain one live HP/damage-window
 probe; the lower source HP bound must fit the fixed output budget, and any live
 GMCP ceiling above that budget still forces withdrawal. This does not authorize
 special, armed, scripted, or otherwise uncertain aggressive targets.
+
+When sanctuary recovery is cooling, the runner may also try at most three
+distinct plain, unarmed, source-safe current-band targets without sanctuary.
+For an HP range above the character ceiling, both the lower bound and the
+uncertainty gap must fit the audited attack budget. The live endpoint then
+checks the target's actual GMCP HP before the exchange can continue; a target
+above that budget causes an immediate withdrawal and closes the fallback for
+the reboot. This is a bounded attempt to keep XP moving, not permission to
+repeat a losing route or ignore protection evidence.
 
 A meaningful, same-boot productive kill for the exact source mobile and reset
 may clear only the indoor familiar HP-fuzz gate for a repeat when no XP-loss
@@ -937,10 +1216,11 @@ waiting for a sanctuary recovery route or attempting a carrier upgrade. The
 sanctuary gate still applies to every placement that requires entering combat.
 A protection-recovery fallback may retain one independent, source-audited plain
 target even when its fresh useful-XP probability is below the ordinary ranking
-floor, but it must still pass the live output, route, movement, consider, and
-healer-return gates. Same-boot below-band evidence for that exact source mobile
-remains a hard exclusion; the fallback never converts a known low-XP target into
-progression credit.
+floor, but its source HP range must satisfy the same audited output-window rule
+even when a passive endpoint can reveal live HP before the opener. It must also
+pass the live route, movement, consider, and healer-return gates. Same-boot
+below-band evidence for that exact source mobile remains a hard exclusion; the
+fallback never converts a known low-XP target into progression credit.
 If a
 required-loot expedition withdraws after bounded source-absence sightings, keep
 that raw terminal evidence and recover it at startup; apply the registered
@@ -956,6 +1236,11 @@ sanctuary route is exhausted. The entitlement is source-narrowed to mobile
 one room entry; it is consumed in the persisted segment start before
 connecting. A live absence closes the probe without XP credit and cannot be
 replayed in the same boot. The
+level-11 Mage frontier then has one distinct continuation: after a zero-XP
+Moria result, try the existing one-kill Fleshmonger guard policy once. It
+still requires fresh live target identity, consider, route, output, and health
+checks; a zero-XP result closes that policy and returns selection to the
+source-ranked frontier.
 explicit `--retry-stalled` path has a separate, equally narrow Forest
 bear-claw exception for a level-10-through-29 thief who still needs the
 source-validated piercing upgrade. It can open only from the healer after the
@@ -1065,6 +1350,15 @@ consider, and live-identity gates remain authoritative. If no ordinary target
 passes them, checkpoint without opening gameplay; do not convert a below-band
 funding kill into progression XP.
 
+When no source-safe funding carrier remains and the exact same-boot ground
+probe (including its one pending expanded locator search) is recorded absent,
+the campaign may use the existing three-attempt current-band XP budget to
+select another no-flight ground target. A pending exact locator retry takes
+priority; each alternate still passes the ordinary level, output, protection,
+route, consider, and live-identity gates. Persist and spend the budget per
+segment, then return to funding selection. Do not repeat the absent target or
+wait for a reboot while another eligible ground target remains.
+
 Revision **322** adds the preceding bounded branch for the nonterminal case:
 when a current-boot flight-funding carrier is absent and protection recovery
 still has a remaining sanctuary attempt, select one source-validated sanctuary
@@ -1144,6 +1438,18 @@ productive target result clears the route-only marker and its exact loss record;
 another failed or interrupted attempt closes the marker for that boot and
 level. Never use this exception for a combat loss, absent-target search, hard
 route hazard, below-band progression, or a generic retry loop.
+
+### City-Greeter Route Revalidation
+
+The level-25 Solace Secretary fallback may receive one fresh city-route check
+only when its recorded prior segment ended at healer room 3054 at full health,
+with unchanged XP, no combat or kills, and the exact source-registered Drunk
+preflight at Temple Square. Match the same source mobile, reset room, boot, and
+level; retain the ordinary no-sanctuary output and route gates. From recall,
+issue a fresh `where drunk` and reject any selected route that crosses a
+reported location. Consume the marker at dispatch. This reopens navigation
+only: live identity, consider, and damage gates still control combat, and any
+combat loss closes the policy for that boot.
 
 ## Capacity And Worker Recovery
 

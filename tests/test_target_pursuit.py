@@ -169,6 +169,29 @@ def gmcp_enemy(policy, state, *, vnum=29953, source="gmcp", duplicate=False):
     })], state)
 
 
+def test_fresh_room_listing_preempts_exhausted_precombat_pursuit():
+    policy, state, stop = encounter()
+    policy.fastwalk_attack_started = False
+    policy.fastwalk_pursuit_direction = "west"
+    policy.fastwalk_pursuit_steps = stop.maximum_pursuit_steps
+    policy.current_room = "29964"
+    state = replace(state, room_vnum="29964", exits={"e": "29966"})
+    policy.source_mobile_vnums_by_target_room = {
+        TARGET: {"29966": (29953,), "29964": (29953,)},
+    }
+    policy.room_targets["29964"] = [TARGET]
+    policy.room_target_counts["29964"] = {TARGET: 1}
+    policy.room_target_selectors["29964"] = {TARGET: ("#18436",)}
+    policy.room_target_selector_descriptions["29964"] = {"#18436": DESCRIPTION.lower()}
+    policy.fastwalk_hunt_looked = True
+
+    decision = policy._fastwalk_hunt_plan_decision(state)
+
+    assert decision.command == "consider #18436"
+    assert policy.fastwalk_pursuit_direction is None
+    assert not policy.fastwalk_attack_started
+
+
 def flee_and_follow(policy, state):
     # Run 12736: the sentinel fled west after burning hands, with no player HP loss.
     policy.observe_text("The lemming smithy leaves west.\nThe lemming smithy has fled!\n")
@@ -278,8 +301,7 @@ def test_a_new_policy_cannot_restore_instance_ownership():
     assert policy._source_target_reachability_issue(destination, stop, TARGET)
 
 
-@pytest.mark.parametrize("acknowledged", [True, False])
-def test_same_fleeing_target_requires_a_new_confirmed_companion_order(acknowledged):
+def test_unplanned_familiar_stays_back_after_target_flees():
     policy, state, stop = encounter()
     description = "A small pony stands here grazing."
     policy.source_world = WorldSource(mobiles={19900: MobileSource(
@@ -301,11 +323,7 @@ def test_same_fleeing_target_requires_a_new_confirmed_companion_order(acknowledg
     order = policy._familiar_precombat_decision(
         destination, target=TARGET, command_keyword="#18435", allow_start=True,
     )
-    assert order.command == "order #23665 kill #18435"
-    if acknowledged:
-        policy.observe_text("Ok.\n")
-    attack = policy._familiar_precombat_decision(destination, command_keyword="#18435")
-    if acknowledged:
-        assert attack.command == "kill #18435"
-    else:
-        assert attack is None and policy.familiar_unavailable
+    assert order is None
+    assert policy.familiar_precombat_step is None
+    assert policy.familiar_ordered_target is None
+    assert not policy.combat_active

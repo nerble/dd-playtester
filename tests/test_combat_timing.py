@@ -50,6 +50,30 @@ def test_damage_acknowledgement_does_not_clear_ensuing_wait(spell, noun):
     assert not window.blocked(3.5)
 
 
+def test_bundled_damage_response_acknowledges_before_wounds_and_prompt():
+    window = CombatCommandWindow()
+    window.issue("cast 'burning hands' #25929", target="the patrolling guard", now=0)
+    window.observe(
+        "Your burning hand grazes the patrolling guard. "
+        "The patrolling guard has quite a few wounds. "
+        "<127/145 hits 346/400 mana 209/250 move [Fleshmonger's Tower]>\n",
+        now=.5,
+    )
+    assert not window.pending and window.acknowledged == 1
+    assert window.blocked(3.74)
+    assert not window.blocked(3.76)
+
+
+@pytest.mark.parametrize("verb", ["dodges", "parries"])
+def test_target_evade_acknowledges_kill_opener_after_round_wait(verb):
+    window = CombatCommandWindow()
+    window.issue("kill #42", target="the guardian", now=0)
+    window.observe(f"The guardian {verb} your attack.\n", now=.5)
+    assert not window.pending and window.acknowledged == 1
+    assert window.blocked(3.74)
+    assert not window.blocked(3.76)
+
+
 @pytest.mark.parametrize("spell,noun", SPELL_NOUNS.items())
 def test_critical_hit_suffix_acknowledges_each_registered_spell(spell, noun):
     window = CombatCommandWindow()
@@ -76,6 +100,7 @@ def test_run_12761_critical_reply_and_departure_allow_next_cast(monkeypatch):
     "<113/113 hits 224/324 mana 199/220 move [Ultima]> ",
     "The pony grazes Katrina the Shepherd.\n",
     "Your pierce scratches Katrina the Shepherd.\n",
+    "The pony dodges your attack.\n",
     "Someone says 'Your chilling touch grazes Katrina the Shepherd.'\n",
     "Your chilling touch grazes another opponent.\n", "Ok.\n",
 ])

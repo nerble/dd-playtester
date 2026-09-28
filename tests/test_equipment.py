@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from dd4tester.equipment import (
     GearCatalog,
     ITEM_KEY,
@@ -145,6 +147,46 @@ def test_rank_gear_sources_ranks_a_source_equipped_upgrade() -> None:
         for hazard in placement.hazards
     )
     assert placement.route == ("south",)
+
+
+@pytest.mark.parametrize("wear_bit", [1, 2, 12])
+@pytest.mark.parametrize(
+    ("owned_bonuses", "upgrade_bonus", "expected"),
+    [
+        ((3, 1), 2, True),
+        ((3,), 2, True),
+        ((3, 2, 1), 2, False),
+        ((3, 3), 3, False),
+        ((3, 1), 1, False),
+    ],
+)
+def test_gear_acquisition_compares_the_replaceable_paired_slot(
+    wear_bit: int,
+    owned_bonuses: tuple[int, ...],
+    upgrade_bonus: int,
+    expected: bool,
+) -> None:
+    owned = tuple(
+        _item(40 + bonus, f"paired gear {bonus}", (19, bonus), wear_bit=wear_bit)
+        for bonus in owned_bonuses
+    )
+    upgrade = _item(50, "upgrade", (19, upgrade_bonus), wear_bit=wear_bit)
+    world = WorldSource(
+        objects={upgrade.vnum: upgrade},
+        rooms={3001: RoomSource(3001, "recall", "test.are")},
+        room_object_resets=[RoomObjectReset(upgrade.vnum, 3001)],
+    )
+
+    placements = rank_gear_sources(
+        world,
+        character_level=24,
+        character_class="thief",
+        current_items=owned,
+        include_all_areas=True,
+    )
+
+    assert len(placements) == 1
+    assert placements[0].better_than_current is expected
 
 
 def test_rank_gear_sources_keeps_thief_primary_weapon_piercing() -> None:
@@ -924,6 +966,68 @@ def test_all_stances_remove_strength_penalty_rings_even_if_slot_is_empty() -> No
 
         assert removals == [penalty_ring]
         assert additions == []
+
+
+def test_empty_finger_slot_does_not_make_strength_penalty_ring_an_upgrade() -> None:
+    penalty_ring = _item(
+        4000,
+        "yellow and green ring",
+        (1, -2),
+        (5, 1),
+        wear_bit=1,
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "guard",
+                "a quiet guard",
+                5,
+                ACT_SENTINEL,
+                0,
+                "test.are",
+            )
+        },
+        objects={penalty_ring.vnum: penalty_ring},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "guard post", "test.are"),
+        },
+        mob_resets=[
+            MobReset(
+                100,
+                200,
+                1,
+                (),
+                equipment=((1, penalty_ring.vnum),),
+            ),
+        ],
+    )
+
+    placements = rank_gear_sources(
+        world,
+        character_level=11,
+        character_class="thief",
+        include_all_areas=True,
+    )
+    carrier = next(
+        placement
+        for placement in placements
+        if placement.object_vnum == penalty_ring.vnum
+    )
+
+    assert carrier.better_than_current is False
+    assert rank_executable_carrier_gear_sources(
+        world,
+        character_level=11,
+        character_class="thief",
+        include_all_areas=True,
+    ) == []
 
 
 def test_recovery_stance_keeps_basic_light_with_level_gain_priorities() -> None:

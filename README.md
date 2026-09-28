@@ -3,7 +3,193 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current State: September 22, 2026
+## September 28 Progress
+
+Dorrik has reached level **26**. His last observed score in interrupted run
+**15413** was **444,941 XP**, with **8,659 XP** remaining to level 27; he had
+returned to healer room **3054**. The interrupted worker was recovered before
+new live work. This is observed progress, not a completed HERO proof.
+
+Pouch checks now retain split replies through the complete contents listing,
+including departure and healer logout. An unanswered check ends after five
+seconds and returns to healer logout without erasing the previous verified
+contents or authorizing a hunt. Confirmed empty listings still clear the ledger.
+The shared fix and new replay cases await the next permitted regression batch;
+the earlier repacking-only fix was observed working in run **15386**.
+Run **15414** confirmed the shared check accepts a real empty-pouch response.
+It then returned to the healer because of a wandering route hazard; food
+restocking run **15415** also completed. Neither run earned XP.
+
+Development prioritizes useful implementation and live progression. Regression
+tests run **at most once per Pacific/Auckland calendar day**, using either
+focused tests or the full suite, never both. This is a ceiling, not a daily quota.
+
+Equipment acquisition now compares an upgrade against the weakest selected
+slot, accounting for two rings, necklaces, or wrist items and any carried spares.
+Inspection commands count each worn item once and preserve inventory quantities.
+The current source report now recognizes a second war-dog collar as a combat
+upgrade for Kestrel; route and protection gates still control acquisition.
+This ranking improvement is source-inspected, not yet live-acquired; its focused
+cases are saved for the next permitted regression batch.
+
+The evening roster pass (runs **15416-15422**) earned **661 net XP** from four
+confirmed kills: Ararisa +234, Astrevo +106, Serevian +209, and Velnor +112.
+No character levelled or recorded an XP loss; all seven live sessions finished
+fully healed at room **3054**. Total connected time was **617.76 seconds**,
+including preparation, travel, and recovery. Three blocked campaigns did not
+connect. See the approach review for the next combat-throughput issue.
+
+Run **15423** exposed a wait after a fleeing target: DD4's `They're not here.`
+reply was missing from the ordinary target-check acknowledgement matcher.
+That reply now releases the wait through the bounded refresh path. A fresh
+source encounter identity also resolves differing room and combat names for
+departure tracking. These changes and their saved cases await further proof;
+no extra regression batch was run. Runs **15423-15424** earned no net XP.
+Ordinary target checks now buffer split replies and expire after five seconds
+without an answer. A timeout returns through the existing recovery and healer
+logout controls, rather than waiting out the whole hunting segment or recording
+false target-level evidence. Silent and split-response cases remain unproved
+live; their focused tests are written but deferred.
+Ararisa's follow-up runs **15425-15426** also earned none: both targets were
+below-band on live consideration. Both characters ended fully recovered at
+healer **3054**, without recorded XP loss; that is not advancement evidence.
+
+## September 26 Roster Snapshot
+
+HERO 100 remains unproved. The latest saved roster checkpoints are:
+
+| Character | Level | XP | Checkpoint |
+| --- | ---: | ---: | ---: |
+| Aeloria | 18 | 162,145 | 45166 |
+| Ararisa | 10 | 47,544 | 45168 |
+| Astrevo | 9 | 35,282 | 45171 |
+| Corararfen | 8 | 26,528 | 45172 |
+| Dorrik | 25 | 404,981 | 45174 |
+| Fenanallor | 7 | 20,733 | 45177 |
+| Kestrel | 24 | 329,349 | 45179 |
+| Praelarran | 21 | 233,527 | 45180 |
+| Serevian | 11 | 53,834 | 45182 |
+
+The September 26 rotation produced no level gains. Aeloria, Dorrik, Kestrel,
+and Serevian remain at exhausted sanctuary rechecks; Ararisa and Astrevo have
+no safe funding target; Corararfen has no current executable frontier;
+Fenanallor's field departure was blocked by the wandering drunk; and
+Praelarran's quest request earned no XP. These are per-character blockers, not
+a reason to pause all progression until a MUD reboot.
+
+Morjornelmor's separate level-6 campaign ended at **14,489 XP** (checkpoint
+**45189**), only **11 net XP** above its starting point. The Cult room held a
+receptionist who joined the fight, so the character fled; there was no
+confirmed kill, and **49 XP** was lost against **60 partial XP** earned. The
+following recovery and same-boot time check earned no XP, and no safe current-
+band route remained. HERO 100 remains unproved.
+
+The one regression batch allowed for September 26 was already used on earlier
+work. This cleric-priority change received only JSON and Python syntax checks;
+its focused tests are deferred to the next daily batch.
+
+Campaign policy revision **334** now schedules the cleric protection path after
+its damage and healing priorities: protective magiks 45%, protection 40%, then
+sanctuary 40%, only when the live teacher offers each skill. Existing mana and
+buff checks remain in force; the new path has not yet been live-verified.
+
+Historical Ararisa work added **460 net XP**, from **43,842** to
+**44,302**: run **14501** (+48), run **14504** (+240), and run **14506**
+(+172). Run **14500** earned no XP when the familiar finished the bard; the
+stunned-bard hunt was not repeated. Run **14502** exposed an empty-route bug
+before combat, and recovery run **14503** returned her safely to healer room
+**3054**. The fix passed its focused test and live run **14504**: after `where`
+found no fanatic monk in Dragon Cult, Ararisa followed the source-mapped
+Midgaard route through rooms **3024, 3025, 3026, 3045, 3046, and 3219**, reached
+the guild, killed the monk for **240 XP**, and returned to the healer. Run
+**14505** handled loot without XP. At that historical checkpoint, Ararisa was
+level 10 at checkpoint **44687**, with **4,198 XP** to level 11. No one levelled
+in those runs; the full suite remains deferred while progression work continues.
+
+An earlier bounded roster pass produced confirmed XP without losses: Ararisa gained
+**83 XP** in run **14491**, Corararfen gained **223 XP** in Moria in run
+**14492**, and Fenanallor gained **256 XP** in run **14493**. All three saved
+at healer room **3054**; none levelled. Corararfen's runs **14488-14490** also
+confirmed that the wandering drunk can block several Midgaard outbound routes;
+those routes were safely abandoned, then the campaign selected Moria and made
+progress. Aeloria, Dorrik, Kestrel, and Serevian were deferred before login at
+their exhausted protection gates; Praelarran had no executable frontier, and
+Astrevo had no safe funding target. No HERO result is proved.
+
+The no-XP familiar handoff now checks the exact live target after the familiar
+opens. When a non-crediting familiar has brought it to 65% health or lower, the
+bot must confirm the charmed pony's flee-and-sleep handoff before the player's
+first attack. `tests/test_companion_withdrawal.py` passes **30 tests**, and the
+edited Python files compile. This fix is not yet live-proven; the full suite is
+deferred while progression continues.
+
+Earlier Fenanallor runs 14300-14312 earned **1,925 XP**: 1,715 from boar
+hunts and 210 from a daycare gear route. The latest two school-boar attempts
+found no target at their reset-room anchors. DD4 source marks the boar as a
+stay-area wanderer, and the route builder already provides up to eight nearby
+source-vetted rooms. The locator now continues that bounded sweep after a
+`where` miss; a positive locator still uses the full source map, and live room,
+identity, and hazard checks remain required. Three focused tests pass. This
+Fenanallor change is not live-proven: the school route is on a same-reboot reset
+cooldown.
+
+The full suite remains deferred until a larger implementation batch or release
+checkpoint; the bounded roster run is campaign evidence, not a regression run.
+
+## Run the saved roster
+
+Run one bounded turn for each campaign in the active roster:
+
+```powershell
+python -m dd4tester hero-rotation --config matrices/active-hero-rotation.yaml --rounds 1 --progress
+```
+
+Each turn runs at most one campaign segment, with a 180-second live cap and no
+area-reset wait. A completed character is skipped; a blocked or failed
+character is reported and deferred for the rest of that invocation, so the
+remaining roster still gets a turn. Use `--rounds N` to continue only campaigns
+that returned a durable next-segment checkpoint. This does not override any
+character's safety gates or claim progress when no XP was earned.
+
+The September 24 live roster pass gave all six then-configured characters one
+turn and completed in about a minute. No level or XP changed. Aeloria, Dorrik,
+Kestrel, and Serevian stopped at their already-spent sanctuary recheck;
+Praelarran was on a protection-recovery cooldown, and Astrevo had no safe
+funding target. These are character-specific route and resource limits, not a
+global pause until the MUD reboots. The saved rotation now includes nine
+unfinished campaigns, adding the existing Ararisa, Corararfen, and Fenanallor
+tracks.
+
+Corararfen then resumed his level-6 cleric campaign. Run **14186** completed
+the Mud School segment and saved **302 XP** through GMCP, reaching **17,348 XP**
+with **1,702 XP** to level 7. He returned to healer room **3054**. This is
+productive route evidence, not HERO proof.
+
+### Progress persistence update: September 24, 2026
+
+Fenanallor's first reconnect exposed unsaved progress, so the starter now saves
+after first observing progress and after each later XP or level change. Live
+runs 14079-14094 confirmed the fix: he resumed at level 4, reached level 5,
+and retained his gains across bounded sessions. That batch saved him at
+level 5, 12,292 XP, healer room 3054, full health and mana. The latest hunt
+added 250 XP in six kills. A reconnect confirmed that an unusual in-session XP
+reading had not changed his saved total. He is continuing between MUD reboots;
+a reboot can change some kill and spawn bonuses, but is not a prerequisite for
+XP. HERO 100 remains unproved.
+
+The preceding full repository suite passed 6,038 tests; the starter and
+campaign suites also passed after the save-on-progress change. Compilation and
+conversation-log validation are clean. Inspect the current evidence with
+`python -m dd4tester show-campaign 27 --limit 12` and
+`python -m dd4tester show-state 14094`.
+
+The first-miss location refresh is covered by the full starter suite: **1,483
+tests passed**. The related campaign and progression checks passed **4,145
+tests** before that small follow-up. Compilation is clean. Praelarran's latest
+bounded run also completed its area-reset check without XP; Kestrel's fame
+readiness audit found no current target within his damage limits.
+
+## Historical State: September 22, 2026
 
 Dorrik is the current highest live character: level 25, 388,606 XP, checkpoint
 42991, safely saved in healer room 3054. Runs 13848-13850 performed the
@@ -32,11 +218,13 @@ source mirror is now revision `7faf3f9`; the synchronization run found the
 same DD4 reboot identity and opened no gameplay socket.
 HERO 100 remains unproved.
 
-When a source-ranked frontier is unavailable, the checkpoint now retains a
+When a source-ranked frontier is unavailable, the checkpoint retains a
 compact offline diagnosis under
-`campaign_source_ranked_frontier_diagnosis`. It records the reboot identity,
-current-band and autonomous-safe counts, sanctuary requirements, and same-boot
-below-band exclusions. Inspect the durable boundary with
+`campaign_source_ranked_frontier_diagnosis`. The readiness report is a source
+shortlist, not a promise that the campaign will dispatch a fight: it now
+separates source-gate fit from useful-XP probability and shows known live
+below-band or invisibility blockers. The final selector still applies route,
+cooldown, combat, and fresh live-consider checks. Inspect the durable boundary with
 `python -m dd4tester show-campaign 7 --limit 12`, then use
 `show-combat-readiness --level 25 --class warrior --character Dorrik
 --all-areas --json` for the source candidate details. This diagnosis is
@@ -403,6 +591,14 @@ and does not bypass source admission, mana reserves, incoming-damage checks, or
 withdrawal. It is intended to handle live resistance differences without
 pretending that offline spell estimates prove a kill.
 
+Live run **15277** showed that DD4 can append the target's wound description
+and prompt after a valid spell-hit line; an end-of-line-only match then timed
+out and blocked later combat commands. The matcher now recognizes the exact
+target within that bundled reply while retaining quoted-speech and target
+checks. `test_combat_timing.py` includes a saved-format regression case; it
+awaits the next daily test batch, and the same-boot Fleshmonger target remains
+closed to live retry.
+
 The mage training graph now continues past burning hands. When the current
 teacher listing exposes each dependent skill, the planner can advance through
 the source prerequisites for shocking grasp, lightning bolt, colour spray,
@@ -512,8 +708,10 @@ or HERO progress is claimed yet.
 The `--autonomous` supervisor now counts one completed reset wait rather than
 each progress heartbeat and preserves every bounded result in SQLite.
 His source-verified long slim dagger (vnum 5252) gives a
-318-point conservative opener-plus-repeat ceiling. The refreshed source is
-`99d6a4e` (full revision `99d6a4e615e789b7b3f569fe328110d9dc661de5`). Readiness finds
+318-point conservative opener-plus-repeat ceiling. The current local DD4
+checkout is `4cffee6` (full revision
+`4cffee6551bda62b0c7accc439dfb5069712e2c0`). Earlier run notes below retain
+the source revisions they were collected against. Readiness finds
 317 source-band candidates, 93 autonomous-safe candidates, 1,154
 output-fitting candidates, and protected HP probes under the revision-302
 nominal-current-level admission. The newly selected Shudde-M'ell route still
@@ -556,6 +754,9 @@ when one is present, avoiding a large historical event scan in the shared
 SQLite database. Legacy checkpoints still receive historical skill backfill;
 the public runner reports each preparation boundary and stops within its
 bounded setup allowance.
+Score-confirmed maxed stats are saved with campaign progress and restored on
+the next session, so pre-level stat choices can move on to the next useful
+stat instead of repeating a capped one.
 
 ## Setup
 
@@ -581,13 +782,22 @@ python -m dd4tester hero --race human --sex female --class mage `
   --autonomous --progress
 python -m dd4tester hero --username Astrevo --workspace runs/heroes/astrevo `
   --segments 3 --max-segment-runtime 180 --reset-retries 1 --reset-wait 180 --progress
+python -m dd4tester hero --username Ararisa --progress
 ```
 
 `hero-options` lists source-legal identities. Requests accept race, cosmetic sex,
 base class, optional level-30 subclass target, name, and personality. Omitting
 the name generates a stable name. `--prepare-only` writes configuration without
 connecting; repeat the same request/workspace to resume. Names select history,
-never special gameplay behavior.
+never special gameplay behavior. If duplicate folders match a name, resume may
+select the sole checkpointed campaign only when the other matching folders are
+confirmed to have no campaign record. Conflicting identities, multiple tracked
+campaigns, or unreadable history remain an error rather than a guess.
+
+When no HERO workspace matches `--username` and race/class are omitted, the CLI
+also checks `runs/dd4tester.sqlite3` for that character's latest saved campaign
+checkpoint. It reuses the recorded profile and campaign file, so resuming an
+older campaign does not create a duplicate character workspace.
 
 ```powershell
 python -m dd4tester hero --name Newmage --race human --class mage `
@@ -623,6 +833,8 @@ supervisor preserves the same SQLite checkpoints and credentials between
 cycles, counts one completed wait rather than each progress heartbeat, returns
 on a real failure or blocked policy, and never spins on an unchanged world. A
 returned `ready` result is safe to resume later.
+An exhausted, already-dispatched sanctuary recheck remains blocked across
+process restarts; it does not authorize another identical area-reset wait.
 
 ### Credentials
 
@@ -1033,8 +1245,9 @@ analysis. When a placement is behind a locked door, its
 `source_analysis_route`, `route_key_objects`, and `route_key_sources` columns
 show the paper route and source key provenance; those rows remain diagnostic
 evidence and are never dispatched automatically. On shared databases larger
-than 2 GiB, inspection uses the indexed latest character snapshot and skips
-the historical campaign merge so source reports remain bounded.
+than 2 GiB, inspection checks only each campaign's latest indexed checkpoint;
+it does not scan the full checkpoint history, and it retains campaign safety
+and same-boot target evidence.
 The source parser also retains each area header's display range and its
 separate movement-enforced range from `db.c:load_area`. Candidate endpoints and
 resource routes behind an enforced gate, or inside a `-4 -4` safety area, are

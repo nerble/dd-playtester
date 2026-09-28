@@ -12,7 +12,42 @@ from .archetypes import archetype_registry
 from .observations import _DD4_PROMPT, _EXITS
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_MUD_COLOUR_CODE = re.compile(r"(?:\{.|<\d+>)")
+_TARGETMODE_SELECTOR = re.compile(
+    r"^\s*\[#(?P<target_id>\d+)\]\s*(?P<description>.*)$"
+)
+_MOBILE_STATUS_PREFIX = re.compile(r"^(?:(?:\([^)]*\)|<[^>\r\n]*>)\s*)+")
 ROOM_INDOORS = 1 << 3
+FAMILIAR_XP_CREDIT_SUBCLASSES = frozenset({
+    "witch", "infernalist", "necromancer", "knight", "werewolf",
+})
+
+
+def _live_selector_matches(text: str, description: str) -> tuple[str, ...]:
+    """Extract exact numbered mobiles from the fresh room listing."""
+    clean = _MUD_COLOUR_CODE.sub("", _ANSI_ESCAPE.sub("", text))
+    expected = " ".join(description.casefold().split())
+    matches: list[str] = []
+    for line in clean.splitlines():
+        selector = _TARGETMODE_SELECTOR.match(line)
+        if selector is None:
+            continue
+        observed = _MOBILE_STATUS_PREFIX.sub("", selector.group("description")).strip()
+        if " ".join(observed.casefold().split()) == expected:
+            matches.append(f"#{selector.group('target_id')}")
+    return tuple(matches)
+
+
+def familiar_kill_credits_owner_xp(character_class: str, subclass: str | None) -> bool:
+    """Mirror DD4's source whitelist for XP when a familiar lands the kill."""
+    base = " ".join(str(character_class or "").casefold().replace("_", " ").split())
+    subclass_name = " ".join(str(subclass or "").casefold().replace("_", " ").split())
+    if subclass_name == "none":
+        subclass_name = ""
+    return subclass_name in FAMILIAR_XP_CREDIT_SUBCLASSES or (
+        base in {"shape shifter", "shifter"} and not subclass_name
+    )
 
 
 def companion_finishing_blow(text: str, *, target: str, companion: str = "the pony") -> bool:
@@ -105,13 +140,20 @@ class FamiliarWithdrawal:
             return
         self.buffer = (self.buffer + text)[-2_000:]
         lines = {" ".join(line.casefold().split()) for line in self.buffer.splitlines()}
-        if f"{self.name.casefold()} has fled!" in lines or (
-            self.settle_in_place and self.last_order == "sleep"
+        if (
+            not self.settle_in_place
+            and f"{self.name.casefold()} has fled!" in lines
+        ) or (
+            self.settle_in_place
+            and self.last_order == "sleep"
             and f"{self.name.casefold()} sleeps." in lines
         ):
             self.confirmed = True
             self.failure = None
-        if "ok." in lines and self.acknowledged_at is None:
+        if (
+            any(re.match(r"^ok\.(?:\s|$)", line) for line in lines)
+            and self.acknowledged_at is None
+        ):
             self.acknowledged_at = now
         if lines & {"they aren't here.", "do it yourself!", "you have no followers here."}:
             self.failure = "withdrawal order refused"
@@ -123,7 +165,7 @@ class FamiliarWithdrawal:
             self.failure = "missing exact companion identity"
             return None
         if self.deadline is None:
-            self.deadline = now + 10
+            self.deadline = now + 5
         if now >= self.deadline:
             self.failure = "withdrawal confirmation deadline expired"
             return None
@@ -148,12 +190,10 @@ class FamiliarWithdrawal:
         self.last_order = "flee"
         self.acknowledged_at = None
         self.buffer = ""
-        # DD4 deliberately gives NPC flee a random no-op unless the argument
-        # is "Fear". A source-defined charmed pony cannot leave its master,
-        # so force the flee path to reach stop_fighting before confirming the
-        # in-place handoff with a positive sleep message.
-        flee_argument = " Fear" if self.settle_in_place else ""
-        return f"order {self.selector} flee{flee_argument}"
+        # DD4's Fear argument bypasses the NPC random no-op. Uncharmed
+        # companions can confirm by leaving; callers mark source-charmed
+        # familiars to require positive in-place sleep evidence instead.
+        return f"order {self.selector} flee Fear"
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -251,6 +291,8 @@ class FamiliarPreparation:
     deadline: float | None = None
     listing_started: bool = False
     listing_complete: bool = False
+    group_room: str | None = None
+    last_present_room: str | None = None
 
     @property
     def pending(self) -> bool:
@@ -316,6 +358,7 @@ class FamiliarPreparation:
         return {
             "stage": self.stage, "selector": self.selector,
             "summoned": self.summoned, "grouped": self.grouped,
+            "group_room": self.group_room,
             "order_confirmed": self.order_confirmed, "failure": self.failure,
             "attempts": self.attempts,
         }
@@ -323,6 +366,7 @@ class FamiliarPreparation:
     def next_command(
         self, selectors: Mapping[str, str], description: str, *,
         mana: int | None = None, now: float | None = None,
+        room_vnum: str | None = None,
     ) -> str | None:
         if self.failure or self.stage == "ready":
             return None
@@ -361,10 +405,13 @@ class FamiliarPreparation:
                 selector for selector, observed in selectors.items()
                 if observed == description and re.fullmatch(r"#\d+", selector)
             ]
+            if not matches:
+                matches = list(_live_selector_matches(self.buffer, description))
             if len(matches) != 1:
                 self.failure = "summoned familiar identity is missing or ambiguous"
                 return None
             self.selector = matches[0]
+            self.group_room = str(room_vnum) if room_vnum is not None else None
             self.stage = "grouping"
             self.buffer = ""
             return f"group {self.selector}"
@@ -374,8 +421,33 @@ class FamiliarPreparation:
             self.stage = "ready"
         return None
 
-    def present(self, selectors: Mapping[str, str], description: str) -> bool:
-        return bool(
-            self.stage == "ready" and self.grouped and self.selector
-            and selectors.get(self.selector) == description
-        )
+    def present(
+        self,
+        selectors: Mapping[str, str],
+        description: str,
+        *,
+        room_text: str = "",
+        room_vnum: str | None = None,
+    ) -> bool:
+        if self.stage != "ready" or not self.grouped or not self.selector:
+            return False
+        room_key = str(room_vnum) if room_vnum is not None else None
+        if room_key is not None and room_key == self.last_present_room:
+            return True
+        indexed = [
+            selector for selector, observed in selectors.items()
+            if observed == description and re.fullmatch(r"#\d+", selector)
+        ]
+        visible = _live_selector_matches(room_text, description)
+        if indexed:
+            matches = tuple(indexed)
+        else:
+            matches = visible
+        if room_key is not None and room_key == self.group_room:
+            self.last_present_room = room_key
+            return True
+        if matches == (self.selector,):
+            if room_key is not None:
+                self.last_present_room = room_key
+            return True
+        return False

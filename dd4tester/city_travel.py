@@ -1,11 +1,15 @@
 """Source-bounded city shopping and one session-local defensive interruption."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping, Sequence
 
+from .fastwalks import Fastwalk
 from .hunt_candidates import (
     WorldSource, _mobile_base_hp_range, _mobile_level_range,
+    _shortest_paths_from,
     source_mobile_route_program_attacker_is_bounded,
+    source_route_hazard_rejections,
+    source_route_movement_cost,
 )
 
 
@@ -20,6 +24,233 @@ GMCP_ALIGNMENT_REVEAL_LEVEL = 10
 ALIGNMENT_MIN = -1000
 ALIGNMENT_MAX = 1000
 GUARD_ASSIST_ALIGNMENT_CEILING = 300
+_FIELD_CITY_DETOUR_MAX_EXTRA_COMMANDS = 16
+_FIELD_CITY_DETOUR_MOVE_RESERVE = 15
+_FASTWALK_DIRECTION_CODES = {
+    "north": "n", "east": "e", "south": "s", "west": "w",
+    "up": "u", "down": "d",
+}
+
+
+@dataclass(frozen=True)
+class FieldCityDetour:
+    route: Fastwalk
+    blocked_locations: tuple[str, ...]
+    boundary_room_vnum: int
+    original_city_commands: tuple[str, ...]
+    detour_city_commands: tuple[str, ...]
+    ground_move_delta: int
+    flying_move_delta: int
+    required_ground_move: int
+    required_flying_move: int
+
+    def evidence(self) -> dict[str, Any]:
+        return {
+            "blocked_locations": list(self.blocked_locations),
+            "boundary_room_vnum": self.boundary_room_vnum,
+            "original_city_commands": list(self.original_city_commands),
+            "detour_city_commands": list(self.detour_city_commands),
+            "ground_move_delta": self.ground_move_delta,
+            "flying_move_delta": self.flying_move_delta,
+            "required_ground_move": self.required_ground_move,
+            "required_flying_move": self.required_flying_move,
+        }
+
+
+def _normalized_room_name(value: Any) -> str:
+    return " ".join(str(value).casefold().split()).removeprefix("the ")
+
+
+def _route_room_path(
+    world: WorldSource,
+    origin: int,
+    commands: Sequence[str],
+) -> tuple[int, ...] | None:
+    room = world.rooms.get(origin)
+    if room is None:
+        return None
+    path = [origin]
+    for raw_command in commands:
+        command = str(raw_command).casefold().strip()
+        if command.startswith(("open ", "unlock ", "pick ")):
+            continue
+        exit_source = room.exits.get(command)
+        if exit_source is None:
+            return None
+        room = world.rooms.get(exit_source.destination)
+        if room is None:
+            return None
+        path.append(room.vnum)
+    return tuple(path)
+
+
+def _fastwalk_notation(commands: Sequence[str]) -> str | None:
+    segments = []
+    for raw_command in commands:
+        command = str(raw_command).casefold().strip()
+        if command in _FASTWALK_DIRECTION_CODES:
+            segments.append(_FASTWALK_DIRECTION_CODES[command])
+        elif command.startswith(("open ", "unlock ", "pick ")):
+            segments.append(command)
+        else:
+            return None
+    return ";".join(segments) if segments else None
+
+
+def field_city_detour_for_locations(
+    world: WorldSource | None,
+    route: Fastwalk | None,
+    locations: Sequence[str],
+    *,
+    character_level: int,
+    character_max_hp: int | None,
+) -> FieldCityDetour | None:
+    """Find one source-checked city-prefix detour around a live greet mobile."""
+    if (
+        world is None
+        or route is None
+        or route.route_origin_room_vnum != 3001
+        or route.route_origin_recall_index != 0
+        or route.return_commands
+        or character_level < 2
+        or not locations
+        or len(locations) > 8
+    ):
+        return None
+    mobile = world.mobiles.get(CITY_GREETER_VNUM)
+    if mobile is None or not source_mobile_route_program_attacker_is_bounded(
+        world,
+        mobile,
+        character_level=character_level,
+        character_max_hp=character_max_hp,
+    ):
+        return None
+
+    normalized_locations = tuple(dict.fromkeys(
+        _normalized_room_name(location)
+        for location in locations
+        if _normalized_room_name(location)
+    ))
+    if not normalized_locations:
+        return None
+    rooms_by_name: dict[str, set[int]] = {}
+    for room in world.rooms.values():
+        if room.area_file.casefold() == "midgaard.are":
+            rooms_by_name.setdefault(_normalized_room_name(room.name), set()).add(
+                room.vnum
+            )
+    if any(name not in rooms_by_name for name in normalized_locations):
+        return None
+    blocked_rooms = set().union(*(rooms_by_name[name] for name in normalized_locations))
+
+    original_commands = route.commands
+    original_path = _route_room_path(world, 3001, original_commands)
+    if original_path is None:
+        return None
+    room = world.rooms[3001]
+    original_prefix_rooms = [3001]
+    boundary_command_end = None
+    for command_index, raw_command in enumerate(original_commands):
+        command = str(raw_command).casefold().strip()
+        if command.startswith(("open ", "unlock ", "pick ")):
+            continue
+        exit_source = room.exits.get(command)
+        if exit_source is None:
+            return None
+        room = world.rooms.get(exit_source.destination)
+        if room is None:
+            return None
+        original_prefix_rooms.append(room.vnum)
+        if room.area_file.casefold() != "midgaard.are":
+            boundary_command_end = command_index + 1
+            break
+    if boundary_command_end is None:
+        return None
+    original_prefix_commands = original_commands[:boundary_command_end]
+    boundary_path_index = len(original_prefix_rooms) - 1
+    if blocked_rooms.isdisjoint(original_prefix_rooms):
+        return None
+    later_route_names = {
+        _normalized_room_name(world.rooms[room_vnum].name)
+        for room_vnum in original_path[boundary_path_index:]
+    }
+    if later_route_names.intersection(normalized_locations):
+        return None
+
+    boundary_room_vnum = original_prefix_rooms[-1]
+    alternative = _shortest_paths_from(
+        world.rooms,
+        3001,
+        blocked_rooms=blocked_rooms,
+    ).get(boundary_room_vnum)
+    if alternative is None:
+        return None
+    detour_commands, detour_path, _ = alternative
+    if (
+        not blocked_rooms.isdisjoint(detour_path)
+        or detour_commands == original_prefix_commands
+        or len(detour_commands)
+        > len(original_prefix_commands) + _FIELD_CITY_DETOUR_MAX_EXTRA_COMMANDS
+        or world.rooms[detour_path[-1]].area_file.casefold() == "midgaard.are"
+    ):
+        return None
+    if any(
+        world.rooms[room_vnum].random_exits
+        for room_vnum in detour_path
+        if room_vnum in world.rooms
+    ):
+        return None
+
+    hazards = source_route_hazard_rejections(
+        world,
+        detour_path,
+        character_level=character_level,
+        combat_at_destination=False,
+    )
+    expected_greeter_warning = (
+        "a program-triggered attacker inside the useful XP band can reach the "
+        f"route: {mobile.short_description}"
+    )
+    if hazards and hazards != (expected_greeter_warning,):
+        return None
+
+    updated_commands = (*detour_commands, *original_commands[boundary_command_end:])
+    updated_path = _route_room_path(world, 3001, updated_commands)
+    notation = _fastwalk_notation(updated_commands)
+    if (
+        updated_path is None
+        or updated_path[-1] != original_path[-1]
+        or notation is None
+    ):
+        return None
+    if route.route_preflight_command:
+        preflight_names = tuple(dict.fromkeys(
+            _normalized_room_name(world.rooms[room_vnum].name)
+            for room_vnum in updated_path
+        ))
+        updated_route = replace(
+            route,
+            notation=notation,
+            route_preflight_route_room_names=preflight_names,
+        )
+    else:
+        updated_route = replace(route, notation=notation)
+
+    ground_old = source_route_movement_cost(world, original_path)
+    ground_new = source_route_movement_cost(world, updated_path)
+    flying_old = source_route_movement_cost(world, original_path, flying=True)
+    flying_new = source_route_movement_cost(world, updated_path, flying=True)
+    return FieldCityDetour(
+        route=updated_route,
+        blocked_locations=normalized_locations,
+        boundary_room_vnum=boundary_room_vnum,
+        original_city_commands=original_prefix_commands,
+        detour_city_commands=tuple(detour_commands),
+        ground_move_delta=ground_new - ground_old,
+        flying_move_delta=flying_new - flying_old,
+        required_ground_move=ground_new + _FIELD_CITY_DETOUR_MOVE_RESERVE,
+        required_flying_move=flying_new + _FIELD_CITY_DETOUR_MOVE_RESERVE,
+    )
 
 
 def bounded_city_shop_transit_available(
@@ -79,23 +310,14 @@ def field_city_route_rooms(
     world: WorldSource | None, commands: Sequence[str], *, origin: int,
     alignment: Any, level: Any,
 ) -> tuple[str, ...]:
-    """Scope the existing locator to the actual Midgaard departure and refill."""
-    if (
-        world is None
-        or origin != 3001
-        or observed_guard_safe_alignment(alignment, level=level)
-    ):
+    """Return Midgaard route rooms where the visible Drunk can greet the player."""
+    if world is None or origin != 3001:
         return ()
     greeter = world.mobiles.get(CITY_GREETER_VNUM)
     if greeter is None or greeter.area_file != "midgaard.are" or not greeter.attack_programs:
         return ()
-    if not any(
-        "spec_guard" in specials and vnum in world.mobiles
-        and world.mobiles[vnum].area_file == "midgaard.are"
-        for vnum, specials in world.mobile_specials.items()
-    ):
-        return ()
-    names = [world.rooms[vnum].name for vnum in (3054, 3001, 3005)
+    # DD4's Drunk greet_prog attacks visible entrants regardless of alignment.
+    names = [world.rooms[vnum].name for vnum in (3054, origin)
              if vnum in world.rooms]
     room = world.rooms.get(origin)
     for command in commands:
@@ -135,6 +357,13 @@ class CityShopTransit:
         self.status = "idle"
         self.started_at = None
         self.reason = None
+
+    def allows_proactive_hunt(self, room_vnum: Any) -> bool:
+        """Keep field hunts out of the city corridor during bounded transit."""
+        return (
+            self.status == "idle"
+            or str(room_vnum) not in MAGIC_SHOP_ROUTE_ROOMS
+        )
 
     def combat_allowed(
         self, world: WorldSource | None, state: Mapping[str, Any],

@@ -4,13 +4,21 @@ inter_character_delay: 2
 entries:
   - id: aeloria
     campaign: ../runs/heroes/aeloria/campaign.yaml
+  - id: ararisa
+    campaign: ../runs/ararisa-research.yaml
   - id: astrevo
     campaign: ../runs/heroes/astrevo/campaign.yaml
+  - id: corararfen
+    campaign: ../runs/heroes/validation/human-male-cleric-base/campaign.yaml
   - id: dorrik
     campaign: ../runs/heroes/dorrik/campaign.yaml
+  - id: fenanallor
+    campaign: ../runs/heroes/validation-all/human-male-ranger-base/campaign.yaml
   - id: kestrel
     campaign: ../runs/heroes/kestrel/campaign.yaml
   - id: praelarran
     campaign: ../runs/heroes/human-male-warrior-base/campaign.yaml
   - id: serevian
     campaign: ../runs/heroes/serevian/campaign.yaml
+  - id: velnor
+    campaign: ../runs/heroes/velnor/campaign.yaml

@@ -10,7 +10,7 @@ import sqlite3
 import string
 import threading
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -18,6 +18,7 @@ from .campaign import (
     DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
     DEFAULT_RESET_WAIT_SECONDS,
     CampaignResult,
+    load_campaign_spec,
     run_campaign_file,
 )
 from .character import (
@@ -88,6 +89,8 @@ class HeroRequest:
     personality: str | None = None
     transport: str = "telnet"
     mudlet_directory: Path | None = None
+    legacy_profile_path: Path | None = field(default=None, compare=False, repr=False)
+    legacy_campaign_path: Path | None = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -95,7 +98,7 @@ class HeroPreparation:
     request: HeroRequest
     character: CharacterSpec
     directory: Path
-    manifest_path: Path
+    manifest_path: Path | None
     profile_path: Path
     campaign_path: Path
     resumed: bool
@@ -142,7 +145,12 @@ def prepare_hero_request(
         personality=personality,
         transport=transport,
         mudlet_directory=request.mudlet_directory,
+        legacy_profile_path=request.legacy_profile_path,
+        legacy_campaign_path=request.legacy_campaign_path,
     )
+
+    if canonical_request.legacy_profile_path or canonical_request.legacy_campaign_path:
+        return _prepare_legacy_campaign_request(canonical_request)
 
     directory_name = (
         name.casefold()
@@ -286,6 +294,55 @@ def prepare_hero_request(
     )
 
 
+def _prepare_legacy_campaign_request(
+    request: HeroRequest,
+) -> HeroPreparation:
+    profile_path = request.legacy_profile_path
+    campaign_path = request.legacy_campaign_path
+    if profile_path is None or campaign_path is None:
+        raise ValueError("legacy campaign resume requires both saved profile paths")
+    if not profile_path.is_file() or not campaign_path.is_file():
+        raise ValueError("the saved campaign profile or configuration is missing")
+
+    campaign = load_campaign_spec(campaign_path)
+    profile_path = profile_path.resolve()
+    if campaign.character_profile.resolve() != profile_path:
+        raise ValueError("saved campaign no longer points to its recorded profile")
+    character = campaign.character
+    expected_identity = (
+        request.name,
+        request.race,
+        request.sex,
+        request.character_class,
+        request.subclass or "",
+    )
+    stored_identity = (
+        character.name,
+        character.race,
+        character.gender,
+        character.character_class,
+        character.subclass or "",
+    )
+    if tuple(value.casefold() for value in expected_identity) != tuple(
+        value.casefold() for value in stored_identity
+    ):
+        raise ValueError("saved campaign identity does not match the requested character")
+    if request.transport != character.transport:
+        raise ValueError("saved campaign transport differs from the requested transport")
+    if request.personality and character.personality is None:
+        character = replace(character, personality=request.personality)
+    _initialize_mudlet_bridge(request)
+    return HeroPreparation(
+        request,
+        character,
+        profile_path.parent,
+        None,
+        profile_path,
+        campaign_path,
+        resumed=True,
+    )
+
+
 def validate_runtime_catalog(catalog: CharacterCatalog) -> None:
     """Reject source options that the autonomous identity model cannot execute."""
     differences: list[str] = []
@@ -321,8 +378,9 @@ def load_existing_hero_request(
     *,
     workspace: Path = DEFAULT_HERO_WORKSPACE,
     target_level: int = 100,
+    database: Path = Path("runs/dd4tester.sqlite3"),
 ) -> HeroRequest:
-    """Load the non-secret request identity for an existing hero workspace."""
+    """Load identity from a HERO workspace or a saved legacy campaign."""
     clean_name = name.strip()
     if not clean_name:
         raise ValueError("an existing hero name is required")
@@ -332,9 +390,12 @@ def load_existing_hero_request(
         target_level=target_level,
     )
     if manifest_path is None:
+        legacy_request = _find_legacy_campaign_request(clean_name, database)
+        if legacy_request is not None:
+            return legacy_request
         raise ValueError(
-            f"no stored hero workspace exists for {clean_name!r}; provide "
-            "--race and --class to create it"
+            f"no saved character campaign exists for {clean_name!r}; provide "
+            "--race and --class to create or resume it"
         )
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -369,6 +430,84 @@ def load_existing_hero_request(
     )
 
 
+def _find_legacy_campaign_request(
+    name: str,
+    database: Path,
+) -> HeroRequest | None:
+    database_path = database
+    if not database_path.is_absolute():
+        database_path = (Path.cwd() / database_path).resolve()
+    if not database_path.is_file():
+        return None
+    try:
+        with sqlite3.connect(
+            database_path.as_uri() + "?mode=ro",
+            uri=True,
+            timeout=_CAMPAIGN_PROBE_TIMEOUT_SECONDS,
+        ) as connection:
+            connection.execute(
+                f"PRAGMA busy_timeout = "
+                f"{int(_CAMPAIGN_PROBE_TIMEOUT_SECONDS * 1000)}"
+            )
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                """
+                SELECT campaign.config_path, campaign.character_profile_path,
+                       checkpoint.state_json
+                FROM campaigns AS campaign
+                JOIN campaign_checkpoints AS checkpoint
+                  ON checkpoint.id = (
+                      SELECT MAX(latest.id)
+                      FROM campaign_checkpoints AS latest
+                      WHERE latest.campaign_id = campaign.id
+                  )
+                WHERE lower(json_extract(checkpoint.state_json, '$.name')) = ?
+                ORDER BY checkpoint.id DESC
+                LIMIT 1
+                """,
+                (name.casefold(),),
+            ).fetchone()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).casefold():
+            return None
+        raise ValueError("could not inspect saved character campaigns") from exc
+    except sqlite3.Error as exc:
+        raise ValueError("could not inspect saved character campaigns") from exc
+    if row is None:
+        return None
+
+    profile_path = Path(str(row["character_profile_path"]))
+    campaign_path = Path(str(row["config_path"]))
+    if not profile_path.is_file() or not campaign_path.is_file():
+        raise ValueError("the latest saved campaign profile or configuration is missing")
+    try:
+        campaign = load_campaign_spec(campaign_path)
+        state = json.loads(row["state_json"])
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("the latest saved character campaign is unreadable") from exc
+    if not isinstance(state, dict):
+        raise ValueError("the latest saved character campaign has invalid state")
+    character = campaign.character
+    if (
+        campaign.character_profile.resolve() != profile_path.resolve()
+        or character.name.casefold() != name.casefold()
+        or str(state.get("name", "")).casefold() != name.casefold()
+    ):
+        raise ValueError("the latest saved campaign does not match that character")
+    return HeroRequest(
+        name=character.name,
+        race=character.race,
+        sex=character.gender,
+        character_class=character.character_class,
+        subclass=character.subclass,
+        personality=character.personality,
+        transport=character.transport,
+        mudlet_directory=character.mudlet_directory,
+        legacy_profile_path=profile_path,
+        legacy_campaign_path=campaign_path,
+    )
+
+
 def _find_existing_hero_manifest(
     workspace: Path,
     name: str,
@@ -380,8 +519,9 @@ def _find_existing_hero_manifest(
     A named character can legitimately have both a short validation campaign
     and a longer HERO campaign under the same workspace root. Choose the
     closest stored horizon that can satisfy the requested target; when all
-    stored horizons are lower, use the longest one. Equal horizons remain an
-    explicit ambiguity instead of being selected by filesystem order.
+    stored horizons are lower, use the longest one. When duplicate copies have
+    the same horizon, use saved level and XP to identify the more advanced
+    campaign; preserve ambiguity if durable progress cannot decide safely.
     """
     clean_name = name.strip().casefold()
     if not clean_name:
@@ -389,7 +529,7 @@ def _find_existing_hero_manifest(
     root = workspace.resolve()
     if not root.is_dir():
         return None
-    matches: list[tuple[Path, int]] = []
+    matches: list[tuple[Path, int, tuple[str, str, str, str]]] = []
     for manifest_path in root.rglob("hero.json"):
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -404,27 +544,90 @@ def _find_existing_hero_manifest(
                 (
                     manifest_path.resolve(),
                     _stored_campaign_target_level(manifest_path),
+                    tuple(
+                        str(request.get(key) or "").strip().casefold()
+                        for key in ("race", "sex", "class", "subclass")
+                    ),
                 )
             )
+
+    identities = {identity for _path, _target, identity in matches}
+    if len(identities) > 1:
+        locations = ", ".join(
+            str(path)
+            for path, _target, _identity in sorted(
+                matches,
+                key=lambda item: str(item[0]),
+            )
+        )
+        raise ValueError(
+            f"stored hero workspaces for {name!r} disagree on race, sex, "
+            f"class, or subclass: {locations}"
+        )
+
+    def workspace_depth(path: Path) -> int:
+        try:
+            return len(path.relative_to(root).parts)
+        except ValueError:
+            return len(path.parts)
+
+    shallowest_depth = min(
+        (workspace_depth(path) for path, _target, _identity in matches),
+        default=0,
+    )
+    canonical_matches = [
+        path
+        for path, _target, _identity in matches
+        if workspace_depth(path) == shallowest_depth
+    ]
+    if len(canonical_matches) == 1:
+        # Validation matrices live below the normal hero directory. Prefer the
+        # one root-level workspace so routine named resumes do not collide with
+        # their test copies.
+        return canonical_matches[0]
     if len(matches) > 1:
         requested_target = max(int(target_level), 0)
         eligible_targets = [
-            target for _path, target in matches if target >= requested_target
+            target
+            for _path, target, _identity in matches
+            if target >= requested_target
         ]
         selected_target = (
             min(eligible_targets)
             if eligible_targets
-            else max(target for _path, target in matches)
+            else max(target for _path, target, _identity in matches)
         )
         selected = [
-            path for path, target in matches if target == selected_target
+            path
+            for path, target, _identity in matches
+            if target == selected_target
         ]
         if len(selected) == 1:
             return selected[0]
+        progress = [
+            (path, _stored_campaign_progress(path)) for path in selected
+        ]
+        progressed = [
+            (path, score) for path, score in progress if score is not None
+        ]
+        untracked = [
+            path for path, score in progress if score is None
+        ]
+        if len(progressed) == 1 and all(
+            _stored_campaign_record_exists(path) is False
+            for path in untracked
+        ):
+            return progressed[0][0]
+        if all(score is not None for _path, score in progress):
+            best_score = max(score for _path, score in progress if score is not None)
+            best = [path for path, score in progress if score == best_score]
+            if len(best) == 1:
+                return best[0]
         locations = ", ".join(str(path) for path in sorted(selected))
         raise ValueError(
             f"multiple stored hero workspaces with the same campaign horizon "
-            f"exist for {name!r} (target level {selected_target}): {locations}"
+            f"exist for {name!r} (target level {selected_target}) and saved "
+            f"progress cannot distinguish them: {locations}"
         )
     return matches[0][0] if matches else None
 
@@ -439,6 +642,107 @@ def _stored_campaign_target_level(manifest_path: Path) -> int:
         return int(mapping.get("target_level", 0) or 0)
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return 0
+
+
+def _stored_campaign_progress(manifest_path: Path) -> tuple[int, int] | None:
+    """Read saved level and XP to resolve duplicate copies of one character."""
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        profile_path = manifest_path.parent / str(
+            manifest.get("profile") or "character.yaml"
+        )
+        profile = load_yaml_mapping(profile_path)
+        database_value = profile.get("database")
+        if not database_value:
+            return None
+        database_path = Path(str(database_value))
+        if not database_path.is_absolute():
+            database_path = (Path.cwd() / database_path).resolve()
+        if not database_path.is_file():
+            return None
+        campaign_name = str(manifest.get("campaign") or "campaign.yaml")
+        campaign_path = manifest_path.parent / campaign_name
+        config_paths = (str(campaign_path.resolve()), str(campaign_path))
+        with sqlite3.connect(
+            database_path.as_uri() + "?mode=ro",
+            uri=True,
+            timeout=_CAMPAIGN_PROBE_TIMEOUT_SECONDS,
+        ) as connection:
+            connection.execute(
+                f"PRAGMA busy_timeout = "
+                f"{int(_CAMPAIGN_PROBE_TIMEOUT_SECONDS * 1000)}"
+            )
+            campaign_ids = connection.execute(
+                "SELECT id FROM campaigns WHERE config_path IN (?, ?)",
+                config_paths,
+            ).fetchall()
+            scores: list[tuple[int, int]] = []
+            for (campaign_id,) in campaign_ids:
+                row = connection.execute(
+                    """
+                    SELECT state_json FROM campaign_checkpoints
+                    WHERE campaign_id = ? ORDER BY id DESC LIMIT 1
+                    """,
+                    (campaign_id,),
+                ).fetchone()
+                if row is None:
+                    continue
+                state = json.loads(row[0])
+                level = int(state.get("level", 0) or 0)
+                xp = int(state.get("xp", 0) or 0)
+                scores.append((level, xp))
+            return max(scores) if scores else None
+    except (
+        OSError,
+        sqlite3.Error,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
+        return None
+
+
+def _stored_campaign_record_exists(manifest_path: Path) -> bool | None:
+    """Distinguish a workspace without a campaign from unreadable history."""
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        profile_path = manifest_path.parent / str(
+            manifest.get("profile") or "character.yaml"
+        )
+        profile = load_yaml_mapping(profile_path)
+        database_value = profile.get("database")
+        if not database_value:
+            return None
+        database_path = Path(str(database_value))
+        if not database_path.is_absolute():
+            database_path = (Path.cwd() / database_path).resolve()
+        if not database_path.is_file():
+            return None
+        campaign_name = str(manifest.get("campaign") or "campaign.yaml")
+        campaign_path = manifest_path.parent / campaign_name
+        config_paths = (str(campaign_path.resolve()), str(campaign_path))
+        with sqlite3.connect(
+            database_path.as_uri() + "?mode=ro",
+            uri=True,
+            timeout=_CAMPAIGN_PROBE_TIMEOUT_SECONDS,
+        ) as connection:
+            connection.execute(
+                f"PRAGMA busy_timeout = "
+                f"{int(_CAMPAIGN_PROBE_TIMEOUT_SECONDS * 1000)}"
+            )
+            row = connection.execute(
+                "SELECT 1 FROM campaigns WHERE config_path IN (?, ?) LIMIT 1",
+                config_paths,
+            ).fetchone()
+            return row is not None
+    except (
+        OSError,
+        sqlite3.Error,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
+        return None
 
 
 async def run_hero_request(
@@ -519,6 +823,11 @@ async def run_hero_request(
             preparation.campaign_path,
             force_new=force_new,
             segments=segments,
+            target_level_override=(
+                target_level
+                if request.legacy_campaign_path is not None
+                else None
+            ),
             reset_retries=(
                 reset_retries
                 if reset_retries is not None

@@ -88,11 +88,29 @@ class CombatCommandWindow:
         prefix = f"your {self.noun} " if self.noun else "your "
         damage = any(
             line.startswith(prefix)
-            and re.search(rf"\b{re.escape(self.target)}[.!]+(?: \*critical hit\*)?$", line)
+            and re.search(
+                rf"\b{re.escape(self.target)}[.!]+(?: \*critical hit\*)?(?:\s|$)",
+                line,
+            )
             and not any(marker in line for marker in (" says ", " tells "))
             for line in lines
         )
-        if not refused and not damage:
+        target_head = self.target.split()[0] if self.target else ""
+        attack_resolved = bool(
+            self.noun is None
+            and self.command is not None
+            and self.command.startswith("kill ")
+            and target_head
+            and any(
+                re.fullmatch(
+                    rf"(?:(?:the|an|a) )?{re.escape(target_head)}"
+                    rf"(?: [^.!?]+)? (?:dodges|parries) your attack[.!]",
+                    line,
+                )
+                for line in lines
+            )
+        )
+        if not refused and not damage and not attack_resolved:
             return
         self.acknowledged_at = now
         self.suspended = False

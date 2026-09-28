@@ -338,6 +338,20 @@ def test_fragmented_consider_and_companion_replies(monkeypatch):
     assert policy._considered_solo_ready(state)
 
 
+def test_easy_consider_accepts_appended_health_comparison(monkeypatch):
+    policy, state, _ = solo_fixture(monkeypatch)
+    policy.consider_viable = None
+    policy.after_command(BotDecision("consider #23798", "fresh exact consider"))
+    policy.observe_text(
+        "The large orc looks like an easy kill. Also, you are a teensy bit "
+        "healthier than he.\n"
+    )
+
+    assert policy.solo_consider_identity is not None
+    handled, decision = solo_decision(policy, state)
+    assert handled and decision.command == "order #23800 sleep"
+
+
 def test_standby_deadline_does_not_accept_late_success_or_retry_silence():
     standby = FamiliarStandby("#12", "4024")
     assert standby.command(wake=False, now=0) == "order #12 sleep"

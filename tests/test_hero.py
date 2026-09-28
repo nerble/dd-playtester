@@ -313,9 +313,10 @@ def test_autonomous_hero_continues_ready_cycles_and_limits_reset_waits(
                 1,
                 "ready",
                 1,
-                "field segment completed; Campaign checkpointed for the next "
-                "verified segment.",
-                {"level": 8, "xp": 100},
+                "arena circuit was empty at level 2. Campaign checkpointed to "
+                "try source-ranked current-band targets before waiting for the "
+                "Mud School area reset.",
+                {"level": 2, "xp": 3266},
             ),
             CampaignResult(
                 1,
@@ -1054,6 +1055,269 @@ def test_named_resume_rejects_equal_duplicate_campaign_horizons(
 
     with pytest.raises(ValueError, match="same campaign horizon"):
         load_existing_hero_request("Corararfen", workspace=tmp_path / "heroes")
+
+
+def test_named_resume_loads_a_saved_legacy_campaign(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Valora",
+        race="human",
+        sex="female",
+        character_class="mage",
+    )
+    saved = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "legacy-source",
+    )
+    database = tmp_path / "campaigns.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE campaigns (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                config_path TEXT NOT NULL,
+                character_profile_path TEXT NOT NULL,
+                target_level INTEGER NOT NULL
+            );
+            CREATE TABLE campaign_checkpoints (
+                id INTEGER PRIMARY KEY,
+                campaign_id INTEGER NOT NULL,
+                state_json TEXT NOT NULL
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO campaigns
+                (id, name, config_path, character_profile_path, target_level)
+            VALUES (1, ?, ?, ?, 100)
+            """,
+            (
+                "Valora to HERO",
+                str(saved.campaign_path.resolve()),
+                str(saved.profile_path.resolve()),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO campaign_checkpoints(id, campaign_id, state_json)
+            VALUES (1, 1, ?)
+            """,
+            (json.dumps({"name": "Valora", "level": 8, "xp": 1_200}),),
+        )
+
+    loaded = load_existing_hero_request(
+        "Valora",
+        workspace=tmp_path / "heroes",
+        database=database,
+    )
+    resumed = prepare_hero_request(
+        loaded,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=30,
+    )
+
+    assert loaded.race == "human"
+    assert loaded.character_class == "mage"
+    assert loaded.legacy_profile_path == saved.profile_path.resolve()
+    assert loaded.legacy_campaign_path == saved.campaign_path.resolve()
+    assert resumed.resumed
+    assert resumed.manifest_path is None
+    assert resumed.profile_path == saved.profile_path.resolve()
+    assert resumed.campaign_path == saved.campaign_path.resolve()
+
+
+def test_named_resume_uses_only_workspace_with_saved_campaign_progress(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Corararfen",
+        race="human",
+        sex="male",
+        character_class="warrior",
+    )
+    root = tmp_path / "heroes"
+    tracked = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=root / "validation",
+        target_level=100,
+    )
+    prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=root / "validation-all",
+        target_level=100,
+    )
+    database_path = tmp_path / "campaigns.sqlite3"
+    for workspace_path in root.rglob("character.yaml"):
+        profile = workspace_path.read_text(encoding="utf-8")
+        workspace_path.write_text(
+            profile.replace(
+                'database: "runs/dd4tester.sqlite3"',
+                f'database: "{database_path.as_posix()}"',
+            ),
+            encoding="utf-8",
+        )
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE campaigns (
+                id INTEGER PRIMARY KEY,
+                config_path TEXT NOT NULL
+            );
+            CREATE TABLE campaign_checkpoints (
+                id INTEGER PRIMARY KEY,
+                campaign_id INTEGER NOT NULL,
+                state_json TEXT NOT NULL
+            );
+            """
+        )
+        connection.execute(
+            "INSERT INTO campaigns(id, config_path) VALUES (?, ?)",
+            (1, str(tracked.campaign_path.resolve())),
+        )
+        connection.execute(
+            """
+            INSERT INTO campaign_checkpoints(id, campaign_id, state_json)
+            VALUES (?, ?, ?)
+            """,
+            (1, 1, json.dumps({"level": 6, "xp": 14_489})),
+        )
+
+    resumed = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=root,
+        target_level=100,
+    )
+
+    assert resumed.resumed
+    assert resumed.directory == tracked.directory
+
+
+def test_named_resume_uses_most_progressed_duplicate_campaign(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Corararfen",
+        race="human",
+        sex="male",
+        character_class="warrior",
+    )
+    earlier = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes" / "validation",
+        target_level=100,
+    )
+    later = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes" / "validation-all",
+        target_level=100,
+    )
+    database_path = tmp_path / "campaigns.sqlite3"
+    for preparation in (earlier, later):
+        profile_path = preparation.profile_path
+        profile = profile_path.read_text(encoding="utf-8")
+        profile_path.write_text(
+            profile.replace(
+                'database: "runs/dd4tester.sqlite3"',
+                f'database: "{database_path.as_posix()}"',
+            ),
+            encoding="utf-8",
+        )
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE campaigns (
+                id INTEGER PRIMARY KEY,
+                config_path TEXT NOT NULL
+            );
+            CREATE TABLE campaign_checkpoints (
+                id INTEGER PRIMARY KEY,
+                campaign_id INTEGER NOT NULL,
+                state_json TEXT NOT NULL
+            );
+            """
+        )
+        for campaign_id, preparation, level, xp in (
+            (1, earlier, 4, 7_937),
+            (2, later, 5, 12_292),
+        ):
+            connection.execute(
+                "INSERT INTO campaigns(id, config_path) VALUES (?, ?)",
+                (campaign_id, str(preparation.campaign_path.resolve())),
+            )
+            connection.execute(
+                """
+                INSERT INTO campaign_checkpoints(id, campaign_id, state_json)
+                VALUES (?, ?, ?)
+                """,
+                (
+                    campaign_id,
+                    campaign_id,
+                    json.dumps({"level": level, "xp": xp}),
+                ),
+            )
+
+    loaded = load_existing_hero_request(
+        "Corararfen",
+        workspace=tmp_path / "heroes",
+    )
+    resumed = prepare_hero_request(
+        loaded,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=100,
+    )
+
+    assert resumed.resumed
+    assert resumed.directory == later.directory
+
+
+def test_named_resume_prefers_root_level_workspace_over_validation_copy(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Corararfen",
+        race="human",
+        sex="male",
+        character_class="warrior",
+    )
+    canonical = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes" / "human-male-warrior-base",
+        target_level=100,
+    )
+    prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes" / "validation" / "human-male-warrior-base",
+        target_level=100,
+    )
+
+    loaded = load_existing_hero_request(
+        "Corararfen",
+        workspace=tmp_path / "heroes",
+    )
+
+    assert loaded.name == request.name
+    assert canonical.directory.parent == (
+        tmp_path / "heroes" / "human-male-warrior-base"
+    )
 
 
 def test_prepare_hero_request_generates_stable_name_when_omitted(

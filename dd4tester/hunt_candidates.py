@@ -18,6 +18,7 @@ from .specials import (
     COMBAT_JOINING_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
     TRANSIT_SAFE_COMBAT_ONLY_SPECIALS,
+    WEAK_EXTRA_ATTACK_SPECIALS,
     source_special_is_transit_safe,
     source_special_profile,
 )
@@ -26,6 +27,7 @@ from .specials import (
 ACT_SENTINEL = 1 << 1
 ACT_AGGRESSIVE = 1 << 5
 ACT_STAY_AREA = 1 << 6
+ACT_WIMPY = 1 << 7
 ACT_WIZINVIS_MOB = 1 << 16
 ACT_IS_FAMOUS = 1 << 14
 ACT_LOSE_FAME = 1 << 15
@@ -33,6 +35,7 @@ ACT_DIE_IF_MASTER_GONE = 1 << 21
 ACT_NO_EXPERIENCE = 1 << 24
 ACT_NO_FIGHT = 1 << 26
 ACT_UNDEAD = 1 << 30
+ACT_FEAR_AURA = 1 << 31
 
 # ``rank_table`` in ``server/src/mob.c`` is applied by ``create_mobile``
 # after the ordinary area-file hit-point roll.  Keep the source multiplier
@@ -125,6 +128,7 @@ def body_form_has_head(flags: int | None) -> bool | None:
 AFF_BLIND = 1 << 0
 AFF_DETECT_INVIS = 1 << 3
 AFF_DETECT_MAGIC = 1 << 4
+AFF_CHARM = 1 << 18
 AFF_NON_CORPOREAL = 1 << 28
 AFF_MINDLESS = 1 << 49
 
@@ -861,6 +865,15 @@ def source_combat_output_estimate(
             damroll=player_damroll,
         )
         if shoot_percent > 0 and ranged_hit_values:
+            accuracy_percent = _source_skill_percent(
+                "accuracy",
+                skills,
+                known_skill_levels,
+            )
+            shoot_hit_values = tuple(
+                damage * 2 + damage * accuracy_percent // 300
+                for damage in ranged_hit_values
+            )
             second_shot_percent = _source_skill_percent(
                 "second shot",
                 skills,
@@ -882,7 +895,7 @@ def source_combat_output_estimate(
                 + int(third_shot_percent > 0)
             )
             successful_expected = (
-                sum(ranged_hit_values) / len(ranged_hit_values)
+                sum(shoot_hit_values) / len(shoot_hit_values)
                 * expected_shots
             )
             expected = max(
@@ -890,9 +903,9 @@ def source_combat_output_estimate(
                 int(successful_expected * shoot_percent / 100.0),
             )
             opening_data = (
-                min(ranged_hit_values),
+                min(shoot_hit_values),
                 expected,
-                max(ranged_hit_values) * maximum_shots,
+                max(shoot_hit_values) * maximum_shots,
                 max(1, expected * 4 // 5),
                 "fight.c:do_shoot/one_hit",
             )
@@ -1550,6 +1563,10 @@ class MobileSource:
         return bool(self.act_flags & ACT_AGGRESSIVE)
 
     @property
+    def wimpy(self) -> bool:
+        return bool(self.act_flags & ACT_WIMPY)
+
+    @property
     def sentinel(self) -> bool:
         return bool(self.act_flags & ACT_SENTINEL)
 
@@ -1561,6 +1578,11 @@ class MobileSource:
     def undead(self) -> bool:
         """Return DD4's source-level undead marker for this mobile."""
         return bool(self.act_flags & ACT_UNDEAD)
+
+    @property
+    def fear_aura(self) -> bool:
+        """Return whether DD4's aura can force a visible opponent to flee."""
+        return bool(self.act_flags & ACT_FEAR_AURA)
 
     @property
     def rank_hp_multiplier(self) -> int:
@@ -3129,6 +3151,7 @@ def load_world_source(
     area_directory: Path,
     *,
     include_all_areas: bool = False,
+    include_all_objects: bool = False,
 ) -> WorldSource:
     """Parse global hazards and selected candidate-area loot evidence."""
     if not area_directory.is_dir():
@@ -3145,18 +3168,23 @@ def load_world_source(
         except (OSError, UnicodeError, ValueError):
             # Missing teaching evidence cannot authorize the optional fallback.
             world.skill_groups = {}
+    area_files = {path.name for path in area_directory.glob("*.are")}
     target_files = (
-        {path.name for path in area_directory.glob("*.are")}
+        area_files
         if include_all_areas
         else set(LOW_LEVEL_AREA_FILES)
     )
+    object_files = (
+        area_files
+        if include_all_areas or include_all_objects
+        else target_files
+    )
     for path in sorted(area_directory.glob("*.are")):
-        is_target = path.name in target_files
         parsed = parse_area_file(
             path,
             include_resets=True,
             include_entities=True,
-            include_objects=is_target,
+            include_objects=path.name in object_files,
             mobile_templates=mobile_templates,
         )
         world.mobiles.update(parsed.mobiles)
@@ -3601,6 +3629,7 @@ def rank_hunt_candidates(
     route_key_object_vnums: Collection[int] = (),
     recall_origins: Mapping[int, int] | None = None,
     character_alignment: int | None = None,
+    route_blocked_room_vnums: Collection[int] = (),
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -3646,6 +3675,11 @@ def rank_hunt_candidates(
         )
         for index, room_vnum in recall_origin_rooms.items()
     }
+    observed_blocked_rooms = {
+        int(room_vnum)
+        for room_vnum in route_blocked_room_vnums
+        if int(room_vnum) in world.rooms
+    }
     wanderer_reachability = {
         (mobile.vnum, reset.room_vnum): _wanderer_reachable_rooms(
             world,
@@ -3659,7 +3693,11 @@ def rank_hunt_candidates(
     transit_wanderers: dict[int, set[int]] = {}
     endpoint_wanderers: dict[int, set[int]] = {}
     for index, (hazard, hazard_reset) in enumerate(wandering_aggressors):
-        if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
+        if _source_mobile_safe_special_suppresses_route_hazard(
+            world,
+            hazard,
+            character_level=character_level,
+        ):
             continue
         room_index = (
             transit_wanderers
@@ -3690,7 +3728,17 @@ def rank_hunt_candidates(
         index: _shortest_paths_from(
             world.rooms,
             room_vnum,
-            blocked_rooms=route_hazard_rooms - {room_vnum},
+            blocked_rooms=(route_hazard_rooms | observed_blocked_rooms)
+            - {room_vnum},
+            unlockable_key_vnums=route_key_vnums,
+        )
+        for index, room_vnum in recall_origin_rooms.items()
+    }
+    observed_safe_recall_paths_by_origin = {
+        index: _shortest_paths_from(
+            world.rooms,
+            room_vnum,
+            blocked_rooms=observed_blocked_rooms - {room_vnum},
             unlockable_key_vnums=route_key_vnums,
         )
         for index, room_vnum in recall_origin_rooms.items()
@@ -3724,6 +3772,16 @@ def rank_hunt_candidates(
                 # do not rank a target behind an enforced area gate.
                 continue
             selected = direct
+            if observed_blocked_rooms.intersection(direct[1][:-1]):
+                observed_safe = observed_safe_recall_paths_by_origin[index].get(
+                    room_vnum
+                )
+                if (
+                    observed_safe is not None
+                    and len(observed_safe[0])
+                    <= len(direct[0]) + _MAX_SOURCE_ROUTE_DETOUR_STEPS
+                ):
+                    selected = observed_safe
             if route_hazard_rooms.intersection(direct[1][:-1]):
                 safe = safe_recall_paths_by_origin[index].get(room_vnum)
                 if (
@@ -3830,6 +3888,11 @@ def rank_hunt_candidates(
             ),
             damage_modifier=mobile.damage_modifier,
         )
+        peak_round_damage += _mobile_special_peak_extra_damage(
+            level_range[1],
+            world.mobile_specials.get(mobile.vnum, ()),
+            damage_modifier=mobile.damage_modifier,
+        )
         minimum_peak_round_damage = _mobile_peak_round_damage(
             level_range[0],
             wielding=any(
@@ -3840,6 +3903,11 @@ def rank_hunt_candidates(
                 wear_location == WEAR_DUAL
                 for wear_location, _ in equipped_weapon_slots
             ),
+            damage_modifier=mobile.damage_modifier,
+        )
+        minimum_peak_round_damage += _mobile_special_peak_extra_damage(
+            level_range[0],
+            world.mobile_specials.get(mobile.vnum, ()),
             damage_modifier=mobile.damage_modifier,
         )
         critical_hit_damage = _mobile_critical_hit_damage(
@@ -3974,6 +4042,11 @@ def rank_hunt_candidates(
                     world,
                     companion.vnum,
                 )
+                and not _source_guard_can_attack_player_fighting_target(
+                    world,
+                    companion,
+                    mobile,
+                )
             ):
                 hazards.append(
                     "source-backed good-alignment guard cannot join "
@@ -4085,7 +4158,11 @@ def rank_hunt_candidates(
                     and not unsafe_special
                 ):
                     continue
-                if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
+                if _source_mobile_safe_special_suppresses_route_hazard(
+                    world,
+                    hazard,
+                    character_level=character_level,
+                ):
                     hazards.append(
                         f"source-backed noncombat route special: "
                         f"{hazard.short_description}"
@@ -4176,6 +4253,10 @@ def rank_hunt_candidates(
                             "bounded low-risk aggressive transit mobile may be "
                             "finished once"
                         )
+                        if not required_loot_vnums:
+                            autonomy_rejections.append(
+                                "below-band transit aggressor is not an XP target"
+                            )
                     else:
                         autonomy_rejections.append(
                             "route crosses an aggressive transit attacker inside "
@@ -4207,7 +4288,11 @@ def rank_hunt_candidates(
             reachable_wanderers.update(transit_wanderers.get(path_room, ()))
         for index in sorted(reachable_wanderers):
             hazard, hazard_reset = wandering_aggressors[index]
-            if _source_mobile_has_safe_noncombat_special(world, hazard.vnum):
+            if _source_mobile_safe_special_suppresses_route_hazard(
+                world,
+                hazard,
+                character_level=character_level,
+            ):
                 continue
             if (
                 _source_mobile_has_combat_joining_special(world, hazard.vnum)
@@ -4221,6 +4306,11 @@ def rank_hunt_candidates(
                     hazard,
                     character_level=character_level,
                     character_alignment=character_alignment,
+                )
+                and not _source_guard_can_attack_player_fighting_target(
+                    world,
+                    hazard,
+                    mobile,
                 )
             ):
                 hazards.append(
@@ -4316,6 +4406,10 @@ def rank_hunt_candidates(
                     hazards.append(
                         "bounded low-risk aggressive wanderer may be finished once"
                     )
+                    if not required_loot_vnums:
+                        autonomy_rejections.append(
+                            "below-band wandering aggressor is not an XP target"
+                        )
                 else:
                     autonomy_rejections.append(
                         "an aggressive wanderer inside the transit-risk band "
@@ -4409,6 +4503,14 @@ def rank_hunt_candidates(
             autonomy_rejections.append(
                 "source mobile program can initiate an unmodeled attack"
             )
+        if mobile.fear_aura:
+            hazards.append(
+                "target's fear aura can force a visible opponent to flee"
+            )
+            dangerous = True
+            autonomy_rejections.append(
+                "target has a source fear aura that can force a flee"
+            )
         if mobile.aggressive:
             hazards.append("target is aggressive")
             # Aggressive mobiles can enter combat as soon as their reset room
@@ -4447,8 +4549,25 @@ def rank_hunt_candidates(
             )
             dangerous = True
             autonomy_rejections.append("source peak round can exceed character HP")
-        for special in world.mobile_specials.get(mobile.vnum, ()):
+        target_specials = tuple(
+            str(special).strip().casefold()
+            for special in world.mobile_specials.get(mobile.vnum, ())
+        )
+        alignment_safe_target_guard = (
+            target_specials == ("spec_guard",)
+            and mobile.alignment >= 350
+            and _source_character_is_good_alignment(character_alignment)
+        )
+        for special in target_specials:
             hazards.append(f"target special: {special}")
+            if special in SAFE_NONCOMBAT_SPECIALS:
+                continue
+            if special == "spec_guard" and alignment_safe_target_guard:
+                hazards.append(
+                    "source-backed good-alignment target guard acts only after "
+                    "combat starts"
+                )
+                continue
             if special not in SAFE_NONCOMBAT_SPECIALS:
                 autonomy_rejections.append(
                     f"target has special procedure {special}"
@@ -5469,7 +5588,11 @@ def _route_hazard_rooms(
                 )
             ):
                 continue
-            if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
+            if _source_mobile_safe_special_suppresses_route_hazard(
+                world,
+                mobile,
+                character_level=character_level,
+            ):
                 continue
             unsafe_special = _source_mobile_has_unsafe_special(
                 world,
@@ -5531,7 +5654,11 @@ def _route_hazard_rooms(
         # reset room. Keep strict resource-recovery routes out of that entire
         # source-reachable set.
         for mobile, reset in _wandering_aggressors(world):
-            if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
+            if _source_mobile_safe_special_suppresses_route_hazard(
+                world,
+                mobile,
+                character_level=character_level,
+            ):
                 continue
             if not (
                 mobile.attack_programs
@@ -5599,9 +5726,10 @@ def _source_route_hazard_rejections(
     for room_vnum in path_room_set:
         for reset in resets_by_room.get(room_vnum, ()):
             mobile = world.mobiles.get(reset.mobile_vnum)
-            if mobile is None or _source_mobile_has_safe_noncombat_special(
+            if mobile is None or _source_mobile_safe_special_suppresses_route_hazard(
                 world,
-                mobile.vnum,
+                mobile,
+                character_level=character_level,
             ):
                 continue
             if (
@@ -5688,7 +5816,11 @@ def _source_route_hazard_rejections(
                 )
 
     for mobile, reset in _wandering_aggressors(world):
-        if _source_mobile_has_safe_noncombat_special(world, mobile.vnum):
+        if _source_mobile_safe_special_suppresses_route_hazard(
+            world,
+            mobile,
+            character_level=character_level,
+        ):
             continue
         if (
             invisible
@@ -6016,6 +6148,21 @@ def _source_mobile_has_combat_joining_special(
     )
 
 
+def _source_guard_can_attack_player_fighting_target(
+    world: WorldSource,
+    guard: MobileSource,
+    target: MobileSource,
+) -> bool:
+    """Mirror spec_guard's separate attack on players fighting low-alignment NPCs."""
+    return bool(
+        "spec_guard" in {
+            str(special).strip().casefold()
+            for special in world.mobile_specials.get(guard.vnum, ())
+        }
+        and target.alignment < 300
+    )
+
+
 def source_mobile_can_join_target_fight(
     world: WorldSource,
     mobile: MobileSource,
@@ -6081,6 +6228,35 @@ def _source_aggressive_reset_can_reach_character(
     ):
         return True
     return character_level <= _mobile_level_range(mobile.level)[1] + 10
+
+
+def _source_mobile_safe_special_suppresses_route_hazard(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int,
+) -> bool:
+    """Only let a harmless source special mask a route hazard."""
+    if (
+        not _source_mobile_has_safe_noncombat_special(world, mobile.vnum)
+        or mobile.attack_programs
+    ):
+        return False
+    if mobile.wimpy:
+        # update.c skips an aggressive wimpy mobile while the player is awake.
+        # Route travel stays awake, but keep this exception to clean, harmless
+        # specials: a program, unsafe special, or reset-loaded weapon is not
+        # covered by the wimpy flag.
+        return not any(
+            reset.equipment
+            for reset in world.mob_resets
+            if reset.mobile_vnum == mobile.vnum
+        )
+    return not _source_aggressive_reset_can_reach_character(
+        world,
+        mobile,
+        character_level=character_level,
+    )
 
 
 def _shortest_paths_from(
@@ -6338,6 +6514,8 @@ def _source_teacher_route(
     preferred_room_vnum: int | None = None,
     preferred_keywords: Collection[str] = (),
     allowed_area_files: Collection[str] = (),
+    teacher_base_level: int | None = None,
+    stationary_only: bool = False,
 ) -> SourceTeacherRoute | None:
     """Find a source-reset teacher that can teach one source skill.
 
@@ -6386,6 +6564,13 @@ def _source_teacher_route(
         ):
             continue
         if not mobile.teaches("teacher base") or not mobile.teaches(source_skill):
+            continue
+        if (
+            teacher_base_level is not None
+            and dict(mobile.teachings).get("teacher base") != teacher_base_level
+        ):
+            continue
+        if stationary_only and mobile.wanders:
             continue
         class_fit = 0 if class_skill and mobile.teaches(class_skill) else 1
         for reset in resets_by_mobile.get(mobile.vnum, ()):
@@ -6517,6 +6702,29 @@ def source_class_teacher_route(
         preferred_room_vnum=preferred_room_vnum,
         preferred_keywords=(_CLASS_SOURCE_TEACHER_KEYWORDS[normalized],),
         allowed_area_files=("midgaard.are",),
+    )
+
+
+def source_class_teacher_route_for_level(
+    world: WorldSource,
+    character_class: str,
+    teacher_base_level: int,
+    *,
+    origin: int = RECALL_VNUM,
+) -> SourceTeacherRoute | None:
+    """Find a stationary, source-reset class teacher for an exact level band."""
+    normalized = " ".join(str(character_class).casefold().split())
+    source_skill = source_class_teacher_skill(normalized)
+    if source_skill is None or teacher_base_level < 1:
+        return None
+    return _source_teacher_route(
+        world,
+        source_skill,
+        character_class=normalized,
+        origin=origin,
+        preferred_keywords=(_CLASS_SOURCE_TEACHER_KEYWORDS[normalized],),
+        teacher_base_level=teacher_base_level,
+        stationary_only=True,
     )
 
 
@@ -6844,6 +7052,33 @@ def _apply_mobile_damage_modifier(
     )
 
 
+def _mobile_special_peak_extra_damage(
+    level: int,
+    specials: Collection[str],
+    *,
+    damage_modifier: int | None = 0,
+) -> int:
+    """Return the conservative peak for one source special attack.
+
+    ``spec_guard`` chooses headbutt, smash, or kick after combat starts. The
+    source headbutt branch is the largest of those three one-action bounds;
+    use it as the peak and keep the ordinary target-special gate separate.
+    Other weak extra-attack specials remain rejected as targets until their
+    source damage/effect contracts are audited individually.
+    """
+    normalized = {
+        str(special).strip().casefold()
+        for special in specials
+    }
+    if "spec_guard" not in normalized:
+        return 0
+    if not normalized <= WEAK_EXTRA_ATTACK_SPECIALS:
+        return 0
+    level = max(1, int(level))
+    headbutt_peak = level // 2 + level * 3
+    return _apply_mobile_damage_modifier(headbutt_peak, damage_modifier)
+
+
 def mobile_expected_round_damage(
     level: int,
     *,
@@ -7088,9 +7323,10 @@ def _rank_direct_ground_stashes(
                     mobile,
                 ):
                     continue
-                if _source_mobile_has_safe_noncombat_special(
+                if _source_mobile_safe_special_suppresses_route_hazard(
                     world,
-                    mobile.vnum,
+                    mobile,
+                    character_level=character_level,
                 ):
                     hazards.append(
                         "source-backed noncombat route special: "
@@ -7197,7 +7433,11 @@ def _rank_direct_ground_stashes(
                 mobile_search_rooms_cache[mobile_vnum] = reachable
             if hazard_rooms.isdisjoint(reachable):
                 continue
-            if _source_mobile_has_safe_noncombat_special(world, mobile_vnum):
+            if _source_mobile_safe_special_suppresses_route_hazard(
+                world,
+                mobile,
+                character_level=character_level,
+            ):
                 hazards.append(
                     "source-backed noncombat route special: "
                     f"{mobile.short_description}"
@@ -7256,9 +7496,10 @@ def _rank_direct_ground_stashes(
                 mobile,
             ):
                 continue
-            if _source_mobile_has_safe_noncombat_special(
+            if _source_mobile_safe_special_suppresses_route_hazard(
                 world,
-                mobile.vnum,
+                mobile,
+                character_level=character_level,
             ):
                 hazards.append(
                     "source-backed noncombat stash special: "

@@ -116,6 +116,45 @@ def test_fresh_followup_damage_can_change_the_verdict(willow_probe):
     assert not policy.field_combat_damage_probe_required
 
 
+@pytest.mark.parametrize("healing,expected_command", [(5, None), (0, "flee")])
+def test_damage_trade_counts_observed_player_recovery_but_keeps_gross_risk(
+    willow_probe, healing, expected_command,
+):
+    policy, state, clock = willow_probe
+    state.max_hp = 131
+    state.hp = 131
+    state.affects = []
+    policy._start_field_combat_damage_probe(state)
+    observations = (
+        (0.1, 131, 73),
+        (1, 125, 60),
+        (2, 119, 53),
+        (3, 119 + healing, 62),
+        (6.5, 110 + healing, 50),
+    )
+    for elapsed, player_hp, target_hp in observations:
+        clock[0] = elapsed
+        state.hp = player_hp
+        state.enemies = [[{
+            "name": "the Weeping Willow", "isnpc": "2304", "level": "24",
+            "hp": str(target_hp), "maxhp": "73",
+        }]]
+        policy._record_field_combat_damage_probe(state)
+
+    assert policy.field_combat_probe_player_damage == 21
+    assert policy.field_combat_probe_player_regenerated_hp == healing
+    assert policy.field_combat_probe_total_damage == 32
+    assert policy.field_combat_probe_regenerated_hp == 9
+
+    decision = policy._damage_window_probe_decision(state)
+
+    assert (decision.command if decision is not None else None) == expected_command
+    if expected_command is None:
+        assert not policy.field_combat_damage_probe_required
+    else:
+        assert "damage-output probe" in decision.reason
+
+
 def test_short_sampling_window_never_delays_emergency_withdrawal(willow_probe):
     policy, state, clock = willow_probe
     replay_12767(policy, state, clock)
