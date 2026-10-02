@@ -4,7 +4,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Collection
+from typing import Any, Collection, Iterator
 
 from .lease import CampaignLease, CampaignLeaseBusyError, campaign_lease_path
 
@@ -32,6 +32,20 @@ def _bounded_campaign_history_limit(path: Path, requested: int) -> int:
     if _campaign_database_is_large(path):
         return min(requested, _CAMPAIGN_LARGE_DATABASE_HISTORY_LIMIT)
     return requested
+
+
+def _campaign_state_projection(
+    column: str,
+    fields: tuple[str, ...],
+) -> tuple[str, tuple[str, ...]]:
+    pairs: list[str] = []
+    parameters: list[str] = []
+    for field in fields:
+        if not field.isidentifier():
+            raise ValueError("campaign state field names must be identifiers")
+        pairs.extend(("?", f"json_extract({column}, ?)"))
+        parameters.extend((field, f"$.{field}"))
+    return f"json_object({', '.join(pairs)})", tuple(parameters)
 
 
 class RunStorage:
@@ -2124,6 +2138,128 @@ class RunStorage:
         )
         self._recent_campaign_segments_cache[cache_key] = rows
         return list(rows)
+
+    def get_latest_campaign_segment_for_phase(
+        self,
+        campaign_id: int,
+        phase: str,
+        *,
+        search_limit: int = 256,
+    ) -> sqlite3.Row | None:
+        """Find one phase without loading historical checkpoint JSON payloads."""
+        if type(search_limit) is not int or not 1 <= search_limit <= 256:
+            raise ValueError("search_limit must be between 1 and 256")
+        # The narrow campaign/sequence index bounds the scan even when the
+        # optional phase index is absent from a large production database.
+        row = self.connection.execute(
+            """
+            SELECT id FROM (
+                SELECT id, phase, sequence FROM campaign_segments
+                WHERE campaign_id = ? ORDER BY sequence DESC LIMIT ?
+            ) WHERE phase = ? ORDER BY sequence DESC LIMIT 1
+            """,
+            (campaign_id, search_limit, phase),
+        ).fetchone()
+        if row is None:
+            return None
+        return self.connection.execute(
+            "SELECT * FROM campaign_segments WHERE id = ?",
+            (row["id"],),
+        ).fetchone()
+
+    def get_latest_campaign_segment_summary_for_phase(
+        self,
+        campaign_id: int,
+        phase: str,
+        *,
+        state_fields: Collection[str],
+        search_limit: int = 256,
+    ) -> sqlite3.Row | None:
+        """Find one phase using only selected fields from its saved states."""
+        if type(search_limit) is not int or not 1 <= search_limit <= 256:
+            raise ValueError("search_limit must be between 1 and 256")
+        fields = tuple(dict.fromkeys(str(field) for field in state_fields))
+        if not fields:
+            raise ValueError("state_fields must not be empty")
+        start_projection, start_parameters = _campaign_state_projection(
+            "segment.start_state_json",
+            fields,
+        )
+        end_projection, end_parameters = _campaign_state_projection(
+            "segment.end_state_json",
+            fields,
+        )
+        return self.connection.execute(
+            f"""
+            WITH recent AS MATERIALIZED (
+                SELECT id, phase, sequence
+                FROM campaign_segments
+                WHERE campaign_id = ?
+                ORDER BY sequence DESC
+                LIMIT ?
+            )
+            SELECT segment.sequence, segment.phase, segment.status,
+                   {start_projection} AS start_state_json,
+                   {end_projection} AS end_state_json
+            FROM recent
+            JOIN campaign_segments AS segment ON segment.id = recent.id
+            WHERE recent.phase = ?
+            ORDER BY recent.sequence DESC
+            LIMIT 1
+            """,
+            (
+                campaign_id,
+                search_limit,
+                *start_parameters,
+                *end_parameters,
+                phase,
+            ),
+        ).fetchone()
+
+    def iter_campaign_segment_summaries_after(
+        self,
+        campaign_id: int,
+        sequence: int,
+        *,
+        state_fields: Collection[str],
+        limit: int = 256,
+    ) -> Iterator[sqlite3.Row]:
+        """Stream a bounded forward window without full checkpoint states."""
+        if type(limit) is not int or not 1 <= limit <= 256:
+            raise ValueError("limit must be between 1 and 256")
+        fields = tuple(dict.fromkeys(str(field) for field in state_fields))
+        if not fields:
+            raise ValueError("state_fields must not be empty")
+        start_projection, start_parameters = _campaign_state_projection(
+            "segment.start_state_json",
+            fields,
+        )
+        end_projection, end_parameters = _campaign_state_projection(
+            "segment.end_state_json",
+            fields,
+        )
+        cursor = self.connection.execute(
+            f"""
+            SELECT segment.sequence, segment.phase, segment.status,
+                   {start_projection} AS start_state_json,
+                   {end_projection} AS end_state_json
+            FROM campaign_segments AS segment
+            WHERE segment.campaign_id = ? AND segment.sequence > ?
+            ORDER BY segment.sequence
+            LIMIT ?
+            """,
+            (
+                *start_parameters,
+                *end_parameters,
+                campaign_id,
+                sequence,
+                limit,
+            ),
+        )
+        try:
+            yield from cursor
+        finally:
+            cursor.close()
 
     def list_campaign_segments_for_phases(
         self,

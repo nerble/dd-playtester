@@ -13,6 +13,7 @@ from dd4tester.training import (
     subclass_training_analysis,
     subclass_training_priorities,
     training_priorities,
+    training_policy_revision,
     training_priorities_for,
 )
 
@@ -695,6 +696,24 @@ def test_subclass_priorities_precede_inherited_base_priorities() -> None:
     assert priorities[0].skill == "armed combat knowledge"
     assert priorities[0].target_percent == 90
     assert any(item.skill == "backstab" for item in priorities)
+
+
+def test_warrior_second_attack_opens_the_third_attack_training_chain() -> None:
+    priorities = training_priorities_for("warrior")
+    second_attack_60 = next(
+        index
+        for index, item in enumerate(priorities)
+        if item.skill == "second attack" and item.target_percent == 60
+    )
+    third_attack = next(
+        index
+        for index, item in enumerate(priorities)
+        if item.skill == "third attack" and item.target_percent == 50
+    )
+
+    assert second_attack_60 < third_attack
+    assert "second attack 60" in priorities[third_attack].source_refs[1]
+    assert training_policy_revision().startswith("sha256:")
 
 
 def test_subclass_plan_is_used_only_when_explicitly_active() -> None:

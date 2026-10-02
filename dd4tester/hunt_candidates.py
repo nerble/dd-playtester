@@ -170,6 +170,7 @@ ITEM_CONTAINER = 15
 ITEM_FOOD = 19
 ITEM_MONEY = 20
 ITEM_LOCK_PICK = 35
+ITEM_DONOT_RANDOMISE = 1 << 37
 
 # Container flags from ``merc.h``.  A nested resource is not loose ground
 # loot: a closed or locked container needs an explicit extraction plan.
@@ -1854,6 +1855,7 @@ class AreaSource:
     container_contents: dict[int, list[int]]
     mobile_specials: dict[int, tuple[str, ...]]
     shopkeepers: frozenset[int] = frozenset()
+    xp_modifier: int | None = None
 
 
 @dataclass
@@ -1868,6 +1870,7 @@ class WorldSource:
     shopkeepers: set[int] = field(default_factory=set)
     mobile_templates: dict[str, MobileTemplateSource] = field(default_factory=dict)
     skill_groups: dict[str, tuple[tuple[str, int], ...]] = field(default_factory=dict)
+    area_xp_modifiers: dict[str, int | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -2153,6 +2156,22 @@ def money_value(values: Iterable[int]) -> int:
         max(0, int(amount)) * multiplier
         for amount, multiplier in zip(values, MONEY_DENOMINATION_VALUES)
     )
+
+
+def minimum_money_value(
+    values: Iterable[int],
+    *,
+    extra_flags: int = 0,
+) -> int:
+    """Return DD4's guaranteed floor after per-denomination object fuzz."""
+    do_not_randomise = bool(int(extra_flags) & ITEM_DONOT_RANDOMISE)
+    total = 0
+    for amount, multiplier in zip(values, MONEY_DENOMINATION_VALUES):
+        count = max(0, int(amount))
+        if count > 10 and not do_not_randomise:
+            count = int(count * 0.9)
+        total += count * multiplier
+    return total
 
 
 def _encoded_spell_names(item: ObjectSource) -> tuple[str, ...]:
@@ -3194,6 +3213,7 @@ def load_world_source(
         world.room_object_resets.extend(parsed.room_object_resets)
         world.mobile_specials.update(parsed.mobile_specials)
         world.shopkeepers.update(parsed.shopkeepers)
+        world.area_xp_modifiers[path.name] = parsed.xp_modifier
         for container, contents in parsed.container_contents.items():
             world.container_contents.setdefault(container, []).extend(contents)
     return world
@@ -3309,7 +3329,36 @@ def parse_area_file(
         container_contents,
         mobile_specials,
         frozenset(shopkeepers),
+        _parse_area_xp_modifier(lines, sections.get("#AREA_SPECIAL")),
     )
+
+
+def _parse_area_xp_modifier(
+    lines: list[str], bounds: tuple[int, int] | None,
+) -> int | None:
+    """Retain an unambiguous area XP percentage; rich unknown syntax stays unknown."""
+    modifier = 100
+    if bounds is None:
+        return modifier
+    flags = {"school", "no_quest", "hidden", "safe", "no_teleport", "no_magic"}
+    start, end = bounds
+    for line in lines[start:end]:
+        tokens = line.strip().casefold().split()
+        if not tokens:
+            continue
+        if tokens == ["$"]:
+            return modifier
+        if len(tokens) == 1 and tokens[0] in flags:
+            continue
+        if len(tokens) != 2 or tokens[0] != "exp_mod":
+            return None
+        try:
+            value = int(tokens[1])
+        except ValueError:
+            return None
+        if value >= 0:  # load_area_special ignores negative values.
+            modifier = value
+    return None
 
 
 def _parse_area_level_bounds(
@@ -3630,11 +3679,14 @@ def rank_hunt_candidates(
     recall_origins: Mapping[int, int] | None = None,
     character_alignment: int | None = None,
     route_blocked_room_vnums: Collection[int] = (),
+    route_blocked_room_max_extra_steps: int = _MAX_SOURCE_ROUTE_DETOUR_STEPS,
 ) -> list[HuntCandidate]:
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
     if level_ceiling_offset is not None and level_ceiling_offset < 0:
         raise ValueError("level_ceiling_offset must not be negative")
+    if route_blocked_room_max_extra_steps < 0:
+        raise ValueError("route_blocked_room_max_extra_steps must not be negative")
     effective_level_ceiling_offset = (
         1 if level_ceiling_offset is None else int(level_ceiling_offset)
     )
@@ -3779,7 +3831,7 @@ def rank_hunt_candidates(
                 if (
                     observed_safe is not None
                     and len(observed_safe[0])
-                    <= len(direct[0]) + _MAX_SOURCE_ROUTE_DETOUR_STEPS
+                    <= len(direct[0]) + route_blocked_room_max_extra_steps
                 ):
                     selected = observed_safe
             if route_hazard_rooms.intersection(direct[1][:-1]):
@@ -4515,10 +4567,10 @@ def rank_hunt_candidates(
             hazards.append("target is aggressive")
             # Aggressive mobiles can enter combat as soon as their reset room
             # loads, before live consider can reject a below-band fuzzy load.
-            # Mark that case as a hard pre-entry rejection.  This must happen
-            # here, before bounded capacity or other research pools can treat
-            # the same target as probeable.
-            if level_range[0] < character_level - 5:
+            # The minimum fuzzed level must be strictly above the useful XP
+            # floor; equality can still load at the floor and force a flee.
+            # Mark it before research pools can treat the target as probeable.
+            if level_range[0] <= character_level - 5:
                 dangerous = True
                 autonomy_rejections.append("target is aggressive")
         if equipped_weapons:
@@ -4690,10 +4742,18 @@ def rank_hunt_candidates(
 
 
 def _section_ranges(lines: list[str]) -> dict[str, tuple[int, int]]:
+    # Match boot_db's section vocabulary. Hash-prefixed ASCII room maps are
+    # tilde-string content, not new sections (notably in underdark.are).
+    section_names = {
+        "#AREA", "#AREA_SPECIAL", "#HELPS", "#RECALL", "#MOBILES", "#MOBPROGS",
+        "#OBJECTS", "#RESETS", "#OBJECT_SETS", "#ROOMS", "#ROOMS_AMBIENT",
+        "#EXITS_SFX", "#SHOPS", "#SPECIALS", "#GAMES", "#$",
+    }
     starts = [
-        (index, line.strip())
+        (index, words[0].upper())
         for index, line in enumerate(lines)
-        if line.strip().startswith("#") and not line.strip()[1:].isdigit()
+        if (words := line.strip().split(maxsplit=1))
+        and words[0].upper() in section_names
     ]
     ranges: dict[str, tuple[int, int]] = {}
     for position, (index, name) in enumerate(starts):
@@ -5696,6 +5756,7 @@ def _source_route_hazard_rejections(
     require_no_combat_hazards: bool = False,
     combat_at_destination: bool = True,
     invisible: bool = False,
+    audit_invisible_equipment: bool = False,
 ) -> tuple[str, ...]:
     """Return source-backed combat hazards on a route, including its endpoint.
 
@@ -5738,6 +5799,7 @@ def _source_route_hazard_rejections(
                 and source_invisibility_blocks_mobile_aggression(
                     world,
                     mobile.vnum,
+                    audit_equipment=audit_invisible_equipment,
                 )
             ):
                 continue
@@ -5828,6 +5890,7 @@ def _source_route_hazard_rejections(
             and source_invisibility_blocks_mobile_aggression(
                 world,
                 mobile.vnum,
+                audit_equipment=audit_invisible_equipment,
             )
         ):
             continue
@@ -6038,6 +6101,7 @@ def source_route_hazard_rejections(
     require_no_combat_hazards: bool = False,
     combat_at_destination: bool = True,
     invisible: bool = False,
+    audit_invisible_equipment: bool = False,
 ) -> tuple[str, ...]:
     """Check a room path; noncombat endpoints omit only combat-only joiners."""
     return _source_route_hazard_rejections(
@@ -6047,19 +6111,25 @@ def source_route_hazard_rejections(
         require_no_combat_hazards=require_no_combat_hazards,
         combat_at_destination=combat_at_destination,
         invisible=invisible,
+        audit_invisible_equipment=audit_invisible_equipment,
     )
 
 
 def source_invisibility_blocks_mobile_aggression(
     world: WorldSource,
     mobile_vnum: int,
+    *,
+    audit_equipment: bool = False,
 ) -> bool:
     """Return whether source-proven invisibility prevents route combat.
 
     DD4's ordinary aggression calls ``can_see`` before attacking. Keep this
     admission narrow: the mobile must have no detect-invisibility affect,
     executable program, equipped reset object, or special that can act before
-    combat. Combat-only specials such as ``spec_poison`` remain inert while
+    combat. Supply planning and the registered noncombat consumable teacher
+    journey may audit known non-detecting equipment; ordinary route admission
+    keeps its existing equipped-mobile rejection.
+    Combat-only specials such as ``spec_poison`` remain inert while
     the invisible character is not fighting.
     """
     mobile = world.mobiles.get(mobile_vnum)
@@ -6075,8 +6145,17 @@ def source_invisibility_blocks_mobile_aggression(
         reset for reset in world.mob_resets
         if reset.mobile_vnum == mobile_vnum
     ]
-    if not resets or any(reset.equipment for reset in resets):
+    if not resets:
         return False
+    if not audit_equipment and any(reset.equipment for reset in resets):
+        return False
+    for reset in resets:
+        for _wear_location, object_vnum in reset.equipment:
+            item = world.objects.get(object_vnum)
+            # handler.c:can_see and APPLY_DETECT_INVIS. A known ordinary
+            # weapon does not grant detection merely because it is wielded.
+            if item is None or any(location == 29 for location, _ in item.affects):
+                return False
     permitted_specials = (
         SAFE_NONCOMBAT_SPECIALS | TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
     )

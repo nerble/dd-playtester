@@ -7,7 +7,11 @@ import time
 from dataclasses import dataclass
 from typing import Collection, Mapping, Sequence
 
-from .hunt_candidates import EX_WALL, WorldSource, source_route_requires_flight
+from .hunt_candidates import (
+    EX_WALL, SAFE_NONCOMBAT_SPECIALS, WorldSource,
+    source_mobile_can_join_player_fight, source_mobile_search_rooms,
+    source_route_requires_flight,
+)
 from .archetypes import archetype_registry
 from .observations import _DD4_PROMPT, _EXITS
 
@@ -22,6 +26,71 @@ ROOM_INDOORS = 1 << 3
 FAMILIAR_XP_CREDIT_SUBCLASSES = frozenset({
     "witch", "infernalist", "necromancer", "knight", "werewolf",
 })
+
+
+def familiar_withdrawal_rooms_safe(
+    world: WorldSource,
+    room_vnums: Collection[int],
+    *,
+    character_level: int | None = None,
+    character_alignment: int | None = None,
+    additional_mobile_vnums: Collection[int] = (),
+) -> bool:
+    """Audit every random flee destination before planning or ordering a pet."""
+    familiar = world.mobiles.get(19900)
+    if familiar is None or not room_vnums:
+        return False
+    destinations: set[int] = set()
+    for room_vnum in room_vnums:
+        room = world.rooms.get(room_vnum)
+        if room is None:
+            return False
+        exits = {
+            destination.vnum
+            for exit_source in room.exits.values()
+            if not exit_source.closed
+            and (destination := world.rooms.get(exit_source.destination)) is not None
+            and not destination.no_mob
+            and (not familiar.stay_area or destination.area_file == room.area_file)
+        }
+        if not exits:
+            return False
+        destinations.update(exits)
+
+    direct = {
+        reset.mobile_vnum for reset in world.mob_resets
+        if reset.room_vnum in destinations
+    } | set(additional_mobile_vnums)
+    possible = direct | {reset.mobile_vnum for reset in world.mob_resets}
+    for mobile_vnum in sorted(possible):
+        mobile = world.mobiles.get(mobile_vnum)
+        if mobile is None:
+            if mobile_vnum in direct:
+                return False
+            continue
+        unsafe = (
+            mobile.aggressive
+            or mobile.attack_programs
+            or any(
+                str(special).strip().casefold() not in SAFE_NONCOMBAT_SPECIALS
+                for special in world.mobile_specials.get(mobile_vnum, ())
+            )
+            or source_mobile_can_join_player_fight(
+                world, mobile, character_level=character_level,
+                character_alignment=character_alignment,
+            )
+        )
+        if not unsafe:
+            continue
+        if mobile_vnum in direct:
+            return False
+        # Match the runtime identity map, including doors a player may open.
+        # The eight-room target search limit must not truncate this hazard map.
+        if mobile.wanders and not destinations.isdisjoint(
+            source_mobile_search_rooms(world, mobile_vnum, include_closed=True)
+        ):
+            return False
+    return True
 
 
 def _live_selector_matches(text: str, description: str) -> tuple[str, ...]:

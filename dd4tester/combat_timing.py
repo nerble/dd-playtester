@@ -73,10 +73,33 @@ class CombatCommandWindow:
         return self.command is not None and self.acknowledged_at is None
 
     def observe(self, text: str, *, now: float) -> None:
-        if not self.pending:
+        watching_kill_reply = bool(
+            self.command is not None
+            and self.command.startswith("kill ")
+            and self.issued_at is not None
+            and 0 <= now - self.issued_at < ACK_TIMEOUT_SECONDS
+            and now < self.ready_at
+            and not self.suspended
+        )
+        if not self.pending and not watching_kill_reply:
             return
         self.buffer = (self.buffer + text)[-4000:]
         lines = [" ".join(line.casefold().split()) for line in self.buffer.splitlines()]
+        if (
+            self.command is not None
+            and self.command.startswith("kill ")
+            and "you do the best you can!" in lines
+        ):
+            # do_kill returns before WAIT_STATE when combat already started.
+            # A preceding automatic parry may have acknowledged this window.
+            if self.acknowledged_at is None:
+                self.acknowledged_at = now
+                self.acknowledged += 1
+            self.suspended = False
+            self.ready_at = now
+            return
+        if not self.pending:
+            return
         refusals = {
             "you don't have enough mana.", "you don't know any spells of that name.",
             "they aren't here.", "you aren't fighting anyone.",

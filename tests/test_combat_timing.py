@@ -1,4 +1,5 @@
 from dataclasses import replace
+import json
 from pathlib import Path
 import re
 
@@ -121,6 +122,69 @@ def test_source_refusal_acknowledges_without_replaying_the_command():
     window.reset()
     assert not window.blocked(1) and window.evidence()["acknowledged"] == 1
     assert "command" not in window.evidence()
+
+
+@pytest.mark.parametrize("earlier_parry", [False, True])
+def test_already_fighting_kill_refusal_adds_no_server_wait(earlier_parry):
+    window = CombatCommandWindow()
+    window.issue("kill #42", target="a dwarven singer", now=0)
+    if earlier_parry:
+        window.observe("The dwarven singer parries your attack.\n", now=1)
+    window.observe("You do the best ", now=3)
+    assert window.blocked(3)
+    window.observe("you can!\n", now=3.1)
+    assert window.acknowledged == 1
+    assert not window.pending
+    assert not window.blocked(3.1)
+
+
+@pytest.mark.parametrize("reply", [
+    "The singer says 'You do the best you can!'\n",
+    "You do the best you can! Perhaps.\n",
+    "<666/666 hits>\n",
+])
+def test_unrelated_text_cannot_release_kill_wait(reply):
+    window = CombatCommandWindow()
+    window.issue("kill #42", target="a dwarven singer", now=0)
+    window.observe(reply, now=1)
+    assert window.pending and window.blocked(1)
+
+
+def test_already_fighting_reply_never_shortens_a_spell_wait():
+    window = CombatCommandWindow()
+    window.issue("cast 'chill touch' #42", target="a dwarven singer", now=0)
+    window.observe("You do the best you can!\n", now=1)
+    assert window.blocked(4)
+    assert not window.blocked(4.25)
+
+
+def test_earlier_kill_refusal_cannot_release_a_later_spell():
+    window = CombatCommandWindow()
+    window.issue("kill #42", target="a dwarven singer", now=0)
+    window.observe("You do the best you can!\n", now=3)
+    window.issue("cast 'chill touch' #42", target="a dwarven singer", now=3)
+    window.observe("The dwarven singer parries your attack.\n", now=4)
+    assert window.pending and window.blocked(4)
+
+
+def test_run_15928_refusal_releases_wait_before_the_next_round():
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "field_zero_incoming_probe.json")
+        .read_text(encoding="utf-8")
+    )
+    window = CombatCommandWindow()
+    released = False
+    for event in fixture["events"]:
+        command = event.get("command", "")
+        if command.startswith("kill "):
+            window.issue(command, target=fixture["target"]["name"], now=event["at"])
+        elif "text" in event:
+            window.observe(event["text"], now=event["at"])
+            if "You do the best you can!" in event["text"]:
+                assert not window.blocked(event["at"])
+                assert window.acknowledged == 1
+                released = True
+    assert released
 
 
 def finish_args():

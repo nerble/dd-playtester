@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from .quests import QuestAssignmentTracker
+
 
 def valid_enemy_snapshot(value: Any, *, depth: int = 0) -> bool:
     """Accept DD4 enemy arrays/records, never a failed JSON decode as no enemies."""
@@ -38,7 +40,10 @@ def _normalized_room_name(value: str) -> str:
 
 
 _ROOM = re.compile(r"^Room:\s*(?P<name>.+)$", re.IGNORECASE)
-_EXITS = re.compile(r"^\[Exits:\s*(?P<exits>[^\]]*)\]$", re.IGNORECASE)
+_EXITS = re.compile(
+    r"^\[Exits:\s*(?P<exits>(?:[^\[\]\r\n]|\[[^\[\]\r\n]+\])*)\]$",
+    re.IGNORECASE,
+)
 _PROMPT = re.compile(
     r"(?:<[^>\n]*(?:hp|health|mana|moves?|mv)[^>\n]*>"
     r"|.*\b\d+\s*(?:hp|health|mana|moves?|mv)\b.*>)\s*$",
@@ -102,7 +107,7 @@ _NON_ITEM_ACQUISITION = re.compile(
     re.IGNORECASE,
 )
 _LEVEL = re.compile(
-    r"\b(?:You (?:have )?)?"
+    r"^\s*You (?:have )?"
     r"(?:gain(?:ed)?|advance(?:d)?|reach(?:ed)?|attain(?:ed)?) "
     r"(?:to )?(?:hero )?level\s+(?P<level>\d+)\b",
     re.IGNORECASE,
@@ -210,6 +215,7 @@ class ObservationParser:
         self._known_room_exits_by_vnum: dict[str, dict[str, str]] = {}
         self._last_room_exits: dict[str, str] = {}
         self._gmcp_snapshots: dict[str, Any] = {}
+        self.quest_assignment = QuestAssignmentTracker()
         self._discarding_duplicate_login_snapshot = False
         self._discarded_duplicate_snapshot_messages = 0
         self.expected_character_name = _normalized_name(expected_character_name)
@@ -295,6 +301,7 @@ class ObservationParser:
         self._known_room_exits_by_vnum.clear()
         self._last_room_exits = {}
         self._gmcp_snapshots.clear()
+        self.quest_assignment = QuestAssignmentTracker()
         self._discarding_duplicate_login_snapshot = False
         self._discarded_duplicate_snapshot_messages = 0
         self._discarding_foreign_snapshot = False
@@ -444,6 +451,8 @@ class ObservationParser:
             "char.enemies": "enemies_changed",
         }
         snapshot_type = snapshot_types.get(normalized)
+        if normalized == "char.quest" and isinstance(payload, dict):
+            payload = self.quest_assignment.observe_status(payload)
         if normalized == "char.enemies" and not valid_enemy_snapshot(payload):
             return [GameEvent("gmcp_snapshot_rejected", "gmcp", {
                 "package": package, "reason": "invalid enemy snapshot", "value": payload,
@@ -492,6 +501,7 @@ class ObservationParser:
 
     def _parse_line(self, line: str) -> list[GameEvent]:
         text = line.strip()
+        assignment = self.quest_assignment.observe_line(text)
         if not text:
             events: list[GameEvent] = []
             pending_loss = self._flush_pending_experience_loss()
@@ -507,6 +517,12 @@ class ObservationParser:
             return events
 
         events = self._finish_recall_list_if_needed(text)
+        if assignment is not None:
+            self._gmcp_snapshots["char.quest"] = assignment
+            events.append(GameEvent(
+                "quest_status_changed", "text",
+                self._gmcp_data("Char.Quest", assignment),
+            ))
         pending_loss = self._pending_experience_loss
         if pending_loss is not None:
             partial_gain = _XP_PARTIAL_GAIN.search(text)

@@ -3,12 +3,274 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
+## Current Status: October 2
+
+Dorrik remains the sole progression character. Checkpoint **48437** records
+level **29**, **576,805 XP**, and **37,095 XP** to level 30, with **666/666 HP**
+at healer room **3054**. Level 30 also requires his first quest point. HERO is
+unproved; keep progression focused on this character.
+
+Runs **15903-15908** earned **3,609 net XP**, including a **381 XP net loss**
+on the Secretary hunt, **1,606 XP** from Sosivia, and **2,384 XP** from the
+dwarven circuit. The whole six-run interval took **13.77 minutes**, about
+**262 net XP/minute**, including quest, flight purchase, and a city-route
+deferral. An unavailable quest cooldown now returns to current-band hunt
+selection instead of repeating a no-progress wait.
+
+Through run **15938**, the evening continuation gained **10,334 net XP**. Trainer travel
+now works live: the inventory parser no longer mistakes DD4's carrying-total
+footer for an item. Run **15920** consumed the purchased invisibility potion,
+reached the teacher, gained enhanced damage **66->67%**, defense knowledge
+**62->63%**, and parry **57->62%**, then recovered at the healer. The following
+sailor hunt gained **1,321 XP**. The first completed quest remains a level-30
+blocker.
+
+The latest seven runs (**15932-15938**) gained **1,218 net XP** in **13.91 elapsed
+minutes**, including food, sales, an absent-target trip, an abandoned quest, and
+gear acquisition. Dorrik now wields the source-selected grey branch **6104**;
+its combat benefit is not yet measured. The failed-stun timing repair removes
+an extra wait after DD4's exact already-fighting `kill` refusal. It compiles,
+but that reply has not yet occurred in a new live fight. Normal action and
+survival limits remain unchanged.
+
+Quest requests remain automatic. DD4 labels both buried hoards and loose quest
+objects as `retrieve` in GMCP. The bot now binds the exact questmaster narrative
+to the requested quest's giver, room, and object, preserving raw wire data.
+Known hoards are explicitly deferred until trap-aware acquisition is implemented;
+the old blind twelve-dig sequence has been removed. Ordinary retrieval and kill
+quests retain their existing route and combat checks. These new cases compile
+but remain unrun under today's one-regression-batch limit; hoard recognition
+is not yet live-proved.
+
+Source parsing now recognizes DD4's actual area-section headers instead of
+mistaking hash-prefixed ASCII maps for headers. This restores **492 Underdark
+rooms** and their route hazards. A route appearing in the corrected map does
+not authorize travel or combat; the normal source and live checks still apply.
+
+Continue the existing character through the normal bounded autonomous command:
+
+```powershell
+python -m dd4tester hero --name Dorrik --autonomous --segments 3 --max-reset-waits 0 --max-segment-runtime 300 --progress
+```
+
+The segment count bounds this invocation; rerunning resumes its saved checkpoint.
+The default segment allowance is now 300 seconds, including preparation and
+travel. An explicit `--max-segment-runtime` overrides it; combat-action limits
+and bounded return/cleanup still apply. The old 180-second default caused a
+forced combat withdrawal in run 15929 only 16 seconds after its opener.
+See the [approach review](docs/APPROACH_REVIEW_2026-09-08.md) for dated evidence.
+
+## Discord Conversation Relay
+
+The separate streamer in `E:\dd4-discord-streamer` tails
+`DEVELOPMENT_CONVERSATION.txt`; it cannot read the Codex chat directly. At the
+start of each assistant turn, record the newest user message as `USER` before
+commentary or tool work. Record each outgoing commentary/final before showing
+it. Use `--body-stdin` with a PowerShell here-string so punctuation is passed
+without shell reinterpretation:
+
+```powershell
+$body = @'
+Exact message text
+'@
+$body | python tools/conversation_log.py append --speaker USER --body-stdin
+```
+
+Use `CODEX COMMENTARY` or `CODEX FINAL` for assistant messages. The standing
+capture rule is in `AGENTS.md`. Verify the file with
+`python tools/conversation_log.py validate`, then check the streamer's delivery
+log for `Delivered USER` and an empty queue at the source-file end. Keep the
+worker in `--new-only` mode; do not rewind history or start a duplicate. On
+October 1, a user message was missing because it had not been appended to the
+source file. Adding the exact `USER` record made the existing worker deliver it;
+the relay itself was healthy, so it was not restarted and history was not
+replayed. The stdin-based logger decodes the pipe as UTF-8, independent of the
+Windows Python console encoding; historical records are not rewritten.
+
+## Historical: September 29 Transport Follow-up
+
+Aeloria's one permitted post-reset sanctuary check (run **15536**, checkpoint
+**47468**) reached a silent login socket. It issued no game commands and earned
+no XP, so it did not provide route evidence. The check now remains pending for
+a later explicit invocation; the current run stops without waiting for another
+area reset or retrying automatically. This change has a focused test saved but
+unrun: September 29's single test batch was already used. Only a syntax check
+has verified this edit; live retry behavior remains unproved.
+The all-area level-18 scan currently returns no autonomous-safe XP stop for
+Aeloria; the visible source candidates still have route, crowd, protection, or
+combat-output blockers, so none is being promoted from analysis to permission.
+
+Run **15326** also exposed a route-index mismatch: the safe Midgaard detour
+lengthened Dorrik's path, but the saved Shadow Grove maze markers still pointed
+to their original positions. The detour now shifts both later markers by the
+exact command-count change. The matching same-boot, pre-combat failure can now
+receive one exact revalidation when the current source path proves the room and
+maze destination; the marker is spent before dispatch and does not bypass live
+gates. Focused tests are saved but today's regression batch has already run, so
+this change is syntax-checked only and still needs its next permitted test batch
+and a fresh live route to prove it.
+
+## Historical: September 29 Progress
+
+Dorrik is level **26**, **450,253 XP**, with **3,347 XP** to level 27.
+Checkpoint **47413** confirms **594/594 HP** at healer **3054**. Secretary
+**15505** earned **1,113 XP**; **15506** withdrew from the same target at a
+cost of **455 XP**, leaving **658 net XP**. His next quest departure was
+blocked, and the bounded time probe confirmed the same reboot; work rotated
+to another character instead of repeating failed routes.
+Fenanallor is level **8**, **29,054 XP**, **2,646 XP** to level 9, fully healed
+at **3054** (**47400**). Orc and illusionist kills earned **331 XP** across
+three hunts; a strongman withdrawal lost **42 net XP**, leaving **289 net XP**.
+Ararisa is level **11**, **49,524 XP**, fully recovered at healer **3054**
+(**47429**), after **191 net XP** from Moria **15519**. Trips **15520** and
+**15525-15526** added none; the latter found an orc and hobgoblin but both live
+considers rejected them as below-band.
+Kestrel replenished food in **15501**, then had a city-blocked hunt; he remains
+level **24**, **329,125 XP**, at the healer (**47348**).
+These totals include losses; safe returns and successful command status alone
+are not counted as progression. No character levelled, and HERO remains unproved.
+Across **15519-15526**, **191 net XP** in **716.00 connected seconds** is
+**16.0 net XP/minute**. Across **15478-15526**, including unsuccessful hunts,
+city waits, provisions, shopping, sales, and recovery, **6,134 net XP** in
+**4,660.48 connected seconds** is **79.0 net XP/minute**. These are connected-time
+rates, not whole-session rates: the latest block also spent **180 seconds**
+waiting offline for an area reset, plus planning and startup time. Training
+**15517** and funding **15518** added no XP; the latter returned when the Circus
+approach remained blocked. All workers finished; the final process check found
+no project Python worker still running.
+
+`hero --autonomous` can now select one source-audited vendor purchase to prepare
+blocked level-20-to-29 training. It checks the actual shop price, item level and
+TARGETMODE selector, keeps 100 copper, buys once, and verifies inventory growth.
+Dorrik **15522** purchased invisibility elixir **9231** from vendor **9238** in
+room **9203** for **188 copper**, returning with **645 copper** and full healer
+HP. The preceding quote **15521** exposed an overly small spending cap; its
+one-time correction is consumed. Inspect the sequence with
+`python -m dd4tester show-transcript 15522`; the checkpoint also stores
+`campaign_source_purchases` and `campaign_training_travel_supply`.
+Potion acquisition is live-proved. Potion-assisted advanced training is now
+implemented as one separate noncombat visit per level/reboot, but **not yet
+live-proved**. Ordinary `hero --autonomous` selects it after checking useful
+lessons, the purchased item, and movement. It verifies consumption, live
+invisibility and every route step, then uses the usual training and healer
+return. Inspect `campaign_consumable_training_travel` for admission and
+`campaign_training_travel_result` for the actual outcome. This does not open
+ordinary equipped-hazard routes. Saved checks are unrun under the daily limit.
+
+Attempts **15523/15524** stopped at the healer before consuming the potion.
+The first lacked targeting setup; the second exposed delayed replies and
+zero-ID objects loaded from character saves. The implementation now confirms
+configuration and request-local replies, and allows one exact source-unique
+keyword when no numeric item selector exists. That fix is not yet live-proved;
+the spent journey is not reopened this reboot. Ararisa's next selection lacked
+funding, and Kestrel's lacked protection supplies; neither connected. This
+implementation batch earned **zero XP**, and no regression batch ran.
+
+Funding no longer blocks the next registered activity merely because an unused
+ground-hunt allowance remains when that search finds no target. Its ground
+handoff also preserves the hunt selector's existing bounded capacity admission.
+Normal `hero --autonomous` uses both changes automatically; live identity,
+crowd, consider, and combat checks remain mandatory. New checks are saved but
+unrun under the one-batch-per-day limit.
+Runs **15525-15526** proved this handoff reaches live hunts and keeps the
+below-band rejection intact, not improved XP. Both finished at the healer,
+earning **zero XP** in **189.67 connected seconds**. Rotate the next work away
+from these two unchanged targets. No additional regression batch ran.
+
+Normal `hero` hunts can now identify an unambiguous primary weapon at the
+Midgaard healer when the character has positively practiced `identify` and
+enough mana. The bot confirms removal, reads actual damage, re-equips, and checks
+the weapon slot. Each reply is bounded; failed rearming stops departure.
+The result is connection-local and saved as `campaign_weapon_damage_audit`.
+It informs live encounter budgets, while pre-login planning uses conservative
+load-level damage. Prototype numbers are no longer used as ordinary live damage.
+
+Runs **15478-15479** completed this automatically: Ararisa's dagger **3-8**,
+Fenanallor's **5-9**. Their subsequent hunts earned no XP because the target was
+below-band or the route was blocked. Inspect the actual sequence with:
+
+```powershell
+python -m dd4tester show-transcript 15478
+python -m dd4tester hero --name Dorrik --autonomous --segments 1 --max-reset-waits 0 --max-segment-runtime 180 --progress
+```
+
+The September 29 focused batch passed **38 tests in 2.22 seconds**. No full suite
+was run; the daily allowance is spent. HERO remains unproved.
+
+The one-batch-per-Auckland-day limit is permanent in `AGENTS.md`; most work
+belongs to implementation and actual progression. Route-hazard retries now
+finish healer recovery before departing and discard the completed emergency
+return, preventing an immediate trip back without a fresh check. Combat, loss,
+and logout boundaries still cancel retries. Saved checks for this repair have
+not run; its exact live sequence remains unproved.
+
+Ordinary single-target hunts now plan when to put on levelling gear from the
+source reward and possible damage XP, rather than always sacrificing combat
+bonuses for the last ten percent of a level. Complex or unknown fights retain
+the original rule; recovery gear and stat training are unchanged. The terminal
+run record includes `pre_level_gear_windows` for inspection; **15504** recorded
+**4,374 XP** for its target. This records live use, not proof of improved gear
+timing or XP throughput. Its saved checks remain unrun.
+
+A local training trip blocked before any lesson can now reopen once after a
+later productive hunt reports the wandering obstruction away from the entire
+teacher route, or after a later automatic world check confirms the same reboot
+at least five minutes after the blocked visit. Both share one retry allowance.
+The bot still rechecks before leaving and requires useful,
+affordable lessons at the same teacher. This runs through ordinary `hero
+--autonomous`; it does not clear combat failures. Its saved checks remain unrun.
+Run **15517** proved the timed retry and bounded history lookup reached a fresh
+trainer-route check. The drunk was still on Main Street, so Dorrik returned
+without a lesson; the retry stayed consumed and combat-loss records remained.
+That local fallback did not produce a lesson. The later consumable-assisted
+teacher visit succeeded in run **15920**, as recorded above; improved sustained
+combat throughput remains unproved.
+
+Ordinary multi-spawn wandering hunts can now refresh `where` after a useful
+kill instead of returning solely because the first mapped stop is complete.
+The original kill and search limits remain; every next target needs fresh
+identity, isolation, and consider checks. Resource routes and protected probes
+are excluded. This is automatic in `hero --autonomous`, with no new option.
+Inspect `campaign_fastwalk_where_decisions` for `after_objective_kills` on an
+executed continuation. The change is implemented; its focused checks are saved
+but unrun, and a live multi-kill improvement is not yet proved.
+Moria **15515** retained an earlier poisonous-bystander warning and therefore
+did not use the new continuation. Circus **15516** ended at the healer after
+its route remained blocked; it earned no XP.
+
+Run **15482** exposed a navigation error: an optional Mirror Guardian encounter
+at room **19031** was rejected as crowded, then discarded the original,
+unvisited destination **19041**. The handoff now restores that earlier stop and
+finishes the approved outbound route, without permitting the armed pair or
+clearing an abort. Run **15490** demonstrated that continuation live, but the
+legacy directions then looped inside the shuffled mirror maze. Guardian campaign
+routes now preserve the approach to **19031** and use the existing source-backed
+live-exit navigator to reach **19041**. That maze repair and its new checks remain
+unverified; navigation success alone will not prove a useful kill.
+
+Pouch checks now preserve an unfinished preceding prompt across the command
+boundary. This addresses **15487**, where a real empty listing was incorrectly
+treated as unanswered. Only the partial prompt is retained, never old inventory
+text; the complete-listing requirement and five-second timeout remain. New
+checks are saved but unrun under the daily regression limit.
+Absence recording now also requires an observed room and, for a destination-
+guided stop, arrival at that endpoint. Wrong-room navigation failures cannot
+consume its search. Existing historical loss and absence records were preserved.
+
 ## September 28 Progress
 
-Dorrik has reached level **26**. His last observed score in interrupted run
-**15413** was **444,941 XP**, with **8,659 XP** remaining to level 27; he had
-returned to healer room **3054**. The interrupted worker was recovered before
-new live work. This is observed progress, not a completed HERO proof.
+Dorrik is level **26**, at **444,599 XP**, **9,001 XP** short of level 27
+(checkpoint **47256**, healer **3054**). Run **15457** successfully used the
+city detour but lost **342 net XP** after withdrawing from the Weeping Willow.
+That fight remains closed; a successful route is not a successful hunt.
+
+Local fallback training now permits up to three accepted useful lessons per
+visit instead of leaving solely because one practice type was already used.
+Additional lessons need fresh live eligibility and a positive source-teacher
+gain; listed unlearned skills are included. Legacy single-lesson visits get
+one narrowly scoped retry. Saved checks await the next permitted test batch;
+run **15461** selected this repair but stopped at a city hazard without spending
+practices. Live training improvement is not yet proved. HERO remains unproved.
 
 Pouch checks now retain split replies through the complete contents listing,
 including departure and healer logout. An unanswered check ends after five
@@ -23,6 +285,36 @@ restocking run **15415** also completed. Neither run earned XP.
 Development prioritizes useful implementation and live progression. Regression
 tests run **at most once per Pacific/Auckland calendar day**, using either
 focused tests or the full suite, never both. This is a ceiling, not a daily quota.
+
+Fenanallor earned **200 target/net XP** in **15472**, reaching **28,765 XP** at
+level **8**, **2,935 XP** from level 9 (checkpoint **47296**). The following
+ring-recovery attempt earned no XP and obtained no rings. Together the two
+segments used **219.90 connected seconds**; both ended at healer **3054**.
+
+Weapon upgrade ranking now uses conservative DD4 load-level damage estimates,
+not the incorrect assumption that area-file values are damage dice. Live
+identification in **15475** confirmed Ararisa's level-5 dagger does **3-8** base
+damage, while its prototype contains **2,4**. The September 29 continuation
+above adds bounded automatic identification and live encounter-budget use;
+it does not widen route, target-identity, health, or action-count gates.
+
+Locator redirects now retain registered safe recovery stops along their exact
+route. This fixes a sanctuary search that discarded its movement-recovery
+waypoint and returned empty-handed. The live safety checks and segment limits
+are unchanged; the new cases are saved but unrun, and successful acquisition
+through the repaired redirect remains unproved.
+The following roster rotation earned **220 target/net XP** in **15470-15471**;
+Ararisa is level **11**, **49,333 XP**, fully recovered at healer **3054**
+(checkpoint **47291**). No new regression batch was run.
+
+The autonomous command now tries the existing bounded quest option when flight
+funding, ground hunts, and registered alternatives are exhausted. It shares the
+usual one-request-per-level/reboot limit. Run **15464** exercised that handoff:
+Astrevo reached Suturb, received a retrieval quest, then aborted when the route
+needed Circus admission. No reward or XP was earned.
+Noncombat Circus quest planning now includes the source-checked ticket purchase
+and door unlock, reusing the existing field-action runner. That admission change
+and its saved failure cases are not yet live-proved or regression-tested.
 
 Equipment acquisition now compares an upgrade against the weakest selected
 slot, accounting for two rings, necklaces, or wrist items and any carried spares.
@@ -53,6 +345,67 @@ live; their focused tests are written but deferred.
 Ararisa's follow-up runs **15425-15426** also earned none: both targets were
 below-band on live consideration. Both characters ended fully recovered at
 healer **3054**, without recorded XP loss; that is not advancement evidence.
+
+Run **15429** completed a Circus target kill for **188 XP**, leaving Serevian
+at level **11**, **54,376 XP**, with **4,074 XP** to level 12 and full recovery
+at healer **3054**. The preceding equipment search earned **145 incidental XP**
+but obtained no upgrade; neither that XP nor the empty funding trip counts as
+target-progression proof. The ordinary target reply worked live; the new
+split-response, silence, and flee-name cases remain deferred and unproved live.
+
+Completed money hunts now prioritize selling new loot while a funding retry is
+pending, even if carried coins exceed the provisional flight-price estimate.
+Shop-route checks and retained-gear protections remain in place; a completed
+kill is not counted as money earned until a sale is observed. This closes the
+handoff exposed after run **15431**; focused cases are saved but not yet run.
+The flight-purchase preference also leaves a selected sale in place. Live run
+**15434** selected liquidation, but three blocked city-route checks prevented
+the sale. Serevian is safely saved at checkpoint **47186**, **54,416 XP**,
+**4,034 XP** to level 12. No sale income or flight purchase is proved; the
+additional **40 XP** from Katrina is funding maintenance, not progression XP.
+
+Closed exits no longer break familiar room confirmation. A listing such as
+`[Exits: north east south west [up]]` now preserves the closed marker, and a
+pending familiar check cannot fall through to route completion. Run **15436**
+exposed that premature return; the fix and its saved cases remain unproved live
+and unrun under the daily test cap. Failed-route checkpoints now retain the
+matching familiar audit without restoring ownership on reconnect.
+
+Fenanallor's runs **15437-15438** earned **452 target XP** from three kills,
+including two in one Circus outing, without recorded loss. He is level **8**,
+**28,565 XP**, **3,135 XP** from level 9, saved at healer **3054** (checkpoint
+**47203**, after two later city-obstructed departures added no XP). Astrevo's
+intervening food and failed familiar trips also earned no XP. Including all six
+connections, the block earned about **53.6 target XP per connected minute**.
+
+Familiar-backed hunts now check escape safety during selection using the same
+rule as combat, including wandering hazards and the actual encounter room.
+Run **15441** exposed a wasted trip when those checks disagreed; it summoned
+and grouped the familiar but earned no XP. The repair is saved, with its new
+regression cases deferred; useful replacement-hunt progress remains unproved.
+The following six connections (**15441-15446**) gained no XP: Aeloria's potion
+searches missed moving carriers, and Dorrik's departures were city-obstructed.
+Both ended at healer **3054**; latest checkpoints are **47210** (Aeloria) and
+**47216** (Dorrik). These completed attempts are not progression proof.
+
+Field locators now wait for the complete location listing before narrowing a
+search, and preserve their choices in `campaign_fastwalk_where_decisions`.
+An incomplete reply ends the hunt through the bounded return, without recording
+false absence. Astrevo's runs **15447-15450** earned **242 target XP**, including
+maintenance time, and ended fully recovered at level **9**, **35,712 XP**,
+**3,988** to level 10 (checkpoint **47227**). The normal complete-listing path
+worked live; split-response and timeout cases remain saved but unrun today.
+The subsequent crowded-target trip added no XP; checkpoint **47234** preserves
+that total and full recovery. Across the five connections, including maintenance
+and the failed trip, the block earned **37.8 net XP per connected minute**.
+An additional locator handoff repair allows only an already-approved forward
+route suffix from the actual room, and stops repeated queries after navigation
+is exhausted. Run **15453** exposed this waste; the repair and saved cases
+await live suffix evidence and the next permitted regression batch.
+Velnor's existing Circus circuit earned **367 target XP** from two kills in
+**15454**. He remains level **7**, **19,845 XP**, **5,005** to level 8, fully
+recovered at healer **3054** (checkpoint **47240**); the following flight-shop
+trip was blocked and bought no potion. No loss or level gain was recorded.
 
 ## September 26 Roster Snapshot
 
@@ -859,12 +1212,12 @@ supported.
 ### Bounds And Recovery
 
 `--segments` limits checkpoint segments. The public `hero` command defaults to
-`--max-segment-runtime 180`, so every live worker has a bounded field and
+`--max-segment-runtime 300`, so every live worker has a bounded field and
 healer-return window while the process continues through durable checkpoints.
-The Python `run_hero_request` entry point uses the same 180-second default and
+The Python `run_hero_request` entry point uses the same 300-second default and
 normalizes a missing cap to it, so library callers receive the same liveness
 contract.
-An explicit `--max-segment-runtime 180` on `campaign` enables the same short
+An explicit `--max-segment-runtime 180` on `campaign` requests a shorter
 continuation and defaults reset retries to zero. Add
 `--reset-retries 1 --reset-wait 180` for one wait outside a depleted area.
 For either command, omitting the runtime override retains the command's
@@ -1493,7 +1846,8 @@ launched while the saved checkpoints remain blocked by recovery or funding.
 
 ### Latest Liveness Hardening: Public HERO API (September 12, 2026)
 
-The `hero` CLI and the Python `run_hero_request` entry point now share a
+Historical evidence; the shared default was raised to 300 seconds on October 2.
+At this checkpoint, the `hero` CLI and Python `run_hero_request` shared a
 180-second live-segment default. A missing runtime cap is normalized to that
 bounded value, and implicit reset waits remain disabled for bounded invocations;
 larger runtime or reset budgets must be explicit. This makes library launchers

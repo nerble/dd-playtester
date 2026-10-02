@@ -12,7 +12,10 @@ from dd4tester.companions import (
     learned_familiar_available,
 )
 from dd4tester.fastwalks import Fastwalk
-from dd4tester.hunt_candidates import ExitSource, MobileSource, MobReset, RoomSource, WorldSource
+from dd4tester.hunt_candidates import (
+    ACT_AGGRESSIVE, ACT_SENTINEL, ExitSource, MobileSource, MobReset,
+    RoomSource, WorldSource,
+)
 from dd4tester.starter import FieldHuntStop, StarterPolicy, _normalize_mobile_line
 from dd4tester.state import CharacterState
 import dd4tester.campaign as campaign
@@ -158,6 +161,34 @@ def test_preparation_recovers_mount_selector_from_fresh_listing_when_room_cache_
     assert preparation.present({}, NORMALIZED, room_vnum="3030")
 
 
+@pytest.mark.parametrize("duplicate", [False, True])
+def test_familiar_identification_handles_split_closed_exit_listing(duplicate):
+    preparation = FamiliarPreparation()
+    preparation.next_command({}, NORMALIZED, mana=351, now=0)
+    preparation.observe(SUMMONED, now=1)
+    assert preparation.next_command({}, NORMALIZED, now=1) == "look"
+    preparation.observe(
+        "The New Magincia Moongate\n[Exits: north east south west [up]",
+        now=2,
+    )
+    assert not preparation.listing_complete
+    assert preparation.next_command({}, NORMALIZED, now=2) is None
+    listing = "]\n[#42] <Mount> A small pony stands here grazing.\n"
+    if duplicate:
+        listing += "[#43] <Mount> A small pony stands here grazing.\n"
+    preparation.observe(
+        listing + "<123/123 hits 151/351 mana 171/230 move [Ultima]> ",
+        now=3,
+    )
+    command = preparation.next_command({}, NORMALIZED, now=3, room_vnum="2403")
+    if duplicate:
+        assert command is None
+        assert preparation.failure == "summoned familiar identity is missing or ambiguous"
+    else:
+        assert command == "group #42"
+        assert not preparation.grouped
+
+
 @pytest.mark.parametrize(
     ("listing", "selectors"),
     [
@@ -240,6 +271,89 @@ def test_field_runner_stages_and_verifies_exact_companion_before_indoor_order():
     policy.observe_text("Ok.\n")
     opener = policy._familiar_precombat_decision(inside, command_keyword="#99")
     assert opener is not None and opener.command == "kill #99"
+
+
+def test_pending_familiar_listing_does_not_finish_the_field_route():
+    policy = policy_fixture()
+    outdoor = CharacterState(
+        level=8, room_vnum="2", position=7, mana=224,
+        sector="hills", room_flags=["no_mob"],
+    )
+    policy.familiar_preparation.next_command({}, NORMALIZED, mana=324)
+    policy.familiar_preparation.observe(SUMMONED)
+    policy.familiar_preparation.next_command({}, NORMALIZED)
+    policy.prompt_ready = True
+
+    assert policy._fastwalk_research_decision(outdoor) is None
+    assert policy.familiar_preparation.pending
+    assert not policy.prompt_ready
+    assert not policy.midgaard_logout_pending
+    assert not policy.fastwalk_returning
+
+
+@pytest.mark.parametrize("hazard,expected", [
+    ("none", True), ("aggressor", False), ("unknown-special", False),
+    ("joiner", False), ("unknown-mobile", False), ("wanderer", False),
+    ("closed", True), ("no-mob", True), ("below-band-passive", True),
+])
+def test_familiar_planner_and_runtime_audit_all_escape_destinations(hazard, expected):
+    policy = policy_fixture()
+    world = policy.source_world
+    world.rooms[3].exits.update({
+        "east": ExitSource("east", 4, 0, 0),
+        "west": ExitSource("west", 5, 0, 0),
+    })
+    world.rooms[4] = RoomSource(4, "Empty field", "test.are")
+    world.rooms[5] = RoomSource(5, "Other field", "test.are")
+    if hazard != "none":
+        world.mobiles[50] = MobileSource(
+            50, "sentry", "the sentry", 18, ACT_SENTINEL, -100, "test.are",
+        )
+        world.mob_resets.append(MobReset(50, 5, 1, ()))
+        if hazard in {"aggressor", "closed", "no-mob"}:
+            world.mobiles[50] = replace(
+                world.mobiles[50], act_flags=ACT_SENTINEL | ACT_AGGRESSIVE,
+            )
+        if hazard == "unknown-special":
+            world.mobile_specials[50] = ("spec_unknown",)
+        elif hazard == "unknown-mobile":
+            del world.mobiles[50]
+        elif hazard == "wanderer":
+            world.rooms[6] = RoomSource(
+                6, "Distant reset", "test.are", {"east": ExitSource("east", 5, 0, 0)},
+            )
+            world.mob_resets[:] = [MobReset(50, 6, 1, ())]
+            world.mobiles[50] = replace(world.mobiles[50], act_flags=ACT_AGGRESSIVE)
+        elif hazard == "closed":
+            world.rooms[3].exits["west"] = replace(
+                world.rooms[3].exits["west"], reset_state=1,
+            )
+        elif hazard == "no-mob":
+            world.rooms[5].room_flags = 4
+        elif hazard == "below-band-passive":
+            world.mobiles[50] = replace(world.mobiles[50], level=1)
+    stop = replace(policy.fastwalk_hunt_stops[0], source_reset_room_vnum="3")
+    state = CharacterState(level=18, room_vnum="3", progress={"alignment": 1000})
+
+    assert campaign._source_ranked_familiar_withdrawal_exit_exists(
+        (3,), world, character_level=18, character_alignment=1000,
+    ) is expected
+    assert policy._source_familiar_withdrawal_room_available(stop, state) is expected
+
+
+def test_familiar_escape_uses_encounter_room_instead_of_reset_room():
+    policy = policy_fixture()
+    world = policy.source_world
+    world.rooms[4] = RoomSource(4, "Empty field", "test.are")
+    world.rooms[3].exits["east"] = ExitSource("east", 4, 0, 0)
+    stop = replace(policy.fastwalk_hunt_stops[0], source_reset_room_vnum="3")
+
+    assert policy._source_familiar_withdrawal_room_available(
+        stop, CharacterState(level=18, room_vnum="3"),
+    )
+    assert not policy._source_familiar_withdrawal_room_available(
+        stop, CharacterState(level=18, room_vnum="4"),
+    )
 
 
 @pytest.mark.parametrize("boundary", ["missing", "changed-id", "unconfirmed-order"])

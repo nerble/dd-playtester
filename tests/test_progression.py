@@ -995,6 +995,22 @@ def test_generic_protection_recovery_reopens_sanctuary_acquisition() -> None:
     assert policy.execution == "moria-sanctuary-hunt"
 
 
+def test_deep_sanctuary_recovery_buys_flight_before_moria_route() -> None:
+    policy = policy_for(
+        27,
+        "warrior",
+        world_boot_id="boot-1",
+        protection_recovery_required=True,
+        has_sanctuary_potion=False,
+        has_food=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
 def test_generic_protection_recovery_applies_to_a_mage() -> None:
     policy = policy_for(
         13,
@@ -5647,13 +5663,20 @@ def test_saleable_loot_precedes_another_flight_funding_hunt() -> None:
     assert policy.execution == "sell-loot"
 
 
-def test_completed_flight_funding_allows_loot_liquidation_before_retry() -> None:
+@pytest.mark.parametrize("can_attempt_purchase", [False, True])
+@pytest.mark.parametrize("purchase_failed", [False, True])
+def test_completed_flight_funding_allows_loot_liquidation_before_retry(
+    can_attempt_purchase: bool,
+    purchase_failed: bool,
+) -> None:
     policy = policy_for(
         18,
         "thief",
+        has_food=True,
         has_sellable_loot=True,
         has_flight=False,
-        flight_purchase_failed=True,
+        can_attempt_flight_purchase=can_attempt_purchase,
+        flight_purchase_failed=purchase_failed,
         flight_loan_attempted=True,
         flight_funding_retry_pending=True,
         last_policy_id="galaxy-white-dwarf-secondary-probe-17-20",
@@ -10026,6 +10049,50 @@ def test_level_twenty_six_promotes_a_viable_guardian_probe_to_a_hunt() -> None:
 
     assert policy.policy_id == "mirror-realm-guardian-hunt-26-30"
     assert policy.execution == "mirror-realm-guardian-hunt"
+
+
+def test_guardian_missing_exit_rotates_to_the_shire_probe_this_boot() -> None:
+    policy = policy_for(
+        27,
+        "warrior",
+        last_policy_id="mirror-realm-guardian-hunt-26-30",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-guardian-probe-26-30": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-guardian-hunt-26-30": {
+                "observed": False,
+                "viable": False,
+                "completed_kill": False,
+                "route_unavailable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "shire-battle-master-probe-26-30"
+    assert policy.execution == "shire-battle-master-research"
+
+
+def test_guardian_route_unavailable_marker_expires_after_reboot() -> None:
+    policy = policy_for(
+        27,
+        "warrior",
+        last_policy_id="mirror-realm-guardian-hunt-26-30",
+        world_boot_id="boot-2",
+        research_results={
+            "mirror-realm-guardian-hunt-26-30": {
+                "observed": False,
+                "route_unavailable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-guardian-probe-26-30"
 
 
 def test_level_twenty_six_waits_after_guardian_and_battle_master_probes() -> None:

@@ -223,6 +223,16 @@ def field_city_detour_for_locations(
         or notation is None
     ):
         return None
+    # The detour replaces a prefix, so later maze markers move with its length.
+    navigation_index_delta = (
+        len(detour_commands) - len(original_prefix_commands)
+    )
+
+    def shifted_navigation_index(index: int | None) -> int | None:
+        if index is None or index < boundary_command_end:
+            return index
+        return index + navigation_index_delta
+
     if route.route_preflight_command:
         preflight_names = tuple(dict.fromkeys(
             _normalized_room_name(world.rooms[room_vnum].name)
@@ -232,9 +242,24 @@ def field_city_detour_for_locations(
             route,
             notation=notation,
             route_preflight_route_room_names=preflight_names,
+            live_navigation_start_index=shifted_navigation_index(
+                route.live_navigation_start_index
+            ),
+            live_navigation_resume_index=shifted_navigation_index(
+                route.live_navigation_resume_index
+            ),
         )
     else:
-        updated_route = replace(route, notation=notation)
+        updated_route = replace(
+            route,
+            notation=notation,
+            live_navigation_start_index=shifted_navigation_index(
+                route.live_navigation_start_index
+            ),
+            live_navigation_resume_index=shifted_navigation_index(
+                route.live_navigation_resume_index
+            ),
+        )
 
     ground_old = source_route_movement_cost(world, original_path)
     ground_new = source_route_movement_cost(world, updated_path)

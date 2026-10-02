@@ -89,17 +89,26 @@ def main(argv: list[str] | None = None) -> int:
     body = append.add_mutually_exclusive_group(required=True)
     body.add_argument("--body")
     body.add_argument("--body-file", type=Path)
+    body.add_argument(
+        "--body-stdin",
+        action="store_true",
+        help="read the message body from standard input",
+    )
     subparsers.add_parser("validate")
     args = parser.parse_args(argv)
 
     if args.command == "append":
-        header = append_entry(
-            args.path,
-            args.speaker,
-            args.body
-            if args.body is not None
-            else args.body_file.read_text(encoding="utf-8"),
-        )
+        if args.body is not None:
+            message_body = args.body
+        elif args.body_file is not None:
+            message_body = args.body_file.read_text(encoding="utf-8")
+        else:
+            stdin_buffer = getattr(sys.stdin, "buffer", None)
+            if stdin_buffer is None:
+                message_body = sys.stdin.read()
+            else:
+                message_body = stdin_buffer.read().decode("utf-8")
+        header = append_entry(args.path, args.speaker, message_body)
         print(header)
         return 0
     return validate(args.path)

@@ -2124,6 +2124,36 @@ _TRAINING_DEFICIT_REPAIR_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_TRAINING_TRAVEL_SUPPLY_POLICY = ProgressionPolicy(
+    policy_id="training-travel-supply-20-29",
+    minimum_level=20,
+    maximum_level=29,
+    status="research",
+    execution="training-travel-supply",
+    summary="Acquire one source-audited invisibility potion for blocked advanced training.",
+    evidence=(
+        "A useful source teacher must have a route whose diagnosed hazards are blocked by invisibility.",
+        "Purchase one pure-invisibility potion from a stationary source shop, using a fresh exact live quote.",
+        "Acquisition alone authorizes neither potion use nor the teacher journey and earns no progression credit.",
+    ),
+    practice_skill=None,
+)
+
+_CONSUMABLE_TRAINING_TRAVEL_POLICY = ProgressionPolicy(
+    policy_id="consumable-training-travel-20-29",
+    minimum_level=20,
+    maximum_level=29,
+    status="research",
+    execution="consumable-training-travel",
+    summary="Use one verified invisibility potion for a source-audited advanced teacher visit.",
+    evidence=(
+        "A completed same-level, same-boot purchase and positive source teacher gains are required.",
+        "Confirm consumption and fresh GMCP invisibility before each exact noncombat route step.",
+        "Keep movement reserve, city program preflight, finite lessons, and healer return; no combat permission.",
+    ),
+    practice_skill=None,
+)
+
 _AUDIT_COMBAT_POUCH_POLICY = ProgressionPolicy(
     policy_id="audit-combat-pouch",
     minimum_level=2,
@@ -6165,6 +6195,13 @@ def policy_for(
             minimum_level=context.level,
             maximum_level=context.level,
             practice_skill=context.practice_skill,
+            requires_flight_override=(
+                context.level >= 19
+                or (
+                    context.character_class.casefold() == "mage"
+                    and context.level >= 16
+                )
+            ),
         )
     if handoff_policy_id:
         handoff_policy = _POLICY_BY_ID.get(handoff_policy_id)
@@ -6361,7 +6398,10 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         # character back into the field. Sellable loot can reduce both the
         # coin and flight shortfalls before the next bounded city handoff.
         return _LIQUIDATE_LOOT_POLICY
-    if context.has_flight:
+    # Selling loot realizes funding; unlike optional purchases, it cannot
+    # spend the money reserved for flight. Do not replace it with a purchase
+    # that may only look affordable against a provisional price estimate.
+    if context.has_flight or selected.execution == "sell-loot":
         return selected
     if (
         (context.can_attempt_flight_purchase or context.can_attempt_food_restock)
@@ -10132,6 +10172,14 @@ def _research_hunt_policy(
     hunt: ProgressionPolicy,
 ) -> ProgressionPolicy | None:
     """Promote a reboot-scoped viable probe into a bounded live hunt."""
+    unavailable_route = (context.research_results or {}).get(hunt.policy_id)
+    if (
+        context.world_boot_id is not None
+        and isinstance(unavailable_route, Mapping)
+        and unavailable_route.get("route_unavailable") is True
+        and unavailable_route.get("boot_id") == context.world_boot_id
+    ):
+        return None
     for policy in (probe, hunt):
         if context.level < policy.minimum_level or (
             policy.maximum_level is not None

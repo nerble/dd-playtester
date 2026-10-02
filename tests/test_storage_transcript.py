@@ -519,6 +519,93 @@ def test_storage_lists_bounded_recent_campaign_history_in_sequence_order(
     assert [row["phase"] for row in checkpoints] == ["phase-3", "phase-4"]
 
 
+def test_single_phase_lookup_remains_bounded_without_phase_index(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("dd4tester.storage._campaign_database_is_large", lambda _path: True)
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="campaign", config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml", target_level=100,
+        )
+        for sequence in range(12):
+            storage.start_campaign_segment(
+                campaign_id, phase="training" if sequence == 1 else "hunt",
+                start_state={"sequence": sequence},
+            )
+        assert not storage.campaign_phase_index_available()
+        assert len(storage.list_recent_campaign_segments(campaign_id, limit=256)) == 8
+        assert storage.get_latest_campaign_segment_for_phase(campaign_id, "training", search_limit=8) is None
+        lesson = storage.get_latest_campaign_segment_for_phase(campaign_id, "training")
+        assert lesson is not None and json.loads(lesson["start_state_json"])["sequence"] == 1
+        assert storage.get_latest_campaign_segment_for_phase(campaign_id + 1, "training") is None
+        assert storage.get_latest_campaign_segment_for_phase(campaign_id, "absent") is None
+
+
+def test_campaign_segment_summary_projects_only_requested_state_fields(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="campaign",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        attempt_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="recover-daycare-ring",
+            start_state={"level": 27, "world_boot_id": "boot-1", "private": "large"},
+        )
+        storage.finish_campaign_segment(
+            attempt_id,
+            status="success",
+            run_id=None,
+            end_state={
+                "level": 27,
+                "world_boot_id": "boot-1",
+                "campaign_daycare_ring_blocked_level": 27,
+                "private": "large",
+            },
+            command_count=0,
+            duration_seconds=0.0,
+        )
+        hunt_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="ordinary-hunt",
+            start_state={"level": 27, "world_boot_id": "boot-1", "xp": 100},
+        )
+        storage.finish_campaign_segment(
+            hunt_id,
+            status="success",
+            run_id=None,
+            end_state={"level": 27, "world_boot_id": "boot-1", "xp": 150},
+            command_count=1,
+            duration_seconds=1.0,
+        )
+
+        attempt = storage.get_latest_campaign_segment_summary_for_phase(
+            campaign_id,
+            "recover-daycare-ring",
+            state_fields=("level", "world_boot_id", "campaign_daycare_ring_blocked_level"),
+        )
+        following = list(
+            storage.iter_campaign_segment_summaries_after(
+                campaign_id,
+                attempt["sequence"],
+                state_fields=("level", "world_boot_id", "xp"),
+            )
+        )
+
+    assert json.loads(attempt["end_state_json"]) == {
+        "level": 27,
+        "world_boot_id": "boot-1",
+        "campaign_daycare_ring_blocked_level": 27,
+    }
+    assert [row["sequence"] for row in following] == [2]
+    assert json.loads(following[0]["start_state_json"]) == {
+        "level": 27,
+        "world_boot_id": "boot-1",
+        "xp": 100,
+    }
+
+
 def test_storage_maintains_exact_campaign_usage_after_segment_updates(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     campaign_id = storage.create_campaign(

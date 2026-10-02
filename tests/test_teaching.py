@@ -139,6 +139,62 @@ def test_local_fallback_preserves_route_hazards_and_teacher_level():
     assert _plan(world) is None
 
 
+def test_local_fallback_can_plan_a_positively_listed_unlearned_skill():
+    world, _ = _world()
+    world.skill_groups["parry"] = (("defense knowledge", 0),)
+    fallback = _plan(world, known_skill_levels={}, learnable_skill_levels={"parry": 0})
+    assert fallback is not None
+    assert fallback.gains == (("parry", 0, 28),)
+    assert _plan(world, known_skill_levels={"parry": 0}) is None
+
+
+def test_local_teacher_continues_to_a_distinct_source_capable_lesson():
+    world, _ = _world()
+    world.skill_groups["parry"] = (("defense knowledge", 0),)
+    policy = StarterPolicy(
+        CharacterSpec.from_mapping({"name": "Replaywar", "race": "dwarf", "gender": "male", "class": "warrior"}),
+        "unused", source_world=world, practice_types_spent=frozenset({"physical"}),
+    )
+    policy.local_training_fallback = _plan(world)
+    policy.accepted_practice_lessons = 1
+    policy.practiced_skills.add("dodge")
+    policy.text = (
+        "Skills known:\ndodge: 49%\nSkills which may be learned:\nparry: 0%\n"
+        "You have 2 physical and 0 intellectual practices remaining."
+    )
+    listing = parse_practice_listing(policy.text)
+    state = CharacterState(level=25, room_vnum="3023", stats=STATS)
+    choices = policy._local_teacher_continuation(state, listing)
+    assert [choice.skill for choice in choices] == ["parry"]
+    policy.practiced_skills.add("parry")
+    assert not policy._local_teacher_continuation(state, listing)
+
+
+@pytest.mark.parametrize("missing", ["budget", "capacity", "stats", "room", "limit", "rejected"])
+def test_local_teacher_continuation_preserves_lesson_gates(missing):
+    world, _ = _world()
+    policy = StarterPolicy(
+        CharacterSpec.from_mapping({"name": "Replaywar", "race": "dwarf", "gender": "male", "class": "warrior"}),
+        "unused", source_world=world,
+    )
+    policy.local_training_fallback = _plan(world)
+    policy.text = "Skills known:\ndodge: 28%\nYou have 2 physical and 0 intellectual practices remaining."
+    state = CharacterState(level=25, room_vnum="3023", stats=STATS)
+    if missing == "budget":
+        policy.text = policy.text.replace("2 physical", "0 physical")
+    elif missing == "capacity":
+        world.skill_groups.clear()
+    elif missing == "stats":
+        state.stats = {}
+    elif missing == "room":
+        state.room_vnum = "3054"
+    elif missing == "limit":
+        policy.accepted_practice_lessons = 3
+    elif missing == "rejected":
+        policy.rejected_practice_skills.add("dodge")
+    assert not policy._local_teacher_continuation(state, parse_practice_listing(policy.text))
+
+
 def _state():
     return {
         "level": 25, "world_boot_id": "boot-1", "room_vnum": "3054", "practice": 3,
@@ -165,6 +221,26 @@ def test_distant_deferral_reopens_once_without_touching_combat_loss():
     assert not _training_deficit_repair_pending(state, character_level=25)
     assert state["campaign_training_deficit_repair"]["local_teacher_fallback"]["status"] == "consumed"
     assert state["campaign_protection_recovery_required"] == original_protection
+
+
+def test_legacy_local_visit_reopens_once_for_a_new_source_capable_skill():
+    world, _ = _world()
+    world.skill_groups["parry"] = (("defense knowledge", 0),)
+    state = _state()
+    marker = state["campaign_training_deficit_repair"]
+    marker["local_teacher_fallback"] = {"status": "consumed", "teacher_mobile_vnum": 900}
+    state["campaign_training_audit"]["learnable_skill_levels"] = {"parry": 0}
+    original_loss = deepcopy(state["campaign_protection_recovery_required"])
+    _reopen_local_teacher_fallback(state, world=world, character_class="warrior", subclass=None)
+    marker = state["campaign_training_deficit_repair"]
+    assert not marker["attempted"]
+    assert marker["local_teacher_fallback"]["legacy_unlearned_skill_recheck"]
+    assert marker["local_teacher_fallback"]["lesson_policy_revision"] == 1
+    marker["attempted"] = True
+    marker["local_teacher_fallback"]["status"] = "consumed"
+    _reopen_local_teacher_fallback(state, world=world, character_class="warrior", subclass=None)
+    assert state["campaign_training_deficit_repair"]["attempted"]
+    assert state["campaign_protection_recovery_required"] == original_loss
 
 
 @pytest.mark.parametrize("field,value", [

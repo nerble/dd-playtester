@@ -5,6 +5,30 @@ import pytest
 from dd4tester.observations import ObservationParser
 
 
+def test_closed_exit_listing_preserves_brackets_and_room_identity() -> None:
+    parser = ObservationParser()
+    assert parser.feed_text(
+        "The New Magincia Moongate\n[Exits: north east south west [up]"
+    ) == []
+
+    events = parser.feed_text(
+        "]\n[#42] <Mount> A small pony stands here grazing.\n"
+    )
+
+    room = next(event for event in events if event.type == "room_entered")
+    assert room.data["name"] == "The New Magincia Moongate"
+    assert room.data["exits"] == ["north", "east", "south", "west", "[up]"]
+
+
+@pytest.mark.parametrize("header", [
+    "[Exits: north [up]", "[Exits: north up]]", "[Exits: north [[up]]]",
+])
+def test_malformed_exit_header_is_not_a_room_listing(header: str) -> None:
+    parser = ObservationParser()
+    events = parser.feed_text(f"The New Magincia Moongate\n{header}\n")
+    assert not any(event.type == "room_entered" for event in events)
+
+
 def test_text_observations_cover_core_game_events() -> None:
     parser = ObservationParser()
 
@@ -51,6 +75,16 @@ def test_text_observations_handle_split_chunks_and_unterminated_prompts() -> Non
         "health_changed",
     ]
     assert parser.flush_text() == []
+
+
+def test_quest_point_requirement_is_not_a_level_gain() -> None:
+    parser = ObservationParser()
+
+    events = parser.feed_text(
+        "You need at least 1 quest point before you can reach level 30.\n"
+    )
+
+    assert not any(event.type == "level_gained" for event in events)
 
 
 def test_split_prompt_survives_a_quiet_read_between_telnet_chunks() -> None:

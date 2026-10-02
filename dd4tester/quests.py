@@ -8,8 +8,104 @@ name or a remembered room.
 
 from __future__ import annotations
 
+import re
+import time
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+
+_HOARD_ASSIGNMENT = re.compile(
+    r"(?m)^(?P<giver>[^\n]+) intones in a voice like distant thunder,\s*\n"
+    r"'Legends tell of a lost hoard, buried deep beneath the earth near "
+    r"(?P<room>[^\n]+),\s*\n"
+    r"at the edge of the ancient realm of (?P<area>[^\n]+?)\.  "
+    r"Hie thee swiftly, brave soul,"
+)
+
+# quest.c can arm three charges, including curse, hex and a spirit guardian.
+# The old fixed dig loop cannot recover from those outcomes.
+QUEST_HOARD_EXECUTION_BLOCKER = (
+    "source safety gates require trap-aware hoard acquisition: "
+    "blind repeated digging cannot handle curse, hex, or spirit guardians"
+)
+
+
+class QuestAssignmentTracker:
+    """Bind a requested quest's narrative to its exact GMCP identity."""
+
+    def __init__(self) -> None:
+        self._reset()
+
+    def _reset(self) -> None:
+        self._deadline = 0.0
+        self._text = ""
+        self._hint: dict[str, str] | None = None
+        self._status: dict[str, Any] | None = None
+        self._identity: tuple[int, int, int] | None = None
+
+    def begin_request(self) -> None:
+        self._reset()
+        self._deadline = time.monotonic() + 5.0
+
+    def observe_line(self, line: str) -> dict[str, Any] | None:
+        if self._identity is not None or time.monotonic() > self._deadline:
+            return None
+        self._text += line + "\n"
+        if len(self._text) > 4096:
+            self._reset()
+            return None
+        match = _HOARD_ASSIGNMENT.search(self._text)
+        if match is None:
+            return None
+        self._hint = match.groupdict()
+        if self._status is not None:
+            enriched = self.observe_status(self._status)
+            if "retrieval_evidence" in enriched:
+                return enriched
+        return None
+
+    def observe_status(self, status: Mapping[str, Any]) -> dict[str, Any]:
+        result = dict(status)
+        # Wire data remains intact; this separate annotation is connection-local.
+        result.pop("retrieval_evidence", None)
+        identity = tuple(_int(status.get(key)) for key in (
+            "giver_vnum", "room_vnum", "object_vnum",
+        ))
+        if self._identity is not None and (
+            not _int(status.get("active")) or identity != self._identity
+            or str(status.get("type", "")).casefold() != "retrieve"
+        ):
+            self._reset()
+            return result
+        if self._identity is None and time.monotonic() > self._deadline:
+            return result
+        self._status = result
+        if (
+            self._hint is None
+            or not _int(status.get("active"))
+            or str(status.get("type", "")).casefold() != "retrieve"
+            or any(value <= 0 for value in identity)
+            or any(
+                str(status.get(key, "")).strip().casefold()
+                != self._hint[hint_key].strip().casefold()
+                for key, hint_key in (
+                    ("giver_name", "giver"), ("room_name", "room"),
+                    ("area_name", "area"),
+                )
+            )
+        ):
+            return result
+        self._identity = identity
+        return {
+            **result,
+            "retrieval_evidence": {
+                "method": "hoard",
+                "source": "requested-questmaster-narrative",
+                "giver_vnum": identity[0],
+                "room_vnum": identity[1],
+                "object_vnum": identity[2],
+            },
+        }
 
 
 QUESTMASTER_MAX_LEVEL = 25
@@ -438,6 +534,18 @@ def snapshot_quest_status(status: Mapping[str, Any] | None) -> QuestSnapshot:
         kind = "kill"
     elif kind == "none" and object_vnum:
         kind = "object"
+    evidence = data.get("retrieval_evidence")
+    if (
+        active and kind == "retrieve" and isinstance(evidence, Mapping)
+        and evidence.get("method") == "hoard"
+        and evidence.get("source") == "requested-questmaster-narrative"
+        and all(
+            _int(data.get(key)) > 0
+            and _int(data.get(key)) == _int(evidence.get(key))
+            for key in ("giver_vnum", "room_vnum", "object_vnum")
+        )
+    ):
+        kind = "hoard"
     return QuestSnapshot(
         active=active,
         complete=complete,

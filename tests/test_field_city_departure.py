@@ -110,6 +110,51 @@ def test_source_detour_uses_the_outer_trail_around_live_city_locations(world):
     assert detour.route.commands[-8:] == ("north",) * 8
 
 
+def test_source_detour_rebases_later_live_maze_indices(world):
+    route = Fastwalk(
+        "moria", 1, 100, "2s6e8n",
+        route_preflight_command="where drunk",
+    )
+    locations = (
+        "Main Street",
+        "Practice Yard",
+        "Entrance Hall to the Guild of Thieves",
+    )
+    baseline = field_city_detour_for_locations(
+        world,
+        route,
+        locations,
+        character_level=8,
+        character_max_hp=113,
+    )
+    assert baseline is not None
+
+    entry_index = len(baseline.original_city_commands)
+    route = replace(
+        route,
+        live_navigation_target="3508",
+        live_navigation_entry_room=str(baseline.boundary_room_vnum),
+        live_navigation_start_index=entry_index,
+        live_navigation_resume_index=entry_index + 4,
+        live_navigation_room_vnums=(str(baseline.boundary_room_vnum), "3508"),
+    )
+    detour = field_city_detour_for_locations(
+        world,
+        route,
+        locations,
+        character_level=8,
+        character_max_hp=113,
+    )
+
+    assert detour is not None
+    delta = (
+        len(detour.detour_city_commands)
+        - len(detour.original_city_commands)
+    )
+    assert detour.route.live_navigation_start_index == entry_index + delta
+    assert detour.route.live_navigation_resume_index == entry_index + 4 + delta
+
+
 def test_source_detour_fails_closed_for_unmapped_or_custom_return_routes(world):
     route = Fastwalk("moria", 1, 100, "2s6e8n")
     assert field_city_detour_for_locations(
@@ -333,6 +378,73 @@ def test_late_route_locator_uses_one_city_detour_and_rechecks_before_moving(
     assert not bot.fastwalk_route_preflight_hazard_observed
 
 
+def test_changed_recall_locator_allows_one_correction_after_healer_detour(
+    world, monkeypatch,
+):
+    bot, state, _ = setup(world, monkeypatch)
+    prepare_late_route_locator(bot)
+    bot.fastwalk_route = replace(
+        bot.fastwalk_route,
+        name="source-ranked hunt illusionist 4410",
+        notation="s;s;e;e;e;s;s;s;s;s;s;e;e;e",
+    )
+    bot.field_city_preflight_active = True
+    bot.field_city_detour_attempted = True
+    original_evidence = {"blocked_locations": ["weapon shop", "market square"]}
+    bot.field_city_detour_evidence = original_evidence
+    state = replace(state, room_vnum="3001", room_name="The Temple")
+    bot.fastwalk_route_preflight_locations = ("weapon shop", "market square")
+    assert bot._source_city_route_preflight_detour(state, bot.fastwalk_route) is None
+
+    locations = (
+        "Lusty Ogres Tavern",
+        "Main Street",
+        "Entrance to Mage's Guild",
+    )
+    state = replace(state, move=220)
+    bot._resolve_fastwalk_route_preflight(locations=locations)
+
+    decision = bot._fastwalk_route_preflight_decision(state)
+
+    assert decision.command == "where drunk"
+    assert bot.field_city_route_correction_attempted
+    assert bot.field_city_detour_evidence is original_evidence
+    assert bot.field_city_route_correction_evidence["blocked_locations"] == [
+        "lusty ogres tavern", "main street", "entrance to mage's guild",
+    ]
+
+    bot.fastwalk_route_preflight_locations = locations
+    assert bot._source_city_route_preflight_detour(state, bot.fastwalk_route) is None
+
+
+def test_unavailable_recall_detour_does_not_block_a_later_fresh_report(
+    world, monkeypatch,
+):
+    bot, state, _ = setup(world, monkeypatch)
+    prepare_late_route_locator(bot)
+    bot.field_city_preflight_active = True
+    state = replace(state, room_vnum="3001", room_name="The Temple")
+    bot.fastwalk_route_preflight_locations = ("Unmapped City Room",)
+
+    assert bot._source_city_route_preflight_detour(state, bot.fastwalk_route) is None
+    assert not bot.field_city_detour_attempted
+
+    locations = (
+        "Main Street",
+        "Practice Yard",
+        "Entrance Hall to the Guild of Thieves",
+    )
+    bot._resolve_fastwalk_route_preflight(locations=locations)
+
+    decision = bot._source_city_route_preflight_detour(state, bot.fastwalk_route)
+
+    assert decision.command == "where drunk"
+    assert bot.field_city_detour_attempted
+    assert bot.field_city_detour_evidence["blocked_locations"] == [
+        "main street", "practice yard", "entrance hall to the guild of thieves",
+    ]
+
+
 def test_live_circus_route_can_detour_without_healer_preflight_flag(world, monkeypatch):
     bot, state, _ = setup(world, monkeypatch)
     prepare_late_route_locator(bot)
@@ -427,6 +539,77 @@ def test_blocked_source_greet_route_rechecks_after_one_movement_gated_detour(
     assert not bot.magic_shop_route_blocked_by_drunk
 
 
+def test_changed_healer_locator_allows_one_bounded_route_correction(
+    world, monkeypatch,
+):
+    bot, state, _ = setup(world, monkeypatch)
+    state = replace(
+        state, level=9, hp=142, max_hp=142, move=230, max_move=230,
+    )
+    bot.fastwalk_route = Fastwalk(
+        "source-ranked hunt dad 4415", 1, 100,
+        "s;s;e;e;e;s;s;s;s;s;s;s;s",
+    )
+    locate(
+        bot,
+        state,
+        "You detect the presence of:\n"
+        "The drunk                    Practice Yard\n"
+        "The drunk                    Main Street",
+    )
+
+    handled, first_detour_check = bot._field_city_departure_decision(state)
+    assert handled and first_detour_check.command == "where drunk"
+    bot.after_command(first_detour_check)
+    bot.observe_text(
+        "You detect the presence of:\n"
+        "The drunk                    Practice Yard\n"
+        "The drunk                    Market Square\n"
+        "<142/142 hits 324/324 mana 230/230 move [Midgaard]>"
+    )
+    bot.prompt_ready = True
+
+    handled, correction_check = bot._field_city_departure_decision(state)
+
+    assert handled and correction_check.command == "where drunk"
+    assert bot.field_city_route_correction_attempted
+    assert bot.field_city_detour_evidence["blocked_locations"] == [
+        "practice yard", "main street",
+    ]
+    assert bot.field_city_route_correction_evidence["blocked_locations"] == [
+        "practice yard", "market square",
+    ]
+    assert bot.fastwalk_required_move == 144
+    route_rooms = field_city_route_rooms(
+        world,
+        bot.fastwalk_route.commands,
+        origin=3001,
+        alignment=50000,
+        level=9,
+    )
+    normalize = lambda room: " ".join(room.casefold().split()).removeprefix("the ")
+    assert not {"practice yard", "market square"}.intersection(
+        normalize(room) for room in route_rooms
+    )
+
+    bot.after_command(correction_check)
+    bot.observe_text(
+        "You detect the presence of:\n"
+        "The drunk                    Practice Yard\n"
+        "The drunk                    Market Square\n"
+        "<142/142 hits 324/324 mana 230/230 move [Midgaard]>"
+    )
+    bot.prompt_ready = True
+    assert bot._field_city_departure_decision(state) == (False, None)
+    assert bot.field_city_route_correction_attempted
+
+    bot.magic_shop_route_blocked_by_drunk = True
+    bot.magic_shop_drunk_preflight_locations = ("Temple Square",)
+    handled, wait = bot._field_city_departure_decision(state)
+    assert handled and wait.command == "sleep"
+    assert bot.field_city_route_correction_attempted
+
+
 def test_source_city_detour_waits_for_enough_movement(world, monkeypatch):
     bot, state, _ = setup(world, monkeypatch)
     state = replace(state, move=120)
@@ -444,6 +627,50 @@ def test_source_city_detour_waits_for_enough_movement(world, monkeypatch):
     assert bot.fastwalk_route.notation == "2s6e8n"
     assert not bot.field_city_detour_attempted
     assert bot.field_city_detour_evidence is None
+
+
+def test_saved_field_city_detour_is_loaded_as_the_prior_attempt():
+    evidence = {"blocked_locations": ["practice yard", "main street"]}
+    bot = StarterPolicy(
+        CharacterSpec.from_mapping(
+            {"name": "Testsubject", "race": "human", "gender": "female", "class": "mage"}
+        ),
+        "fixture-password",
+        field_city_prior_detour_evidence=evidence,
+    )
+
+    assert bot.field_city_detour_attempted
+    assert bot.field_city_detour_evidence == evidence
+    assert not bot.field_city_route_correction_attempted
+
+
+def test_fresh_city_report_can_recover_from_an_unavailable_detour(
+    world, monkeypatch,
+):
+    bot, state, _ = setup(world, monkeypatch)
+    monkeypatch.setattr(
+        bot, "_midgaard_city_shop_preflight_decision", lambda *_args, **_kwargs: None,
+    )
+    bot.magic_shop_route_blocked_by_drunk = True
+    bot.magic_shop_drunk_preflight_locations = (
+        "The Bakery", "The Temple Square", "Main Street",
+    )
+
+    handled, wait = bot._field_city_departure_decision(state)
+
+    assert handled and wait.command == "sleep"
+    assert not bot.field_city_detour_attempted
+
+    bot.magic_shop_drunk_preflight_locations = (
+        "Main Street", "Practice Yard", "Entrance Hall to the Guild of Thieves",
+    )
+    handled, _ = bot._field_city_departure_decision(state)
+
+    assert handled
+    assert bot.field_city_detour_attempted
+    assert bot.field_city_detour_evidence["blocked_locations"] == [
+        "main street", "practice yard", "entrance hall to the guild of thieves",
+    ]
 
 
 def test_crowded_fountain_waits_then_rechecks_at_healer(world, monkeypatch):

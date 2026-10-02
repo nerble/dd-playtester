@@ -1,9 +1,11 @@
+import io
+import sys
 from pathlib import Path
 
 import pytest
 import re
 
-from tools.conversation_log import append_entry, timestamp, validate
+from tools.conversation_log import append_entry, main, timestamp, validate
 
 
 def test_append_entry_uses_the_streamer_header_contract(tmp_path: Path) -> None:
@@ -38,6 +40,37 @@ def test_append_entry_rejects_nested_streamer_header(tmp_path: Path) -> None:
         )
 
     assert not path.exists()
+
+
+def test_append_command_reads_unicode_body_from_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+    monkeypatch.setattr(sys, "stdin", io.StringIO("Don't lose the user's exact words: café.\n"))
+
+    assert main(
+        ["--path", str(path), "append", "--speaker", "CODEX COMMENTARY", "--body-stdin"]
+    ) == 0
+
+    output = capsys.readouterr().out
+    assert " CODEX COMMENTARY\n" in path.read_text(encoding="utf-8")
+    assert "Don't lose the user's exact words: café." in path.read_text(encoding="utf-8")
+    assert " NZST\n" in output
+
+
+def test_append_command_decodes_utf8_pipe_bytes_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+    message = "Exact punctuation: " + chr(0x2019) + " café."
+    raw_stdin = io.BytesIO((message + "\n").encode("utf-8"))
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(raw_stdin, encoding="cp1252"))
+
+    assert main(
+        ["--path", str(path), "append", "--speaker", "CODEX COMMENTARY", "--body-stdin"]
+    ) == 0
+
+    assert message in path.read_text(encoding="utf-8")
 
 
 def test_validate_rejects_malformed_headerish_lines(tmp_path: Path) -> None:

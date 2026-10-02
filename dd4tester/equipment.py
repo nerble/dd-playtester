@@ -742,14 +742,26 @@ def is_bow(item: ObjectSource) -> bool:
     return bool(item.extra_flags & ITEM_BOW)
 
 
+def generated_weapon_damage_floor(level: int) -> tuple[int, int] | None:
+    """Estimate normal load-time damage, not an identified item's live stats.
+
+    db.c:create_object replaces both prototype damage values, even without
+    the item randomiser. Each endpoint receives two number_fuzzy calls, each
+    floored at one. Use the lowest possible endpoints for source planning.
+    """
+    if type(level) is not int or not 0 <= level <= 100:
+        return None
+    return max(1, level // 4), max(1, 3 * level // 4 + 4)
+
+
 def weapon_damage_score(item: ObjectSource) -> int:
-    """Return twice the source weapon's average dice damage."""
-    if item.item_type != ITEM_WEAPON or len(item.values) < 3:
+    """Rank ordinary source weapons by conservative generated range damage."""
+    if item.item_type != ITEM_WEAPON or item.extra_flags & ITEM_BODY_PART:
         return 0
-    dice_count, die_size = item.values[1:3]
-    if dice_count <= 0 or die_size <= 0:
-        return 0
-    return dice_count * (die_size + 1)
+    damage = generated_weapon_damage_floor(item.effective_level)
+    # fight.c:one_hit draws uniformly between the live endpoints, not dice.
+    # Prototype values are neither those live endpoints nor a dice recipe.
+    return sum(damage) if damage is not None else 0
 
 
 def stance_score(
@@ -769,7 +781,7 @@ def stance_score(
 
 
 def weapon_combat_score(item: ObjectSource) -> tuple[int, ...]:
-    """Rank a weapon by source dice and positive combat bonuses."""
+    """Rank a weapon by generated damage and positive source combat bonuses."""
     return stance_score(item, STANCE_COMBAT)
 
 
@@ -911,7 +923,7 @@ def protects_from_sale(item: ObjectSource) -> bool:
     ):
         # A weapon with a damage penalty is not protected merely because it
         # also carries a positive hit-roll modifier. The stance planner still
-        # retains it when its source dice make it the best available weapon.
+        # retains it when its generated damage makes it the best available weapon.
         return False
     return item.item_type == ITEM_LIGHT or is_capacity_infrastructure(item) or any(
         location in protected and modifier > 0
@@ -1454,6 +1466,8 @@ def item_keyword(item: ObjectSource) -> str:
 def item_command_keyword(
     item: ObjectSource,
     peers: Iterable[ObjectSource] = (),
+    *,
+    allow_ordinal: bool = True,
 ) -> str:
     """Choose a source keyword that will select ``item`` among ``peers``.
 
@@ -1461,7 +1475,8 @@ def item_command_keyword(
     noun such as ``dagger`` can select the wrong prototype when a better
     ``long dagger slim`` is also carried.  Prefer a source keyword that is
     absent from the other prototypes and keep the legacy noun fallback for
-    genuinely ambiguous or uncontextualized items.
+    genuinely ambiguous items. Numeric ordinals are valid only when ``peers``
+    describe the command's live target set, not the whole source catalog.
     """
     peer_list = tuple(peers)
     keyword_words = [word.casefold() for word in item.keywords.split() if word]
@@ -1489,7 +1504,7 @@ def item_command_keyword(
         for peer in peer_list
         if fallback in {word.casefold() for word in peer.keywords.split()}
     }
-    if item.vnum in matching_vnums and len(matching_vnums) > 1:
+    if allow_ordinal and item.vnum in matching_vnums and len(matching_vnums) > 1:
         occurrence = 0
         for peer in peer_list:
             if fallback not in {

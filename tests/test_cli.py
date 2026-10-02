@@ -1026,7 +1026,7 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
     )
     assert request.name == "Valora"
     assert captured_request["options"]["reset_retries"] is None
-    assert captured_request["options"]["max_segment_runtime"] == 180.0
+    assert captured_request["options"]["max_segment_runtime"] == 300.0
     assert captured_request["options"]["target_level"] == 30
     assert captured_request["options"]["retry_stalled"] is True
     assert captured_request["options"]["password"] == "command-line-secret"
@@ -1573,7 +1573,7 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
         assert _kwargs["force_new"] is True
         assert _kwargs["segments"] == 1
         assert _kwargs["reset_retries"] is None
-        assert _kwargs["max_segment_runtime"] == 180.0
+        assert _kwargs["max_segment_runtime"] == 300.0
         return CampaignResult(4, "blocked", 9, "awaiting verified policy", {"level": 2})
 
     monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
@@ -2845,6 +2845,29 @@ def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
                         {"reason": "sanctuary reserve required", "count": 1}
                     ],
                 },
+                "world_boot_id": "boot-1",
+                "campaign_below_band_policy_exclusions": {
+                    "source-ranked-hunt-example-25": {
+                        "boot_id": "boot-1",
+                        "level": 25,
+                        "targets": ["a plain target"],
+                    }
+                },
+                "campaign_source_ranked_timeout_policies": [{
+                    "boot_id": "boot-1",
+                    "level": 25,
+                    "policy_id": "source-ranked-hunt-example-25",
+                    "revalidation_attempted": True,
+                    "revalidation_attempts": 1,
+                }],
+                "campaign_research_results": {
+                    "source-ranked-hunt-example-25": {
+                        "boot_id": "boot-1",
+                        "route_hazard": (
+                            "segment runtime boundary requested a safe healer return"
+                        ),
+                    }
+                },
             },
         )
 
@@ -2858,6 +2881,11 @@ def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
     assert "No-sanctuary frontier options (diagnostic only):" in captured.out
     assert "a plain target [103] at The Test Room" in captured.out
     assert "pool=recent-mobile-kill" in captured.out
+    assert (
+        "same-boot history: last result=segment runtime boundary requested a safe healer return; "
+        "blocked=live below-band evidence for this reset; "
+        "timeout revalidation already used"
+    ) in captured.out
 
 
 def test_show_campaign_rejects_nonpositive_limit(tmp_path, capsys) -> None:

@@ -18,9 +18,15 @@ from .campaign import (
     DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
     DEFAULT_RESET_WAIT_SECONDS,
     CampaignResult,
+    _BELOW_BAND_POLICY_EXCLUSIONS_KEY,
     _FAME_RECOVERY_MAX_LEVEL_DELTA,
     _FAME_RECOVERY_MIN_LEVEL_DELTA,
     _PROTECTION_RECOVERY_KEY,
+    _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY,
+    _SOURCE_RANKED_RETRY_EXHAUSTED_KEY,
+    _SOURCE_RANKED_TIMEOUT_POLICIES_KEY,
+    _SOURCE_RANKED_TIMEOUT_REVALIDATION_FIELD,
+    _SOURCE_RANKED_TIMEOUT_REVALIDATION_MAX_ATTEMPTS,
     _source_ranked_candidate_requires_sanctuary_for_state,
     _source_ranked_caster_output_for_state,
     _source_ranked_candidate_excluded_by_below_band_evidence,
@@ -3946,6 +3952,106 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                         f"pool={candidate.get('selection_pool', 'unknown')}; "
                         f"policy={candidate.get('policy_id', '-')}"
                     )
+                    policy_id = str(candidate.get("policy_id") or "")
+                    same_boot_status = candidate.get("same_boot_status")
+                    raw_blockers = candidate.get("same_boot_blockers")
+                    same_boot_blockers = (
+                        [str(item) for item in raw_blockers if item]
+                        if isinstance(raw_blockers, list)
+                        else []
+                    )
+                    current_boot = state.get("world_boot_id")
+                    if (
+                        policy_id
+                        and current_boot
+                        and state.get(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY)
+                        == policy_id
+                        and state.get(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY)
+                        == current_boot
+                    ):
+                        same_boot_blockers.append(
+                            "nonproductive retry exhausted for this boot"
+                        )
+                    below_band_exclusions = state.get(
+                        _BELOW_BAND_POLICY_EXCLUSIONS_KEY
+                    )
+                    below_band_exclusion = (
+                        below_band_exclusions.get(policy_id)
+                        if isinstance(below_band_exclusions, Mapping)
+                        else None
+                    )
+                    if (
+                        isinstance(below_band_exclusion, Mapping)
+                        and below_band_exclusion.get("boot_id") == current_boot
+                        and below_band_exclusion.get("level")
+                        in {None, state.get("level")}
+                    ):
+                        same_boot_blockers.append(
+                            "live below-band evidence for this reset"
+                        )
+                    timeout_records = state.get(
+                        _SOURCE_RANKED_TIMEOUT_POLICIES_KEY
+                    )
+                    if isinstance(timeout_records, list):
+                        for record in timeout_records:
+                            if not isinstance(record, Mapping):
+                                continue
+                            try:
+                                timeout_attempts = int(
+                                    record.get("revalidation_attempts") or 0
+                                )
+                            except (TypeError, ValueError):
+                                timeout_attempts = 0
+                            if (
+                                record.get("boot_id") == current_boot
+                                and record.get("level")
+                                in {None, state.get("level")}
+                                and record.get("policy_id") == policy_id
+                                and (
+                                    record.get(
+                                        _SOURCE_RANKED_TIMEOUT_REVALIDATION_FIELD
+                                    ) is True
+                                    or timeout_attempts
+                                    >= _SOURCE_RANKED_TIMEOUT_REVALIDATION_MAX_ATTEMPTS
+                                )
+                            ):
+                                same_boot_blockers.append(
+                                    "timeout revalidation already used"
+                                )
+                    last_result = ""
+                    research_results = state.get("campaign_research_results")
+                    result = (
+                        research_results.get(policy_id)
+                        if isinstance(research_results, Mapping)
+                        else None
+                    )
+                    if (
+                        isinstance(result, Mapping)
+                        and result.get("boot_id") == current_boot
+                    ):
+                        if result.get("consider_viable") is False:
+                            same_boot_blockers.append(
+                                "live consider is not XP-viable"
+                            )
+                        if result.get("route_hazard"):
+                            last_result = str(result["route_hazard"])
+                        elif result.get("absent") is True:
+                            last_result = "target was absent"
+                    same_boot_blockers = list(dict.fromkeys(same_boot_blockers))
+                    history_parts = []
+                    if same_boot_status:
+                        history_parts.append(f"status={same_boot_status}")
+                    if last_result:
+                        history_parts.append(f"last result={last_result}")
+                    if same_boot_blockers:
+                        history_parts.append(
+                            "blocked=" + "; ".join(same_boot_blockers)
+                        )
+                    if history_parts:
+                        print(
+                            "    same-boot history: "
+                            + "; ".join(history_parts)
+                        )
     print(
         f"recent segments (up to {limit}; newest segment last)"
     )

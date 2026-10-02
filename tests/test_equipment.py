@@ -9,6 +9,7 @@ from dd4tester.equipment import (
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
     character_can_use_item,
+    generated_weapon_damage_floor,
     is_blunt_weapon,
     item_category,
     item_command_keyword,
@@ -708,8 +709,19 @@ def test_swiftness_and_critical_gear_are_protected_from_sale() -> None:
     assert protects_from_sale(_item(27, "critical helm", (50, 1)))
 
 
-def test_weapon_damage_score_uses_source_dice_average() -> None:
-    dagger = ObjectSource(3020, "dagger", "a dagger", 5, (0, 2, 4, 11), 10)
+@pytest.mark.parametrize(
+    ("level", "expected"),
+    [(0, (1, 4)), (4, (1, 7)), (8, (2, 10)), (9, (2, 10)),
+     (24, (6, 22)), (100, (25, 79)), (-1, None), (101, None), (True, None)],
+)
+def test_generated_weapon_damage_uses_two_fuzzy_minima(
+    level: int, expected: tuple[int, int] | None,
+) -> None:
+    assert generated_weapon_damage_floor(level) == expected
+
+
+def test_weapon_damage_score_uses_load_level_not_prototype_dice() -> None:
+    dagger = ObjectSource(3020, "dagger", "a dagger", 5, (0, 2, 4, 11), 10, level=5)
     claws = ObjectSource(
         18000,
         "claws bears",
@@ -717,14 +729,34 @@ def test_weapon_damage_score_uses_source_dice_average() -> None:
         5,
         (0, 6, 12, 11),
         0,
+        level=15,
     )
 
-    assert weapon_damage_score(dagger) == 10
-    assert weapon_damage_score(claws) == 78
+    assert weapon_damage_score(dagger) == 8
+    assert weapon_damage_score(claws) == 18
     assert weapon_damage_score(claws) > weapon_damage_score(dagger)
 
 
-def test_combat_stance_compares_weapon_dice_plus_damroll() -> None:
+def test_prototype_damage_cannot_invent_a_source_weapon_upgrade() -> None:
+    dagger = ObjectSource(3020, "dagger", "a dagger", 5, (0, 2, 4, 11), 10, level=1)
+    club = ObjectSource(
+        1521, "club large", "a large club", 5, (0, 4, 3, 7), 20000,
+        level=10000, load_level_min=1, load_level_max=7,
+    )
+    assert weapon_damage_score(club) == weapon_damage_score(dagger) == 5
+
+
+def test_weapon_score_rejects_unknown_load_level_and_body_parts() -> None:
+    unknown = ObjectSource(1, "weapon", "a weapon", 5, (0, 10, 30, 7), 0, level=10000)
+    body_part = ObjectSource(
+        2, "claw", "a claw", 5, (0, 10, 30, 7), 0,
+        level=20, extra_flags=1 << 26,
+    )
+    assert weapon_damage_score(unknown) == 0
+    assert weapon_damage_score(body_part) == 0
+
+
+def test_combat_stance_compares_generated_weapon_damage_plus_damroll() -> None:
     small_damage_weapon = ObjectSource(
         5252,
         "long dagger slim",
@@ -733,6 +765,7 @@ def test_combat_stance_compares_weapon_dice_plus_damroll() -> None:
         (0, 2, 5, 11),
         100,
         affects=((19, 1),),
+        level=9,
     )
     bear_claws = ObjectSource(
         18000,
@@ -742,6 +775,7 @@ def test_combat_stance_compares_weapon_dice_plus_damroll() -> None:
         (0, 6, 12, 11),
         0,
         affects=((18, 3),),
+        level=15,
     )
 
     assert stance_score(bear_claws, STANCE_COMBAT) > stance_score(
@@ -750,7 +784,7 @@ def test_combat_stance_compares_weapon_dice_plus_damroll() -> None:
     )
 
 
-def test_weapon_combat_score_prefers_damroll_bonus_over_small_dice_gap() -> None:
+def test_weapon_combat_score_prefers_damroll_bonus_over_small_damage_gap() -> None:
     jewel_dagger = ObjectSource(
         3701,
         "jewel-studded dagger",
@@ -760,6 +794,7 @@ def test_weapon_combat_score_prefers_damroll_bonus_over_small_dice_gap() -> None
         0,
         affects=((18, 5), (19, 5)),
         wear_flags=1 | (1 << 13),
+        level=5,
     )
     long_dagger = ObjectSource(
         5252,
@@ -770,6 +805,7 @@ def test_weapon_combat_score_prefers_damroll_bonus_over_small_dice_gap() -> None
         100,
         affects=((18, 1), (19, 1)),
         wear_flags=1 | (1 << 13),
+        level=9,
     )
 
     assert weapon_combat_score(jewel_dagger) > weapon_combat_score(long_dagger)
@@ -1359,6 +1395,10 @@ def test_item_command_keyword_disambiguates_shared_weapon_nouns() -> None:
 
     assert item_command_keyword(long_dagger, [ordinary]) == "long"
     assert item_command_keyword(ordinary, [long_dagger]) == "dagger"
+    assert (
+        item_command_keyword(long_dagger, [ordinary], allow_ordinal=False)
+        == "long"
+    )
 
 
 def test_item_command_keyword_uses_an_ordinal_for_ambiguous_carried_gear() -> None:
@@ -1382,3 +1422,7 @@ def test_item_command_keyword_uses_an_ordinal_for_ambiguous_carried_gear() -> No
     )
 
     assert item_command_keyword(studded, [patched, studded]) == "2.jerkin"
+    assert (
+        item_command_keyword(studded, [patched, studded], allow_ordinal=False)
+        == "jerkin"
+    )

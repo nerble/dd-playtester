@@ -99,7 +99,7 @@ def test_hero_uses_bounded_segment_budget_and_no_default_reset_wait(
     assert result.status == "ready"
     assert captured["segments"] == 17
     assert captured["reset_retries"] == 0
-    assert captured["max_segment_runtime"] == 180
+    assert captured["max_segment_runtime"] == 300
     assert captured["retry_stalled"] is False
 
 
@@ -296,7 +296,7 @@ def test_hero_normalizes_explicitly_missing_runtime_cap(
         )
     )
 
-    assert captured["max_segment_runtime"] == 180
+    assert captured["max_segment_runtime"] == 300
     assert captured["reset_retries"] == 0
 
 

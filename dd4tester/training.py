@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+from .teaching import practice_gain, teacher_capacity
 
 
 _DATA_PATH = Path(__file__).with_name("data") / "training_priorities.json"
@@ -170,6 +174,44 @@ def training_priorities_for(
     return specialized + base
 
 
+def training_policy_revision() -> str:
+    """Fingerprint executable training priorities, independent of campaign code."""
+
+    def entries(priorities: tuple[TrainingPriority, ...]) -> list[dict[str, object]]:
+        return [
+            {
+                "skill": priority.skill,
+                "source_skill": priority.source_skill,
+                "practice_type": priority.practice_type,
+                "target_percent": priority.target_percent,
+                "minimum_level": priority.minimum_level,
+                "unlock_skill": priority.unlock_skill,
+                "utility": priority.utility,
+                "automated": priority.automated,
+            }
+            for priority in priorities
+        ]
+
+    graph = {
+        "classes": {
+            name: entries(priorities)
+            for name, priorities in sorted(training_priorities().items())
+        },
+        "subclasses": {
+            name: entries(priorities)
+            for name, priorities in sorted(subclass_training_priorities().items())
+        },
+        "subclass_base_classes": _subclass_training_data().get("base_classes", {}),
+    }
+    encoded = json.dumps(
+        graph,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
 def training_analysis_for(name: str) -> ClassTrainingAnalysis | None:
     normalized = _normalize(name)
     return (
@@ -235,6 +277,33 @@ def plan_training(
     stop_after_skill: str | None = None,
 ) -> tuple[TrainingChoice, ...]:
     listing = parse_practice_listing(text)
+    return plan_training_from_listing(
+        character_class,
+        listing,
+        subclass=subclass,
+        character_level=character_level,
+        excluded_practice_types=excluded_practice_types,
+        excluded_skills=excluded_skills,
+        stop_after_skill=stop_after_skill,
+    )
+
+
+def plan_training_from_listing(
+    character_class: str,
+    listing: PracticeListing,
+    *,
+    subclass: str | None = None,
+    character_level: int | None = None,
+    excluded_practice_types: set[str] | frozenset[str] = frozenset(),
+    excluded_skills: set[str] | frozenset[str] = frozenset(),
+    stop_after_skill: str | None = None,
+    teacher_teachings: Mapping[str, int] | None = None,
+    skill_groups: Mapping[str, tuple[tuple[str, int], ...]] | None = None,
+    stats: Mapping[str, object] | None = None,
+) -> tuple[TrainingChoice, ...]:
+    """Plan from an observed listing, optionally requiring a positive source gain."""
+    if teacher_teachings is not None and (skill_groups is None or stats is None):
+        raise ValueError("source-filtered training needs skill groups and live stats")
     budgets = {
         "physical": listing.physical_practices or 0,
         "intellectual": listing.intellectual_practices or 0,
@@ -278,6 +347,17 @@ def plan_training(
                 and character_level < selected.minimum_level
             )
         )
+        if eligible:
+            current = skills[selected.skill]
+            if teacher_teachings is not None:
+                next_percent = practice_gain(
+                    current,
+                    teacher_capacity(teacher_teachings, selected.skill, skill_groups),
+                    selected.practice_type,
+                    stats,
+                )
+                if next_percent is None or next_percent <= current:
+                    eligible = False
         if eligible:
             current = skills[selected.skill]
             choices.append(

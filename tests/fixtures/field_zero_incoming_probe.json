@@ -1,0 +1,25 @@
+{
+  "source_run_id": 15928,
+  "purpose": "Observed full-health damage-window withdrawal; not combat authorization",
+  "sanitization": "The live target selector was replaced with #42; unrelated state was omitted.",
+  "character_level": 29,
+  "room_vnum": 20512,
+  "target": {"name": "a dwarven singer", "mobile_vnum": 20508, "level": 25, "max_hp": 662},
+  "events": [
+    {"at": 0.0, "command": "stun #42"},
+    {"at": 0.647896, "text": "Your attempted stun misses a dwarven singer.\n"},
+    {"at": 0.649, "state": {"hp": 666, "max_hp": 666, "enemy_hp": null}},
+    {"at": 0.651, "state": {"hp": 666, "max_hp": 666, "enemy_hp": 662}},
+    {"at": 0.685, "command": "kill #42"},
+    {"at": 1.703564, "text": "A dwarven singer parries your attack.\nA dwarven singer parries your attack.\n"},
+    {"at": 3.814059, "text": "You do the best you can!\n"},
+    {"at": 4.855834, "text": "A dwarven singer parries your attack.\nA dwarven singer dodges your attack.\n"},
+    {"at": 7.709, "command": "headbutt"},
+    {"at": 10.852, "command": "kick"},
+    {"at": 11.507, "state": {"hp": 666, "max_hp": 666, "enemy_hp": 633}},
+    {"at": 13.992, "command": "flee"},
+    {"at": 14.724, "state": {"hp": 666, "max_hp": 666, "enemy_hp": null}},
+    {"at": 14.764, "command": "save"}
+  ],
+  "outcome": {"flee_penalty_xp": 576, "damage_xp": 29, "net_xp": -547}
+}

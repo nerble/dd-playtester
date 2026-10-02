@@ -312,6 +312,45 @@ def test_builder_retains_loot_and_target_contracts_and_original_fastwalk():
     assert route.commands == ("north",)
 
 
+def test_split_locator_keeps_every_matching_room_until_the_final_prompt():
+    world, target = world_and_stop()
+    locator = FieldHuntStop(
+        (), None, actions=("where carrier",), where_target="potion carrier",
+        where_source_mobile_vnum=1, where_area_file="hunt.are",
+        where_location_routes=(("tunnel", ("11",)), ("maze", ("12",))),
+        where_relocation_routes=(
+            ("10", "tunnel", ("11",)),
+            ("10", "maze", ("11", "12")),
+            ("11", "maze", ("12",)),
+        ),
+        maximum_where_relocations=1, preserve_where_route_waypoints=True,
+    )
+    stops = (
+        locator, replace(target, route=(), route_vnums=("11",)),
+        replace(target, route=(), route_vnums=("12",)),
+    )
+    policy = policy_at_locator(stops, world, origin="10")
+    policy.observe_text(
+        "You detect the presence of:\nThe potion carrier          Maze\n"
+    )
+
+    assert policy.fastwalk_where_response_pending
+    assert policy.fastwalk_hunt_stops == stops
+    assert not policy.fastwalk_where_decisions
+
+    policy.observe_text(
+        "The potion carrier          Tunnel\n"
+        "<218/218 hits 628/628 mana 300/320 move [Hunt]> "
+    )
+
+    assert not policy.fastwalk_where_response_pending
+    assert policy.fastwalk_where_locations == ("maze", "tunnel")
+    assert [stop.route_vnums[-1] for stop in policy.fastwalk_hunt_stops[1:]] == ["11", "12"]
+    assert policy.fastwalk_where_decisions[-1]["mapped_rooms"] == {
+        "tunnel": ["11"], "maze": ["12"],
+    }
+
+
 @pytest.fixture(scope="module")
 def real_plan():
     directory = Path("runs/dd4-source/server/area")
@@ -343,7 +382,10 @@ def test_run_12827_plan_queries_before_six_move_approach_and_can_check_adjacent_
     assert dict(stops[0].where_location_routes)["the maze"] == ("4063",)
     assert dict(stops[0].where_location_routes)["the large cave"] == ()
     policy = policy_at_locator(stops, world)
-    policy.observe_text("You detect the presence of:\nThe large hobgoblin              The maze\n")
+    policy.observe_text(
+        "You detect the presence of:\nThe large hobgoblin              The maze\n"
+        "<218/218 hits 628/628 mana 300/320 move [Moria]> "
+    )
     assert policy.fastwalk_where_locations == ("the maze",)
     assert len(policy.fastwalk_hunt_stops) == 2
     assert policy.fastwalk_hunt_stops[1].route_vnums == (
@@ -444,7 +486,10 @@ def test_required_loot_builder_uses_the_bounded_invisible_corridor(real_plan):
 def test_outside_safe_graph_is_presence_not_absence_and_skips_final_approach(real_plan):
     world, stops = real_plan
     policy = policy_at_locator(stops, world)
-    policy.observe_text("You detect the presence of:\nThe large hobgoblin              The large cave\n")
+    policy.observe_text(
+        "You detect the presence of:\nThe large hobgoblin              The large cave\n"
+        "<218/218 hits 628/628 mana 300/320 move [Moria]> "
+    )
     state = CharacterState(level=18, hp=218, max_hp=218, mana=628, max_mana=628,
                            move=250, max_move=320, room_vnum="4014", position=7)
     policy.fastwalk_hunt_looked = True

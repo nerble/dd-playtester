@@ -29,6 +29,7 @@ from dd4tester.hunt_candidates import (
     ITEM_FOOD,
     ITEM_ARMOR,
     ITEM_MONEY,
+    ITEM_DONOT_RANDOMISE,
     ITEM_PILL,
     ITEM_SCROLL,
     ITEM_STAFF,
@@ -45,6 +46,7 @@ from dd4tester.hunt_candidates import (
     SourceCombatOutput,
     WorldSource,
     money_value,
+    minimum_money_value,
     castable_spell_names,
     pill_spell_names,
     potion_spell_names,
@@ -2049,6 +2051,12 @@ def test_money_value_converts_all_coin_denominations() -> None:
     assert money_value((50, 45, 6, 0)) == 1_100
 
 
+def test_minimum_money_value_matches_dd4_per_denomination_fuzz() -> None:
+    assert minimum_money_value((100, 4, 0, 0)) == 130
+    assert minimum_money_value((50, 45, 6, 0)) == 1_045
+    assert minimum_money_value((100, 45, 0, 0), extra_flags=ITEM_DONOT_RANDOMISE) == 550
+
+
 def test_area_parser_preserves_potion_spell_names(tmp_path: Path) -> None:
     area_file = tmp_path / "potions.are"
     area_file.write_text(
@@ -2790,6 +2798,78 @@ def test_rank_hunt_candidates_detours_around_observed_route_room() -> None:
 
     assert direct.route == ("north", "north")
     assert detoured.route == ("east", "north", "east")
+
+
+def test_rank_hunt_candidates_allows_explicit_bounded_observed_route_detour() -> None:
+    rooms = {
+        3001: RoomSource(
+            3001,
+            "Recall",
+            "midgaard.are",
+            exits={
+                "north": ExitSource("north", 7001, 0, -1),
+                "east": ExitSource("east", 7002, 0, -1),
+            },
+        ),
+        7001: RoomSource(
+            7001,
+            "Blocked Street",
+            "midgaard.are",
+            exits={"north": ExitSource("north", 8000, 0, -1)},
+        ),
+        8000: RoomSource(8000, "Target Room", "target.are"),
+    }
+    rooms.update(
+        {
+            room_vnum: RoomSource(
+                room_vnum,
+                f"Detour {room_vnum}",
+                "midgaard.are",
+                exits=(
+                    {"north": ExitSource("north", room_vnum + 1, 0, -1)}
+                    if room_vnum < 7024
+                    else {"west": ExitSource("west", 8000, 0, -1)}
+                ),
+            )
+            for room_vnum in range(7002, 7025)
+        }
+    )
+    world = WorldSource(
+        mobiles={
+            300: MobileSource(
+                300,
+                "plain sentinel",
+                "a plain sentinel",
+                20,
+                0,
+                0,
+                "target.are",
+            )
+        },
+        rooms=rooms,
+        mob_resets=[MobReset(300, 8000, 1, ())],
+    )
+
+    [default] = rank_hunt_candidates(
+        world,
+        character_level=25,
+        include_xp_only=True,
+        include_all_areas=True,
+        route_blocked_room_vnums=(7001,),
+    )
+    [extended] = rank_hunt_candidates(
+        world,
+        character_level=25,
+        include_xp_only=True,
+        include_all_areas=True,
+        route_blocked_room_vnums=(7001,),
+        route_blocked_room_max_extra_steps=22,
+    )
+
+    assert default.route == ("north", "north")
+    assert len(extended.route) == len(default.route) + 22
+    assert extended.route[0] == "east"
+    assert extended.route[-1] == "west"
 
 
 def test_rank_hunt_candidates_preflights_two_level_below_program_at_level_eight() -> None:
@@ -4282,7 +4362,7 @@ def test_candidate_ranking_rejects_aggressive_target_below_useful_fuzz_floor(
                 100,
                 "guard",
                 "an aggressive guard",
-                12,
+                13,
                 ACT_AGGRESSIVE,
                 -500,
                 "target.are",
@@ -4302,7 +4382,7 @@ def test_candidate_ranking_rejects_aggressive_target_below_useful_fuzz_floor(
         include_xp_only=True,
     )
 
-    assert candidate.estimated_level_range == (10, 14)
+    assert candidate.estimated_level_range == (11, 15)
     assert candidate.status == "reject"
     assert not candidate.autonomous_safe
     assert "target is aggressive" in candidate.hazards
