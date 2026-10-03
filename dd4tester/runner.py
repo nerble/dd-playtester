@@ -10,6 +10,7 @@ from .connection import ReadResult, TelnetConnection
 from .credentials import login_environment
 from .observations import GameEvent, ObservationParser
 from .scenario import Scenario, ScenarioStep, load_scenario
+from .sessions import LiveSessionState
 from .state import CharacterState
 from .storage import RunStorage
 from .transcript import TranscriptRecorder
@@ -38,8 +39,16 @@ class ScenarioRunner:
         self.scenario_path = scenario_path
         self.connection_factory = connection_factory or self._default_connection
         self.observation_parser = observation_parser or ObservationParser()
-        self.character_state = character_state or CharacterState()
+        self.session_state = LiveSessionState(character_state or CharacterState())
         self._text_buffer = ""
+
+    @property
+    def character_state(self) -> CharacterState:
+        return self.session_state.character
+
+    @character_state.setter
+    def character_state(self, state: CharacterState) -> None:
+        self.session_state.character = state
 
     async def run(self) -> RunResult:
         storage = RunStorage(self.scenario.database)
@@ -57,13 +66,13 @@ class ScenarioRunner:
 
         def record(kind: str, payload: dict[str, Any]) -> None:
             event = recorder.record(kind, payload)
-            source_event_id = storage.record_event(
-                run_id,
-                kind=kind,
-                payload=payload,
-                timestamp=event.timestamp,
-            )
             if kind != "game_event":
+                storage.queue_observation(
+                    run_id,
+                    kind=kind,
+                    payload=payload,
+                    timestamp=event.timestamp,
+                )
                 return
 
             game_event = GameEvent(
@@ -71,27 +80,13 @@ class ScenarioRunner:
                 source=str(payload["source"]),
                 data=dict(payload["data"]),
             )
-            if not self.character_state.apply(game_event):
-                return
-
-            snapshot_payload = {
-                "reason": game_event.type,
-                "source": game_event.source,
-                "state": self.character_state.to_dict(),
-            }
-            snapshot_event = recorder.record("state_snapshot", snapshot_payload)
-            storage.record_event(
+            changed = self.session_state.apply(game_event)
+            storage.queue_observation(
                 run_id,
-                kind="state_snapshot",
-                payload=snapshot_payload,
-                timestamp=snapshot_event.timestamp,
-            )
-            storage.record_state_snapshot(
-                run_id,
-                source_event_id=source_event_id,
-                reason=game_event.type,
-                state=snapshot_payload["state"],
-                timestamp=snapshot_event.timestamp,
+                kind=kind,
+                payload=payload,
+                timestamp=event.timestamp,
+                current_state=(self.character_state.to_dict() if changed else None),
             )
 
         try:

@@ -65,6 +65,68 @@ modules; keep configuration in YAML. Tests and sanitized
 protocol fixtures live in `tests/`. SQLite, transcripts, and HERO
 workspaces belong in ignored `runs/`, `transcripts/`, and `runs/heroes/`.
 
+## Architecture Contracts
+
+`events` is the canonical ordered observation log; do not serialize whole
+character states into ordinary events or duplicate event payloads in indexes.
+The bounded SQLite writer owns live observation writes, keeps the latest state
+in `run_current_states`, and checkpoints only at named evidence/recovery
+boundaries. Queue admission and flush/close waits must remain bounded and fail
+the run visibly rather than stall the Telnet reader. Routine observations must
+not synchronously flush from the read loop; the writer commits by batch, age,
+or idle timeout, while explicit handoffs and run completion may flush. Completed
+runs cache one summary with execution, objective, and safety outcomes plus
+estimated combat, travel, maintenance, and waiting time. Campaign reports
+aggregate summaries and boundary states by default, omitting the historical
+segment list. Use `campaign-report --full-history` only when per-segment detail
+is needed. Legacy campaign/run links use the bounded, resumable
+`backfill-campaign-runs` command. Historical run-summary backfill is paginated
+with `summarize-runs`.
+Transcript-repaired `state_snapshot` events keep ordered reason/source metadata
+in `events`; save their full payload only at the named checkpoint boundaries
+and refresh the compact current state for all other reasons. Historical rows
+remain intact; do not rewrite the large SQLite database automatically.
+Execution success never implies objective completion. Recompute the objective
+from the run's recorded contract and positive evidence; if it remains unknown,
+do not reuse a persisted `achieved` claim. Quest objectives require a positive
+quest-point delta, item objectives require distinct acquired/inventory entries,
+and an explicitly requested level transition is an independent gate. A
+multi-stop route must use its registered stop item names; never infer an item
+requirement from a route label or mobile selector.
+campaign segment linked to a current run summary inherits that run's three
+outcomes; side effects such as a level-up cannot replace the run objective.
+Keep version-old campaign metrics available without trusting their old positive
+objective verdicts.
+
+`LiveSessionState` is the root owner for the current character snapshot and
+active combat, travel, recovery, and quest controllers. `StarterPolicy` keeps a
+compatibility interface while combat-loop flags, route cursors, and recovery
+actions live in typed controllers; a new quest phase gets fresh route-local
+cursors. The active policy binds phase, authentication, in-world status, and
+world boot ID to that owner; standalone policy tests keep isolated local state.
+`QuestSessionController` owns bounded phase history, live-status gates,
+cooldown state, and transition limits; quest handoffs carry validated
+continuity, not route cursors. Cover controller transitions with repeatable
+scripted session tests. Keep domain behavior in focused modules such as
+`encounters.py`, `fastwalks.py`, `quests.py`, and `progression.py`. Keep
+historical checkpoint repair in
+`campaign_migrations.py`; do not grow it inside normal policy selection or
+replace `StarterPolicy` wholesale. Extract its responsibilities incrementally
+when a coherent behavior boundary and focused replay coverage exist.
+
+Controlled balance experiments must record comparison/variant, source-informed
+or ordinary-player mode, tester and DD4 versions, source revision, starting
+character/world state, objective, linked run/campaign, comparable metrics, and
+bot-error versus game-defect attribution. Never treat source estimates as live
+player evidence. The starting state must be a complete `CharacterState.to_dict()`
+snapshot plus `world_boot_id`, including identity, location, vitals, stats,
+inventory, equipment, currency, and quest-point fields. Every arm under one
+comparison key must use the same DD4 version and objective; starting conditions
+may vary by recorded variant. Use the shared whole-session metric schema and
+leave finished experiment records immutable. Prefer `experiment start
+--checkpoint-id N` to bind a comparison arm to an exact persisted boundary;
+this records checkpoint provenance and links its campaign automatically.
+
 ## Development Commands
 
 Use Python 3.12 from `.venv`. From the repository root:
@@ -95,6 +157,94 @@ relevant.
 
 ## Runtime Contracts
 
+Startup equipment reconstruction must use ordered live slot evidence, not a
+source match on an ambiguous worn description. A failed pre-login connection
+with zero commands may be skipped within the already-loaded campaign tail;
+stop at the next actual run, including any weapon-loss evidence. Missing
+observations prove neither an equipped weapon nor an empty slot. Never widen
+the history query or clear a real disarm to repair a transport-only failure.
+At the exact source-registered distant trainer, healthy pending lessons do not
+require the later hunt's movement reserve. Retain the noncombat, food/water,
+known-vitals, eight-movement return reserve, source identity, and practice gates;
+apply ordinary recovery again after the lesson or when returning home. This
+does not lower readiness for travel or combat. Hoard work remains gated; consult
+`docs/QUEST_HOARD_AUDIT_2026-10-03.md` before implementing its executor.
+
+During connected quest waits, keep reading live output between thirty-second
+timer queries; never sleep the reader for the query interval. Preserve the
+180-second stall stop and finite segment limit. Only the exact legacy
+sleep-before-read stall described in `docs/OPERATIONS.md` may receive one
+persisted reader-revision recheck; repaired-reader failures remain closed.
+For an active loose-item quest, source-only `spec_thief` transit may accept a
+known whole ordinary purse of at most 250 copper-equivalent. Require the
+passive, unarmed, unprogrammed, single-special profile, unchanged quest
+identity, bounded audited route, and live purse checks. This is noncombat
+travel permission only; all other route and recovery gates remain intact.
+
+Weapon-role and upgrade checks must prefer an exact current structured primary
+record over a shared description. Require matching VNUM, weapon type, name,
+class compatibility, and no current missing-slot evidence. A conflicting record
+cannot fall back to that worn name. This does not identify an ambiguous carried
+item or authorize combat before its live equipment audit.
+An ambiguous carried weapon may receive one healer-only comparison per level
+and reboot. Require one carried instance, complete matching text/GMCP inventory,
+a source-unique weapon variant, and a keyword unique across every possible
+carried prototype. Compare against the single confirmed equipped weapon;
+only the exact better-than reply permits wielding. Confirm the expected VNUM
+afterward, use five-second reply deadlines, and persist consumption before
+dispatch. Failure never authorizes a blind retry or combat.
+A verified comparison may receive one restoration check at the same level and
+reboot if the exact original primary is worn again and current source/inventory
+planning selects the same candidate, names, and keyword. Preserve the old
+five-command success in `restoration_of` and consume the restoration before
+dispatch. Run every fresh equipment, inventory, better-than, and post-wield
+check again; old item names do not bind instances across reconnects. Failed,
+rejected, or changed comparisons remain closed. Recovery identity revision 2
+may recheck one legacy, verified five-command restoration whose original and
+restored plans both exactly match the current candidate/reference. Preserve it
+as `recovery_identity_repair_of`, consume the revision before dispatch, and run
+all fresh checks. An exact legacy three-command compare timeout may separately
+receive one response-parser revision-2 check; preserve it as `prompt_repair_of`
+and retain any consumed restoration marker. No repaired-parser failure reopens.
+Split complete DD4 prompts before matching complete comparison/wield reply
+lines; healer chatter must not hide a reply or count as one.
+Persist the comparison audit on failure too. Recover a legacy dispatched-only
+audit only from the matching failed segment in the existing tail, with identical
+requests, level/boot, healer endpoints, unchanged visit XP/loss, exact compare
+timeout, and the complete three-read-only-command visit under 128 events.
+Preserve its run ID and current losses; never recover an item identity from it.
+Before clearing a worn slot on a removal acknowledgement, retain its unique
+already-observed source identity for same-session carried matching. Unknown
+removals and disarms do not prove possession; fresh inventory must contain the
+item. Removing a known nonweapon must not clear the primary weapon. Recovery
+keeps a single role-compatible primary unless the alternative improves the
+existing HP/mana/stat priorities, including whole-set bonuses. Do not swap it
+only for combat tie-breakers; combat and pre-level priorities are unchanged.
+An affordable flight purchase must not become another funding hunt solely
+because old research rotation excluded the shop policy. Require food, the
+existing affordability check, no current purchase failure or reputation block,
+and the normal route checks; a fresh shop quote must confirm affordability
+before buying. Affordable food restocking precedes
+an emergency equipment sale whether flying or walking; ordinary loot sales
+retain their existing rules.
+After ordinary current-band source selection finds nothing executable, a
+source-required next-level quest-point shortfall may use the bounded connected
+healer cooldown even if the optional frontier request was already consumed.
+Require food, recovery, nonnegative observed fame, and actual timer progress.
+A completed wait followed by a positively observed new quest assignment starts
+a new cooldown cycle; consume that old phase evidence before dispatching the
+next wait. Keep the optional request limit and all generated-target gates.
+A direct request may also prove a new cycle when its saved start has explicit
+quest availability, matching level/reboot, and its run records a dispatched
+request followed by a positive assignment. Legacy repair must match the actual
+segment's first quest phase and use only the existing bounded history tail.
+Positive assignment evidence requires the observed active flag to be 1;
+leftover object/mobile identities must not override inactive or missing status.
+Same-connection quest handoffs preserve current structured equipment identities
+and weapon-loss evidence, not queued gear commands or completed gear audits.
+Unchanged `Char.Worn` is not resent by DD4; a text audit cannot replace those
+current identities with an ambiguous name match. Never revive stale identities.
+
 Read `docs/OPERATIONS.md` before live work or user commentary. Source-audited
 command timing must distinguish actual lag from an already-fighting `kill`
 refusal: DD4's exact `You do the best you can!` reply returns before `WAIT_STATE`.
@@ -105,6 +255,11 @@ required for dispatch; observed skill names alone authorize nothing. Preserve
 loss evidence, exact live targeting, bounded retries, and healer recovery. Use
 `hero --autonomous` for multi-segment progression; it keeps each worker
 bounded and stops after its finite reset-wait budget or a durable blocker. For
+an outer timeout, reconcile a uniquely matched terminal `ready`/`success` run
+without rewriting its status: link its cached summary and checkpoint, preserving
+execution, objective, safety, and the timeout diagnostic independently. Resume
+only when final state is present and neither dead nor in Purgatory; genuinely
+running, failed, or unsafe workers remain failed. For
 an accepted connection that sends no login prompt, use the five-second
 pre-login timeout and its bounded retry, then checkpoint transport
 unavailability; do not convert silence into route evidence or a reboot wait.
@@ -173,6 +328,13 @@ still has the exact policy, mobile VNUM, room, and route. If the blocked
 segment fell outside the normal eight-row tail, fetch only that policy's
 latest segment with the bounded 256-row lookup; never expand checkpoint
 history. The fresh live locator and every ordinary gate still apply.
+A candidate past the ordinary three-kill fresh-search cap may use that same
+one-shot city-route revalidation only when the ordinary same-boot productive
+repeat selector independently admits its exact policy. Calculate that proof
+from all ranked candidates, including city-blocked ones, and the normalized XP
+ledger; never infer it from the kill count or the revalidation marker itself.
+Record `repeat_after_kill_cap`; preserve current target failures, loss evidence,
+route bounds, and every live gate. This does not create another retry marker.
 A city-blocked policy must not short-circuit offline source selection: keep
 that exact policy excluded unless its one-use marker is pending, but allow
 other current-band candidates to pass their normal source and route gates.
@@ -193,6 +355,11 @@ At a safe healer checkpoint, if health, movement, or mana is below the campaign
 readiness threshold and food is available, use the bounded healer recovery
 policy before declaring the frontier unavailable. Re-select the source route
 after waking; low movement alone is not evidence that every route is closed.
+For urgent source-food routes, wake from healer sleep only to use carried food
+or water, or once the approved route's movement threshold is ready. If starving
+without supplies and still below that threshold, remain asleep until movement
+is sufficient; never alternate stand/sleep while the threshold is unchanged or
+depart below the registered movement budget.
 If the latest checkpoint has an observed, same-level, same-boot training audit,
 reuse its live skill listing instead of scanning thousands of historical event
 rows. Only legacy checkpoints without that audit should use historical skill
@@ -346,7 +513,35 @@ narrative to the live giver/room/object identity, within five seconds and 4,096
 characters. Clear that annotation on reconnect, a new request, inactive status,
 or changed identity. Do not infer burial from a token name. Known hoards require
 a trap-aware executor; the former fixed twelve-dig loop is not authorized.
+The standalone excavation budget/controller is implemented, not enabled for
+live dispatch. Require tested trap recovery, guardian escape, a source-safe
+physical return after curse/hex, exact tool observations, and object pickup
+integration before lifting that blocker. Unearthing does not prove possession.
+Room-wide physical trap damage uses full AC, unlike single-target AC/4.
+The excavation return planner requires a registered healing room, a visible
+walking route after curse, and a separate return from every source-open flee
+destination without crossing the guardian's room again. An unlocked endpoint
+door may be opened before digging, but its complete fresh live exit set must
+then match the plan. No flight, recall, invisibility, key, or arbitrary sleep
+location is implied. The planner is not live authorization; guardian damage,
+post-hex carrying capacity, recovery, and replay verification remain required.
+The NPC damage estimate must follow `one_hit`: its level bonus is level/4
+below 30, level/2 at 30-64, and 3*level/4 above that, with integer arithmetic
+before the wielding multiplier. The hoard guardian overrides its prototype
+level with player level capped at 99, HP with 10*level plus 20-100, and damroll
+with level/2; never estimate it as an ordinary prototype-64 reset. Raw guardian
+attack bounds still need victim modifiers, dig lag, and every possible combat
+round before escape. They are not live dispatch permission.
+Hex reduces effective stats by level/4, floored at three. Lower carrying limits
+restrict pickup, not walking or retention of already-carried items. Do not
+discard gear or reject a physical return solely for post-hex encumbrance.
+`affect_modify` checks the primary weapon, or the dual weapon only when the
+primary is absent, against the reduced STR wield limit and can drop it.
 Continue ordinary eligible quests and XP hunts while that capability is pending.
+GMCP `Char.Stats.swift` already contains DEX and learned enhanced-swiftness
+bonuses (`GET_SWIFT`). Never add them again in the combat estimate. DD4 rolls
+`number_percent() < score` over 1..100, so use the clamped score-minus-one
+probability. A hidden 50000 sentinel cannot be rebuilt from observed skill names.
 
 For the bounded trainer-potion journey, one source keyword may replace a zero
 instance ID when the complete fresh text/GMCP inventories agree in item counts,
@@ -380,10 +575,14 @@ the blanket target-special rejection only when the target and the revealed
 player both meet that 350 threshold; its source headbutt/smash/kick peak must
 fit the ordinary damage budget. Unknown player alignment, mixed target
 specials, and every other target special remain rejected.
-Treat a bystander carrying `spec_guard` separately: its own special attacks a
-player who is fighting any NPC with alignment below 300, even when the player
-is good. Do not apply the ordinary good-versus-good bystander shortcut to that
-case; neutral targets below 300 trigger it too.
+Treat `spec_guard` and `spec_sahuagin_guard` bystanders separately. Their special
+checks the fighting player's alignment against 300, not the target NPC's, and
+has no ordinary assistance-level cutoff. Unknown/masked alignment stays unsafe.
+Require the existing live non-hostility and separate `violence_update` checks
+before admitting a guard. Below-band or cached non-assisting labels must not
+bypass the pre-combat guard check. Telnet `Char.Enemies` can repeat the primary
+enemy's fields for a second combatant; never deduplicate those rows into proof
+of a solo fight. Run 15984 and current `special.c`/`update.c` establish this.
 For fame recovery, an ordinary kill target must be at least six levels above
 the player (`victim.level - player.level > 5`); a source-famous target is a
 separate exception and must use its own `ACT_IS_FAMOUS` contract.
@@ -599,11 +798,11 @@ when it blocks the active work or creates material risk, not as an automatic
 detour.
 Record each daily test batch and outcome in `runs/regression_test_batches.json`
 before any later test invocation; failures also consume that day's allowance.
-After two full-length attempts on one character yield no net XP, inspect the
-saved blocker and switch to a distinct registered route or another character;
+After two full-length attempts on the primary character yield no net XP, inspect the
+saved blocker and switch to a distinct registered route or repair that blocker;
 do not repeat an unchanged same-boot route. Keep unrelated regression cleanup
 behind the next substantive implementation or campaign batch.
-For ordinary live hunts, keep the standard 180-second segment bound unless a
+For ordinary live hunts, keep the standard 300-second segment bound unless a
 named short probe has a specific reason to use less. Do not shorten hunts for
 rotation speed; verify kills and XP rather than treating a ready status as
 progress.

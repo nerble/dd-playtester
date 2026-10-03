@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
+from . import __version__
 from .autonomy import (
     audit_all_base_classes,
     audit_hero_request,
@@ -1274,6 +1275,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=40,
         help="maximum representative commentary entries, default: 40",
     )
+    campaign_report_parser.add_argument(
+        "--full-history",
+        action="store_true",
+        help="include per-segment state projections; slower on long campaigns",
+    )
 
     show_campaign_parser = subcommands.add_parser(
         "show-campaign",
@@ -1355,6 +1361,74 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="write JSON evidence to this file instead of standard output",
     )
+
+    experiment_parser = subcommands.add_parser(
+        "experiment",
+        help="register and compare controlled progression experiments",
+    )
+    experiment_commands = experiment_parser.add_subparsers(
+        dest="experiment_command", required=True,
+    )
+    experiment_start = experiment_commands.add_parser(
+        "start", help="record one comparison arm and its starting conditions",
+    )
+    experiment_start.add_argument("--comparison", required=True)
+    experiment_start.add_argument("--variant", required=True)
+    experiment_start.add_argument(
+        "--mode", choices=("source-informed", "ordinary-player"), required=True,
+    )
+    experiment_state = experiment_start.add_mutually_exclusive_group(required=True)
+    experiment_state.add_argument("--starting-state", type=Path)
+    experiment_state.add_argument(
+        "--checkpoint-id",
+        type=int,
+        help="use the exact saved campaign checkpoint as the starting state",
+    )
+    experiment_start.add_argument("--objective", type=Path, required=True)
+    experiment_start.add_argument("--campaign-id", type=int)
+    experiment_start.add_argument("--run-id", type=int)
+    experiment_start.add_argument("--tester-version", default=__version__)
+    experiment_start.add_argument("--dd4-version", required=True)
+    experiment_start.add_argument("--source-revision")
+    experiment_start.add_argument(
+        "--database", type=Path, default=DEFAULT_DATABASE,
+    )
+    experiment_finish = experiment_commands.add_parser(
+        "finish", help="record comparable metrics and classify observed defects",
+    )
+    experiment_finish.add_argument("experiment_id", type=int)
+    experiment_finish.add_argument("--metrics", type=Path, required=True)
+    experiment_finish.add_argument("--run-id", type=int)
+    experiment_finish.add_argument("--bot-error")
+    experiment_finish.add_argument("--game-defect")
+    experiment_finish.add_argument(
+        "--database", type=Path, default=DEFAULT_DATABASE,
+    )
+    experiment_show = experiment_commands.add_parser(
+        "show", help="show recorded arms for one comparison",
+    )
+    experiment_show.add_argument("--comparison")
+    experiment_show.add_argument(
+        "--database", type=Path, default=DEFAULT_DATABASE,
+    )
+    summarize_runs_parser = subcommands.add_parser(
+        "summarize-runs",
+        help="refresh missing or outdated summaries for a bounded page of runs",
+    )
+    summarize_runs_parser.add_argument(
+        "--database", type=Path, default=DEFAULT_DATABASE,
+    )
+    summarize_runs_parser.add_argument("--after-run-id", type=int, default=0)
+    summarize_runs_parser.add_argument("--limit", type=int, default=100)
+    backfill_campaign_runs_parser = subcommands.add_parser(
+        "backfill-campaign-runs",
+        help="materialize run links for one campaign in a bounded page",
+    )
+    backfill_campaign_runs_parser.add_argument("campaign_id", type=int)
+    backfill_campaign_runs_parser.add_argument(
+        "--database", type=Path, default=DEFAULT_DATABASE,
+    )
+    backfill_campaign_runs_parser.add_argument("--limit", type=int, default=256)
     return parser
 
 
@@ -2038,6 +2112,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "show-runs":
         return show_runs(args.database, limit=args.limit)
 
+    if args.command == "experiment":
+        return manage_experiment(args)
+
+    if args.command == "summarize-runs":
+        return summarize_runs(
+            args.database, after_run_id=args.after_run_id, limit=args.limit,
+        )
+
+    if args.command == "backfill-campaign-runs":
+        return backfill_campaign_runs(
+            args.database,
+            args.campaign_id,
+            limit=args.limit,
+        )
+
     if args.command == "recover-runs":
         return recover_runs(
             args.database,
@@ -2071,6 +2160,7 @@ def main(argv: list[str] | None = None) -> int:
             report_format=args.format,
             output=args.output,
             commentary_limit=args.commentary_limit,
+            full_history=args.full_history,
         )
 
     if args.command == "show-campaign":
@@ -2150,6 +2240,174 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
+def manage_experiment(args: argparse.Namespace) -> int:
+    if not args.database.exists() and args.experiment_command != "start":
+        print(f"No run database found at {args.database.resolve()}", file=sys.stderr)
+        return 1
+
+    try:
+        if args.experiment_command == "start":
+            objective = json.loads(args.objective.read_text(encoding="utf-8"))
+            if not isinstance(objective, dict):
+                raise ValueError("objective file must contain a JSON object")
+            with RunStorage(args.database) as storage:
+                campaign_id = args.campaign_id
+                if args.starting_state is not None:
+                    starting_state = json.loads(
+                        args.starting_state.read_text(encoding="utf-8")
+                    )
+                else:
+                    checkpoint = storage.get_campaign_checkpoint(args.checkpoint_id)
+                    if checkpoint is None:
+                        raise ValueError(
+                            f"no campaign checkpoint with id {args.checkpoint_id}"
+                        )
+                    if (
+                        campaign_id is not None
+                        and campaign_id != int(checkpoint["campaign_id"])
+                    ):
+                        raise ValueError(
+                            "campaign id does not match the selected checkpoint"
+                        )
+                    campaign_id = int(checkpoint["campaign_id"])
+                    starting_state = json.loads(checkpoint["state_json"])
+                    if not isinstance(starting_state, dict):
+                        raise ValueError(
+                            "selected checkpoint state must be a JSON object"
+                        )
+                    starting_state["_experiment_provenance"] = {
+                        "campaign_checkpoint_id": int(checkpoint["id"]),
+                        "campaign_id": campaign_id,
+                        "segment_id": checkpoint["segment_id"],
+                        "run_id": checkpoint["run_id"],
+                        "phase": checkpoint["phase"],
+                        "reason": checkpoint["reason"],
+                        "created_at": checkpoint["created_at"],
+                    }
+                if not isinstance(starting_state, dict):
+                    raise ValueError("starting state must be a JSON object")
+                experiment_id = storage.create_campaign_experiment(
+                    comparison_key=args.comparison,
+                    variant=args.variant,
+                    test_mode=args.mode,
+                    starting_state=starting_state,
+                    objective=objective,
+                    campaign_id=campaign_id,
+                    run_id=args.run_id,
+                    tester_version=args.tester_version,
+                    dd4_version=args.dd4_version,
+                    source_revision=args.source_revision,
+                )
+            print(f"Experiment {experiment_id} registered")
+            return 0
+
+        if args.experiment_command == "finish":
+            metrics = json.loads(args.metrics.read_text(encoding="utf-8"))
+            if not isinstance(metrics, dict):
+                raise ValueError("metrics file must contain a JSON object")
+            with RunStorage(args.database) as storage:
+                exists = storage.connection.execute(
+                    "SELECT 1 FROM campaign_experiments WHERE id = ?",
+                    (args.experiment_id,),
+                ).fetchone()
+                if exists is None:
+                    print(f"No experiment with id {args.experiment_id}", file=sys.stderr)
+                    return 1
+                storage.finish_campaign_experiment(
+                    args.experiment_id,
+                    metrics=metrics,
+                    run_id=args.run_id,
+                    bot_error=args.bot_error,
+                    game_defect=args.game_defect,
+                )
+            print(f"Experiment {args.experiment_id} completed")
+            return 0
+
+        with RunStorage(args.database, read_only=True) as storage:
+            records = [
+                dict(row)
+                for row in storage.list_campaign_experiments(
+                    comparison_key=args.comparison,
+                )
+            ]
+        for record in records:
+            for field in (
+                "starting_state_json", "objective_json", "metrics_json",
+            ):
+                raw = record.get(field)
+                try:
+                    record[field.removesuffix("_json")] = (
+                        json.loads(raw) if raw is not None else None
+                    )
+                except (TypeError, json.JSONDecodeError):
+                    record[field.removesuffix("_json")] = None
+                record.pop(field, None)
+        print(json.dumps(records, indent=2, sort_keys=True))
+        return 0
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"Experiment command failed: {exc}", file=sys.stderr)
+        return 2
+
+
+def backfill_campaign_runs(
+    database: Path,
+    campaign_id: int,
+    *,
+    limit: int,
+) -> int:
+    if campaign_id < 1:
+        print("campaign_id must be at least 1", file=sys.stderr)
+        return 2
+    if not 1 <= limit <= 256:
+        print("--limit must be between 1 and 256", file=sys.stderr)
+        return 2
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+    try:
+        with RunStorage(database) as storage:
+            result = storage.backfill_campaign_run_links(
+                campaign_id,
+                limit=limit,
+            )
+    except LookupError:
+        print(f"No campaign with id {campaign_id}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Campaign run-link backfill failed: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Campaign {campaign_id}: scanned {result['segments_scanned']} "
+        f"segment(s), linked {result['runs_linked']} run(s), "
+        f"through sequence {result['last_sequence']}."
+    )
+    print("Run-link backfill complete." if result["complete"] else
+          "Run again to continue the next bounded page.")
+    return 0
+
+
+def summarize_runs(database: Path, *, after_run_id: int, limit: int) -> int:
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+    if after_run_id < 0 or not 1 <= limit <= 1000:
+        print("--after-run-id must be nonnegative and --limit must be 1..1000", file=sys.stderr)
+        return 2
+    try:
+        with RunStorage(database) as storage:
+            run_ids = storage.summarize_legacy_runs(
+                after_run_id=after_run_id,
+                limit=limit,
+            )
+    except Exception as exc:
+        print(f"Run summary backfill failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Cached summaries for {len(run_ids)} completed run(s).")
+    if run_ids:
+        print(f"Last run id: {run_ids[-1]}; continue after it with --after-run-id {run_ids[-1]}.")
+    return 0
+
+
 def show_runs(database: Path, *, limit: int) -> int:
     if limit < 1:
         print("--limit must be at least 1", file=sys.stderr)
@@ -2166,13 +2424,20 @@ def show_runs(database: Path, *, limit: int) -> int:
         print("No runs recorded.")
         return 0
 
-    print("id\tstatus\tscenario\tboot_id\tstarted_at\tfinished_at\ttranscript")
+    print(
+        "id\trecord_state\texecution_outcome\tobjective_outcome\t"
+        "safety_outcome\tscenario\tboot_id\t"
+        "started_at\tfinished_at\ttranscript"
+    )
     for run in runs:
         print(
             "\t".join(
                 [
                     str(run["id"]),
-                    run["status"],
+                    "finished" if run["finished_at"] else "running",
+                    run["execution_status"] or "-",
+                    run["objective_outcome"] or "unknown",
+                    run["safety_outcome"] or "unknown",
                     run["scenario_name"],
                     run["boot_id"] or "-",
                     run["started_at"],
@@ -3828,6 +4093,7 @@ def show_campaign_report(
     report_format: str,
     output: Path | None,
     commentary_limit: int,
+    full_history: bool = False,
 ) -> int:
     if campaign_id < 1:
         print("campaign_id must be at least 1", file=sys.stderr)
@@ -3845,6 +4111,7 @@ def show_campaign_report(
                 storage,
                 campaign_id,
                 commentary_limit=commentary_limit,
+                full_history=full_history,
             )
     except LookupError:
         print(

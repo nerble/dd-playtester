@@ -66,6 +66,7 @@ from dd4tester.hunt_candidates import (
     load_world_source,
     parse_area_file,
     rank_hunt_candidates,
+    source_guard_can_join_player_fight,
     rank_coin_stashes,
     rank_food_stashes,
     _least_ambiguous_source_keyword,
@@ -4960,11 +4961,14 @@ def test_autonomous_filter_rejects_a_reachable_combat_joining_guard(
 
 
 @pytest.mark.parametrize(
-    ("target_alignment", "expected_safe"),
-    ((1000, True), (300, True), (299, False), (0, False), (-1000, False)),
+    ("player_alignment", "target_alignment", "expected_safe"),
+    ((1000, 1000, True), (1000, 300, True), (1000, 299, True),
+     (1000, 0, True), (1000, -1000, True), (299, 1000, False),
+     (-1000, 1000, False), (None, 1000, False)),
 )
-def test_good_alignment_spec_guard_checks_the_fighting_target_alignment(
+def test_good_alignment_spec_guard_checks_the_fighting_player_alignment(
     monkeypatch,
+    player_alignment: int | None,
     target_alignment: int,
     expected_safe: bool,
 ) -> None:
@@ -5025,7 +5029,7 @@ def test_good_alignment_spec_guard_checks_the_fighting_target_alignment(
         for candidate in rank_hunt_candidates(
             world,
             character_level=8,
-            character_alignment=1000,
+            character_alignment=player_alignment,
             include_xp_only=True,
         )
         if candidate.mobile_vnum == 100
@@ -5052,7 +5056,25 @@ def test_good_alignment_spec_guard_checks_the_fighting_target_alignment(
         )
 
 
-def test_good_spec_guard_companion_is_not_safe_against_neutral_target(
+@pytest.mark.parametrize("special", ["spec_guard", "spec_sahuagin_guard"])
+@pytest.mark.parametrize(
+    ("alignment", "can_join"),
+    [(None, True), (50000, True), (-1000, True), (299, True), (300, False), (1000, False)],
+)
+def test_guard_special_has_its_own_player_alignment_threshold(
+    special: str, alignment: int | None, can_join: bool,
+) -> None:
+    guard = MobileSource(200, "guard", "the guard", 15, 0, 1000, "target.are")
+    world = WorldSource(
+        mobiles={200: guard}, rooms={}, mob_resets=[],
+        mobile_specials={200: (special,)},
+    )
+    assert source_guard_can_join_player_fight(
+        world, guard, character_alignment=alignment,
+    ) is can_join
+
+
+def test_good_spec_guard_companion_can_ignore_good_player_fighting_neutral_target(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
@@ -5088,8 +5110,8 @@ def test_good_spec_guard_companion_is_not_safe_against_neutral_target(
         if candidate.mobile_vnum == 100
     ]
 
-    assert not candidate.autonomous_safe
-    assert "target room has a dangerous reset companion" in (
+    assert candidate.autonomous_safe
+    assert "target room has a dangerous reset companion" not in (
         candidate.autonomy_rejections
     )
 
@@ -6565,7 +6587,7 @@ def test_source_combat_output_uses_observed_weapon_and_multihit_formula() -> Non
         weapon_damage_range=(5, 12),
         weapon_vnum=10014,
         player_damroll=7,
-        player_swiftness=5,
+        player_swiftness=25,  # Wire GET_SWIFT already includes the learned 20.
     )
 
     assert output == SourceCombatOutput(

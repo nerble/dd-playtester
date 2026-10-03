@@ -4570,6 +4570,94 @@ def test_source_guard_still_blocks_low_alignment_character_after_retry() -> None
     assert policy.consider_target is None
 
 
+@pytest.mark.parametrize("special", ["spec_guard", "spec_sahuagin_guard"])
+@pytest.mark.parametrize("cached_non_assisting", [False, True])
+def test_below_band_source_guard_remains_material_before_combat(
+    special: str, cached_non_assisting: bool,
+) -> None:
+    # Run 15984: a level-15 townguard attacked the level-29 player. Its
+    # special's alignment check is independent of ordinary assistance levels.
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}),
+        "swordfish",
+        fastwalk_hunt_stops=(FieldHuntStop(
+            (), "secretary", command_keyword="secretary", exact_target=True,
+            require_isolated=True, crowd_retry_limit=2, crowd_retry_delay_seconds=12.0,
+        ),),
+        source_mobile_vnums_by_target_room={"townguard": {"10312": (10215,)}},
+        source_mobile_level_ranges_by_vnum={10215: (13, 17)},
+        source_mobile_can_join_by_vnum={10215: True},
+        source_mobile_special_profiles_by_vnum={10215: (special,)},
+        source_mobile_non_assisting_by_target_room={
+            "townguard": {"10312": cached_non_assisting},
+        },
+    )
+    policy.current_room = "10312"
+    policy.fastwalk_attack_target = "secretary"
+    policy.room_target_counts["10312"] = {"secretary": 1, "townguard": 1}
+    state = CharacterState(
+        level=29, hp=666, max_hp=666, room_vnum="10312",
+        progress={"alignment": -1000},
+    )
+
+    assert not policy._source_mobile_name_is_non_assisting_bystander("townguard", state)
+    assert policy._consider_fastwalk_target(state) is None
+    assert policy.consider_target is None
+    assert policy.fastwalk_crowd_retry_attempts == {0: 1}
+    assert policy._source_mobile_room_hazard_bystanders(
+        state, "secretary", policy.fastwalk_hunt_stops[0],
+    ) == (("townguard", 1, (special,)),)
+
+
+def test_guard_room_replay_stops_before_the_first_consider(monkeypatch) -> None:
+    replay = json.loads((
+        Path(__file__).parent / "fixtures" / "guard_bystander_run15984.json"
+    ).read_text(encoding="utf-8"))
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}), "swordfish",
+        fastwalk_hunt_stops=(FieldHuntStop(
+            (), "secretary", command_keyword="secretary", exact_target=True,
+            require_isolated=True, crowd_retry_limit=2, crowd_retry_delay_seconds=12.0,
+            trivial_bystanders=("townguard",),
+        ),),
+        source_mobile_targets={
+            "a townguard is on patrol.": ("townguard",),
+            "the captain of the guard's secretary is here.": ("secretary",),
+        },
+        source_mobile_level_ranges={"townguard": (13, 17), "secretary": (23, 27)},
+        source_mobile_vnums_by_target_room={"townguard": {"10312": (10215,)}},
+        source_mobile_level_ranges_by_vnum={10215: (13, 17)},
+        source_mobile_can_join_by_vnum={10215: True},
+        source_mobile_special_profiles_by_vnum={10215: ("spec_guard",)},
+    )
+    state = CharacterState(
+        level=replay["character_level"], room_vnum=replay["room_vnum"],
+        hp=666, max_hp=666, progress={"alignment": replay["alignment"]},
+    )
+    policy.current_room = state.room_vnum
+    policy.fastwalk_attack_target = "secretary"
+    for event in replay["events"][:2]:
+        monkeypatch.setattr(starter.time, "monotonic", lambda: 100.0 + event["seconds"])
+        policy.observe_text(event["text"])
+    assert policy.room_target_counts["10312"] == {"townguard": 1, "secretary": 1}
+    assert policy._consider_fastwalk_target(state) is None
+    assert policy.consider_target is None
+    assert policy.fastwalk_attack_started is False
+    assert policy.fastwalk_crowd_retry_attempts == {0: 1}
+
+
+def test_plain_below_band_source_bystander_keeps_ordinary_level_exclusion() -> None:
+    policy = StarterPolicy(
+        _spec(), "swordfish",
+        source_mobile_vnums_by_target_room={"porter": {"10312": (10215,)}},
+        source_mobile_level_ranges_by_vnum={10215: (13, 17)},
+        source_mobile_can_join_by_vnum={10215: True},
+        source_mobile_special_profiles_by_vnum={10215: ()},
+    )
+    state = CharacterState(level=29, room_vnum="10312", progress={"alignment": -1000})
+    assert policy._source_mobile_name_is_non_assisting_bystander("porter", state)
+
+
 def test_ambiguous_source_guard_identity_remains_a_crowd() -> None:
     policy = StarterPolicy(
         _spec(),
@@ -7044,6 +7132,59 @@ def test_urgent_food_defers_eating_until_all_food_reserve_stops_are_met() -> Non
 
     assert consume is not None
     assert consume.command == "eat pie"
+
+
+def test_urgent_food_keeps_healer_sleep_when_no_food_or_water_is_carried() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=Fastwalk("source food", 1, 100, "2s"),
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                None,
+                required_items=("grain",),
+                allow_below_band_for_required_loot=True,
+            ),
+        ),
+        fastwalk_required_move=306,
+        urgent_food_acquisition=True,
+        fastwalk_defer_provision_resupply=True,
+    )
+    policy.needs_food = True
+
+    decision = policy._recovery_decision(
+        CharacterState(
+            room_name="By the Temple Altar",
+            room_vnum="3054",
+            hp=638,
+            max_hp=666,
+            move=275,
+            max_move=482,
+            hunger=-10,
+            position=4,
+            inventory=[],
+        ),
+    )
+
+    assert decision is None or decision.command != "stand"
+    assert not policy.fastwalk_urgent_food_recovery_wake
+
+    policy.prompt_ready = True
+    ready = policy._recovery_decision(
+        CharacterState(
+            room_name="By the Temple Altar",
+            room_vnum="3054",
+            hp=638,
+            max_hp=666,
+            move=306,
+            max_move=482,
+            hunger=-10,
+            position=4,
+            inventory=[],
+        ),
+    )
+    assert ready is not None and ready.command == "stand"
 
 
 def test_urgent_food_keeps_the_remaining_paired_reserve_after_consumption() -> None:
@@ -16720,6 +16861,178 @@ def test_city_restock_sacrifices_duplicate_plain_armour_for_capacity() -> None:
     assert decision.command == "buy 1 pie"
 
 
+def test_city_restock_releases_exact_stat_gear_copy_already_worn() -> None:
+    shoes = ObjectSource(
+        2423,
+        "horseshoes",
+        "horseshoes",
+        ITEM_ARMOR,
+        (0,),
+        0,
+        wear_flags=65,
+        affects=((14, 50), (19, 3)),
+    )
+    catalog = GearCatalog({shoes.vnum: shoes})
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        city_restock=True,
+        gear_catalog=catalog,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.gear_audited = True
+    policy.gear_allowed_categories = set()
+    policy.city_restock_step = 4
+    full_bakery = CharacterState(
+        room_name="The Bakery",
+        room_vnum="3009",
+        position=7,
+        equipment=[{"name": "horseshoes", "vnum": shoes.vnum}],
+        inventory=[[{"short_desc": "horseshoes", "quan": "2"}]],
+        stats={"carry_num": 38, "maxcarry_num": 38, "carry_wt": 260, "maxcarry_wt": 1150},
+    )
+
+    audit = policy.next_decision(full_bakery)
+    assert audit is not None
+    assert audit.command == "inventory"
+
+    policy.prompt_ready = True
+    relief = policy.next_decision(full_bakery)
+
+    assert relief is not None
+    assert relief.command == "drop horseshoes"
+    assert policy.city_restock_capacity_relief_keyword == "horseshoes"
+
+
+def test_fastwalk_required_loot_frees_a_slot_at_the_healer() -> None:
+    shoes = ObjectSource(
+        2423,
+        "horseshoes",
+        "horseshoes",
+        ITEM_ARMOR,
+        (0,),
+        0,
+        wear_flags=65,
+        affects=((14, 50), (19, 3)),
+    )
+    stop = FieldHuntStop(
+        (),
+        None,
+        required_items=("grain",),
+        allow_below_band_for_required_loot=True,
+        source_loot_object_vnums=(10012,),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(stop,),
+        gear_catalog=GearCatalog({shoes.vnum: shoes}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    full_healer = CharacterState(
+        room_name="By the Temple Altar",
+        room_vnum="3054",
+        position=7,
+        equipment=[{"name": "horseshoes", "vnum": shoes.vnum}],
+        inventory=[[{"short_desc": "horseshoes", "quan": "2"}]],
+        stats={"carry_num": 38, "maxcarry_num": 38},
+    )
+
+    handled, drop = policy._fastwalk_required_loot_capacity_preflight_decision(
+        full_healer,
+    )
+    assert handled and drop is not None
+    assert drop.command == "drop horseshoes"
+
+    policy.after_command(drop)
+    policy.observe_text("You drop the horseshoes.")
+    policy.prompt_ready = True
+    handled, sacrifice = policy._fastwalk_required_loot_capacity_preflight_decision(
+        full_healer,
+    )
+    assert handled and sacrifice is not None
+    assert sacrifice.command == "sacrifice horseshoes"
+
+    policy.after_command(sacrifice)
+    policy.observe_text("You sacrifice the horseshoes to your god.")
+    policy.prompt_ready = True
+    handled, refresh = policy._fastwalk_required_loot_capacity_preflight_decision(
+        CharacterState(
+            room_name="By the Temple Altar",
+            room_vnum="3054",
+            position=7,
+            equipment=[{"name": "horseshoes", "vnum": shoes.vnum}],
+            inventory=[[{"short_desc": "horseshoes", "quan": "1"}]],
+            stats={"carry_num": 37, "maxcarry_num": 38},
+        ),
+    )
+    assert handled and refresh is not None
+    assert refresh.command == "inventory"
+
+    policy.after_command(refresh)
+    policy.observe_text("You are carrying one pair of horseshoes.")
+    policy.prompt_ready = True
+    handled, decision = policy._fastwalk_required_loot_capacity_preflight_decision(
+        CharacterState(
+            room_name="By the Temple Altar",
+            room_vnum="3054",
+            position=7,
+            equipment=[{"name": "horseshoes", "vnum": shoes.vnum}],
+            inventory=[[{"short_desc": "horseshoes", "quan": "1"}]],
+            stats={"carry_num": 37, "maxcarry_num": 38},
+        ),
+    )
+    assert not handled and decision is None
+    assert policy.fastwalk_required_loot_capacity_preflight_complete
+
+
+def test_ground_required_loot_does_not_issue_full_inventory_pickup() -> None:
+    grain = ObjectSource(
+        10012,
+        "grain",
+        "some grain",
+        19,
+        (0,),
+        0,
+        room_description="There is some grain here.",
+        weight=8,
+    )
+    stop = FieldHuntStop(
+        (),
+        None,
+        required_items=("grain",),
+        allow_below_band_for_required_loot=True,
+        source_loot_object_vnums=(grain.vnum,),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(stop,),
+        gear_catalog=GearCatalog({grain.vnum: grain}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.last_response = "There is some grain here."
+
+    decision = policy._fastwalk_required_ground_item_decision(
+        CharacterState(
+            room_name="Crystalmir Lake",
+            room_vnum="10038",
+            position=7,
+            stats={"carry_num": 38, "maxcarry_num": 38},
+        ),
+        stop,
+    )
+
+    assert decision is not None
+    assert decision.command == "recall"
+    assert "no item slot remained" in policy.deferred_failure
+
+
 def test_city_restock_discards_source_identified_unusable_bow_for_capacity() -> None:
     bow = ObjectSource(
         18001,
@@ -16803,6 +17116,30 @@ def test_capacity_relief_does_not_discard_duplicate_potions() -> None:
         )
         is None
     )
+
+
+def test_capacity_relief_can_release_only_a_surplus_stat_gear_copy() -> None:
+    talisman = ObjectSource(
+        30238,
+        "talisman hope",
+        "a talisman of hope",
+        ITEM_ARMOR,
+        (4, 0, 0, 0),
+        40000,
+        wear_flags=5,
+        affects=((12, 10),),
+        extra_flags=65,
+    )
+    catalog = GearCatalog({talisman.vnum: talisman})
+
+    assert _capacity_relief_inventory_keyword(
+        [{"short_desc": "a talisman of hope", "quan": "4"}],
+        catalog,
+    ) == "talisman"
+    assert _capacity_relief_inventory_keyword(
+        [{"short_desc": "a talisman of hope", "quan": "1"}],
+        catalog,
+    ) is None
 
 
 def test_required_loot_capacity_releases_only_surplus_safe_potions() -> None:
@@ -31082,6 +31419,74 @@ def test_training_only_does_not_wait_at_distant_trainer_before_practice() -> Non
     assert decision is None
     assert policy.waiting_for_move is False
     assert policy.waiting_for_heal is False
+
+
+def _hunt_training_recovery_case(monkeypatch):
+    from types import SimpleNamespace
+
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": None}), "swordfish",
+        fastwalk_train_before_departure=True,
+        fastwalk_route=route_named("moria"),
+        fastwalk_hunt_stops=(FieldHuntStop((), "guard"),),
+        source_world=WorldSource(),
+    )
+    policy.fastwalk_training_started = True
+    policy.latest_practice_balances = (2, 1)
+    monkeypatch.setattr(
+        starter, "source_class_teacher_route_for_level",
+        lambda *_args: SimpleNamespace(room_vnum=30272),
+    )
+    state = CharacterState(
+        level=29, hp=666, max_hp=666, mana=295, max_mana=294,
+        move=223, max_move=482, position=7, area="Kerofk",
+        room_name="Captain's Office", room_vnum="30272", room_flags=["safe"],
+        hunger=16, thirst=30,
+    )
+    return policy, state
+
+
+def test_hunt_preparation_takes_lesson_before_recovering_travel_movement(monkeypatch):
+    policy, state = _hunt_training_recovery_case(monkeypatch)
+    assert policy._ready_for_class_trainer_lesson(state)
+    policy.waiting_for_move = policy.waiting_for_heal = True
+    assert policy._recovery_decision(state) is None
+    assert not policy.waiting_for_move and not policy.waiting_for_heal
+    sleeping = replace(state, position=4)
+    assert policy._recovery_ready_for_objective(sleeping)
+    assert policy._recovery_decision(sleeping).command == "stand"
+    policy.waiting_for_move = True
+    assert policy._movement_recovery_decision(sleeping) is None
+    assert not policy.waiting_for_move and policy.needs_stand
+
+
+@pytest.mark.parametrize("changes", [
+    {"hp": 300}, {"hp": None}, {"mana": 20}, {"move": 7}, {"move": None},
+    {"hunger": 0}, {"thirst": 0}, {"in_combat": True}, {"dead": True},
+    {"room_vnum": "30271"}, {"room_vnum": "3054"}, {"affects": ["poison"]},
+    {"affects": ["blindness"]},
+])
+def test_trainer_movement_exception_preserves_health_and_exact_room(monkeypatch, changes):
+    policy, state = _hunt_training_recovery_case(monkeypatch)
+    assert not policy._ready_for_class_trainer_lesson(replace(state, **changes))
+
+
+@pytest.mark.parametrize("attribute,value", [
+    ("fastwalk_training_complete", True), ("practiced", True),
+    ("return_home", True), ("fastwalk_returning", True),
+    ("runtime_boundary_requested", True), ("source_world", None),
+    ("fastwalk_training_started", False), ("fastwalk_train_before_departure", False),
+])
+def test_trainer_exception_does_not_authorize_combat_or_interrupt_return(monkeypatch, attribute, value):
+    policy, state = _hunt_training_recovery_case(monkeypatch)
+    setattr(policy, attribute, value)
+    assert not policy._ready_for_class_trainer_lesson(state)
+
+
+def test_trainer_exception_rejects_changed_source_teacher(monkeypatch):
+    policy, state = _hunt_training_recovery_case(monkeypatch)
+    monkeypatch.setattr(starter, "source_class_teacher_route_for_level", lambda *_args: None)
+    assert not policy._ready_for_class_trainer_lesson(state)
 
 
 def test_class_trainer_refreshes_listing_after_gateway_unlock() -> None:
@@ -52183,6 +52588,42 @@ def test_starter_runner_records_persona_in_run_context(
         "progression_track": spec.identity.progression_track,
         "capabilities": sorted(spec.identity.capabilities),
     }
+
+
+def test_city_restock_runner_records_verifiable_objective(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    spec = _spec(
+        max_commands=2,
+        max_runtime=2,
+        database=str(tmp_path / "runs.sqlite3"),
+        transcript_dir=str(tmp_path / "transcripts"),
+    )
+    monkeypatch.setenv("DD4_CHARACTER_PASSWORD", "not-for-transcripts")
+    runner = StarterBotRunner(
+        spec,
+        tmp_path / "starter.yaml",
+        connection_factory=lambda _spec: _LoginOnlyConnection(),
+        city_restock=True,
+    )
+
+    with pytest.raises(RuntimeError, match="command budget"):
+        asyncio.run(runner.run())
+
+    with RunStorage(spec.database) as storage:
+        context = next(
+            json.loads(event["payload_json"])
+            for event in storage.list_events(1)
+            if event["kind"] == "run_context"
+        )
+    objective = context["objective"]
+    assert objective["kind"] == "city_restock"
+    assert objective["required_items"] == ["a big pot pie"]
+    assert [item["command"] for item in objective["required_command_responses"]] == [
+        "fill skin", "drink skin",
+    ]
+    assert objective["required_final_room_vnum"] == "3054"
 
 
 def test_starter_runner_waits_for_prompt_before_sending_next_command(

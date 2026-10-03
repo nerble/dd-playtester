@@ -3,12 +3,191 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 2
+## Current Status: October 3, 2026
 
-Dorrik remains the sole progression character. Checkpoint **48437** records
-level **29**, **576,805 XP**, and **37,095 XP** to level 30, with **666/666 HP**
-at healer room **3054**. Level 30 also requires his first quest point. HERO is
-unproved; keep progression focused on this character.
+Dorrik remains the only progression pilot. Latest resumable checkpoint
+**48743** is level **29**, **610,206 XP**, **3,694 XP** from level 30, at healer
+room **3054**, with zero quest points and quest cooldown **6**. The server
+source mirror is refreshed to `fbc5a5761af2f8a0734ca48df7993a4feffe55d2`;
+the parser smoke covered 13,052 rooms, 4,125 mobiles, 6,138 objects, 1,622
+special profiles, and 399 skill groups.
+
+Runs **16086-16093** added no XP or quest points. Run **16090** waited through
+the quest cooldown to zero but correctly deferred the request when less than
+the required route reserve remained. Fresh-process run **16091** resumed that
+checkpoint, requested a quest, then safely aborted Goldmoon's buried-hoard
+assignment in Showers (room **9517**) because live trap/recovery execution is
+not authorized. Runs **16092-16093** waited at the healer while the new
+cooldown advanced from **15 to 6**. Their outcomes are `execution=success`,
+`objective=not_achieved`, `safety=safe`; the assignment earned no reward. The
+all-area level-29 source-ranked check found no target passing the autonomous
+safety gates. No gameplay worker remains active.
+Experiment **1** preserves checkpoint **48726** and source audit `655fb82`; the
+current mirror is `fbc5a57`, so do not treat later runs as a version-matched arm
+of that record. Experiment comparisons now pin tester version, DD4 version,
+test mode, source revision, and objective; each arm retains its exact start.
+HERO remains unproved.
+
+The combat estimate now uses GMCP's complete swiftness value without adding
+DEX/learned bonuses twice. Source-backed excavation return planning now covers
+ordinary unlocked doors, bounded safe detours, and every possible source-open
+flee direction. It remains **disabled for live digging**: guardian damage,
+post-hex carrying capacity, live recovery/pickup integration, and replay
+verification are still required.
+
+The architecture audit implementation is in place: live observations are
+written once to
+the ordered event table through a bounded background writer. Latest state is a
+compact projection, coalesced to one write per batch or barrier; full state
+remains at named evidence and recovery boundaries. The worker commits by batch
+or within a half-second bound, with bounded queue backpressure. Completed runs
+cache separate execution, objective, and safety outcomes plus whole-session
+activity estimates. Campaign
+reports use those summaries and compact trigger-maintained run-to-segment links
+instead of reopening every historical event; link and summary backfills are
+explicit bounded commands. Current summaries distinguish
+execution, evidence-based objective completion, and safety. Required items are
+recorded in route boundaries and count distinct acquisition/inventory entries;
+quest rewards require a positive quest-point delta. A missing or stale positive
+claim is reported as `unknown`, not success. An explicit terminal policy reason
+that a required item was not acquired is `not_achieved` and is shown as report
+evidence; this corrects run **16031** without rewriting its transcript. Run
+summaries are now version **6**. The
+large-database game-event index now stores searchable fields and joins to the
+canonical event payload, while old index rows remain readable. These changes
+also introduce `LiveSessionState` as the root for character and controller
+state. Typed combat, travel, and recovery controllers now own selected active
+flags and route cursors; `QuestSessionController` owns bounded phase history,
+active-quest checks, cooldowns, and transitions. Campaign segments linked to a
+current run summary inherit its measured outcomes rather than inferring goal
+completion from an unrelated level or quest-point change. State ownership is
+still partial: `StarterPolicy` retains about 804 assigned instance attributes,
+so future work should extract coherent groups without a wholesale rewrite. The
+summary contract was upgraded without rewriting the 33.68-GB database; old
+compact campaign metrics remain usable, while unverified old `achieved` verdicts are
+neutralized until bounded refresh. Compile and direct SQLite/report smoke checks
+pass, but these changes have not received a regression batch. The October 3 batch was
+already used (148 passed, 27 failed); corrected cases must wait for the next
+allowed test day. Experiment registration now accepts an exact saved campaign
+checkpoint (`experiment start --checkpoint-id N`), infers its campaign, and
+records checkpoint provenance with the starting state. The October 3 direct storage smoke also confirms coalesced
+state writes retain full boundary snapshots. When a required QP is one live
+cooldown tick away, a fed, recovered healer checkpoint keeps the connected
+quest wait instead of diverting into another source-ranked probe. Runs **16079-
+16080** confirmed the zero-cooldown checkpoint resumes directly into the
+request phase. Runs **16068**, **16071**, **16072**,
+**16073**, and **16074** wrote **13**, **10**, **6**, **8**, and **11** full
+snapshots over **112**, **101**, **26**, **69**, and **125** commands. This
+avoids repeated full-state writes; it does not rewrite or shrink the existing
+database.
+
+Next progression milestone: earn at least one verified quest point, cross level
+**30**, then restart and resume the same campaign and verify both facts from
+fresh observations. Keep running current-band XP while the quest cooldown is
+active. The Yggdrasil assignment, blocked city-food street, and hoard digging
+remain closed under their existing source and live gates. October 3's one
+regression batch was **148 passed, 27 failed**; do not run another batch today.
+Compilation and focused storage/report smoke checks passed; the changes awaiting
+regression are explicitly marked as unverified.
+
+### Earlier October 3 Evidence
+
+Runs **16003-16011** gained **5,948 net XP** from five kills over **24.07 minutes**,
+about **247 XP/minute**, including flight purchase, travel, recovery, development
+gaps, and two quest requests. No XP was lost. The sailor, Mr. Smithy, and Ki-Rin
+were productive; the later replacement Smithy considered below-band and was
+not attacked. Goldmoon first had no quest, then assigned a buried hoard in the
+Fortress of Goblins, which was recognised and aborted under the excavation
+blocker. That checkpoint had **470/482 movement**, **1,069 copper-equivalent**,
+his branch equipped, quest cooldown **15**, and zero QP.
+
+### Earlier October 3 Evidence
+
+Runs **15990-15998** gained **3,653 net XP** in **20.72 minutes**, about
+**176 XP/minute**, including a rejected hoard quest, food, a **1,240-copper**
+stash, unavailable sanctuary supply, a **141-copper** flight purchase, and
+recovery. The final three hunting sessions gained **881**, **1,209**, and
+**1,563 XP** with no XP loss, about **382 XP/minute** across their **9.55-minute**
+interval. Branch **6104** remained equipped through combat, recovery, and
+reconnect. That earlier checkpoint recorded **444/482 movement**,
+**1,150 copper-equivalent**, and quest cooldown **3**. No quest point was earned.
+
+`dd4tester/excavation.py` now contains source-derived digging budgets and a
+bounded, response-driven hoard controller. It stops on the first trap or changed
+state and does not confuse unearthing with item possession. It **is not enabled**:
+safe return/guardian escape, live integration, and replay verification are still
+required. New cases compile but are unrun under the daily regression limit.
+
+Run **15989** restored branch weapon **6104** with a fresh five-command
+comparison and exact server equipment confirmation, then saved and quit at the
+healer. The public autonomous command selects this maintenance automatically;
+no manual gameplay or checkpoint editing is needed. Recovery now keeps the
+combat weapon unless another loadout actually improves recovery resources or
+stats, including set bonuses. Removal acknowledgements retain same-session
+item identity before clearing the slot. Weapon retention now has live evidence
+across the three hunts above. The
+separate removed-item identity path remains compiled but not live-exercised.
+
+Run **15987** had missed a valid comparison reply after an asynchronous prompt
+and failed to save its terminal audit. Both defects are fixed. Before that
+repair completed, **15988** hunted with the club, withdrew without a kill, and
+lost **466 XP**. Its loss remains recorded and its hunt closed. Across runs
+**15982-15989**, including development gaps, the result is only **291 net XP**
+in **54.65 minutes** (about **5 XP/minute**). This is not adequate progression.
+
+Runs **15982-15986** added **757 net XP** in **13.39 elapsed minutes**, about
+**57 XP/minute**, including food, quest travel, recovery, and two withdrawals.
+Sosivia awarded **1,711 XP**; the Secretary and bard retreats lost **576** and
+**378 XP**. Gorak's quest required unsupported keys **2350/2351** and was
+aborted. That earlier checkpoint's quest cooldown was **4**. The command below
+resumes the current checkpoint without manual gameplay.
+
+The live guard check now keeps low-level guards material before an opener:
+their special can attack an evil player outside ordinary assistance levels.
+Source review also corrected an earlier target-alignment interpretation.
+New guard cases compile but are not yet run under the daily regression limit;
+the corrected path is **not live-proved**. Do not reopen the failed hunts.
+
+The recovery-to-combat weapon repair addresses this observed sequence: run **15981**
+earned **1,199 XP** with branch **6104**, but recovery in **15985** replaced it
+with club **1521**, which remained equipped in **15986**. The earlier startup
+repair correctly preserves equipped identity across zero-command connection
+failures; the new removal/recovery rules address the separate stance problem.
+Next, extend productive current-band hunting and pursue the first
+executable quest. Buried-hoard execution remains disabled;
+its source audit is in `docs/QUEST_HOARD_AUDIT_2026-10-03.md`.
+
+The route recheck now reuses ordinary same-boot productive-repeat evidence
+instead of rejecting a previously useful target merely for exceeding the fresh
+search's three-kill cap. Old obstructions, the one-shot limit, and live safety
+checks remain in force. Selection is live-proved, not productive combat.
+DD4 source was refreshed to **6941814**; parser smoke checks pass, and new
+undead-turning skills are not automatically authorized.
+
+Loose retrieval quests can now accept source-audited pickpocket transit when
+the entire observed ordinary purse is at most **250 copper-equivalent**. Other
+hazards, exact quest identity, and recovery checks remain mandatory; this grants
+no combat permission. The old Yggdrasil assignment passes current-source route
+analysis, but its abandoned quest cannot be resumed and this new travel path
+is **not live-proved**. October 3's focused batch returned **148 passed and
+27 failed**: 25 failures shared incorrect weapon-fixture wear flags, and two
+exposed inferred quest activity overriding inactive status. Both causes were
+corrected; the corrections are not rerun under the daily test limit. The next
+objective remains a completed quest and useful XP, not more waiting.
+
+### Earlier October 2 Evidence
+
+An earlier continuation (**15954-15958**) added **1,051 net XP** from Mr.
+Smithy, with repeated headbutt/kick attacks. Including maintenance, a rejected
+quest, a city-hazard abort, reset waiting, and development gaps, the interval
+took **19.78 minutes**, about **53 net XP/minute**. Run **15958** ended normally
+with full movement, five pies, and an advancing quest cooldown (**12 -> 11**).
+Quest-stage handoffs now preserve current structured equipment identity, and
+direct accepted quest requests clear the previous cycle's stale wait marker.
+The latter is live-proved; the handoff correction compiles but has not yet
+exercised its repaired path live. The club was equipped at that checkpoint. New regression
+cases are saved but unrun under the daily limit. The next milestone is an actual
+quest completion plus current-band XP, not another roster character.
 
 Runs **15903-15908** earned **3,609 net XP**, including a **381 XP net loss**
 on the Secretary hunt, **1,606 XP** from Sosivia, and **2,384 XP** from the
@@ -27,11 +206,47 @@ blocker.
 
 The latest seven runs (**15932-15938**) gained **1,218 net XP** in **13.91 elapsed
 minutes**, including food, sales, an absent-target trip, an abandoned quest, and
-gear acquisition. Dorrik now wields the source-selected grey branch **6104**;
+gear acquisition. That interval acquired the grey branch **6104**;
 its combat benefit is not yet measured. The failed-stun timing repair removes
 an extra wait after DD4's exact already-fighting `kill` refusal. It compiles,
 but that reply has not yet occurred in a new live fight. Normal action and
 survival limits remain unchanged.
+
+Runs **15939-15945** added **no XP**. A duplicate-name defect caused repeated
+rearm-and-quit sessions: the source's light, weapon, and trash branches share a
+description. Exact structured equipment now informs role checks and upgrade
+ranking. An intervening trip equipped the weaker level-3 club **1521**.
+Run **15946** then automatically compared the carried branch with that club,
+wielded it, and confirmed weapon **6104** through fresh equipment data. This
+healer-side maintenance earned no XP; the repair is live-proved, but its combat
+benefit is still unmeasured. The ordinary `hero --autonomous` command selects
+this five-command comparison when eligible, at most once per level and reboot.
+New regression cases remain unrun under the daily limit.
+The subsequent bounded reset wait selected funding rather than XP: run **15947**
+stopped at the city hazard, and **15948** reached the Circus but found its exact
+carrier absent. Both added zero XP and proceeds. Dorrik recovered to full
+health and movement; that checkpoint recorded two quest-cooldown ticks. Next work must open a
+productive current-band hunt or executable quest, not repeat this absent route.
+
+Subsequent maintenance repairs have live evidence: **15950** bought and used
+flight for **141 copper**, and **15952** bought **six pies for 174 copper**.
+Old research exclusions no longer turn an affordable flight purchase into
+another funding hunt; affordable food wins over an emergency equipment sale,
+including while flying. **15951** cleared the live quest timer and requested
+a new assignment on one connection. It received an unsupported trapped hoard
+and aborted without reward. Required next-level QP waits are now separate from
+the optional frontier-request limit, with completed-cycle evidence preserved
+through maintenance. None of these runs added XP or quest points. Use the
+same bounded `hero --autonomous` command; no manual gameplay is required for
+these repairs.
+
+Run **15953** then advanced the next quest cooldown from **6 to 4** before its
+300-second limit. Checkpoint **48470** retains full health and movement at the
+healer, five pies, unchanged XP, and no quest reward. The worker exited normally;
+the timer was advancing, not stalled. Its saved equipment now lists club
+**1521**, so verify the branch's current live equipment identity before claiming
+its earlier restoration persisted. Productive hunting and the first completed
+quest remain the immediate objectives.
 
 Quest requests remain automatic. DD4 labels both buried hoards and loose quest
 objects as `retrieve` in GMCP. The bot now binds the exact questmaster narrative
@@ -1483,6 +1698,7 @@ python -m dd4tester show-state 12767 --history
 python -m dd4tester show-campaign 7
 python -m dd4tester report 12767
 python -m dd4tester campaign-report 7
+python -m dd4tester backfill-campaign-runs 7 --limit 256
 python -m dd4tester report 12767 --format json --output reports/run-12767.json
 python -m dd4tester show-combat-readiness --level 24 --class thief `
   --character Kestrel --all-areas
@@ -1491,6 +1707,26 @@ python -m dd4tester show-combat-readiness --level 24 --class thief `
 Reports distinguish XP, kills, losses, deaths, decisions, and recovery. Non-secret
 title, description, and personality remain in run context. Commentary derives
 from stored events; a report does not itself prove autonomous HERO progression.
+Each run also records execution status, whether its stated objective was met,
+and whether it ended safely. A normal stop can therefore be `execution=success`
+while `objective=not_achieved`; an issued command alone does not prove a goal.
+`show-runs` labels record completion separately from those outcomes, and the
+Markdown run report does the same.
+Campaign reports also count execution, objective, and safety outcomes across
+their cached runs; a safe stop without its item or quest reward remains an
+unachieved objective. The default campaign report aggregates cached run
+summaries and boundary states without loading the historical segment list. Use
+`campaign-report 7 --full-history` to include per-segment details; this can be
+slower on long campaigns. Older campaigns need `backfill-campaign-runs` run
+repeatedly in pages of at most 256 segments before their cached run summaries
+appear; each page stores its cursor and is safe to resume. On the inspected
+database, campaign 7's historical links were backfilled in 12 pages. After the
+latest live runs, the trigger-maintained table contains 3,126 run links through
+segment sequence 3,129; its default JSON report rendered 3,126 runs and 1,588
+kills in 9.01 seconds. Segment details were omitted, and no historical events
+or snapshots were rewritten.
+Activity time is estimated from command/event timestamps and divided into
+combat, travel, maintenance, and waiting.
 The parser now reconciles DD4's LF-CR flee/refund lines with GMCP without
 subtracting the same loss twice. Historical records are not rewritten:
 run 12816's raw GMCP confirms 28,815 XP (net -53), while checkpoint 39419
@@ -1535,7 +1771,19 @@ configure other destinations. Run records retain the actual transcript path.
 
 SQLite tables: `runs`, `events`, `state_snapshots`, `character_commands`,
 `character_acquired_items`, `character_item_backfills`, `loot_sales`, `mob_kills`,
-`campaigns`, `campaign_segments`, `campaign_checkpoints`, and `campaign_usage`.
+`campaign_game_event_lookup`, `run_current_states`, `run_summaries`,
+`campaigns`, `campaign_segments`, `campaign_checkpoints`, `campaign_usage`, and
+`campaign_run_links`, `campaign_run_link_backfills`, and `campaign_experiments`.
+The legacy `campaign_game_event_index` remains readable
+but new events use the compact lookup. `events` is the canonical ordered event record;
+`campaign_game_event_lookup` stores only searchable fields and links back to the
+event payload. `run_current_states` holds the latest compact, coalesced state
+without transient enemy/prompt and duplicate acquired-item history, while
+`state_snapshots` retains full state at recovery/evidence boundaries. Legacy
+transcript snapshot events keep their position and reason in `events`, but full
+state is copied there only for named recovery/evidence boundaries; other
+snapshot states update the compact current-state row. Historical duplicate
+snapshots remain readable without an automatic rewrite.
 `mob_kills.route_gate` marks an incidental source route-gate kill; it is not
 progression evidence even when the kill produced experience.
 
@@ -1546,7 +1794,48 @@ bank debt; use the live currency snapshots and loan notice to reconcile cash.
 ```powershell
 python -m dd4tester show-transcript transcripts/login-1.jsonl --raw
 python -m dd4tester campaign-report 7 --format json --output reports/campaign-7.json
+python -m dd4tester campaign-report 7 --full-history --format json
+python -m dd4tester summarize-runs --after-run-id 16000 --limit 25
 ```
+
+Newly completed runs cache a report summary. Campaign reports aggregate those
+small summaries and do not scan every historical event; older runs show partial
+coverage until explicitly backfilled with bounded `summarize-runs` pages.
+Backfill can read substantial legacy evidence, so use a modest `--limit` on the
+large shared database.
+
+For controlled comparisons, prepare JSON files for starting state, objective,
+and final metrics, then register each arm:
+
+```powershell
+python -m dd4tester experiment start --comparison dorrik-l29-quest `
+  --variant source-informed --mode source-informed `
+  --checkpoint-id 48726 `
+  --objective runs/experiments/objective.json --dd4-version <build-or-commit> `
+  --source-revision <source-commit> --campaign-id 7
+python -m dd4tester experiment finish 1 --metrics runs/experiments/metrics.json `
+  --bot-error "missed the required item selector"
+python -m dd4tester experiment show --comparison dorrik-l29-quest
+```
+
+Use either `--starting-state` with a complete `CharacterState.to_dict()` snapshot
+plus `world_boot_id`, or `--checkpoint-id` to capture an exact persisted
+campaign boundary. Checkpoint mode infers the owning campaign and records its
+ID, phase, reason, and timestamp. The snapshot includes identity, level/XP,
+room, reboot, vitals, stats, inventory, equipment, currencies, and quest points.
+One comparison key pins a common tester version, DD4 version, test mode, source
+revision, and objective; each arm stores its exact starting character/world
+state. Finished arms are immutable. Include net XP, elapsed time, deaths/losses, quest
+result, and maintenance in metrics; finish links to a completed run or campaign.
+`--mode` distinguishes source-informed testing from ordinary-player exploration.
+Attribute observed failures to `--bot-error` or `--game-defect` instead of
+silently counting them as class balance.
+
+Every metrics file must use these shared numeric fields: `net_xp`,
+`elapsed_seconds`, `confirmed_kills`, `deaths`, `xp_lost`,
+`quest_points_gained`, `productive_combat_seconds`, `travel_seconds`,
+`maintenance_seconds`, and `waiting_seconds`. Add objective-specific values as
+needed, but keep the shared fields identical across variants.
 
 ## Scenarios And Source Analysis
 
@@ -1651,8 +1940,12 @@ python -m pytest -q tests/test_damage_window_timing.py
 python -m compileall -q dd4tester tests
 ```
 
-Latest full offline verification: **5,756 tests pass**. The dedicated CLI
-regression suite passes **69 tests**. Reconnect accounting
+Historical full-suite baseline: **5,756 tests passed**; the dedicated CLI
+regression suite previously passed **69 tests**. The October 3 focused batch
+returned **148 passed and 27 failed**. Its identified fixture/parser causes
+were corrected, but the corrections and the current architecture changes remain
+unverified because the once-daily test allowance was already used. Follow
+`AGENTS.md` before running any further tests. Reconnect accounting
 preserves verified XP decreases first observed after disconnection, without
 double-counting or inventing their cause. Campaign startup now preserves
 campaign-owned potion and source-resource ledgers when a raw live snapshot

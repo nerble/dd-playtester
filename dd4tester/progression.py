@@ -6291,6 +6291,17 @@ def policy_for(
             selected.policy_id == _RECOVER_DAYCARE_RING_POLICY.policy_id
             and context.needs_daycare_ring
         )
+        or (
+            selected.policy_id == _BUY_FLIGHT_POLICY.policy_id
+            # Old research rotation cannot turn an affordable purchase into
+            # another income trip. Live shop/route failures still gate it.
+            and context.needs_provision_funding
+            and context.has_food
+            and context.can_attempt_flight_purchase
+            and not context.has_flight
+            and not context.flight_purchase_failed
+            and not context.shop_rearm_blocked_by_reputation
+        )
     )
     if (
         selected.policy_id not in context.excluded_policy_ids
@@ -6401,7 +6412,7 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
     # Selling loot realizes funding; unlike optional purchases, it cannot
     # spend the money reserved for flight. Do not replace it with a purchase
     # that may only look affordable against a provisional price estimate.
-    if context.has_flight or selected.execution == "sell-loot":
+    if selected.execution == "sell-loot":
         return selected
     if (
         (context.can_attempt_flight_purchase or context.can_attempt_food_restock)
@@ -6414,6 +6425,8 @@ def select_policy(context: ProgressionContext) -> ProgressionPolicy:
         # flight price is already affordable, restock at the city baker before
         # spending another field segment on a funding hunt.
         return _RESTOCK_POLICY
+    if context.has_flight:
+        return selected
     if (
         context.can_attempt_flight_purchase
         and context.flight_funding_retry_pending
@@ -6565,6 +6578,10 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
     if (
         context.needs_provision_funding
         and context.has_emergency_provision_sale
+        and not (
+            not context.has_food
+            and (context.can_attempt_food_restock or context.can_attempt_flight_purchase)
+        )
     ):
         return _LIQUIDATE_LOOT_POLICY
     if (

@@ -511,13 +511,14 @@ def test_unaffordable_provisions_select_source_funding_policy() -> None:
     assert policy.executable is True
 
 
-def test_affordable_flight_with_no_food_restock_before_funding() -> None:
+@pytest.mark.parametrize("has_flight", [False, True])
+def test_affordable_flight_with_no_food_restock_before_funding(has_flight) -> None:
     policy = policy_for(
         18,
         "mage",
         has_food=False,
         needs_provision_funding=True,
-        has_flight=False,
+        has_flight=has_flight,
         can_attempt_flight_purchase=True,
     )
 
@@ -526,20 +527,35 @@ def test_affordable_flight_with_no_food_restock_before_funding() -> None:
     assert policy.executable is True
 
 
-def test_cash_on_hand_restock_precedes_funding_when_foodless() -> None:
+@pytest.mark.parametrize("has_flight", [False, True])
+def test_cash_on_hand_restock_precedes_funding_when_foodless(has_flight) -> None:
     policy = policy_for(
         18,
         "mage",
         has_food=False,
         can_attempt_food_restock=True,
         needs_provision_funding=True,
-        has_flight=False,
+        has_flight=has_flight,
         can_attempt_flight_purchase=False,
     )
 
     assert policy.policy_id == "restock-provisions"
     assert policy.execution == "restock"
     assert policy.executable is True
+
+
+@pytest.mark.parametrize("has_flight", [False, True])
+def test_affordable_food_precedes_excluded_emergency_equipment_sale(has_flight) -> None:
+    policy = policy_for(
+        29, "warrior", has_food=False, has_sellable_loot=False,
+        needs_provision_funding=True, has_emergency_provision_sale=True,
+        can_attempt_food_restock=True, has_flight=has_flight,
+        can_attempt_flight_purchase=True,
+        excluded_policy_ids=frozenset({"liquidate-loot", "restock-provisions"}),
+        source_ranked_fallback=True,
+    )
+    assert policy.policy_id == "restock-provisions"
+    assert policy.execution == "restock"
 
 
 def test_protected_negative_recovery_keeps_flight_funding_deferred() -> None:
@@ -5819,6 +5835,44 @@ def test_pending_flight_purchase_preempts_rearm_when_cash_is_ready() -> None:
 
     assert policy.policy_id == "buy-flight-potion"
     assert policy.execution == "buy-flight"
+
+
+def test_affordable_funded_flight_purchase_is_not_closed_by_old_research_exclusion() -> None:
+    policy = policy_for(
+        29,
+        "warrior",
+        has_food=True,
+        needs_provision_funding=True,
+        has_flight=False,
+        can_attempt_flight_purchase=True,
+        flight_purchase_failed=False,
+        flight_loan_attempted=True,
+        excluded_policy_ids=frozenset({"buy-flight-potion"}),
+        world_boot_id="boot-1",
+        source_ranked_fallback=True,
+    )
+
+    assert policy.policy_id == "buy-flight-potion"
+    assert policy.execution == "buy-flight"
+
+
+@pytest.mark.parametrize("changes", [
+    {"can_attempt_flight_purchase": False},
+    {"flight_purchase_failed": True},
+    {"shop_rearm_blocked_by_reputation": True},
+    {"has_food": False},
+    {"has_flight": True},
+])
+def test_funded_flight_exclusion_exception_preserves_purchase_gates(changes) -> None:
+    options = dict(
+        has_food=True, needs_provision_funding=True, has_flight=False,
+        can_attempt_flight_purchase=True, flight_purchase_failed=False,
+        flight_loan_attempted=True, excluded_policy_ids=frozenset({"buy-flight-potion"}),
+        world_boot_id="boot-1", source_ranked_fallback=True,
+    )
+    options.update(changes)
+
+    assert policy_for(29, "warrior", **options).execution != "buy-flight"
 
 
 def test_galaxy_policy_takes_one_bounded_loan_after_flight_purchase_failure() -> None:

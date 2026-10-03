@@ -27,9 +27,74 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 0
     assert str(database.resolve()) in captured.out
-    assert "id\tstatus\tscenario" in captured.out
+    assert (
+        "id\trecord_state\texecution_outcome\tobjective_outcome\t"
+        "safety_outcome\tscenario" in captured.out
+    )
     assert "login" in captured.out
     assert "success" in captured.out
+
+
+def test_experiment_can_start_from_exact_campaign_checkpoint(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    objective = tmp_path / "objective.json"
+    objective.write_text(
+        json.dumps({"kind": "verified_quest_reward", "required_level": 30}),
+        encoding="utf-8",
+    )
+    start = {
+        "name": "Dorrik", "race": "Dwarf", "sex": 0,
+        "character_class": "Warrior", "subclass": "Knight",
+        "level": 29, "xp": 610206, "world_boot_id": "boot-1",
+        "room_vnum": "3054", "hp": 666, "max_hp": 666,
+        "mana": 295, "max_mana": 295, "move": 430, "max_move": 430,
+        "stats": {"str": 18, "con": 18},
+        "currencies": {"copper": 5}, "inventory": [], "equipment": [],
+        "quest_points": 0, "total_quest_points": 0,
+    }
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Dorrik to HERO",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        checkpoint_id = storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="healer-frontier",
+            reason="experiment-start",
+            state=start,
+        )
+
+    exit_code = main([
+        "experiment", "start",
+        "--comparison", "dorrik-quest-level-30",
+        "--variant", "source-informed",
+        "--mode", "source-informed",
+        "--checkpoint-id", str(checkpoint_id),
+        "--objective", str(objective),
+        "--dd4-version", "test-build",
+        "--source-revision", "source-commit",
+        "--database", str(database),
+    ])
+
+    assert exit_code == 0
+    assert "Experiment 1 registered" in capsys.readouterr().out
+    with RunStorage(database, read_only=True) as storage:
+        row = storage.list_campaign_experiments(
+            comparison_key="dorrik-quest-level-30",
+        )[0]
+        recorded = json.loads(row["starting_state_json"])
+    assert row["campaign_id"] == campaign_id
+    assert recorded["level"] == 29
+    provenance = recorded["_experiment_provenance"]
+    assert provenance["campaign_checkpoint_id"] == checkpoint_id
+    assert provenance["campaign_id"] == campaign_id
+    assert provenance["phase"] == "healer-frontier"
+    assert provenance["reason"] == "experiment-start"
+    assert provenance["created_at"]
 
 
 def test_large_database_inspection_uses_latest_indexed_campaign_checkpoint(

@@ -46,6 +46,227 @@ editing the streamer. Launch background helpers hidden, without console windows.
 
 ## Authorization And Fail-Fast Behavior
 
+Combat swiftness estimates consume the revealed GMCP `Char.Stats.swift` total.
+DD4's `GET_SWIFT` already includes the DEX and enhanced-swiftness bonuses;
+adding either again overstates automatic attacks. `number_percent()` rolls
+1..100 and the attack check is strictly less than the score. Use the clamped
+score-minus-one probability; hidden/sentinel data grants no inferred bonus.
+Digging differs: subtract the practiced enhanced-swiftness contribution, but
+do not remove or add the DEX contribution a second time.
+
+NPC normal-hit estimates mirror `fight.c:one_hit`'s level bands: add level/4
+below 30, level/2 below 65, otherwise 3*level/4, before the weapon multiplier.
+Peak, expected, critical, and sanctuary calculations share that base; preserve
+per-hit damage-modifier scaling and sanctuary-before-critical rounding.
+Hoard guardians are dynamic spawns: their player-derived level, HP, and extra
+level/2 damroll replace the ordinary reset assumptions. The standalone guardian
+calculation reports raw attack bounds, not complete damage after victim-specific
+effects and not a proof that the dig lag and escape can be survived.
+
+Hex inventory planning uses current effective STR/DEX minus level/4, floored
+at three. Hidden over-cap stat surplus can only improve that lower bound.
+Capacity changes affect pickup; `move_char` and `get_move_ws` do not forbid
+walking solely because weight or item count exceeds the new capacity. Preserve
+already-carried belongings. Separately check `affect_modify`'s primary-else-dual
+weapon drop against the new STR wield limit. Use the existing exact required-
+loot capacity relief for pickup, not an invented post-hex disposal loop.
+
+Equipment removal text arrives before `Char.Worn`. Capture a removed item's
+unique already-observed source identity before clearing its slot; otherwise
+the later diff cannot recover it. Keep hints session-local and require current
+inventory presence. A known nonweapon removal is not primary-weapon loss;
+unknown removals remain conservative. A single role-compatible primary stays
+equipped during recovery unless the full proposed loadout improves the existing
+HP/mana/stat priorities, including set bonuses. A hitroll-only change is not a
+reason to replace it while sleeping. Combat/pre-level ranking remains unchanged.
+
+Recovery identity revision 2 permits one fresh comparison after an exactly
+matching legacy five-command verified restoration. Both saved plans must match
+the current source/inventory plan, level, and reboot. Persist consumption and
+the old result in `recovery_identity_repair_of`; never reuse an old comparison
+reply as current item identity. Repaired or changed results stay closed.
+One separate response-parser revision-2 check may follow only the exact legacy
+three-command `weapon comparison timed out during compare` failure. Preserve
+that failure in `prompt_repair_of` and preserve an already-consumed restoration
+marker. Split complete prompts before matching period-terminated reply lines;
+asynchronous healer chatter can precede a valid reply without a newline. Five-
+second deadlines, fresh equipment/inventory, exact comparison, and post-wield
+verification still apply. Neither repair clears any combat loss or hunt closure.
+Persist comparison audits on failed runner exits as well as successful ones.
+A legacy dispatched-only record may recover the missing failure audit from its
+matching failed comparison in the existing segment tail: unchanged level/boot,
+identical start/end request, healer endpoints, unchanged visit XP/loss, the exact
+compare-timeout terminal error, and only the three read-only comparison decisions.
+Require the entire visit to fit below 128 stored events. Preserve its run ID and
+all current loss evidence; missing, modern, changed, or post-wield records remain
+closed. This recovers a result, not a comparison reply or permission to hunt.
+
+Before any opener, a source-resolved guard bystander must pass the target-aware
+alignment/non-hostility check even below the ordinary assistance-level window.
+Keep it in the room-hazard set until then, ahead of trivial-bystander and cached
+non-assisting shortcuts. Run 15984 lost 576 XP after a level-15 townguard joined
+the level-29 player's fight. Preserve that loss and its closed policy; this fix
+does not authorize a retry. Telnet `update.c` serializes the primary enemy for
+each participating room combatant, including possible allies; duplicated rows
+prove neither identical prototypes nor a harmless duplicate. Do not deduplicate
+them or substitute the repeated primary level for another attacker's level.
+
+Startup equipment reconstruction uses the ordered live primary-slot replay.
+Do not set `campaign_has_weapon` from absence of a loss message or by looking
+up shared worn names. A failed connection that issued zero commands and matches
+the pre-login transport classifier can be skipped using only the loaded segment
+tail. Stop at the next real run, including a disarm, an empty slot, or a partial
+post-login failure. This repairs transport-only checkpoints without reviving
+equipment after actual loss or broadening history scans. Report connection
+establishment failures separately from failures to reach a usable login.
+
+A healthy pending lesson at the exact source-registered distant class teacher
+does not need the later XP route's movement pool. This applies only after the
+training trip has started, with no return/abort/runtime boundary, no combat,
+known positive vitals, at least 95% HP, 50% mana, eight movement, no active food
+or water need, and no poison or blindness. Preserve source teacher identity and
+all existing practice checks. The separately registered consumable-invisibility
+journey keeps its own rules. Once training completes, ordinary healer return,
+movement recovery, and combat readiness apply again. Never apply this lesson
+exception to a route waypoint, merely similar room name, or hunt target.
+
+The one-shot long city-route revalidation uses the same productive-repeat
+admission as ordinary source selection. Its fresh-candidate three-kill cap
+must not discard a route independently admitted by same-boot meaningful XP
+evidence. Compute that admission over all ranked candidates, including those
+with the exact city-only block, and record `repeat_after_kill_cap`. Retain the
+unchanged no-travel blocked segment, later run-matched unblocked locator,
+source/level/boot identity, 22-extra-command ceiling, and consumed retry marker.
+Every ordinary selection, source and live combat gate still applies; this is
+not a second attempt after an already-consumed route revalidation.
+Run 15974 live-proved selection after that repair, then stopped on fresh Poor
+Alley hazard sightings. Its clear city-prefix record is not contradictory:
+the separate full-route check covers later city rooms after the sewer section.
+The consumed marker stays closed; do not reinterpret that result as a stale
+abort or use the partial prefix to authorize the remainder of the path.
+
+Connected quest waits must continue reading the socket between thirty-second
+`quest time` queries. Do not sleep the reader for that interval: queued healer
+chatter can strand fresher GMCP and create a false no-progress result. Keep
+resource maintenance, the 180-second no-progress stop, and the finite segment
+deadline. DD4 calls `quest_update` on the randomized area pulse (30-90 seconds),
+not on an exact one-minute schedule. One legacy sleep-before-read stall may
+reopen only from its exact single cooldown phase at the recovered healer,
+unchanged level/reboot/XP/timer, nonnegative fame, and a required next-level QP
+shortfall. Persist reader revision 2 and the old marker before dispatch; a
+repaired-reader failure cannot reopen this exception.
+
+A loose-item quest may cross source-audited `spec_thief` mobiles with a known
+whole ordinary purse of at most 250 copper-equivalent. Audit every reachable
+pickpocket as passive, unarmed by reset, unprogrammed, without fear aura, and
+with no other special. Retain all other route hazards, source access, program,
+movement, and live safety gates. Limit the recall-origin path to 60 commands
+and exclude randomized exits. Persist the exact giver/room/object identity and
+mobile VNUMs on the route; recheck the active loose retrieval, purse, and source
+profile during outbound travel. No combat target is authorized. The cap covers
+the entire purse, not just one 20-percent theft; DD4 only steals copper, silver,
+gold, and platinum through `total_coins_char`. Source analysis of the rejected
+run-15955 Yggdrasil assignment passes a 36-command route to object 76 with
+pickpocket 9911; that abandoned quest is not live completion evidence.
+
+Source-required next-level quest points and optional frontier requests are
+different objectives. First try executable current-band XP during a positive
+quest timer. If none remains, a recovered, fed healer checkpoint with observed
+nonnegative fame and a source-defined QP shortfall may select `quest-cooldown`
+even after the optional request marker was consumed. Reuse the existing
+connected wait, finite runtime, food/water maintenance, four-phase quest
+session, fresh assignment and source route checks. An unchanged timer closes
+the next wait. A same-level/boot dispatched request plus ordered live phases
+showing cooldown zero and then a positive active quest identity proves that a
+later cooldown is new, not stalled. Remove that phase evidence when the next
+wait is persisted, and persist completion as an explicit null wait marker so
+ordinary maintenance cannot restore the older timer. Legacy checkpoints may
+recover this fact from the latest quest wait in the existing bounded segment
+tail only: require success, a run ID, identical saved wait marker, matching
+level/reboot, and the ordered positive assignment evidence. A later quest
+segment or changed marker closes this repair; never expand the history scan.
+Never infer a new cycle from selection alone or an
+unacknowledged request. The optional one-request allowance stays consumed.
+A direct `quest-request` can establish the same new-cycle fact when its saved
+start explicitly has inactive quest status and zero cooldown at the same level
+and reboot, followed by a dispatched request and positive live assignment.
+Legacy repair may read that start alongside the end in the existing bounded
+tail, but its first recorded quest phase must match the segment. Missing
+availability, a changed reboot/level, or an unaccepted request cannot clear a
+wait marker. Run 15955 exposed this direct-request case. Checkpoint 48490
+confirmed the legacy marker repair, and run 15958 selected the connected wait;
+this is maintenance evidence, not a completed quest.
+New-cycle evidence requires an explicitly positive observed `active` flag.
+The legacy snapshot parser's inferred activity from object/mobile fields is
+not enough: stale identities must not override inactive or missing status.
+
+Quest handoffs share a socket, so preserve the preceding policy's current
+structured worn items, primary identity, instance mappings, ranged/chain facts,
+and removed-item hints. Copy containers rather than aliasing them. Keep weapon
+loss/refusal evidence independently, including when structured gear is stale.
+Do not copy pending commands, completed gear audits, or route cursors. The next
+text audit remains mandatory but must not overwrite a current structured identity.
+DD4 `update.c:4415` only sends changed `Char.Worn` data: requesting `eq all`
+cannot be relied on to resend it. Run 15951 lost that identity at the cooldown
+handoff and replaced branch 6104 with club 1521. The handoff fix compiles; its
+new positive/stale/loss regression cases await the next daily test batch.
+
+Old research-rotation exclusions must not turn an already-affordable flight
+purchase into another funding hunt. The narrow maintenance admission requires
+food, affordability, no flight, no current purchase failure, and no observed
+reputation refusal. The caller's route cooldown still applies, and the live
+shop listing must confirm price and availability before buying. Run 15950
+proved the repair: 345 copper-equivalent covered the freshly quoted 141-copper
+potion, leaving 204 and a positive fly affect. It earned no XP.
+When food is missing and city restocking is affordable, choose it before an
+emergency equipment sale, including while already flying. Normal sellable-loot
+liquidation keeps its independent priority and item-protection checks.
+Run 15952 proved this combined ordering: six pies purchased for 174 copper
+while already flying, with 30 copper-equivalent left. No emergency gear sale
+was required. All new focused regression cases remain unrun on October 2.
+
+The source contains three `a long, grey branch` prototypes: light 6103, weapon
+6104, and trash 6105. Names alone cannot prove their weapon role. Resolve a
+current structured primary through exact VNUM, item type, source description,
+and class compatibility, retaining reconciled weapon-loss and empty-slot
+evidence. Use that same identity in ground/carrier upgrade ranking, not the
+lowest-VNUM same-name object. Contradictory structured identity must not fall
+back to its worn name. Legacy unique names and separately carried role weapons
+retain their existing checks; this does not identify an ambiguous carried item.
+Runs 15941/15942 repeatedly saved and quit because campaign role matching chose
+the light while the live executor correctly saw the weapon. The corrected
+selection moved on in 15943. Run 15946 then proved the carried-branch recovery:
+checkpoint 48447 has weapon 6104 equipped instead of club 1521, with full health
+and unchanged XP.
+
+`compare-carried-weapon` is noncombat healer maintenance, once per level and
+reboot, recorded in `campaign_carried_weapon_comparison` before dispatch.
+Refresh `eq all` and inventory; require one equipped weapon, one carried
+candidate, exact text/GMCP inventory counts, and source mappings for every
+carried item. The shared name must contain exactly one usable, releasable weapon
+prototype, with a command keyword shared by its variants but by no other
+carried prototype. `compare <keyword>` omits the second argument deliberately:
+DD4 searches worn gear only when that argument is absent. Only the exact
+better-than reply against the known primary permits `wield`; fresh `eq all`
+must then confirm the expected VNUM, type, and name. Each reply has a five-second
+deadline. An unclear, worse, incompatible, or changed result closes the attempt,
+not a retry loop. This type-resolution contract grants no combat permission.
+
+If an earlier successful comparison's exact reference weapon becomes primary
+again, one healer-side restoration check may repeat the full comparison at
+the same level and reboot. Require the earlier five-command verified result
+without failure and the same current source plan (candidate, reference, names,
+and unique keyword). Preserve it in `restoration_of` before dispatch; that
+field closes any second restoration, even if the new attempt fails. Fresh
+equipment and inventory, a new exact better-than reply, and post-wield VNUM
+verification are still required. Never infer that a same-named carried item
+is the same instance across reconnects. This repairs an observed equipment
+reversal without clearing hunt failures or granting combat permission.
+Run 15968 live-proved the restoration, and checkpoint 48510 after two further
+wait segments still records weapon 6104 equipped. The October 3 focused batch
+exposed incorrect wear flags in the synthetic comparison fixture; they are
+corrected, but the correction has not been rerun under the daily test limit.
+
 Source `do_kill` adds no `WAIT_STATE` when it replies exactly `You do the best
 you can!` to an already-fighting player. Release that command window without
 adding another combat-round delay, including when a preceding automatic parry
@@ -68,6 +289,16 @@ Known hoards currently abort with an explicit trap-handling blocker; the former
 fixed twelve-dig sequence is removed. A future executor must handle the source
 trap outcomes and recovery before this subtype becomes executable. Ordinary
 loose retrievals keep the existing source route and exact-object checks.
+The October 3 source audit is in `docs/QUEST_HOARD_AUDIT_2026-10-03.md`, including
+double-fuzzed tool costs, terrain/stat modifiers, first-trap abort, invisibility
+loss, cursed physical return, and the guardian's partially overridden prototype.
+The standalone `excavation.py` controller and tool budget are implemented but
+not enabled. Before dispatch, integrate exact tool/quest observations, the full
+visible physical return route, post-hex carrying capacity, guardian escape,
+trap recovery, persisted audits, and exact-object pickup/turn-in. Unearthing is
+not possession or completion. Room-wide physical trap damage uses full AC,
+not the single-target AC/4 formula. Saved controller tests are unrun; compilation
+alone does not release the existing hoard blocker.
 
 `training-travel-supply-20-29` may acquire one pure-invisibility potion for an
 observed, affordable advanced-teacher lesson blocked by source route hazards.
@@ -728,7 +959,7 @@ a session handle means it is still running: inspect or resume that exact handle,
 not a duplicate connection. Finish required workers before ending the turn.
 
 Use the bounded public `hero` command, not manual gameplay to manufacture proof.
-Normal live segments have a 180-second cap, plus separate 60-second setup and
+Normal live segments have a 300-second cap, plus separate 60-second setup and
 45-second cleanup allowances. Leave the outer timeout long enough for safe
 cleanup. Reset retries and segment counts are separate explicit budgets.
 The Python `run_hero_request` API applies the same cap by default and treats a
@@ -782,10 +1013,29 @@ invocation and never authorize an autonomous retry spin.
 
 ## Gameplay And Evidence
 
+Keep three run outcomes separate: execution says whether the bounded worker
+finished its procedure, objective says whether the stated goal is proved, and
+safety records deaths or losses. A safe abort may be `execution=success` and
+`safety=safe` while the objective is `not_achieved`. Do not infer success from
+a default level value for maintenance work or reuse a stored positive objective
+claim when current evidence is unknown. Quest reward requires an observed
+positive quest-point delta; level transition is a separate explicit condition.
+Required-item objectives must be recorded in run context and matched to
+distinct acquired or carried entries. Older campaign summaries may supply
+cached time/progress metrics, but their positive objective claims remain
+`unknown` until a bounded summary refresh verifies them.
+
 Midgaard recovery and logout belong at healer room 3054, one north of recall,
 not the Mage's Laboratory. Wake to eat/drink during sleep when needed; never
 change equipment asleep. Never log out in Purgatory: recover the corpse, loot,
 restore gear, leave the portal, then hand off once to healer recovery.
+
+For urgent source-food routes, wake from healer sleep only to use carried food
+or water, or when the registered route's movement threshold is met. If starving
+without supplies and still below that threshold, keep sleeping until the route
+is affordable; do not alternate stand/sleep at unchanged movement or depart
+below the registered budget. This avoids waiting for HP recovery while
+starving without stranding the character in a no-progress loop.
 
 On DD4, an invisibility affect at duration 0 can still be active until the next
 30-second affect update, and `spell_invis` rejects a recast while that affect
@@ -1113,6 +1363,12 @@ other current-band route is executable. If an earlier wait made no counter
 progress and left an unavailable cooldown checkpoint, rerun the source-ranked
 selector rather than repeating that wait. Active quests and an expired timer
 remain ineligible for this fallback.
+
+For the required next-level QP gate only, preserve the connected healer wait
+when exactly one live cooldown minute remains and the normal fed, recovered,
+safe-healer, fame, and no-stall checks allow it. Let that bounded wait request
+the quest when DD4 clears the timer before opening another hunt. This narrow
+priority does not apply to optional frontier requests or reopen a stalled wait.
 
 For noncombat Circus quest objects, `quest_access.py` audits the existing
 admission purchase as a prerequisite instead of treating the locked Big Top
@@ -1544,11 +1800,13 @@ A source-ranked target carrying exactly `spec_guard` is admitted past the
 target-special gate only when the target and revealed player both meet that
 350 threshold. Its source headbutt/smash/kick peak is included in the ordinary
 damage budget; unknown alignment, mixed target specials, and every other target
-special remain rejected. A guard elsewhere in the room is different: its
-`spec_guard` code can attack a player fighting an NPC whose alignment is below
-300, including a good player fighting a neutral target. Keep that bystander
-route closed rather than treating the `violence_update` good-alignment rule as
-protection from the guard's separate special.
+special remain rejected. A guard elsewhere in the room has an independent
+special: `spec_guard` and `spec_sahuagin_guard` examine the room occupant's
+alignment below 300 while that occupant fights an NPC. For our fight, that is
+the player, not the NPC target. There is no level cutoff in that path. This
+corrects the earlier target-alignment interpretation after reviewing run 15984
+and `special.c:spec_guard`/`spec_sahuagin_guard`. The 350 ordinary-assistance
+gate and live non-hostility requirement remain separate and mandatory.
 The GMCP and MSDP server paths differ; this is not evidence of corrupted
 transport. Field city preflight shares the existing three 12-second healer
 waits and locator parser, scoped to the actual source route plus fountain. A

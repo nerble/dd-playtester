@@ -13,13 +13,330 @@ character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 2, 2026
+### Current campaign status: October 3, 2026
 
-**Latest measured state:** checkpoint **48437**, level **29**, **576,805 XP**,
-**37,095 XP** to level 30, and **666/666 HP** at healer **3054**. Dorrik still
-needs one total quest point before advancing to level 30. The executable
-frontier includes current-band source hunts; obsolete level-27 closures do not
-describe current readiness. Keep him as the only progression character.
+**Latest saved live observation:** checkpoint **48743**, level **29**,
+**610,206 XP**, **3,694 XP** to level 30, at healer room **3054**, with zero QP
+and quest cooldown **6**. Dorrik is the only progression pilot until the
+first HERO. The current DD4 source mirror is
+`fbc5a5761af2f8a0734ca48df7993a4feffe55d2`; parser smoke covered 13,052 rooms,
+4,125 mobiles, 6,138 objects, 1,622 special profiles, and 399 skill groups.
+Runs **16086-16093** added no XP or QP. Run **16090** reached zero quest
+cooldown but deferred the request because only 52 seconds remained, below the
+180-second route reserve. Run **16091** resumed that checkpoint in a fresh
+process, requested a quest, then safely aborted the buried-hoard assignment in
+Showers (room **9517**) because digging and recovery are not live-authorized.
+Runs **16092-16093** waited safely at the healer as the new cooldown moved
+from **15 to 6**. Both outcomes are `execution=success`,
+`objective=not_achieved`, `safety=safe`. The level-29 all-area source-ranked
+check found no autonomous-safe target; no gameplay worker remains active.
+
+The active milestone is one verified quest point, level 30, then a fresh-process
+resume that re-observes both. Experiment **1** preserves checkpoint **48726**
+and source audit `655fb82`; later `fbc5a57` runs are not a version-matched arm
+for that record. Comparisons now pin tester/DD4 versions, test mode, source
+revision, and objective. Continue current-band XP while the quest cooldown runs;
+the Yggdrasil assignment, blocked city-food street, and hoard-digging paths
+remain closed under their source/live gates.
+
+#### Earlier October 3 campaign evidence
+
+The exact Dwarven Home bard policy is closed after a failed
+damage-window probe cost **325 net XP**. He needs one QP before advancing. Runs
+**16055-16057** safely rejected the crowded Secretary stop, then killed Sosivia
+(**+1,867 XP**) and the Ki-Rin (**+1,137 XP**) for **3,004 useful XP**. Run
+**16058** made a valid ordinary new-cycle request after observing inactive
+quest status and zero cooldown; Goldmoon assigned the coin of Serenos (object
+**585**, room **30263**). The bot safely aborted before digging because
+trap-aware acquisition and return are not enabled. It recorded
+`execution=success`, `objective=not_achieved`, `safety=safe`, with no XP or
+quest points and a 15-minute cooldown. Run **16059** purchased and verified a light-blue potion at
+the live shop price, then confirmed its fly effect. Run **16060** killed the
+bard for **1,655 XP**, ate a severed leg, sacrificed the empty corpse, and
+returned to the healer without XP loss. Run **16061** found the Captain's
+Waiting Room crowded and safely withdrew without combat or XP. Run **16062**
+found a fresh bard respawn at the same registered Dwarven Home stop; `consider`
+said “The perfect match,” the stun opener landed, and the kill yielded **1,398
+XP** plus an I.Q. Vine. Dorrik returned to the healer without XP loss. The
+separate optional one-request-per-level/reboot frontier allowance remains
+consumed. Continue current-band XP while cooldown is positive. Dorrik is alive
+and checkpointed; no gameplay worker is running.
+
+Run **16063** killed Sosivia for **1,595 XP** and recovered a talisman of hope.
+The fight reached a **99/666 HP** trough before Dorrik recalled; he healed to
+full at the Midgaard healer and incurred no XP loss. The separate optional
+one-request-per-level/reboot frontier allowance remains consumed. Continue
+current-band XP while the cooldown is positive. Run **16064** killed a fresh
+Dwarven Home bard for **1,456 XP** after a live easy-kill consider and successful
+stun. Dorrik returned to healer room **3054**, recovered to full vitals, and
+incurred no XP loss. Its cached run summary measures **207.78 seconds** whole
+session: **32.99** productive combat, **40.01** travel, **87.73** maintenance,
+and **47.05** waiting, about **420 net XP/minute**. Run **16065** accepted
+Goldmoon's retrieve assignment for amulet **586** in room **9564**. Source
+inspection found that the route requires the level-15+ bouncer transfer at
+**9571**, then spiked key **9565** from Joan (mobile **9506**, level **35**) in
+**9517**, with additional locked doors and hazards. That route is not registered
+or executable; the assignment expired without XP or quest points. The quest
+cooldown is now **12 minutes**. Run **16066** acquired the exact food-reserve
+items (rabbit roast and timian herbs), returned to healer **3054**, and earned
+no XP. Its corrected version-4 summary is `execution=success`,
+`objective=achieved`, `safety=safe`. Run **16067** bought a light-blue potion
+and confirmed flight. Run **16068** killed the Dwarven Home bard for **1,506
+XP**, reached a **177/666 HP** low point, then recalled and slept at the healer;
+it ended at **592 HP** without XP loss. Its 325.59-second session comprised
+39.93 seconds combat, 39.49 travel, 208.20 maintenance, and 37.96 waiting
+(about **278 net XP/minute**). The run summary records
+`execution=ready`, `objective=achieved`, `safety=safe`; its 325.59-second
+session wrote 13 full state snapshots. The 300-second cap note remains, but the
+next resume linked run **16068** and recovered its outcomes at checkpoint
+**48703**. Run **16069** verified safe return at full HP. Run **16070** accepted
+the coin of Serenos (object **585**) in Forest room **18022**, then safely
+aborted because the hoard route is disabled; it earned no QP and left a
+15-minute quest cooldown. Source shows the target is runtime-generated, has no
+static room reset, and sits west then north of Dwarven Home room **20500**;
+Dorrik has no shovel and no active protection. Tool acquisition, exact live
+approach, hoard/trap handling, and return are still unimplemented or unproved,
+so keep the quest gate closed. Dorrik is level **29**, zero quest points, and
+**2,971 XP** from level 30. Continue current-band XP during cooldown.
+
+Run **16071** completed the bounded food-reserve route with
+`execution=success`, `objective=achieved`, and `safety=safe`; the required grain
+was present in inventory at completion. It made no XP or QP change and recorded
+**10** full state snapshots over **101** commands. Treat its `success` as
+completion of the food objective only, not campaign progression. The quest
+timer fell **15 -> 12**. The final `Room.Info` was VNUM **3054** with the
+healing flag; its display name “By the Temple Altar” had initially been
+misread as recall. Dorrik was already at the healer, so no extra return was
+needed. The first quest reward, level-30 transition, and restart/resume
+continuity check remain open.
+
+Follow-up run **16072** began from that same healer checkpoint, bought and
+quaffed a light-blue potion, and returned to healer room **3054** before saving
+and quitting. Its outcome is `execution=success`, `objective=unknown`,
+`safety=safe`; it gained no XP. The route used **26 commands** and **6** full
+state snapshots. Flight and the healer location are now live-observed; keep the
+next campaign step bounded and focused on current-band progress.
+
+Run **16073** completed the registered blackberries reserve at room **6023**.
+The required exact object was acquired and returned to healer VNUM **3054**;
+`execution=success`, `objective=achieved`, and `safety=safe`. It added no XP or
+QP and recorded **8** full snapshots across **69** commands. The timer moved
+from **12 to 11**. This protects supplies but does not advance the level-30
+gate; resume current-band XP selection from this healed checkpoint.
+
+Run **16074** was the last combat segment. It selected the Dwarven Home bard
+(mobile 20509, room 20514); identity and consider passed, but the bounded damage
+probe fell short and the encounter cost 325 net XP. Dorrik returned alive to
+healer room 3054 at full HP. The outcomes are `execution=success`,
+`objective=not_achieved`, `safety=loss`; the exact policy remains closed. The
+190.62-second session measured 18.19 seconds combat, 53.12 travel, 73.73
+maintenance, and 45.59 waiting, with 11 full checkpoints across 125 commands.
+Checkpoint 48711 retains level 29, 610,604 XP, 3,296 XP to level 30, zero QP,
+and quest cooldown 8.
+
+Runs **16075-16077** are the newer noncombat outcomes. Run **16075** safely
+reached the registered Solace Secretary endpoint and found no target. Run
+**16076** restored full movement by sleeping at healer room **3054**. Run
+**16077** did not leave the healer: the required live `where drunk` check found
+wandering hazards on Main Street, inside the west gate, and in the weapon shop.
+It saved checkpoint **48718** with full vitals and no loss. The exact hunt did
+not start, so retain the obstruction as current navigation evidence and do not
+replay the same route until a fresh locator changes it. The first QP reward,
+level-30 transition, and restart/resume proof remain open.
+
+Run **16078** was the last completed combat segment. The selector chose a young
+sailor in Sea of Deception. A fresh consider said easy kill but healthier; the
+bounded live probe observed **145/870** target damage and **69** received before
+the player fled. DD4 recorded the 576-point flee penalty and 178 partial XP;
+the session's net XP was **-398**. Dorrik was not killed and reached healer
+**3054** at **666/666 HP**, with **3,694 XP** left to level 30 and the saved
+quest timer at **1**. Close this exact target and retain the failed output
+evidence. No quest reward or level transition occurred.
+
+Runs **16079-16080** exercised the persisted quest path across two fresh
+processes. Run **16079** observed the cooldown reach zero at the healer but
+deferred the request with **170.3 seconds** remaining, below the controller's
+180-second minimum for a quest route. It saved checkpoint **48722**; run
+**16080** resumed and selected `quest-request` directly. Goldmoon assigned a
+kill quest for yagnodemon **9906** in room **9913**. The source preflight found
+multiple target resets, dangerous and assisting companions, an unsafe transit
+special, and target special `spec_demon`; the bot aborted before combat and
+returned to healer **3054**. Run 16080 ended `execution=success`,
+`objective=not_achieved`, `safety=safe`, with no XP or QP change. Checkpoint
+**48724** is healthy with cooldown **15**. The assigned target remains closed;
+the verified QP reward and level-30 transition are still open.
+
+Run **16031** also now reports `objective=not_achieved`: its terminal policy
+state explicitly recorded that the required blackberries were not acquired.
+The report includes that reason; the historical transcript and snapshots are
+unchanged.
+
+### Architecture Audit: October 3, 2026
+
+The implementation is in the local checkout. The completed-run timeout
+reconciliation compiled and was confirmed by Dorrik's live resume; its saved
+integration test awaits a future regression batch.
+The daily October 3 batch already ran (148 passed, 27 failed), so do not run
+another batch today. The current work changes the write/reporting path:
+
+- Keep each ordered observation once in `events`; compact event indexes hold
+  searchable fields and join back to canonical payloads. Old duplicate index
+  rows remain readable; no 33-GB rewrite is attempted automatically.
+- Use a bounded background SQLite writer, a compact current-state projection,
+  and sparse evidence/recovery checkpoints. The writer coalesces state updates
+  to one write per batch or barrier; queue and barrier waits time out. Run
+  **16068**, **16071**, **16072**, **16073**, and **16074** logged 112, 101, 26,
+  69, and 125 commands with 13, ten, six, eight, and 11 full state snapshots,
+  not one full snapshot per observation.
+- Cache one completed report summary per run. Campaign reports aggregate those
+  summaries and read only boundary states by default; historical segment detail
+  is omitted. Pass `--full-history` to `campaign-report` to include it. Reports
+  read compact campaign/run links and fetch cached summaries, avoiding a
+  campaign-wide grouping query. `backfill-campaign-runs` materializes legacy
+  links in resumable pages of at most 256 segments; `summarize-runs` separately
+  backfills completed run summaries. Campaign 7's historical links were
+  backfilled in 12 pages. The trigger-maintained table now contains 3,126 run
+  links through segment sequence 3,129; its standard 3,126-run/1,588-kill JSON
+  report rendered in 9.01 seconds with segment detail left out. No historical
+  event or snapshot payloads were rewritten.
+- Persist execution, objective, and safety outcomes separately, and estimate
+  combat, travel, maintenance, and waiting across each whole session.
+  Objective completion must come from the recorded contract and positive
+  evidence, never from a successful/safe stop or a stale stored claim. Required
+  items need distinct acquired entries; quest reward and level-transition gates
+  are independently testable. Explicit terminal missing-item evidence forces
+  `not_achieved` and is shown in reports, correcting run 16031. Summary version
+  6 rebuilds older run summaries. Previous versions retain cached metrics,
+  but an unverified positive objective becomes `unknown` until refreshed.
+- A campaign segment linked to a current run summary inherits its execution,
+  objective, and safety outcomes. Level or quest-point changes alone cannot
+  turn an unrelated or failed item objective into an achievement.
+- Outer-timeout handling distinguishes a genuinely running/interrupted worker
+  from a run already finished as `ready` or `success`. A completed run keeps
+  its status and cap diagnostic, links its cached summary to the segment, and
+  restores a resumable campaign checkpoint only when its observed end state is
+  neither dead nor in Purgatory.
+- Keep `LiveSessionState` as the shared snapshot owner. Typed combat, travel,
+  recovery, and quest controllers own their active mutable state; the policy's
+  existing field interface delegates selected combat flags, route cursors, and
+  recovery actions to them. New quest phases get fresh route-local controllers;
+  `QuestHandoffState` transfers only validated character/progression continuity.
+  Historical repair stays in `campaign_migrations.py`; continue focused
+  extraction instead of a broad `StarterPolicy` rewrite.
+- Record controlled experiment arms with tester/DD4/source versions, a complete
+  start snapshot plus boot ID, objective, linked run/campaign, shared metrics,
+  and separate bot-error/game-defect attribution for source-informed and
+  ordinary-player modes. A comparison key pins DD4 version and objective;
+  variants retain their own starting state and completed arms are immutable.
+  `experiment start --checkpoint-id N` captures an exact saved boundary,
+  infers its campaign, and records checkpoint provenance without manual export.
+- When a required next-level QP is missing by one point and the recovered,
+  supplied healer has exactly one live cooldown tick remaining, retain the
+  bounded connected quest wait instead of opening another source-ranked probe.
+  A stale/no-progress wait still falls through to normal source selection. Runs
+  **16079-16080** verified this wait, saved zero-cooldown checkpoint, and fresh
+  process resume into the request phase.
+- The latest follow-up is checkpoint **48731** after runs **16083-16085**.
+  None earned XP or QP. Run **16085** equipped branch **6104** already in
+  inventory, so acquisition was not achieved; do not repeat that objective.
+  Dorrik remains at healer **3054**, level **29**, with **3,694 XP** to level
+  30, one carried pie, a buffalo water skin, flight, and the branch wielded.
+  Source parser smoke passed at revision
+  `fbc5a5761af2f8a0734ca48df7993a4feffe55d2`.
+
+Next progression gate: earn one verified quest point, cross level **30**, then
+restart and resume once to verify evidence continuity. Scripted criteria cover
+the positive quest-point delta, level 30, and persistence across a storage
+reopen; live completion remains unproved. The level-29 assignments in runs
+**16058** (hoard), **16065** (keyed Catacombs), and **16080** (Yggdrasil
+yagnodemon) are not executable under the current route/safety capabilities and
+ended without reward. The latest assignment was rejected before combat for
+multiple target resets, dangerous/assisting companions, an unsafe transit
+special, and `spec_demon`. Do not mistake a request or safe abort for
+completion, or reopen a rejected route from offline source evidence alone.
+The current checkpoint is **48731**, level **29**, **610,206 XP**, **3,694** to
+level 30, at healer **3054**, zero QP, with quest cooldown **15**. Experiment
+**1** deliberately retains checkpoint **48726** as its exact starting state;
+the later actions remain part of the same campaign but not its baseline.
+It requires a verified positive QP delta, level 30, and a later process
+observing both after resume. Continue current-band XP during cooldown; request a
+quest only through the normal live gates. Keep the optional frontier request
+allowance consumed.
+
+#### Recent Verified Progression Interval
+
+Runs **16003-16011** gained **5,948 net XP** from five kills over **24.07 minutes**
+(about **247 XP/minute**), including all intervening maintenance, recovery,
+development gaps, and two quest requests. There was no XP loss. The replacement
+Smithy was positively below-band and left alone. Goldmoon had no assignment
+on the first request; the second hoard in room **20339** was recognised and
+aborted. The latest checkpoint has **470/482 movement**, **1,069 copper-equivalent**,
+quest cooldown **15**, the branch equipped, and zero QP.
+
+The swiftness double-count is corrected and documented. Excavation now has a
+source walking-return planner with door preparation, safe detours, all-exit
+escape branches, and a finite worst-branch movement reserve. It is not yet a
+live capability. Next implementation must join the dig controller to guardian
+damage/carrying-capacity admission and verified recovery/pickup, then validate
+replays in the next daily test batch. Keep current-band hunts moving meanwhile.
+
+Runs **15990-15998** gained **3,653 net XP / 20.72 minutes**, about **176 XP/minute**
+including maintenance. The last three hunts delivered that XP without loss in
+**9.55 minutes** (about **382 XP/minute**). The branch remained equipped through
+combat, recovery and reconnect. Food and **1,240 copper-equivalent** were
+collected, flight cost **141 copper**, and the sanctuary carrier was unavailable.
+That earlier checkpoint had **1,150 copper-equivalent**, **444/482 movement**,
+quest cooldown **3**, and still no QP.
+
+The hoard budget and response-driven dig controller are implemented and compile,
+but remain outside live dispatch. Finish visible physical-return/guardian escape
+admission, exact tool observations, recovery and pickup integration, and saved
+replay verification before enabling them. Keep ordinary XP/quest work moving;
+do not wait solely for this feature or count an aborted hoard as quest progress.
+
+Runs **15982-15986** earned **757 net XP** in **13.39 elapsed minutes** after
+one **1,711-XP** Sosivia kill and **954 XP** in two withdrawals. No QP was
+earned; Gorak's locked route needs unsupported keys. The low-level guard
+bystander defect has a saved correction and replay, compiled but unrun and
+not live-proved. Existing loss exclusions remain closed.
+
+Run **15989** restored branch **6104**, verified by the server, and logged out
+at the healer. Recovery weapon retention is now live-proved by the later hunts;
+the separate same-session removed-item identity path remains unexercised live.
+The comparison parser and failed-audit persistence are repaired; the old exact
+three-command failure was recovered from bounded evidence, not discarded.
+Run **15988** nevertheless lost **466 XP** while still using the club; preserve
+that closure. Runs **15982-15989** netted just **291 XP / 54.65 minutes** including
+development, about **5 XP/minute**. Maintenance success is not progression.
+
+Next: sustain current-band kills and earn the first quest point.
+Branch **6104** earned a bard kill in **15981**, but recovery in **15985**
+replaced it with club **1521** and the next hunt retained the club. Latest
+health is **660/666** and movement is **444/482**. Pursue current-band XP and the first
+executable quest. Do not substitute more
+wait-only loops or higher-band research. Hoard source auditing is saved in
+`docs/QUEST_HOARD_AUDIT_2026-10-03.md`; trap-aware dispatch is still absent.
+
+The October 3 focused batch had **148 passes and 27 failures**. Corrected the
+comparison fixture (25 failures) and required an observed positive quest active
+flag for new-cycle evidence (two failures). These corrections are not rerun
+today. Small-purse pickpocket transit passed its offline cases; its actual-source
+Yggdrasil route is analyzed, but live retrieval and reward proof remain outstanding.
+The city-repeat recheck cases are saved and compiled, not run after that batch.
+Source **6941814** parsed successfully after the latest fast-forward pull;
+new Bard/Cleric/Knight abilities do not expand Dorrik's authorized actions.
+
+#### Earlier October 2 Evidence
+
+Runs **15954-15958** added **1,051 net XP** from Mr. Smithy, about **53 net
+XP/minute** across the full **19.78-minute** interval including development,
+maintenance, reset waiting, and unsuccessful trips. **15958** confirmed a new
+quest wait progressed **12 -> 11** and returned a full-health, full-movement
+checkpoint. The first QP is still missing. The bounded theft-exposure change
+is now implemented, but does not globally whitelist the special or resume the
+abandoned Yggdrasil assignment. Preserve the new
+same-connection equipment identity fix; its live handoff proof is still pending,
+and the old club was equipped at that checkpoint.
 
 Through run **15938**, the evening continuation gained **10,334 net XP**. The exact
 inventory-footer repair is now live-proved: run **15920** consumed the potion,
@@ -30,15 +347,40 @@ one successful teacher visit with proof of sustained progression or HERO.
 
 Runs **15932-15938** added **1,218 net XP** without loss, about **88 XP/minute**
 over the whole 13.91-minute interval. Food, sales, an absent target, quest
-rejection, and ground-gear acquisition are included. The level-15 grey branch
-**6104** is now wielded; measure it in combat before claiming improvement.
+rejection, and ground-gear acquisition are included. That interval equipped
+level-15 grey branch **6104**, whose combat benefit remains unmeasured.
 The shared live-segment default is 300 seconds after the old 180-second cap
 forced an early withdrawal. A source-backed already-fighting `kill` reply now
 clears only its unnecessary command wait. Saved regression cases remain unrun;
 live proof of that exact refusal path is still pending.
 
-Next: measure the new weapon and corrected command timing in current-band
-hunts, while completing an executable quest. Run **15937**'s TenTusks retrieval
+Runs **15939-15945** produced no XP. Exact structured weapon identity now ends
+the false missing-stun-weapon loop and informs upgrade ranking. However, the
+intervening ground pickup equipped a weaker level-3 club **1521**. Run **15946**
+has now restored branch **6104** through a fresh server comparison, wield, and
+exact equipment audit at the healer. This adds no XP or combat proof. Next:
+measure current-band combat and command timing while pursuing the first quest
+point. Shared item names alone must never identify a carried weapon.
+The next two funding runs (**15947-15948**) yielded no XP or money: city
+obstruction first, then an absent Circus carrier. Checkpoint **48451** retains
+the restored weapon, full health/movement, and two quest-cooldown ticks. Keep
+that absence evidence and pursue another executable current-band objective.
+
+**Supplies/quest handoff repair:** run **15950** bought and activated flight
+for 141 copper; **15952** bought six pies for 174. These remove real maintenance
+selection loops without clearing combat history. **15951** completed a
+connected cooldown and requested a quest, but its trapped-hoard assignment was
+aborted, with no QP. Mandatory next-level QP waits now survive an already-used
+optional request and preserve completed-cycle evidence through maintenance.
+The next proof remains a completed quest and productive current-band XP, not
+another maintenance success. Tests are saved, compiled, and unrun today.
+Run **15953** advanced the live quest cooldown from **6 to 4**, then ended
+normally at its 300-second cap. Dorrik remains fully recovered at the healer
+with five pies, no additional XP, and no QP. The saved primary is now club
+**1521**; reconcile that current equipment evidence before claiming branch
+**6104** remains equipped. Do not count connected waiting as progression.
+
+Keep pursuing an executable quest. Run **15937**'s TenTusks retrieval
 was aborted at the source gate requiring key **25405**; the source produces and
 destroys that key in a stone-head gift program, so there is no ordinary key
 purchase to automate. Do not retry the abandoned quest or dispatch an

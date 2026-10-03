@@ -813,6 +813,19 @@ def weapon_role(
     return "not_applicable"
 
 
+def _recovery_priority_score(
+    bonuses: Mapping[int, int], level_gain_priorities: tuple[str, ...],
+) -> tuple[int, ...]:
+    resources = {
+        "hitpoints": max(0, bonuses.get(APPLY_HIT, 0)),
+        "mana": max(0, bonuses.get(APPLY_MANA, 0)),
+    }
+    recovery = sum(resources.values())
+    priorities = tuple(resources[p] for p in level_gain_priorities if p in resources)
+    stats = sum(max(0, bonuses.get(location, 0)) for location in APPLY_STATS)
+    return (priorities or (recovery,)) + (recovery, stats)
+
+
 def _stance_score_from_totals(
     bonuses: Mapping[int, int],
     stance: str,
@@ -868,20 +881,7 @@ def _stance_score_from_totals(
             weapon,
         )
     if stance == STANCE_RECOVERY:
-        resource_priorities = tuple(
-            priority
-            for priority in level_gain_priorities
-            if priority in {"hitpoints", "mana"}
-        )
-        resource_scores = {"hitpoints": hitpoints, "mana": mana}
-        prioritized_recovery = (
-            tuple(resource_scores[priority] for priority in resource_priorities)
-            if resource_priorities
-            else (recovery,)
-        )
-        return prioritized_recovery + (
-            recovery,
-            stats,
+        return _recovery_priority_score(bonuses, level_gain_priorities) + (
             damroll,
             hitroll,
             swiftness,
@@ -1372,16 +1372,33 @@ def plan_stance_swaps(
     carried_items = [item for item in carried if is_equipment_object(item)]
     worn_items = list(worn)
     worn_equipment = [item for item in worn_items if is_equipment_object(item)]
+    source_sets = tuple(object_sets)
     desired_loadout = _desired_loadout(
         carried_items,
         worn_equipment,
         stance,
         level_gain_priorities=level_gain_priorities,
         weapon_preference=weapon_preference,
-        object_sets=tuple(object_sets),
+        object_sets=source_sets,
         current_strength=current_strength,
     )
     desired = list(_loadout_items(desired_loadout))
+    if stance == STANCE_RECOVERY:
+        primary = [item for item in worn_equipment if item_category(item) == "wield"]
+        chosen = [item for item in desired if item_category(item) == "wield"]
+        if (
+            len(primary) == len(chosen) == 1 and primary[0].vnum != chosen[0].vnum
+            and weapon_role(primary[0], weapon_preference) != "mismatch"
+        ):
+            retained = [primary[0] if item is chosen[0] else item for item in desired]
+            # Sleep gear may replace the primary for resources or stats, not
+            # solely to improve a combat tie-breaker. Include whole-set bonuses.
+            if _recovery_priority_score(
+                _loadout_bonus_totals(retained, source_sets), level_gain_priorities,
+            ) >= _recovery_priority_score(
+                _loadout_bonus_totals(desired, source_sets), level_gain_priorities,
+            ):
+                desired = retained
     required = [
         item
         for item in required_worn_items

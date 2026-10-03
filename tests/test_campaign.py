@@ -751,7 +751,7 @@ from dd4tester.starter import (
     moria_deep_sanctuary_potion_hunt_stops,
     moria_sanctuary_potion_hunt_stops,
 )
-from dd4tester.storage import RunStorage
+from dd4tester.storage import RUN_REPORT_SUMMARY_VERSION, RunStorage
 
 
 def test_campaign_runner_scopes_the_pinned_source_directory(
@@ -6495,6 +6495,31 @@ def test_inactive_quest_cooldown_allows_source_ranked_fallback(
 
     state["quest_status"] = {"active": 0, "nextquest": 0}
     assert _source_ranked_fallback_needed(state, policy) is False
+
+
+def test_required_quest_at_last_cooldown_tick_stays_at_healer() -> None:
+    policy = ProgressionPolicy(
+        policy_id="quest-cooldown",
+        minimum_level=29,
+        maximum_level=29,
+        status="research",
+        execution="quest-request",
+        summary="wait for the required quest",
+        evidence=(),
+        practice_skill=None,
+    )
+    state = {
+        "level": 29,
+        "world_boot_id": "boot-1",
+        "quest_status": {
+            "active": 0, "nextquest": 1, "total_points": 0,
+        },
+    }
+
+    assert _source_ranked_fallback_needed(state, policy) is True
+    assert _source_ranked_fallback_needed(
+        state, policy, required_quest_wait_allowed=True,
+    ) is False
 
 
 def test_shared_dwarven_nobleman_probe_runs_before_generic_route_fallback() -> None:
@@ -69652,6 +69677,95 @@ def test_outer_timeout_reports_latest_run_state_without_promoting_success(
         assert json.loads(segment["end_state_json"])["xp"] == 160122
 
 
+def test_outer_timeout_links_completed_run_and_keeps_its_outcomes(
+    tmp_path, monkeypatch,
+) -> None:
+    config_path, database = _write_campaign_files(tmp_path)
+
+    class TestRunner:
+        def __init__(self, spec, path, **_options):
+            self.spec = spec
+            self.path = path
+
+        async def run(self):
+            with RunStorage(self.spec.database) as storage:
+                campaign_id = storage.create_campaign(
+                    name=self.spec.name,
+                    config_path=self.path.resolve(),
+                    character_profile_path=self.spec.character_profile,
+                    target_level=self.spec.target_level,
+                )
+                storage.start_campaign_segment(
+                    campaign_id,
+                    phase="timeout-test",
+                    start_state={"name": "Dorrik", "level": 29, "xp": 100},
+                )
+                run_id = storage.create_run(
+                    scenario_name="timeout-test:Dorrik",
+                    scenario_path=self.spec.character_profile,
+                )
+                storage.record_state_snapshot(
+                    run_id,
+                    source_event_id=None,
+                    reason="run_finished",
+                    state={
+                        "name": "Dorrik", "level": 29, "xp": 200,
+                        "dead": False, "area": "Midgaard",
+                        "room_vnum": "3054", "hp": 592,
+                        "max_hp": 666, "xp_loss_total": 0,
+                    },
+                )
+                storage.finish_run(
+                    run_id,
+                    status="ready",
+                    error="Starter bot exceeded 0.01 second runtime",
+                    execution_status="ready",
+                    objective_outcome="achieved",
+                    safety_outcome="safe",
+                )
+                storage.save_run_summary(
+                    run_id,
+                    {
+                        "summary_version": RUN_REPORT_SUMMARY_VERSION,
+                        "outcomes": {
+                            "execution": "ready",
+                            "objective": "achieved",
+                            "safety": "safe",
+                        },
+                        "activity": {"total_seconds": 12.5},
+                    },
+                )
+            await asyncio.sleep(60)
+
+    monkeypatch.setattr("dd4tester.campaign.CampaignRunner", TestRunner)
+    monkeypatch.setattr("dd4tester.campaign._CAMPAIGN_RUNNER_TIMEOUT_GRACE_SECONDS", 0.01)
+    monkeypatch.setattr("dd4tester.campaign._CAMPAIGN_RUNNER_SETUP_GRACE_SECONDS", 0.01)
+
+    result = asyncio.run(
+        run_campaign_file(config_path, segments=1, max_segment_runtime=0.01)
+    )
+
+    assert result.status == "ready"
+    with RunStorage(database) as storage:
+        segment = storage.list_campaign_segments(result.campaign_id)[0]
+        run = storage.get_run(int(segment["run_id"]))
+        checkpoint = storage.get_latest_campaign_checkpoint(result.campaign_id)
+        campaign = storage.get_campaign(result.campaign_id)
+    assert segment["status"] == "ready"
+    assert segment["execution_status"] == "ready"
+    assert segment["objective_outcome"] == "achieved"
+    assert segment["safety_outcome"] == "safe"
+    assert run is not None
+    assert run["status"] == "ready"
+    assert run["error"] == "Starter bot exceeded 0.01 second runtime"
+    assert campaign is not None
+    assert campaign["status"] == "ready"
+    assert "reconciled after the campaign runner deadline" in campaign["error"]
+    assert checkpoint is not None
+    assert checkpoint["run_id"] == run["id"]
+    assert checkpoint["reason"] == "segment_completed_after_campaign_timeout"
+
+
 def test_campaign_file_does_not_misclassify_inner_runner_timeout(
     tmp_path,
     monkeypatch,
@@ -75847,7 +75961,10 @@ def test_quest_source_preflight_rejects_retrieve_room_hazard() -> None:
         state={"max_hp": 218},
     )
 
-    assert issue == "source route safety gates reject quest room 9001 for level 18"
+    assert issue is not None
+    assert issue.startswith("source route safety gates reject quest room 9001 for level 18")
+    assert "shortest recall route:" in issue
+    assert "a huge hairy beast" in issue
 
 
 def test_campaign_converts_unsafe_quest_target_to_abort_policy(

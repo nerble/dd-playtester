@@ -48,9 +48,10 @@ COMBAT_JOINING_SPECIALS = frozenset(
 )
 """Specials that can join a fight before they are fighting themselves.
 
-``special.c`` makes these guards attack an NPC that is already fighting a
-player, so their source presence can turn an otherwise isolated hunt into a
-multi-enemy fight even without ``ACT_AGGRESSIVE``.
+``special.c`` makes these guards attack a room occupant below 300 alignment
+who is fighting an NPC. This includes the player and has no level cutoff;
+criminal flags provide another independent attack path. They can therefore
+turn an otherwise isolated hunt into a multi-enemy fight without aggression.
 """
 
 ECONOMIC_SPECIALS = frozenset({"spec_thief"})

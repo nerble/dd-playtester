@@ -10,8 +10,17 @@ from dd4tester.character import CharacterSpec
 from dd4tester.connection import ReadResult
 from dd4tester.equipment import GearCatalog
 from dd4tester.fastwalks import Fastwalk
-from dd4tester.hunt_candidates import ACT_SENTINEL, ExitSource, MobileSource, MobReset, RoomSource, WorldSource
-from dd4tester.sessions import QuestCooldownWait, QuestPhase, resume_policy_at_healer
+from dd4tester.hunt_candidates import (
+    ACT_SENTINEL, ExitSource, MobileSource, MobReset, ObjectSource, RoomSource,
+    WorldSource,
+)
+from dd4tester.sessions import (
+    LiveSessionState,
+    QuestCooldownWait,
+    QuestPhase,
+    QuestSessionController,
+    resume_policy_at_healer,
+)
 from dd4tester.starter import BotDecision, FieldHuntStop, StarterPolicy
 from dd4tester.state import CharacterState
 from dd4tester.storage import RunStorage
@@ -44,6 +53,99 @@ def phase(name):
         hunt_stops=(FieldHuntStop((), "target", source_mobile_vnum=4003),)
         if name == "quest-target-run" else (FieldHuntStop((), None),),
     )
+
+
+def test_quest_session_controller_owns_phase_history_and_rejects_repeats():
+    controller = QuestSessionController(
+        phase="quest-request",
+        planner=lambda _phase, _state: phase("quest-target-run"),
+    )
+    session = LiveSessionState(CharacterState(), quest_session=controller)
+    state = {"quest_status": {"active": 1}}
+
+    assert session.quest_session is controller
+    assert controller.plan_next_phase(state, permitted=False) is None
+    controller.observe_quest_status()
+    next_phase = controller.plan_next_phase(state, permitted=True)
+    assert next_phase is not None
+
+    first = controller.checkpoint(
+        {"room_vnum": "3054"}, objective_kills=[], commands=4,
+    )
+    assert first["phase"] == "quest-request"
+    controller.activate(next_phase)
+    assert controller.phase == "quest-target-run"
+    controller.checkpoint({"room_vnum": "3054"}, objective_kills=[], commands=7)
+
+    with pytest.raises(RuntimeError, match="repetition"):
+        controller.activate(next_phase)
+
+    controller.connection_closed()
+    assert not controller.observed_on_connection
+    assert controller.continuation_closed
+
+
+def test_policy_lifecycle_flags_share_the_live_session_owner(tmp_path):
+    policy = StarterPolicy(spec(tmp_path), "fixture-password")
+    policy.stage = "tutorial"
+    policy.login_authenticated = True
+    policy.in_world = True
+    policy.world_boot_id = "boot-a"
+    owner = LiveSessionState(CharacterState())
+
+    policy.bind_session_state(owner)
+
+    assert owner.phase == "tutorial"
+    assert owner.authenticated is True
+    assert owner.in_world is True
+    assert owner.world_boot_id == "boot-a"
+    policy.world_boot_id = "boot-b"
+    policy.in_world = False
+    assert owner.world_boot_id == "boot-b"
+    assert owner.in_world is False
+
+    with pytest.raises(RuntimeError, match="another session"):
+        policy.bind_session_state(LiveSessionState(CharacterState()))
+
+
+def test_active_runtime_controllers_have_one_session_owner(tmp_path):
+    policy = StarterPolicy(spec(tmp_path), "fixture-password")
+    policy.combat_active = True
+    policy.combat_disarm_attempts = 2
+    policy.fastwalk_outbound_index = 7
+    policy.fastwalk_hunt_stop_index = 3
+    policy.fastwalk_emergency_recall_pending = True
+    policy.recovery_wake_command_pending = True
+    owner = LiveSessionState(CharacterState())
+
+    policy.bind_session_state(owner)
+
+    assert owner.combat is policy._combat_session
+    assert owner.combat.active is True
+    assert owner.combat.disarm_attempts == 2
+    assert owner.travel is policy._travel_session
+    assert (owner.travel.outbound_index, owner.travel.hunt_stop_index) == (7, 3)
+    assert owner.recovery is policy._recovery_session
+    assert owner.recovery.emergency_recall_pending is True
+    assert owner.recovery.wake_command_pending is True
+
+    following = StarterPolicy(spec(tmp_path), "fixture-password")
+    following.bind_session_state(owner)
+
+    assert owner.travel is following._travel_session
+    assert owner.travel.hunt_stop_index == 0
+    assert owner.combat.active is False
+    assert owner.recovery.emergency_recall_pending is False
+
+
+def immediate_timer_queries(monkeypatch):
+    original = QuestCooldownWait.poll
+
+    def poll(self, *args, **kwargs):
+        self.next_query_at = 0
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(QuestCooldownWait, "poll", poll)
 
 
 class QuestConnection:
@@ -237,6 +339,64 @@ def test_handoff_copies_capabilities_but_not_old_route_or_kill_state(tmp_path):
     assert "identify" not in old.known_skills
 
 
+@pytest.mark.parametrize("structured_current", [True, False])
+def test_handoff_retains_only_current_structured_equipment(tmp_path, structured_current):
+    branch = ObjectSource(
+        6104, "branch", "a long, grey branch", 5, (0, 2, 5, 7), 0,
+        wear_flags=1 << 13, level=15,
+    )
+    light = replace(branch, vnum=6103, item_type=1)
+    club = replace(
+        branch, vnum=1521, keywords="club",
+        short_description="a large club", level=3,
+    )
+    catalog = GearCatalog({item.vnum: item for item in (branch, light, club)})
+    character = replace(spec(tmp_path), character_class="warrior")
+    old = StarterPolicy(character, "secret", gear_catalog=catalog)
+    new = StarterPolicy(character, "secret", gear_catalog=catalog)
+    old.in_world = old.login_authenticated = old.saved = True
+    old.gear_worn = [branch]
+    old.gear_worn_structured_current = structured_current
+    old.gear_wielded_vnum = branch.vnum
+    old.gear_instance_sources = {"42": branch.vnum}
+    old.gear_worn_instance_ids = {"42"}
+    old.gear_inventory_source_hints = {"a large club": club.vnum}
+    old.gear_command_queue = [("remove branch", "old phase command")]
+    state = healer(level=29, inventory=[{"short_desc": "a large club", "quan": "1"}])
+
+    resume_policy_at_healer(old, new, state)
+
+    assert new.gear_worn_structured_current is structured_current
+    assert new.gear_worn == ([branch] if structured_current else [])
+    assert new.gear_wielded_vnum == (branch.vnum if structured_current else None)
+    assert not new.gear_audited
+    assert new.gear_command_queue == []
+    if structured_current:
+        new.gear_audit_pending = True
+        new.last_equipment_audit_response = "[weapon] a long, grey branch\n"
+        decision = new._gear_decision(state)
+        assert decision is None or decision.command == "eq all"
+        assert new.gear_worn == [branch]
+        assert all(command != "remove branch" for command, _ in new.gear_command_queue)
+        new.gear_instance_sources.clear()
+        new.gear_worn_instance_ids.clear()
+        new.gear_inventory_source_hints.clear()
+        assert old.gear_instance_sources == {"42": branch.vnum}
+        assert old.gear_worn_instance_ids == {"42"}
+        assert old.gear_inventory_source_hints == {"a large club": club.vnum}
+
+
+def test_handoff_preserves_weapon_loss_without_positive_identity(tmp_path):
+    old = StarterPolicy(spec(tmp_path), "secret")
+    new = StarterPolicy(spec(tmp_path), "secret")
+    old.in_world = old.login_authenticated = old.saved = True
+    old.primary_weapon_lost = old.disarm_recovery_failed = True
+    old.primary_weapon_observed = False
+    resume_policy_at_healer(old, new, healer())
+    assert new.primary_weapon_lost and new.disarm_recovery_failed
+    assert not new.primary_weapon_observed
+
+
 def quest_world(population=1):
     return WorldSource(
         rooms={3001: RoomSource(3001, "Recall", "test.are", exits={
@@ -358,10 +518,7 @@ def test_failed_policy_construction_does_not_duplicate_prior_kill(tmp_path, monk
 def test_online_cooldown_request_target_and_reward_share_one_connection(tmp_path, monkeypatch):
     connection = QuestConnection()
     connection.quest["nextquest"] = 2
-    original = QuestCooldownWait.poll
-    monkeypatch.setattr(QuestCooldownWait, "poll", lambda self, *a, **kw: replace(
-        original(self, *a, **kw), wait_seconds=0,
-    ))
+    immediate_timer_queries(monkeypatch)
     result, connection = run_session(tmp_path, monkeypatch, connection=connection, initial="quest-cooldown")
     assert connection.connects == 1
     assert connection.sent.count("quest time") == 2
@@ -376,13 +533,29 @@ def test_cooldown_poll_waits_for_actual_server_progress_and_stops_stall():
     controller = QuestCooldownWait()
     state = healer(quest_status={"nextquest": 14})
     initial = controller.poll(state, now=0, food_keyword=None, has_water_skin=False)
-    assert initial.command == "quest time" and initial.wait_seconds == 30
+    assert initial.command == "quest time" and initial.wait_seconds == 0
+    assert controller.poll(state, now=10, food_keyword=None, has_water_skin=False).command is None
+    assert controller.poll(state, now=30, food_keyword=None, has_water_skin=False).command == "quest time"
     assert controller.poll(state, now=179, food_keyword=None, has_water_skin=False).status == "waiting"
     assert controller.poll(state, now=180, food_keyword=None, has_water_skin=False).status == "stopped"
     state.quest_status["nextquest"] = 13
     assert controller.poll(state, now=181, food_keyword=None, has_water_skin=False).status == "waiting"
     state.quest_status["nextquest"] = 0
     assert controller.poll(state, now=182, food_keyword=None, has_water_skin=False).status == "ready"
+
+
+def test_cooldown_observes_progress_and_resource_needs_between_queries():
+    controller = QuestCooldownWait()
+    state = healer(quest_status={"nextquest": 5})
+    assert controller.poll(state, now=0, food_keyword="pie", has_water_skin=True).command == "quest time"
+    state.quest_status["nextquest"] = 4
+    step = controller.poll(state, now=3, food_keyword="pie", has_water_skin=True)
+    assert step.status == "waiting" and step.command is None
+    assert controller.lowest_remaining == 4 and controller.last_progress_at == 3
+    state.hunger = 5
+    assert controller.poll(state, now=4, food_keyword="pie", has_water_skin=True).command == "eat pie"
+    state.quest_status["nextquest"] = 0
+    assert controller.poll(state, now=5, food_keyword="pie", has_water_skin=True).status == "ready"
 
 
 @pytest.mark.parametrize("field,keyword,water,command", [
@@ -428,11 +601,8 @@ def test_connected_wait_rejects_missing_or_malformed_cooldown(status):
 def test_capped_wait_preserves_reduced_counter_without_request_attempt(tmp_path, monkeypatch):
     connection = QuestConnection()
     connection.quest["nextquest"] = 3
-    original_poll = QuestCooldownWait.poll
     original_decision = ScriptedQuestPolicy.next_decision
-    monkeypatch.setattr(QuestCooldownWait, "poll", lambda self, *a, **kw: replace(
-        original_poll(self, *a, **kw), wait_seconds=0,
-    ))
+    immediate_timer_queries(monkeypatch)
 
     def cap_at_one(self, state):
         if self.return_home and state.quest_status.get("nextquest") == 1:
@@ -512,10 +682,7 @@ def test_live_runner_releases_sqlite_writer_at_every_adapter_boundary(tmp_path, 
 
     connection = OtherWriterConnection()
     connection.quest["nextquest"] = 2
-    original = QuestCooldownWait.poll
-    monkeypatch.setattr(QuestCooldownWait, "poll", lambda self, *a, **kw: replace(
-        original(self, *a, **kw), wait_seconds=0,
-    ))
+    immediate_timer_queries(monkeypatch)
     result, _ = run_session(tmp_path, monkeypatch, connection=connection, initial="quest-cooldown")
     assert result.status == "success"
     assert set(connection.boundaries) == {"connect", "read", "send", "close"}
@@ -552,13 +719,47 @@ def test_cleared_cooldown_does_not_start_a_quest_with_insufficient_remaining_tim
     monkeypatch.setattr(__import__(__name__), "spec", lambda path: replace(original_spec(path), max_runtime=30))
     connection = QuestConnection()
     connection.quest["nextquest"] = 1
-    original = QuestCooldownWait.poll
-    monkeypatch.setattr(QuestCooldownWait, "poll", lambda self, *a, **kw: replace(
-        original(self, *a, **kw), wait_seconds=0,
-    ))
+    immediate_timer_queries(monkeypatch)
     result, connection = run_session(tmp_path, monkeypatch, connection=connection, initial="quest-cooldown")
     assert result.final_state["quest_status"]["nextquest"] == 0
     assert result.final_state["campaign_quest_request_deferred"] is True
     assert "quest request" not in connection.sent
     assert "quest abort" not in connection.sent
     assert connection.sent[-1] == "quit"
+
+
+def test_connected_wait_drains_chatter_before_next_query_without_sleeping_reader(tmp_path, monkeypatch):
+    waits = []
+    original_sleep = asyncio.sleep
+
+    async def observe_sleep(delay, *args, **kwargs):
+        waits.append(delay)
+        await original_sleep(0)
+
+    class ChatteringConnection(QuestConnection):
+        queued = 0
+        query_count = 0
+
+        async def send_command(self, command):
+            if command != "quest time":
+                return await super().send_command(command)
+            self.sent.append(command)
+            self.query_count += 1
+            self.queued = 3
+
+        async def read_available(self, timeout=0.25):
+            if self.queued:
+                self.queued -= 1
+                if self.queued:
+                    return ReadResult(text="The Healer chants.\n<100/100 hits 100/100 mana 100/100 move [Midgaard]>")
+                self.quest["nextquest"] = 0
+                self.pending = True
+            return await super().read_available(timeout)
+
+    monkeypatch.setattr(asyncio, "sleep", observe_sleep)
+    connection = ChatteringConnection()
+    connection.quest["nextquest"] = 1
+    result, _ = run_session(tmp_path, monkeypatch, connection=connection, initial="quest-cooldown")
+    assert connection.query_count == 1
+    assert not any(delay >= 30 for delay in waits)
+    assert result.final_state["quest_status"]["total_points"] == 12

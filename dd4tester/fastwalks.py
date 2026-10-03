@@ -80,6 +80,10 @@ class Fastwalk:
     # transit interruption.  The starter still requires its live GMCP VNUM;
     # this never authorizes an endpoint or progression kill.
     route_bounded_transit_special_mobile_vnums: tuple[int, ...] = ()
+    # Exact noncombat quest transit only; runtime rechecks the whole purse.
+    route_economic_special_mobile_vnums: tuple[int, ...] = ()
+    route_economic_quest_identity: tuple[int, int, int] | None = None
+    route_economic_max_copper: int | None = None
 
     @property
     def commands(self) -> tuple[str, ...]:

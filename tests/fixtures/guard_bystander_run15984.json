@@ -1,0 +1,19 @@
+{
+  "source_revision": "6941814a72c464dd90c8127ad6b0573c69cf03d9",
+  "run_id": 15984,
+  "room_vnum": "10312",
+  "character_level": 29,
+  "alignment": -1000,
+  "events": [
+    {"seconds": 0.0, "kind": "response", "text": "Captain's Waiting Room\n[Exits: (east) south]\n[#5567] A townguard is on patrol.\n[#22755] The Captain of the Guard's Secretary is here.\n"},
+    {"seconds": 0.61, "kind": "response", "text": "Captain's Waiting Room\n[Exits: (east) south]\n[#5567] A townguard is on patrol.\n[#22755] The Captain of the Guard's Secretary is here.\n"},
+    {"seconds": 1.24, "kind": "response", "text": "Secretary looks like an easy kill.\nHowever, she is much healthier than you.\n"},
+    {"seconds": 1.85, "kind": "response", "text": "Your attempted stun misses Secretary.\nSecretary is in excellent condition.\n"},
+    {"seconds": 5.05, "kind": "response", "text": "You do the best you can!\nTownguard screams, 'You must DIE!'\nTownguard misses you.\n"},
+    {"seconds": 5.05, "kind": "enemies", "records": [
+      {"name": "Secretary", "level": "25", "hp": "783", "maxhp": "783", "isnpc": "10247"},
+      {"name": "Secretary", "level": "25", "hp": "783", "maxhp": "783", "isnpc": "10247"}
+    ]},
+    {"seconds": 5.71, "kind": "response", "text": "You flee from combat! You lose 576 exp.\n"}
+  ]
+}

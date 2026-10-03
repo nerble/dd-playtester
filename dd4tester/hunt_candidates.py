@@ -468,14 +468,14 @@ def _source_weapon_expected_attacks(
     skills: frozenset[str],
     known_skill_levels: Mapping[str, int] | None,
     swiftness: int | None,
-    dex_swiftness: int,
     counterbalance_percent: int | None = None,
 ) -> tuple[float, int]:
     """Return expected and maximum ``multi_hit`` attacks for one round.
 
     DD4 returns from ``multi_hit`` when a player misses the second or third
     attack, so the later attack probabilities are conditional rather than
-    additive.  Swiftness is an independent extra hit before that chain.
+    additive. Swiftness is the observed GET_SWIFT total, an independent extra
+    hit before that chain; DEX and enhanced swiftness are already included.
     """
     probability_second = 0.0
     probability_third = 0.0
@@ -515,20 +515,8 @@ def _source_weapon_expected_attacks(
         maximum_attacks += 1
 
     if swiftness is not None:
-        enhanced_swiftness = _source_skill_percent(
-            "enhanced swiftness",
-            skills,
-            known_skill_levels,
-        )
-        swift_chance = max(
-            0.0,
-            min(
-                100.0,
-                float(swiftness)
-                + float(dex_swiftness)
-                + enhanced_swiftness / 4.0,
-            ),
-        )
+        # rng.c rolls 1..100 and multi_hit uses a strict less-than check.
+        swift_chance = max(0.0, min(100.0, float(swiftness) - 1.0))
         expected_attacks += swift_chance / 100.0
         if swift_chance:
             maximum_attacks += 1
@@ -662,7 +650,6 @@ def source_combat_output_estimate(
     ranged_weapon_vnum: int | None = None,
     player_damroll: int = 0,
     player_swiftness: int | None = None,
-    player_dex_swiftness: int = 0,
     player_rage: int | None = None,
     player_max_rage: int | None = None,
     weapon_counterbalanced: bool = False,
@@ -708,7 +695,9 @@ def source_combat_output_estimate(
     alone is never treated as proof of that object property.
     DD4 conceals low-level damroll/swiftness with the sentinel 50000. Missing,
     concealed, or malformed values grant no damage bonus or swiftness credit;
-    the raw observation remains available to the caller for audit.
+    the raw observation remains available to the caller for audit. Revealed
+    player_swiftness is Char.Stats.swift / GET_SWIFT, not the base attribute;
+    do not add DEX or learned enhanced-swiftness bonuses to it again.
     """
     player_damroll = _observed_combat_stat(player_damroll) or 0
     player_swiftness = _observed_combat_stat(player_swiftness)
@@ -1365,10 +1354,6 @@ def source_combat_output_estimate(
             reference = "sft.c:do_ravage"
             resource_cost = 0
         elif action == "weapon strike":
-            try:
-                dex_swiftness = int(player_dex_swiftness)
-            except (TypeError, ValueError):
-                continue
             hit_values = _source_weapon_hit_values(
                 weapon_damage_range,
                 skills=skills,
@@ -1382,7 +1367,6 @@ def source_combat_output_estimate(
                 skills=skills,
                 known_skill_levels=known_skill_levels,
                 swiftness=player_swiftness,
-                dex_swiftness=dex_swiftness,
                 counterbalance_percent=counterbalance_percent,
             )
             minimum = min(hit_values)
@@ -1422,7 +1406,6 @@ def source_combat_output_estimate(
                         skills=skills,
                         known_skill_levels=known_skill_levels,
                         swiftness=player_swiftness,
-                        dex_swiftness=player_dex_swiftness,
                         counterbalance_percent=counterbalance_percent,
                     )
                 )
@@ -4094,10 +4077,10 @@ def rank_hunt_candidates(
                     world,
                     companion.vnum,
                 )
-                and not _source_guard_can_attack_player_fighting_target(
+                and not source_guard_can_join_player_fight(
                     world,
                     companion,
-                    mobile,
+                    character_alignment=character_alignment,
                 )
             ):
                 hazards.append(
@@ -4359,10 +4342,10 @@ def rank_hunt_candidates(
                     character_level=character_level,
                     character_alignment=character_alignment,
                 )
-                and not _source_guard_can_attack_player_fighting_target(
+                and not source_guard_can_join_player_fight(
                     world,
                     hazard,
-                    mobile,
+                    character_alignment=character_alignment,
                 )
             ):
                 hazards.append(
@@ -5757,6 +5740,7 @@ def _source_route_hazard_rejections(
     combat_at_destination: bool = True,
     invisible: bool = False,
     audit_invisible_equipment: bool = False,
+    economic_special_mobile_vnums: Collection[int] = (),
 ) -> tuple[str, ...]:
     """Return source-backed combat hazards on a route, including its endpoint.
 
@@ -5769,6 +5753,11 @@ def _source_route_hazard_rejections(
         raise ValueError("character_level must be at least 1")
     path_room_sequence = tuple(path_rooms)
     path_room_set = set(path_room_sequence)
+    economic_transit = {
+        vnum for vnum in economic_special_mobile_vnums
+        if not combat_at_destination
+        and source_mobile_has_only_economic_transit_risk(world, vnum)
+    }
     target_room_vnum = (
         path_room_sequence[-1] if path_room_sequence and combat_at_destination else None
     )
@@ -5803,11 +5792,11 @@ def _source_route_hazard_rejections(
                 )
             ):
                 continue
-            unsafe_special = _source_mobile_has_unsafe_special(
-                world,
-                mobile.vnum,
-                mobile,
-                character_level=character_level,
+            unsafe_special = (
+                mobile.vnum not in economic_transit
+                and _source_mobile_has_unsafe_special(
+                    world, mobile.vnum, mobile, character_level=character_level,
+                )
             )
             if require_no_combat_hazards and (
                 mobile.attack_programs
@@ -5894,11 +5883,11 @@ def _source_route_hazard_rejections(
             )
         ):
             continue
-        unsafe_special = _source_mobile_has_unsafe_special(
-            world,
-            mobile.vnum,
-            mobile,
-            character_level=character_level,
+        unsafe_special = (
+            mobile.vnum not in economic_transit
+            and _source_mobile_has_unsafe_special(
+                world, mobile.vnum, mobile, character_level=character_level,
+            )
         )
         hazard_rooms = (
             path_room_set
@@ -6102,6 +6091,7 @@ def source_route_hazard_rejections(
     combat_at_destination: bool = True,
     invisible: bool = False,
     audit_invisible_equipment: bool = False,
+    economic_special_mobile_vnums: Collection[int] = (),
 ) -> tuple[str, ...]:
     """Check a room path; noncombat endpoints omit only combat-only joiners."""
     return _source_route_hazard_rejections(
@@ -6112,6 +6102,21 @@ def source_route_hazard_rejections(
         combat_at_destination=combat_at_destination,
         invisible=invisible,
         audit_invisible_equipment=audit_invisible_equipment,
+        economic_special_mobile_vnums=economic_special_mobile_vnums,
+    )
+
+
+def source_mobile_has_only_economic_transit_risk(
+    world: WorldSource, mobile_vnum: int,
+) -> bool:
+    """Audit spec_thief without declaring it globally safe for travel or combat."""
+    mobile = world.mobiles.get(mobile_vnum)
+    resets = tuple(r for r in world.mob_resets if r.mobile_vnum == mobile_vnum)
+    return bool(
+        mobile is not None and not mobile.aggressive and not mobile.fear_aura
+        and not mobile.programs and not mobile.attack_programs
+        and set(world.mobile_specials.get(mobile_vnum, ())) == {"spec_thief"}
+        and resets and not any(r.equipment for r in resets)
     )
 
 
@@ -6227,18 +6232,27 @@ def _source_mobile_has_combat_joining_special(
     )
 
 
-def _source_guard_can_attack_player_fighting_target(
+def source_guard_can_join_player_fight(
     world: WorldSource,
     guard: MobileSource,
-    target: MobileSource,
+    *,
+    character_alignment: int | None = None,
 ) -> bool:
-    """Mirror spec_guard's separate attack on players fighting low-alignment NPCs."""
+    """Guard specials examine the fighting player's alignment, without a level cutoff.
+
+    In special.c, ``victim`` is the room occupant and ``victim->fighting``
+    must be an NPC. It is not the NPC target's alignment being compared.
+    Criminal flags have an independent path and need live non-hostility checks.
+    """
     return bool(
-        "spec_guard" in {
+        COMBAT_JOINING_SPECIALS.intersection({
             str(special).strip().casefold()
             for special in world.mobile_specials.get(guard.vnum, ())
-        }
-        and target.alignment < 300
+        })
+        and not (
+            type(character_alignment) is int
+            and 300 <= character_alignment <= 1000
+        )
     )
 
 
@@ -7088,14 +7102,15 @@ def _mobile_peak_round_damage(
     wielding: bool,
     dual_wielding: bool,
     damage_modifier: int | None = 0,
+    source_damage_bonus: int = 0,
 ) -> int:
     """Return the raw upper bound when every possible NPC strike lands."""
     unarmed_hit = _apply_mobile_damage_modifier(
-        _mobile_normal_hit_damage(level, wielding=False),
+        _mobile_normal_hit_damage(level, wielding=False) + source_damage_bonus,
         damage_modifier,
     )
     weapon_hit = _apply_mobile_damage_modifier(
-        _mobile_normal_hit_damage(level, wielding=True),
+        _mobile_normal_hit_damage(level, wielding=True) + source_damage_bonus,
         damage_modifier,
     )
     cycle_damage = weapon_hit if wielding else unarmed_hit
@@ -7105,9 +7120,18 @@ def _mobile_peak_round_damage(
     return cycle_damage * possible_attacks
 
 
+def _mobile_level_damage_bonus(level: int) -> int:
+    """Mirror one_hit's NPC level bands before wielding and damroll."""
+    if level < 30:
+        return level // 4
+    if level < 65:
+        return level // 2
+    return level * 3 // 4
+
+
 def _mobile_normal_hit_damage(level: int, *, wielding: bool) -> int:
     """Mirror the maximum ordinary NPC damage for one ``one_hit`` call."""
-    unarmed_hit = level * 3 // 2 + level // 4
+    unarmed_hit = level * 3 // 2 + _mobile_level_damage_bonus(level)
     return unarmed_hit + (unarmed_hit // 2 if wielding else 0)
 
 
@@ -7164,6 +7188,8 @@ def mobile_expected_round_damage(
     wielding: bool,
     dual_wielding: bool,
     damage_modifier: int | None = 0,
+    source_damage_bonus: int = 0,
+    sanctuary: bool = False,
 ) -> int:
     """Return a conservative source-derived NPC damage-per-round estimate.
 
@@ -7173,35 +7199,28 @@ def mobile_expected_round_damage(
     mobile's special procedures, so it is an admission estimate rather than
     a live combat result.
     """
+    if type(source_damage_bonus) is not int or type(sanctuary) is not bool:
+        raise ValueError("NPC damage bonuses and protection need explicit values")
     level = max(1, int(level))
+    level_bonus = _mobile_level_damage_bonus(level)
     base_damages = range(level // 2, level * 3 // 2 + 1)
-    damage_values = tuple(
-        _apply_mobile_damage_modifier(
-            (
-                damage
-                + level // 4
-                + (damage + level // 4) // 2
-                if wielding
-                else damage + level // 4
-            ),
-            damage_modifier,
-        )
-        for damage in base_damages
-    )
+
+    def hit_damage(damage: int, *, wielding: bool) -> int:
+        amount = damage + level_bonus + source_damage_bonus
+        if wielding:
+            amount += amount // 2
+        amount = _apply_mobile_damage_modifier(amount, damage_modifier)
+        return amount // 2 if sanctuary else amount
+
+    damage_values = tuple(hit_damage(damage, wielding=wielding)
+                          for damage in base_damages)
     if not damage_values:
         return 1
     damage_sum = sum(damage_values)
     damage_count = len(damage_values)
     if dual_wielding:
-        weapon_values = tuple(
-            _apply_mobile_damage_modifier(
-                damage
-                + level // 4
-                + (damage + level // 4) // 2,
-                damage_modifier,
-            )
-            for damage in base_damages
-        )
+        weapon_values = tuple(hit_damage(damage, wielding=True)
+                              for damage in base_damages)
         # NPC dual wielding uses a 90-percent source chance.
         cycle_numerator = damage_sum * 10 + sum(weapon_values) * 9
         cycle_denominator = damage_count * 10
@@ -7221,10 +7240,11 @@ def _mobile_critical_hit_damage(
     *,
     wielding: bool,
     damage_modifier: int | None = 0,
+    source_damage_bonus: int = 0,
 ) -> int:
     """Mirror DD4's NPC critical, which doubles one ordinary hit."""
     return 2 * _apply_mobile_damage_modifier(
-        _mobile_normal_hit_damage(level, wielding=wielding),
+        _mobile_normal_hit_damage(level, wielding=wielding) + source_damage_bonus,
         damage_modifier,
     )
 
@@ -7235,6 +7255,7 @@ def mobile_sanctuary_peak_round_damage(
     wielding: bool,
     dual_wielding: bool,
     damage_modifier: int | None = 0,
+    source_damage_bonus: int = 0,
 ) -> int:
     """Return a source upper bound after DD4 sanctuary mitigation.
 
@@ -7243,11 +7264,11 @@ def mobile_sanctuary_peak_round_damage(
     on the completed raw round total.
     """
     unarmed_hit = _apply_mobile_damage_modifier(
-        _mobile_normal_hit_damage(level, wielding=False),
+        _mobile_normal_hit_damage(level, wielding=False) + source_damage_bonus,
         damage_modifier,
     ) // 2
     weapon_hit = _apply_mobile_damage_modifier(
-        _mobile_normal_hit_damage(level, wielding=True),
+        _mobile_normal_hit_damage(level, wielding=True) + source_damage_bonus,
         damage_modifier,
     ) // 2
     cycle_damage = weapon_hit if wielding else unarmed_hit
@@ -7262,11 +7283,12 @@ def mobile_sanctuary_critical_hit_damage(
     *,
     wielding: bool,
     damage_modifier: int | None = 0,
+    source_damage_bonus: int = 0,
 ) -> int:
     """Return one critical-hit upper bound after sanctuary mitigation."""
     return (
         _apply_mobile_damage_modifier(
-            _mobile_normal_hit_damage(level, wielding=wielding),
+            _mobile_normal_hit_damage(level, wielding=wielding) + source_damage_bonus,
             damage_modifier,
         )
         // 2

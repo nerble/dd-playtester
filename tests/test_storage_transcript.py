@@ -359,7 +359,7 @@ def test_storage_replays_missing_transcript_suffix_idempotently(tmp_path) -> Non
     recorder.record(
         "state_snapshot",
         {
-            "reason": "room_entered",
+            "reason": "progress_changed",
             "source": "text",
             "state": {"name": "Kestrel", "level": 19, "room_vnum": "3054"},
         },
@@ -369,6 +369,10 @@ def test_storage_replays_missing_transcript_suffix_idempotently(tmp_path) -> Non
     assert imported == 2
     assert storage.repair_run_events_from_transcript(run_id) == 0
     assert len(storage.list_events(run_id)) == 3
+    snapshot_event = storage.list_events(run_id)[-1]
+    assert json.loads(snapshot_event["payload_json"]) == {
+        "reason": "progress_changed", "source": "text",
+    }
     snapshot = storage.get_latest_state_snapshot(run_id)
     recorder.close()
     storage.close()
@@ -484,11 +488,30 @@ def test_storage_lists_bounded_recent_campaign_history_in_sequence_order(
         for row in storage.list_recent_campaign_checkpoints(campaign_id, limit=2)
     ] == ["phase-2", "phase-3"]
 
+    full_summaries = storage.list_campaign_segment_summaries(
+        campaign_id,
+        include_state_progress=True,
+    )
+    assert json.loads(full_summaries[0]["start_state_json"]) == {
+        "level": None,
+        "xp": None,
+    }
+
+    def reject_json_projection(*_args):
+        raise AssertionError("default campaign reports must not parse state JSON")
+
+    storage.connection.create_function("json_extract", 2, reject_json_projection)
     summaries = storage.list_campaign_segment_summaries(campaign_id)
     assert summaries[0]["sequence"] == 1
     assert summaries[0]["phase"] == "phase-0"
-    assert "start_state_json" not in summaries[0].keys()
-    assert "end_state_json" not in summaries[0].keys()
+    assert summaries[0]["start_state_json"] is None
+    assert summaries[0]["end_state_json"] is None
+    assert "idx_campaign_run_links_sequence" in {
+        row["name"]
+        for row in storage.connection.execute(
+            "PRAGMA index_list(campaign_run_links)"
+        )
+    }
     assert [
         row["phase"]
         for row in storage.list_campaign_segments_for_phases(
@@ -648,7 +671,79 @@ def test_storage_maintains_exact_campaign_usage_after_segment_updates(tmp_path) 
         "command_count": 13,
         "duration_seconds": 5.0,
     }
+    assert storage._campaign_run_ids(campaign_id) == [7]
     storage.close()
+
+
+def test_campaign_run_link_backfill_is_bounded_and_resumable(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="legacy campaign",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        run_ids = [
+            storage.create_run(
+                scenario_name=f"scenario:{index}",
+                scenario_path=tmp_path / f"{index}.yaml",
+            )
+            for index in range(2)
+        ]
+        segment_ids = []
+        for index in range(2):
+            segment_id = storage.start_campaign_segment(
+                campaign_id,
+                phase=f"phase-{index}",
+                start_state={"level": index + 1},
+            )
+            storage.finish_campaign_segment(
+                segment_id,
+                status="success",
+                run_id=None,
+                end_state={"level": index + 1},
+                command_count=1,
+                duration_seconds=1,
+            )
+            segment_ids.append(segment_id)
+        storage.connection.execute("DROP TRIGGER campaign_run_link_after_update")
+        for run_id, segment_id in zip(run_ids, segment_ids):
+            storage.connection.execute(
+                "UPDATE campaign_segments SET run_id = ? WHERE id = ?",
+                (run_id, segment_id),
+            )
+        storage.connection.execute(
+            "DELETE FROM campaign_run_link_backfills WHERE campaign_id = ?",
+            (campaign_id,),
+        )
+        storage.connection.commit()
+
+        first = storage.backfill_campaign_run_links(campaign_id, limit=1)
+        second = storage.backfill_campaign_run_links(campaign_id, limit=1)
+        third = storage.backfill_campaign_run_links(campaign_id, limit=1)
+        state = storage.get_campaign_run_link_backfill_state(campaign_id)
+        linked_ids = storage._campaign_run_ids(campaign_id)
+
+    assert first == {
+        "segments_scanned": 1,
+        "runs_linked": 1,
+        "last_sequence": 1,
+        "complete": False,
+    }
+    assert second == {
+        "segments_scanned": 1,
+        "runs_linked": 1,
+        "last_sequence": 2,
+        "complete": False,
+    }
+    assert third == {
+        "segments_scanned": 0,
+        "runs_linked": 0,
+        "last_sequence": 2,
+        "complete": True,
+    }
+    assert state == {"last_sequence": 2, "complete": True}
+    assert linked_ids == run_ids
 
 
 def test_storage_filters_campaign_game_events_by_level_and_skill(tmp_path) -> None:

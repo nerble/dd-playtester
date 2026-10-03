@@ -7,6 +7,7 @@ from dd4tester.report import (
     _commentary,
     _balance_signals,
     _item_acquisition_count,
+    _objective_outcome,
     _progress_summary,
     build_campaign_report,
     build_run_report,
@@ -136,6 +137,50 @@ def test_report_infers_combat_from_confirmed_kills_when_start_text_is_missing() 
     assert "detected 1 combat start(s)" in combat_signal["detail"]
 
 
+def test_report_infers_distinct_combat_starts_from_enemy_stream_transitions() -> None:
+    def enemies(value):
+        return {
+            "payload": {
+                "type": "enemies_changed",
+                "data": {"package": "Char.Enemies", "value": value},
+            }
+        }
+
+    progress = _progress_summary(
+        {},
+        {},
+        [],
+        Counter(),
+        [
+            enemies([[{"name": "the bard", "isnpc": "20509"}]]),
+            enemies([]),
+            enemies([[{"name": "a guard", "isnpc": "1519"}]]),
+        ],
+        [],
+        [],
+        [],
+    )
+
+    assert progress["combat_starts"] == 2
+
+
+def test_terminal_required_item_failure_is_not_objective_success() -> None:
+    reason = "field expedition did not acquire required item(s): some blackberries"
+    events = [
+        {
+            "kind": "state",
+            "payload": {"state": "completed", "fastwalk_abort_reason": reason},
+        },
+    ]
+
+    outcome = _objective_outcome(
+        {"objective": {"fastwalk_route": "source food reserve blackberries 6023"}},
+        {}, [], events,
+    )
+
+    assert outcome == "not_achieved"
+
+
 def test_report_cli_writes_json_and_markdown(tmp_path, capsys) -> None:
     database = _create_report_run(tmp_path, status="success", error=None)
     json_path = tmp_path / "reports" / "run-1.json"
@@ -158,7 +203,9 @@ def test_report_cli_writes_json_and_markdown(tmp_path, capsys) -> None:
     assert str(json_path.resolve()) in captured.out
     report = json.loads(json_path.read_text(encoding="utf-8"))
     assert report["run"]["status"] == "success"
-    assert report["commentary"][-1] == "I completed the run successfully."
+    assert report["commentary"][-1] == (
+        "I finished the run; objective completion is unverified."
+    )
 
     exit_code = main(["report", "1", "--database", str(database)])
     captured = capsys.readouterr()
@@ -263,7 +310,11 @@ def test_campaign_report_aggregates_runs_and_writes_hero_artifacts(tmp_path) -> 
         storage.finish_run(run_id, status="success")
         storage.finish_campaign(campaign_id, status="success")
 
-        report = build_campaign_report(storage, campaign_id)
+        report = build_campaign_report(
+            storage,
+            campaign_id,
+            full_history=True,
+        )
         json_path, markdown_path = write_campaign_report(
             storage,
             campaign_id,
@@ -280,6 +331,9 @@ def test_campaign_report_aggregates_runs_and_writes_hero_artifacts(tmp_path) -> 
         "level_required": 1,
         "shortfall": 0,
     }
+    assert report["segments"][0]["start_xp"] == 0
+    assert report["segments"][0]["end_xp"] == 100
+    assert report["evidence"]["segment_details_included"] is True
     assert report["totals"]["kills"] == 1
     assert report["kills"][0]["source_mobile_vnum"] == 3729
     assert json_path.is_file()
@@ -305,6 +359,19 @@ def test_campaign_report_cli_renders_json(tmp_path, capsys) -> None:
             character_profile_path=tmp_path / "character.yaml",
             target_level=2,
         )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="test",
+            start_state={"level": 1, "xp": 0},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=None,
+            end_state={"level": 2, "xp": 100},
+            command_count=1,
+            duration_seconds=1,
+        )
 
     output = tmp_path / "campaign-report.json"
     exit_code = main(
@@ -315,6 +382,7 @@ def test_campaign_report_cli_renders_json(tmp_path, capsys) -> None:
             str(database),
             "--format",
             "json",
+            "--full-history",
             "--output",
             str(output),
         ]
@@ -325,6 +393,32 @@ def test_campaign_report_cli_renders_json(tmp_path, capsys) -> None:
     assert str(output.resolve()) in captured.out
     rendered = json.loads(output.read_text(encoding="utf-8"))
     assert rendered["campaign"]["name"] == "Empty campaign"
+    assert rendered["segments"][0]["start_level"] == 1
+    assert rendered["segments"][0]["end_level"] == 2
+
+
+def test_campaign_run_link_backfill_cli_reports_completion(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="New campaign",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+
+    exit_code = main(
+        [
+            "backfill-campaign-runs",
+            str(campaign_id),
+            "--database",
+            str(database),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run-link backfill complete." in captured.out
 
 
 def test_commentary_explains_an_empty_run_has_no_experience_progress() -> None:
@@ -338,8 +432,37 @@ def test_commentary_explains_an_empty_run_has_no_experience_progress() -> None:
 
     assert commentary == [
         "I made no experience progress this run.",
-        "I completed the run successfully.",
+        "I finished the run; objective completion is unverified.",
     ]
+
+
+def test_commentary_does_not_call_a_safe_abort_objective_success() -> None:
+    commentary = _commentary(
+        [],
+        "success",
+        None,
+        {"experience": {"change": 0}, "confirmed_kills": []},
+        2,
+        objective_outcome="not_achieved",
+        safety_outcome="safe",
+    )
+
+    assert commentary[-1] == "I finished safely, but did not achieve the objective."
+
+
+def test_cached_summary_ending_tracks_its_objective_outcome(tmp_path) -> None:
+    database = _create_report_run(tmp_path, status="success", error=None)
+
+    with RunStorage(database) as storage:
+        summary = storage.get_run_summary(1)
+        assert summary is not None
+        summary["outcomes"]["objective"] = "not_achieved"
+        summary["outcomes"]["safety"] = "safe"
+        summary["commentary"][-1] = "I completed the run successfully."
+        storage.save_run_summary(1, summary)
+        report = build_run_report(storage, 1)
+
+    assert report["commentary"][-1] == "I finished safely, but did not achieve the objective."
 
 
 def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
