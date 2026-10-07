@@ -1,6 +1,7 @@
 """Historical campaign checkpoint migrations, isolated from policy selection."""
 from __future__ import annotations
 
+import json
 from threading import RLock
 from typing import Any, Collection
 
@@ -11,6 +12,8 @@ def refresh_policy_revision(
     state: dict[str, Any],
     *,
     completed_policy_ids: Collection[str] = (),
+    recent_segments: Collection[Any] = (),
+    recent_checkpoints: Collection[Any] = (),
     helper_namespace: dict[str, Any],
 ) -> dict[str, Any]:
     """Apply the legacy checkpoint migration using audited campaign helpers."""
@@ -25,10 +28,381 @@ def refresh_policy_revision(
             for name, value in helper_namespace.items()
             if not name.startswith('__') and name not in protected
         })
-        return _refresh_campaign_policy_revision_impl(
+        refreshed = _refresh_campaign_policy_revision_impl(
             state,
             completed_policy_ids=completed_policy_ids,
         )
+        refreshed = _repair_pounding_weapon_rearm_attempt(
+            refreshed,
+            recent_segments,
+        )
+        return _restore_pounding_weapon_rearm_attempt(
+            refreshed,
+            recent_checkpoints,
+        )
+
+
+def _restore_pounding_weapon_rearm_attempt(
+    state: dict[str, Any],
+    recent_checkpoints: Collection[Any],
+) -> dict[str, Any]:
+    """Recover a valid frontier marker lost by an older state merge."""
+    marker_key = "campaign_pounding_weapon_rearm_attempt"
+    if _rearm_marker_matches_state(state.get(marker_key), state):
+        return state
+
+    for raw_checkpoint in reversed(tuple(recent_checkpoints)):
+        try:
+            checkpoint = dict(raw_checkpoint)
+        except (TypeError, ValueError):
+            continue
+        snapshot = _rearm_segment_state(checkpoint.get("state_json"))
+        if snapshot is None:
+            continue
+        marker = snapshot.get(marker_key)
+        if not (
+            _rearm_marker_matches_state(marker, snapshot)
+            and _rearm_marker_matches_state(marker, state)
+        ):
+            continue
+        updated = dict(state)
+        updated[marker_key] = dict(marker)
+        return updated
+
+    if marker_key in state:
+        updated = dict(state)
+        updated.pop(marker_key, None)
+        return updated
+    return state
+
+
+def _rearm_marker_matches_state(
+    marker: object,
+    state: dict[str, Any],
+) -> bool:
+    if not isinstance(marker, dict) or state.get("campaign_has_weapon") is not True:
+        return False
+    level = _rearm_integer(state.get("level"))
+    try:
+        marker_level = _rearm_integer(marker.get("level"))
+    except AttributeError:
+        return False
+    boot_id = str(state.get("world_boot_id") or "")
+    source_revision = str(state.get("campaign_source_revision") or "")
+    primary = _rearm_weapon_name(state.get("campaign_primary_weapon"))
+    return bool(
+        level is not None
+        and level == marker_level
+        and boot_id
+        and marker.get("boot_id") == boot_id
+        and source_revision
+        and marker.get("source_revision") == source_revision
+        and primary
+        and marker.get("primary_weapon") == primary
+    )
+
+
+def restore_checkpointed_sanctuary_attempts(
+    state: dict[str, Any],
+    recent_checkpoints: Collection[Any],
+) -> dict[str, Any]:
+    """Restore reserve-route limits dropped by an older unrelated merge."""
+    attempts_key = "campaign_sanctuary_resource_attempts"
+    boot_id = str(state.get("world_boot_id") or "")
+    level = _rearm_integer(state.get("level"))
+    if not boot_id or level is None:
+        return state
+
+    reset_marker = state.get("campaign_sanctuary_area_reset_recheck")
+    reset_policy_ids: set[str] = set()
+    if (
+        isinstance(reset_marker, dict)
+        and reset_marker.get("boot_id") == boot_id
+        and _rearm_integer(reset_marker.get("level")) == level
+        and reset_marker.get("status") in {"pending", "attempted"}
+    ):
+        raw_policy_ids = reset_marker.get("policy_ids")
+        if isinstance(raw_policy_ids, (list, tuple, set, frozenset)):
+            reset_policy_ids = {str(value) for value in raw_policy_ids}
+
+    results = state.get("campaign_research_results")
+    results = results if isinstance(results, dict) else {}
+    current_attempts = state.get(attempts_key)
+    attempts = dict(current_attempts) if isinstance(current_attempts, dict) else {}
+    checkpoint_attempts: dict[str, dict[str, Any]] = {}
+
+    for raw_checkpoint in reversed(tuple(recent_checkpoints)):
+        try:
+            checkpoint = dict(raw_checkpoint)
+        except (TypeError, ValueError):
+            continue
+        snapshot = _rearm_segment_state(checkpoint.get("state_json"))
+        if not (
+            isinstance(snapshot, dict)
+            and str(snapshot.get("world_boot_id") or "") == boot_id
+            and _rearm_integer(snapshot.get("level")) == level
+        ):
+            continue
+        snapshot_results = snapshot.get("campaign_research_results")
+        snapshot_results = (
+            snapshot_results if isinstance(snapshot_results, dict) else {}
+        )
+        snapshot_attempts = snapshot.get(attempts_key)
+        if not isinstance(snapshot_attempts, dict):
+            continue
+        for raw_policy_id, raw_record in snapshot_attempts.items():
+            policy_id = str(raw_policy_id)
+            if not isinstance(raw_record, dict):
+                continue
+            if (
+                raw_record.get("boot_id") != boot_id
+                or _rearm_integer(raw_record.get("level")) != level
+            ):
+                continue
+            if policy_id in reset_policy_ids and raw_record.get(
+                "area_reset_cycle"
+            ) != 1:
+                continue
+            result = snapshot_results.get(policy_id)
+            if (
+                isinstance(result, dict)
+                and result.get("boot_id") == boot_id
+                and result.get("required_object_acquired") is True
+            ):
+                continue
+            try:
+                count = max(0, int(raw_record.get("count") or 0))
+            except (TypeError, ValueError):
+                continue
+            existing = checkpoint_attempts.get(policy_id)
+            try:
+                existing_count = int(existing.get("count") or 0) if existing else -1
+            except (TypeError, ValueError):
+                existing_count = -1
+            if count > existing_count:
+                checkpoint_attempts[policy_id] = dict(raw_record)
+
+    restored = False
+    for policy_id, checkpoint_record in checkpoint_attempts.items():
+        current_result = results.get(policy_id)
+        if (
+            isinstance(current_result, dict)
+            and current_result.get("boot_id") == boot_id
+            and current_result.get("required_object_acquired") is True
+        ):
+            continue
+        current_record = attempts.get(policy_id)
+        if policy_id in reset_policy_ids:
+            if (
+                isinstance(current_record, dict)
+                and current_record.get("area_reset_cycle") == 1
+                and current_record.get("boot_id") == boot_id
+                and _rearm_integer(current_record.get("level")) == level
+                and current_record.get("area_reset_after_segment_id")
+                == checkpoint_record.get("area_reset_after_segment_id")
+            ):
+                try:
+                    current_count = max(
+                        0,
+                        int(current_record.get("count") or 0),
+                    )
+                    checkpoint_count = max(
+                        0,
+                        int(checkpoint_record.get("count") or 0),
+                    )
+                except (TypeError, ValueError):
+                    continue
+                if current_count >= checkpoint_count:
+                    continue
+                attempts[policy_id] = {
+                    **checkpoint_record,
+                    **current_record,
+                    "count": checkpoint_count,
+                }
+            else:
+                attempts[policy_id] = checkpoint_record
+            restored = True
+            continue
+        if isinstance(current_record, dict):
+            if (
+                current_record.get("boot_id") != boot_id
+                or _rearm_integer(current_record.get("level")) != level
+            ):
+                continue
+            if current_record.get("area_reset_cycle") == 1:
+                continue
+            try:
+                current_count = max(0, int(current_record.get("count") or 0))
+                checkpoint_count = max(
+                    0,
+                    int(checkpoint_record.get("count") or 0),
+                )
+            except (TypeError, ValueError):
+                continue
+            if current_count >= checkpoint_count:
+                continue
+            attempts[policy_id] = {
+                **checkpoint_record,
+                **current_record,
+                "count": checkpoint_count,
+            }
+        else:
+            attempts[policy_id] = checkpoint_record
+        restored = True
+
+    if not restored:
+        return state
+    updated = dict(state)
+    updated[attempts_key] = attempts
+    return updated
+
+
+def _repair_pounding_weapon_rearm_attempt(
+    state: dict[str, Any],
+    recent_segments: Collection[Any],
+) -> dict[str, Any]:
+    """Persist one exact safe rearm-route failure for the current frontier."""
+    marker_key = "campaign_pounding_weapon_rearm_attempt"
+    for raw_segment in reversed(tuple(recent_segments)):
+        try:
+            segment = dict(raw_segment)
+        except (TypeError, ValueError):
+            continue
+        error = str(segment.get("error") or "")
+        located_route_blocked = (
+            "Dave's located room" in error
+            and "no source-safe sweep within 22 commands" in error
+        )
+        located_room_unmapped = (
+            "Dave's located room" in error
+            and "had no bounded source-reachable room set" in error
+        )
+        completed_sweep_empty = (
+            "Dave was absent from every source room in the single bounded locator sweep"
+            in error
+        )
+        locator_empty = "Dave was absent from the one live locator check" in error
+        if (
+            segment.get("phase") != "rearm-primary-weapon"
+            or segment.get("status") != "failed"
+            or segment.get("execution_status") != "failed"
+            or segment.get("safety_outcome") != "safe"
+            or not (
+                located_route_blocked
+                or located_room_unmapped
+                or completed_sweep_empty
+                or locator_empty
+            )
+            or "returned to the healer without retrying" not in error
+        ):
+            continue
+        try:
+            command_count = int(segment.get("command_count") or 0)
+            run_id = int(segment.get("run_id"))
+            segment_id = int(segment.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if command_count <= 0:
+            continue
+        start = _rearm_segment_state(segment.get("start_state_json"))
+        end = _rearm_segment_state(segment.get("end_state_json"))
+        if start is None or end is None:
+            continue
+        current_level = _rearm_integer(state.get("level"))
+        start_level = _rearm_integer(start.get("level"))
+        end_level = _rearm_integer(end.get("level"))
+        current_xp = _rearm_integer(state.get("xp"))
+        start_xp = _rearm_integer(start.get("xp"))
+        end_xp = _rearm_integer(end.get("xp"))
+        source_revision = str(state.get("campaign_source_revision") or "")
+        boot_id = str(state.get("world_boot_id") or "")
+        primary = _rearm_weapon_name(state.get("campaign_primary_weapon"))
+        if not (
+            current_level is not None
+            and current_level == start_level == end_level
+            and current_xp is not None
+            and current_xp == start_xp == end_xp
+            and boot_id
+            and boot_id
+            == start.get("world_boot_id")
+            == end.get("world_boot_id")
+            and source_revision
+            and source_revision
+            == start.get("campaign_source_revision")
+            == end.get("campaign_source_revision")
+            and state.get("campaign_has_weapon") is True
+            and start.get("campaign_has_weapon") is True
+            and end.get("campaign_has_weapon") is True
+            and primary
+            and primary
+            == _rearm_weapon_name(start.get("campaign_primary_weapon"))
+            == _rearm_weapon_name(end.get("campaign_primary_weapon"))
+            and state.get("room_vnum") == "3054"
+            and end.get("room_vnum") == "3054"
+            and state.get("dead") is False
+            and start.get("dead") is False
+            and end.get("dead") is False
+            and state.get("in_combat") is False
+            and start.get("in_combat") is False
+            and end.get("in_combat") is False
+            and start.get("xp_loss_observed") is not True
+            and end.get("xp_loss_observed") is not True
+            and state.get("xp_loss_observed") is not True
+        ):
+            continue
+        loss_keys = ("xp_loss_total", "campaign_xp_loss_total")
+        if any(
+            start.get(key) is None
+            or start.get(key) != end.get(key)
+            or (state.get(key) is not None and state.get(key) != end.get(key))
+            for key in loss_keys
+        ):
+            continue
+        if state.get("campaign_xp_loss_observed") is True or any(
+            snapshot.get("campaign_xp_loss_observed") is True
+            for snapshot in (start, end)
+        ):
+            continue
+        updated = dict(state)
+        updated[marker_key] = {
+            "level": current_level,
+            "observed_xp": current_xp,
+            "xp_loss_total": end.get("xp_loss_total"),
+            "campaign_xp_loss_total": end.get("campaign_xp_loss_total"),
+            "boot_id": boot_id,
+            "source_revision": source_revision,
+            "primary_weapon": primary,
+            "run_id": run_id,
+            "segment_id": segment_id,
+            "reason": "safe_rearm_route_blocked",
+        }
+        return updated
+    return state
+
+
+def _rearm_segment_state(value: object) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _rearm_integer(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _rearm_weapon_name(value: object) -> str:
+    return " ".join(str(value or "").casefold().split())
 
 
 def _refresh_campaign_policy_revision_impl(

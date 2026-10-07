@@ -35,6 +35,48 @@ def test_show_runs_lists_existing_runs(tmp_path, capsys) -> None:
     assert "success" in captured.out
 
 
+def test_summarize_runs_can_scope_backfill_to_one_campaign(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Scoped campaign",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=30,
+        )
+        run_id = storage.create_run(
+            scenario_name="legacy-run",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="run_context",
+            payload={"character": {"name": "Evidence"}, "objective": {}},
+        )
+        storage.finish_run(run_id, status="success")
+        storage.connection.execute("DELETE FROM run_summaries")
+        storage.connection.execute(
+            """
+            INSERT INTO campaign_run_links (campaign_id, run_id, first_sequence)
+            VALUES (?, ?, 1)
+            """,
+            (campaign_id, run_id),
+        )
+        storage.connection.commit()
+
+    result = main([
+        "summarize-runs", "--database", str(database),
+        "--campaign-id", str(campaign_id), "--limit", "1",
+    ])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    expected = f"Cached summaries for 1 completed run(s) in campaign {campaign_id}"
+    assert expected in captured.out
+    with RunStorage(database, read_only=True) as storage:
+        assert storage.get_run_summary(run_id) is not None
+
+
 def test_experiment_can_start_from_exact_campaign_checkpoint(tmp_path, capsys) -> None:
     database = tmp_path / "runs.sqlite3"
     objective = tmp_path / "objective.json"
@@ -95,6 +137,143 @@ def test_experiment_can_start_from_exact_campaign_checkpoint(tmp_path, capsys) -
     assert provenance["phase"] == "healer-frontier"
     assert provenance["reason"] == "experiment-start"
     assert provenance["created_at"]
+
+
+def test_experiment_compare_cli_displays_variant_metrics(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    starting_state = {
+        "name": "Dorrik", "race": "dwarf", "sex": "male",
+        "character_class": "warrior", "subclass": "knight",
+        "level": 29, "xp": 610206, "world_boot_id": "boot-1",
+        "room_vnum": "3054", "hp": 666, "max_hp": 666,
+        "mana": 295, "max_mana": 295, "move": 430, "max_move": 430,
+        "stats": {"str": 18, "con": 18}, "currencies": {"copper": 5},
+        "inventory": [], "equipment": [], "quest_points": 0,
+        "total_quest_points": 0,
+    }
+    metrics = {
+        "net_xp": 900, "elapsed_seconds": 90, "confirmed_kills": 2,
+        "deaths": 0, "xp_lost": 0, "quest_points_gained": 0,
+        "productive_combat_seconds": 50, "travel_seconds": 20,
+        "maintenance_seconds": 10, "waiting_seconds": 10,
+    }
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="starter:Dorrik",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        experiment_id = storage.create_campaign_experiment(
+            comparison_key="dorrik-level-29",
+            variant="baseline",
+            test_mode="ordinary-player",
+            tester_version="0.1.0",
+            dd4_version="test-build",
+            starting_state=starting_state,
+            objective={"target_level": 30},
+            run_id=run_id,
+        )
+        storage.finish_run(run_id, status="success")
+        storage.finish_campaign_experiment(
+            experiment_id, run_id=run_id, metrics=metrics,
+        )
+
+    exit_code = main([
+        "experiment", "compare", "--comparison", "dorrik-level-29",
+        "--database", str(database),
+    ])
+
+    captured = capsys.readouterr()
+    summary = json.loads(captured.out)
+    assert exit_code == 0
+    assert summary["comparison_key"] == "dorrik-level-29"
+    assert summary["variants"][0]["variant"] == "baseline"
+    assert summary["variants"][0]["mean_net_xp_per_minute"] == 600
+
+
+def test_experiment_finish_derives_metrics_from_its_linked_run(
+    tmp_path, capsys,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    starting_state = {
+        "name": "Dorrik", "race": "dwarf", "sex": "male",
+        "character_class": "warrior", "subclass": "knight",
+        "level": 29, "xp": 610206, "world_boot_id": "boot-1",
+        "room_vnum": "3054", "hp": 666, "max_hp": 666,
+        "mana": 295, "max_mana": 295, "move": 430, "max_move": 430,
+        "stats": {"str": 18, "con": 18}, "currencies": {"copper": 5},
+        "inventory": [], "equipment": [], "quest_points": 0,
+        "total_quest_points": 0, "xp_loss_total": 0,
+    }
+    final_state = {
+        **starting_state,
+        "level": 30,
+        "xp": 611106,
+        "quest_points": 1,
+        "total_quest_points": 1,
+        "xp_loss_total": 25,
+    }
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="starter:Dorrik",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        experiment_id = storage.create_campaign_experiment(
+            comparison_key="dorrik-level-30",
+            variant="source-informed",
+            test_mode="source-informed",
+            tester_version="0.1.0",
+            dd4_version="test-build",
+            source_revision="source-1",
+            starting_state=starting_state,
+            objective={"target_level": 30, "quest_points": 1},
+            run_id=run_id,
+        )
+        storage.record_state_snapshot(
+            run_id, source_event_id=None, reason="initial_state",
+            state=starting_state,
+        )
+        storage.record_event(
+            run_id, kind="state",
+            payload={"completed_kills": [{"mob_name": "test mob"}]},
+        )
+        storage.record_event(
+            run_id, kind="game_event",
+            payload={"type": "character_died", "source": "text", "data": {}},
+        )
+        storage.record_state_snapshot(
+            run_id, source_event_id=None, reason="level_changed",
+            state=final_state,
+        )
+        storage.finish_run(run_id, status="success")
+
+    result = main([
+        "experiment", "finish", str(experiment_id),
+        "--database", str(database),
+    ])
+
+    assert result == 0
+    assert "completed from linked run" in capsys.readouterr().out
+    with RunStorage(database, read_only=True) as storage:
+        record = storage.list_campaign_experiments(
+            comparison_key="dorrik-level-30",
+        )[0]
+        metrics = json.loads(record["metrics_json"])
+    assert metrics["net_xp"] == 900
+    assert metrics["confirmed_kills"] == 1
+    assert metrics["deaths"] == 1
+    assert metrics["xp_lost"] == 25
+    assert metrics["quest_points_gained"] == 1
+    assert metrics["elapsed_seconds"] >= 0
+    assert abs(
+        sum(
+            metrics[field]
+            for field in (
+                "productive_combat_seconds", "travel_seconds",
+                "maintenance_seconds", "waiting_seconds",
+            )
+        )
+        - metrics["elapsed_seconds"]
+    ) <= 0.03
 
 
 def test_large_database_inspection_uses_latest_indexed_campaign_checkpoint(
@@ -206,6 +385,7 @@ def test_show_combat_readiness_reports_output_and_blockers(
                 "max_hp": 100,
                 "progress": {"level": "10", "alignment": "1000"},
                 "stats": {"fame": "-12"},
+                "quest_status": {"active": 0, "nextquest": 0},
             },
         )
         storage.finish_run(run_id, status="success")
@@ -353,6 +533,7 @@ def test_show_combat_readiness_reports_output_and_blockers(
     assert report["quest"]["request_blocker"] == (
         "DD4 rejects new quest requests while fame is below zero"
     )
+    assert report["quest"]["last_campaign_request"] is None
     assert report["quest"]["questmaster"] == "Suturb"
     assert report["quest"]["level_gate_shortfall"] == 0
     assert any(
@@ -361,6 +542,31 @@ def test_show_combat_readiness_reports_output_and_blockers(
     )
     assert captured_alignment["value"] == 1000
     assert captured_alignment["level_ceiling_offset"] == 9
+
+
+def test_readiness_quest_record_keeps_request_history_out_of_live_gates() -> None:
+    state = {
+        "fame": 0,
+        "world_boot_id": "boot-29",
+        "quest_status": {
+            "active": 0,
+            "nextquest": 0,
+            "total_points": 0,
+        },
+        "campaign_quest_frontier_request": {
+            "boot_id": "boot-29",
+            "level": 29,
+            "session_revision": 234,
+            "reason": "live quest request dispatched",
+        },
+    }
+
+    report = dd4tester.cli._readiness_quest_record(state, level=29)
+
+    assert report["request_allowed"] is True
+    assert report["last_campaign_request"] == state[
+        "campaign_quest_frontier_request"
+    ]
 
 
 def test_readiness_candidate_reports_protected_hp_probe(monkeypatch) -> None:
@@ -2845,6 +3051,9 @@ def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
             end_state={"level": 2},
             command_count=42,
             duration_seconds=12.5,
+            execution_status="success",
+            objective_outcome="not_achieved",
+            safety_outcome="safe",
         )
         storage.record_campaign_checkpoint(
             campaign_id,
@@ -2866,7 +3075,10 @@ def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
     assert exit_code == 0
     assert "Campaign 1: Rulemage to HERO" in captured.out
     assert "Checkpoint 1: starter (segment_complete), level 2" in captured.out
-    assert "1\tstarter\tsuccess\t7\t42\t12.5s\t-" in captured.out
+    assert (
+        "1\tstarter\tsuccess\tsuccess\tnot_achieved\tsafe\t"
+        "7\t42\t12.5s\t-"
+    ) in captured.out
     assert "recent segments (up to 20; newest segment last)" in captured.out
 
 

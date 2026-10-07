@@ -1,9 +1,17 @@
 import json
 import threading
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
+from dd4tester import starter as starter_module
+from dd4tester.campaign import (
+    _campaign_deferred_practice_types,
+    _campaign_practice_types_spent,
+    _campaign_rejected_practice_skills,
+    _interrupted_provision_funding_evidence,
+)
 from dd4tester.report import (
     _activity_metrics,
     _objective_outcome,
@@ -15,6 +23,91 @@ from dd4tester.report import (
 from dd4tester.report_migrations import migrate_legacy_run_context
 import dd4tester.storage as storage_module
 from dd4tester.storage import RUN_REPORT_SUMMARY_VERSION, RunStorage
+from dd4tester.state import CharacterState
+
+
+def test_compact_projection_covers_every_durable_character_field() -> None:
+    transient = {"enemies", "acquired_items", "last_prompt"}
+    expected = {
+        item.name for item in fields(CharacterState)
+        if item.name not in transient
+    }
+    state = CharacterState(
+        inventory=[{"name": "ration"}],
+        equipment=[{"name": "sword"}],
+    )
+
+    compact = state.to_compact_dict()
+
+    assert set(compact) == expected
+    assert compact["world_boot_id"] is None
+    compact["inventory"][0]["name"] = "changed copy"
+    assert state.inventory == [{"name": "ration"}]
+
+
+def test_routine_cooldown_events_use_the_bounded_writer_without_a_barrier() -> None:
+    assert "quest_cooldown" not in starter_module._STORAGE_BARRIER_EVENT_KINDS
+    assert {
+        "run_context", "quest_request_attempt", "quest_phase_checkpoint",
+        "quest_phase_started",
+    } == starter_module._STORAGE_BARRIER_EVENT_KINDS
+
+
+def test_current_training_audit_skips_historical_event_scans() -> None:
+    class NoHistoryReads:
+        def list_campaign_game_events(self, *_args, **_kwargs):
+            raise AssertionError("a current training audit should be reused")
+
+    state = {
+        "level": 29,
+        "world_boot_id": "boot-1",
+        "campaign_training_audit": {
+            "observed": True,
+            "level": 29,
+            "boot_id": "boot-1",
+            "known_skill_levels": {"enhanced damage": 67},
+        },
+    }
+    storage = NoHistoryReads()
+
+    assert _campaign_practice_types_spent(
+        storage, 7, level=29, state=state,
+    ) == frozenset()
+    assert _campaign_deferred_practice_types(
+        storage, 7, level=29, state=state,
+    ) == frozenset()
+    assert _campaign_rejected_practice_skills(
+        storage, 7, level=29, character_class="warrior", state=state,
+    ) == frozenset()
+
+
+def test_stale_training_audit_keeps_historical_fallback() -> None:
+    class CountingHistory:
+        calls = 0
+
+        def list_campaign_game_events(self, *_args, **_kwargs):
+            self.calls += 1
+            return []
+
+    state = {
+        "level": 29,
+        "world_boot_id": "boot-1",
+        "campaign_training_audit": {
+            "observed": True,
+            "level": 29,
+            "boot_id": "older-boot",
+            "known_skill_levels": {"enhanced damage": 67},
+        },
+    }
+    storage = CountingHistory()
+
+    _campaign_practice_types_spent(storage, 7, level=29, state=state)
+    _campaign_deferred_practice_types(storage, 7, level=29, state=state)
+    _campaign_rejected_practice_skills(
+        storage, 7, level=29, character_class="warrior", state=state,
+    )
+
+    assert storage.calls == 3
 
 
 def _experiment_starting_state(name: str = "Evidence") -> dict[str, object]:
@@ -139,7 +232,7 @@ def test_queued_observations_keep_one_event_and_sparse_checkpoints(
     assert writer_threads
     assert all(thread_id != caller_thread for thread_id in writer_threads)
     assert [row["reason"] for row in snapshots] == [
-        "progress_changed", "run_finished",
+        "initial_state", "run_finished",
     ]
     assert json.loads(latest["state_json"])["revision"] == 2
     current_state = storage.connection.execute(
@@ -167,6 +260,95 @@ def test_queued_observations_keep_one_event_and_sparse_checkpoints(
     )
     assert build_run_report(storage, run_id)["outcomes"]["objective"] == "achieved"
     storage.close()
+
+
+def test_item_events_and_level_boundaries_replace_repeated_full_snapshots(
+    tmp_path,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database, event_commit_interval=100) as storage:
+        run_id = storage.create_run(
+            scenario_name="starter:Evidence",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        for index in range(25):
+            storage.queue_observation(
+                run_id,
+                kind="game_event",
+                payload={
+                    "type": "item_acquired",
+                    "source": "gmcp",
+                    "data": {"item": f"a test relic {index}"},
+                },
+                current_state={
+                    "name": "Evidence",
+                    "level": 29,
+                    "xp": 100 + index,
+                    "hp": 80,
+                    "max_hp": 100,
+                    "revision": index + 1,
+                    "inventory": [{"name": f"a test relic {index}"}],
+                    "acquired_items": [
+                        {"item": f"a test relic {prior}"}
+                        for prior in range(index + 1)
+                    ],
+                    "enemies": [],
+                    "last_prompt": {"text": "transient"},
+                },
+            )
+        storage.queue_observation(
+            run_id,
+            kind="game_event",
+            payload={"type": "progress_changed", "source": "gmcp", "data": {}},
+            current_state={
+                "name": "Evidence", "level": 30, "xp": 200,
+                "hp": 80, "max_hp": 100, "revision": 26,
+            },
+        )
+        storage.queue_observation(
+            run_id,
+            kind="game_event",
+            payload={"type": "progress_changed", "source": "gmcp", "data": {}},
+            current_state={
+                "name": "Evidence", "level": 30, "xp": 201,
+                "hp": 80, "max_hp": 100, "revision": 27,
+            },
+        )
+        storage.flush()
+        latest_live_state = storage.get_latest_state_snapshot(run_id)
+        assert latest_live_state["reason"] == "current_state"
+        assert json.loads(latest_live_state["state_json"])["xp"] == 201
+        storage.finish_run(run_id, status="success")
+
+        snapshots = storage.list_state_snapshots(run_id)
+        acquired = storage.connection.execute(
+            """
+            SELECT item_description, first_event_id
+            FROM character_acquired_items
+            WHERE character_name = ? COLLATE NOCASE
+            ORDER BY item_description
+            """,
+            ("Evidence",),
+        ).fetchall()
+        has_item_evidence = storage.character_has_acquired_item(
+            "Evidence", "test relic 0",
+        )
+        current_state = json.loads(
+            storage.connection.execute(
+                "SELECT state_json FROM run_current_states WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()["state_json"]
+        )
+
+    assert [row["reason"] for row in snapshots] == [
+        "initial_state", "level_changed", "run_finished",
+    ]
+    assert len(acquired) == 25
+    assert all(row["first_event_id"] is not None for row in acquired)
+    assert has_item_evidence
+    assert "acquired_items" not in current_state
+    assert "enemies" not in current_state
+    assert "last_prompt" not in current_state
 
 
 def test_live_state_writes_coalesce_until_the_writer_barrier(
@@ -367,6 +549,102 @@ def test_objective_outcome_requires_level_and_required_items() -> None:
             },
         }],
     ) == "achieved"
+
+
+def test_quest_reward_and_level_checkpoint_survive_database_reopen(
+    tmp_path,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    initial = {
+        "name": "Dorrik",
+        "level": 29,
+        "xp": 609_449,
+        "hp": 676,
+        "max_hp": 676,
+        "dead": False,
+        "quest_points": 0,
+        "total_quest_points": 0,
+    }
+    final = {
+        **initial,
+        "level": 30,
+        "xp": 614_000,
+        "quest_points": 1,
+        "total_quest_points": 1,
+    }
+
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Dorrik to HERO",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        run_id = storage.create_run(
+            scenario_name="hero:Dorrik",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="run_context",
+            payload={
+                "character": {"name": "Dorrik"},
+                "objective": {
+                    "kind": "quest_reward",
+                    "initial_total_quest_points": 0,
+                    "required_level": 30,
+                },
+            },
+        )
+        storage.queue_observation(
+            run_id,
+            kind="game_event",
+            payload={
+                "type": "vitals_changed",
+                "source": "gmcp",
+                "data": {},
+            },
+            current_state=initial,
+        )
+        storage.queue_observation(
+            run_id,
+            kind="game_event",
+            payload={
+                "type": "quest_status_changed",
+                "source": "gmcp",
+                "data": {"points": 1, "total_points": 1},
+            },
+            current_state=final,
+        )
+        storage.finish_run(
+            run_id,
+            status="success",
+            execution_status="success",
+            safety_outcome="safe",
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=run_id,
+            phase="quest-complete",
+            reason="verified quest reward and level transition",
+            state=final,
+        )
+
+    with RunStorage(database, read_only=True) as reopened:
+        report = build_run_report(reopened, run_id)
+        checkpoint = reopened.get_latest_campaign_checkpoint(campaign_id)
+
+    assert report["outcomes"] == {
+        "execution": "success",
+        "objective": "achieved",
+        "safety": "safe",
+    }
+    assert report["progress"]["level"]["change"] == 1
+    assert checkpoint is not None
+    restored = json.loads(checkpoint["state_json"])
+    assert restored["level"] == 30
+    assert restored["total_quest_points"] == 1
 
 
 def test_city_restock_objective_requires_pie_fill_drink_and_healer_return() -> None:
@@ -739,6 +1017,141 @@ def test_linked_run_contract_overrides_campaign_side_effect_inference(tmp_path) 
     assert "Objective: not_achieved 1" in render_campaign_markdown(campaign_report)
 
 
+def test_campaign_segment_can_override_linked_run_objective_scope(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="funding",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        run_id = storage.create_run(
+            scenario_name="fastwalk-provision funding representative:Evidence",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="run_context",
+            payload={
+                "character": {"name": "Evidence"},
+                "objective": {"fastwalk_kill_limit": 1},
+            },
+        )
+        storage.finish_run(
+            run_id,
+            status="failed",
+            execution_status="interrupted",
+            objective_outcome="not_achieved",
+            safety_outcome="safe",
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="provision-funding",
+            start_state={"name": "Evidence", "level": 29, "xp_loss_total": 0},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="ready",
+            run_id=run_id,
+            end_state={"name": "Evidence", "level": 29, "dead": False},
+            command_count=1,
+            duration_seconds=1,
+            execution_status="interrupted",
+            objective_outcome="achieved",
+            safety_outcome="safe",
+            prefer_segment_objective_outcome=True,
+        )
+        storage.save_run_summary(
+            run_id,
+            {
+                "outcomes": {
+                    "execution": "interrupted",
+                    "objective": "not_achieved",
+                    "safety": "safe",
+                }
+            },
+        )
+        run = storage.get_run(run_id)
+        segment = storage.list_campaign_segments(campaign_id)[0]
+
+    assert run is not None and run["objective_outcome"] == "not_achieved"
+    assert segment["execution_status"] == "interrupted"
+    assert segment["objective_outcome"] == "achieved"
+    assert segment["safety_outcome"] == "safe"
+
+
+def test_interrupted_funding_requires_exact_source_kill_and_coin_gain(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        run_id = storage.create_run(
+            scenario_name="fastwalk-provision funding representative:Evidence",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="run_context",
+            payload={
+                "character": {"name": "Evidence"},
+                "objective": {
+                    "level": 29,
+                    "fastwalk_route": "provision funding representative 10302",
+                    "fastwalk_hunt_stop_boundaries": [
+                        {
+                            "route_endpoint": "10302",
+                            "target": "foreign trade representative",
+                            "required_items": [],
+                        }
+                    ],
+                },
+            },
+        )
+        storage.finish_run(
+            run_id,
+            status="failed",
+            execution_status="interrupted",
+        )
+        start_state = {"level": 29, "currencies": {"copper": 8}}
+        end_state = {
+            "level": 29,
+            "currencies": {"gold": 22, "silver": 91, "copper": 9}
+        }
+        kills = [
+            {
+                "mob_name": "Foreign Trade Representative",
+                "source_mobile_vnum": 10245,
+                "source_policy_id": (
+                    "source-ranked-hunt-solace-10245-10302-29"
+                ),
+            }
+        ]
+
+        evidence = _interrupted_provision_funding_evidence(
+            storage,
+            run_id,
+            start_state=start_state,
+            end_state=end_state,
+            objective_kills=kills,
+        )
+        no_currency = _interrupted_provision_funding_evidence(
+            storage,
+            run_id,
+            start_state=start_state,
+            end_state=start_state,
+            objective_kills=kills,
+        )
+
+    assert evidence == {
+        "candidate_key": "solace.are:10245:10302",
+        "target": "Foreign Trade Representative",
+        "room_vnum": 10302,
+        "mobile_vnum": 10245,
+        "source_policy_id": "source-ranked-hunt-solace-10245-10302-29",
+        "currency_delta": 3111,
+        "run_id": run_id,
+        "level": 29,
+    }
+    assert no_currency is None
+
+
 def test_stale_report_summary_is_rebuilt_from_quest_evidence(tmp_path) -> None:
     database = tmp_path / "runs.sqlite3"
     with RunStorage(database) as storage:
@@ -876,6 +1289,66 @@ def test_campaign_report_uses_compact_segment_and_checkpoint_queries(tmp_path) -
     assert segment["metrics"]["activity"]["productive_combat_seconds"] == 8
 
 
+def test_campaign_segment_can_be_loaded_by_durable_id(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Route evidence",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=30,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="source-ranked-hunt-example",
+            start_state={
+                "name": "Dorrik",
+                "level": 29,
+                "campaign_source_revision": "old-revision",
+            },
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=123,
+            end_state={
+                "name": "Dorrik",
+                "level": 29,
+                "campaign_source_revision": "old-revision",
+                "campaign_field_city_preflight": {
+                    "run_id": 123,
+                    "complete": True,
+                    "blocked": False,
+                    "locations": ["the leather shop"],
+                },
+            },
+            command_count=0,
+            duration_seconds=0,
+        )
+
+        segment = storage.get_campaign_segment_by_id(campaign_id, segment_id)
+        missing = storage.get_campaign_segment_by_id(campaign_id + 1, segment_id)
+        projections = storage.list_recent_campaign_segment_state_projections(
+            campaign_id,
+            state_fields=(
+                "campaign_source_revision",
+                "campaign_field_city_preflight",
+            ),
+            limit=256,
+        )
+
+    assert segment is not None
+    assert segment["id"] == segment_id
+    assert segment["run_id"] == 123
+    assert missing is None
+    assert len(projections) == 1
+    projected_end = json.loads(projections[0]["end_state_json"])
+    assert projected_end["campaign_source_revision"] == "old-revision"
+    assert projected_end["campaign_field_city_preflight"]["locations"] == [
+        "the leather shop"
+    ]
+
+
 def test_campaign_report_does_not_scan_events_for_cached_runs(tmp_path) -> None:
     database = tmp_path / "runs.sqlite3"
     with RunStorage(database) as storage:
@@ -975,6 +1448,57 @@ def test_legacy_summary_backfill_is_bounded_and_resumable(tmp_path) -> None:
 
     assert first_page == [run_ids[0]]
     assert next_page == [run_ids[1]]
+
+
+def test_campaign_summary_backfill_is_scoped_and_resumable(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_ids = [
+            storage.create_campaign(
+                name=f"campaign-{index}",
+                config_path=tmp_path / f"campaign-{index}.yaml",
+                character_profile_path=tmp_path / f"character-{index}.yaml",
+                target_level=30,
+            )
+            for index in range(2)
+        ]
+        run_ids = [
+            storage.create_run(
+                scenario_name=f"scenario:{index}",
+                scenario_path=tmp_path / f"{index}.yaml",
+            )
+            for index in range(3)
+        ]
+        for run_id in run_ids:
+            storage.record_event(
+                run_id,
+                kind="run_context",
+                payload={"character": {"name": "Evidence"}, "objective": {}},
+            )
+            storage.finish_run(run_id, status="success")
+        storage.connection.execute("DELETE FROM run_summaries")
+        storage.connection.executemany(
+            """
+            INSERT INTO campaign_run_links (campaign_id, run_id, first_sequence)
+            VALUES (?, ?, ?)
+            """,
+            (
+                (campaign_ids[0], run_ids[0], 1),
+                (campaign_ids[1], run_ids[1], 1),
+                (campaign_ids[0], run_ids[2], 2),
+            ),
+        )
+        storage.connection.commit()
+
+        first_page = storage.summarize_legacy_runs(
+            limit=1, campaign_id=campaign_ids[0],
+        )
+        next_page = storage.summarize_legacy_runs(
+            after_run_id=first_page[-1], limit=1,
+            campaign_id=campaign_ids[0],
+        )
+
+    assert first_page == [run_ids[0]]
+    assert next_page == [run_ids[2]]
 
 
 def test_large_database_event_lookup_joins_canonical_payload(tmp_path, monkeypatch) -> None:
@@ -1089,6 +1613,102 @@ def test_experiment_records_comparable_conditions_and_attribution(tmp_path) -> N
     assert json.loads(row["metrics_json"])["net_xp"] == 1200
     assert row["bot_error"] == "missed capacity check"
     assert row["game_defect"] is None
+
+
+def test_experiment_comparison_summarizes_metrics_and_exposes_start_mismatch(
+    tmp_path,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    metric_sets = (
+        {
+            "net_xp": 1200, "elapsed_seconds": 90, "confirmed_kills": 3,
+            "deaths": 0, "xp_lost": 0, "quest_points_gained": 1,
+            "productive_combat_seconds": 45, "travel_seconds": 20,
+            "maintenance_seconds": 15, "waiting_seconds": 10,
+        },
+        {
+            "net_xp": 600, "elapsed_seconds": 60, "confirmed_kills": 2,
+            "deaths": 0, "xp_lost": 0, "quest_points_gained": 0,
+            "productive_combat_seconds": 30, "travel_seconds": 12,
+            "maintenance_seconds": 8, "waiting_seconds": 10,
+        },
+    )
+    variants = ("source-informed", "ordinary-control")
+    with RunStorage(database) as storage:
+        for index, (variant, metrics) in enumerate(zip(variants, metric_sets)):
+            run_id = storage.create_run(
+                scenario_name=f"starter:Experiment{index}",
+                scenario_path=tmp_path / f"character-{index}.yaml",
+            )
+            starting_state = _experiment_starting_state(f"Experiment{index}")
+            if index:
+                starting_state["xp"] += 100
+            experiment_id = storage.create_campaign_experiment(
+                comparison_key="warrior-level-29-balance",
+                variant=variant,
+                test_mode="ordinary-player",
+                tester_version="0.1.0",
+                dd4_version="build-1",
+                starting_state=starting_state,
+                objective={"target_level": 30},
+                run_id=run_id,
+            )
+            storage.finish_run(run_id, status="success")
+            storage.finish_campaign_experiment(
+                experiment_id,
+                run_id=run_id,
+                metrics=metrics,
+                bot_error="missed a recovery threshold" if index == 0 else None,
+                game_defect="incorrect server XP" if index else None,
+            )
+
+        summary = storage.summarize_campaign_experiment_comparison(
+            "warrior-level-29-balance",
+        )
+
+    assert summary is not None
+    assert summary["conditions_consistent"] is True
+    assert summary["conditions"]["test_mode"] == "ordinary-player"
+    assert summary["objective_consistent"] is True
+    assert summary["world_baseline_consistent"] is False
+    by_variant = {item["variant"]: item for item in summary["variants"]}
+    source = by_variant["source-informed"]
+    control = by_variant["ordinary-control"]
+    assert source["mean_metrics"]["net_xp"] == 1200
+    assert source["mean_net_xp_per_minute"] == 800
+    assert source["attribution"]["bot_error_arms"] == 1
+    assert source["attribution"]["game_defect_arms"] == 0
+    assert control["mean_net_xp_per_minute"] == 600
+    assert control["attribution"]["game_defect_arms"] == 1
+    assert control["starting_profiles"][0]["xp"] == (
+        _experiment_starting_state("Experiment1")["xp"] + 100
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("mana", -1),
+        ("mana", float("nan")),
+        ("max_mana", float("inf")),
+    ),
+)
+def test_experiment_rejects_invalid_starting_vitals(tmp_path, field, value) -> None:
+    starting_state = _experiment_starting_state()
+    starting_state[field] = value
+
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        with pytest.raises(ValueError, match=f"starting_state\\.{field}"):
+            storage.create_campaign_experiment(
+                comparison_key="mage-level-29",
+                variant="invalid-start",
+                test_mode="source-informed",
+                tester_version="0.1.0",
+                dd4_version="build-1",
+                source_revision="abc123",
+                starting_state=starting_state,
+                objective={"target_level": 30},
+            )
 
 
 def test_experiment_comparison_pins_versions_mode_and_objective_per_arm_start(

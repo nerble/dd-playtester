@@ -41,6 +41,7 @@ from .campaign import (
     _source_ranked_policy_id,
     _source_ranked_useful_fuzz_probability,
     _source_ranked_familiar_probe_allowed,
+    _reconcile_interrupted_segment,
     _state_has_sanctuary_reserve,
     run_campaign_file,
 )
@@ -101,6 +102,7 @@ from .quests import (
     snapshot_quest_status,
 )
 from .report import (
+    _build_run_report_uncached,
     build_campaign_report,
     build_run_report,
     render_campaign_markdown,
@@ -1242,6 +1244,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=20,
         help="maximum representative commentary entries, default: 20",
     )
+    refresh_run_summary_parser = subcommands.add_parser(
+        "refresh-run-summary",
+        help="rebuild and persist one completed run's compact report summary",
+    )
+    refresh_run_summary_parser.add_argument("run_id", type=int, help="stored run id")
+    refresh_run_summary_parser.add_argument(
+        "--database",
+        type=Path,
+        default=DEFAULT_DATABASE,
+        help=f"SQLite database path, default: {DEFAULT_DATABASE}",
+    )
 
     campaign_report_parser = subcommands.add_parser(
         "campaign-report",
@@ -1278,7 +1291,10 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_report_parser.add_argument(
         "--full-history",
         action="store_true",
-        help="include per-segment state projections; slower on long campaigns",
+        help=(
+            "include per-segment projections and chronological kill rows; "
+            "slower on long campaigns"
+        ),
     )
 
     show_campaign_parser = subcommands.add_parser(
@@ -1397,7 +1413,10 @@ def build_parser() -> argparse.ArgumentParser:
         "finish", help="record comparable metrics and classify observed defects",
     )
     experiment_finish.add_argument("experiment_id", type=int)
-    experiment_finish.add_argument("--metrics", type=Path, required=True)
+    experiment_finish.add_argument(
+        "--metrics", type=Path,
+        help="optional metrics JSON; otherwise derive them from the linked completed run",
+    )
     experiment_finish.add_argument("--run-id", type=int)
     experiment_finish.add_argument("--bot-error")
     experiment_finish.add_argument("--game-defect")
@@ -1411,15 +1430,31 @@ def build_parser() -> argparse.ArgumentParser:
     experiment_show.add_argument(
         "--database", type=Path, default=DEFAULT_DATABASE,
     )
+    experiment_compare = experiment_commands.add_parser(
+        "compare",
+        help="summarize whole-session metrics and attribution by variant",
+    )
+    experiment_compare.add_argument("--comparison", required=True)
+    experiment_compare.add_argument(
+        "--database", type=Path, default=DEFAULT_DATABASE,
+    )
     summarize_runs_parser = subcommands.add_parser(
         "summarize-runs",
-        help="refresh missing or outdated summaries for a bounded page of runs",
+        help=(
+            "refresh missing or outdated summaries for a bounded page of runs "
+            "or one campaign"
+        ),
     )
     summarize_runs_parser.add_argument(
         "--database", type=Path, default=DEFAULT_DATABASE,
     )
     summarize_runs_parser.add_argument("--after-run-id", type=int, default=0)
     summarize_runs_parser.add_argument("--limit", type=int, default=100)
+    summarize_runs_parser.add_argument(
+        "--campaign-id",
+        type=int,
+        help="backfill only runs linked to this campaign",
+    )
     backfill_campaign_runs_parser = subcommands.add_parser(
         "backfill-campaign-runs",
         help="materialize run links for one campaign in a bounded page",
@@ -2117,7 +2152,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "summarize-runs":
         return summarize_runs(
-            args.database, after_run_id=args.after_run_id, limit=args.limit,
+            args.database,
+            after_run_id=args.after_run_id,
+            limit=args.limit,
+            campaign_id=args.campaign_id,
         )
 
     if args.command == "backfill-campaign-runs":
@@ -2152,6 +2190,9 @@ def main(argv: list[str] | None = None) -> int:
             output=args.output,
             commentary_limit=args.commentary_limit,
         )
+
+    if args.command == "refresh-run-summary":
+        return refresh_run_summary(args.run_id, database=args.database)
 
     if args.command == "campaign-report":
         return show_campaign_report(
@@ -2302,9 +2343,11 @@ def manage_experiment(args: argparse.Namespace) -> int:
             return 0
 
         if args.experiment_command == "finish":
-            metrics = json.loads(args.metrics.read_text(encoding="utf-8"))
-            if not isinstance(metrics, dict):
-                raise ValueError("metrics file must contain a JSON object")
+            metrics = None
+            if args.metrics is not None:
+                metrics = json.loads(args.metrics.read_text(encoding="utf-8"))
+                if not isinstance(metrics, dict):
+                    raise ValueError("metrics file must contain a JSON object")
             with RunStorage(args.database) as storage:
                 exists = storage.connection.execute(
                     "SELECT 1 FROM campaign_experiments WHERE id = ?",
@@ -2320,7 +2363,22 @@ def manage_experiment(args: argparse.Namespace) -> int:
                     bot_error=args.bot_error,
                     game_defect=args.game_defect,
                 )
-            print(f"Experiment {args.experiment_id} completed")
+            source = "linked run" if metrics is None else "provided metrics"
+            print(f"Experiment {args.experiment_id} completed from {source}")
+            return 0
+
+        if args.experiment_command == "compare":
+            with RunStorage(args.database, read_only=True) as storage:
+                summary = storage.summarize_campaign_experiment_comparison(
+                    args.comparison,
+                )
+            if summary is None:
+                print(
+                    f"No experiment arms for comparison {args.comparison!r}",
+                    file=sys.stderr,
+                )
+                return 1
+            print(json.dumps(summary, indent=2, sort_keys=True))
             return 0
 
         with RunStorage(args.database, read_only=True) as storage:
@@ -2386,23 +2444,34 @@ def backfill_campaign_runs(
     return 0
 
 
-def summarize_runs(database: Path, *, after_run_id: int, limit: int) -> int:
+def summarize_runs(
+    database: Path,
+    *,
+    after_run_id: int,
+    limit: int,
+    campaign_id: int | None = None,
+) -> int:
     if not database.exists():
         print(f"No run database found at {database.resolve()}", file=sys.stderr)
         return 1
     if after_run_id < 0 or not 1 <= limit <= 1000:
         print("--after-run-id must be nonnegative and --limit must be 1..1000", file=sys.stderr)
         return 2
+    if campaign_id is not None and campaign_id < 1:
+        print("--campaign-id must be at least 1", file=sys.stderr)
+        return 2
     try:
         with RunStorage(database) as storage:
             run_ids = storage.summarize_legacy_runs(
                 after_run_id=after_run_id,
                 limit=limit,
+                campaign_id=campaign_id,
             )
     except Exception as exc:
         print(f"Run summary backfill failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Cached summaries for {len(run_ids)} completed run(s).")
+    scope = f" in campaign {campaign_id}" if campaign_id is not None else ""
+    print(f"Cached summaries for {len(run_ids)} completed run(s){scope}.")
     if run_ids:
         print(f"Last run id: {run_ids[-1]}; continue after it with --after-run-id {run_ids[-1]}.")
     return 0
@@ -2470,6 +2539,25 @@ def recover_runs(
                         character_name=character,
                     )
                 )
+                reconciled_segments = 0
+                if character:
+                    latest = storage.list_recent_campaign_segments(
+                        campaign_id,
+                        limit=1,
+                    )
+                    if (
+                        latest
+                        and latest[0]["status"] == "failed"
+                        and latest[0]["error"] == reason
+                    ):
+                        reconciled_segments = int(
+                            _reconcile_interrupted_segment(
+                                storage,
+                                campaign_id,
+                                latest[0],
+                                character_name=character,
+                            )
+                        )
         except KeyError as exc:
             print(str(exc), file=sys.stderr)
             return 1
@@ -2479,11 +2567,11 @@ def recover_runs(
             f"Replayed {repaired_events} transcript event(s) across "
             f"{1 if repaired_events else 0} run(s)."
         )
-        print("Bound 0 interrupted campaign segment(s) to a run.")
         print(f"Marked {recovered_runs} interrupted run(s) as failed.")
         print(
             f"Marked {segments} interrupted campaign segment(s) "
-            f"in campaign {campaign_id} as failed or ready."
+            f"in campaign {campaign_id} as failed or ready; "
+            f"reconciled {reconciled_segments} resumable checkpoint(s)."
         )
         return 0
 
@@ -3491,6 +3579,11 @@ def _readiness_quest_record(
         "fame_gate_allowed": quest_request_fame_allowed(state),
         "request_allowed": request_blocker is None,
         "request_blocker": request_blocker,
+        "last_campaign_request": (
+            dict(state["campaign_quest_frontier_request"])
+            if isinstance(state.get("campaign_quest_frontier_request"), Mapping)
+            else None
+        ),
         "fame_recovery_status": quest_fame_recovery_status(
             state,
             quest=quest,
@@ -3839,11 +3932,19 @@ def show_combat_readiness(
         + (str(character_fame) if character_fame is not None else "unknown")
     )
     print(
-        "Quest request: "
+        "Quest request (MUD-side): "
         + (
             f"available via {quest_record['questmaster']}"
             if quest_record["request_allowed"]
             else f"blocked ({quest_record['request_blocker']})"
+        )
+    )
+    print(
+        "Campaign quest-request history: "
+        + (
+            "marker present (audit only; not a request limit)"
+            if quest_record["last_campaign_request"] is not None
+            else "no marker (not an additional gate)"
         )
     )
     print(
@@ -4086,6 +4187,39 @@ def show_report(
     return 0
 
 
+def refresh_run_summary(run_id: int, *, database: Path) -> int:
+    if run_id < 1:
+        print("run_id must be at least 1", file=sys.stderr)
+        return 2
+    if not database.exists():
+        print(f"No run database found at {database.resolve()}", file=sys.stderr)
+        return 1
+
+    try:
+        with RunStorage(database) as storage:
+            run = storage.get_run(run_id)
+            if run is None:
+                print(f"No run with id {run_id} in {database.resolve()}", file=sys.stderr)
+                return 1
+            if run["finished_at"] is None:
+                print(f"Run {run_id} is still running; summary not refreshed.", file=sys.stderr)
+                return 2
+            summary = _build_run_report_uncached(
+                storage, run_id, commentary_limit=100,
+            )
+            storage.save_run_summary(run_id, summary)
+    except Exception as exc:
+        print(f"Run summary refresh failed: {exc}", file=sys.stderr)
+        return 1
+
+    outcomes = summary["outcomes"]
+    print(
+        f"Refreshed run {run_id}: execution={outcomes['execution']}, "
+        f"objective={outcomes['objective']}, safety={outcomes['safety']}."
+    )
+    return 0
+
+
 def show_campaign_report(
     campaign_id: int,
     *,
@@ -4322,7 +4456,10 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
     print(
         f"recent segments (up to {limit}; newest segment last)"
     )
-    print("sequence\tphase\tstatus\trun\tcommands\tduration\terror")
+    print(
+        "sequence\tphase\tsegment_status\texecution\tobjective\tsafety\t"
+        "run\tcommands\tduration\terror"
+    )
     for segment in segments:
         print(
             "\t".join(
@@ -4330,6 +4467,9 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                     str(segment["sequence"]),
                     segment["phase"],
                     segment["status"],
+                    segment["execution_status"] or "unknown",
+                    segment["objective_outcome"] or "unknown",
+                    segment["safety_outcome"] or "unknown",
                     str(segment["run_id"] or "-"),
                     str(segment["command_count"] or 0),
                     _duration(segment["duration_seconds"]),

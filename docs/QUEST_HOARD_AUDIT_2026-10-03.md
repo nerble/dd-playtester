@@ -982,3 +982,220 @@ Both requests were dispatched on the first arrival at Goldmoon after DD4
 announced eligibility. The normal timer is the only repeat-request cadence;
 unsafe assignments trigger their own new server cooldown and do not create a
 level- or reboot-based cap.
+
+Run **16335** observed the next zero at **8:57:54 PM NZST** and requested at
+**8:58:44 PM**. Goldmoon assigned a hoard retrieve for the amulet of Aevros
+(object **586**) in The Yellow Room, room **19082**, Mirror Realm, with 10
+minutes. Dorrik carried spade **3393**. The live runner applied the existing
+trap-aware execution blocker and aborted at **8:59:49 PM** before travel or
+digging; no XP, QP, or loss was recorded, and DD4 restarted `nextquest` at
+**15**. An independent source-only `build_source_hoard_execution_plan` call
+for this exact narrative identity, tool, and level failed with
+`hoard has no bounded source route from the registered healer`. This target is
+unreachable on the current audited graph independently of the still-missing
+live trap-recovery integration. Run **16336** observed the fresh timer online
+at **7** minutes at **9:06:10 PM**.
+
+Run **16336** observed DD4 clear `nextquest` at **9:12:51 PM NZST** and
+dispatched the next request at **9:13:41 PM**. Goldmoon assigned a retrieve
+quest for the City's ancient scroll (object **79**) in Tyrgoth's Inner Sanctum,
+room **2374**, Mahn-Tor Keep, with 22 minutes. The source route check found
+that access requires keys **2350** and **2353**, with no registered safe key
+route; Dorrik aborted at **9:14:59 PM** before entering the area. No XP, QP, or
+loss was recorded, and DD4 restarted `nextquest` at **15**. Run **16337**
+observed **14** minutes remaining at **9:16:19 PM**. The completed request
+confirms the timer is the only request cadence gate; this assignment is blocked
+by the locked route, not by request frequency.
+
+Run **16337** dispatched the next request at **9:30:44 PM NZST**, after DD4
+announced eligibility. Goldmoon assigned another retrieve quest for the City's
+ancient scroll (object **79**), this time in The Foothills of Mount Doom, room
+**15727**, with 17 minutes. GMCP marked the retrieval method as `hoard`; the
+campaign therefore applied the existing trap-aware hoard blocker and aborted
+at **9:32:20 PM** before travel or digging. No XP, QP, or loss was recorded,
+and DD4 restarted `nextquest` at **15**. This is a per-assignment execution
+gate, not a request-frequency limit; the next request remains available at the
+next live timer zero.
+
+Run **16344** observed the next timer clear at **9:46:25 PM NZST** and
+dispatched a request at **9:47:09 PM**. Goldmoon assigned a kill quest for
+mobile **16003**, The Prisoner, in Prison Cell, room **16343**, Underdark, with
+21 minutes. The source gate rejected the target because its reset capacity
+exceeds one and non-safe, combat-joining specials can reach the route. Dorrik
+aborted at **9:48:20 PM** before travelling to the target or fighting; no XP,
+QP, or loss was recorded, and DD4 restarted `nextquest` at **15**. This is a
+target-specific safety rejection; the live timer still permits the next
+request at zero.
+
+Run **16345** observed `nextquest` reach zero at **10:04:11 PM NZST** and
+dispatched another request at **10:05:47 PM**. Goldmoon assigned a kill quest
+for mobile **16129**, The Eye Killer, in Wyrm Street, room **16003**,
+Underdark, with 25 minutes. The source gate rejected the target because its
+reset capacity exceeds one, a source-capable companion can assist, another
+dangerous reset companion is present, and a non-safe special mobile crosses
+the route. Dorrik aborted at **10:06:57 PM** before travelling or fighting;
+no XP, QP, or loss was recorded, and DD4 restarted `nextquest` at **15**. Run
+**16346** observed the new cooldown counting down online at **13** minutes by
+**10:08:46 PM**. The repeated request was allowed at timer zero; the current
+wait is DD4's fresh post-abort timer, not a campaign request quota.
+
+Run **16346** observed `nextquest` clear at **10:24:10 PM NZST** and dispatched
+the next request at **10:25:48 PM** after the fresh Midgaard greeter check
+cleared. Goldmoon assigned the hoard retrieve for the Tome of Orinth (object
+**588**) in the Great Ice Cavern, room **17296**, Isles of the Pirate Lords,
+with 29 minutes. Dorrik carried the source-identified spade **3393** and
+completed the registered 48-step route to Goldmoon. On return to healer room
+3054, a stale `the wandering Midgaard greeter entered the route after the
+healer check` marker made the quest phase abort at **10:26:54 PM**, before
+source-route preflight or any digging. No XP, QP, or loss was recorded; DD4
+restarted `nextquest` at **15**. A fresh clear final route check now clears
+only this exact temporary marker; the live route and hoard safety gates remain.
+
+Run **16347** observed `nextquest` clear at **10:40:21 PM NZST** and requested
+again at **10:41:11 PM**. Goldmoon assigned the Coin of Serenos (object **585**)
+in the Tower of Sorcery antechamber, room **1453**, with 30 minutes. The source
+route audit found no safe route from recall at level 29: the 95-step shortest
+path crosses multiple reset crowds (shadow guardians, disembodied hands and
+eyes, golems, and the golem maker), while the source-safe path search found no
+alternative. Dorrik aborted at **10:42:12 PM** before travel or combat; no XP,
+QP, or loss was recorded, and DD4 restarted `nextquest` at **15**. This
+assignment is route-blocked, not request-limited.
+
+Run **16349** observed the next live timer reach zero at **10:59 PM NZST** and
+dispatched another request at **10:59:29 PM**. Goldmoon assigned a retrieve
+hoard for the Book of Fretya (object **78**) in the Cleric Academy, room
+**5116**, Drow City, with 22 minutes. Dorrik carried spade **3393**. The
+campaign's existing trap-aware hoard gate explicitly aborted at **11:00:58 PM**
+before travelling or digging; no XP, QP, or loss was recorded. Run **16350**
+observed the resulting ordinary `nextquest` cooldown at **13** minutes by
+**11:03:09 PM**. This confirms requests are not capped by level or reboot;
+the separate blocker is safe execution of this hoard assignment.
+
+Run **16350** observed the next live timer clear at **11:15:10 PM NZST** and
+dispatched a request at **11:15:59 PM**. Goldmoon assigned a kill quest for
+mobile **9533**, the nude sculpture, in room **9532**, Vampire Catacombs, with
+24 minutes. The source route requires locked-door key **9672**, with no
+registered safe key-access route. The campaign explicitly aborted at
+**11:17:05 PM** before travel or combat; no XP, QP, or loss was recorded, and
+DD4 restarted `nextquest` at **15**. Run **16351** confirmed the new connected
+cooldown at **14** minutes by **11:17:54 PM**. Request timing remains
+uncapped; this target was blocked by its locked route.
+
+Run **16351** stayed connected at healer room **3054** until DD4 reported the
+quest timer clear, then travelled the registered 48-step route and requested
+again from Goldmoon at **11:32:39 PM NZST**. Goldmoon assigned a 27-minute kill
+quest for mobile **10721**, the small red scorpion, in room **10773**, Training
+Room of the Scorpion, White Lotus Temple. The source area file contains five
+reset entries for this level-21 `spec_poison` target in that room, plus Ma Tang
+(mobile **10722**), a level-35 aggressive `spec_kungfu_poison` companion.
+The source specials are combat-triggered: `spec_poison` bites a player already
+fighting the scorpion on a one-in-four proc check; Ma Tang's aggressive flag
+and `spec_kungfu_poison` can produce a poison-palm attack on three of four
+combat invocations.
+At **11:34:15 PM**, the campaign aborted at the healer before travelling to
+the target or fighting. No XP, QP, or loss was recorded; DD4 restarted
+`nextquest` at **15**. This confirms another request was made as soon as the
+timer cleared; the assignment itself failed the source-backed safety gates.
+
+Run **16353** stayed connected through the new cooldown and dispatched the
+next Goldmoon request at **11:48:42 PM NZST**, after the live timer cleared.
+Goldmoon assigned an 11-minute retrieve quest for the Coin of Amaros (object
+**75**) in room **10775**, Training Room of the Centipede, White Lotus Temple.
+DD4's `quest.c` creates this ordinary quest object in its assigned room; it is
+not a reset or buried-hoard item. The source route audit found Ma Tang in room
+**10773**, Tang Seung Qwe in target room **10775**, and a large aggressive
+Barracuda crowd on the route in room **10005**. Dorrik aborted at the Healer at
+**11:50:25 PM**, before travelling to the target or fighting. No XP, QP, or
+loss was recorded; DD4 restarted `nextquest` at **15**. The request occurred
+at timer zero as expected; this assignment was blocked by its source-audited
+route hazards.
+
+Run **16354** remained connected until the live cooldown expired, then
+requested from Goldmoon at **12:06:14 AM NZST**. Goldmoon assigned a 29-minute
+kill quest for the cyclops (mobile **9202**) in room **9204**, A Blind Curve on
+the Mountain Path, Elemental Canyon. The source area registers
+`spec_cast_cleric`; the campaign's source safety gate also identifies the
+endpoint as aggressive. Dorrik issued `quest abort` at **12:07:45 AM**, before
+travelling or fighting. No XP, QP, or loss was recorded; DD4 restarted
+`nextquest` at **15**. Run **16355** confirmed the new connected cooldown at
+**13** minutes by **12:09:34 AM** and **12** minutes by **12:10:04 AM**. This is
+another successful timer-zero request followed by a separate, source-backed
+assignment rejection, not a request-frequency limit.
+
+Run **16355** remained connected through the cooldown and requested from
+Goldmoon at **12:24:36 AM NZST**, shortly after DD4 reported the timer clear at
+**12:23:46 AM**. Goldmoon assigned a 17-minute buried-hoard retrieve quest for
+the tattered codex (object **589**) in room **16296**, Audience Chamber,
+Underdark. Dorrik carried spade **3393**, so the blocker was not missing
+equipment: hoard execution is still disabled until the trap-aware recovery,
+guardian escape, and return-route contracts are integrated. He returned to the
+Healer and issued `quest abort` at **12:26:23 AM**, before travelling to or
+digging at the target. The source area resets one level-50 sentinel iron golem
+(mobile **16034**, wielding object **16024**) in room **16296**; this is source
+placement evidence only, not a live sighting from this run. No XP, QP, or loss
+was recorded, and DD4 restarted `nextquest` at **15**. This run confirms that
+having a spade alone does not make an unresolved hoard safe to execute.
+
+Run **16356** observed DD4 clear the live timer at **12:41:02 AM NZST** and
+immediately began the registered trip to Goldmoon. Dorrik reached her and
+issued `quest request` at **12:41:51 AM**. Goldmoon replied that no quests
+were available, and GMCP set `nextquest` to **3**; no quest was assigned.
+Dorrik recalled and returned to healer room **3054**. No XP, QP, or loss was
+recorded. Run **16357** confirmed the new connected server timer at **2** by
+**12:43:25 AM**. The first request followed the original timer expiry without
+an added campaign quota; the three-minute wait is DD4's response to having no
+quest available at that request.
+
+Run **16357** observed the new timer clear at **12:44:44 AM NZST** and
+requested from Goldmoon at **12:45:47 AM**. Goldmoon assigned a 10-minute
+buried-hoard retrieve quest for the tattered codex (object **589**) in room
+**16297**, Audience Chamber, Underdark. Dorrik carried spade **3393**, then
+recalled and returned to healer room **3054**. The campaign issued `quest
+abort` at **12:47:17 AM**, before travelling to or digging at the target,
+because trap-aware hoard execution is not yet integrated. The source reset
+loads up to four level-49 stone golems (mobile **16035**) into room **16297**
+and equips them with maces (object **16025**); this is source placement
+evidence, not a live sighting. An offline `hoard_return_plan` for endpoint
+**16297**, healer **3054**, and level **29** also returned
+`hoard has no bounded source route from the registered healer`; no live route
+was attempted. No XP, QP, or loss was recorded, and DD4 restarted `nextquest`
+at **15**.
+
+Run **16358** observed the connected timer clear at **1:01:38 AM NZST** and
+requested from Goldmoon at **1:02:28 AM**. Goldmoon assigned a 14-minute
+buried-hoard retrieve quest for the Bowl of Ambros (object **587**) in room
+**14646**, Temple of Zyklor, Zyklor's Tower. Dorrik carried spade **3393**.
+The campaign recalled him to the Healer and issued `quest abort` at
+**1:04:04 AM**, before travelling to or digging at the target. The source
+planner found no bounded route from healer **3054** at level **29**; the target
+area is **60-100** and resets a level-83 black dragon statue (mobile **14547**)
+with `spec_breath_acid`. This is source evidence only, not a live sighting. No
+XP, QP, or loss was recorded, and DD4 restarted `nextquest` at **15**.
+
+## October 7 Live Evidence
+
+DD4 source advanced from `7e163cd` to `48cb5a6` on October 7. The refreshed
+all-area parser loaded **13,052 rooms, 4,125 mobiles, and 6,138 objects** before
+the following source-route conclusions were recorded.
+
+Run **16359** requested again when DD4 reported `nextquest=0` at **1:18:21 AM
+NZST**. Goldmoon assigned a 20-minute kill quest for the Prisoner (mobile
+**1309**) in room **1327**, Tower of Sorcery. The cell door requires key
+**1323**, which the source resets on the level-17 Jailor (mobile **1310**) in
+room **1328**; that Jailor has `spec_cast_mage`. The bounded source-route check
+found no safe route from default recall: its shortest path crosses aggressive
+shadow-guardian crowds in rooms **1302** and **1308**. The campaign aborted at
+the Healer before travel or combat at **1:19:56 AM**. No XP, QP, or loss was
+recorded; DD4 restarted `nextquest` at **15**.
+
+Run **16360** requested again at timer zero, at **1:34:13 AM NZST**. Goldmoon
+assigned a 27-minute buried-hoard retrieve quest for the tattered codex
+(object **589**) in room **28756**, Central Omu, with spade **3393** carried.
+The campaign aborted at **1:35:44 AM**, before travel or digging, because the
+trap-aware recovery and return executor is not integrated. Independently, the
+source area `omu_central.are` enforces a level-40 minimum; Dorrik was level 29,
+and `hoard_return_plan` rejected the endpoint as unsupported access. No XP, QP,
+or loss was recorded; DD4 restarted `nextquest` at **15**. This assignment is
+not evidence that the spade failed or that Dorrik entered Omu. After a bounded
+provision restock, run **16362** resumed the same campaign at the Healer and
+was connected with 11 minutes remaining on the live timer as of **1:39 AM**.

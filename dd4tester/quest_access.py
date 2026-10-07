@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Mapping
 from .equipment import ITEM_KEY
 from .hunt_candidates import (
     WorldSource, _reset_object_vnums, _shortest_paths_from,
+    _shortest_source_analysis_path,
     source_route_hazard_rejections, source_safe_route_to_room,
     source_mobile_has_only_economic_transit_risk, source_mobile_search_rooms,
 )
@@ -118,6 +119,88 @@ class CircusAdmission:
     approach: tuple[str, ...]
     continuation: tuple[str, ...]
     room_vnums: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class QuestKeySourceChain:
+    key_object_vnum: int
+    gate_room_vnum: int
+    gate_direction: str
+    target_room_vnum: int
+    head_object_vnum: int
+    head_carrier_mobile_vnum: int
+    head_carrier_room_vnum: int
+    unlocker_mobile_vnum: int
+    unlocker_room_vnum: int
+
+
+def tentusks_key_source_chain(
+    world: WorldSource, target_room_vnum: int,
+) -> QuestKeySourceChain | None:
+    """Identify the checked-in stone-head/key sequence behind the TenTusks gate.
+
+    This is source evidence only. It does not admit the carrier fight, the
+    underwater room, or the route beyond the gate.
+    """
+    target = world.rooms.get(target_room_vnum)
+    gate = world.rooms.get(25429)
+    key = world.objects.get(25405)
+    head = world.objects.get(25404)
+    carrier = world.mobiles.get(25405)
+    unlocker = world.mobiles.get(25408)
+    exit_source = gate.exits.get("north") if gate is not None else None
+    analysis = _shortest_source_analysis_path(world.rooms, 3001, target_room_vnum)
+    carrier_resets = [
+        reset for reset in world.mob_resets
+        if reset.mobile_vnum == 25405 and reset.room_vnum == 25426
+        and head is not None and head.vnum in _reset_object_vnums(reset)
+    ]
+    unlocker_resets = [
+        reset for reset in world.mob_resets
+        if reset.mobile_vnum == 25408 and reset.room_vnum == 25429
+    ]
+    if (
+        target is None or target.area_file.casefold() != "tentusks.are"
+        or analysis is None or set(analysis[3]) != {25405}
+        or 25429 not in analysis[1] or 25430 not in analysis[1]
+        or "unlock north" not in analysis[0] or "open north" not in analysis[0]
+        or gate is None or exit_source is None
+        or exit_source.destination != 25430 or exit_source.key_vnum != 25405
+        or not exit_source.closed or not exit_source.locked
+        or key is None or key.item_type != ITEM_KEY
+        or key.short_description.casefold() != "a stone key"
+        or key.keywords.casefold().split() != ["stone", "key"]
+        or len(key.values) < 1 or key.values[0] != 25429
+        or head is None or "stone head" not in head.keywords.casefold()
+        or carrier is None or carrier.short_description.casefold() != "an octopus"
+        or not carrier.sentinel or carrier.aggressive or carrier.programs
+        or world.mobile_specials.get(carrier.vnum)
+        or unlocker is None or unlocker.short_description.casefold() != "a broken statue"
+        or len(carrier_resets) != 1 or carrier_resets[0].maximum_count != 1
+        or len(unlocker_resets) != 1 or unlocker_resets[0].maximum_count != 1
+    ):
+        return None
+
+    unlock_program = any(
+        program.trigger.casefold() == "give_prog"
+        and "badly chipped stone head" in program.condition.casefold()
+        and {"mpoload 25405", "unlock n", "mpjunk head", "mpjunk key"}
+        <= {command.casefold().strip() for command in program.commands}
+        for program in unlocker.programs
+    )
+    if not unlock_program:
+        return None
+    return QuestKeySourceChain(
+        key_object_vnum=key.vnum,
+        gate_room_vnum=gate.vnum,
+        gate_direction="north",
+        target_room_vnum=target_room_vnum,
+        head_object_vnum=head.vnum,
+        head_carrier_mobile_vnum=carrier.vnum,
+        head_carrier_room_vnum=25426,
+        unlocker_mobile_vnum=unlocker.vnum,
+        unlocker_room_vnum=gate.vnum,
+    )
 
 
 def circus_quest_admission(

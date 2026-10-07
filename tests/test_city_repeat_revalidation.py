@@ -112,3 +112,87 @@ def test_productive_repeat_never_bypasses_other_city_recheck_gates(city_repeat_c
     else:
         candidate = replace(candidate, estimated_level_range=(20, 24))
     assert arm((candidate, policy, state, world, segments)) is None
+
+
+def test_source_refresh_has_a_distinct_persisted_one_shot_marker(city_repeat_case):
+    candidate, policy, state, world, segments = city_repeat_case
+    old_marker = {
+        "boot_id": "boot",
+        "level": 29,
+        "source_revision": "revision",
+        "prior_source_revision": "revision",
+        "policy_id": policy,
+        "source_mobile_vnum": candidate.mobile_vnum,
+        "source_room_vnum": candidate.room_vnum,
+        "prior_segment_id": 42,
+        "prior_run_id": 100,
+        "blocked_room_vnums": [3002],
+        "prior_locations": ["old road"],
+        "changed_locations": ["new road"],
+        "max_extra_steps": cp._FIELD_CITY_ALTERNATE_ROUTE_MAX_EXTRA_STEPS,
+        "status": "attempted",
+        "attempted": True,
+    }
+    state[cp._SOURCE_REVISION_KEY] = "revision-new"
+    state[cp._FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY] = deepcopy(
+        old_marker
+    )
+    blocked_ledger = deepcopy(state[cp._FIELD_CITY_BLOCKED_POLICIES_KEY])
+
+    assert arm(city_repeat_case) == policy
+    refresh = state[cp._FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY]
+    assert refresh["source_refresh"] is True
+    assert refresh["prior_source_revision"] == "revision"
+    assert refresh["source_revision"] == "revision-new"
+    assert refresh["observation_segment_id"] == 43
+    assert refresh["observation_run_id"] == 101
+    assert state[cp._FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY] == old_marker
+    assert state[cp._FIELD_CITY_BLOCKED_POLICIES_KEY] == blocked_ledger
+    assert cp._field_city_alternate_route_revalidation_pending(
+        state,
+        policy_id=policy,
+    )
+
+    assert cp._mark_field_city_alternate_route_revalidation(
+        state,
+        candidate,
+        character_level=29,
+    )
+    assert state[cp._FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY]["status"] == (
+        "attempted"
+    )
+    assert state[cp._FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY][
+        "observation_run_id"
+    ] == 101
+    assert state[cp._FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY] == old_marker
+    assert arm(city_repeat_case) is None
+
+
+def test_source_refresh_rejects_locator_from_a_different_revision(city_repeat_case):
+    candidate, _, state, _, segments = city_repeat_case
+    state[cp._SOURCE_REVISION_KEY] = "revision-new"
+    state[cp._FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY] = {
+        "boot_id": "boot",
+        "level": 29,
+        "source_revision": "revision",
+        "prior_source_revision": "revision",
+        "policy_id": cp._source_ranked_policy_id(
+            candidate,
+            character_level=29,
+        ),
+        "source_mobile_vnum": candidate.mobile_vnum,
+        "source_room_vnum": candidate.room_vnum,
+        "prior_segment_id": 42,
+        "prior_run_id": 100,
+        "blocked_room_vnums": [3002],
+        "prior_locations": ["old road"],
+        "changed_locations": ["new road"],
+        "max_extra_steps": cp._FIELD_CITY_ALTERNATE_ROUTE_MAX_EXTRA_STEPS,
+        "status": "attempted",
+        "attempted": True,
+    }
+    observation = json.loads(segments[1]["end_state_json"])
+    observation[cp._SOURCE_REVISION_KEY] = "revision-new"
+    segments[1]["end_state_json"] = json.dumps(observation)
+
+    assert arm(city_repeat_case) is None

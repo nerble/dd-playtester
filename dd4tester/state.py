@@ -9,6 +9,20 @@ from .observations import GameEvent, valid_enemy_snapshot
 
 _MAX_CHARACTER_LEVEL = 100
 
+CURRENT_STATE_FIELDS = (
+    "schema_version", "revision", "name", "race", "character_class", "subclass",
+    "sex", "level", "xp", "max_xp", "xp_to_next_level", "practice",
+    "hp", "max_hp", "mana", "max_mana", "move", "max_move", "rage",
+    "max_rage", "hunger", "max_hunger", "thirst", "max_thirst", "drunk",
+    "max_drunk", "position", "form", "room_name", "room_vnum", "room_listing", "area",
+    "sector", "room_flags", "exits", "stats", "progress", "progress_source",
+    "xp_loss_observed", "xp_loss_total", "currencies", "inventory", "equipment",
+    "affects", "quests", "quest_status", "quest_points", "total_quest_points",
+    "quest_level_qp_required", "quest_level_qp_shortfall", "recall_points",
+    "recall_points_observed", "current_recall", "in_combat", "combat_target", "dead",
+    "world_boot_id",
+)
+
 _DIRECTION_NAMES = {
     "n": "north",
     "e": "east",
@@ -56,6 +70,7 @@ class CharacterState:
     form: str | None = None
     room_name: str | None = None
     room_vnum: str | None = None
+    room_listing: dict[str, Any] | None = None
     area: str | None = None
     sector: str | None = None
     room_flags: list[str] = field(default_factory=list)
@@ -87,14 +102,26 @@ class CharacterState:
 
     def apply(self, event: GameEvent) -> bool:
         before = self._content()
+        acquired_item_count = len(self.acquired_items)
         self._apply(event)
-        if self._content() == before:
+        if (
+            self._content() == before
+            and len(self.acquired_items) == acquired_item_count
+        ):
             return False
         self.revision += 1
         return True
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def to_compact_dict(self) -> dict[str, Any]:
+        """Return only durable current character state, excluding event history."""
+        return {
+            name: deepcopy(getattr(self, name))
+            for name in CURRENT_STATE_FIELDS
+            if hasattr(self, name)
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CharacterState":
@@ -111,8 +138,16 @@ class CharacterState:
         return cls(**values)
 
     def _content(self) -> dict[str, Any]:
-        content = self.to_dict()
-        content.pop("revision")
+        content: dict[str, Any] = {}
+        for item in fields(self):
+            if item.name in {"revision", "acquired_items"}:
+                continue
+            value = getattr(self, item.name)
+            content[item.name] = (
+                tuple(value)
+                if item.name == "quests" and isinstance(value, list)
+                else value
+            )
         return content
 
     def _apply(self, event: GameEvent) -> None:
@@ -345,6 +380,7 @@ class CharacterState:
                 # newer GMCP update. Never move a confirmed state backward.
                 return
             self.room_name = _text(data.get("name"), self.room_name)
+            self.room_listing = None
             if event.source == "text" and "vnum" not in data:
                 # Text confirms a transition before GMCP can identify its VNUM.
                 # Retaining the previous VNUM would combine two different rooms.
@@ -397,6 +433,42 @@ class CharacterState:
                     )
                     for direction in exits
                 }
+            return
+
+        if event.type == "room_listing_observed":
+            room_vnum = _text(data.get("room_vnum"))
+            sequence = _integer(data.get("sequence"))
+            targeted_lines = data.get("targeted_lines")
+            unkeyed_lines = data.get("unkeyed_lines")
+            if (
+                room_vnum is None
+                or room_vnum != self.room_vnum
+                or sequence is None
+                or sequence < 1
+                or data.get("render_complete") is not True
+                or not isinstance(targeted_lines, list)
+                or any(
+                    not isinstance(line, dict)
+                    or not str(line.get("target_id", "")).isdigit()
+                    or not isinstance(line.get("description"), str)
+                    or not line["description"].strip()
+                    for line in targeted_lines
+                )
+                or not isinstance(unkeyed_lines, list)
+                or any(
+                    not isinstance(line, str) or not line.strip()
+                    for line in unkeyed_lines
+                )
+            ):
+                return
+            self.room_listing = {
+                "room_vnum": room_vnum,
+                "sequence": sequence,
+                "state_revision": self.revision + 1,
+                "targeted_lines": deepcopy(targeted_lines),
+                "unkeyed_lines": deepcopy(unkeyed_lines),
+                "render_complete": True,
+            }
             return
 
         if event.type == "prompt_seen":

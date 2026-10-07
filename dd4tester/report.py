@@ -24,7 +24,11 @@ def build_run_report(
     if (
         cached is not None
         and cached.get("summary_version") == RUN_REPORT_SUMMARY_VERSION
+        and _cached_kill_evidence_is_current(storage, run_id, cached)
     ):
+        outcomes = cached.get("outcomes")
+        if isinstance(outcomes, dict) and not storage.read_only:
+            storage.sync_run_outcomes(run_id, outcomes)
         cached_limit = len(cached.get("commentary") or ())
         if commentary_limit <= cached_limit or cached_limit < 100:
             cached = dict(cached)
@@ -78,6 +82,12 @@ def _build_run_report_uncached(
     ]
     initial_state = _initial_observed_state(snapshots)
     final_state = snapshots[-1]["state"] if snapshots else {}
+    final_training_audit = _final_training_audit(events)
+    if final_training_audit is not None:
+        final_state = {
+            **final_state,
+            "campaign_training_audit": final_training_audit,
+        }
     game_events = [event for event in events if event["kind"] == "game_event"]
     decisions = [event for event in events if event["kind"] == "decision"]
     run_context = next(
@@ -94,7 +104,13 @@ def _build_run_report_uncached(
     )
     event_counts = Counter(event["kind"] for event in events)
     duration_seconds = _duration_seconds(run["started_at"], run["finished_at"])
-    confirmed_kills = _completed_kills(events)
+    confirmed_kills = _merge_kill_evidence(
+        _completed_kills(events),
+        [
+            _kill_record_from_row(row)
+            for row in storage.list_mob_kills_for_run(run_id)
+        ],
+    )
     sales = [dict(sale) for sale in storage.list_loot_sales_for_run(run_id)]
     sale_rejections = _sale_rejections_from_events(events)
 
@@ -334,6 +350,7 @@ def build_campaign_report(
     character: dict[str, Any] = {}
     death_count = 0
     summary_run_count = 0
+    summary_kill_count = 0
     progress_by_run: dict[int, dict[str, Any]] = {}
     segment_count_by_run: Counter[int] = Counter(
         int(segment["run_id"])
@@ -342,9 +359,6 @@ def build_campaign_report(
     )
     campaign_runs = storage.list_campaign_run_records(campaign_id)
     run_ids = list(campaign_runs)
-    kills_by_run: dict[int, list[Any]] = {}
-    for kill_row in storage.list_campaign_mob_kills(campaign_id):
-        kills_by_run.setdefault(int(kill_row["run_id"]), []).append(kill_row)
     segment_by_run = {
         int(segment["run_id"]): segment
         for segment in segments
@@ -368,6 +382,8 @@ def build_campaign_report(
             run_progress = run_report.get("progress", {})
             run_failures = run_report.get("failures", [])
             run_outcomes = run_report.get("outcomes", {})
+            for kill in run_progress.get("confirmed_kills", ()):
+                summary_kill_count += int(isinstance(kill, dict))
         else:
             if not character and initial_state.get("name"):
                 character = {"name": initial_state["name"]}
@@ -383,6 +399,11 @@ def build_campaign_report(
                 "execution": run["execution_status"] or run["status"],
                 "objective": run["objective_outcome"] or "unknown",
                 "safety": run["safety_outcome"] or "unknown",
+            }
+        if not full_history and run_progress:
+            run_progress = {
+                key: value for key, value in run_progress.items()
+                if key != "confirmed_kills"
             }
         run_summaries.append(
             {
@@ -400,20 +421,6 @@ def build_campaign_report(
             }
         )
         progress_by_run[run_id] = run_progress
-        for kill in kills_by_run.get(run_id, ()):
-            kills.append(
-                {
-                    "run_id": int(kill["run_id"]),
-                    "mob_name": kill["mob_name"],
-                    "xp_gained": kill["xp_gained"],
-                    "source_mobile_vnum": kill["source_mobile_vnum"],
-                    "source_policy_id": kill["source_policy_id"],
-                    "below_useful_band": bool(kill["below_useful_band"]),
-                    "objective_eligible": bool(kill["objective_eligible"]),
-                    "route_gate": bool(kill["route_gate"]),
-                    "timestamp": kill["timestamp"],
-                }
-            )
         if run_report is not None:
             for rejection in run_report["progress"].get(
                 "loot_sale_rejections", ()
@@ -421,6 +428,28 @@ def build_campaign_report(
                 sale_rejection = dict(rejection)
                 sale_rejection["run_id"] = run_id
                 sale_rejections.append(sale_rejection)
+
+    if full_history:
+        kill_rows = storage.list_campaign_mob_kills(campaign_id)
+        kills = [
+            {
+                "run_id": int(kill["run_id"]),
+                "mob_name": kill["mob_name"],
+                "xp_gained": kill["xp_gained"],
+                "source_mobile_vnum": kill["source_mobile_vnum"],
+                "source_policy_id": kill["source_policy_id"],
+                "below_useful_band": bool(kill["below_useful_band"]),
+                "objective_eligible": bool(kill["objective_eligible"]),
+                "route_gate": bool(kill["route_gate"]),
+                "timestamp": kill["timestamp"],
+            }
+            for kill in kill_rows
+        ]
+    kill_total = storage.count_campaign_mob_kills(campaign_id)
+    kill_group_list = [
+        dict(group)
+        for group in storage.summarize_campaign_mob_kills(campaign_id)
+    ]
 
     unique_commentary = list(dict.fromkeys(commentary))[:commentary_limit]
     target_level = int(campaign["target_level"])
@@ -475,7 +504,7 @@ def build_campaign_report(
             "duration_seconds": float(totals["duration_seconds"]),
             "runs": len(run_ids),
             "deaths": death_count,
-            "kills": len(kills),
+            "kills": kill_total,
             "activity": _sum_activity_metrics(run_summaries),
             "activity_complete": summary_run_count == len(run_summaries),
             "outcomes": outcome_counts,
@@ -492,13 +521,20 @@ def build_campaign_report(
         ],
         "runs": run_summaries,
         "kills": kills,
+        "kill_groups": kill_group_list,
         "sale_rejections": sale_rejections,
         "commentary": unique_commentary,
         "evidence": {
             "run_ids": run_ids,
             "completed_run_summary_count": summary_run_count,
             "legacy_runs_without_summary": len(run_summaries) - summary_run_count,
+            "run_summary_coverage": (
+                summary_run_count / len(run_summaries) if run_summaries else 1.0
+            ),
             "segment_details_included": full_history,
+            "kill_details_included": full_history,
+            "cached_summary_kill_count": summary_kill_count,
+            "kill_groups_from_compact_ledger": True,
             "run_link_backfill_complete": run_link_backfill["complete"],
             "checkpoint_id": checkpoints[-1]["id"] if checkpoints else None,
             "checkpoint_count": len(checkpoints),
@@ -566,7 +602,7 @@ def render_campaign_markdown(report: dict[str, Any]) -> str:
             else []
         ),
         "",
-        "## Kills",
+        "## Kills By Target",
         "",
     ]
     if not report["evidence"].get("run_link_backfill_complete", True):
@@ -577,18 +613,41 @@ def render_campaign_markdown(report: dict[str, Any]) -> str:
                 f"backfill with `python -m dd4tester backfill-campaign-runs {campaign['id']}`.",
             ]
         )
+    if report["evidence"].get("run_summary_coverage", 1.0) < 1.0:
+        lines.extend([
+            "",
+            "Cached run summaries cover only "
+            f"{report['evidence']['completed_run_summary_count']}/"
+            f"{report['totals']['runs']} runs; backfill in bounded pages with "
+            "`python -m dd4tester summarize-runs`.",
+        ])
     persona_lines = _persona_lines(character)
     if persona_lines and character:
         character_line = f"Character: {_format_identity(character)}"
         character_index = lines.index(character_line) + 1
         lines[character_index:character_index] = persona_lines
-    if report["kills"]:
+    if report.get("kill_groups"):
         lines.extend(
-            "- {mob_name} (+{xp_gained} XP, run {run_id})".format(**kill)
-            for kill in report["kills"]
+            "- {mob_name}: {kill_count} kill(s), +{xp_gained} XP".format(**group)
+            for group in report["kill_groups"]
         )
     else:
         lines.append("- None recorded.")
+    if report["evidence"].get("kill_details_included"):
+        lines.extend(["", "## Kill Details", ""])
+        if report["kills"]:
+            lines.extend(
+                "- {mob_name} (+{xp_gained} XP, run {run_id})".format(**kill)
+                for kill in report["kills"]
+            )
+        else:
+            lines.append("- None recorded.")
+    else:
+        lines.extend([
+            "",
+            "Chronological per-kill detail is omitted; use "
+            "`campaign-report --full-history` to include it.",
+        ])
     if report.get("sale_rejections"):
         lines.extend(["", "## Sale Rejections", ""])
         for rejection in report["sale_rejections"]:
@@ -1115,6 +1174,114 @@ def _completed_kills(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return []
 
 
+def _kill_record_from_row(row: Any) -> dict[str, Any]:
+    kill = {
+        "mob_name": str(row["mob_name"]),
+        "xp_gained": row["xp_gained"],
+    }
+    for key in ("source_mobile_vnum", "source_policy_id", "selector"):
+        value = row[key]
+        if value is not None:
+            kill[key] = value
+    for key in ("below_useful_band", "objective_eligible", "route_gate"):
+        value = bool(row[key])
+        default = key == "objective_eligible"
+        if value != default:
+            kill[key] = value
+    return kill
+
+
+def _merge_kill_evidence(
+    event_kills: list[dict[str, Any]],
+    indexed_kills: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Enrich ordered kill evidence from the compact, durable kill index."""
+    merged = [dict(kill) for kill in event_kills]
+    unmatched = list(range(len(merged)))
+    for indexed in indexed_kills:
+        match_index = next(
+            (
+                index
+                for index in unmatched
+                if _kill_records_match(merged[index], indexed)
+            ),
+            None,
+        )
+        if match_index is None:
+            merged.append(dict(indexed))
+            continue
+        unmatched.remove(match_index)
+        merged[match_index].update(indexed)
+    return merged
+
+
+def _kill_records_match(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_name = str(left.get("mob_name") or "").strip().casefold()
+    right_name = str(right.get("mob_name") or "").strip().casefold()
+    for article in ("a ", "an ", "the "):
+        if left_name.startswith(article):
+            left_name = left_name[len(article):]
+        if right_name.startswith(article):
+            right_name = right_name[len(article):]
+    if left_name != right_name:
+        return False
+    left_xp = left.get("xp_gained")
+    right_xp = right.get("xp_gained")
+    if left_xp is not None and right_xp is not None and left_xp != right_xp:
+        return False
+    for key in ("source_mobile_vnum", "source_policy_id"):
+        if left.get(key) is not None and right.get(key) is not None:
+            if left[key] != right[key]:
+                return False
+    return True
+
+
+def _kill_is_objective_eligible(kill: dict[str, Any]) -> bool:
+    return (
+        bool(kill.get("objective_eligible", True))
+        and not bool(kill.get("below_useful_band", False))
+        and not bool(kill.get("route_gate", False))
+    )
+
+
+def _cached_kill_evidence_is_current(
+    storage: RunStorage,
+    run_id: int,
+    cached: dict[str, Any],
+) -> bool:
+    progress = cached.get("progress")
+    cached_kills = (
+        [
+            dict(kill)
+            for kill in progress.get("confirmed_kills", ())
+            if isinstance(kill, dict)
+        ]
+        if isinstance(progress, dict)
+        else []
+    )
+    indexed_kills = [
+        _kill_record_from_row(row)
+        for row in storage.list_mob_kills_for_run(run_id)
+    ]
+    merged = _merge_kill_evidence(cached_kills, indexed_kills)
+    if merged != cached_kills:
+        return False
+    objective = cached.get("objective")
+    outcomes = cached.get("outcomes")
+    if not isinstance(objective, dict) or not isinstance(outcomes, dict):
+        return True
+    try:
+        kill_limit = max(
+            int(objective.get("arena_kill_limit") or 0),
+            int(objective.get("fastwalk_kill_limit") or 0),
+        )
+    except (TypeError, ValueError):
+        return True
+    if kill_limit <= 0 or outcomes.get("objective") != "achieved":
+        return True
+    return sum(_kill_is_objective_eligible(kill) for kill in merged) >= kill_limit
+
+
 def _training_summary(game_events: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     accepted: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
@@ -1398,7 +1565,10 @@ def _objective_outcome(
         else:
             checks.append(final_level >= required_level)
     if kill_limit > 0:
-        checks.append(len(confirmed_kills) >= kill_limit)
+        checks.append(
+            sum(_kill_is_objective_eligible(kill) for kill in confirmed_kills)
+            >= kill_limit
+        )
     if quest_objective:
         initial_points, final_points = _quest_point_bounds(
             objective, initial_state or {}, final_state, events,
@@ -1407,6 +1577,21 @@ def _objective_outcome(
             None
             if initial_points is None or final_points is None
             else final_points > initial_points
+        )
+    if objective_kind == "training_gain":
+        training_state = dict(final_state)
+        final_training_audit = _final_training_audit(events)
+        if final_training_audit is not None:
+            training_state["campaign_training_audit"] = final_training_audit
+        checks.append(_training_gain_observed(objective, training_state))
+    if objective_kind == "flight_active":
+        checks.append(_named_affect_active(final_state, "fly", "flight"))
+    if objective_kind == "subclass_selection":
+        expected_subclass = str(objective.get("subclass") or "").strip().casefold()
+        observed_subclass = final_state.get("subclass")
+        checks.append(
+            None if not expected_subclass or observed_subclass is None
+            else str(observed_subclass).strip().casefold() == expected_subclass
         )
     boundaries = objective.get("fastwalk_hunt_stop_boundaries")
     required_items: list[str] = []
@@ -1515,6 +1700,90 @@ def _objective_outcome(
     if checks and all(check is True for check in checks):
         return "achieved"
     return "unknown"
+
+
+def _final_training_audit(events: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for event in reversed(events):
+        if event.get("kind") != "state":
+            continue
+        payload = event.get("payload")
+        audit = payload.get("training_audit") if isinstance(payload, dict) else None
+        if isinstance(audit, dict) and audit.get("observed") is True:
+            return audit
+    return None
+
+
+def _training_gain_observed(
+    objective: dict[str, Any],
+    final_state: dict[str, Any],
+) -> bool | None:
+    initial = objective.get("initial_skill_levels")
+    audit = final_state.get("campaign_training_audit")
+    final = audit.get("known_skill_levels") if isinstance(audit, dict) else None
+    if (
+        not isinstance(initial, dict)
+        or not isinstance(audit, dict)
+        or audit.get("observed") is not True
+        or not isinstance(final, dict)
+    ):
+        return None
+
+    def normalized_levels(values: dict[str, Any]) -> dict[str, int]:
+        levels: dict[str, int] = {}
+        for name, value in values.items():
+            if isinstance(value, bool):
+                continue
+            try:
+                percent = int(value)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= percent <= 100:
+                levels[str(name).casefold().strip()] = percent
+        return levels
+
+    initial_levels = normalized_levels(initial)
+    final_levels = normalized_levels(final)
+    if not initial_levels:
+        return None
+    return any(
+        percent > initial_levels.get(skill, 0)
+        for skill, percent in final_levels.items()
+    )
+
+
+def _named_affect_active(
+    final_state: dict[str, Any],
+    name: str,
+    effect: str,
+) -> bool | None:
+    if "affects" not in final_state or final_state.get("affects") is None:
+        return None
+
+    def contains(value: Any) -> bool:
+        if isinstance(value, str):
+            stripped = value.lstrip()
+            if stripped.startswith(("[", "{")):
+                try:
+                    return contains(json.loads(value))
+                except (TypeError, json.JSONDecodeError):
+                    return False
+            return False
+        if isinstance(value, dict):
+            if (
+                str(value.get("name") or "").casefold() == name.casefold()
+                and str(value.get("gives") or "").casefold() == effect.casefold()
+            ):
+                duration = value.get("duration")
+                try:
+                    return duration is None or int(duration) > 0
+                except (TypeError, ValueError):
+                    return False
+            return any(contains(nested) for nested in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(contains(nested) for nested in value)
+        return False
+
+    return contains(final_state.get("affects"))
 
 
 def _terminal_objective_failure_evidence(

@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from dd4tester.storage import (
@@ -1112,6 +1113,201 @@ def test_storage_marks_interrupted_campaign_work_as_failed(tmp_path) -> None:
     assert segment["finished_at"] is not None
 
 
+def test_scoped_recovery_keeps_pre_run_interruption_resumable(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="Dorrik to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="provision-funding",
+        start_state={"name": "Dorrik", "level": 29, "room_vnum": "3054"},
+    )
+    reason = "setup unavailable before run creation; zero game commands"
+
+    repaired_events, recovered_runs, closed_segments = storage.recover_campaign(
+        campaign_id,
+        reason=reason,
+        character_name="Dorrik",
+    )
+    campaign = storage.get_campaign(campaign_id)
+    segment = storage.list_campaign_segments(campaign_id)[0]
+    storage.close()
+
+    assert (repaired_events, recovered_runs, closed_segments) == (0, 0, 1)
+    assert campaign is not None and campaign["status"] == "ready"
+    assert segment["id"] == segment_id
+    assert segment["status"] == "ready"
+    assert segment["execution_status"] == "interrupted"
+    assert segment["objective_outcome"] == "unknown"
+    assert segment["safety_outcome"] == "unknown"
+    assert segment["error"] == reason
+
+
+def test_scoped_recovery_finds_run_before_classifying_unlinked_segment_as_pre_run(
+    tmp_path,
+) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="Dorrik to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="provision-funding",
+        start_state={"name": "Dorrik", "level": 29, "room_vnum": "3054"},
+    )
+    run_id = storage.create_run(
+        scenario_name="fastwalk-provision funding representative 10302:Dorrik",
+        scenario_path=tmp_path / "character.yaml",
+    )
+    run_started_at = datetime.fromisoformat(storage.get_run(run_id)["started_at"])
+    last_observed_at = (run_started_at + timedelta(seconds=5)).isoformat()
+    storage.record_event(
+        run_id,
+        kind="response",
+        payload={"text": "at healer"},
+        timestamp=last_observed_at,
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="current_state",
+        timestamp=last_observed_at,
+        state={
+            "name": "Dorrik",
+            "level": 29,
+            "room_vnum": "3054",
+            "dead": False,
+            "xp": 610496,
+            "xp_loss_total": 0,
+        },
+    )
+
+    repaired_events, recovered_runs, closed_segments = storage.recover_campaign(
+        campaign_id,
+        reason="worker interrupted",
+        character_name="Dorrik",
+    )
+    run = storage.get_run(run_id)
+    campaign = storage.get_campaign(campaign_id)
+    segment = storage.list_campaign_segments(campaign_id)[0]
+    storage.close()
+
+    assert (repaired_events, recovered_runs, closed_segments) == (0, 1, 1)
+    assert run is not None and run["status"] == "failed"
+    assert run["finished_at"] == last_observed_at
+    assert run["execution_status"] == "interrupted"
+    assert campaign is not None and campaign["status"] == "failed"
+    assert segment["id"] == segment_id
+    assert segment["run_id"] == run_id
+    assert segment["status"] == "failed"
+
+
+def test_scoped_recovery_restores_exact_misclassified_live_segment(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="Dorrik to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="provision-funding",
+        start_state={"name": "Dorrik", "level": 29, "room_vnum": "3054"},
+    )
+    run_id = storage.create_run(
+        scenario_name="fastwalk-provision funding representative 10302:Dorrik",
+        scenario_path=tmp_path / "character.yaml",
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="current_state",
+        state={
+            "name": "Dorrik",
+            "level": 29,
+            "room_vnum": "3054",
+            "dead": False,
+            "xp": 610496,
+            "xp_loss_total": 0,
+        },
+    )
+    storage.connection.execute(
+        """
+        UPDATE campaign_segments
+        SET status = 'ready', finished_at = ?, error = ?,
+            execution_status = 'interrupted', objective_outcome = 'unknown',
+            safety_outcome = 'unknown'
+        WHERE id = ?
+        """,
+        (
+            "2026-10-03T15:47:00+00:00",
+            "setup unavailable before run creation; zero game commands; "
+            "resumable checkpoint preserved",
+            segment_id,
+        ),
+    )
+    storage.connection.execute(
+        "UPDATE campaigns SET status = 'ready' WHERE id = ?",
+        (campaign_id,),
+    )
+    storage.connection.commit()
+
+    repaired_events, recovered_runs, closed_segments = storage.recover_campaign(
+        campaign_id,
+        reason="worker interrupted",
+        character_name="Dorrik",
+    )
+    run = storage.get_run(run_id)
+    segment = storage.list_campaign_segments(campaign_id)[0]
+    storage.close()
+
+    assert (repaired_events, recovered_runs, closed_segments) == (0, 1, 1)
+    assert run is not None and run["status"] == "failed"
+    assert segment["run_id"] == run_id
+    assert segment["status"] == "failed"
+
+
+def test_timeout_keeps_pre_run_interruption_resumable(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="Dorrik to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="provision-funding",
+        start_state={"name": "Dorrik", "level": 29},
+    )
+
+    closed_segments = storage.fail_campaign_after_timeout(
+        campaign_id,
+        reason="setup timeout before run creation",
+        character_name="Dorrik",
+        running_segments=storage.list_recent_campaign_segments(
+            campaign_id, limit=1,
+        ),
+    )
+    campaign = storage.get_campaign(campaign_id)
+    segment = storage.list_campaign_segments(campaign_id)[0]
+    storage.close()
+
+    assert closed_segments == 1
+    assert campaign is not None and campaign["status"] == "ready"
+    assert segment["id"] == segment_id
+    assert segment["status"] == "ready"
+    assert segment["execution_status"] == "interrupted"
+
+
 def test_storage_remembers_historically_acquired_items(tmp_path) -> None:
     storage = RunStorage(tmp_path / "runs.sqlite3")
     run_id = storage.create_run(
@@ -1256,6 +1452,22 @@ def test_storage_persists_below_band_kill_as_non_objective(tmp_path) -> None:
     assert len(kills) == 1
     assert kills[0]["below_useful_band"] == 1
     assert kills[0]["objective_eligible"] == 0
+
+
+def test_indexed_phase_identity_can_find_one_old_segment_outside_recent_tail(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="campaign", config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml", target_level=100,
+        )
+        old_id = storage.start_campaign_segment(campaign_id, phase="exact-old-route", start_state={})
+        for index in range(257):
+            storage.start_campaign_segment(campaign_id, phase=f"other-{index}", start_state={})
+        assert storage.get_latest_campaign_segment_for_phase(campaign_id, "exact-old-route") is None
+        assert storage.get_indexed_campaign_phase_segment_id(campaign_id, "exact-old-route") == old_id
+        assert storage.get_indexed_campaign_phase_segment_id(campaign_id, "missing") is None
+        storage.connection.execute("DROP INDEX idx_campaign_segments_campaign_phase")
+        assert storage.get_indexed_campaign_phase_segment_id(campaign_id, "exact-old-route") is None
 
 
 def test_storage_persists_route_gate_kill_classification(tmp_path) -> None:

@@ -220,6 +220,37 @@ def test_post_25_quest_point_shortfall_uses_goldmoon_route() -> None:
     assert "Goldmoon" in policy.summary
 
 
+def test_expired_live_quest_timer_allows_required_qp_request() -> None:
+    policy = policy_for(
+        29,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        quest_status={"status": "available", "active": 0, "nextquest": 0},
+        quest_request_allowed=True,
+    )
+
+    assert policy.policy_id == "quest-request"
+    assert policy.execution == "quest-request"
+
+
+def test_live_quest_timer_blocks_request_until_expired() -> None:
+    policy = policy_for(
+        29,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        quest_status={"status": "available", "active": 0, "nextquest": 15},
+        quest_request_allowed=False,
+    )
+
+    assert policy.execution != "quest-request"
+
+
 def test_missing_quest_fields_are_reconstructed_from_source_gate() -> None:
     policy = policy_for(
         29,
@@ -2718,6 +2749,39 @@ def test_bounty_hunter_missing_pounding_weapon_selects_rearm_maintenance() -> No
 
     assert policy.policy_id == "rearm-primary-weapon"
     assert policy.execution == "rearm-weapon"
+
+
+def test_pounding_rearm_route_failure_does_not_repeat_optional_upgrade() -> None:
+    policy = policy_for(
+        29,
+        "warrior",
+        has_weapon=True,
+        needs_pounding_weapon=True,
+        pounding_weapon_rearm_attempted=True,
+    )
+
+    assert policy.policy_id != "rearm-primary-weapon"
+
+
+def test_pounding_rearm_attempt_keeps_missing_and_piercing_weapon_gates() -> None:
+    missing_weapon = policy_for(
+        29,
+        "warrior",
+        has_weapon=False,
+        needs_pounding_weapon=True,
+        pounding_weapon_rearm_attempted=True,
+    )
+    missing_piercing = policy_for(
+        29,
+        "thief",
+        has_weapon=True,
+        needs_piercing_weapon=True,
+        needs_pounding_weapon=True,
+        pounding_weapon_rearm_attempted=True,
+    )
+
+    assert missing_weapon.policy_id == "rearm-primary-weapon"
+    assert missing_piercing.policy_id == "rearm-primary-weapon"
 
 
 def test_sellable_loot_selects_safe_liquidation_before_the_next_hunt() -> None:

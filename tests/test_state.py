@@ -463,6 +463,27 @@ def test_state_changes_only_when_event_changes_domain_state() -> None:
     assert state.equipment["equipment"]["head"]["id"] == 3706
 
 
+def test_item_history_does_not_need_full_state_copies_for_each_event() -> None:
+    state = CharacterState(inventory=[{"name": "a copper ring"}])
+    state.acquired_items.extend(
+        {"item": f"relic {index}"} for index in range(500)
+    )
+
+    compact = state.to_compact_dict()
+    compact["inventory"][0]["name"] = "changed copy"
+
+    assert "acquired_items" not in compact
+    assert "enemies" not in compact
+    assert "last_prompt" not in compact
+    assert state.inventory == [{"name": "a copper ring"}]
+    assert len(state.acquired_items) == 500
+
+    assert state.apply(
+        GameEvent("item_acquired", "text", {"item": "a silver key"})
+    )
+    assert state.revision == 1
+
+
 def test_text_room_transition_clears_a_stale_gmcp_vnum() -> None:
     state = CharacterState(room_name="Safety", room_vnum="3737")
 
@@ -649,3 +670,64 @@ def test_midgaard_prompt_clears_death_before_gmcp_room_update() -> None:
 
     assert state.dead is False
     assert state.area == "Midgaard"
+
+
+def test_room_listing_is_compact_state_and_clears_on_room_change() -> None:
+    state = CharacterState(room_vnum="4063")
+    listing = GameEvent(
+        "room_listing_observed",
+        "text",
+        {
+            "room_vnum": "4063",
+            "sequence": 1,
+            "targeted_lines": [{
+                "target_id": "2780",
+                "description": "A large hobgoblin is here.",
+            }],
+            "unkeyed_lines": [],
+            "render_complete": True,
+        },
+    )
+
+    assert state.apply(listing)
+    restored = CharacterState.from_dict(state.to_compact_dict())
+    assert restored.room_listing == {
+        **listing.data,
+        "state_revision": 1,
+    }
+    assert restored.apply(
+        GameEvent(
+            "room_entered",
+            "gmcp",
+            {"name": "The next tunnel", "vnum": "4064"},
+        )
+    )
+    assert restored.room_listing is None
+
+
+def test_room_listing_state_revision_survives_parser_sequence_restart() -> None:
+    state = CharacterState(room_vnum="4063")
+    listing = GameEvent(
+        "room_listing_observed",
+        "text",
+        {
+            "room_vnum": "4063",
+            "sequence": 1,
+            "targeted_lines": [],
+            "unkeyed_lines": [],
+            "render_complete": True,
+        },
+    )
+
+    assert state.apply(listing)
+    first_revision = state.room_listing["state_revision"]
+    assert state.apply(GameEvent(
+        "room_entered", "gmcp", {"name": "Another tunnel", "vnum": "4064"},
+    ))
+    assert state.apply(GameEvent(
+        "room_entered", "gmcp", {"name": "The maze", "vnum": "4063"},
+    ))
+    assert state.apply(listing)
+
+    assert state.room_listing["sequence"] == 1
+    assert state.room_listing["state_revision"] > first_revision

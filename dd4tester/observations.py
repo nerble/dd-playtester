@@ -40,6 +40,15 @@ def _normalized_room_name(value: str) -> str:
 
 
 _ROOM = re.compile(r"^Room:\s*(?P<name>.+)$", re.IGNORECASE)
+_ROOM_TARGET_ID_LINE = re.compile(
+    r"^\[#(?P<target_id>\d+)\]\s*(?P<description>.+)$"
+)
+_ROOM_UNKEYED_PRESENCE_LINE = re.compile(
+    r"^(?P<description>.+?)(?: is here(?:,.*)?[.!]?| is sleeping here\.|"
+    r" is resting here\.| is mortally wounded\.| is incapacitated\.|"
+    r" is DEAD!!| is here, fighting .+| is here, being attacked by .+)$",
+    re.IGNORECASE,
+)
 _EXITS = re.compile(
     r"^\[Exits:\s*(?P<exits>(?:[^\[\]\r\n]|\[[^\[\]\r\n]+\])*)\]$",
     re.IGNORECASE,
@@ -91,6 +100,17 @@ _QUEST = re.compile(
     r"\b(?:Quest received|New quest):\s*(?P<name>.+?)(?:[.!]|$)",
     re.IGNORECASE,
 )
+_QUEST_COOLDOWN_REMAINING = re.compile(
+    r"^There are (?P<minutes>\d+) minutes remaining "
+    r"until you can go on another quest\.$",
+    re.IGNORECASE,
+)
+_QUEST_COOLDOWN_LAST_MINUTE = re.compile(
+    r"^There is less than a minute remaining "
+    r"until you can go on another quest\.$",
+    re.IGNORECASE,
+)
+_QUEST_AVAILABLE_NOW = re.compile(r"^You may now quest again\.$", re.IGNORECASE)
 _ITEM = re.compile(
     r"\bYou (?:get|pick up|receive|are given) "
     r"(?:(?:an?|the)\s+)?(?P<item>.+?)(?:[.!]|$)",
@@ -214,6 +234,10 @@ class ObservationParser:
         self._known_room_vnums_by_name: dict[str, set[str]] = {}
         self._known_room_exits_by_vnum: dict[str, dict[str, str]] = {}
         self._last_room_exits: dict[str, str] = {}
+        self._room_listing_sequence = 0
+        self._room_listing_room_vnum: str | None = None
+        self._room_listing_targeted_lines: list[dict[str, str]] = []
+        self._room_listing_unkeyed_lines: list[str] = []
         self._gmcp_snapshots: dict[str, Any] = {}
         self.quest_assignment = QuestAssignmentTracker()
         self._discarding_duplicate_login_snapshot = False
@@ -300,6 +324,10 @@ class ObservationParser:
         self._known_room_vnums_by_name.clear()
         self._known_room_exits_by_vnum.clear()
         self._last_room_exits = {}
+        self._room_listing_sequence = 0
+        self._room_listing_room_vnum = None
+        self._room_listing_targeted_lines.clear()
+        self._room_listing_unkeyed_lines.clear()
         self._gmcp_snapshots.clear()
         self.quest_assignment = QuestAssignmentTracker()
         self._discarding_duplicate_login_snapshot = False
@@ -517,6 +545,42 @@ class ObservationParser:
             return events
 
         events = self._finish_recall_list_if_needed(text)
+        quest_text = _MUD_COLOR_CODE.sub("", text).strip()
+        cooldown = _QUEST_COOLDOWN_REMAINING.fullmatch(quest_text)
+        if cooldown is not None:
+            remaining = int(cooldown.group("minutes"))
+        elif _QUEST_COOLDOWN_LAST_MINUTE.fullmatch(quest_text) is not None:
+            remaining = 1
+        elif _QUEST_AVAILABLE_NOW.fullmatch(quest_text) is not None:
+            remaining = 0
+        else:
+            remaining = None
+        if remaining is not None:
+            status = dict(self._gmcp_snapshots.get("char.quest", {}))
+            status.update({
+                "active": "0",
+                "status": "cooldown" if remaining else "available",
+                "type": "none",
+                "complete": "0",
+                "countdown": "0",
+                "nextquest": str(remaining),
+                "mob_vnum": "0",
+                "object_vnum": "0",
+                "giver_vnum": "0",
+                "giver_name": "",
+                "target_name": "",
+                "room_vnum": "0",
+                "room_name": "",
+                "area_name": "",
+                "area_id": "0",
+            })
+            status = self.quest_assignment.observe_status(status)
+            if self._gmcp_snapshots.get("char.quest") != status:
+                self._gmcp_snapshots["char.quest"] = status
+                events.append(GameEvent(
+                    "quest_status_changed", "text",
+                    self._gmcp_data("Char.Quest", status),
+                ))
         if assignment is not None:
             self._gmcp_snapshots["char.quest"] = assignment
             events.append(GameEvent(
@@ -619,6 +683,23 @@ class ObservationParser:
             )
             if room_event is not None:
                 events.append(room_event)
+            self._room_listing_room_vnum = self._room_vnum
+            self._room_listing_targeted_lines = []
+            self._room_listing_unkeyed_lines = []
+
+        if self._room_listing_room_vnum is not None:
+            target_line = _ROOM_TARGET_ID_LINE.fullmatch(
+                _MUD_COLOR_CODE.sub("", text)
+            )
+            if target_line is not None:
+                # DD4 uses this runtime selector for both objects and mobiles;
+                # it is not a prototype VNUM or an entity-type assertion.
+                self._room_listing_targeted_lines.append({
+                    "target_id": target_line.group("target_id"),
+                    "description": target_line.group("description").strip(),
+                })
+            elif _ROOM_UNKEYED_PRESENCE_LINE.fullmatch(text) is not None:
+                self._room_listing_unkeyed_lines.append(text)
 
         prompt = _PROMPT.search(text)
         if prompt:
@@ -650,6 +731,22 @@ class ObservationParser:
                 )
                 if health_event is not None:
                     events.append(health_event)
+            if self._room_listing_room_vnum is not None:
+                self._room_listing_sequence += 1
+                events.append(GameEvent(
+                    "room_listing_observed",
+                    "text",
+                    {
+                        "room_vnum": self._room_listing_room_vnum,
+                        "sequence": self._room_listing_sequence,
+                        "targeted_lines": list(self._room_listing_targeted_lines),
+                        "unkeyed_lines": list(self._room_listing_unkeyed_lines),
+                        "render_complete": True,
+                    },
+                ))
+                self._room_listing_room_vnum = None
+                self._room_listing_targeted_lines = []
+                self._room_listing_unkeyed_lines = []
 
         combat = (
             _OUTGOING_COMBAT.search(text)

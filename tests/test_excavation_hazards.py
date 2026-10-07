@@ -51,7 +51,8 @@ def test_guardian_scales_damroll_before_modifier_then_sanctuary_then_critical():
     world = guardian_world()
     world.mobiles[83] = replace(world.mobiles[83], damage_modifier=25)
     result = hoard_guardian_damage(world, character_level=30, sanctuary=True)
-    assert (result.maximum_ordinary_hit, result.maximum_critical_hit) == (37, 74)
+    # DD4 scales 75 to 93, halves to 46, then doubles the critical to 92.
+    assert (result.maximum_ordinary_hit, result.maximum_critical_hit) == (46, 92)
 
 
 def test_guardian_level_clamps_but_does_not_inherit_prototype_hp():

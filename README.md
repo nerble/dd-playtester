@@ -3,30 +3,179 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 3, 2026
+## Current Status: October 7, 2026
 
-Dorrik remains the only progression pilot. Latest resumable checkpoint
-**48743** is level **29**, **610,206 XP**, **3,694 XP** from level 30, at healer
-room **3054**, with zero quest points and quest cooldown **6**. The server
-source mirror is refreshed to `fbc5a5761af2f8a0734ca48df7993a4feffe55d2`;
-the parser smoke covered 13,052 rooms, 4,125 mobiles, 6,138 objects, 1,622
-special profiles, and 399 skill groups.
+Dorrik is the sole progression pilot: **level 30**, **614,804 XP**, **54,246 XP**
+from level 31, and **18 quest points**. Run **16419** verified a complete quest
+hand-in and its positive QP reward. His next-level QP shortfall is **zero**:
+autonomous play now prioritizes XP and skips optional quest requests and their
+cooldown waits until a source-defined QP requirement actually blocks levelling.
+The next QP threshold is before level 50 (200 total points).
 
-Runs **16086-16093** added no XP or quest points. Run **16090** waited through
-the quest cooldown to zero but correctly deferred the request when less than
-the required route reserve remained. Fresh-process run **16091** resumed that
-checkpoint, requested a quest, then safely aborted Goldmoon's buried-hoard
-assignment in Showers (room **9517**) because live trap/recovery execution is
-not authorized. Runs **16092-16093** waited at the healer while the new
-cooldown advanced from **15 to 6**. Their outcomes are `execution=success`,
-`objective=not_achieved`, `safety=safe`; the assignment earned no reward. The
-all-area level-29 source-ranked check found no target passing the autonomous
-safety gates. No gameplay worker remains active.
-Experiment **1** preserves checkpoint **48726** and source audit `655fb82`; the
-current mirror is `fbc5a57`, so do not treat later runs as a version-matched arm
-of that record. Experiment comparisons now pin tester version, DD4 version,
-test mode, source revision, and objective; each arm retains its exact start.
-HERO remains unproved.
+Resume the existing campaign with:
+
+```powershell
+python -m dd4tester hero --name Dorrik --autonomous --max-segment-runtime 300 --progress
+python -m dd4tester show-campaign 7
+python -m dd4tester show-runs --limit 4
+```
+
+Runs **16440** and **16442** killed the Ki-Rin for **1,147** and **1,409 net XP**,
+respectively, with no loss and safe healer returns. The city blocker had moved
+off the unchanged route; the program now permits one evidence-backed route
+recheck, then retains its verified productive result across restarts without
+discarding the old obstruction record. Every later hunt still checks live
+locations, identity, consider, and combat limits. Run **16443** found the target
+absent and returned to healer **3054** with full HP. An independent bounded
+respawn wait preserves the spent sanctuary retry. An older supervisor exposed
+a separate capacity-selection bypass in runs **16444/16445**; that bypass is
+closed, and its extra attempts remain recorded. Run **16445** acquired a purple
+potion and gained 90 resource XP. Runs **16446/16447** then exposed a packing
+bug and returned without attacking. Run **16448** live-verified the fix, pouched
+the sanctuary reserve, and collected 1,186 copper-equivalent from the audited
+treasury without combat. Checkpoint **49259** is at the recovered healer with
+food, water, 1,218 carried copper-equivalent, and a verified sanctuary reserve.
+
+Run **16454** then killed the Ki-Rin under observed sanctuary for **1,017 net
+XP**, raised Dorrik from **29 to 30**, and saved checkpoint **49270** at healer
+**3054** with **702/702 HP** and no loss. A fresh process resumed level 30 and
+completed training in **16455**: defense knowledge **64% to 65%**, enhanced
+damage rejected and unchanged at 67%, then safe healer checkpoint **49271**.
+Startup now retains meaningful exact
+source-policy kills from the compact ledger after they leave the eight-visit
+history tail. A repaired missing-potion prerequisite no longer masquerades as
+a failed fight or soft route-rotation block. Supply kills do not shorten the
+optional ring retry cooldown, and an unsupported passive armed-special HP
+probe is rejected before travel. Actual combat losses remain quarantined.
+
+Affordable flight purchases now survive protection-related policy rewrites,
+and adjacent scans retain their actual distance. Earlier exact-target losses,
+below-band results, and resource closures remain authoritative. The new
+passive-defense estimate is source/compilation evidence only. New defense,
+funding, scan, purchase, route-recheck, reset-wait, packing, and history cases
+are saved but unrun because October 7's daily batch is spent. The quest reward
+and level-30 transition are live-proved; **HERO remains unproved**.
+`ROADMAP.md` records current evidence; the notes below
+describe earlier checkpoints, not current state.
+
+## Historical: Earlier October 7 Checkpoints
+
+Dorrik remains the sole progression pilot. Live run **16362** is connected at
+healer room **3054**: level **29**, **610,981 XP**, **2,919 XP** from level 30,
+and **0 quest points**. At **1:46 AM NZST**, he had full HP and five minutes
+remaining on DD4's quest timer. The two timer-zero requests in runs **16359**
+and **16360** were safely abandoned before target travel: the Prisoner quest
+needed an inaccessible key route, and the Central Omu hoard was behind an
+enforced level-40 gate. Neither run gained XP/QP or incurred a loss. Run
+**16361** safely restocked provisions; run **16362** is waiting connected for
+the next server-eligible quest request. Level 30 and the first verified quest
+reward remain unproved.
+
+DD4 source advanced from **7e163cd** to **48cb5a6** on October 7. The refreshed
+all-area parser loaded **13,052 rooms, 4,125 mobiles, and 6,138 objects**. The
+October 7 focused cooldown test batch passed **3 tests**; do not run another
+regression batch until October 8 local time.
+
+Earlier funding work safely prepared pre-level gear, collected both source-registered
+Gnome treasury piles for **6 gold, 44 silver, 143 copper**, and bought a light
+blue potion for **141 copper**. Run **16157** correctly reports its separate
+kill objective as `not_achieved`, while the funding campaign objective is
+`achieved`; run **16158** verifies the potion was quaffed and flight was active
+for 32 game hours at the healer. At the latest checkpoint Dorrik has **5 gold,
+4 silver, 5 copper**. The campaign selector checkpointed at the healer without
+starting another connection; the sailor's one-shot locator revalidation is
+spent, so do not repeat it without new evidence.
+
+The earlier Weeping Willow loss remains quarantined for this boot. Dorrik has
+no active quest and zero quest points. The live quest timer, not level or boot,
+controls request frequency; request again as soon as a fresh status reports
+zero. The verified quest reward, level-30 transition, and fresh-process resume
+remain unproved. His source-identified
+spade (VNUM **3393**, run **16162**) is already in inventory; the latest state
+still lists it. There is no active hoard assignment to excavate, and the
+previous campaign request marker is history, not a request limit. The spade is
+a valid DD4 digging tool; the stronger Graveyard shovel (VNUM **3604**) is optional and
+only reduces the number and movement cost of digs. The standalone hoard
+controller reserves three possible trap-charge digs and requires a fresh
+recovery handoff. Live digging remains disabled until trap recovery, physical
+return, exact-object pickup, and turn-in are integrated.
+
+Run **16147** failed before issuing any game command because the optional
+rearm report dereferenced an absent policy adapter. That crash is fixed. The
+next run also recovered the exact rearm marker from the bounded checkpoint
+tail, confirming it had been lost by an unrelated state merge. The Moria
+attempt exposed the same loss in sanctuary-route counters: two prior attempts
+had disappeared and the route reopened. State merges now carry these limits,
+and startup migration restores matching same-level, same-boot evidence while
+respecting reset-recheck and successful-acquisition boundaries. The fresh
+training-audit fast path now avoids three unbounded history reads when the
+latest checkpoint has same-level, same-boot observations. The October 5 batch
+reported 298 passed and 5 failed; four stale DD4 expectations and the warrior
+disarm ordering have since been corrected, but not rerun. The hoard
+charge/recovery cases are also unrun. The October 7 focused cooldown batch
+passed three tests; defer another regression batch until October 8 local time.
+The quest point, level-30 transition, and fresh-process resume remain unproved.
+
+The preceding run **16139** also failed its exact mace rearm route: Dave was
+outside the source-safe 22-command circuit, so Dorrik returned without a fight
+or XP change. Its same-frontier marker prevents repeating that optional route
+while preserving missing-primary and thief-piercing requirements.
+Run **16117**
+was manually stopped after a bounded provision-funding hunt returned safely to
+the healer. Its run outcome is
+`interrupted` / `not_achieved` / `safe`; the campaign segment separately marks
+its funding objective achieved from the exact source target and a **3,111
+copper-equivalent** purse increase. The one-use funding retry marker is saved.
+Run **16116** completed a 149-command trainer audit safely but gained no skill
+levels: the teacher twice rejected `practice enhanced damage` for insufficient
+knowledge. Its old stored objective remains `unknown`; updated reporting now
+records training skill-gain criteria for future trainer runs. At that earlier
+checkpoint, the source mirror was `fbc5a5761af2f8a0734ca48df7993a4feffe55d2`;
+the parser smoke then covered 13,052 rooms, 4,125 mobiles, 6,138 objects,
+1,622 special profiles, and 399 skill groups.
+
+Runs **16108** and **16111** added no XP or quest points. Goldmoon assigned
+retrieval of the Amulet of Aevros (object **586**, room **4521**) in run
+**16108**, then the Bowl of Ambros (object **587**, room **6355**) in run
+**16111**. Both were safely stopped by the hoard execution gate: live digging
+still lacks trap recovery, exact pickup, and verified physical return. Run
+**16111** ended at healer **3054** with `execution=success`,
+`objective=not_achieved`, `safety=safe`; Dorrik incurred no loss. At that
+checkpoint the recent level-29 source search found no target passing the
+current safety gates. Run **16145** later exercised a narrow HP-fuzz probe and
+recorded the exact target failure for future selection.
+
+Segment **3163** exposed a request-gate gap: shared progression selection
+ignored the spent same-level, same-boot allowance. Its run **16114** logged 53
+commands, but the transcript confirms no quest request was sent; run **16115**
+returned Dorrik safely to the healer. The selector now receives the persisted
+allowance and blocks both another request and its cooldown wait. Focused tests
+were added but cannot be rerun until the next daily regression window.
+
+Run **16113** safely returned from a Moria sanctuary-supply preflight after 14
+commands and about 19 seconds; it added no XP and recorded no loss. The route
+listed one purple potion across 13 alternate reset rooms, but capacity planning
+counted those alternatives as 13 separate items despite five free slots. It
+attempted to drop and sacrifice a talisman; the final inventory still listed a
+talisman, so slot relief was not verified. The route-level calculation now
+counts each item's maximum explicit quantity across alternate stops, and a
+focused regression case was added. Neither has been rerun today.
+Experiment **1** preserves checkpoint **48726** and source audit `655fb82`; later
+runs are not a version-matched arm of that record. The current DD4 mirror is
+`2f3b56890ed965d3f6b21c3fb68a8364d276b1a5`; the October 5 full-area parser
+smoke covered 13,052 rooms, 4,125 mobiles, 6,138 objects, 1,622 special
+profiles, and 403 skill groups. Experiment comparisons pin tester version,
+DD4 version, test mode, source revision, and objective; each arm retains its
+exact start. HERO remains unproved.
+
+The default read-only report for campaign **7** aggregated **1,593** kills into
+**229** target groups without loading chronological kill rows. Current-version
+summary coverage is **74/3,194** linked campaign runs and **77/16,151** completed
+runs overall (**0.5%**); use bounded
+`python -m dd4tester summarize-runs --campaign-id 7 --limit 25` pages to improve
+Dorrik's legacy activity/outcome detail, continuing with the printed
+`--after-run-id`. The existing large database
+was not rewritten.
 
 The combat estimate now uses GMCP's complete swiftness value without adding
 DEX/learned bonuses twice. Source-backed excavation return planning now covers
@@ -35,25 +184,39 @@ flee direction. It remains **disabled for live digging**: guardian damage,
 post-hex carrying capacity, live recovery/pickup integration, and replay
 verification are still required.
 
-The architecture audit implementation is in place: live observations are
-written once to
-the ordered event table through a bounded background writer. Latest state is a
-compact projection, coalesced to one write per batch or barrier; full state
-remains at named evidence and recovery boundaries. The worker commits by batch
-or within a half-second bound, with bounded queue backpressure. Completed runs
-cache separate execution, objective, and safety outcomes plus whole-session
-activity estimates. Campaign
-reports use those summaries and compact trigger-maintained run-to-segment links
-instead of reopening every historical event; link and summary backfills are
-explicit bounded commands. Current summaries distinguish
-execution, evidence-based objective completion, and safety. Required items are
-recorded in route boundaries and count distinct acquisition/inventory entries;
+The five architecture recommendations are implemented incrementally in this
+checkout: live observations are written once to the ordered event table through
+a bounded background writer; latest state is a compact projection, coalesced
+to one write per batch or barrier; and full state remains at named evidence and
+recovery boundaries. The worker commits by batch or within a half-second bound,
+with bounded queue backpressure. Completed runs cache separate execution,
+objective, and safety outcomes plus whole-session activity estimates. Campaign
+reports use those summaries and compact
+trigger-maintained run-to-segment links instead of reopening every historical
+event; link and summary backfills are
+explicit bounded commands. The normal campaign report aggregates target counts
+and XP in SQLite from the compact kill ledger. `campaign-report --full-history`
+adds chronological per-kill rows and segment projections. Current summaries
+distinguish execution, evidence-based objective completion, and safety.
+`LiveSessionState` owns the runner's root state, with focused combat, travel,
+recovery, and quest controllers. `StarterPolicy` is still a large legacy
+owner, so state extraction remains incremental rather than complete.
+`show-campaign` exposes segment status, execution, objective, and safety as
+separate columns. A campaign segment may override only the objective outcome
+when a separately named campaign contract has its own positive evidence; run
+execution and safety remain unchanged. That ownership is persisted so refreshing
+a linked run summary updates inherited segment outcomes without erasing a
+campaign-specific objective. Legacy segments migrate conservatively as explicit
+overrides until their evidence is reviewed. Training-only runs record starting
+skill levels and compare them with the final live trainer listing; unchanged
+skills are `not_achieved`, while incomplete evidence stays `unknown`.
+Required items are recorded in route boundaries and count distinct
+acquisition/inventory entries;
 quest rewards require a positive quest-point delta. A missing or stale positive
 claim is reported as `unknown`, not success. An explicit terminal policy reason
 that a required item was not acquired is `not_achieved` and is shown as report
 evidence; this corrects run **16031** without rewriting its transcript. Run
-summaries are now version **6**. The
-large-database game-event index now stores searchable fields and joins to the
+summaries are now version **6**. The large-database game-event index now stores searchable fields and joins to the
 canonical event payload, while old index rows remain readable. These changes
 also introduce `LiveSessionState` as the root for character and controller
 state. Typed combat, travel, and recovery controllers now own selected active
@@ -64,17 +227,28 @@ completion from an unrelated level or quest-point change. State ownership is
 still partial: `StarterPolicy` retains about 804 assigned instance attributes,
 so future work should extract coherent groups without a wholesale rewrite. The
 summary contract was upgraded without rewriting the 33.68-GB database; old
-compact campaign metrics remain usable, while unverified old `achieved` verdicts are
-neutralized until bounded refresh. Compile and direct SQLite/report smoke checks
-pass, but these changes have not received a regression batch. The October 3 batch was
-already used (148 passed, 27 failed); corrected cases must wait for the next
-allowed test day. Experiment registration now accepts an exact saved campaign
-checkpoint (`experiment start --checkpoint-id N`), infers its campaign, and
-records checkpoint provenance with the starting state. The October 3 direct storage smoke also confirms coalesced
-state writes retain full boundary snapshots. When a required QP is one live
-cooldown tick away, a fed, recovered healer checkpoint keeps the connected
-quest wait instead of diverting into another source-ranked probe. Runs **16079-
-16080** confirmed the zero-cooldown checkpoint resumes directly into the
+compact campaign metrics remain usable, while unverified old `achieved` verdicts
+are neutralized until bounded refresh. The current storage refinement keeps each
+item acquisition in the ordered event stream and a compact provenance index,
+not a full-state checkpoint. Routine state updates serialize only durable
+fields; full checkpoints are limited to first complete state, identity/level
+changes, death, quest changes, and run completion. Reads prefer newer current
+state over an older checkpoint so interrupted runs do not resume stale vitals
+or progress.
+The October 4 focused batch reported **119 passed, 1 failed**. DD4 source
+confirmed the expected guardian damage is **46/92**; the test expectation was
+corrected without rerunning. Storage, quest-wait, route-capacity, and training-
+outcome cases, plus interrupted funding reconciliation cases, await the next
+regression window; no further test batch or compile sweep is allowed today.
+Experiment registration accepts an
+exact saved campaign checkpoint (`experiment start --checkpoint-id N`),
+infers its campaign, and
+records checkpoint provenance with the starting state. The October 3 direct
+storage smoke also confirms coalesced state writes retain full boundary
+snapshots. When a required QP is one live cooldown tick away, a fed, recovered
+healer checkpoint keeps the connected
+quest wait instead of diverting into another source-ranked probe. Runs
+**16079-16080** confirmed the zero-cooldown checkpoint resumes directly into the
 request phase. Runs **16068**, **16071**, **16072**,
 **16073**, and **16074** wrote **13**, **10**, **6**, **8**, and **11** full
 snapshots over **112**, **101**, **26**, **69**, and **125** commands. This
@@ -83,12 +257,15 @@ database.
 
 Next progression milestone: earn at least one verified quest point, cross level
 **30**, then restart and resume the same campaign and verify both facts from
-fresh observations. Keep running current-band XP while the quest cooldown is
-active. The Yggdrasil assignment, blocked city-food street, and hoard digging
-remain closed under their existing source and live gates. October 3's one
-regression batch was **148 passed, 27 failed**; do not run another batch today.
-Compilation and focused storage/report smoke checks passed; the changes awaiting
-regression are explicitly marked as unverified.
+fresh observations. Checkpoint **48837** records **610,991 XP**, **2,909 XP**
+short of level 30 at healer room **3054**. The same-boot quest-request
+allowance and automatic world-time probe are spent. Continue with a fresh
+current-band policy; do not repeat blocked routes or wait for a reboot unless
+the selected objective depends on that reset.
+The Yggdrasil
+assignment, blocked city-food street, and hoard digging remain closed under
+their existing source and live gates. The October 4 batch is recorded in
+`runs/regression_test_batches.json`; the corrected assertion remains unverified.
 
 ### Earlier October 3 Evidence
 
@@ -161,8 +338,8 @@ The route recheck now reuses ordinary same-boot productive-repeat evidence
 instead of rejecting a previously useful target merely for exceeding the fresh
 search's three-kill cap. Old obstructions, the one-shot limit, and live safety
 checks remain in force. Selection is live-proved, not productive combat.
-DD4 source was refreshed to **6941814**; parser smoke checks pass, and new
-undead-turning skills are not automatically authorized.
+At that point DD4 source was **6941814**; its parser smoke passed, and new
+undead-turning skills were not automatically authorized.
 
 Loose retrieval quests can now accept source-audited pickpocket transit when
 the entire observed ordinary purse is at most **250 copper-equivalent**. Other
@@ -234,9 +411,11 @@ Old research exclusions no longer turn an affordable flight purchase into
 another funding hunt; affordable food wins over an emergency equipment sale,
 including while flying. **15951** cleared the live quest timer and requested
 a new assignment on one connection. It received an unsupported trapped hoard
-and aborted without reward. Required next-level QP waits are now separate from
-the optional frontier-request limit, with completed-cycle evidence preserved
-through maintenance. None of these runs added XP or quest points. Use the
+and aborted without reward. Required next-level QP waits remain separate from
+optional frontier requests; both follow DD4's active-assignment and live-timer
+gates. The former campaign-side per-level/reboot request limit is removed, with
+completed-cycle evidence preserved through maintenance. None of these runs
+added XP or quest points. Use the
 same bounded `hero --autonomous` command; no manual gameplay is required for
 these repairs.
 
@@ -523,10 +702,12 @@ Ararisa is level **11**, **49,333 XP**, fully recovered at healer **3054**
 (checkpoint **47291**). No new regression batch was run.
 
 The autonomous command now tries the existing bounded quest option when flight
-funding, ground hunts, and registered alternatives are exhausted. It shares the
-usual one-request-per-level/reboot limit. Run **15464** exercised that handoff:
-Astrevo reached Suturb, received a retrieval quest, then aborted when the route
-needed Circus admission. No reward or XP was earned.
+funding, ground hunts, and registered alternatives are exhausted. Run **15464**
+exercised that handoff: Astrevo reached Suturb, received a retrieval quest, then
+aborted when the route needed Circus admission. No reward or XP was earned.
+The former campaign-imposed one-request-per-level/reboot limit was removed on
+October 5. DD4's live active status and `nextquest` timer control request
+frequency; campaign request markers are audit history only.
 Noncombat Circus quest planning now includes the source-checked ticket purchase
 and door unlock, reusing the existing field-action runner. That admission change
 and its saved failure cases are not yet live-proved or regression-tested.
@@ -1441,7 +1622,11 @@ Live cleanup has its own allowance.
 On shared databases larger than 1 GB, startup skips the campaign-phase index
 migration and uses bounded loss-history repair so a long-lived SQLite file
 cannot block a hero resume. Build that index during a separate maintenance
-window if full historical phase repair is required.
+window if full historical phase repair is required. The active database's
+`idx_campaign_segments_campaign_phase` index was prepared separately on
+October 7. The unchanged-route recheck may use it to resolve one exact older
+phase ID beyond the bounded recent tail; it loads only that segment and fails
+closed when the index is absent.
 
 If a worker is stopped after its deadline, recover only its campaign on a large
 shared database so maintenance stays bounded:
@@ -1793,19 +1978,24 @@ bank debt; use the live currency snapshots and loan notice to reconcile cash.
 
 ```powershell
 python -m dd4tester show-transcript transcripts/login-1.jsonl --raw
+python -m dd4tester refresh-run-summary 16155
 python -m dd4tester campaign-report 7 --format json --output reports/campaign-7.json
 python -m dd4tester campaign-report 7 --full-history --format json
-python -m dd4tester summarize-runs --after-run-id 16000 --limit 25
+python -m dd4tester summarize-runs --campaign-id 7 --after-run-id 16000 --limit 25
 ```
 
 Newly completed runs cache a report summary. Campaign reports aggregate those
 small summaries and do not scan every historical event; older runs show partial
 coverage until explicitly backfilled with bounded `summarize-runs` pages.
+`report` is read-only; `refresh-run-summary RUN_ID` is the explicit one-run
+repair path when recovered evidence changes a kill or objective result.
 Backfill can read substantial legacy evidence, so use a modest `--limit` on the
 large shared database.
 
-For controlled comparisons, prepare JSON files for starting state, objective,
-and final metrics, then register each arm:
+For controlled comparisons, register each arm from an exact character
+checkpoint. Finishing a linked completed run derives the shared metrics from
+its saved evidence; `--metrics` remains available for legacy runs or external
+measurements:
 
 ```powershell
 python -m dd4tester experiment start --comparison dorrik-l29-quest `
@@ -1813,9 +2003,10 @@ python -m dd4tester experiment start --comparison dorrik-l29-quest `
   --checkpoint-id 48726 `
   --objective runs/experiments/objective.json --dd4-version <build-or-commit> `
   --source-revision <source-commit> --campaign-id 7
-python -m dd4tester experiment finish 1 --metrics runs/experiments/metrics.json `
+python -m dd4tester experiment finish 1 --run-id <completed-run-id> `
   --bot-error "missed the required item selector"
 python -m dd4tester experiment show --comparison dorrik-l29-quest
+python -m dd4tester experiment compare --comparison dorrik-l29-quest
 ```
 
 Use either `--starting-state` with a complete `CharacterState.to_dict()` snapshot
@@ -1827,9 +2018,17 @@ One comparison key pins a common tester version, DD4 version, test mode, source
 revision, and objective; each arm stores its exact starting character/world
 state. Finished arms are immutable. Include net XP, elapsed time, deaths/losses, quest
 result, and maintenance in metrics; finish links to a completed run or campaign.
+When metrics are derived, XP, deaths, kills, quest-point change, elapsed time,
+and activity buckets come from the linked run. The derivation requires saved
+start/end state and refuses incomplete loss or quest-point ledgers.
 `--mode` distinguishes source-informed testing from ordinary-player exploration.
 Attribute observed failures to `--bot-error` or `--game-defect` instead of
-silently counting them as class balance.
+silently counting them as class balance. `experiment compare` summarizes
+completed-arm means, net XP per minute, and attribution by variant; it also
+flags differing DD4/tester/source conditions, objectives, or starting baselines.
+The comparison prints each arm's character, resource, and equipment start
+profile; treat metrics as descriptive when `world_baseline_consistent` is false
+or the profiles differ materially.
 
 Every metrics file must use these shared numeric fields: `net_xp`,
 `elapsed_seconds`, `confirmed_kills`, `deaths`, `xp_lost`,
@@ -1903,6 +2102,9 @@ and stronger gear placements with their source rejection reasons. Use `--json`
 for automation. Its output is
 analysis only and never authorizes a live connection; a target still needs
 the campaign's fresh consider, protection, resource, route, and loss gates.
+The quest section reports DD4's active-quest, fame, and cooldown gates. Old
+campaign request markers are shown as history only and do not suppress a new
+request when the live timer is zero.
 The report also evaluates DD4's ordinary +6-or-higher fame rule separately
 from the usable `ACT_IS_FAMOUS` branch. Its current +9 ceiling is a bounded
 research horizon, not a game rule, so fame candidates and their blockers remain

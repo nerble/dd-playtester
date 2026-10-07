@@ -57,6 +57,45 @@ damage XP, regeneration, and the best ordinary reward roll; keep the window
 monotonic within the encounter. This changes gear timing only, never combat
 permission or stat-training priorities. Recovery gear retains precedence.
 
+Quest points are progression gates at levels 30, 50, 80, and HERO. Keep the
+active pilot's shortfall visible, request again only for an active QP blocker
+from fresh live zero-timer evidence, and count only an
+observed positive QP delta. While the source-derived next-level QP shortfall is
+zero, prioritize current-band XP and do not request quests or wait out a quest
+timer for optional assignments. Resume questing promptly when a positive QP
+shortfall actually blocks progression. Preflight every random assignment against its exact
+source route, deadline, hazards, and recovery plan; a safe abort is not quest
+progress. Compare questmasters by reward and the complete route, including
+flight and randomized-room navigation. DD4 rewards the questmaster present at
+`quest complete`, not necessarily the original giver: among currently audited
+same-reward routes, use the shortest one. Higher rewards never waive source,
+live identity, survival, or return-route gates. Hoard assignments additionally
+require the integrated, trap-aware excavation and hand-in flow.
+At a provisioned, recovered healer checkpoint with no QP shortfall or negative
+fame, preserve a selected affordable flight purchase before protection-frontier
+rewrites. Keep shop-route cooldowns, current price/stock, and live affect
+verification authoritative. If ordinary XP selection has no executable target,
+existing audited ground-stash or coin-carrier funding may run as bounded
+maintenance only; it grants no progression XP or new combat permission.
+An adjacent-room scan blocks only an exact target sighted one room away in the
+intended direction. More distant sightings retain their actual distance; the
+whole-route locator and subsequent destination scans still apply. Fixing this
+parser does not clear saved route failures or authorize an automatic retry.
+Potion preparation must continue past already-attempted keywords and deliberate
+pouch evictions to the next source-safe loose potion. Require acknowledgement
+before counting eviction or placement; an unconfirmed slot never authorizes
+departure or sanctuary-dependent combat. Preserve the finite packing attempts.
+Optional ring retry cooldowns count productive XP hunts, not incidental XP from
+sanctuary, healing, food, or flight supply carriers. Apply that same exclusion
+when rebuilding the cooldown from bounded saved history.
+Rebuild productive source-hunt identities from the already-loaded, same-boot
+compact kill ledger as well as the eight-segment tail. Require exact policy
+tags and meaningful objective-eligible rewards; never credit below-band,
+incidental, or route-gate kills. A proven productive route stopped solely for
+a missing sanctuary reserve may pass its kill cap after fresh supply repairs
+that prerequisite, but retain every loss, crowd, route, consider, and cooldown
+gate. Reject unsupported passive armed-special HP probes before travelling.
+
 ## Structure
 
 `dd4tester/` contains transport, observation/state, deterministic decisions,
@@ -81,7 +120,8 @@ aggregate summaries and boundary states by default, omitting the historical
 segment list. Use `campaign-report --full-history` only when per-segment detail
 is needed. Legacy campaign/run links use the bounded, resumable
 `backfill-campaign-runs` command. Historical run-summary backfill is paginated
-with `summarize-runs`.
+with `summarize-runs`; prefer `--campaign-id N` to keep repair focused on the
+active character's campaign, then continue using the printed `--after-run-id`.
 Transcript-repaired `state_snapshot` events keep ordered reason/source metadata
 in `events`; save their full payload only at the named checkpoint boundaries
 and refresh the compact current state for all other reasons. Historical rows
@@ -92,7 +132,10 @@ do not reuse a persisted `achieved` claim. Quest objectives require a positive
 quest-point delta, item objectives require distinct acquired/inventory entries,
 and an explicitly requested level transition is an independent gate. A
 multi-stop route must use its registered stop item names; never infer an item
-requirement from a route label or mobile selector.
+requirement from a route label or mobile selector. For route-level capacity
+preflight, alternate reset-room stops are alternatives: reserve the maximum
+explicit quantity per item across stops, not the sum of fallback locations.
+The exact-stop loot gate still enforces that stop's full required quantity.
 campaign segment linked to a current run summary inherits that run's three
 outcomes; side effects such as a level-up cannot replace the run objective.
 Keep version-old campaign metrics available without trusting their old positive
@@ -125,7 +168,10 @@ comparison key must use the same DD4 version and objective; starting conditions
 may vary by recorded variant. Use the shared whole-session metric schema and
 leave finished experiment records immutable. Prefer `experiment start
 --checkpoint-id N` to bind a comparison arm to an exact persisted boundary;
-this records checkpoint provenance and links its campaign automatically.
+this records checkpoint provenance and links its campaign automatically. Use
+`experiment compare --comparison KEY` to aggregate completed arms by variant;
+check its condition/objective flags, world-baseline result, and per-arm starting
+profiles before interpreting differences as balance evidence.
 
 ## Development Commands
 
@@ -172,9 +218,15 @@ does not lower readiness for travel or combat. Hoard work remains gated; consult
 
 During connected quest waits, keep reading live output between thirty-second
 timer queries; never sleep the reader for the query interval. Preserve the
-180-second stall stop and finite segment limit. Only the exact legacy
-sleep-before-read stall described in `docs/OPERATIONS.md` may receive one
-persisted reader-revision recheck; repaired-reader failures remain closed.
+180-second stall stop and finite segment limit. Parse DD4's exact `quest time`
+cooldown replies and `You may now quest again.` message as live status updates,
+even if duplicate-login filtering suppresses later `Char.Quest` snapshots. Only
+the exact legacy sleep-before-read stall described in `docs/OPERATIONS.md` may
+receive one persisted reader-revision recheck; repaired-reader failures remain
+closed. When live status shows no active quest and a zero timer, request again
+immediately on the connected quest phase; level, reboot, and prior request
+history are not quotas.
+Do not impose a minimum remaining-runtime reserve after the live timer clears.
 For an active loose-item quest, source-only `spec_thief` transit may accept a
 known whole ordinary purse of at most 250 copper-equivalent. Require the
 passive, unarmed, unprogrammed, single-special profile, unchanged quest
@@ -228,16 +280,32 @@ before buying. Affordable food restocking precedes
 an emergency equipment sale whether flying or walking; ordinary loot sales
 retain their existing rules.
 After ordinary current-band source selection finds nothing executable, a
-source-required next-level quest-point shortfall may use the bounded connected
-healer cooldown even if the optional frontier request was already consumed.
-Require food, recovery, nonnegative observed fame, and actual timer progress.
-A completed wait followed by a positively observed new quest assignment starts
-a new cooldown cycle; consume that old phase evidence before dispatching the
-next wait. Keep the optional request limit and all generated-target gates.
-A direct request may also prove a new cycle when its saved start has explicit
-quest availability, matching level/reboot, and its run records a dispatched
-request followed by a positive assignment. Legacy repair must match the actual
-segment's first quest phase and use only the existing bounded history tail.
+source-required next-level quest-point shortfall may use the connected healer
+cooldown. Require food, recovery, nonnegative observed fame, and actual timer
+progress. DD4's live active-quest status and `nextquest` timer are the only
+request-frequency gates: when no quest is active and the timer reaches zero,
+the bot should request again immediately on that connected quest phase,
+regardless of level, reboot, or earlier requests. Campaign request markers are
+audit evidence only; never let them suppress an otherwise eligible request or
+wait for a reboot.
+Treat quest points as a progression resource before the gate becomes
+immediate: DD4 requires totals of 1, 200, 500, and 1,000 before levels 30, 50,
+80, and 100. Preserve points for advancement, track the shortfall to the next
+gate, and keep taking source/live-admitted quests early enough to build a
+buffer; do not wait until level 49, 79, or 99 to start. A request, safe abort,
+or unavailable assignment is not quest progress. For each assignment, use its
+own exact kill, loose-object, or hoard path and record whether the objective
+actually completed. A positive cooldown blocks only another quest request:
+continue an executable current-band XP policy during it when one is available,
+then request on the same connection as soon as the observed timer reaches zero.
+A completed zero-timer wait followed by an actually dispatched request starts
+a new timer cycle whether DD4 assigns a quest or leaves `active=0` and starts a
+positive `nextquest` timer. Consume the old phase evidence before dispatching
+the next wait. A direct request may also prove a new cycle when its saved
+start has explicit quest availability, matching level/reboot, and its run
+records the dispatched request followed by a positive assignment or fresh
+timer. Legacy repair must match the actual segment's first quest phase and use
+only the existing bounded history tail.
 Positive assignment evidence requires the observed active flag to be 1;
 leftover object/mobile identities must not override inactive or missing status.
 Same-connection quest handoffs preserve current structured equipment identities
@@ -259,8 +327,19 @@ an outer timeout, reconcile a uniquely matched terminal `ready`/`success` run
 without rewriting its status: link its cached summary and checkpoint, preserving
 execution, objective, safety, and the timeout diagnostic independently. Resume
 only when final state is present and neither dead nor in Purgatory; genuinely
-running, failed, or unsafe workers remain failed. For
-an accepted connection that sends no login prompt, use the five-second
+running, failed, or unsafe workers remain failed. Before calling an attempt
+pre-connection or retrying its policy, inspect the process list,
+`show-campaign`, `show-runs --limit 4`, and its exact transcript/current state.
+A segment with no `run_id` or zero recorded commands does not prove that no
+run or commands exist. While the segment is still running, use
+`recover-runs --campaign-id N --character NAME` to bind a unique matching run
+and preserve its measured execution, objective, and safety outcomes. Never
+repeat a live target that fled on an output-budget failure without new source
+or live evidence clearing that gate. When rebuilding a failed segment's
+source-policy quarantine, merge its exact starting campaign metadata with the
+terminal state and require a linked run, nonzero commands, and explicit loss
+evidence; a safe abort or orphan segment alone never closes a target. For an
+accepted connection that sends no login prompt, use the five-second
 pre-login timeout and its bounded retry, then checkpoint transport
 unavailability; do not convert silence into route evidence or a reboot wait.
 The in-game inactivity timeout remains separate. If this happens during the
@@ -268,6 +347,18 @@ one-shot sanctuary area-reset recheck and zero game commands were issued, leave
 that recheck pending for a later explicit invocation; do not spend it, wait
 again, or retry automatically in the same invocation. Once game commands have
 started, the normal one-shot boundary applies.
+
+The spent sanctuary recheck must not block the first bounded respawn wait for
+an independent, recently productive plain hunt. Require the exact latest
+registered-endpoint absence and earlier useful kill in the eight-segment tail,
+unchanged level/boot/source, healer returns, no loss, and no sanctuary need.
+Only the initial absence cooldown of three uses this admission; existing aged
+wait rules and finite supervisor budgets remain in control. Preserve sanctuary
+markers, target losses, city blocks, and every ordinary live hunting gate.
+General reset-aged capacity permission must also reject a terminal sanctuary
+recheck at both maintenance selection and exact Moria probe admission; a hunt
+respawn wait cannot reopen that resource route.
+
 DD4's summoned familiar is an uncharmed follower at runtime: `db.c` strips
 `AFF_CHARM` from mobile prototypes, and `spell_summon_familiar` only adds a
 follower. Use `order <selector> flee Fear` and require the exact companion
@@ -327,7 +418,11 @@ both recorded under the same prior revision, and the current-source candidate
 still has the exact policy, mobile VNUM, room, and route. If the blocked
 segment fell outside the normal eight-row tail, fetch only that policy's
 latest segment with the bounded 256-row lookup; never expand checkpoint
-history. The fresh live locator and every ordinary gate still apply.
+history. Persist this separately as
+`campaign_field_city_source_refresh_revalidation`; retain the old route marker
+and blocked-policy ledger unchanged. Match the locator to its exact successful
+segment/run in the bounded recent history. The fresh live locator and every
+ordinary gate still apply.
 A candidate past the ordinary three-kill fresh-search cap may use that same
 one-shot city-route revalidation only when the ordinary same-boot productive
 repeat selector independently admits its exact policy. Calculate that proof
@@ -336,8 +431,25 @@ ledger; never infer it from the kill count or the revalidation marker itself.
 Record `repeat_after_kill_cap`; preserve current target failures, loss evidence,
 route bounds, and every live gate. This does not create another retry marker.
 A city-blocked policy must not short-circuit offline source selection: keep
-that exact policy excluded unless its one-use marker is pending, but allow
+that exact policy excluded unless its one-use marker is pending or its exact
+route-clear recheck has verified productive completion, but allow
 other current-band candidates to pass their normal source and route gates.
+When all ordinary candidates remain closed, one plain, unarmed, otherwise
+eligible policy may receive `campaign_field_city_clear_route_revalidation`.
+Require its unchanged source route, a saved successful no-travel three-wait
+city block with no kill or loss, and a later run-linked, complete, changed
+locator proving every current hazard location outside the entire route.
+Map all matching Midgaard room labels, not just the first. Consume this
+one-per-level/reboot marker before departure and repeat all live route and
+combat checks. An old exact-policy segment outside the eight-row tail and
+256-row metadata window may use one indexed phase-ID lookup and hydrate only
+that row; an absent index fails closed, never triggers a history scan.
+Only a linked positive-XP kill of the exact mobile, complete unblocked route,
+unchanged loss/level/boot/source, and safe healer return may promote the marker
+to `succeeded`. This supersedes only that old route closure for ordinary fresh
+selection; preserve its historical ledger. A fresh block closes it again.
+Failed, absent, changed, or incomplete rechecks grant no further retry or
+combat permission, and exact target losses remain authoritative.
 One saved source-ranked result may be reopened once when it records the exact
 pre-combat live-maze index mismatch, the encountered room lies on that
 candidate's source route before its registered maze entry, and the reported
@@ -355,6 +467,11 @@ At a safe healer checkpoint, if health, movement, or mana is below the campaign
 readiness threshold and food is available, use the bounded healer recovery
 policy before declaring the frontier unavailable. Re-select the source route
 after waking; low movement alone is not evidence that every route is closed.
+At healer room 3054, if a returned character has a live food or drink need and
+already carries the matching supply, stand and consume it before equipment or
+movement-recovery logic can send them back to sleep. Never alternate
+stand/sleep while a carried need is actionable; cover this controller ordering
+with a focused test.
 For urgent source-food routes, wake from healer sleep only to use carried food
 or water, or once the approved route's movement threshold is ready. If starving
 without supplies and still below that threshold, remain asleep until movement
@@ -476,8 +593,20 @@ modifiers must fail closed rather than lower a target estimate.
 A post-loss plain-target probe may use the same lower-bound and uncertainty-gap
 output test as the protection-recovery fallback, but only with a plain,
 unarmed, source-locatable route and the tighter incoming-damage limits recorded
-in `docs/OPERATIONS.md`; live GMCP HP and damage remain decisive. A route
-special is permitted only when source verifies it as noncombat and its mobile
+in `docs/OPERATIONS.md`; live GMCP HP and damage remain decisive.
+The isolated plain-target variant may credit source-audited shield block,
+parry (or Brawler pre-empt), and dodge from an observed same-level/boot training
+audit and current normal form, equipment, position, and unimpeded affects.
+Require their combined normal-hit probability to be at most one half before
+using the ordinary 67%-HP raw-peak bound rather than the strict half-HP bound.
+Never reduce raw peak damage, change the finite action/health-reserve gates,
+clear target losses or below-band/route closures, or treat the estimate as live
+combat evidence. Unknown source items, multiple resets, spells, specials, and
+unobserved or conflicting defense proficiencies receive no such credit.
+Only expected ordinary incoming hits change; live isolation, consider, target
+HP, damage-window, and withdrawal gates still decide whether combat proceeds.
+Record the selected probability and its source/proficiency provenance.
+A route special is permitted only when source verifies it as noncombat and its mobile
 has no program or reset-loaded gear. Unknown or combat-capable specials remain
 blocked; the exact low-level greet-program exception still requires its own
 registered `where` preflight.
@@ -644,13 +773,21 @@ registered policy for the current level. Preserve the funding marker, retain
 the policy's ordinary route and combat gates, and do not wait for a reboot
 solely because flight remains unfunded.
 If that selection also has no executable policy, it may use the existing
-one-per-level/reboot frontier quest request, with live quest availability and
-nonnegative fame. Share the same request marker; funding exhaustion grants no
-extra requests, cooldown bypass, or target permission.
-Policy selection alone is not a dispatched request. Reopen it once only when
-the exact saved request segment returned to healer room 3054 after the pouch
-listing timeout, with unchanged level, boot, XP, and loss total and no
-`quest_request_attempt` event; consume that retry at policy selection.
+frontier quest request only with no active quest, a zero live timer, and
+nonnegative fame. Campaign request markers record history but never cap
+requests per level or reboot. Require well-formed observed `active` and
+`nextquest` fields; missing timer data is unknown, not an expired cooldown.
+Policy selection alone is not a dispatched
+request; use one request command per phase and rely on a fresh MUD observation
+for the assignment or server cooldown before selecting another attempt. Funding
+exhaustion grants no cooldown bypass or target permission.
+DD4 advances the quest timer while the character is connected. Honor every
+fresh server timer, including the short delay after an unavailable quest and
+the delay after an explicit abort. If a bounded worker reaches its runtime cap
+before the timer reaches zero, save and quit at the safe healer checkpoint,
+then resume the same campaign promptly; do not count this as a failed request,
+wait offline for the timer, or impose a level/reboot attempt quota. Request
+again only after fresh status confirms an inactive quest and `nextquest == 0`.
 The same shared quest request may follow a selected hunt whose required
 sanctuary supply is exhausted, from a recovered, provisioned healer checkpoint
 with observed quest status. Preserve sanctuary attempts and protection gates;

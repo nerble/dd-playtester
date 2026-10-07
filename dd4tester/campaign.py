@@ -11,6 +11,7 @@ from collections import Counter
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Collection, Iterable, Mapping, Sequence
@@ -28,6 +29,7 @@ from .companions import (
     familiar_withdrawal_rooms_safe,
     learned_familiar_available,
 )
+from .combat_defenses import normal_attack_landing_probability
 from .temporal_evidence import expired_room_crowds, single_area_locator_miss
 from .dd4_catalog import load_character_catalog
 from .equipment import (
@@ -78,6 +80,8 @@ from .hunt_candidates import (
     ITEM_MONEY,
     ITEM_CONTAINER,
     ITEM_LOCK_PICK,
+    SECT_UNDERWATER,
+    SECT_UNDERWATER_GROUND,
     minimum_money_value,
     MobReset,
     ObjectSource,
@@ -188,7 +192,9 @@ from .quests import (
     quest_mobile_is_source_eligible,
     quest_points_shortfall_for_advance,
     quest_request_fame_allowed,
+    quest_request_status_observed,
     quest_target_maximum_level_offset,
+    questmaster_completion_choice,
     questmaster_name_for_level,
     questmaster_route_for_level,
     snapshot_quest_status,
@@ -211,6 +217,7 @@ from .specials import (
 from .sessions import QUEST_WAIT_READER_REVISION, QuestPhase
 from .quest_access import (
     ECONOMIC_QUEST_MAX_COPPER, circus_quest_admission, economic_quest_transit,
+    tentusks_key_source_chain,
 )
 from .source_purchases import TRAINING_TRAVEL_SUPPLY_KEY, training_travel_supply
 from .training_travel import (
@@ -735,6 +742,7 @@ _MUD_SCHOOL_PARTIAL_BAND_POLICY_IDS = frozenset(
     {"mud-school-2-6", "mud-school-6-10"}
 )
 _SOURCE_REVISION_KEY = "campaign_source_revision"
+_POUNDING_WEAPON_REARM_ATTEMPT_KEY = "campaign_pounding_weapon_rearm_attempt"
 _SOURCE_CONSUMABLE_SPELL_KEY = "campaign_source_consumable_spell"
 _SOURCE_RESOURCE_RESERVES_KEY = "campaign_source_resource_reserves"
 _MORIA_SANCTUARY_POTION_OBJECT_VNUM = 4050
@@ -1185,6 +1193,12 @@ _FIELD_CITY_CORRECTION_REVALIDATION_KEY = (
 )
 _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY = (
     "campaign_field_city_alternate_route_revalidation"
+)
+_FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY = (
+    "campaign_field_city_source_refresh_revalidation"
+)
+_FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY = (
+    "campaign_field_city_clear_route_revalidation"
 )
 _FIELD_CITY_ALTERNATE_ROUTE_MAX_EXTRA_STEPS = 22
 _FAME_RECOVERY_SOURCE_RANKED_KEY = "campaign_fame_recovery_source_ranked"
@@ -1793,6 +1807,27 @@ def _is_audited_moria_sanctuary_capacity_candidate(
         and candidate.autonomy_rejections
         == ("target reset capacity exceeds one",)
         and not candidate.specials
+    )
+
+
+def _moria_sanctuary_capacity_probe_allowed(
+    state: Mapping[str, Any],
+    candidate: HuntCandidate,
+    object_vnums: Collection[int],
+    *,
+    automatic_reset_wait: bool = False,
+) -> bool:
+    """Allow the one reset-aged probe only for the exact Moria carrier."""
+    return bool(
+        not _sanctuary_area_reset_recheck_failure_terminal(state)
+        and _source_capacity_reset_wait_available(
+            state,
+            automatic_reset_wait=automatic_reset_wait,
+        )
+        and _is_audited_moria_sanctuary_capacity_candidate(
+            candidate,
+            object_vnums,
+        )
     )
 
 
@@ -2569,6 +2604,14 @@ _RECOVER_DAYCARE_RING_REQUIRED_FREE_WEIGHT = 21
 _DAYCARE_RING_ATTEMPT_BOOT_KEY = "campaign_daycare_ring_attempted_boot_id"
 _DAYCARE_RING_COOLDOWN_KEY = "campaign_daycare_ring_cooldown"
 _DAYCARE_RING_COOLDOWN_SEGMENTS = 3
+_DAYCARE_RING_RESOURCE_EXECUTIONS = frozenset({
+    "moria-sanctuary-hunt",
+    "moria-deep-sanctuary-hunt",
+    "dwarven-catacombs-sanctuary-hunt",
+    "source-ranked-cure-critical-reserve",
+    "source-ranked-food-reserve",
+    "source-ranked-flight-reserve",
+})
 _DAYCARE_RING_BLOCKED_LEVEL_KEY = "campaign_daycare_ring_blocked_level"
 _DAYCARE_RING_BLOCKED_BOOT_KEY = "campaign_daycare_ring_blocked_boot_id"
 _DAYCARE_RING_HISTORY_STATE_FIELDS = (
@@ -2779,6 +2822,8 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     _FIELD_CITY_ROUTE_ATTEMPTS_KEY,
     _FIELD_CITY_CORRECTION_REVALIDATION_KEY,
     _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY,
+    _FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY,
+    _FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY,
     CITY_TRANSIT_KEY,
     _BELOW_BAND_SIGHTINGS_KEY,
     _RESEARCH_ABSENCE_COOLDOWN_KEY,
@@ -3620,6 +3665,11 @@ def _field_city_route_policy_id_from_segment(
         and not phase.startswith(f"{_SOURCE_RANKED_POLICY_PREFIX}unavailable-")
     ):
         return phase
+    if phase in {
+        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+        _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY.policy_id,
+    }:
+        return phase
     if phase != "provision-funding":
         return None
     record = end_state.get(_SOURCE_RANKED_CANDIDATE_KEY)
@@ -3789,39 +3839,95 @@ def _field_city_correction_revalidation_from_segment(
     }
 
 
+def _field_city_alternate_route_revalidation_record(
+    state: Mapping[str, Any],
+    *,
+    policy_id: str | None = None,
+) -> tuple[str, Mapping[str, Any]] | None:
+    for marker_key in (
+        _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY,
+        _FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY,
+        _FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY,
+    ):
+        marker = state.get(marker_key)
+        if not isinstance(marker, Mapping):
+            continue
+        rooms = marker.get("blocked_room_vnums")
+        try:
+            extra_steps = int(marker.get("max_extra_steps"))
+            mobile_vnum = int(marker.get("source_mobile_vnum"))
+            room_vnum = int(marker.get("source_room_vnum"))
+        except (TypeError, ValueError):
+            continue
+        valid = bool(
+            marker.get("status") == "pending"
+            and marker.get("attempted") is not True
+            and marker.get("boot_id") == state.get("world_boot_id")
+            and marker.get("level") == _level(dict(state))
+            and marker.get("source_revision") == state.get(_SOURCE_REVISION_KEY)
+            and state.get(_SOURCE_REVISION_KEY)
+            and marker.get("policy_id")
+            and str(marker.get("policy_id")).startswith(
+                _SOURCE_RANKED_POLICY_PREFIX
+            )
+            and (policy_id is None or marker.get("policy_id") == policy_id)
+            and type(marker.get("prior_segment_id")) is int
+            and marker.get("prior_segment_id", 0) > 0
+            and 0 < mobile_vnum
+            and 0 < room_vnum
+            and extra_steps == _FIELD_CITY_ALTERNATE_ROUTE_MAX_EXTRA_STEPS
+            and isinstance(rooms, (list, tuple))
+            and bool(rooms)
+            and all(type(value) is int and value > 0 for value in rooms)
+        )
+        if marker_key == _FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY:
+            prior_revision = marker.get("prior_source_revision")
+            valid = bool(
+                valid
+                and marker.get("source_refresh") is True
+                and isinstance(prior_revision, str)
+                and prior_revision
+                and prior_revision != marker.get("source_revision")
+                and marker.get("observation_source_revision") == prior_revision
+                and type(marker.get("observation_segment_id")) is int
+                and marker.get("observation_segment_id", 0)
+                > marker.get("prior_segment_id", 0)
+                and type(marker.get("prior_run_id")) is int
+                and marker.get("prior_run_id", 0) > 0
+                and type(marker.get("observation_run_id")) is int
+                and marker.get("observation_run_id", 0)
+                > marker.get("prior_run_id", 0)
+            )
+        if marker_key == _FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY:
+            valid = bool(
+                valid
+                and marker.get("route_clear_recheck") is True
+                and marker.get("observation_source_revision")
+                == marker.get("source_revision")
+                and type(marker.get("prior_run_id")) is int
+                and marker.get("prior_run_id", 0) > 0
+                and type(marker.get("observation_run_id")) is int
+                and marker.get("observation_run_id", 0)
+                > marker.get("prior_run_id", 0)
+                and isinstance(marker.get("source_route"), list)
+                and bool(marker["source_route"])
+            )
+        if valid:
+            return marker_key, marker
+    return None
+
+
 def _field_city_alternate_route_revalidation_pending(
     state: Mapping[str, Any],
     *,
     policy_id: str | None = None,
 ) -> bool:
-    marker = state.get(_FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY)
-    if not isinstance(marker, Mapping):
-        return False
-    rooms = marker.get("blocked_room_vnums")
-    try:
-        extra_steps = int(marker.get("max_extra_steps"))
-        mobile_vnum = int(marker.get("source_mobile_vnum"))
-        room_vnum = int(marker.get("source_room_vnum"))
-    except (TypeError, ValueError):
-        return False
-    return bool(
-        marker.get("status") == "pending"
-        and marker.get("attempted") is not True
-        and marker.get("boot_id") == state.get("world_boot_id")
-        and marker.get("level") == _level(dict(state))
-        and marker.get("source_revision") == state.get(_SOURCE_REVISION_KEY)
-        and state.get(_SOURCE_REVISION_KEY)
-        and marker.get("policy_id")
-        and str(marker.get("policy_id")).startswith(_SOURCE_RANKED_POLICY_PREFIX)
-        and (policy_id is None or marker.get("policy_id") == policy_id)
-        and type(marker.get("prior_segment_id")) is int
-        and marker.get("prior_segment_id", 0) > 0
-        and 0 < mobile_vnum
-        and 0 < room_vnum
-        and extra_steps == _FIELD_CITY_ALTERNATE_ROUTE_MAX_EXTRA_STEPS
-        and isinstance(rooms, (list, tuple))
-        and bool(rooms)
-        and all(type(value) is int and value > 0 for value in rooms)
+    return (
+        _field_city_alternate_route_revalidation_record(
+            state,
+            policy_id=policy_id,
+        )
+        is not None
     )
 
 
@@ -3835,14 +3941,14 @@ def _mark_field_city_alternate_route_revalidation(
         candidate,
         character_level=character_level,
     )
-    if not _field_city_alternate_route_revalidation_pending(
+    record = _field_city_alternate_route_revalidation_record(
         state,
         policy_id=policy_id,
-    ):
+    )
+    if record is None:
         return False
-    marker = state.get(_FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY)
-    assert isinstance(marker, Mapping)
-    state[_FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY] = {
+    marker_key, marker = record
+    state[marker_key] = {
         **dict(marker),
         "status": "attempted",
         "attempted": True,
@@ -4042,6 +4148,165 @@ def _field_city_revalidation_segment(
     return segment, start, end
 
 
+def _field_city_segment_by_id(
+    segment_id: int,
+    segments: Collection[Any],
+    *,
+    storage: RunStorage | None,
+    campaign_id: int | None,
+) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]] | None:
+    for raw_segment in reversed(
+        tuple(segments)[-_CAMPAIGN_RUNTIME_CHECKPOINT_LIMIT:]
+    ):
+        if isinstance(raw_segment, Mapping):
+            segment = raw_segment
+        else:
+            try:
+                segment = {key: raw_segment[key] for key in raw_segment.keys()}
+            except (AttributeError, KeyError, TypeError):
+                continue
+        if segment.get("id") != segment_id:
+            continue
+        try:
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if isinstance(start, Mapping) and isinstance(end, Mapping):
+            return segment, start, end
+        return None
+
+    if storage is None or campaign_id is None:
+        return None
+    loader = getattr(storage, "get_campaign_segment_by_id", None)
+    if not callable(loader):
+        return None
+    try:
+        raw_segment = loader(campaign_id, segment_id)
+    except (OSError, sqlite3.Error, TypeError, ValueError):
+        return None
+    if raw_segment is None:
+        return None
+    if isinstance(raw_segment, Mapping):
+        segment = raw_segment
+    else:
+        try:
+            segment = {key: raw_segment[key] for key in raw_segment.keys()}
+        except (AttributeError, KeyError, TypeError):
+            return None
+    try:
+        start = json.loads(segment.get("start_state_json") or "{}")
+        end = json.loads(segment.get("end_state_json") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+        return None
+    return segment, start, end
+
+
+def _field_city_source_refresh_observation(
+    marker: Mapping[str, Any],
+    segments: Collection[Any],
+    *,
+    boot_id: str,
+    character_level: int,
+    source_revision: str,
+    blocked_segment_id: int,
+    blocked_run_id: int,
+    storage: RunStorage | None,
+    campaign_id: int | None,
+) -> tuple[int, int, Mapping[str, Any]] | None:
+    raw_locations = marker.get("changed_locations")
+    if not isinstance(raw_locations, (list, tuple)):
+        return None
+    expected_locations = {
+        _normalise_room_label(value) for value in raw_locations
+    }
+    if not expected_locations or "" in expected_locations:
+        return None
+
+    recent_segments = tuple(segments)[
+        -_CAMPAIGN_RUNTIME_CHECKPOINT_LIMIT:
+    ]
+    projection_loader = getattr(
+        storage,
+        "list_recent_campaign_segment_state_projections",
+        None,
+    ) if storage is not None else None
+    if campaign_id is not None and callable(projection_loader):
+        try:
+            projected = projection_loader(
+                campaign_id,
+                state_fields=(
+                    _SOURCE_REVISION_KEY,
+                    "world_boot_id",
+                    "level",
+                    "xp",
+                    "xp_loss_total",
+                    "xp_loss_observed",
+                    "dead",
+                    "campaign_completed_kills",
+                    "campaign_objective_kills",
+                    "campaign_field_city_preflight",
+                ),
+                limit=_CAMPAIGN_RUNTIME_CHECKPOINT_LIMIT,
+            )
+        except (OSError, sqlite3.Error, TypeError, ValueError):
+            projected = ()
+        if projected:
+            recent_segments = tuple(projected)
+
+    for raw_segment in reversed(
+        recent_segments
+    ):
+        if isinstance(raw_segment, Mapping):
+            segment = raw_segment
+        else:
+            try:
+                segment = {key: raw_segment[key] for key in raw_segment.keys()}
+            except (AttributeError, KeyError, TypeError):
+                continue
+        if segment.get("status") != "success":
+            continue
+        try:
+            segment_id = int(segment.get("id"))
+            run_id = int(segment.get("run_id"))
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if (
+            segment_id <= blocked_segment_id
+            or run_id <= blocked_run_id
+            or not isinstance(start, Mapping)
+            or not isinstance(end, Mapping)
+            or start.get(_SOURCE_REVISION_KEY) != source_revision
+            or end.get(_SOURCE_REVISION_KEY) != source_revision
+        ):
+            continue
+        observation = end.get("campaign_field_city_preflight")
+        if not isinstance(observation, Mapping):
+            continue
+        locations = observation.get("locations")
+        if not isinstance(locations, (list, tuple)):
+            continue
+        normalized_locations = {
+            _normalise_room_label(value) for value in locations
+        }
+        if normalized_locations != expected_locations:
+            continue
+        observed_run_id = _field_city_preflight_observation_run_id(
+            observation,
+            (raw_segment,),
+            boot_id=boot_id,
+            character_level=character_level,
+            source_revision=source_revision,
+        )
+        if observed_run_id == run_id:
+            return segment_id, run_id, observation
+    return None
+
+
 def _arm_field_city_alternate_route_revalidation(
     state: dict[str, Any],
     candidates: Collection[HuntCandidate],
@@ -4091,6 +4356,16 @@ def _arm_field_city_alternate_route_revalidation(
         return None
 
     existing = state.get(_FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY)
+    refresh_existing = state.get(_FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY)
+    source_refresh_attempt: Mapping[str, Any] | None = None
+    if (
+        isinstance(refresh_existing, Mapping)
+        and refresh_existing.get("boot_id") == boot_id
+        and refresh_existing.get("level") == level
+        and refresh_existing.get("status")
+        in {"pending", "attempted", "closed", "succeeded"}
+    ):
+        return None
     if (
         isinstance(existing, Mapping)
         and existing.get("boot_id") == boot_id
@@ -4098,7 +4373,18 @@ def _arm_field_city_alternate_route_revalidation(
         and existing.get("status")
         in {"pending", "attempted", "closed", "succeeded"}
     ):
-        return None
+        if (
+            existing.get("status") != "attempted"
+            or existing.get("attempted") is not True
+            or not isinstance(existing.get("source_revision"), str)
+            or existing.get("source_revision") == source_revision
+            or existing.get("prior_source_revision")
+            != existing.get("source_revision")
+            or type(existing.get("prior_segment_id")) is not int
+            or type(existing.get("prior_run_id")) is not int
+        ):
+            return None
+        source_refresh_attempt = existing
 
     blocked_policy_ids = _field_city_departure_blocked_policy_ids(state)
     attempted_policy_ids = _field_city_route_attempted_policy_ids(state)
@@ -4120,9 +4406,20 @@ def _arm_field_city_alternate_route_revalidation(
             candidate,
             character_level=level,
         )
+        use_saved_refresh_attempt = bool(
+            source_refresh_attempt is not None
+            and source_refresh_attempt.get("policy_id") == policy_id
+        )
         if (
             policy_id not in blocked_policy_ids
-            or policy_id in attempted_policy_ids
+            or (
+                source_refresh_attempt is not None
+                and source_refresh_attempt.get("policy_id") != policy_id
+            )
+            or (
+                policy_id in attempted_policy_ids
+                and not use_saved_refresh_attempt
+            )
             or policy_id in explicitly_excluded
             or not candidate.autonomous_safe
             or candidate.requires_flight
@@ -4149,15 +4446,35 @@ def _arm_field_city_alternate_route_revalidation(
         if direct is None or direct[0] != candidate.route:
             continue
 
-        matching = _field_city_revalidation_segment(
-            policy_id,
-            segments_tail,
-            storage=storage,
-            campaign_id=campaign_id,
-        )
+        if use_saved_refresh_attempt:
+            assert source_refresh_attempt is not None
+            try:
+                prior_segment_id = int(
+                    source_refresh_attempt.get("prior_segment_id")
+                )
+            except (TypeError, ValueError):
+                continue
+            matching = _field_city_segment_by_id(
+                prior_segment_id,
+                segments_tail,
+                storage=storage,
+                campaign_id=campaign_id,
+            )
+        else:
+            matching = _field_city_revalidation_segment(
+                policy_id,
+                segments_tail,
+                storage=storage,
+                campaign_id=campaign_id,
+            )
         if matching is None:
             continue
         matching_segment, matching_start, matching_end = matching
+        if (
+            matching_segment.get("phase") != policy_id
+            or matching_segment.get("status") != "success"
+        ):
+            continue
 
         prior = matching_end.get("campaign_field_city_preflight")
         if not isinstance(prior, Mapping):
@@ -4179,15 +4496,59 @@ def _arm_field_city_alternate_route_revalidation(
             != prior_source_revision
         ):
             continue
-        observation_run_id = current_run_id
-        if prior_source_revision != source_revision:
-            observation_run_id = _field_city_preflight_observation_run_id(
-                current,
+        if use_saved_refresh_attempt and (
+            prior_source_revision
+            != source_refresh_attempt.get("prior_source_revision")
+        ):
+            continue
+        observation_city: Mapping[str, Any] = current
+        observation_segment_id: int | None = None
+        if use_saved_refresh_attempt:
+            assert source_refresh_attempt is not None
+            refresh_observation = _field_city_source_refresh_observation(
+                source_refresh_attempt,
                 segments_tail,
                 boot_id=str(boot_id),
                 character_level=level,
                 source_revision=prior_source_revision,
+                blocked_segment_id=int(matching_segment.get("id") or 0),
+                blocked_run_id=prior_run_id,
+                storage=storage,
+                campaign_id=campaign_id,
             )
+            if refresh_observation is None:
+                continue
+            (
+                observation_segment_id,
+                observation_run_id,
+                observation_city,
+            ) = refresh_observation
+        elif prior_source_revision != source_revision:
+            refresh_observation = _field_city_source_refresh_observation(
+                {"changed_locations": list(current.get("locations", ()))},
+                segments_tail,
+                boot_id=str(boot_id),
+                character_level=level,
+                source_revision=prior_source_revision,
+                blocked_segment_id=int(matching_segment.get("id") or 0),
+                blocked_run_id=prior_run_id,
+                storage=storage,
+                campaign_id=campaign_id,
+            )
+            if refresh_observation is None:
+                continue
+            (
+                observation_segment_id,
+                observation_run_id,
+                observation_city,
+            ) = refresh_observation
+        else:
+            observation_run_id = current_run_id
+        observation_locations = observation_city.get("locations", ())
+        observed_locations = {
+            _normalise_room_label(value)
+            for value in observation_locations
+        } if isinstance(observation_locations, (list, tuple)) else set()
         old_locations = {
             _normalise_room_label(value)
             for value in prior_locations
@@ -4210,7 +4571,7 @@ def _arm_field_city_alternate_route_revalidation(
             and observation_run_id > prior_run_id
             and old_locations
             and "" not in old_locations
-            and old_locations != current_locations
+            and old_locations != observed_locations
             and start_xp == end_xp
             and start_loss == end_loss
             and matching_start.get("world_boot_id") == boot_id
@@ -4276,7 +4637,13 @@ def _arm_field_city_alternate_route_revalidation(
         ):
             continue
 
-        state[_FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY] = {
+        source_refresh = prior_source_revision != source_revision
+        marker_key = (
+            _FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY
+            if source_refresh
+            else _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY
+        )
+        marker = {
             "boot_id": boot_id,
             "level": level,
             "source_revision": source_revision,
@@ -4288,7 +4655,7 @@ def _arm_field_city_alternate_route_revalidation(
             "prior_run_id": matching_segment.get("run_id"),
             "blocked_room_vnums": list(blocked_rooms),
             "prior_locations": list(prior_locations),
-            "changed_locations": list(current.get("locations", ())),
+            "changed_locations": list(observation_locations),
             "max_extra_steps": _FIELD_CITY_ALTERNATE_ROUTE_MAX_EXTRA_STEPS,
             "repeat_after_kill_cap": (
                 candidate.boot_kills >= 3
@@ -4299,14 +4666,281 @@ def _arm_field_city_alternate_route_revalidation(
             "reason": (
                 "one source-checked long route after the exact city block "
                 "moved and the ordinary route-detour limit was insufficient"
-                if prior_source_revision == source_revision
-                else "one current-source route refresh for the exact "
+                if not source_refresh
+                else "one source-refresh revalidation for the exact "
                 "city-blocked target; dispatch still requires a fresh "
                 "live city preflight"
             ),
         }
+        if source_refresh:
+            if observation_segment_id is None or observation_run_id is None:
+                continue
+            marker.update(
+                {
+                    "source_refresh": True,
+                    "prior_source_revision": prior_source_revision,
+                    "observation_source_revision": prior_source_revision,
+                    "observation_segment_id": observation_segment_id,
+                    "observation_run_id": observation_run_id,
+                }
+            )
+        state[marker_key] = marker
         return policy_id
     return None
+
+
+def _arm_field_city_clear_route_revalidation(
+    state: dict[str, Any],
+    candidates: Collection[HuntCandidate],
+    *,
+    source_world: WorldSource | None,
+    segments: Collection[Any],
+    storage: RunStorage | None = None,
+    campaign_id: int | None = None,
+    excluded_policy_ids: Collection[str] = (),
+    allow_repeated_policy_ids: Collection[str] = (),
+) -> str | None:
+    """Recheck one unchanged plain route after its observed city block moves."""
+    boot_id = state.get("world_boot_id")
+    revision = state.get(_SOURCE_REVISION_KEY)
+    level = _level(state)
+    current = state.get("campaign_field_city_preflight")
+    existing = state.get(_FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY)
+    if (
+        source_world is None or not boot_id or not revision
+        or not _is_safe_healer_checkpoint(state)
+        or _campaign_needs_healer_recovery(state)
+        or not isinstance(current, Mapping)
+        or (
+            isinstance(existing, Mapping)
+            and existing.get("boot_id") == boot_id
+            and existing.get("level") == level
+        )
+    ):
+        return None
+    observation_run_id = _field_city_preflight_observation_run_id(
+        current, segments, boot_id=str(boot_id), character_level=level,
+        source_revision=str(revision),
+    )
+    if observation_run_id is None:
+        return None
+    healer = source_world.rooms.get(3054)
+    if healer is None:
+        return None
+
+    def city_rooms(locations: Any) -> set[int] | None:
+        if not isinstance(locations, (list, tuple)) or not locations:
+            return None
+        mapped: set[int] = set()
+        for label in locations:
+            normalized = _normalise_room_label(label)
+            matches = {
+                room.vnum for room in source_world.rooms.values()
+                if room.area_file == healer.area_file
+                and normalized and _normalise_room_label(room.name) == normalized
+            }
+            if not matches:
+                return None
+            mapped.update(matches)
+        return mapped
+
+    clear_rooms = city_rooms(current.get("locations"))
+    if not clear_rooms:
+        return None
+    blocked_ids = _field_city_departure_blocked_policy_ids(state)
+    excluded = set(excluded_policy_ids) | _field_city_route_attempted_policy_ids(state)
+    for candidate in candidates:
+        policy_id = _source_ranked_policy_id(candidate, character_level=level)
+        if (
+            policy_id not in blocked_ids or policy_id in excluded
+            or not candidate.autonomous_safe or candidate.specials
+            or candidate.equipped_weapons or candidate.is_coin_stash
+            or _source_ranked_xp_loss_record(state, policy_id) is not None
+            or not _source_ranked_candidate_in_current_band(
+                candidate, state, world=source_world, character_level=level,
+                character_max_hp=state.get("max_hp"),
+                allow_repeated_kills=policy_id in allow_repeated_policy_ids,
+            )
+            or not _source_ranked_hp_probe_admission_available(
+                candidate, state, character_level=level, source_world=source_world,
+            )
+            or _source_ranked_candidate_requires_sanctuary_for_state(
+                candidate, state, character_level=level, source_world=source_world,
+            )
+            or (
+                candidate.requires_flight and not any(
+                    _state_has_active_affect(state.get("affects"), effect)
+                    for effect in ("fly", "levitation")
+                )
+            )
+        ):
+            continue
+        route_rooms = _source_route_room_vnums(
+            source_world, candidate.route_origin_room_vnum, candidate.route,
+        )
+        if (
+            not route_rooms or route_rooms[-1] != candidate.room_vnum
+            or clear_rooms.intersection(route_rooms)
+        ):
+            continue
+        saved = _field_city_revalidation_segment(
+            policy_id, segments, storage=storage, campaign_id=campaign_id,
+        )
+        if saved is None and storage is not None and campaign_id is not None:
+            indexed_identity = getattr(storage, "get_indexed_campaign_phase_segment_id", None)
+            if callable(indexed_identity):
+                try:
+                    segment_id = indexed_identity(campaign_id, policy_id)
+                except (OSError, sqlite3.Error, TypeError, ValueError):
+                    segment_id = None
+                if type(segment_id) is int and segment_id > 0:
+                    saved = _field_city_segment_by_id(
+                        segment_id, segments, storage=storage, campaign_id=campaign_id,
+                    )
+        if saved is None:
+            continue
+        segment, start, end = saved
+        if segment.get("phase") != policy_id or segment.get("status") != "success":
+            continue
+        prior = end.get("campaign_field_city_preflight")
+        recorded = _source_ranked_candidate_from_record(
+            start.get(_SOURCE_RANKED_CANDIDATE_KEY),
+            source_revision=start.get(_SOURCE_REVISION_KEY),
+        )
+        if not isinstance(prior, Mapping) or recorded is None:
+            continue
+        try:
+            prior_run_id = int(segment.get("run_id"))
+            unchanged = (
+                int(start.get("xp")) == int(end.get("xp"))
+                and int(start.get("xp_loss_total")) == int(end.get("xp_loss_total"))
+            )
+        except (TypeError, ValueError):
+            continue
+        if not (
+            unchanged and prior_run_id > 0 and observation_run_id > prior_run_id
+            and prior.get("run_id") == prior_run_id
+            and prior.get("policy_id") == policy_id
+            and prior.get("boot_id") == boot_id and prior.get("level") == level
+            and prior.get("complete") is True and prior.get("blocked") is True
+            and prior.get("stopped_before_departure") is True
+            and prior.get("outbound_index") == 0
+            and type(prior.get("wait_attempts")) is int and prior["wait_attempts"] >= 3
+            and prior.get("detour") is None and prior.get("route_correction") is None
+            and prior.get("route_correction_attempted") is not True
+            and start.get("world_boot_id") == end.get("world_boot_id") == boot_id
+            and _level(dict(start)) == _level(dict(end)) == level
+            and start.get(_SOURCE_REVISION_KEY)
+            and start.get(_SOURCE_REVISION_KEY) == end.get(_SOURCE_REVISION_KEY)
+            and str(start.get("room_vnum")) == str(end.get("room_vnum")) == "3054"
+            and end.get("xp_loss_observed") not in {True, 1}
+            and end.get("dead") is not True and end.get("in_combat") is not True
+            and (start.get("campaign_completed_kills") or [])
+            == (end.get("campaign_completed_kills") or [])
+            and (start.get("campaign_objective_kills") or [])
+            == (end.get("campaign_objective_kills") or [])
+            and recorded.mobile_vnum == candidate.mobile_vnum
+            and recorded.room_vnum == candidate.room_vnum
+            and recorded.route == candidate.route
+            and _source_ranked_policy_id(recorded, character_level=level) == policy_id
+        ):
+            continue
+        old_rooms = city_rooms(prior.get("locations"))
+        if not old_rooms or old_rooms == clear_rooms or not old_rooms.intersection(route_rooms):
+            continue
+        state[_FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY] = {
+            "boot_id": boot_id, "level": level, "source_revision": revision,
+            "prior_source_revision": start[_SOURCE_REVISION_KEY],
+            "policy_id": policy_id, "source_mobile_vnum": candidate.mobile_vnum,
+            "source_room_vnum": candidate.room_vnum, "source_route": list(candidate.route),
+            "prior_segment_id": segment.get("id"), "prior_run_id": prior_run_id,
+            "observation_run_id": observation_run_id,
+            "observation_source_revision": revision,
+            "blocked_room_vnums": sorted(clear_rooms),
+            "prior_blocked_room_vnums": sorted(old_rooms),
+            "prior_locations": list(prior["locations"]),
+            "changed_locations": list(current["locations"]),
+            "max_extra_steps": _FIELD_CITY_ALTERNATE_ROUTE_MAX_EXTRA_STEPS,
+            "repeat_after_kill_cap": candidate.boot_kills >= 3
+            and policy_id in allow_repeated_policy_ids,
+            "route_clear_recheck": True, "status": "pending", "attempted": False,
+            "reason": "one unchanged-route recheck after a later run observed the city blocker outside the entire source route",
+        }
+        return policy_id
+    return None
+
+
+def _verify_field_city_clear_route_revalidation(
+    state: Mapping[str, Any],
+    segments: Collection[Any],
+) -> dict[str, Any]:
+    """Promote only an exact successful hunt-and-healer return, not a retry."""
+    restored = dict(state)
+    marker = state.get(_FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY)
+    if not (
+        isinstance(marker, Mapping) and marker.get("status") == "attempted"
+        and marker.get("attempted") is True
+        and marker.get("boot_id") == state.get("world_boot_id")
+        and marker.get("level") == _level(dict(state))
+        and marker.get("source_revision") == state.get(_SOURCE_REVISION_KEY)
+    ):
+        return restored
+    policy_id = marker.get("policy_id")
+    for raw_segment in reversed(tuple(segments)[-_CAMPAIGN_RUNTIME_CHECKPOINT_LIMIT:]):
+        segment = dict(raw_segment)
+        if segment.get("phase") != policy_id or segment.get("status") != "success":
+            continue
+        try:
+            run_id = int(segment.get("run_id"))
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
+            if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+                continue
+            gain = int(end.get("xp")) - int(start.get("xp"))
+            unchanged_loss = int(start.get("xp_loss_total")) == int(end.get("xp_loss_total"))
+        except (TypeError, ValueError):
+            continue
+        city = end.get("campaign_field_city_preflight")
+        start_marker = start.get(_FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY)
+        candidate = _source_ranked_candidate_from_record(
+            start.get(_SOURCE_RANKED_CANDIDATE_KEY),
+            source_revision=marker.get("source_revision"),
+        )
+        kills = end.get("campaign_objective_kills")
+        if not (
+            run_id > 0 and gain > 0 and unchanged_loss
+            and isinstance(start_marker, Mapping) and dict(start_marker) == dict(marker)
+            and candidate is not None
+            and candidate.mobile_vnum == marker.get("source_mobile_vnum")
+            and candidate.room_vnum == marker.get("source_room_vnum")
+            and list(candidate.route) == marker.get("source_route")
+            and isinstance(kills, list)
+            and any(
+                isinstance(kill, Mapping) and kill.get("source_policy_id") == policy_id
+                and kill.get("source_mobile_vnum") == candidate.mobile_vnum
+                and isinstance(kill.get("xp_gained"), int) and kill["xp_gained"] > 0
+                for kill in kills
+            )
+            and isinstance(city, Mapping) and city.get("run_id") == run_id
+            and city.get("complete") is True and city.get("blocked") is False
+            and city.get("outbound_index") == len(candidate.route)
+            and city.get("boot_id") == marker.get("boot_id")
+            and city.get("level") == marker.get("level")
+            and start.get("world_boot_id") == end.get("world_boot_id") == marker.get("boot_id")
+            and _level(dict(start)) == _level(dict(end)) == marker.get("level")
+            and start.get(_SOURCE_REVISION_KEY) == end.get(_SOURCE_REVISION_KEY)
+            == marker.get("source_revision")
+            and _is_safe_healer_checkpoint(end)
+            and not end.get("xp_loss_observed")
+            and not end.get("campaign_fastwalk_abort_reason")
+        ):
+            continue
+        restored[_FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY] = {
+            **dict(marker), "status": "succeeded", "verified_run_id": run_id,
+            "verified_segment_id": segment.get("id"), "verified_net_xp": gain,
+        }
+        return restored
+    return restored
 
 
 def _restore_field_city_route_state(
@@ -4314,7 +4948,7 @@ def _restore_field_city_route_state(
     segments: Collection[Any],
 ) -> dict[str, Any]:
     """Recover route cooldowns and unfinished attempts from segment history."""
-    restored = dict(state)
+    restored = _verify_field_city_clear_route_revalidation(state, segments)
     if not _field_city_departure_checkpoint_current_reboot(restored):
         return restored
     evidence = restored.get("campaign_field_city_preflight")
@@ -4977,8 +5611,7 @@ def _repair_source_ranked_locator_rebase_revalidation(
     state: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Reopen one clean positive-locator miss for the corrected route rebase."""
-    if state.get(_SOURCE_RANKED_LOCATOR_REBASE_REVALIDATION_KEY):
-        return dict(state)
+    existing_marker = state.get(_SOURCE_RANKED_LOCATOR_REBASE_REVALIDATION_KEY)
     boot_id = state.get("world_boot_id")
     policy_id = str(state.get("campaign_last_policy") or "")
     source_revision = state.get(_SOURCE_REVISION_KEY)
@@ -4993,6 +5626,26 @@ def _repair_source_ranked_locator_rebase_revalidation(
         level = _level(state)
     except (TypeError, ValueError):
         return dict(state)
+    if existing_marker and not isinstance(existing_marker, Mapping):
+        return dict(state)
+    if isinstance(existing_marker, Mapping):
+        try:
+            previous_level = int(existing_marker.get("level"))
+        except (TypeError, ValueError):
+            previous_level = None
+        same_revalidation = (
+            existing_marker.get("boot_id") == boot_id
+            and previous_level == level
+            and existing_marker.get("policy_id") == policy_id
+            and existing_marker.get("source_revision") == source_revision
+        )
+        unresolved_same_scope = (
+            existing_marker.get("boot_id") == boot_id
+            and previous_level == level
+            and existing_marker.get("status") in {"pending", "attempted"}
+        )
+        if same_revalidation or unresolved_same_scope:
+            return dict(state)
     retry_exhausted_policy_id = state.get(
         _SOURCE_RANKED_RETRY_EXHAUSTED_KEY
     )
@@ -5142,7 +5795,17 @@ def _repair_source_ranked_locator_rebase_revalidation(
         updated[_CLEARED_RESEARCH_POLICIES_KEY] = cleared
     else:
         updated.pop(_CLEARED_RESEARCH_POLICIES_KEY, None)
-    updated[_SOURCE_RANKED_LOCATOR_REBASE_REVALIDATION_KEY] = {
+    prior_revalidations: list[dict[str, Any]] = []
+    if isinstance(existing_marker, Mapping):
+        raw_history = existing_marker.get("prior_revalidations")
+        if isinstance(raw_history, (list, tuple)):
+            prior_revalidations.extend(
+                dict(item) for item in raw_history if isinstance(item, Mapping)
+            )
+        prior_marker = dict(existing_marker)
+        prior_marker.pop("prior_revalidations", None)
+        prior_revalidations.append(prior_marker)
+    revalidation_marker = {
         "policy_revision": _CAMPAIGN_POLICY_REVISION,
         "policy_id": policy_id,
         "boot_id": boot_id,
@@ -5162,6 +5825,11 @@ def _repair_source_ranked_locator_rebase_revalidation(
             "exhausted the prior source-safe relocation graph"
         ),
     }
+    if prior_revalidations:
+        revalidation_marker["prior_revalidations"] = prior_revalidations[-8:]
+    updated[_SOURCE_RANKED_LOCATOR_REBASE_REVALIDATION_KEY] = (
+        revalidation_marker
+    )
     updated[_SOURCE_RANKED_REVALIDATION_POLICY_KEY] = policy_id
     if updated.get("campaign_last_policy") == policy_id:
         updated.pop("campaign_last_policy", None)
@@ -5183,6 +5851,8 @@ def _refresh_policy_revision(
     state: dict[str, Any],
     *,
     completed_policy_ids: Collection[str] = (),
+    recent_segments: Collection[Any] = (),
+    recent_checkpoints: Collection[Any] = (),
 ) -> dict[str, Any]:
     """Keep historical checkpoint repair outside live policy selection."""
     from .campaign_migrations import refresh_policy_revision
@@ -5190,8 +5860,160 @@ def _refresh_policy_revision(
     return refresh_policy_revision(
         state,
         completed_policy_ids=completed_policy_ids,
+        recent_segments=recent_segments,
+        recent_checkpoints=recent_checkpoints,
         helper_namespace=globals(),
     )
+
+
+def _pounding_weapon_rearm_attempted(state: Mapping[str, Any]) -> bool:
+    marker = state.get(_POUNDING_WEAPON_REARM_ATTEMPT_KEY)
+    if (
+        not isinstance(marker, Mapping)
+        or state.get("campaign_has_weapon") is not True
+    ):
+        return False
+    try:
+        level_matches = int(marker.get("level")) == _level(dict(state))
+    except (TypeError, ValueError):
+        return False
+    primary = " ".join(
+        str(state.get("campaign_primary_weapon") or "").casefold().split()
+    )
+    return bool(
+        level_matches
+        and marker.get("boot_id")
+        and marker.get("boot_id") == state.get("world_boot_id")
+        and marker.get("source_revision")
+        and marker.get("source_revision") == state.get(_SOURCE_REVISION_KEY)
+        and primary
+        and marker.get("primary_weapon") == primary
+    )
+
+
+def _carry_pounding_weapon_rearm_attempt(
+    previous: Mapping[str, Any],
+    current: dict[str, Any],
+) -> dict[str, Any]:
+    if _pounding_weapon_rearm_attempted(current):
+        return current
+    marker = previous.get(_POUNDING_WEAPON_REARM_ATTEMPT_KEY)
+    if not isinstance(marker, Mapping) or not _pounding_weapon_rearm_attempted(
+        previous
+    ):
+        return current
+    updated = dict(current)
+    updated[_POUNDING_WEAPON_REARM_ATTEMPT_KEY] = dict(marker)
+    if not _pounding_weapon_rearm_attempted(updated):
+        updated.pop(_POUNDING_WEAPON_REARM_ATTEMPT_KEY, None)
+    return updated
+
+
+def _carry_sanctuary_resource_attempts(
+    previous: Mapping[str, Any],
+    current: dict[str, Any],
+    *,
+    policy_id: str | None,
+) -> dict[str, Any]:
+    """Keep same-frontier reserve-route limits through unrelated segments."""
+    if policy_id in _SANCTUARY_RESOURCE_POLICY_IDS:
+        return current
+    boot_id = current.get("world_boot_id")
+    level = _level(current)
+    if (
+        not boot_id
+        or level is None
+        or previous.get("world_boot_id") != boot_id
+        or _level(previous) != level
+        or _state_has_sanctuary_reserve(current)
+    ):
+        return current
+
+    reset_marker = current.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+    reset_policy_ids: set[str] = set()
+    if (
+        isinstance(reset_marker, Mapping)
+        and reset_marker.get("boot_id") == boot_id
+        and reset_marker.get("level") == level
+        and reset_marker.get("status") in {"pending", "attempted"}
+    ):
+        raw_policy_ids = reset_marker.get("policy_ids")
+        if isinstance(raw_policy_ids, Collection) and not isinstance(
+            raw_policy_ids, (str, bytes)
+        ):
+            reset_policy_ids = {str(value) for value in raw_policy_ids}
+
+    previous_attempts = previous.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+    if not isinstance(previous_attempts, Mapping):
+        return current
+    current_attempts = current.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+    merged_attempts = (
+        dict(current_attempts)
+        if isinstance(current_attempts, Mapping)
+        else {}
+    )
+    results = _campaign_research_results(current)
+    changed = False
+    for raw_policy_id, raw_previous in previous_attempts.items():
+        policy_id_value = str(raw_policy_id)
+        if not isinstance(raw_previous, Mapping):
+            continue
+        previous_reset_cycle = raw_previous.get("area_reset_cycle") == 1
+        if policy_id_value in reset_policy_ids and not previous_reset_cycle:
+            continue
+        if (
+            raw_previous.get("boot_id") != boot_id
+            or raw_previous.get("level") != level
+        ):
+            continue
+        result = results.get(policy_id_value)
+        if (
+            isinstance(result, Mapping)
+            and result.get("boot_id") == boot_id
+            and result.get("required_object_acquired") is True
+        ):
+            continue
+        try:
+            previous_count = max(0, int(raw_previous.get("count") or 0))
+        except (TypeError, ValueError):
+            continue
+        raw_current = merged_attempts.get(policy_id_value)
+        if isinstance(raw_current, Mapping):
+            if (
+                raw_current.get("boot_id") != boot_id
+                or raw_current.get("level") != level
+            ):
+                continue
+            current_reset_cycle = raw_current.get("area_reset_cycle") == 1
+            if current_reset_cycle != previous_reset_cycle:
+                if previous_reset_cycle:
+                    merged_attempts[policy_id_value] = dict(raw_previous)
+                    changed = True
+                continue
+            if current_reset_cycle and (
+                raw_current.get("area_reset_after_segment_id")
+                != raw_previous.get("area_reset_after_segment_id")
+            ):
+                continue
+            try:
+                current_count = max(0, int(raw_current.get("count") or 0))
+            except (TypeError, ValueError):
+                current_count = 0
+            if current_count >= previous_count:
+                continue
+            merged_attempts[policy_id_value] = {
+                **dict(raw_previous),
+                **dict(raw_current),
+                "count": previous_count,
+            }
+        else:
+            merged_attempts[policy_id_value] = dict(raw_previous)
+        changed = True
+    if not changed:
+        return current
+    updated = dict(current)
+    updated[_SANCTUARY_RESOURCE_ATTEMPTS_KEY] = merged_attempts
+    return updated
 
 
 
@@ -5443,6 +6265,21 @@ def _source_ranked_fallback_needed(
         "moria-sanctuary-hunt",
         "moria-deep-sanctuary-hunt",
     }:
+        if (
+            _field_city_departure_blocked_current_reboot(
+                state, policy_id=policy.policy_id,
+            )
+            and not _field_city_correction_revalidation_pending(
+                state, policy_id=policy.policy_id,
+            )
+            and not _field_city_alternate_route_revalidation_pending(
+                state, policy_id=policy.policy_id,
+            )
+        ):
+            # A blocked healer departure closes this exact recovery route for
+            # the current level and boot. Let ordinary source ranking try an
+            # independent current-band option instead of repeating its waits.
+            return True
         # Sanctuary acquisition is a recovery transition. Let its own
         # required-loot route complete before generic ranking is reconsidered,
         # but do not replay the same reboot-scoped miss while its cooldown or
@@ -6240,6 +7077,7 @@ class CampaignRunner:
                     campaign_segments,
                     storage=storage,
                     boot_id=state.get("world_boot_id") or boot_id,
+                    source_kill_records=source_kill_rows,
                 ),
                 boot_id=state.get("world_boot_id") or boot_id,
                 replace_source_ranked_hunt_ids=True,
@@ -6269,6 +7107,8 @@ class CampaignRunner:
             state = _refresh_policy_revision(
                 state,
                 completed_policy_ids=self._policy_xp_deltas,
+                recent_segments=campaign_segments,
+                recent_checkpoints=campaign_checkpoints,
             )
             state = _repair_daycare_ring_retry_from_segments(
                 state,
@@ -6391,6 +7231,14 @@ class CampaignRunner:
                 state,
                 [dict(segment) for segment in campaign_segments],
             )
+            from .campaign_migrations import (
+                restore_checkpointed_sanctuary_attempts,
+            )
+
+            state = restore_checkpointed_sanctuary_attempts(
+                state,
+                campaign_checkpoints,
+            )
             if not self.reset_wait_completed:
                 state = _arm_sanctuary_resource_area_reset_recheck(state)
             state = _repair_source_food_funding_handoff(state)
@@ -6442,6 +7290,9 @@ class CampaignRunner:
                 subclass=_live_subclass(state),
             )
             training_deficit_repair_reopened |= training_route_reopened
+            # A fresh locator miss can occur without a policy-version change.
+            # Repair it after same-boot loss history has been reconstructed.
+            state = _repair_source_ranked_locator_rebase_revalidation(state)
             if checkpoint is not None and state != state_before_policy_repair:
                 storage.record_campaign_checkpoint(
                     campaign_id,
@@ -7202,6 +8053,13 @@ class CampaignRunner:
                             source_ranked_hunt_only=True,
                         )
                     )
+                    if independent_absence_policy_id is None:
+                        independent_absence_policy_id = (
+                            _productive_source_hunt_absence_wait_policy(
+                                state, self._campaign_policy_segments,
+                                source_world=self._source_world,
+                            )
+                        )
                     if (
                         self.defer_stall_for_reset
                         and independent_absence_policy_id is not None
@@ -9229,13 +10087,18 @@ class CampaignRunner:
         city_attempted_policy_ids = _field_city_route_attempted_policy_ids(
             state
         )
-        field_city_alternate_policy_id = (
-            required_policy_id
-            if required_policy_id is not None
-            and _field_city_alternate_route_revalidation_pending(
+        field_city_alternate_marker_record = (
+            _field_city_alternate_route_revalidation_record(
                 state,
                 policy_id=required_policy_id,
             )
+            if required_policy_id is not None
+            else None
+        )
+        field_city_alternate_policy_id = (
+            required_policy_id
+            if required_policy_id is not None
+            and field_city_alternate_marker_record is not None
             and required_policy_id in city_blocked_policy_ids
             and required_policy_id not in city_attempted_policy_ids
             and required_policy_id not in explicit_excluded_policy_ids
@@ -9267,10 +10130,8 @@ class CampaignRunner:
         )
         rank_route_blocked_rooms = observed_route_blocks
         if field_city_alternate_policy_id is not None:
-            alternate_marker = state.get(
-                _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY
-            )
-            assert isinstance(alternate_marker, Mapping)
+            assert field_city_alternate_marker_record is not None
+            _, alternate_marker = field_city_alternate_marker_record
             rank_route_blocked_rooms = tuple(
                 sorted(
                     {
@@ -9308,10 +10169,18 @@ class CampaignRunner:
                 )
             )
         if city_blocked_policy_ids:
+            old_city_ledger = state.get(_FIELD_CITY_BLOCKED_POLICIES_KEY)
+            historical_ids = (
+                set(old_city_ledger.get("policy_ids", ()))
+                if isinstance(old_city_ledger, Mapping)
+                and old_city_ledger.get("boot_id") == state.get("world_boot_id")
+                and old_city_ledger.get("level") == level
+                else set()
+            )
             state[_FIELD_CITY_BLOCKED_POLICIES_KEY] = {
                 "boot_id": state.get("world_boot_id"),
                 "level": level,
-                "policy_ids": sorted(city_blocked_policy_ids),
+                "policy_ids": sorted(historical_ids | city_blocked_policy_ids),
             }
         if observed_route_blocks:
             existing_detour = state.get(
@@ -9375,10 +10244,10 @@ class CampaignRunner:
         candidates = rank_hunt_candidates(world, **rank_kwargs)
         ranked_candidates = tuple(candidates)
         if field_city_alternate_policy_id is not None:
-            alternate_marker = state.get(
-                _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY
+            assert field_city_alternate_marker_record is not None
+            alternate_marker_key, alternate_marker = (
+                field_city_alternate_marker_record
             )
-            assert isinstance(alternate_marker, Mapping)
             alternate_candidates = rank_hunt_candidates(
                 world,
                 **{
@@ -9417,10 +10286,15 @@ class CampaignRunner:
                     or set(rank_route_blocked_rooms).intersection(
                         alternate_route_rooms[:-1]
                     )
+                    or (
+                        alternate_marker.get("route_clear_recheck") is True
+                        and list(alternate_candidate.route)
+                        != alternate_marker.get("source_route")
+                    )
                 ):
                     alternate_candidate = None
             if alternate_candidate is None:
-                state[_FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY] = {
+                state[alternate_marker_key] = {
                     **dict(alternate_marker),
                     "status": "closed",
                     "reason": "the registered source route no longer exists",
@@ -10110,6 +10984,7 @@ class CampaignRunner:
             "additional_blocked_policy_ids": (
                 (
                     self._source_ranked_no_progress_policy_ids
+                    - _source_ranked_repaired_sanctuary_preparation_policy_ids(state)
                     if self._source_ranked_no_progress_streak
                     >= _SOURCE_RANKED_NO_PROGRESS_REPEAT_THRESHOLD
                     and not self.retry_stalled
@@ -10534,13 +11409,12 @@ class CampaignRunner:
                 **last_chance_kwargs,
             )
         if selected is None and not fame_recovery and required_policy_id is None:
-            alternate_marker = state.get(
-                _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY
+            alternate_marker_record = (
+                _field_city_alternate_route_revalidation_record(state)
             )
             alternate_policy_id = (
-                str(alternate_marker.get("policy_id") or "")
-                if _field_city_alternate_route_revalidation_pending(state)
-                and isinstance(alternate_marker, Mapping)
+                str(alternate_marker_record[1].get("policy_id") or "")
+                if alternate_marker_record is not None
                 else None
             )
             if alternate_policy_id is None:
@@ -10563,6 +11437,20 @@ class CampaignRunner:
                         ),
                     )
                 )
+            if alternate_policy_id is None:
+                alternate_policy_id = _arm_field_city_clear_route_revalidation(
+                    state, ranked_candidates, source_world=world,
+                    segments=self._campaign_policy_segments,
+                    storage=self._campaign_policy_storage,
+                    campaign_id=self._campaign_policy_campaign_id,
+                    excluded_policy_ids=explicit_excluded_policy_ids,
+                    allow_repeated_policy_ids=_source_ranked_repeatable_policy_ids(
+                        ranked_candidates, state, character_level=level,
+                        policy_xp_deltas=self._policy_xp_deltas,
+                        source_mobile_xp_deltas=self._boot_source_latest_xp,
+                        source_mobile_best_xp_deltas=self._boot_source_best_xp,
+                    ),
+                )
             if alternate_policy_id is not None:
                 alternate_selected = self._select_source_ranked_candidate(
                     state,
@@ -10579,11 +11467,12 @@ class CampaignRunner:
                     fame_recovery=False,
                 )
                 if alternate_selected is None:
-                    alternate_marker = state.get(
-                        _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY
+                    alternate_marker_record = (
+                        _field_city_alternate_route_revalidation_record(state)
                     )
-                    if isinstance(alternate_marker, Mapping):
-                        state[_FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY] = {
+                    if alternate_marker_record is not None:
+                        marker_key, alternate_marker = alternate_marker_record
+                        state[marker_key] = {
                             **dict(alternate_marker),
                             "status": "closed",
                             "reason": (
@@ -10710,6 +11599,37 @@ class CampaignRunner:
                 selected,
                 character_level=level,
             )
+            defense_probability = _source_ranked_plain_defense_probability(
+                selected, state, character_level=level, source_world=world,
+            )
+            if (
+                defense_probability is not None
+                and defense_probability <= Fraction(1, 2)
+                and _source_ranked_post_loss_plain_probe_allowed(
+                    selected, state, character_level=level, source_world=world,
+                )
+            ):
+                state["campaign_source_ranked_passive_defense_estimate"] = {
+                    "evidence": "source-estimate",
+                    "policy_id": _source_ranked_policy_id(
+                        selected, character_level=level,
+                    ),
+                    "level": level,
+                    "boot_id": state.get("world_boot_id"),
+                    "source_revision": state.get(_SOURCE_REVISION_KEY),
+                    "attacker_level_ceiling": selected.estimated_level_range[1],
+                    "normal_hit_probability": [
+                        defense_probability.numerator,
+                        defense_probability.denominator,
+                    ],
+                    "known_skill_levels": {
+                        skill: _skill_levels_from_state(state)[skill]
+                        for skill in ("dodge", "parry", "shield block", "pre-empt")
+                        if skill in _skill_levels_from_state(state)
+                    },
+                    "source_reference": "fight.c:check_shield_block/check_parry/check_dodge",
+                    "raw_peak_unchanged": True,
+                }
             state.pop(_SOURCE_RANKED_FRONTIER_DIAGNOSIS_KEY, None)
         else:
             _record_source_ranked_frontier_diagnosis(
@@ -10932,6 +11852,54 @@ class CampaignRunner:
             )
         if issue is None:
             assert route is not None
+            path_rooms = (
+                int(route.steps[0][0]),
+                *(int(step[2]) for step in route.steps),
+            ) if route.steps else (3001, route.room_vnum)
+            requires_flight = source_route_requires_flight(
+                self._source_world, path_rooms,
+            )
+            selected = replace(selected, requires_flight_override=requires_flight)
+            if requires_flight:
+                duration = _state_flight_duration(state.get("affects"))
+                reserve = max(2, math.ceil(len(route.steps) * 0.25 / 30.0) + 1)
+                flight_ready = any(
+                    _state_has_active_affect(state.get("affects"), name)
+                    for name in ("fly", "levitation")
+                ) and (duration is None or duration >= reserve)
+                if not flight_ready:
+                    spell = learned_flight_spell(
+                        self.spec.character.character_class, _live_subclass(state),
+                        state.get("campaign_known_skill_levels") or {},
+                    )
+                    if spell is not None:
+                        return selected
+                    can_prepare = (
+                        str(state.get("room_vnum")) == "3054"
+                        and not state.get("dead")
+                        and not state.get("in_combat")
+                        and not _campaign_needs_healer_recovery(state)
+                        and _has_campaign_food(state, gear_catalog=self._gear_catalog)
+                        and _state_copper_value(dict(state))
+                        >= _flight_purchase_minimum(dict(state))
+                        and not state.get(_SHOP_REARM_REPUTATION_BLOCKED_KEY)
+                        and not state.get(_MAGIC_SHOP_ROUTE_BLOCKED_KEY)
+                        and not state.get(_FLIGHT_PURCHASE_COOLDOWN_KEY)
+                        and state.get("magic_shop_purchase_failed") is not True
+                    )
+                    if can_prepare:
+                        return replace(
+                            _BUY_FLIGHT_POLICY,
+                            minimum_level=_level(state), maximum_level=_level(state),
+                            summary="Refresh flight before the source-backed subclass river or air crossing.",
+                        )
+                    return replace(
+                        _UNAVAILABLE_POLICY,
+                        policy_id=_SUBCLASS_SOURCE_UNAVAILABLE_POLICY_ID,
+                        minimum_level=_level(state), maximum_level=_level(state),
+                        summary="The subclass route needs verified flight; its ordinary preparation gates are not met.",
+                        evidence=selected.evidence,
+                    )
             door_note = (
                 "; open before: "
                 + ", ".join(
@@ -11079,7 +12047,7 @@ class CampaignRunner:
             or (candidate is not None and _source_ranked_candidate_benefits_from_flight(candidate))
         )
         preparation_compatible = (
-            selected.execution in {"buy-flight", "buy-optional-flight", "borrow-flight", "source-ranked-hunt"}
+            selected.execution in {"buy-flight", "buy-optional-flight", "borrow-flight", "source-ranked-hunt", "choose-subclass"}
             or (selected.execution in {"provision-funding", "sell-loot"}
                 and not state.get(_PROVISION_FUNDING_REQUIRED_KEY))
             or (selected.execution is None and selected.status == "unavailable")
@@ -11445,6 +12413,10 @@ class CampaignRunner:
                 ),
             )
         )
+        quest_status = state.get("quest_status")
+        quest_snapshot = snapshot_quest_status(
+            quest_status if isinstance(quest_status, Mapping) else None
+        )
         policy_context = dict(
             subclass=_live_subclass(state),
             target_subclass=self.spec.character.subclass,
@@ -11469,9 +12441,12 @@ class CampaignRunner:
                 else None
             ),
             quest_status=(
-                dict(state.get("quest_status") or {})
-                if isinstance(state.get("quest_status"), Mapping)
-                else None
+                dict(quest_status) if isinstance(quest_status, Mapping) else None
+            ),
+            quest_request_allowed=(
+                quest_request_status_observed(quest_status)
+                and not quest_snapshot.active
+                and quest_snapshot.nextquest == 0
             ),
             recall_points_observed=(
                 bool(state["recall_points_observed"])
@@ -11537,7 +12512,7 @@ class CampaignRunner:
                 school_exit_required
                 or state.get("campaign_has_weapon", True)
             ),
-            has_digging_capability=_state_has_digging_capability(
+            has_digging_capability=_state_has_quest_digging_tool(
                 state,
                 gear_catalog=self._gear_catalog,
                 character_class=self.spec.character.character_class,
@@ -11648,6 +12623,9 @@ class CampaignRunner:
                 self._intermediate_piercing_weapon_upgrade_source_safe()
             ),
             needs_pounding_weapon=self._needs_pounding_weapon(state),
+            pounding_weapon_rearm_attempted=(
+                _pounding_weapon_rearm_attempted(state)
+            ),
             intermediate_piercing_weapon_upgrade_attempted=bool(
                 int(
                     state.get(
@@ -11743,6 +12721,27 @@ class CampaignRunner:
             f"food={has_food}; carried_copper={_state_copper_value(state)}; "
             f"flight={has_flight}; food_restock={can_attempt_food_restock}."
         )
+        if (
+            selected.policy_id == _BUY_FLIGHT_POLICY.policy_id
+            and selected.execution == "buy-flight"
+            and has_food
+            and can_attempt_flight_purchase
+            and not has_flight
+            and observed_healer_checkpoint
+            and not needs_healer_recovery
+            and not needs_location_recovery
+            and quest_request_fame_allowed(state)
+            and _source_quest_point_shortfall(state) == 0
+            and not magic_shop_route_cooldown_active
+            and not flight_retry_cooldown_active
+            and state.get("magic_shop_purchase_failed") is False
+            and not state.get("dead")
+            and not state.get("in_combat")
+        ):
+            # Protection blocks combat, not the already selected affordable
+            # resource purchase. Its live price, source route and affect checks
+            # remain in the ordinary shop runner.
+            return selected
         if (
             selected.policy_id == _FOREST_LOCATOR_POLICY_ID
             and self._forest_route_gate_crowd_hazard_active(state)
@@ -12663,7 +13662,8 @@ class CampaignRunner:
         )
         automatic_capacity_probe_pending = bool(
             not sanctuary_capacity_revalidation_pending
-            and _sanctuary_capacity_reset_probe_available(
+            and not _sanctuary_area_reset_recheck_failure_terminal(state)
+            and _source_capacity_reset_wait_available(
                 state,
                 automatic_reset_wait=self.reset_wait_completed,
             )
@@ -12697,7 +13697,10 @@ class CampaignRunner:
                 sanctuary_capacity_revalidation_pending
                 or automatic_capacity_probe_pending
             )
-            and not _sanctuary_recovery_attempts_exhausted(state)
+            and (
+                automatic_capacity_probe_pending
+                or not _sanctuary_recovery_attempts_exhausted(state)
+            )
         ):
             # Sanctuary revalidation is deliberately narrower than ordinary
             # source hunting: the persisted migration proves this exact
@@ -12721,9 +13724,11 @@ class CampaignRunner:
                 ) = capacity_selection
                 if (
                     automatic_capacity_probe_pending
-                    and not _is_audited_moria_sanctuary_capacity_candidate(
+                    and not _moria_sanctuary_capacity_probe_allowed(
+                        state,
                         capacity_candidate,
                         capacity_object_vnums,
+                        automatic_reset_wait=self.reset_wait_completed,
                     )
                 ):
                     capacity_selection = None
@@ -13847,6 +14852,49 @@ class CampaignRunner:
                     ordinary_fame_fallback = candidate is not None
             else:
                 candidate = select_source_candidate()
+            if (
+                candidate is None
+                and needs_flight_funding
+                and has_food
+                and observed_healer_checkpoint
+                and not needs_healer_recovery
+                and not needs_location_recovery
+                and not fame_recovery_required
+                and not has_flight
+                and not can_attempt_flight_purchase
+                and not state.get("dead")
+                and not state.get("in_combat")
+            ):
+                ground_funding = self._select_provision_funding_candidate(state)
+                if (
+                    ground_funding is not None
+                    and (
+                        _provision_funding_gnome_coin_stash_allowed(
+                            state, ground_funding, character_level=_level(state),
+                            source_world=self._source_world,
+                            prefer_completed_funding_candidate=True,
+                        )
+                        or _provision_funding_shortfall_coin_carrier_allowed(
+                            state, ground_funding, character_level=_level(state),
+                            boot_id=state.get("world_boot_id") or self._boot_id,
+                            source_world=self._source_world,
+                            prefer_completed_funding_candidate=True,
+                        )
+                    )
+                ):
+                    state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+                    return replace(
+                        _PROVISION_FUNDING_POLICY,
+                        minimum_level=_level(state),
+                        maximum_level=_level(state),
+                        summary=(
+                            "No executable current-band XP target remains; "
+                            "use the exact source-audited direct coin funding "
+                            "route for the active flight shortfall. This is "
+                            "bounded maintenance, not progression XP."
+                        ),
+                        practice_skill=selected.practice_skill,
+                    )
             if candidate is not None:
                 food_reserve_policy = source_food_reserve_policy(
                     replace(
@@ -14363,19 +15411,34 @@ class CampaignRunner:
                         _is_safe_healer_checkpoint(state)
                         and not needs_healer_recovery
                         and has_food
-                        and isinstance(state.get("quest_status"), Mapping)
-                    ):
-                        quest_fallback = _frontier_quest_request_policy(
-                            state,
-                            selected,
-                            reason="selected hunt requires exhausted sanctuary supply",
+                        and quest_request_status_observed(
+                            state.get("quest_status")
                         )
-                        if quest_fallback is not None:
-                            self._emit_progress(
-                                "The selected hunt needs unavailable protection; "
-                                "trying the existing bounded quest option."
+                    ):
+                        quest = snapshot_quest_status(state["quest_status"])
+                        if quest_request_fame_allowed(state) and not quest.active:
+                            if (
+                                quest.nextquest > 0
+                                and (_source_quest_point_shortfall(state) or 0) > 0
+                                and not _quest_cooldown_wait_has_no_progress(state)
+                            ):
+                                return _frontier_quest_cooldown_policy(
+                                    state, quest, selected.practice_skill,
+                                )
+                            quest_fallback = _frontier_quest_request_policy(
+                                state,
+                                selected,
+                                reason=(
+                                    "selected hunt requires exhausted "
+                                    "sanctuary supply"
+                                ),
                             )
-                            return quest_fallback
+                            if quest_fallback is not None:
+                                self._emit_progress(
+                                    "The selected hunt needs unavailable "
+                                    "protection; trying the existing quest option."
+                                )
+                                return quest_fallback
                     if (
                         _protection_recovery_required(state)
                         and not _state_has_sanctuary_reserve(state)
@@ -14541,8 +15604,9 @@ class CampaignRunner:
                 if post_loss_plain_probe:
                     summary += (
                         " The stricter post-loss variant is limited to a plain "
-                        "unarmed target with source peak damage below half of "
-                        "maximum HP."
+                        "unarmed target with a bounded raw source peak and "
+                        "a source-backed incoming-damage budget. Fresh passive "
+                        "defenses may reduce expected normal hits, not the peak."
                     )
                 if ordinary_fame_fallback:
                     summary += (
@@ -14595,9 +15659,11 @@ class CampaignRunner:
                 if post_loss_plain_probe:
                     evidence += (
                         "This post-loss variant additionally requires no "
-                        "special, weapon, or route hazard and a source peak "
-                        "below half of maximum HP; a new loss quarantines "
-                        "the exact policy.",
+                        "target special or weapon and the existing bounded "
+                        "route audit. The raw peak stays below half of maximum "
+                        "HP unless fresh source-audited passive defenses pass "
+                        "the ordinary peak and incoming-damage bounds. A new "
+                        "loss quarantines the exact policy.",
                     )
                 if ordinary_fame_fallback:
                     evidence += (
@@ -14741,21 +15807,7 @@ class CampaignRunner:
                 if isinstance(state.get("quest_status"), Mapping)
                 else None
             )
-            quest_request_marker = state.get(
-                "campaign_quest_frontier_request"
-            )
-            quest_request_already_attempted = (
-                isinstance(quest_request_marker, Mapping)
-                and int(quest_request_marker.get("session_revision") or 0) >= 234
-                and quest_request_marker.get("boot_id")
-                == state.get("world_boot_id")
-                and int(quest_request_marker.get("level") or -1)
-                == _level(state)
-                and not _frontier_quest_request_retry_pending(state)
-            )
             if _required_quest_cooldown_wait_allowed(state, has_food=has_food):
-                # Ordinary XP selection has found no candidate. A required
-                # level-up quest is not the optional frontier's one request.
                 return replace(
                     _QUEST_REQUEST_POLICY,
                     policy_id="quest-cooldown",
@@ -14785,7 +15837,7 @@ class CampaignRunner:
                             practice_skill=selected.practice_skill,
                         )
                     if quest.needs_target_run and quest.kind != "kill":
-                        if quest.kind == "hoard" and not _state_has_digging_capability(
+                        if quest.kind == "hoard" and not _state_has_quest_digging_tool(
                             state,
                             gear_catalog=self._gear_catalog,
                             character_class=self.spec.character.character_class,
@@ -14848,34 +15900,53 @@ class CampaignRunner:
                         _is_safe_healer_checkpoint(state)
                         and quest_request_fame_allowed(state)
                         and not quest.active
-                        and quest.nextquest <= 0
-                        and not quest_request_already_attempted
                     ):
-                        _record_frontier_quest_request_selection(
-                            state,
-                            reason="source-ranked frontier exhausted",
-                        )
-                        questmaster = questmaster_name_for_level(_level(state))
-                        return replace(
-                            _QUEST_REQUEST_POLICY,
-                            policy_id="quest-frontier-request",
-                            minimum_level=_level(state),
-                            maximum_level=_level(state),
-                            summary=(
-                                "The safe current-band frontier and sanctuary "
-                                f"route are exhausted; make one healer-side "
-                                f"quest request from {questmaster}. Any generated "
-                                "target keeps the normal live safety checks."
-                            ),
-                            evidence=(
-                                *_QUEST_REQUEST_POLICY.evidence,
-                                "This request is allowed only at a safe healer "
-                                "checkpoint with nonnegative live fame, no active "
-                                "quest, and no quest cooldown. It authorizes no "
-                                "movement or combat against the generated target.",
-                            ),
-                            practice_skill=selected.practice_skill,
-                        )
+                        if (
+                            quest_request_status_observed(state.get("quest_status"))
+                            and quest.nextquest <= 0
+                            and (_source_quest_point_shortfall(state) or 0) > 0
+                        ):
+                            _record_frontier_quest_request_selection(
+                                state,
+                                reason="source-ranked frontier exhausted",
+                            )
+                            questmaster = questmaster_name_for_level(_level(state))
+                            return replace(
+                                _QUEST_REQUEST_POLICY,
+                                policy_id="quest-frontier-request",
+                                minimum_level=_level(state),
+                                maximum_level=_level(state),
+                                summary=(
+                                    "The safe current-band frontier and sanctuary "
+                                    f"route are exhausted; make one healer-side "
+                                    f"quest request from {questmaster}. Any generated "
+                                    "target keeps the normal live safety checks."
+                                ),
+                                evidence=(
+                                    *_QUEST_REQUEST_POLICY.evidence,
+                                    "This request is allowed only at a safe healer "
+                                    "checkpoint with nonnegative live fame, no active "
+                                    "quest, and no quest cooldown. It authorizes no "
+                                    "movement or combat against the generated target.",
+                                ),
+                                practice_skill=selected.practice_skill,
+                            )
+                        if (
+                            quest.nextquest > 0
+                            and quest_request_status_observed(state.get("quest_status"))
+                            and (_source_quest_point_shortfall(state) or 0) > 0
+                            and not _quest_cooldown_wait_has_no_progress(state)
+                        ):
+                            return _frontier_quest_cooldown_policy(
+                                state, quest, selected.practice_skill,
+                            )
+                    required_qp_request = _required_qp_quest_request_policy(
+                        state,
+                        has_food=has_food,
+                        practice_skill=selected.practice_skill,
+                    )
+                    if required_qp_request is not None:
+                        return required_qp_request
                     return replace(
                         _SOURCE_RANKED_HUNT_POLICY,
                         policy_id=(
@@ -14918,22 +15989,23 @@ class CampaignRunner:
                 )
             if (
                 quest_request_fame_allowed(state) and not quest.active
-                and quest.nextquest > 0 and not quest_request_already_attempted
+                and quest.nextquest > 0
+                and (_source_quest_point_shortfall(state) or 0) > 0
                 and not _quest_cooldown_wait_has_no_progress(state)
             ):
-                return replace(
-                    _QUEST_REQUEST_POLICY, policy_id="quest-frontier-cooldown",
-                    minimum_level=_level(state), maximum_level=_level(state),
-                    summary=(
-                        "No productive source-ranked target remains. Stay connected "
-                        f"at the healer for the observed {quest.nextquest}-minute "
-                        "quest cooldown, then request one bounded quest on that socket."
-                    ),
-                    practice_skill=selected.practice_skill,
+                return _frontier_quest_cooldown_policy(
+                    state, quest, selected.practice_skill,
                 )
             quest_fallback = _frontier_quest_request_policy(state, selected)
             if quest_fallback is not None:
                 return quest_fallback
+            required_qp_request = _required_qp_quest_request_policy(
+                state,
+                has_food=has_food,
+                practice_skill=selected.practice_skill,
+            )
+            if required_qp_request is not None:
+                return required_qp_request
             return replace(
                 _SOURCE_RANKED_HUNT_POLICY,
                 policy_id=f"{_SOURCE_RANKED_POLICY_PREFIX}unavailable-{_level(state)}",
@@ -15852,7 +16924,16 @@ class CampaignRunner:
             )
             if provision_funding_candidate is not None:
                 provision_funding_only = (
-                    _provision_funding_bounded_exception_allowed(
+                    _provision_funding_gnome_coin_stash_allowed(
+                        state, provision_funding_candidate,
+                        character_level=_level(state),
+                        source_world=self._source_world,
+                        prefer_completed_funding_candidate=bool(
+                            state.get(_FLIGHT_FUNDING_REQUIRED_KEY)
+                            or state.get(_FLIGHT_FUNDING_RETRY_KEY)
+                        ),
+                    )
+                    or _provision_funding_bounded_exception_allowed(
                         state,
                         provision_funding_candidate,
                         character_level=_level(state),
@@ -16712,16 +17793,19 @@ class CampaignRunner:
                     campaign_id,
                     level=_level(state),
                     character_class=self.spec.character.character_class,
+                    state=state,
                 )
                 practice_types_spent = _campaign_practice_types_spent(
                     storage,
                     campaign_id,
                     level=_level(state),
+                    state=state,
                 )
                 deferred_practice_types = _campaign_deferred_practice_types(
                     storage,
                     campaign_id,
                     level=_level(state),
+                    state=state,
                 )
                 if training_reaudit_for_segment:
                     # Historical training events can overstate a live skill
@@ -18152,6 +19236,8 @@ class CampaignRunner:
                 "provision-funding",
                 "source-ranked-food-reserve",
                 "source-ranked-hunt",
+                "moria-sanctuary-hunt",
+                "moria-deep-sanctuary-hunt",
             }
             and _field_city_departure_was_deferred(state, result.final_state)
         ):
@@ -18162,11 +19248,18 @@ class CampaignRunner:
                 if policy.execution == "source-ranked-food-reserve"
                 else source_ranked_hunt_candidate or provision_funding_candidate
             )
-            field_route_policy_id = _field_city_route_policy_id(
-                policy_id=policy.policy_id,
-                execution=policy.execution,
-                candidate=field_route_candidate,
-                character_level=_level(state),
+            field_route_policy_id = (
+                policy.policy_id
+                if policy.execution in {
+                    "moria-sanctuary-hunt",
+                    "moria-deep-sanctuary-hunt",
+                }
+                else _field_city_route_policy_id(
+                    policy_id=policy.policy_id,
+                    execution=policy.execution,
+                    candidate=field_route_candidate,
+                    character_level=_level(state),
+                )
             )
             previous_city_blocks = end_state.get(
                 _FIELD_CITY_BLOCKED_POLICIES_KEY
@@ -18871,6 +19964,28 @@ class CampaignRunner:
             end_state=end_state,
             command_count=command_count,
             duration_seconds=duration_seconds,
+            objective_outcome=(
+                ("achieved" if funding_completed else "not_achieved")
+                if policy.execution == "provision-funding"
+                and provision_funding_candidate is not None
+                else None
+            ),
+            prefer_segment_objective_outcome=(
+                policy.execution == "provision-funding"
+                and provision_funding_candidate is not None
+            ),
+            metrics=(
+                {
+                    "objective_scope": "campaign-provision-funding",
+                    "funding_only": provision_funding_only,
+                    "candidate_key": _provision_funding_candidate_key(
+                        provision_funding_candidate
+                    ),
+                }
+                if policy.execution == "provision-funding"
+                and provision_funding_candidate is not None
+                else None
+            ),
         )
         stalled = (
             0
@@ -19589,7 +20704,13 @@ def _campaign_practice_types_spent(
     campaign_id: int,
     *,
     level: int,
+    state: Mapping[str, Any] | None = None,
 ) -> frozenset[str]:
+    if state is not None and _campaign_training_audit_is_current(
+        state,
+        character_level=level,
+    ):
+        return frozenset()
     spent: set[str] = set()
     for event in storage.list_campaign_game_events(
         campaign_id,
@@ -20511,7 +21632,10 @@ def _repair_campaign_known_skills_from_events(
     # unnecessary in that case and can make a shared evidence database delay
     # campaign startup for minutes.  Older checkpoints may have retained the
     # audit only, so use its levels to rebuild the compact fields as well.
-    if _training_audit_matches_scope(state, character_level=_level(dict(state))):
+    if _campaign_training_audit_is_current(
+        state,
+        character_level=_level(dict(state)),
+    ):
         audit = state.get(_TRAINING_AUDIT_KEY)
         audit_levels = (
             audit.get("known_skill_levels")
@@ -20587,7 +21711,13 @@ def _campaign_deferred_practice_types(
     campaign_id: int,
     *,
     level: int,
+    state: Mapping[str, Any] | None = None,
 ) -> frozenset[str]:
+    if state is not None and _campaign_training_audit_is_current(
+        state,
+        character_level=level,
+    ):
+        return frozenset()
     deferred: set[str] = set()
     for event in storage.list_campaign_game_events(
         campaign_id,
@@ -20614,7 +21744,13 @@ def _campaign_rejected_practice_skills(
     *,
     level: int,
     character_class: str | None = None,
+    state: Mapping[str, Any] | None = None,
 ) -> frozenset[str]:
+    if state is not None and _campaign_training_audit_is_current(
+        state,
+        character_level=level,
+    ):
+        return frozenset()
     rejected: set[str] = set()
     events = storage.list_campaign_game_events(
         campaign_id,
@@ -20942,6 +22078,34 @@ def _quest_fastwalk(
     )
 
 
+def _questmaster_fastwalk(
+    *,
+    name: str,
+    level: int,
+    current_state: Mapping[str, Any] | None,
+    route_commands: Collection[str] | None = None,
+) -> Fastwalk:
+    """Build the registered questmaster route from the recall origin."""
+    commands = tuple(route_commands or questmaster_route_for_level(level))
+    if current_state is not None:
+        try:
+            current_room_vnum = int(current_state.get("room_vnum"))
+        except (TypeError, ValueError):
+            raise ValueError(
+                "questmaster route requires a live healer or recall room"
+        ) from None
+        if current_room_vnum not in {3001, 3054}:
+            raise ValueError(
+                "questmaster route is registered only from healer room 3054 "
+                "or recall room 3001"
+            )
+    return _quest_fastwalk(
+        name=name,
+        commands=commands,
+        route_origin_room_vnum=3001,
+    )
+
+
 def _quest_mobile_candidate(
     world: WorldSource,
     quest: QuestSnapshot,
@@ -20949,6 +22113,7 @@ def _quest_mobile_candidate(
     character_level: int | None = None,
     character_max_hp: int | None = None,
     recall_origins: Mapping[int, int] | None = None,
+    state: Mapping[str, Any] | None = None,
 ) -> HuntCandidate | None:
     """Create a source-ranked identity for the exact VNUM named by Char.Quest.
 
@@ -21021,25 +22186,43 @@ def _quest_mobile_candidate(
             candidate
             for candidate in ranked_candidates
             if candidate.mobile_vnum == quest.mob_vnum
-            and candidate.room_vnum == quest.room_vnum
         ]
-        if not matching_candidates and mobile.wanders:
-            matching_candidates = [
-                candidate
-                for candidate in ranked_candidates
-                if candidate.mobile_vnum == quest.mob_vnum
-                and quest.room_vnum
-                in source_mobile_search_rooms(world, quest.mob_vnum)
-            ]
-        if matching_candidates:
-            # A wandering quest target may be reported in a room other than
-            # its reset room. Preserve the ranker's source metadata, but make
-            # the live quest room the first destination for `where`/combat.
-            return replace(
-                matching_candidates[0],
-                room_vnum=quest.room_vnum,
-                room_name=room.name,
+        assigned_room_candidates = [
+            candidate
+            for candidate in matching_candidates
+            if candidate.room_vnum == quest.room_vnum
+        ]
+        admitted_assigned = [
+            candidate
+            for candidate in assigned_room_candidates
+            if _quest_mobile_candidate_admitted(
+                candidate,
+                character_level=character_level,
+                character_max_hp=character_max_hp,
+                state=state or {},
             )
+        ]
+        admitted_resets = [
+            candidate
+            for candidate in matching_candidates
+            if _quest_mobile_candidate_admitted(
+                candidate,
+                character_level=character_level,
+                character_max_hp=character_max_hp,
+                state=state or {},
+            )
+        ]
+        if admitted_assigned:
+            return admitted_assigned[0]
+        if admitted_resets:
+            # DD4's fight.c completes a kill quest by prototype VNUM only;
+            # questroom is a search hint. Keep the exact prototype and use a
+            # different reset only after the hinted room fails normal gates.
+            return admitted_resets[0]
+        if assigned_room_candidates:
+            return assigned_room_candidates[0]
+        if matching_candidates:
+            return matching_candidates[0]
         # With live character evidence, absence from the ranked set is a
         # source-safety result, not permission to fall back to an unbounded
         # hand-built target.
@@ -21107,6 +22290,31 @@ def _quest_mobile_candidate(
         specials=tuple(world.mobile_specials.get(quest.mob_vnum, ())),
         sentinel=mobile.sentinel,
         stay_area=mobile.stay_area,
+    )
+
+
+def _quest_mobile_candidate_admitted(
+    candidate: HuntCandidate,
+    *,
+    character_level: int,
+    character_max_hp: int | None,
+    state: Mapping[str, Any],
+) -> bool:
+    """Apply the existing quest kill source-safety admissions unchanged."""
+    return bool(
+        candidate.autonomous_safe
+        or _source_ranked_capacity_research_candidate(
+            candidate,
+            character_level=character_level,
+        )
+        or _source_ranked_candidate_has_only_safe_noncombat_special_rejections(
+            candidate
+        )
+        or _audited_source_special_candidate_allowed(
+            candidate,
+            state=state,
+            character_max_hp=character_max_hp,
+        )
     )
 
 
@@ -21250,6 +22458,7 @@ def _quest_target_runner_options(
             character_level=level,
             character_max_hp=max_hp,
             recall_origins=recall_origins,
+            state=current_state,
         )
         if candidate is None:
             raise RuntimeError(
@@ -21263,7 +22472,10 @@ def _quest_target_runner_options(
             candidate.route_origin_room_vnum,
         )
         route = Fastwalk(
-            name=f"quest target {quest.room_vnum}",
+            name=(
+                f"quest target VNUM {quest.mob_vnum} "
+                f"at source reset {candidate.room_vnum}"
+            ),
             minimum_level=1,
             maximum_level=100,
             notation=_funding_route_notation(candidate.route),
@@ -21367,12 +22579,82 @@ def _quest_target_runner_options(
     )
 
 
+def _source_quest_point_shortfall(state: Mapping[str, Any]) -> int | None:
+    """Return a source-derived shortfall only from observed total QP."""
+    status = state.get("quest_status")
+    if not isinstance(status, Mapping) or "total_points" not in status:
+        return None
+    raw_total = status["total_points"]
+    if type(raw_total) is int:
+        total_points = raw_total
+    elif isinstance(raw_total, str) and raw_total.isdecimal():
+        total_points = int(raw_total)
+    else:
+        return None
+    if total_points < 0:
+        return None
+    return quest_points_shortfall_for_advance(_level(state), total_points)
+
+
+def _required_qp_quest_request_policy(
+    state: dict[str, Any], *, has_food: bool, practice_skill: str | None,
+) -> ProgressionPolicy | None:
+    """Request for an actual next-level QP shortfall when DD4 permits it."""
+    raw_status = state.get("quest_status")
+    if (
+        not isinstance(raw_status, Mapping)
+        or "total_points" not in raw_status
+        or not quest_request_status_observed(raw_status)
+    ):
+        return None
+    shortfall = _source_quest_point_shortfall(state)
+    if shortfall is None:
+        return None
+    quest = snapshot_quest_status(raw_status)
+    if not (
+        state.get("world_boot_id")
+        and has_food
+        and _state_has_item(state.get("inventory"), "water skin")
+        and _is_safe_healer_checkpoint(state)
+        and not _campaign_needs_healer_recovery(state)
+        and not state.get("dead") and not state.get("in_combat")
+        and quest_request_fame_allowed(state)
+        and not quest.active and quest.nextquest <= 0
+        and shortfall > 0
+    ):
+        return None
+
+    level = _level(state)
+    questmaster = questmaster_name_for_level(level)
+    return replace(
+        _QUEST_REQUEST_POLICY,
+        policy_id="quest-required-qp-request",
+        minimum_level=level,
+        maximum_level=level,
+        summary=(
+            f"A source-defined quest-point shortfall blocks level {level + 1}; "
+            f"request a quest from {questmaster} whenever DD4's live timer "
+            "allows another request."
+        ),
+        evidence=(
+            *_QUEST_REQUEST_POLICY.evidence,
+            "DD4's observed active assignment and nextquest timer are the "
+            "request gates; character level and reboot do not impose a limit.",
+        ),
+        practice_skill=practice_skill,
+    )
+
+
 def _required_quest_cooldown_wait_allowed(
     state: Mapping[str, Any], *, has_food: bool,
 ) -> bool:
-    """Retain a mandatory QP wait after ordinary current-band selection fails."""
+    """Permit the required QP wait after current-band hunts are exhausted."""
     status = state.get("quest_status")
-    if not isinstance(status, Mapping) or "total_points" not in status:
+    if (
+        not isinstance(status, Mapping)
+        or "total_points" not in status
+        or not quest_request_status_observed(status)
+    ):
         return False
     try:
         total = int(status["total_points"])
@@ -21384,6 +22666,7 @@ def _required_quest_cooldown_wait_allowed(
         and quest_points_shortfall_for_advance(_level(state), total) > 0
         and state.get("world_boot_id")
         and has_food
+        and _state_has_item(state.get("inventory"), "water skin")
         and _is_safe_healer_checkpoint(state)
         and not _campaign_needs_healer_recovery(state)
         and not state.get("dead") and not state.get("in_combat")
@@ -21394,7 +22677,7 @@ def _required_quest_cooldown_wait_allowed(
 
 
 def _quest_cooldown_wait_has_no_progress(state: Mapping[str, Any]) -> bool:
-    if _quest_wait_reached_new_assignment(state) or _legacy_quest_reader_recheck_allowed(state):
+    if _quest_wait_started_new_request_cycle(state) or _legacy_quest_reader_recheck_allowed(state):
         return False
     previous = state.get("campaign_quest_cooldown_wait")
     try:
@@ -21449,10 +22732,10 @@ def _legacy_quest_reader_recheck_allowed(state: Mapping[str, Any]) -> bool:
     )
 
 
-def _quest_wait_reached_new_assignment(
+def _quest_wait_started_new_request_cycle(
     state: Mapping[str, Any], *, previous_state: Mapping[str, Any] | None = None,
 ) -> bool:
-    """Prove a new cycle from wait completion or an available direct request."""
+    """Prove a new timer cycle after a completed wait and dispatched request."""
     attempt = state.get("campaign_quest_frontier_request")
     phases = state.get("campaign_quest_phases")
     if not (
@@ -21484,13 +22767,15 @@ def _quest_wait_reached_new_assignment(
             cleared = (
                 "nextquest" in status and quest.nextquest == 0 and not quest.active
             )
-        elif (
-            cleared and phase.get("phase") == "quest-request"
-            and status.get("active") in (1, "1")
-            and quest.active and quest.countdown > 0 and quest.room_vnum > 0
-            and (quest.object_vnum > 0 or quest.mob_vnum > 0)
-        ):
-            return True
+        elif cleared and phase.get("phase") == "quest-request":
+            if (
+                status.get("active") in (1, "1")
+                and quest.active and quest.countdown > 0 and quest.room_vnum > 0
+                and (quest.object_vnum > 0 or quest.mob_vnum > 0)
+            ):
+                return True
+            if not quest.active and quest.nextquest > 0:
+                return True
     return False
 
 
@@ -21531,7 +22816,7 @@ def _repair_completed_quest_wait_from_segments(
             end.get("campaign_quest_cooldown_wait") == marker
             and end.get("world_boot_id") == state.get("world_boot_id")
             and _level(end) == _level(state)
-            and _quest_wait_reached_new_assignment(end, previous_state=start)
+            and _quest_wait_started_new_request_cycle(end, previous_state=start)
         ):
             return {**state, "campaign_quest_cooldown_wait": None}
         return state
@@ -21546,16 +22831,32 @@ def _quest_session_next_phase(
     gear_catalog: GearCatalog | None,
     character: CharacterSpec,
 ) -> QuestPhase | None:
-    """Advance one live quest, never request a second or resume a logged-out one."""
-    quest = snapshot_quest_status(state.get("quest_status"))
-    if completed == "quest-cooldown" and not quest.active and quest.nextquest <= 0:
+    """Advance one quest using the live MUD timer as the request throttle."""
+    status = state.get("quest_status")
+    if not quest_request_status_observed(status):
+        return None
+    quest = snapshot_quest_status(status)
+    if (
+        completed == "quest-cooldown"
+        and not quest.active
+        and quest.nextquest <= 0
+    ):
+        if (
+            not quest_request_fame_allowed(state)
+            or not _is_safe_healer_checkpoint(state)
+            or _campaign_needs_healer_recovery(state)
+            or state.get("dead")
+            or state.get("in_combat")
+        ):
+            return None
         level = int(state.get("level") or 1)
         return QuestPhase(
             "quest-request", "request a quest after the live connected cooldown cleared",
             route=_source_guard_fixed_fastwalk_route(
-                world, _quest_fastwalk(
+                world, _questmaster_fastwalk(
                     name=f"questmaster {questmaster_name_for_level(level).casefold()} request",
-                    commands=questmaster_route_for_level(level),
+                    level=level,
+                    current_state=state,
                 ),
                 character_level=level,
                 character_max_hp=state.get("max_hp"),
@@ -21580,12 +22881,16 @@ def _quest_session_next_phase(
         giver = int((state.get("quest_status") or {}).get("giver_vnum") or 0)
         if giver not in {25305, 10001}:
             return QuestPhase("quest-abort", "the live quest giver has no audited return route")
-        giver_level = 1 if giver == 25305 else 26
+        turnin_name, turnin_level, turnin_route = (
+            questmaster_completion_choice(level)
+        )
         phase = QuestPhase(
             "quest-complete", "turn in the live completed quest without logging out",
-            route=_quest_fastwalk(
-                name=f"questmaster {questmaster_name_for_level(giver_level).casefold()} complete",
-                commands=questmaster_route_for_level(giver_level),
+            route=_questmaster_fastwalk(
+                name=f"questmaster {turnin_name.casefold()} complete",
+                level=turnin_level,
+                current_state=state,
+                route_commands=turnin_route,
             ),
             hunt_stops=(FieldHuntStop(
                 (), None, actions=("quest complete",), minimum_health_ratio=0.0,
@@ -21595,9 +22900,11 @@ def _quest_session_next_phase(
     elif completed == "quest-target-run":
         return QuestPhase("quest-abort", "the bounded target attempt did not complete the quest")
     else:
-        needs_tool = quest.kind == "hoard" and not _state_has_digging_capability(
-            state, gear_catalog=gear_catalog,
-            character_class=character.character_class, subclass=character.subclass,
+        needs_tool = quest.kind == "hoard" and not _state_has_quest_digging_tool(
+            state,
+            gear_catalog=gear_catalog,
+            character_class=character.character_class,
+            subclass=character.subclass,
         )
         if needs_tool and completed == "quest-digging-tool":
             return QuestPhase("quest-abort", "the bounded tool attempt did not supply digging capability")
@@ -21644,14 +22951,76 @@ def _quest_session_next_phase(
     ))
 
 
-def _quest_unavailable_route_reason(world: WorldSource, room_vnum: int) -> str:
+def _quest_unavailable_route_reason(
+    world: WorldSource, room_vnum: int, *, character_level: int | None = None,
+) -> str:
     analysis = _shortest_source_analysis_path(world.rooms, 3001, room_vnum)
     if analysis is not None and analysis[3]:
-        return (
+        reason = (
             "source route safety gates require registered locked-door access "
             f"to quest room {room_vnum}; the shortest analysis-only path needs "
             "key VNUMs " + ", ".join(str(vnum) for vnum in analysis[3])
         )
+        chain = tentusks_key_source_chain(world, room_vnum)
+        if chain is not None:
+            carrier_path = _shortest_paths_from(
+                world.rooms, 3001,
+            ).get(chain.head_carrier_room_vnum)
+            keyed_target_path = _shortest_paths_from(
+                world.rooms, 3001,
+                unlockable_key_vnums=(chain.key_object_vnum,),
+            ).get(room_vnum)
+            reason += (
+                "; source identifies the stone head object "
+                f"{chain.head_object_vnum} on octopus mobile "
+                f"{chain.head_carrier_mobile_vnum} in room "
+                f"{chain.head_carrier_room_vnum}, then a handoff to statue "
+                f"mobile {chain.unlocker_mobile_vnum} in room "
+                f"{chain.unlocker_room_vnum} unlocks the {chain.gate_direction} "
+                "gate. This is a prerequisite chain only, not route or combat "
+                "permission."
+            )
+            if carrier_path is not None:
+                reason += (
+                    f" The shortest carrier approach is {len(carrier_path[0])} "
+                    "commands."
+                )
+                if character_level is not None:
+                    hazards = source_route_hazard_rejections(
+                        world, carrier_path[1],
+                        character_level=character_level,
+                        combat_at_destination=False,
+                    )
+                    if hazards:
+                        reason += " Source approach hazards: " + "; ".join(hazards) + "."
+                underwater_rooms = tuple(
+                    vnum for vnum in carrier_path[1]
+                    if world.rooms[vnum].sector_type in {
+                        SECT_UNDERWATER, SECT_UNDERWATER_GROUND,
+                    }
+                )
+                if underwater_rooms:
+                    reason += (
+                        " The carrier route enters underwater room(s) "
+                        + ", ".join(map(str, underwater_rooms))
+                        + "; DD4 starts drowning damage after two air-supply pulses "
+                        "without breathe-water, so require a fresh live breathing "
+                        "effect before entry."
+                    )
+            if keyed_target_path is not None:
+                reason += (
+                    f" With the key, the shortest target route is "
+                    f"{len(keyed_target_path[0])} commands."
+                )
+                if character_level is not None:
+                    hazards = source_route_hazard_rejections(
+                        world, keyed_target_path[1],
+                        character_level=character_level,
+                        combat_at_destination=False,
+                    )
+                    if hazards:
+                        reason += " Keyed-route source hazards: " + "; ".join(hazards) + "."
+        return reason
     return f"the source graph has no route from recall to quest room {room_vnum}"
 
 
@@ -21672,7 +23041,7 @@ def _quest_source_preflight_issue(
         return "the checkpoint does not contain an active quest target"
     if world is None:
         return "the checked-in DD4 source mirror is unavailable"
-    if quest.kind == "hoard":
+    if quest.kind == "hoard" and execution != "quest-digging-tool":
         return QUEST_HOARD_EXECUTION_BLOCKER
     if execution == "quest-digging-tool":
         path = _shortest_paths_from(
@@ -21699,6 +23068,7 @@ def _quest_source_preflight_issue(
             character_level=character_level,
             character_max_hp=character_max_hp,
             recall_origins=recall_origins,
+            state=state,
         )
         if candidate is None:
             if (
@@ -21711,7 +23081,9 @@ def _quest_source_preflight_issue(
                 )
                 is None
             ):
-                return _quest_unavailable_route_reason(world, quest.room_vnum)
+                return _quest_unavailable_route_reason(
+                    world, quest.room_vnum, character_level=character_level,
+                )
             if (
                 character_level is not None
                 and world.mobiles.get(quest.mob_vnum) is not None
@@ -21726,23 +23098,16 @@ def _quest_source_preflight_issue(
                 "the source mirror does not contain quest mobile VNUM "
                 f"{quest.mob_vnum} in room {quest.room_vnum}"
             )
-        if not (
-            candidate.autonomous_safe
-            or _source_ranked_capacity_research_candidate(
-                candidate, character_level=character_level,
-            )
-            or _source_ranked_candidate_has_only_safe_noncombat_special_rejections(
-                candidate
-            )
-            or _audited_source_special_candidate_allowed(
-                candidate,
-                state=state or {},
-                character_max_hp=character_max_hp,
-            )
+        if not _quest_mobile_candidate_admitted(
+            candidate,
+            character_level=character_level,
+            character_max_hp=character_max_hp,
+            state=state or {},
         ):
             return (
                 "source safety gates reject quest mobile VNUM "
-                f"{quest.mob_vnum}: "
+                f"{quest.mob_vnum} at source reset room {candidate.room_vnum} "
+                f"(assignment hint room {quest.room_vnum}): "
                 + "; ".join(candidate.autonomy_rejections)
             )
         return None
@@ -21768,7 +23133,9 @@ def _quest_source_preflight_issue(
                 "source route safety gates reject quest room "
                 f"{quest.room_vnum} for level {character_level}{detail}"
             )
-        return _quest_unavailable_route_reason(world, quest.room_vnum)
+        return _quest_unavailable_route_reason(
+            world, quest.room_vnum, character_level=character_level,
+        )
     if quest.kind == "kill":
         candidate = _quest_mobile_candidate(
             world,
@@ -21922,9 +23289,18 @@ async def _run_policy_segment(
 
     def starter_runner(**kwargs: Any) -> StarterBotRunner:
         if kwargs.get("quest_phase") in {"quest-target-run", "quest-complete", "quest-digging-tool"}:
-            kwargs["quest_expected_status"] = dict(
-                (current_state or {}).get("quest_status") or {}
+            quest_status = dict((current_state or {}).get("quest_status") or {})
+            kwargs["quest_expected_status"] = quest_status
+            excavation_checkpoint = (current_state or {}).get(
+                "campaign_hoard_excavation_checkpoint"
             )
+            if (
+                snapshot_quest_status(quest_status).kind == "hoard"
+                and excavation_checkpoint is not None
+            ):
+                kwargs["quest_hoard_excavation_checkpoint"] = (
+                    excavation_checkpoint
+                )
         if gear_catalog is not None:
             kwargs.setdefault("gear_catalog", gear_catalog)
         if source_world is not None:
@@ -22375,21 +23751,30 @@ async def _run_policy_segment(
             (current_state or {}).get("level") or policy.minimum_level
         )
         try:
-            questmaster_commands = questmaster_route_for_level(level)
+            route_level = level
+            route_commands = None
             questmaster_name = questmaster_name_for_level(level)
+            if policy.execution == "quest-complete":
+                (
+                    questmaster_name,
+                    route_level,
+                    route_commands,
+                ) = questmaster_completion_choice(level)
+            action = {
+                "quest-request": "quest request",
+                "quest-complete": "quest complete",
+            }[policy.execution]
+            route = _questmaster_fastwalk(
+                name=(
+                    f"questmaster {questmaster_name.casefold()} "
+                    f"{action.removeprefix('quest ')}"
+                ),
+                level=route_level,
+                current_state=current_state,
+                route_commands=route_commands,
+            )
         except ValueError as exc:
             raise RuntimeError(str(exc)) from exc
-        action = {
-            "quest-request": "quest request",
-            "quest-complete": "quest complete",
-        }[policy.execution]
-        route = _quest_fastwalk(
-            name=(
-                f"questmaster {questmaster_name.casefold()} "
-                f"{action.removeprefix('quest ')}"
-            ),
-            commands=questmaster_commands,
-        )
         stop = FieldHuntStop(
             (),
             None,
@@ -35732,6 +37117,33 @@ def _training_audit_matches_scope(
     return not state_boot or not audit_boot or state_boot == audit_boot
 
 
+def _campaign_training_audit_is_current(
+    state: Mapping[str, Any],
+    *,
+    character_level: int | None,
+) -> bool:
+    """Require an observed training listing for this exact level and boot."""
+    audit = state.get(_TRAINING_AUDIT_KEY)
+    if (
+        character_level is None
+        or not isinstance(audit, Mapping)
+        or audit.get("observed") is not True
+    ):
+        return False
+    try:
+        audit_level = int(audit.get("level"))
+    except (TypeError, ValueError):
+        return False
+    state_boot = str(state.get("world_boot_id") or "")
+    audit_boot = str(audit.get("boot_id") or "")
+    return bool(
+        audit_level == character_level
+        and state_boot
+        and audit_boot
+        and state_boot == audit_boot
+    )
+
+
 def _with_source_ranked_throughput_reaudit(
     start_state: Mapping[str, Any],
     end_state: Mapping[str, Any],
@@ -37038,6 +38450,36 @@ def _select_source_ranked_hunt_candidate(
     return None
 
 
+def _source_ranked_repaired_sanctuary_preparation_policy_ids(
+    state: Mapping[str, Any],
+) -> frozenset[str]:
+    """Keep a repaired supply prerequisite distinct from a failed fight."""
+    if not _state_has_sanctuary_reserve(state):
+        return frozenset()
+    results = _campaign_research_results(state)
+    repaired: set[str] = set()
+    for policy_id in _state_productive_policy_ids(state):
+        result = results.get(policy_id)
+        if (
+            policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX)
+            and "-hunt-" in policy_id
+            and isinstance(result, Mapping)
+            and result.get("boot_id") == state.get("world_boot_id")
+            and result.get("observed") is True
+            and result.get("viable") is True
+            and result.get("completed_kill") is False
+            and result.get("protection_required") == "sanctuary"
+            and _source_ranked_xp_loss_record(state, policy_id) is None
+            and result.get("consider_viable") is not False
+            and not any(result.get(key) for key in (
+                "absent", "crowded", "route_hazard", "unattackable",
+                "target_vnum_mismatch", "low_reward",
+            ))
+        ):
+            repaired.add(policy_id)
+    return frozenset(repaired)
+
+
 def _source_ranked_repeatable_policy_ids(
     candidates: Collection[HuntCandidate],
     state: Mapping[str, Any],
@@ -37058,6 +38500,9 @@ def _source_ranked_repeatable_policy_ids(
         else None
     )
     repeatable: set[str] = set()
+    repaired_preparation_ids = (
+        _source_ranked_repaired_sanctuary_preparation_policy_ids(state)
+    )
     for candidate in candidates:
         policy_id = _source_ranked_policy_id(
             candidate,
@@ -37137,6 +38582,11 @@ def _source_ranked_repeatable_policy_ids(
                 and current_max_xp < _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
                 and not multi_kill_reward
             ):
+                continue
+            if policy_id in repaired_preparation_ids:
+                # A missing reserve stopped the opener, not a proven fight.
+                # Fresh supply repairs that prerequisite; all live gates remain.
+                repeatable.add(policy_id)
                 continue
         if result is None and (
             policy_id in productive_policy_ids
@@ -39641,6 +41091,18 @@ def _source_ranked_protected_special_hp_fuzz_probe_allowed(
         or not _state_has_sanctuary_reserve(state)
     ):
         return False
+    mobile = source_world.mobiles.get(candidate.mobile_vnum)
+    economic_endpoint = bool(
+        candidate.specials[0] in ECONOMIC_SPECIALS
+        and source_special_profile(candidate.specials[0]).risk == "economic"
+        and source_special_profile(candidate.specials[0]).xp_bonus == 0
+    )
+    if mobile is None or (
+        candidate.equipped_weapons and not mobile.aggressive and not economic_endpoint
+    ):
+        # DD4 sends enemy HP only during combat. The starter cannot open this
+        # passive armed-special probe without it, so reject before travelling.
+        return False
     raw_max_hp = state.get("max_hp")
     if not isinstance(raw_max_hp, (int, float)) or raw_max_hp <= 0:
         return False
@@ -39812,7 +41274,9 @@ def _source_ranked_post_loss_plain_probe_allowed(
     post-loss exception additionally requires the source-backed combat output
     projection to cover the candidate's lower HP bound and the uncertainty
     gap above the character's current HP. A low incoming peak alone is not
-    enough to justify another unprotected XP-loss probe.
+    enough to justify another unprotected XP-loss probe. Fresh observed passive
+    defenses may support the ordinary raw-peak bound for an isolated, plain
+    target; they reduce expected normal-hit damage, never the raw peak.
     """
     if _state_has_sanctuary_reserve(state):
         return False
@@ -39868,12 +41332,22 @@ def _source_ranked_post_loss_plain_probe_allowed(
     lower_hp, upper_hp = candidate.estimated_base_hp_range
     if not (0 < lower_hp <= character_max_hp < upper_hp):
         return False
+    defense_probability = _source_ranked_plain_defense_probability(
+        candidate, state, character_level=character_level, source_world=source_world,
+    )
+    defended_probe = (
+        defense_probability is not None and defense_probability <= 0.5
+    )
+    peak_ratio = (
+        _SOURCE_COMBAT_OUTPUT_MAX_UNPROTECTED_PEAK_RATIO
+        if defended_probe else _SOURCE_POST_LOSS_PLAIN_PROBE_MAX_PEAK_RATIO
+    )
     peak_damage = candidate.estimated_peak_round_damage
     minimum_peak_damage = candidate.estimated_min_peak_round_damage
     if (
         peak_damage <= 0
         or peak_damage * 100
-        > int(character_max_hp * _SOURCE_POST_LOSS_PLAIN_PROBE_MAX_PEAK_RATIO * 100)
+        > int(character_max_hp * peak_ratio * 100)
         or minimum_peak_damage <= 0
         or minimum_peak_damage >= character_max_hp
     ):
@@ -39885,7 +41359,7 @@ def _source_ranked_post_loss_plain_probe_allowed(
         character_level=character_level,
         source_world=source_world,
     )
-    if route_program_exception:
+    if route_program_exception or defended_probe:
         output = _source_ranked_caster_output_for_state(
             state,
             character_level=character_level,
@@ -39911,6 +41385,9 @@ def _source_ranked_post_loss_plain_probe_allowed(
                 character_level=character_level,
                 source_world=source_world,
                 target_hp_ceiling=lower_hp,
+                normal_hit_probability=(
+                    defense_probability if defended_probe else None
+                ),
             )
         ):
             return False
@@ -39919,6 +41396,7 @@ def _source_ranked_post_loss_plain_probe_allowed(
         state,
         character_level=character_level,
         source_world=source_world,
+        normal_hit_probability=defense_probability if defended_probe else None,
     ):
         return False
     policy_id = _source_ranked_policy_id(
@@ -39926,6 +41404,95 @@ def _source_ranked_post_loss_plain_probe_allowed(
         character_level=character_level,
     )
     return _source_ranked_xp_loss_record(state, policy_id) is None
+
+
+def _source_ranked_plain_defense_probability(
+    candidate: HuntCandidate,
+    state: Mapping[str, Any],
+    *,
+    character_level: int,
+    source_world: WorldSource | None,
+) -> Fraction | None:
+    """Credit fresh passive defenses only for a plain isolated source target."""
+    if (
+        source_world is None
+        or not _campaign_training_audit_is_current(
+            state, character_level=character_level,
+        )
+        or state.get("form") != "normal"
+        or not isinstance(state.get("affects"), (list, Mapping))
+        or not isinstance(state.get("equipment"), list)
+        or type(state.get("position")) is not int
+        or state["position"] <= 4
+        or candidate.equipped_weapons
+        or candidate.specials
+        or candidate.source_spawn_limit != 1
+        or candidate.room_spawn_count != 1
+        or candidate.estimated_level_range[1] <= 0
+    ):
+        return None
+    mobile = source_world.mobiles.get(candidate.mobile_vnum)
+    if (
+        mobile is None
+        or mobile.aggressive
+        or mobile.fear_aura
+        or mobile.programs
+        or source_world.mobile_specials.get(candidate.mobile_vnum)
+    ):
+        return None
+    resets = [
+        reset for reset in source_world.mob_resets
+        if reset.mobile_vnum == candidate.mobile_vnum
+        and reset.room_vnum == candidate.room_vnum
+    ]
+    if len(resets) != 1:
+        return None
+    for object_vnum in _reset_object_vnums(resets[0]):
+        item = source_world.objects.get(object_vnum)
+        if item is None or item.item_type in {
+            ITEM_WEAPON, ITEM_WAND, ITEM_STAFF, ITEM_SCROLL, ITEM_POTION, ITEM_PILL,
+        }:
+            return None
+    if any(
+        _state_has_active_affect(state["affects"], effect)
+        for effect in (
+            "blindness", "dazed", "arm trauma", "leg trauma", "hold",
+            "hold person", "prone", "confusion",
+        )
+    ):
+        return None
+    character_class = state.get("character_class")
+    if not isinstance(character_class, str) or not character_class:
+        return None
+    audit = state[_TRAINING_AUDIT_KEY]
+    levels = audit.get("known_skill_levels")
+    if not isinstance(levels, Mapping):
+        return None
+    # Do not combine a fresh audit with a conflicting historical skill map.
+    skills = state.get("campaign_known_skills")
+    current_levels = _skill_levels_from_state(state)
+    if not isinstance(skills, (list, tuple)) or any(
+        levels.get(skill) != current_levels.get(skill)
+        for skill in ("dodge", "parry", "shield block", "pre-empt")
+        if skill in skills
+    ):
+        return None
+    shield = any(
+        isinstance(record, Mapping)
+        and record.get("wear_loc") == 11
+        and (item := source_world.objects.get(record.get("vnum"))) is not None
+        and item.item_type == 9
+        for record in state["equipment"]
+    )
+    return normal_attack_landing_probability(
+        character_level=character_level,
+        attacker_level=candidate.estimated_level_range[1],
+        character_class=character_class,
+        known_skills=skills,
+        known_skill_levels=levels,
+        wielding=_source_ranked_primary_weapon_for_state(state, source_world) is not None,
+        shield=shield,
+    )
 
 
 def _source_ranked_target_hp_gate_evidence(
@@ -40574,14 +42141,22 @@ def _source_ranked_caster_output_can_cover(
     source_world: WorldSource | None = None,
     protected_incoming_damage: bool = False,
     target_hp_ceiling: int | None = None,
+    normal_hit_probability: Fraction | None = None,
 ) -> bool:
     """Check a source-output envelope against a target HP ceiling.
 
     ``protected_incoming_damage`` is used only for a sanctuary-backed fame
     probe. The existing unprotected callers retain their stricter raw peak
-    and incoming-round checks.
+    and incoming-round checks. A source-audited passive-defense probability
+    changes only expected ordinary incoming damage, not the raw peak bound.
     """
     if candidate.equipped_weapons or candidate.estimated_peak_round_damage <= 0:
+        return False
+    if normal_hit_probability is not None and (
+        not isinstance(normal_hit_probability, Fraction)
+        or not 0 < normal_hit_probability <= 1
+        or candidate.specials
+    ):
         return False
     raw_max_hp = state.get("max_hp")
     if not isinstance(raw_max_hp, (int, float)) or raw_max_hp <= 0:
@@ -40621,6 +42196,10 @@ def _source_ranked_caster_output_can_cover(
         dual_wielding=False,
         damage_modifier=candidate.source_damage_modifier,
     )
+    if normal_hit_probability is not None:
+        expected_incoming_round = max(
+            1, math.ceil(expected_incoming_round * normal_hit_probability),
+        )
     if protected_incoming_damage:
         incoming_peak = mobile_sanctuary_peak_round_damage(
             target_level,
@@ -43888,7 +45467,10 @@ def _reconcile_interrupted_segment(
     preserve_failure: bool = False,
 ) -> bool:
     """Reconcile a stopped segment with its best durable run evidence."""
-    if segment["status"] != "failed":
+    phase = str(segment["phase"] or "")
+    if segment["status"] != "failed" and not (
+        segment["status"] == "ready" and phase == "provision-funding"
+    ):
         return False
     run = (
         storage.get_run(int(segment["run_id"]))
@@ -43902,6 +45484,23 @@ def _reconcile_interrupted_segment(
     if run is None:
         return False
     run_status = str(run["status"])
+    if segment["status"] == "ready":
+        try:
+            existing_end_state = json.loads(segment["end_state_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            existing_end_state = {}
+        last_attempt = existing_end_state.get(_PROVISION_FUNDING_LAST_ATTEMPT_KEY)
+        recovered_evidence = (
+            last_attempt.get("recovery_evidence")
+            if isinstance(last_attempt, Mapping)
+            else None
+        )
+        if (
+            isinstance(recovered_evidence, Mapping)
+            and str(recovered_evidence.get("run_id") or "")
+            == str(run["id"])
+        ):
+            return False
     segment_error = str(segment["error"] or "").casefold()
     completed_after_timeout = (
         run_status in {"ready", "success"}
@@ -43914,7 +45513,6 @@ def _reconcile_interrupted_segment(
     current_state = _run_latest_state(storage, int(run["id"]))
     if current_state is None:
         return False
-    phase = str(segment["phase"])
     objective_kills = _objective_kills_for_execution(
         storage,
         int(run["id"]),
@@ -43937,6 +45535,30 @@ def _reconcile_interrupted_segment(
         )
         end_state.pop("campaign_completed_kills", None)
         end_state.pop("campaign_objective_kills", None)
+        funding_evidence = _interrupted_provision_funding_evidence(
+            storage,
+            int(run["id"]),
+            start_state=start_state,
+            end_state=end_state,
+            objective_kills=objective_kills,
+        )
+        if funding_evidence is not None:
+            end_state = _record_provision_funding_attempt_details(
+                end_state,
+                candidate_key=str(funding_evidence["candidate_key"]),
+                target=str(funding_evidence["target"]),
+                room_vnum=int(funding_evidence["room_vnum"]),
+                boot_id=start_state.get("world_boot_id"),
+                completed_kill=True,
+                character_level=int(funding_evidence["level"]),
+                evidence=funding_evidence,
+            )
+            end_state = _apply_flight_funding_state_transition(
+                start_state,
+                end_state,
+                execution=phase,
+                funding_completed=True,
+            )
     else:
         end_state["campaign_last_policy"] = phase
         end_state["campaign_completed_kills"] = objective_kills
@@ -44023,6 +45645,26 @@ def _reconcile_interrupted_segment(
         or str(end_state.get("area") or "").casefold() == "purgatory"
     )
     status = "failed" if preserve_failure else "ready"
+    funding_evidence = (
+        _interrupted_provision_funding_evidence(
+            storage,
+            run_id,
+            start_state=start_state,
+            end_state=current_state,
+            objective_kills=objective_kills,
+        )
+        if phase == "provision-funding"
+        else None
+    )
+    funding_metrics = (
+        {
+            "objective_scope": "campaign-provision-funding",
+            "funding_only": True,
+            **funding_evidence,
+        }
+        if funding_evidence is not None
+        else None
+    )
     storage.finish_campaign_segment(
         int(segment["id"]),
         status=status,
@@ -44031,6 +45673,11 @@ def _reconcile_interrupted_segment(
         command_count=storage.count_events(run_id, kind="command"),
         duration_seconds=_run_duration(run),
         error=segment["error"],
+        objective_outcome=(
+            "achieved" if funding_evidence is not None else None
+        ),
+        prefer_segment_objective_outcome=funding_evidence is not None,
+        metrics=funding_metrics,
     )
     storage.record_campaign_checkpoint(
         campaign_id,
@@ -46986,6 +48633,7 @@ def _remember_source_ranked_xp_loss(
     level: int,
     boot_id: Any,
     xp_delta: int,
+    source_revision: str | None = None,
     observed_loss_count: int | None = None,
     loss_event_id: Any = None,
     sanctuary_protected: bool = False,
@@ -47068,18 +48716,24 @@ def _remember_source_ranked_xp_loss(
     }
     if loss_event_id is not None:
         record["loss_event_id"] = loss_event_id
-    source_revision = state.get(_SOURCE_REVISION_KEY)
-    if source_revision:
-        record["source_revision"] = str(source_revision)
+    recorded_source_revision = (
+        source_revision or state.get(_SOURCE_REVISION_KEY)
+    )
+    if recorded_source_revision:
+        record["source_revision"] = str(recorded_source_revision)
     if sanctuary_protected or previous_sanctuary_protected:
         record["sanctuary_protected"] = True
     if target_hp_evidence is not None:
         record["target_hp_evidence"] = dict(target_hp_evidence)
     elif previous_target_hp_evidence is not None:
         record["target_hp_evidence"] = dict(previous_target_hp_evidence)
-    inferred_route_loss_hazards = _source_ranked_route_only_loss_hazards(
-        state,
-        policy_id=policy_id,
+    inferred_route_loss_hazards = (
+        _source_ranked_route_only_loss_hazards(
+            state,
+            policy_id=policy_id,
+        )
+        if route_only_loss is not False
+        else ()
     )
     route_only = bool(
         previous_route_only_loss
@@ -49984,6 +51638,17 @@ def _field_city_departure_blocked_policy_ids(
                 if str(value).strip()
             )
     evidence = state.get("campaign_field_city_preflight")
+    verified = state.get(_FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY)
+    if (
+        isinstance(verified, Mapping) and verified.get("status") == "succeeded"
+        and verified.get("boot_id") == boot_id and verified.get("level") == level
+        and verified.get("source_revision") == state.get(_SOURCE_REVISION_KEY)
+        and type(verified.get("verified_run_id")) is int
+        and verified.get("verified_run_id", 0) > 0
+        and type(verified.get("verified_net_xp")) is int
+        and verified.get("verified_net_xp", 0) > 0
+    ):
+        blocked.discard(str(verified.get("policy_id") or ""))
     if (
         _field_city_departure_checkpoint_current_reboot(state)
         and isinstance(evidence, Mapping)
@@ -50049,6 +51714,33 @@ def _record_provision_funding_attempt(
     unavailable_reason: str | None = None,
 ) -> dict[str, Any]:
     """Persist a funding attempt without losing the need for provisions."""
+    return _record_provision_funding_attempt_details(
+        state,
+        candidate_key=_provision_funding_candidate_key(candidate),
+        target=candidate.target,
+        room_vnum=candidate.room_vnum,
+        boot_id=boot_id,
+        completed_kill=completed_kill,
+        funding_only=funding_only,
+        character_level=character_level,
+        unavailable_reason=unavailable_reason,
+    )
+
+
+def _record_provision_funding_attempt_details(
+    state: dict[str, Any],
+    *,
+    candidate_key: str,
+    target: str,
+    room_vnum: int | str,
+    boot_id: str | int | None,
+    completed_kill: bool,
+    funding_only: bool = False,
+    character_level: int | None = None,
+    unavailable_reason: str | None = None,
+    evidence: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Store the same candidate ledger for a live or recovered attempt."""
     recorded = dict(state)
     attempts = [
         dict(record)
@@ -50057,9 +51749,9 @@ def _record_provision_funding_attempt(
     ]
     attempt = {
         "boot_id": boot_id,
-        "candidate_key": _provision_funding_candidate_key(candidate),
-        "target": candidate.target,
-        "room_vnum": candidate.room_vnum,
+        "candidate_key": candidate_key,
+        "target": target,
+        "room_vnum": room_vnum,
         "completed_kill": completed_kill,
     }
     if funding_only:
@@ -50071,13 +51763,23 @@ def _record_provision_funding_attempt(
         and unavailable_reason in _PROVISION_FUNDING_UNAVAILABLE_REASONS
     ):
         attempt[_PROVISION_FUNDING_UNAVAILABLE_KEY] = unavailable_reason
+    if isinstance(evidence, Mapping):
+        attempt["recovery_evidence"] = {
+            str(key): value
+            for key, value in evidence.items()
+            if isinstance(value, (str, int, float, bool)) or value is None
+        }
     attempts.append(attempt)
     recorded[_PROVISION_FUNDING_ATTEMPTS_KEY] = attempts[-_PROVISION_FUNDING_HISTORY_LIMIT:]
     recorded[_PROVISION_FUNDING_LAST_ATTEMPT_KEY] = {
         "boot_id": boot_id,
-        "candidate_key": _provision_funding_candidate_key(candidate),
+        "candidate_key": candidate_key,
         "completed_kill": completed_kill,
     }
+    if "recovery_evidence" in attempt:
+        recorded[_PROVISION_FUNDING_LAST_ATTEMPT_KEY]["recovery_evidence"] = (
+            attempt["recovery_evidence"]
+        )
     if (
         not completed_kill
         and unavailable_reason in _PROVISION_FUNDING_UNAVAILABLE_REASONS
@@ -50090,6 +51792,83 @@ def _record_provision_funding_attempt(
     else:
         recorded[_PROVISION_FUNDING_REQUIRED_KEY] = True
     return recorded
+
+
+def _interrupted_provision_funding_evidence(
+    storage: RunStorage,
+    run_id: int,
+    *,
+    start_state: Mapping[str, Any],
+    end_state: Mapping[str, Any],
+    objective_kills: Collection[Any],
+) -> dict[str, Any] | None:
+    """Recover only an exact routed carrier kill with a positive coin delta."""
+    summary = storage.get_run_summary(run_id)
+    objective = summary.get("objective") if isinstance(summary, dict) else None
+    if not isinstance(objective, Mapping):
+        return None
+    route = str(objective.get("fastwalk_route") or "").casefold()
+    if "provision funding" not in route:
+        return None
+    boundaries = objective.get("fastwalk_hunt_stop_boundaries")
+    if not isinstance(boundaries, list) or len(boundaries) != 1:
+        return None
+    boundary = boundaries[0]
+    if not isinstance(boundary, Mapping):
+        return None
+    if boundary.get("required_items"):
+        return None
+    target = str(boundary.get("target") or "").casefold().strip()
+    room_vnum = str(boundary.get("route_endpoint") or "").strip()
+    try:
+        level = int(end_state.get("level") or start_state.get("level"))
+        room_number = int(room_vnum)
+    except (TypeError, ValueError):
+        return None
+    if not target or room_number <= 0:
+        return None
+
+    prefix = _SOURCE_RANKED_POLICY_PREFIX
+    suffix = f"-{room_number}-{level}"
+    candidates: dict[str, dict[str, Any]] = {}
+    for raw_kill in objective_kills:
+        if not isinstance(raw_kill, Mapping):
+            continue
+        if str(raw_kill.get("mob_name") or "").casefold().strip() != target:
+            continue
+        policy_id = str(raw_kill.get("source_policy_id") or "")
+        if not policy_id.startswith(prefix) or not policy_id.endswith(suffix):
+            continue
+        identity = policy_id[len(prefix):-len(suffix)]
+        try:
+            area_stem, mobile_text = identity.rsplit("-", 1)
+            mobile_vnum = int(mobile_text)
+            recorded_vnum = int(raw_kill.get("source_mobile_vnum"))
+        except (TypeError, ValueError):
+            continue
+        if not area_stem or mobile_vnum != recorded_vnum:
+            continue
+        candidate_key = f"{area_stem}.are:{mobile_vnum}:{room_number}"
+        candidates[candidate_key] = {
+            "candidate_key": candidate_key,
+            "target": str(raw_kill.get("mob_name") or target),
+            "room_vnum": room_number,
+            "mobile_vnum": mobile_vnum,
+            "source_policy_id": policy_id,
+        }
+    if len(candidates) != 1:
+        return None
+
+    candidate = next(iter(candidates.values()))
+    currency_delta = _state_copper_value(dict(end_state)) - _state_copper_value(
+        dict(start_state)
+    )
+    if currency_delta <= 0:
+        return None
+    candidate["currency_delta"] = currency_delta
+    candidate["run_id"] = run_id
+    candidate["level"] = level
+    return candidate
 
 
 def _provision_funding_completed(
@@ -50745,14 +52524,19 @@ def _state_has_source_weapon_role(
     )
 
 
-def _state_has_digging_capability(
+def _state_has_quest_digging_tool(
     state: Mapping[str, Any],
     *,
     gear_catalog: GearCatalog | None,
     character_class: str,
     subclass: str | None,
 ) -> bool:
-    """Mirror DD4's ordered ``do_dig`` capability checks from persisted state."""
+    """Recognize any source-identified DD4 digging implement in usable gear.
+
+    DD4's ``do_dig`` accepts every valid ``ITEM_DIGGER``; a weaker tool needs
+    more bounded digs and movement recovery, but is still a digging tool.
+    Forms and wielded digging weapons remain valid alternatives.
+    """
     if gear_catalog is None:
         return False
     form = str(state.get("form") or "").casefold()
@@ -50986,9 +52770,18 @@ def _campaign_productive_policy_ids(
     *,
     storage: RunStorage | None = None,
     boot_id: str | int | None = None,
+    source_kill_records: Collection[Mapping[str, Any]] = (),
 ) -> frozenset[str]:
     """Collect same-reboot hunt policies with a meaningful objective kill."""
-    productive: set[str] = set()
+    # The compact ledger outlives the eight-segment JSON tail. Its exact tags
+    # distinguish real targets from incidental, below-band, and route-gate kills.
+    productive = {
+        policy_id
+        for policy_id, xp in _source_policy_latest_xp_from_kill_records(
+            source_kill_records, boot_id=boot_id,
+        ).items()
+        if "-hunt-" in policy_id and xp >= _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
+    }
     repeatable_research_policy_ids = frozenset(
         {
             _MAHNTOR_ROCK_TOAD_WARRIOR_LEVEL_SIXTEEN_POLICY.policy_id,
@@ -51309,7 +53102,55 @@ def _objective_kills_for_execution(
     )
     if not _execution_records_objective_kills(execution):
         return []
-    return objective_kills
+    latest_state_loader = getattr(storage, "get_latest_state_snapshot", None)
+    run_state = (
+        _run_latest_state(storage, run_id)
+        if callable(latest_state_loader)
+        else None
+    )
+    return _exclude_below_band_moria_resource_kills(
+        objective_kills,
+        run_state,
+    )
+
+
+def _exclude_below_band_moria_resource_kills(
+    kills: list[Any] | None,
+    state: Mapping[str, Any] | None,
+) -> list[Any] | None:
+    """Keep a below-band sanctuary carrier kill out of progression evidence."""
+    if not kills or not isinstance(state, Mapping):
+        return kills
+    required_objects = state.get("campaign_fastwalk_required_object_vnums")
+    if not isinstance(required_objects, (list, tuple, set, frozenset)):
+        return kills
+    if _MORIA_SANCTUARY_POTION_OBJECT_VNUM not in {
+        int(value)
+        for value in required_objects
+        if isinstance(value, int) or str(value).isdigit()
+    }:
+        return kills
+    below_band_targets = state.get("campaign_fastwalk_below_band_targets")
+    if not isinstance(below_band_targets, (list, tuple, set, frozenset)):
+        return kills
+    below_band_names = {
+        " ".join(str(value).casefold().split())
+        for value in below_band_targets
+        if str(value).strip()
+    }
+    if not below_band_names:
+        return kills
+    return [
+        kill
+        for kill in kills
+        if not (
+            isinstance(kill, Mapping)
+            and kill.get("source_mobile_vnum")
+            == _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM
+            and " ".join(str(kill.get("mob_name") or "").casefold().split())
+            in below_band_names
+        )
+    ]
 
 
 def _execution_records_objective_kills(execution: str | None) -> bool:
@@ -51477,6 +53318,30 @@ def _clear_non_objective_maintenance_kills(
     """Remove legacy kill metadata left by a maintenance checkpoint."""
     if checkpoint is None:
         return state
+    objective_kills = state.get("campaign_objective_kills")
+    filtered_objective_kills = _exclude_below_band_moria_resource_kills(
+        objective_kills if isinstance(objective_kills, list) else None,
+        state,
+    )
+    completed_kills = state.get("campaign_completed_kills")
+    filtered_completed_kills = _exclude_below_band_moria_resource_kills(
+        completed_kills if isinstance(completed_kills, list) else None,
+        state,
+    )
+    if (
+        filtered_objective_kills != objective_kills
+        or filtered_completed_kills != completed_kills
+    ):
+        updated = dict(state)
+        for key, filtered in (
+            ("campaign_objective_kills", filtered_objective_kills),
+            ("campaign_completed_kills", filtered_completed_kills),
+        ):
+            if filtered:
+                updated[key] = filtered
+            else:
+                updated.pop(key, None)
+        state = updated
     phase = str(checkpoint["phase"] or "")
     if phase == "provision-funding":
         updated = _record_provision_funding_kills(
@@ -51952,7 +53817,7 @@ def _rearm_unissued_frontier_quest_request(
     campaign_id: int,
     state: dict[str, Any],
 ) -> dict[str, Any]:
-    """Reopen one request selection only after a proven pre-dispatch abort."""
+    """Record a proven pre-dispatch abort for request-history repair."""
     marker = state.get("campaign_quest_frontier_request")
     if not isinstance(marker, Mapping):
         return state
@@ -52050,25 +53915,41 @@ def _rearm_unissued_frontier_quest_request(
     return repaired
 
 
+def _frontier_quest_cooldown_policy(
+    state: Mapping[str, Any],
+    quest: QuestSnapshot,
+    practice_skill: str | None,
+) -> ProgressionPolicy:
+    level = _level(state)
+    return replace(
+        _QUEST_REQUEST_POLICY,
+        policy_id="quest-frontier-cooldown",
+        minimum_level=level,
+        maximum_level=level,
+        summary=(
+            "No productive source-ranked target remains. Stay connected at "
+            f"the healer for the observed {quest.nextquest}-minute quest "
+            "cooldown, then request another quest on that socket."
+        ),
+        practice_skill=practice_skill,
+    )
+
+
 def _frontier_quest_request_policy(
     state: dict[str, Any], selected: ProgressionPolicy,
     *, reason: str = "source-ranked frontier exhausted",
 ) -> ProgressionPolicy | None:
-    """Share the existing one-request allowance across exhausted objectives."""
-    quest = snapshot_quest_status(
-        state.get("quest_status") if isinstance(state.get("quest_status"), Mapping) else None
-    )
-    marker = state.get("campaign_quest_frontier_request")
-    already_attempted = (
-        isinstance(marker, Mapping)
-        and int(marker.get("session_revision") or 0) >= 234
-        and marker.get("boot_id") == state.get("world_boot_id")
-        and int(marker.get("level") or -1) == _level(state)
-        and not _frontier_quest_request_retry_pending(state)
-    )
+    """Request only when the next-level quest-point gate blocks progression."""
+    status = state.get("quest_status")
+    if not quest_request_status_observed(status):
+        return None
+    shortfall = _source_quest_point_shortfall(state)
+    if shortfall is None or shortfall <= 0:
+        return None
+    quest = snapshot_quest_status(status)
     if (
         not quest_request_fame_allowed(state) or quest.active
-        or quest.nextquest > 0 or already_attempted
+        or quest.nextquest > 0
     ):
         return None
     _record_frontier_quest_request_selection(state, reason=reason)
@@ -52086,8 +53967,8 @@ def _frontier_quest_request_policy(
         evidence=(
             *_QUEST_REQUEST_POLICY.evidence,
             "This fallback is selected only after ordinary source-ranked "
-            "candidates are exhausted and records one request per reboot "
-            "and character level before retrying.",
+            "candidates are exhausted. DD4's active assignment and live "
+            "nextquest timer limit request frequency.",
         ),
         practice_skill=selected.practice_skill,
     )
@@ -52499,6 +54380,8 @@ def _advance_daycare_ring_cooldown(
     xp_delta: int,
 ) -> dict[str, Any]:
     """Retry missing Daycare rings after other productive work."""
+    if execution in _DAYCARE_RING_RESOURCE_EXECUTIONS:
+        return state
     updated = _advance_retry_cooldown(
         state,
         key=_DAYCARE_RING_COOLDOWN_KEY,
@@ -52628,7 +54511,7 @@ def _repair_daycare_ring_retry_from_segments(
                 else phase
             )
         )
-        if execution in _MAINTENANCE_EXECUTIONS:
+        if execution in _MAINTENANCE_EXECUTIONS | _DAYCARE_RING_RESOURCE_EXECUTIONS:
             continue
         start = segment_state(segment, "start_state_json")
         end = segment_state(segment, "end_state_json")
@@ -53267,8 +55150,8 @@ def _campaign_segment_end_state(
     """Keep maintenance facts sticky until their owning policy re-evaluates them."""
     merged = dict(current)
     if (
-        _quest_wait_reached_new_assignment(current, previous_state=previous)
-        or _quest_wait_reached_new_assignment(previous)
+        _quest_wait_started_new_request_cycle(current, previous_state=previous)
+        or _quest_wait_started_new_request_cycle(previous)
     ):
         # The prior wait completed. Preserve that fact through unrelated
         # maintenance without carrying its whole connection-local phase log.
@@ -53954,11 +55837,17 @@ def _campaign_segment_end_state(
         merged[_INTERMEDIATE_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY] = previous[
             _INTERMEDIATE_PIERCING_WEAPON_UPGRADE_COOLDOWN_KEY
         ]
-    return _apply_flight_funding_state_transition(
+    transitioned = _apply_flight_funding_state_transition(
         previous,
         merged,
         execution=execution,
         funding_completed=False,
+    )
+    transitioned = _carry_pounding_weapon_rearm_attempt(previous, transitioned)
+    return _carry_sanctuary_resource_attempts(
+        previous,
+        transitioned,
+        policy_id=policy_id,
     )
 
 
@@ -54658,9 +56547,8 @@ def _repair_protection_recovery_metadata(
         return updated
 
     if current_source_revision:
-        # A source refresh can leave a checkpoint with a loss record that was
-        # reconstructed just before this repair ran. Drop explicit evidence
-        # from an older checkout before it can quarantine the new frontier.
+        # Keep live losses across source refreshes, but do not let old source
+        # estimates or route-only evidence reopen a stale one-shot retry.
         raw_loss_records = updated.get(_SOURCE_RANKED_XP_LOSS_POLICIES_KEY)
         if isinstance(raw_loss_records, (list, tuple)):
             retained_loss_records: list[dict[str, Any]] = []
@@ -54676,14 +56564,19 @@ def _repair_protection_recovery_metadata(
                         if isinstance(target_evidence, Mapping)
                         else None
                     )
-                    if (
+                    source_changed = (
                         record_revision is not None
                         and record_revision != current_source_revision
-                    ) or (
+                    )
+                    target_changed = (
                         target_revision is not None
                         and target_revision != current_source_revision
-                    ):
-                        continue
+                    )
+                    if source_changed or target_changed:
+                        record.pop("target_hp_evidence", None)
+                    if source_changed:
+                        record.pop("route_only_loss", None)
+                        record.pop("route_loss_hazards", None)
                 retained_loss_records.append(record)
             if retained_loss_records:
                 updated[_SOURCE_RANKED_XP_LOSS_POLICIES_KEY] = (
@@ -54695,12 +56588,14 @@ def _repair_protection_recovery_metadata(
     def hunt_evidence(segment: Mapping[str, Any]) -> tuple[
         str, Mapping[str, Any], list[Any] | None, int, bool, bool
     ] | None:
-        if segment.get("status") not in {"success", "ready"}:
-            return None
         phase = str(segment.get("phase") or "")
         source_policy_id: str | None = (
             phase if phase.startswith(_SOURCE_RANKED_POLICY_PREFIX) else None
         )
+        segment_status = str(segment.get("status") or "")
+        failed_segment = segment_status == "failed"
+        if segment_status not in {"success", "ready"} and not failed_segment:
+            return None
         if phase == "provision-funding" and storage is not None:
             try:
                 run_id = int(segment.get("run_id"))
@@ -54731,17 +56626,35 @@ def _repair_protection_recovery_metadata(
             return None
         if not isinstance(start, Mapping) or not isinstance(end, Mapping):
             return None
+        if failed_segment:
+            try:
+                run_id = int(segment.get("run_id"))
+                command_count = int(segment.get("command_count") or 0)
+            except (TypeError, ValueError):
+                return None
+            if run_id <= 0 or command_count <= 0:
+                return None
+            execution = (
+                "provision-funding"
+                if phase == "provision-funding"
+                else "source-ranked-hunt"
+                if source_policy_id is not None
+                else phase
+            )
+            end = _campaign_segment_end_state(
+                dict(start),
+                dict(end),
+                execution=execution,
+                policy_id=source_policy_id,
+            )
+            # Interrupted workers may have a compact run-current state rather
+            # than a campaign checkpoint. Restore only the segment identity
+            # context required to scope reconstructed evidence.
+            for key in ("world_boot_id", _SOURCE_REVISION_KEY):
+                if end.get(key) is None and start.get(key) is not None:
+                    end[key] = start[key]
         if not end or end.get("world_boot_id") != boot_id:
             return None
-        if source_policy_id is not None and current_source_revision:
-            # A source refresh invalidates source-derived route evidence. Do
-            # not resurrect a loss from a same-boot segment that was recorded
-            # against an older checkout (or before source identity existed).
-            if (
-                start.get(_SOURCE_REVISION_KEY) != current_source_revision
-                or end.get(_SOURCE_REVISION_KEY) != current_source_revision
-            ):
-                return None
         outcomes = end.get("campaign_fastwalk_consider_outcomes")
         objective_kills = _segment_objective_kills(storage, segment)
         xp_delta = _xp_delta(start, end)
@@ -54757,6 +56670,22 @@ def _repair_protection_recovery_metadata(
                 or _xp_loss_event_observed(start, end)
             )
         )
+        source_revision_mismatch = bool(
+            source_policy_id is not None
+            and current_source_revision
+            and (
+                start.get(_SOURCE_REVISION_KEY) != current_source_revision
+                or end.get(_SOURCE_REVISION_KEY) != current_source_revision
+            )
+        )
+        if source_revision_mismatch:
+            # A same-boot loss remains authoritative, but its old route and
+            # target estimates cannot support any source-derived retry.
+            if not source_ranked_xp_loss:
+                return None
+            end = dict(end)
+            end.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+            end.pop("campaign_fastwalk_route_hazards", None)
         if not (
             has_viable_consider
             or source_ranked_xp_loss
@@ -54817,6 +56746,9 @@ def _repair_protection_recovery_metadata(
                 level=_level(end),
                 boot_id=end.get("world_boot_id"),
                 xp_delta=xp_delta,
+                source_revision=(
+                    str(end.get(_SOURCE_REVISION_KEY) or "") or None
+                ),
                 observed_loss_count=replayed_loss_counts[phase],
                 loss_event_id=segment.get("id"),
                 sanctuary_protected=(
@@ -56466,7 +58398,7 @@ def _merge_campaign_below_band_policy_exclusions(
         }
     else:
         merged.pop(_BELOW_BAND_SIGHTINGS_KEY, None)
-    return merged
+    return _carry_pounding_weapon_rearm_attempt(previous, merged)
 
 
 def _merge_protection_recovery_metadata(
@@ -60117,6 +62049,104 @@ def _next_pending_absent_research_retry_policy(
     ):
         return preferred_policy_id
     return min(candidates)[1] if candidates else None
+
+
+def _productive_source_hunt_absence_wait_policy(
+    state: dict[str, Any],
+    segments: Collection[Any],
+    *,
+    source_world: WorldSource | None,
+) -> str | None:
+    """Let a freshly depleted productive hunt enter its first bounded wait."""
+    policy_id = _next_pending_absent_research_retry_policy(
+        state, maximum_remaining=3, source_ranked_hunt_only=True,
+        preferred_policy_id=str(state.get("campaign_last_policy") or ""),
+    )
+    if (
+        policy_id is None or source_world is None
+        or (state.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}).get(policy_id) != 3
+        or _source_ranked_xp_loss_record(state, policy_id) is not None
+        or not _is_safe_healer_checkpoint(state)
+    ):
+        return None
+    boot = state.get("world_boot_id")
+    revision = state.get(_SOURCE_REVISION_KEY)
+    level = _level(state)
+    absence_seen = False
+    candidate: HuntCandidate | None = None
+    for raw_segment in reversed(tuple(segments)[-_CAMPAIGN_RUNTIME_CHECKPOINT_LIMIT:]):
+        segment = dict(raw_segment)
+        if segment.get("phase") != policy_id:
+            continue
+        try:
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
+            if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+                return None
+            gain = int(end.get("xp")) - int(start.get("xp"))
+            loss_unchanged = (
+                int(start.get("xp_loss_total")) == int(end.get("xp_loss_total"))
+                == int(state.get("xp_loss_total"))
+            )
+            run_id = int(segment.get("run_id"))
+        except (TypeError, ValueError):
+            return None
+        if not (
+            segment.get("status") == "success" and run_id > 0 and loss_unchanged
+            and start.get("world_boot_id") == end.get("world_boot_id") == boot
+            and start.get(_SOURCE_REVISION_KEY) == end.get(_SOURCE_REVISION_KEY) == revision
+            and _level(dict(start)) == _level(dict(end)) == level
+            and _is_safe_healer_checkpoint(end)
+            and not end.get("xp_loss_observed")
+            and not end.get("campaign_fastwalk_abort_reason")
+        ):
+            return None
+        if not absence_seen:
+            candidate = _source_ranked_candidate_from_record(
+                start.get(_SOURCE_RANKED_CANDIDATE_KEY), source_revision=revision,
+            )
+            sightings = end.get("campaign_fastwalk_source_absent_sightings")
+            if not (
+                candidate is not None and candidate.autonomous_safe
+                and not candidate.specials and not candidate.equipped_weapons
+                and _source_ranked_policy_id(candidate, character_level=level) == policy_id
+                and gain == 0 and end.get("xp") == state.get("xp")
+                and end.get("campaign_fastwalk_target_absent") is True
+                and not end.get("campaign_objective_kills")
+                and not end.get("campaign_completed_kills")
+                and isinstance(sightings, list) and any(
+                    isinstance(item, Mapping) and item.get("policy_id") == policy_id
+                    and str(item.get("room_vnum")) == str(candidate.room_vnum)
+                    for item in sightings
+                )
+                and not _source_ranked_candidate_requires_sanctuary_for_state(
+                    candidate, state, character_level=level, source_world=source_world,
+                )
+            ):
+                return None
+            absence_seen = True
+            continue
+        kills = end.get("campaign_objective_kills")
+        productive_candidate = _source_ranked_candidate_from_record(
+            start.get(_SOURCE_RANKED_CANDIDATE_KEY), source_revision=revision,
+        )
+        if (
+            candidate is not None and gain > _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
+            and productive_candidate is not None
+            and productive_candidate.mobile_vnum == candidate.mobile_vnum
+            and productive_candidate.room_vnum == candidate.room_vnum
+            and productive_candidate.route == candidate.route
+            and isinstance(kills, list) and any(
+                isinstance(kill, Mapping) and kill.get("source_policy_id") == policy_id
+                and kill.get("source_mobile_vnum") == candidate.mobile_vnum
+                and isinstance(kill.get("xp_gained"), int)
+                and kill["xp_gained"] > _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
+                for kill in kills
+            )
+        ):
+            return policy_id
+        return None
+    return None
 
 
 def _retry_current_absent_research_policy(

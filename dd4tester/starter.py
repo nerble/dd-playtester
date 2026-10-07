@@ -15,6 +15,9 @@ from pathlib import Path
 from typing import Any, Callable, Collection, Iterable, Mapping
 
 from .archetypes import archetype_registry
+from .area_recall import (
+    AreaRecallEscape, LOCAL_RECALL_ROOMS, undersea_escape_source_issue,
+)
 from .visibility import (
     invisibility_blocks_source_aggression,
     learned_invisibility_mana_cost,
@@ -121,6 +124,7 @@ from .hunt_candidates import (
     source_route_hazard_rejections,
     source_route_requires_flight,
     source_route_movement_cost,
+    source_safe_route_to_room_with_origin,
     source_subclass_teacher_route,
     source_mobile_search_rooms,
     source_mobile_identities as _canonical_source_mobile_identities,
@@ -181,6 +185,13 @@ from .training import (
 )
 from .transcript import TranscriptRecorder
 
+
+# Routine observations, including cooldown ticks, stay on the bounded writer's
+# batch timer. Only lifecycle and dispatch boundaries force durability inline.
+_STORAGE_BARRIER_EVENT_KINDS = frozenset({
+    "run_context", "quest_request_attempt", "quest_phase_checkpoint",
+    "quest_phase_started",
+})
 
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _MUD_COLOUR_CODE = re.compile(r"(?:\{.|<\d+>)")
@@ -597,6 +608,10 @@ _CITY_REARM_POUNDING_ROUTE_ROOMS = (
     "3120",
 )
 _CITY_REARM_POUNDING_REQUIRED_FREE_WEIGHT = 5
+_CITY_REARM_SHOP_LOCATOR_TARGET = "Dave the Dealer"
+_CITY_REARM_LOCATOR_MAX_ROUTE_STEPS = 22
+_CITY_REARM_LOCATOR_MAX_CANDIDATES = 4
+_CITY_REARM_PRIVATE_OR_SOLITARY_FLAGS = (1 << 9) | (1 << 11)
 
 
 def _city_route_cursor_for_room(
@@ -611,6 +626,130 @@ def _city_route_cursor_for_room(
         return route_rooms.index(str(room_vnum))
     except ValueError:
         return current_index
+
+
+def _city_rearm_locator_candidate_rooms(
+    world: WorldSource,
+    location: str,
+    *,
+    mobile_vnum: int = 3050,
+) -> tuple[int, ...]:
+    """Map one live room label to its bounded source-reachable room set."""
+    mobile = world.mobiles.get(mobile_vnum)
+    if (
+        mobile is None
+        or mobile_vnum not in world.shopkeepers
+        or not mobile.wanders
+    ):
+        return ()
+    reachable = set(source_mobile_search_rooms(world, mobile_vnum))
+    wanted_label = _normalise_room_label(location)
+    matches = tuple(sorted(
+        vnum
+        for vnum in reachable
+        if vnum in world.rooms
+        and _normalise_room_label(world.rooms[vnum].name) == wanted_label
+    ))
+    if not matches or len(matches) > _CITY_REARM_LOCATOR_MAX_CANDIDATES:
+        return ()
+    return matches
+
+
+def _city_rearm_routes_to_room(
+    world: WorldSource,
+    destination_vnum: int,
+    *,
+    origin_vnum: int,
+    character_level: int,
+) -> tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...], tuple[int, ...]] | None:
+    """Plan bounded source-safe shop and healer legs from one live room."""
+    if destination_vnum == origin_vnum:
+        return None
+    outbound = source_safe_route_to_room_with_origin(
+        world,
+        destination_vnum,
+        character_level=character_level,
+        recall_origins={0: origin_vnum},
+    )
+    returning = source_safe_route_to_room_with_origin(
+        world,
+        3054,
+        character_level=character_level,
+        recall_origins={0: destination_vnum},
+    )
+    if outbound is None or returning is None:
+        return None
+    out_commands, out_rooms, _, _, _ = outbound
+    back_commands, back_rooms, _, _, _ = returning
+    if (
+        not out_commands
+        or len(out_commands) > _CITY_REARM_LOCATOR_MAX_ROUTE_STEPS
+        or len(back_commands) > _CITY_REARM_LOCATOR_MAX_ROUTE_STEPS
+    ):
+        return None
+    for route_rooms in (out_rooms, back_rooms):
+        if any(
+            world.rooms[vnum].room_flags & _CITY_REARM_PRIVATE_OR_SOLITARY_FLAGS
+            for vnum in route_rooms[1:]
+            if vnum in world.rooms
+        ):
+            return None
+    return out_commands, out_rooms, back_commands, back_rooms
+
+
+def _city_rearm_locator_routes(
+    world: WorldSource,
+    location: str,
+    *,
+    origin_vnum: int,
+    character_level: int,
+    mobile_vnum: int = 3050,
+) -> tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...], tuple[int, ...]] | None:
+    """Resolve a unique live shopkeeper label to source-safe city routes."""
+    candidates = _city_rearm_locator_candidate_rooms(
+        world,
+        location,
+        mobile_vnum=mobile_vnum,
+    )
+    if len(candidates) != 1:
+        return None
+    return _city_rearm_routes_to_room(
+        world,
+        candidates[0],
+        origin_vnum=origin_vnum,
+        character_level=character_level,
+    )
+
+
+def _city_rearm_locator_sweep_routes(
+    world: WorldSource,
+    candidate_rooms: tuple[int, ...],
+    *,
+    origin_vnum: int,
+    character_level: int,
+) -> tuple[
+    tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...], tuple[int, ...]], ...
+] | None:
+    """Plan one bounded visit to each exact room sharing a live room label."""
+    if not candidate_rooms or len(candidate_rooms) > _CITY_REARM_LOCATOR_MAX_CANDIDATES:
+        return None
+    routes = []
+    current_origin = origin_vnum
+    for candidate_vnum in candidate_rooms:
+        route = _city_rearm_routes_to_room(
+            world,
+            candidate_vnum,
+            origin_vnum=current_origin,
+            character_level=character_level,
+        )
+        if route is None:
+            return None
+        routes.append(route)
+        current_origin = candidate_vnum
+    total_steps = sum(len(route[0]) for route in routes) + len(routes[-1][2])
+    if total_steps > _CITY_REARM_LOCATOR_MAX_ROUTE_STEPS:
+        return None
+    return tuple(routes)
 
 
 @dataclass(frozen=True)
@@ -1595,6 +1734,8 @@ _FIELD_ROOM_LISTING = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _COMBAT_ACTION_COOLDOWN_SECONDS = 3.0
+# DD4's kick skill has an eight-pulse wait at four pulses per second.
+_KICK_ACTION_COOLDOWN_SECONDS = 2.0
 _MIDGAARD_CITY_SHOP_DRUNK_ROUTE_ROOMS = frozenset(
     {
         "the temple square",
@@ -3076,6 +3217,21 @@ class StarterPolicy:
         self.city_rearm_shop_listing_started = False
         self.city_rearm_shop_listing_complete = False
         self.city_rearm_shop_listing_buffer = ""
+        self.city_rearm_shop_failure: str | None = None
+        self.city_rearm_shop_locator_attempted = False
+        self.city_rearm_shop_locator_pending = False
+        self.city_rearm_shop_locator_complete = False
+        self.city_rearm_shop_locator_buffer = ""
+        self.city_rearm_shop_room: str | None = None
+        self.city_rearm_locator_candidates: tuple[int, ...] = ()
+        self.city_rearm_locator_candidate_index = 0
+        self.city_rearm_locator_plan: tuple[
+            tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...], tuple[int, ...]], ...
+        ] = ()
+        self.city_rearm_route_commands: tuple[str, ...] | None = None
+        self.city_rearm_route_rooms: tuple[int, ...] | None = None
+        self.city_rearm_return_route_commands: tuple[str, ...] | None = None
+        self.city_rearm_return_route_rooms: tuple[int, ...] | None = None
         self.city_rearm_purchase_selector: str | None = None
         self.city_rearm_purchase_result: str | None = None
         self.city_rearm_wield_result: str | None = None
@@ -3649,6 +3805,8 @@ class StarterPolicy:
         cleaned = cleaned.replace("\r", "")
         for purchase in self.source_purchase_sessions.values():
             purchase.observe(cleaned)
+        if self._recovery_session.area_recall_escape is not None:
+            self._recovery_session.area_recall_escape.observe(cleaned)
         if self.training_travel is not None:
             self.training_travel.observe(cleaned)
         self._response_line_tail = (
@@ -3897,6 +4055,21 @@ class StarterPolicy:
                 cleaned,
             ):
                 self.city_rearm_shop_listing_complete = True
+        if self.city_rearm_shop_locator_pending:
+            self.city_rearm_shop_locator_buffer = _append_locator_response_chunk(
+                self.city_rearm_shop_locator_buffer,
+                cleaned,
+            )
+            locator_text = self.city_rearm_shop_locator_buffer.casefold()
+            if (
+                _where_locations_from_response(
+                    self.city_rearm_shop_locator_buffer,
+                    _CITY_REARM_SHOP_LOCATOR_TARGET,
+                )
+                or "you fail to find anyone by that name" in locator_text
+            ):
+                self.city_rearm_shop_locator_pending = False
+                self.city_rearm_shop_locator_complete = True
         if self.city_rearm and self.city_rearm_step == 2:
             if re.search(r"(?im)^\s*you buy(?:\s+\d+\s+of)?\s+", cleaned):
                 self.city_rearm_purchase_result = "bought"
@@ -6319,6 +6492,20 @@ class StarterPolicy:
                 )
         if field_movement_failure is not None:
             if (
+                self.subclass_selection
+                and not self.subclass_selection_complete
+                and not self.return_home
+                and self.waiting_for_move
+                and self.pending_travel_origin is not None
+            ):
+                reason = f"subclass route movement blocked: {field_movement_failure}"
+                self._travel_session.blocked_reason = reason
+                self.deferred_failure = reason
+                self.return_home = True
+                self._clear_pending_travel()
+                self.waiting_for_move = False
+                self.prompt_ready = True
+            if (
                 not self._recover_closed_fastwalk_exit(field_movement_failure)
                 and not self._mark_fastwalk_outbound_movement_blocked(
                     field_movement_failure
@@ -6398,6 +6585,9 @@ class StarterPolicy:
                     and self.city_rearm_shop_listing_started
                 ):
                     self.city_rearm_shop_listing_complete = True
+                if self.city_rearm_shop_locator_pending:
+                    self.city_rearm_shop_locator_pending = False
+                    self.city_rearm_shop_locator_complete = True
                 if self.capability_audit_pending:
                     self.capability_audit_pending = False
                     self.capability_audit_complete = True
@@ -7271,6 +7461,9 @@ class StarterPolicy:
         for purchase in self.source_purchase_sessions.values():
             if purchase.expire(time.monotonic()):
                 self.prompt_ready = True
+        if (self._recovery_session.area_recall_escape is not None
+                and self._recovery_session.area_recall_escape.expire(time.monotonic())):
+            self.prompt_ready = True
         if self.training_travel is not None and self.training_travel.expire(time.monotonic()):
             self.prompt_ready = True
 
@@ -11849,6 +12042,21 @@ class StarterPolicy:
 
     def _gear_decision(self, state: CharacterState) -> BotDecision | None:
         """Apply the right source-backed loadout before the next activity."""
+        if self.return_home and state.room_vnum == "3054":
+            carried_food = (
+                self.needs_food
+                and not self.food_unavailable
+                and _has_inventory_food(state.inventory, self.gear_catalog)
+            )
+            carried_water = (
+                self.needs_drink
+                and not self.water_unavailable
+                and _has_inventory_item(state.inventory, "water skin")
+            )
+            if carried_food or carried_water:
+                provision = self._resupply_decision(state)
+                if provision is not None:
+                    return provision
         if (
             self.return_home
             and not self.runtime_boundary_requested
@@ -13235,6 +13443,30 @@ class StarterPolicy:
         live_max_hp = max(live_target_max_hps)
         if live_max_hp <= live_output_ceiling:
             return None
+        bounded_plain_hp_probe = bool(
+            self.combat_active
+            and self.field_combat_damage_probe_required
+            and stop.require_damage_window_probe
+            and stop.allow_unprotected_hp_fuzz_probe
+            and stop.exact_target
+            and stop.source_mobile_vnum is not None
+            and self.active_target_mobile_vnum == stop.source_mobile_vnum
+            and self.active_target_selector is not None
+            and self.active_target_selector.startswith("#")
+            and bool(stop.source_policy_id)
+            and stop.source_target_hp_ceiling is not None
+            and live_max_hp <= stop.source_target_hp_ceiling
+            and stop.source_target_armed is False
+            and not stop.source_specials
+            and not stop.require_sanctuary
+            and not stop.require_familiar
+        )
+        if bounded_plain_hp_probe:
+            # The campaign's source audit already admitted this exact plain
+            # target for one bounded live damage window. Do not cancel that
+            # probe merely because its observed HP is a few points over the
+            # conservative output budget; the measured exchange decides.
+            return None
         source_reference = (
             f" ({stop.source_combat_reference})"
             if stop.source_combat_reference
@@ -14537,7 +14769,12 @@ class StarterPolicy:
             self.combat_actions_since_disarm += 1
             self.between_round_action_issued = True
             self.between_round_action_ready_at = (
-                now + _COMBAT_ACTION_COOLDOWN_SECONDS
+                now
+                + (
+                    _KICK_ACTION_COOLDOWN_SECONDS
+                    if active_command == "kick"
+                    else _COMBAT_ACTION_COOLDOWN_SECONDS
+                )
             )
             return BotDecision(active_command, active_reason)
         if _mana_ratio(state) < 0.15:
@@ -16196,6 +16433,32 @@ class StarterPolicy:
         if not self.subclass_change_keyword:
             self.failure = "the requested subclass has no source-backed change keyword"
             return None
+
+        if self.source_world is not None and trainer.steps:
+            path_rooms = (
+                int(trainer.steps[0][0]),
+                *(int(step[2]) for step in trainer.steps),
+            )
+            if source_route_requires_flight(self.source_world, path_rooms):
+                if state.affects is None and not self.fastwalk_flight_snapshot_requested:
+                    self.fastwalk_flight_snapshot_requested = True
+                    return BotDecision("affects", "verify flight before the subclass route")
+                if not any(
+                    _has_named_affect(state.affects, name)
+                    for name in ("fly", "levitation")
+                ):
+                    reason = "subclass route requires confirmed active fly or levitation"
+                    self._travel_session.blocked_reason = reason
+                    self.deferred_failure = reason
+                    self.return_home = True
+                    self._clear_pending_travel()
+                    self.waiting_for_move = False
+                    if state.room_vnum == "3054":
+                        return self._begin_midgaard_logout(
+                            state, save_reason="persist the blocked subclass route",
+                            quit_reason="subclass flight unavailable; safe healer checkpoint",
+                        )
+                    return self._return_home_decision(state)
 
         locator_decision = self._class_trainer_locator_decision(state, trainer)
         if locator_decision is not None:
@@ -18247,13 +18510,30 @@ class StarterPolicy:
         if self.carried_weapon_comparison is not None:
             return self._carried_weapon_comparison_decision(state)
         pounding_role = self.city_rearm_role == "pounding"
-        outbound = (
+        default_outbound = (
             _CITY_REARM_POUNDING_ROUTE
             if pounding_role
             else _CITY_REARM_PRIMARY_ROUTE
         )
-        returning = _reverse_fastwalk_commands(outbound)
-        shop_room = "3120" if pounding_role else "3011"
+        outbound = self.city_rearm_route_commands or default_outbound
+        default_route_rooms = (
+            _CITY_REARM_POUNDING_ROUTE_ROOMS
+            if pounding_role
+            else _CITY_REARM_PRIMARY_ROUTE_ROOMS
+        )
+        route_rooms = self.city_rearm_route_rooms or tuple(
+            int(room) for room in default_route_rooms
+        )
+        return_route_rooms = self.city_rearm_return_route_rooms or tuple(
+            reversed(route_rooms)
+        )
+        returning = (
+            self.city_rearm_return_route_commands
+            or _reverse_fastwalk_commands(outbound)
+        )
+        shop_room = self.city_rearm_shop_room or (
+            "3120" if pounding_role else "3011"
+        )
         shop_keyword = "mace" if pounding_role else "dagger"
         required_free_weight = (
             _CITY_REARM_POUNDING_REQUIRED_FREE_WEIGHT
@@ -18272,23 +18552,18 @@ class StarterPolicy:
             # on that stale room or its next direction can be applied twice.
             return None
         if not self.city_rearm_borrowing:
-            route_rooms = (
-                _CITY_REARM_POUNDING_ROUTE_ROOMS
-                if pounding_role
-                else _CITY_REARM_PRIMARY_ROUTE_ROOMS
-            )
             if self.city_rearm_returning:
                 self.city_rearm_route_index = _city_route_cursor_for_room(
                     room_vnum,
-                    tuple(reversed(route_rooms)),
+                    tuple(str(room) for room in return_route_rooms),
                     self.city_rearm_route_index,
                 )
             elif self.city_rearm_route_index > 0:
                 self.city_rearm_route_index = _city_route_cursor_for_room(
                     room_vnum,
-                    route_rooms,
+                    tuple(str(room) for room in route_rooms),
                     self.city_rearm_route_index,
-        )
+                )
         wielded_weapon = self._wielded_weapon()
         source_weapon = self._city_rearm_source_weapon()
         preferred_weapon = self._preferred_primary_weapon(state)
@@ -18338,6 +18613,19 @@ class StarterPolicy:
             self.city_rearm_shop_listing_started = False
             self.city_rearm_shop_listing_complete = False
             self.city_rearm_shop_listing_buffer = ""
+            self.city_rearm_shop_failure = None
+            self.city_rearm_shop_locator_attempted = False
+            self.city_rearm_shop_locator_pending = False
+            self.city_rearm_shop_locator_complete = False
+            self.city_rearm_shop_locator_buffer = ""
+            self.city_rearm_shop_room = None
+            self.city_rearm_locator_candidates = ()
+            self.city_rearm_locator_candidate_index = 0
+            self.city_rearm_locator_plan = ()
+            self.city_rearm_route_commands = None
+            self.city_rearm_route_rooms = None
+            self.city_rearm_return_route_commands = None
+            self.city_rearm_return_route_rooms = None
             self.city_rearm_purchase_selector = None
             self.city_rearm_purchase_result = None
             self.city_rearm_wield_result = None
@@ -18357,12 +18645,182 @@ class StarterPolicy:
                     f"({room_vnum}), expected healer room 3054"
                 )
                 return None
+            if self.city_rearm_shop_failure is not None:
+                self.failure = (
+                    f"{self.city_rearm_shop_failure}; returned to the healer "
+                    "without retrying"
+                )
+                return None
             if self.city_rearm_role == "primary" and self.city_rearm_pounding:
                 if self._preferred_pounding_weapon(state) is None:
                     reset_for_pounding_role()
                     return self._city_rearm_decision(state)
             self.city_rearm_complete = True
             return None
+
+        def fail_rearm_and_return(
+            current_state: CharacterState,
+            reason: str,
+        ) -> BotDecision | None:
+            self.city_rearm_shop_failure = reason
+            self.city_rearm_step = 0
+            current_room = str(current_state.room_vnum or "")
+            if current_room == "3054":
+                self.failure = f"{reason}; returned to the healer without retrying"
+                return None
+            return_rooms = tuple(
+                str(room)
+                for room in (
+                    self.city_rearm_return_route_rooms or return_route_rooms
+                )
+            )
+            if current_room in return_rooms:
+                self.city_rearm_borrowing = False
+                self.city_rearm_returning = True
+                self.city_rearm_route_index = return_rooms.index(current_room)
+                return self._city_rearm_decision(current_state)
+            self.city_rearm_borrowing = False
+            self.city_rearm_returning = False
+            self.return_home = True
+            self.return_home_recall_started = False
+            if self.utility_abort_reason is None:
+                self.utility_abort_reason = reason
+            return self._return_home_decision(current_state)
+
+        def activate_locator_candidate(index: int, current_state: CharacterState) -> bool:
+            if self.source_world is None or not 0 <= index < len(
+                self.city_rearm_locator_plan
+            ):
+                return False
+            remaining = self.city_rearm_locator_plan[index:]
+            remaining_steps = sum(len(route[0]) for route in remaining) + len(
+                remaining[-1][2]
+            )
+            flying = (
+                _has_named_affect(current_state.affects, "flying")
+                or _has_named_affect(current_state.affects, "fly")
+            )
+            remaining_move = sum(
+                source_route_movement_cost(
+                    self.source_world,
+                    route[1],
+                    flying=flying,
+                )
+                for route in remaining
+            ) + source_route_movement_cost(
+                self.source_world,
+                remaining[-1][3],
+                flying=flying,
+            )
+            if (
+                remaining_steps > _CITY_REARM_LOCATOR_MAX_ROUTE_STEPS
+                or current_state.move is None
+                or current_state.move < remaining_move
+            ):
+                return False
+            out_commands, out_rooms, back_commands, back_rooms = (
+                self.city_rearm_locator_plan[index]
+            )
+            self.city_rearm_locator_candidate_index = index
+            self.city_rearm_route_commands = out_commands
+            self.city_rearm_route_rooms = out_rooms
+            self.city_rearm_return_route_commands = back_commands
+            self.city_rearm_return_route_rooms = back_rooms
+            self.city_rearm_shop_room = str(out_rooms[-1])
+            self.city_rearm_route_index = 0
+            self.city_rearm_returning = False
+            self.city_rearm_step = 0
+            self.city_rearm_shop_listing_started = False
+            self.city_rearm_shop_listing_complete = False
+            self.city_rearm_shop_listing_buffer = ""
+            self.city_rearm_shop_selectors = ()
+            self.city_rearm_shop_selector_index = 0
+            return True
+
+        def close_locator_sweep(
+            current_state: CharacterState,
+            reason: str,
+            *,
+            use_direct_return: bool = False,
+        ) -> BotDecision | None:
+            self.city_rearm_shop_failure = reason
+            self.city_rearm_step = 0
+            self.city_rearm_shop_listing_started = False
+            self.city_rearm_shop_listing_complete = False
+            self.city_rearm_shop_listing_buffer = ""
+            if use_direct_return:
+                home = self._return_home_decision(current_state)
+                if home is not None:
+                    return home
+            self.city_rearm_returning = True
+            self.city_rearm_route_index = 0
+            return self._city_rearm_decision(current_state)
+
+        if pounding_role and self.city_rearm_step == 6:
+            if not self.city_rearm_shop_locator_complete:
+                return None
+            self.city_rearm_shop_locator_complete = False
+            locations = _where_locations_from_response(
+                self.city_rearm_shop_locator_buffer,
+                _CITY_REARM_SHOP_LOCATOR_TARGET,
+            )
+            origin_vnum = _int_or_none(room_vnum)
+            level = (
+                state.level
+                if state.level is not None
+                else self.last_character_level
+            )
+            candidates: tuple[int, ...] = ()
+            plan = None
+            if (
+                len(locations) == 1
+                and self.source_world is not None
+                and origin_vnum is not None
+                and level is not None
+            ):
+                candidates = _city_rearm_locator_candidate_rooms(
+                    self.source_world,
+                    locations[0],
+                )
+                if candidates:
+                    plan = _city_rearm_locator_sweep_routes(
+                        self.source_world,
+                        candidates,
+                        origin_vnum=origin_vnum,
+                        character_level=int(level),
+                    )
+            if plan is not None:
+                self.city_rearm_locator_candidates = candidates
+                self.city_rearm_locator_plan = plan
+                if activate_locator_candidate(0, state):
+                    return self._city_rearm_decision(state)
+                plan = None
+            if plan is None:
+                if not locations:
+                    self.city_rearm_shop_failure = (
+                        "Dave was absent from the one live locator check"
+                    )
+                elif len(locations) != 1:
+                    self.city_rearm_shop_failure = (
+                        "Dave's live locator returned multiple room labels"
+                    )
+                elif not candidates:
+                    self.city_rearm_shop_failure = (
+                        f"Dave's located room {locations[0]!r} had no bounded "
+                        "source-reachable room set"
+                    )
+                else:
+                    self.city_rearm_shop_failure = (
+                        f"Dave's located room {locations[0]!r} had no source-safe "
+                        "sweep within 22 commands and the observed movement budget"
+                    )
+                self.city_rearm_locator_candidates = ()
+                self.city_rearm_locator_candidate_index = 0
+                self.city_rearm_locator_plan = ()
+                self.city_rearm_step = 0
+                self.city_rearm_returning = True
+                self.city_rearm_route_index = 0
+                return self._city_rearm_decision(state)
 
         if (
             self.city_rearm_reputation_blocked
@@ -18394,18 +18852,18 @@ class StarterPolicy:
                     )
                 if self.city_rearm_borrow_step == 1:
                     if self.city_rearm_borrow_rejected:
-                        self.failure = (
+                        return fail_rearm_and_return(
+                            state,
                             "Dragonhoard Bank rejected the primary-weapon funding request; "
-                            "do not retry it automatically"
+                            "do not retry it automatically",
                         )
-                        return None
                     if self.city_rearm_borrow_withdraw_required:
                         if self.city_rearm_borrow_withdraw_issued:
-                            self.failure = (
+                            return fail_rearm_and_return(
+                                state,
                                 "Dragonhoard Bank did not confirm the primary-weapon "
-                                "withdrawal or loan; do not retry it automatically"
+                                "withdrawal or loan; do not retry it automatically",
                             )
-                            return None
                         self.city_rearm_borrow_withdraw_issued = True
                         self.city_rearm_borrow_step = 2
                         return BotDecision(
@@ -18413,11 +18871,11 @@ class StarterPolicy:
                             "take one bounded 500-copper loan for the missing primary weapon",
                         )
                     if not self.city_rearm_borrow_confirmed:
-                        self.failure = (
+                        return fail_rearm_and_return(
+                            state,
                             "Dragonhoard Bank did not confirm the primary-weapon "
-                            "withdrawal; do not retry it automatically"
+                            "withdrawal; do not retry it automatically",
                         )
-                        return None
                     self.city_rearm_borrow_step = 3
                     return BotDecision(
                         "west",
@@ -18425,20 +18883,20 @@ class StarterPolicy:
                     )
                 if self.city_rearm_borrow_step == 2:
                     if self.city_rearm_borrow_rejected or not self.city_rearm_borrow_confirmed:
-                        self.failure = (
+                        return fail_rearm_and_return(
+                            state,
                             "Dragonhoard Bank did not confirm the bounded primary-weapon "
-                            "loan; do not retry it automatically"
+                            "loan; do not retry it automatically",
                         )
-                        return None
                     self.city_rearm_borrow_step = 3
                     return BotDecision(
                         "west",
                         "leave the bank after confirmed primary-weapon funding",
                     )
-                self.failure = (
+                return fail_rearm_and_return(
+                    state,
                     "primary-weapon funding was already attempted at Dragonhoard Bank"
                 )
-                return None
             if room_vnum == "3011" and self.city_rearm_borrow_step >= 3:
                 self.city_rearm_borrowing = False
                 self.city_rearm_step = 1
@@ -18468,11 +18926,11 @@ class StarterPolicy:
                         direction,
                         "visit Dragonhoard Bank for primary-weapon credit",
                     )
-                self.failure = (
+                return fail_rearm_and_return(
+                    state,
                     "primary-weapon credit route could not continue from "
-                    f"{state.room_name!r} ({room_vnum})"
+                    f"{state.room_name!r} ({room_vnum})",
                 )
-                return None
 
         if (
             room_vnum == shop_room
@@ -18485,19 +18943,31 @@ class StarterPolicy:
             self.city_rearm_returning = True
             self.city_rearm_route_index = 0
 
+        route_origin_vnum = str(route_rooms[0]) if route_rooms else "3054"
         if (
             not self.city_rearm_returning
             and self.city_rearm_route_index == 0
-            and room_vnum != "3054"
+            and room_vnum != route_origin_vnum
         ):
-            home = self._return_home_decision(state)
-            if home is not None:
-                return home
-            self.failure = (
-                f"{shop_keyword} rearm could not reach healer room 3054 from "
-                f"{state.room_name!r} ({room_vnum})"
-            )
-            return None
+            if self.city_rearm_route_commands is not None:
+                if room_vnum != "3054":
+                    home = self._return_home_decision(state)
+                    if home is not None:
+                        return home
+                self.failure = (
+                    "the located-shop route no longer starts at its observed "
+                    f"room {route_origin_vnum}; returned to healer without retrying"
+                )
+                return None
+            if room_vnum != "3054":
+                home = self._return_home_decision(state)
+                if home is not None:
+                    return home
+                self.failure = (
+                    f"{shop_keyword} rearm could not reach healer room 3054 from "
+                    f"{state.room_name!r} ({room_vnum})"
+                )
+                return None
 
         if (
             not self.city_rearm_returning
@@ -18694,7 +19164,7 @@ class StarterPolicy:
                 )
             if self.city_rearm_step == 0:
                 self.city_rearm_step = 1
-                self.city_rearm_shop_listing_started = False
+                self.city_rearm_shop_listing_started = True
                 self.city_rearm_shop_listing_complete = False
                 self.city_rearm_shop_selectors = ()
                 self.city_rearm_shop_selector_index = 0
@@ -18707,21 +19177,97 @@ class StarterPolicy:
                 if not self.city_rearm_shop_listing_complete:
                     return None
                 if not self.city_rearm_shop_selectors:
-                    level_note = (
-                        f" at or below level {self.last_character_level}"
-                        if self.last_character_level is not None
-                        else ""
+                    listing = self.city_rearm_shop_listing_buffer.casefold()
+                    shopkeeper_absent = any(
+                        marker in listing
+                        for marker in (
+                            "you can't do that here",
+                            "you cannot do that here",
+                        )
                     )
-                    source_note = (
-                        f" matching source VNUM {source_weapon.vnum}"
-                        if source_weapon is not None
-                        else ""
-                    )
-                    self.failure = (
-                        f"the completed shop listing had no usable "
-                        f"{shop_keyword}{source_note} selector{level_note}"
-                    )
-                    return None
+                    if shopkeeper_absent:
+                        if pounding_role and self.city_rearm_shop_locator_attempted:
+                            candidate_index = (
+                                self.city_rearm_locator_candidate_index
+                            )
+                            expected_room = (
+                                str(self.city_rearm_locator_candidates[candidate_index])
+                                if candidate_index
+                                < len(self.city_rearm_locator_candidates)
+                                else None
+                            )
+                            if room_vnum != expected_room:
+                                return close_locator_sweep(
+                                    state,
+                                    "the live room changed during Dave's bounded "
+                                    "locator sweep",
+                                    use_direct_return=True,
+                                )
+                            next_index = candidate_index + 1
+                            if next_index < len(self.city_rearm_locator_plan):
+                                if activate_locator_candidate(next_index, state):
+                                    return self._city_rearm_decision(state)
+                                flying = (
+                                    _has_named_affect(state.affects, "flying")
+                                    or _has_named_affect(state.affects, "fly")
+                                )
+                                return_move = (
+                                    source_route_movement_cost(
+                                        self.source_world,
+                                        self.city_rearm_return_route_rooms or (),
+                                        flying=flying,
+                                    )
+                                    if self.source_world is not None
+                                    else 0
+                                )
+                                return close_locator_sweep(
+                                    state,
+                                    "the remaining Dave locator circuit exceeded "
+                                    "the observed movement budget",
+                                    use_direct_return=(
+                                        state.move is None
+                                        or state.move < return_move
+                                    ),
+                                )
+                            return close_locator_sweep(
+                                state,
+                                "Dave was absent from every source room in the "
+                                "single bounded locator sweep",
+                            )
+                        if pounding_role and not self.city_rearm_shop_locator_attempted:
+                            self.city_rearm_shop_locator_attempted = True
+                            self.city_rearm_shop_locator_pending = True
+                            self.city_rearm_shop_locator_complete = False
+                            self.city_rearm_shop_locator_buffer = ""
+                            self.city_rearm_step = 6
+                            return BotDecision(
+                                "where dave",
+                                "locate Dave once after the mace shop was empty",
+                            )
+                        self.city_rearm_shop_failure = (
+                            f"the {shop_keyword} shopkeeper was absent after "
+                            "the one bounded locator recheck"
+                            if pounding_role
+                            else f"the {shop_keyword} shopkeeper was absent"
+                        )
+                    else:
+                        level_note = (
+                            f" at or below level {self.last_character_level}"
+                            if self.last_character_level is not None
+                            else ""
+                        )
+                        source_note = (
+                            f" matching source VNUM {source_weapon.vnum}"
+                            if source_weapon is not None
+                            else ""
+                        )
+                        self.city_rearm_shop_failure = (
+                            f"the completed shop listing had no usable "
+                            f"{shop_keyword}{source_note} selector{level_note}"
+                        )
+                    self.city_rearm_returning = True
+                    self.city_rearm_route_index = 0
+                    return self._city_rearm_decision(state)
                 purchase_selector = self.city_rearm_shop_selectors[
                     self.city_rearm_shop_selector_index
                 ]
@@ -18749,24 +19295,24 @@ class StarterPolicy:
                         self.city_rearm_purchase_result = None
                         self.city_rearm_step = 1
                         return self._city_rearm_decision(state)
-                    self.failure = (
+                    return fail_rearm_and_return(
+                        state,
                         f"no legal source-backed {shop_keyword} remained after "
-                        "the shop rejected the selected item level"
+                        "the shop rejected the selected item level",
                     )
-                    return None
                 if self.insufficient_funds:
                     if pounding_role:
-                        self.failure = (
+                        return fail_rearm_and_return(
+                            state,
                             "the source-backed pounding weapon was unaffordable "
-                            "after the safe rearm route"
+                            "after the safe rearm route",
                         )
-                        return None
                     if self.city_rearm_funding_attempted:
-                        self.failure = (
+                        return fail_rearm_and_return(
+                            state,
                             "the source-backed primary weapon remained unaffordable after "
-                            "one bounded Dragonhoard Bank funding attempt"
+                            "one bounded Dragonhoard Bank funding attempt",
                         )
-                        return None
                     if (
                         self.city_rearm_purchase_selector is not None
                         and self.city_rearm_shop_selector_index > 0
@@ -18783,16 +19329,16 @@ class StarterPolicy:
                     self.city_rearm_purchase_result = None
                     return self._city_rearm_decision(state)
                 if self.purchase_carry_rejected:
-                    self.failure = (
-                        f"insufficient carry capacity for the source-backed {shop_keyword}"
+                    return fail_rearm_and_return(
+                        state,
+                        f"insufficient carry capacity for the source-backed {shop_keyword}",
                     )
-                    return None
                 if self.city_rearm_purchase_result != "bought":
-                    self.failure = (
+                    return fail_rearm_and_return(
+                        state,
                         f"the source-backed {shop_keyword} purchase was rejected "
-                        f"({self.city_rearm_purchase_result})"
+                        f"({self.city_rearm_purchase_result})",
                     )
-                    return None
                 self.city_rearm_step = 3
                 self.city_rearm_wield_result = None
                 self.city_rearm_equipment_audit_seen = False
@@ -18808,10 +19354,10 @@ class StarterPolicy:
                 if self.city_rearm_wield_result is None:
                     return None
                 if self.city_rearm_wield_result != "wielded":
-                    self.failure = (
-                        f"the purchased source-backed {shop_keyword} could not be wielded"
+                    return fail_rearm_and_return(
+                        state,
+                        f"the purchased source-backed {shop_keyword} could not be wielded",
                     )
-                    return None
                 self.city_rearm_step = 4
                 self.city_rearm_equipment_audit_seen = False
                 return BotDecision(
@@ -18837,11 +19383,11 @@ class StarterPolicy:
                         and "mace" in weapon_description
                     )
                 if not verified_pounding:
-                    self.failure = (
+                    return fail_rearm_and_return(
+                        state,
                         "equipment audit did not verify the purchased source-backed "
-                        "mace as wielded"
+                        "mace as wielded",
                     )
-                    return None
                 primary = self._preferred_primary_weapon(state)
                 primary_keyword = (
                     item_command_keyword(primary, self._state_weapons(state))
@@ -18849,11 +19395,11 @@ class StarterPolicy:
                     else self.city_rearm_piercing_keyword
                 )
                 if not primary_keyword:
-                    self.failure = (
+                    return fail_rearm_and_return(
+                        state,
                         "equipment audit verified the pounding weapon but found "
-                        "no primary weapon to restore after stun"
+                        "no primary weapon to restore after stun",
                     )
-                    return None
                 self.city_rearm_piercing_keyword = primary_keyword
                 self.city_rearm_step = 5
                 self.city_rearm_wield_result = None
@@ -18881,17 +19427,17 @@ class StarterPolicy:
                     if self.city_rearm_observed_wield_vnum is not None
                     else None
                 )
-                self.failure = (
+                failure_reason = (
                     "equipment audit did not verify the purchased dagger as wielded"
                     if expected_source is not None
                     else "equipment audit did not verify a primary weapon as wielded"
                 )
                 if expected_source is not None:
-                    self.failure += (
+                    failure_reason += (
                         f" (expected source VNUM {expected_source.vnum}, "
                         f"observed {actual_vnum or 'none'})"
                     )
-                return None
+                return fail_rearm_and_return(state, failure_reason)
             self.primary_weapon_observed = True
             self.primary_weapon_lost = False
             self.city_rearm_piercing_keyword = "dagger"
@@ -18902,11 +19448,11 @@ class StarterPolicy:
             if self.city_rearm_wield_result is None:
                 return None
             if self.city_rearm_wield_result != "wielded":
-                self.failure = (
+                return fail_rearm_and_return(
+                    state,
                     "the normal primary could not be restored after the "
-                    "pounding-weapon purchase"
+                    "pounding-weapon purchase",
                 )
-                return None
             equipment_text = _ANSI_ESCAPE.sub("", self.last_response).casefold()
             weapon_slot_seen, weapon_description = _equipment_weapon_slot(
                 equipment_text
@@ -18934,11 +19480,11 @@ class StarterPolicy:
                     )
                 )
             if not verified_primary:
-                self.failure = (
+                return fail_rearm_and_return(
+                    state,
                     "equipment audit did not verify the primary weapon after "
-                    "the pounding-weapon purchase"
+                    "the pounding-weapon purchase",
                 )
-                return None
             self.primary_weapon_observed = True
             self.primary_weapon_lost = False
             self.city_rearm_returning = True
@@ -20046,6 +20592,13 @@ class StarterPolicy:
                 "north",
                 "return to the healer after the final city-route check found the drunk",
             )
+        if self.fastwalk_abort_reason == (
+            "the wandering Midgaard greeter entered the route after the "
+            "healer check"
+        ):
+            # A newer complete locator cleared this exact temporary city hazard.
+            # Keep other route failures intact for quest and campaign gates.
+            self.fastwalk_abort_reason = None
         return False, None
 
     def _learned_flight_decision(self, state: CharacterState) -> BotDecision | None:
@@ -20847,6 +21400,39 @@ class StarterPolicy:
             quit_reason="urgent source-food recovery complete",
         )
 
+    def _fastwalk_flight_requirement_decision(
+        self, state: CharacterState,
+    ) -> BotDecision | None:
+        """Require confirmed flight before each leg of a flight route."""
+        if not self.fastwalk_require_flight:
+            return None
+        if state.affects is None and not self.fastwalk_flight_snapshot_requested:
+            self.fastwalk_flight_snapshot_requested = True
+            return BotDecision(
+                "affects",
+                "refresh flight status before following a route that requires it",
+            )
+        active_flight = bool(
+            state.affects is not None
+            and (
+                _has_named_affect(state.affects, "fly")
+                or _has_named_affect(state.affects, "levitation")
+            )
+        )
+        if active_flight:
+            return None
+        self.fastwalk_abort_reason = (
+            "field route requires active fly or levitation"
+            if state.affects is not None
+            else "field route could not confirm active fly or levitation"
+        )
+        self.fastwalk_returning = True
+        self.fastwalk_emergency_recall_pending = True
+        return BotDecision(
+            "recall",
+            "return before following a source route that requires confirmed flight",
+        )
+
     def _fastwalk_research_decision(self, state: CharacterState) -> BotDecision | None:
         """Exercise an official recall-origin route one command at a time."""
         assert self.fastwalk_route is not None
@@ -21414,12 +22000,20 @@ class StarterPolicy:
                         state.inventory,
                         self.gear_catalog,
                         source_object_vnums=source_object_vnums,
+                        excluded_keywords=(
+                            self.fastwalk_pouch_attempted
+                            | self.fastwalk_pouch_capacity_relief_attempted
+                        ),
                     )
                 )
                 potion_keyword = source_potion_keyword or _known_combat_potion_keyword(
                     state.inventory,
                     self.gear_catalog,
                     source_object_vnums=source_object_vnums,
+                    excluded_keywords=(
+                        self.fastwalk_pouch_attempted
+                        | self.fastwalk_pouch_capacity_relief_attempted
+                    ),
                 )
                 if (
                     potion_keyword is not None
@@ -21805,6 +22399,10 @@ class StarterPolicy:
             loose_potion = _known_combat_potion_keyword(
                 state.inventory,
                 self.gear_catalog,
+                excluded_keywords=(
+                    self.fastwalk_pouch_attempted
+                    | self.fastwalk_pouch_capacity_relief_attempted
+                ),
             )
             if (
                 loose_potion is not None
@@ -22054,6 +22652,11 @@ class StarterPolicy:
                 == self.fastwalk_route.live_navigation_start_index
             )
             if live_navigation_active:
+                flight_requirement = (
+                    self._fastwalk_flight_requirement_decision(state)
+                )
+                if flight_requirement is not None:
+                    return flight_requirement
                 movement_handled, movement_recovery = (
                     self._live_maze_movement_recovery_decision(
                         state,
@@ -22101,35 +22704,11 @@ class StarterPolicy:
             ):
                 return intercept
             if self.fastwalk_outbound_index < len(self.fastwalk_route.commands):
-                if self.fastwalk_require_flight:
-                    if (
-                        state.affects is None
-                        and not self.fastwalk_flight_snapshot_requested
-                    ):
-                        self.fastwalk_flight_snapshot_requested = True
-                        return BotDecision(
-                            "affects",
-                            "refresh flight status before following a route that requires it",
-                        )
-                    active_flight = bool(
-                        state.affects is not None
-                        and (
-                            _has_named_affect(state.affects, "fly")
-                            or _has_named_affect(state.affects, "levitation")
-                        )
-                    )
-                    if not active_flight:
-                        self.fastwalk_abort_reason = (
-                            "field route requires active fly or levitation"
-                            if state.affects is not None
-                            else "field route could not confirm active fly or levitation"
-                        )
-                        self.fastwalk_returning = True
-                        self.fastwalk_emergency_recall_pending = True
-                        return BotDecision(
-                            "recall",
-                            "return before following a source route that requires confirmed flight",
-                        )
+                flight_requirement = (
+                    self._fastwalk_flight_requirement_decision(state)
+                )
+                if flight_requirement is not None:
+                    return flight_requirement
                 source_invisibility = (
                     self._source_aggression_invisibility_decision(state)
                 )
@@ -29597,11 +30176,23 @@ class StarterPolicy:
             or self.fastwalk_returning
         ):
             return False, None
+        required_item_names: dict[str, str] = {}
+        required_item_counts: Counter[str] = Counter()
+        for stop in self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index:]:
+            if not stop.allow_below_band_for_required_loot:
+                continue
+            stop_counts = Counter(item.casefold() for item in stop.required_items)
+            for item in stop.required_items:
+                required_item_names.setdefault(item.casefold(), item)
+            for item, count in stop_counts.items():
+                # Repeated route stops are often alternate reset rooms for the
+                # same loot. Preserve explicit quantity within a stop, but do
+                # not reserve one inventory slot per alternative location.
+                required_item_counts[item] = max(required_item_counts[item], count)
         required_items = tuple(
-            item
-            for stop in self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index:]
-            if stop.allow_below_band_for_required_loot
-            for item in stop.required_items
+            required_item_names[item]
+            for item, count in required_item_counts.items()
+            for _ in range(count)
         )
         missing = self._missing_required_carried_or_worn_items(
             state,
@@ -31250,7 +31841,8 @@ class StarterPolicy:
                 "downwards": "down",
             }
             target_observed = any(
-                direction_names.get(match.group("direction").casefold())
+                match.group("distance").casefold() == "one"
+                and direction_names.get(match.group("direction").casefold())
                 == wanted_direction
                 and _targets_match(
                     _target_identity_without_article(match.group("target")),
@@ -35373,6 +35965,42 @@ class StarterPolicy:
     def _return_home_decision(self, state: CharacterState) -> BotDecision | None:
         """Recall from an interrupted field run and return to the healer."""
         room_vnum = state.room_vnum
+        escape = self._recovery_session.area_recall_escape
+        if room_vnum in LOCAL_RECALL_ROOMS or (escape is not None and escape.stage != "complete"):
+            if escape is None:
+                if self.source_world is None:
+                    self.failure = "area-local recall recovery requires the current DD4 source"
+                    return None
+                issue = undersea_escape_source_issue(
+                    self.source_world, current_source_directory(), state.level or 0,
+                )
+                if issue:
+                    self.failure = issue
+                    return None
+                escape = AreaRecallEscape()
+                self._recovery_session.area_recall_escape = escape
+            command = escape.next_command(
+                state, now=time.monotonic(), inventory=_inventory_entries(state.inventory),
+                coins=_state_coin_value(state),
+                flight=bool(_has_named_affect(state.affects, "fly")
+                            or _has_named_affect(state.affects, "levitation")),
+                infrared=bool(_has_named_affect(state.affects, "infravision")
+                              or _has_named_affect(state.affects, "clairvoyance")),
+                sanctuary=_has_named_affect(state.affects, "sanctuary"),
+                purple_available=self.verified_combat_pouch_potions.get("purple", 0) > 0,
+            )
+            if escape.failure:
+                self.failure = escape.failure
+                return None
+            if command:
+                if command == "quaff purple":
+                    self._queue_combat_pouch_potion("purple", spell="sanctuary")
+                self.prompt_ready = False
+                return BotDecision(command, "complete the bounded source-audited area-local recall escape")
+            if escape.stage != "complete":
+                self.prompt_ready = False
+                return None
+            self.return_home_recall_started = True
         if room_vnum in _MAHNTOR_SWAMP_RETURN_ROOMS:
             if _is_sleeping(state):
                 return BotDecision(
@@ -37986,6 +38614,35 @@ def _after_command_with_optional_state(
         callback(decision)
 
 
+def _city_rearm_objective_payload(
+    *,
+    pounding: bool,
+    gear_catalog: GearCatalog | None,
+    policy: StarterPolicy | None,
+    preserved_primary_weapon_vnum: int | None,
+    character_class: str,
+) -> dict[str, Any]:
+    """Describe the exact rearm item when the route can identify one."""
+    objective: dict[str, Any] = {
+        "weapon_role": "pounding" if pounding else "primary",
+    }
+    source_weapon: ObjectSource | None = None
+    if pounding and gear_catalog is not None:
+        source_weapon = gear_catalog.objects.get(3352)
+    elif policy is not None:
+        source_weapon = policy._city_rearm_source_weapon()
+    elif gear_catalog is not None:
+        if preserved_primary_weapon_vnum is not None:
+            source_weapon = gear_catalog.objects.get(
+                preserved_primary_weapon_vnum
+            )
+        elif character_class.casefold() in {"mage", "thief"}:
+            source_weapon = gear_catalog.objects.get(3020)
+    if source_weapon is not None and source_weapon.short_description:
+        objective["required_items"] = [source_weapon.short_description]
+    return objective
+
+
 class StarterBotRunner:
     def __init__(
         self,
@@ -38103,6 +38760,7 @@ class StarterBotRunner:
         field_city_prior_detour_evidence: Mapping[str, Any] | None = None,
         quest_phase: str | None = None,
         quest_expected_status: Mapping[str, Any] | None = None,
+        quest_hoard_excavation_checkpoint: object | None = None,
         quest_wait_for_cooldown: bool = False,
         quest_phase_planner: Callable[
             [str, Mapping[str, Any]], QuestPhase | None
@@ -38142,6 +38800,7 @@ class StarterBotRunner:
                 planner=quest_phase_planner,
                 expected_status=dict(quest_expected_status or {}),
                 wait_for_cooldown=quest_wait_for_cooldown,
+                hoard_excavation_checkpoint=quest_hoard_excavation_checkpoint,
             ),
         )
         self.objective_level = objective_level
@@ -38491,6 +39150,32 @@ class StarterBotRunner:
                     # layer already excludes it from progression, and the
                     # normalized run ledger must carry the same boundary.
                     kill_record["objective_eligible"] = False
+                elif self.policy_execution in {
+                    "moria-sanctuary-hunt",
+                    "moria-deep-sanctuary-hunt",
+                }:
+                    try:
+                        source_mobile_vnum = int(
+                            kill_record.get("source_mobile_vnum") or 0
+                        )
+                    except (TypeError, ValueError):
+                        source_mobile_vnum = 0
+                    below_band_names = {
+                        " ".join(str(name).casefold().split())
+                        for name in policy.fastwalk_below_band_targets
+                    }
+                    kill_name = " ".join(
+                        str(kill_record.get("mob_name") or "").casefold().split()
+                    )
+                    if (
+                        source_mobile_vnum == 4055
+                        and kill_name in below_band_names
+                    ):
+                        # The Moria carrier is a required-loot target here,
+                        # not a progression kill when live consider marked it
+                        # below-band.
+                        kill_record["below_useful_band"] = True
+                        kill_record["objective_eligible"] = False
                 storage.record_mob_kill(
                     run_id,
                     character_name=self.spec.name,
@@ -38522,6 +39207,17 @@ class StarterBotRunner:
                 ))
             return snapshot
 
+        def city_rearm_objective() -> dict[str, Any]:
+            if not self.city_rearm:
+                return {}
+            return _city_rearm_objective_payload(
+                pounding=self.city_rearm_pounding,
+                gear_catalog=self.gear_catalog,
+                policy=policy,
+                preserved_primary_weapon_vnum=self.preserved_primary_weapon_vnum,
+                character_class=self.spec.character_class,
+            )
+
         def record(kind: str, payload: dict[str, Any]) -> None:
             event = recorder.record(kind, payload)
             if kind in {
@@ -38534,10 +39230,7 @@ class StarterBotRunner:
                     payload=payload,
                     timestamp=event.timestamp,
                 )
-                if kind in {
-                    "run_context", "quest_cooldown", "quest_request_attempt",
-                    "quest_phase_checkpoint", "quest_phase_started",
-                }:
+                if kind in _STORAGE_BARRIER_EVENT_KINDS:
                     storage.flush()
                 return
             if kind != "game_event":
@@ -38561,7 +39254,9 @@ class StarterBotRunner:
                 kind=kind,
                 payload=payload,
                 timestamp=event.timestamp,
-                current_state=(self.character_state.to_dict() if changed else None),
+                current_state=(
+                    self.character_state.to_compact_dict() if changed else None
+                ),
             )
 
         try:
@@ -38584,11 +39279,26 @@ class StarterBotRunner:
                         "kind": (
                             "quest_reward"
                             if quest_session.phase is not None
+                            else "city_rearm"
+                            if self.city_rearm
                             else "city_restock"
                             if self.city_restock
+                            else "training_gain"
+                            if self.training_only
+                            else "flight_active"
+                            if self.magic_shop_buy_fly
+                            else "subclass_selection"
+                            if self.subclass_selection
                             else None
                         ),
                         "level": self.objective_level,
+                        **({"subclass": self.spec.subclass} if self.subclass_selection else {}),
+                        **city_rearm_objective(),
+                        **({
+                            "initial_skill_levels": dict(
+                                sorted(self.known_skill_levels.items())
+                            ),
+                        } if self.training_only else {}),
                         "arena_kill_limit": self.arena_kill_limit,
                         "fastwalk_kill_limit": self.fastwalk_kill_limit,
                         "initial_total_quest_points": (
@@ -39594,7 +40304,6 @@ class StarterBotRunner:
                                 "remaining": self.character_state.quest_status.get("nextquest"),
                                 "room_vnum": self.character_state.room_vnum,
                             })
-                            storage.connection.commit()
                             quest_session.cooldown_marker = marker
                         if step.command is not None:
                             decision = BotDecision(step.command, step.reason, wait_seconds=step.wait_seconds)
@@ -39627,7 +40336,6 @@ class StarterBotRunner:
                     )
                     if phase_snapshot is not None:
                         record("quest_phase_checkpoint", phase_snapshot)
-                        storage.connection.commit()
                     next_phase = quest_session.plan_next_phase(
                         live_phase_state,
                         permitted=(
@@ -39637,17 +40345,6 @@ class StarterBotRunner:
                             and loop.time() < deadline
                         ),
                     )
-                    if (
-                        next_phase is not None and next_phase.name == "quest-request"
-                        and deadline - loop.time() < 180.0
-                    ):
-                        quest_session.request_deferred = True
-                        record("quest_request_deferred", {
-                            "reason": "cooldown cleared with less than 180 seconds left for a quest",
-                            "remaining_seconds": round(max(0.0, deadline - loop.time()), 3),
-                        })
-                        storage.flush()
-                        next_phase = None
                     if next_phase is not None and next_phase.route is not None:
                         persist_policy_research()
                         options = {
@@ -39787,10 +40484,19 @@ class StarterBotRunner:
                     and self.fastwalk_require_invisibility
                 ):
                     repeat_limit = max(repeat_limit, 8)
+                live_quest_cooldown_wait = (
+                    decision.command == "quest time"
+                    and quest_session.phase == "quest-cooldown"
+                    and quest_session.observed_on_connection
+                    and not quest_session.continuation_closed
+                    and self.character_state.room_vnum == "3054"
+                    and not self.character_state.quest_status.get("active")
+                )
                 if _repeated_command_watchdog_applies(
                     repeated_count,
                     repeat_limit,
                     registered_trainer_return=policy.class_trainer_return_pending,
+                    live_quest_cooldown_wait=live_quest_cooldown_wait,
                 ):
                     recovery = policy.recover_from_stall(
                         self.character_state,
@@ -39875,7 +40581,6 @@ class StarterBotRunner:
                         "reason": "live quest request dispatched",
                     }
                     record("quest_request_attempt", quest_session.request_attempt)
-                    storage.connection.commit()
                 record(
                     "command",
                     {
@@ -40333,8 +41038,15 @@ class StarterBotRunner:
                 "campaign_completed_kills": [*phase_kills, *policy.completed_kills],
                 "campaign_objective_kills": [*phase_objective_kills, *policy.objective_kills],
                 **({"campaign_quest_phases": quest_phases} if quest_phases else {}),
+                "campaign_hoard_excavation_checkpoint": (
+                    quest_session.checkpoint_hoard_excavation(
+                        self.character_state.quest_status,
+                    )
+                ),
+                "campaign_hoard_excavation_restore_issue": (
+                    quest_session.hoard_excavation_restore_issue
+                ),
                 **({"campaign_quest_frontier_request": quest_session.request_attempt} if quest_session.request_attempt else {}),
-                **({"campaign_quest_request_deferred": True} if quest_session.request_deferred else {}),
                 "campaign_fastwalk_consider_outcomes": dict(
                     policy.fastwalk_consider_outcomes
                 ),
@@ -40551,6 +41263,14 @@ class StarterBotRunner:
                     "completed_kills": [*phase_kills, *(policy.completed_kills if policy else [])],
                     "objective_kills": [*phase_objective_kills, *(policy.objective_kills if policy else [])],
                     **({"quest_phases": quest_phases} if quest_phases else {}),
+                    "campaign_hoard_excavation_checkpoint": (
+                        quest_session.checkpoint_hoard_excavation(
+                            self.character_state.quest_status,
+                        )
+                    ),
+                    "campaign_hoard_excavation_restore_issue": (
+                        quest_session.hoard_excavation_restore_issue
+                    ),
                     **({"campaign_quest_frontier_request": quest_session.request_attempt} if quest_session.request_attempt else {}),
                      "training_audit": training_audit_snapshot(),
                     "campaign_counterbalanced_weapon_vnum": (
@@ -40873,6 +41593,12 @@ class StarterBotRunner:
             )
         prompt_seen = any(event.type == "prompt_seen" for event in events)
         self._record_game_events(events, record, policy)
+        quest_session = self.session_state.quest_session
+        if result.text and quest_session is not None:
+            quest_session.observe_hoard_text(
+                result.text,
+                self.character_state.quest_status,
+            )
         for event in policy.drain_training_events():
             record("game_event", event.as_payload())
         return prompt_seen
@@ -44378,6 +45104,7 @@ def moria_sanctuary_potion_consider_stops(
             route,
             "large hobgoblin",
             where_target="large hobgoblin",
+            where_source_mobile_vnum=4055,
             actions=actions,
             where_location_routes=where_location_routes,
             where_relocation_routes=where_relocation_routes,
@@ -44631,6 +45358,7 @@ def moria_deep_sanctuary_potion_research_stops() -> tuple[FieldHuntStop, ...]:
             consider_only=True,
             exact_target=True,
             source_mobile_vnum=4055,
+            where_source_mobile_vnum=4055,
             source_mobile_room_description=(
                 "A large hobgoblin is here wondering if he should tear you apart."
             ),
@@ -44664,6 +45392,7 @@ def moria_deep_sanctuary_potion_research_stops() -> tuple[FieldHuntStop, ...]:
             exact_target=True,
             route_vnums=("4020",),
             source_mobile_vnum=4055,
+            where_source_mobile_vnum=4055,
             source_mobile_room_description=(
                 "A large hobgoblin is here wondering if he should tear you apart."
             ),
@@ -44711,6 +45440,7 @@ def moria_deep_sanctuary_potion_research_stops() -> tuple[FieldHuntStop, ...]:
                 consider_only=True,
                 exact_target=True,
                 route_vnums=route_vnums,
+                where_source_mobile_vnum=4055,
                 trivial_bystanders=("snake", "warrior", "hobgoblin", "orc"),
                 abort_after_consider_rejection=True,
             )
@@ -45231,9 +45961,14 @@ def _repeated_command_watchdog_applies(
     limit: int,
     *,
     registered_trainer_return: bool = False,
+    live_quest_cooldown_wait: bool = False,
 ) -> bool:
-    """Allow a verified trainer return to outlive delayed GMCP room updates."""
-    return not registered_trainer_return and repetitions > limit
+    """Let bounded trainer and quest waits use their own progress deadlines."""
+    return (
+        not registered_trainer_return
+        and not live_quest_cooldown_wait
+        and repetitions > limit
+    )
 
 
 def _gear_response_matches(expectation: str, recent: str) -> bool:
@@ -46601,6 +47336,7 @@ def _source_verified_combat_potion_keyword(
     gear_catalog: GearCatalog | None,
     *,
     source_object_vnums: Collection[int],
+    excluded_keywords: Collection[str] = (),
 ) -> str | None:
     """Resolve an ambiguous potion only through its exact reset provenance."""
     if gear_catalog is None or not source_object_vnums:
@@ -46628,6 +47364,8 @@ def _source_verified_combat_potion_keyword(
         if not spells.intersection(_COMBAT_SAFE_POTION_SPELLS):
             continue
         keyword = _combat_potion_item_keyword(item, potion_peers)
+        if keyword in excluded_keywords:
+            continue
         if any(
             _verified_combat_potion_keyword_for_spell(
                 {keyword: 1},
@@ -46647,12 +47385,14 @@ def _known_combat_potion_keyword(
     gear_catalog: GearCatalog | None = None,
     *,
     source_object_vnums: Collection[int] = (),
+    excluded_keywords: Collection[str] = (),
 ) -> str | None:
     """Return potions whose effects are unambiguous or reset-verified."""
     source_verified = _source_verified_combat_potion_keyword(
         value,
         gear_catalog,
         source_object_vnums=source_object_vnums,
+        excluded_keywords=excluded_keywords,
     )
     if source_verified is not None:
         return source_verified
@@ -46663,7 +47403,11 @@ def _known_combat_potion_keyword(
     if gear_catalog is None:
         # All source prototypes currently named purple potion provide
         # sanctuary. Black remains excluded without exact source evidence.
-        return "purple" if "purple potion" in descriptions else None
+        return (
+            "purple"
+            if "purple potion" in descriptions and "purple" not in excluded_keywords
+            else None
+        )
     potion_peers = tuple(
         item
         for item in gear_catalog.objects.values()
@@ -46691,6 +47435,8 @@ def _known_combat_potion_keyword(
                 candidates[0],
                 potion_peers,
             )
+            if keyword in excluded_keywords:
+                continue
             if (
                 _verified_combat_potion_keyword_for_spell(
                     {keyword: 1},

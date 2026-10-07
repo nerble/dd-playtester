@@ -181,6 +181,306 @@ def test_terminal_required_item_failure_is_not_objective_success() -> None:
     assert outcome == "not_achieved"
 
 
+def test_kill_objective_ignores_route_gate_and_below_band_kills() -> None:
+    objective = {"objective": {"fastwalk_kill_limit": 1}}
+
+    assert _objective_outcome(
+        objective,
+        {},
+        [{"mob_name": "gate guard", "route_gate": True}],
+        [],
+    ) == "not_achieved"
+    assert _objective_outcome(
+        objective,
+        {},
+        [{"mob_name": "weak mob", "below_useful_band": True}],
+        [],
+    ) == "not_achieved"
+
+
+def test_report_refreshes_stale_kill_summary_from_compact_ledger(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Dorrik progression",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "dorrik.yaml",
+            target_level=100,
+        )
+        run_id = storage.create_run(
+            scenario_name="fastwalk-source-ranked hunt dwarven 20514:Dorrik",
+            scenario_path=Path("profiles/dorrik.yaml"),
+        )
+        storage.record_event(
+            run_id,
+            kind="run_context",
+            payload={
+                "character": {"name": "Dorrik"},
+                "objective": {
+                    "fastwalk_route": "source-ranked hunt dwarven 20514",
+                    "fastwalk_kill_limit": 1,
+                },
+            },
+            timestamp="2026-10-04T05:40:00+00:00",
+        )
+        storage.finish_run(
+            run_id,
+            status="failed",
+            error="interrupted during finalization",
+            execution_status="interrupted",
+            objective_outcome="not_achieved",
+            safety_outcome="safe",
+            finished_at="2026-10-04T05:44:48+00:00",
+        )
+        storage.record_mob_kill(
+            run_id,
+            character_name="Dorrik",
+            boot_id="Sun Sep 27 23:55:43 2026",
+            mob_name="the bard",
+            xp_gained=1542,
+            source_mobile_vnum=20509,
+            source_policy_id="source-ranked-hunt-dwarven-home-20509-20514-29",
+            objective_eligible=True,
+            timestamp="2026-10-04T05:44:07+00:00",
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="source-ranked-hunt",
+            start_state={"name": "Dorrik", "level": 29, "xp_loss_total": 0},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="ready",
+            run_id=run_id,
+            end_state={
+                "name": "Dorrik",
+                "level": 29,
+                "dead": False,
+                "xp_loss_total": 0,
+            },
+            command_count=131,
+            duration_seconds=212.1,
+            execution_status="interrupted",
+            objective_outcome="not_achieved",
+            safety_outcome="safe",
+        )
+
+        report = build_run_report(storage, run_id)
+        storage.connection.execute(
+            "UPDATE runs SET objective_outcome = 'not_achieved' WHERE id = ?",
+            (run_id,),
+        )
+        storage.connection.execute(
+            """
+            UPDATE campaign_segments SET objective_outcome = 'not_achieved'
+            WHERE id = ?
+            """,
+            (segment_id,),
+        )
+        storage.connection.commit()
+        cached_report = build_run_report(storage, run_id)
+        run = storage.get_run(run_id)
+        segment = storage.connection.execute(
+            """
+            SELECT execution_status, objective_outcome, safety_outcome
+            FROM campaign_segments WHERE id = ?
+            """,
+            (segment_id,),
+        ).fetchone()
+
+    assert report["outcomes"] == {
+        "execution": "interrupted",
+        "objective": "achieved",
+        "safety": "safe",
+    }
+    assert cached_report["outcomes"] == report["outcomes"]
+    assert run is not None and run["objective_outcome"] == "achieved"
+    assert segment is not None
+    assert tuple(segment) == ("interrupted", "achieved", "safe")
+    assert report["progress"]["confirmed_kills"] == [
+        {
+            "mob_name": "the bard",
+            "xp_gained": 1542,
+            "source_mobile_vnum": 20509,
+            "source_policy_id": "source-ranked-hunt-dwarven-home-20509-20514-29",
+        }
+    ]
+
+
+def test_refresh_run_summary_cli_persists_reconciled_outcomes(tmp_path, capsys) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Dorrik progression",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "dorrik.yaml",
+            target_level=100,
+        )
+        run_id = storage.create_run(
+            scenario_name="fastwalk-source-ranked hunt dwarven 20514:Dorrik",
+            scenario_path=tmp_path / "dorrik.yaml",
+        )
+        storage.record_event(
+            run_id,
+            kind="run_context",
+            payload={
+                "character": {"name": "Dorrik"},
+                "objective": {"fastwalk_kill_limit": 1},
+            },
+        )
+        storage.finish_run(
+            run_id,
+            status="failed",
+            execution_status="interrupted",
+            objective_outcome="not_achieved",
+            safety_outcome="safe",
+        )
+        storage.record_mob_kill(
+            run_id,
+            character_name="Dorrik",
+            boot_id="test-boot",
+            mob_name="the bard",
+            xp_gained=1542,
+            source_mobile_vnum=20509,
+            source_policy_id="source-ranked-hunt-dwarven-home-20509-20514-29",
+            objective_eligible=True,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="source-ranked-hunt",
+            start_state={"name": "Dorrik", "level": 29, "xp_loss_total": 0},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="ready",
+            run_id=run_id,
+            end_state={"name": "Dorrik", "level": 29, "xp_loss_total": 0},
+            command_count=131,
+            duration_seconds=212.1,
+            execution_status="interrupted",
+            objective_outcome="not_achieved",
+            safety_outcome="safe",
+        )
+
+    assert main(
+        ["refresh-run-summary", str(run_id), "--database", str(database)]
+    ) == 0
+    assert "objective=achieved" in capsys.readouterr().out
+
+    with RunStorage(database, read_only=True) as storage:
+        run = storage.get_run(run_id)
+        segment = storage.connection.execute(
+            """
+            SELECT execution_status, objective_outcome, safety_outcome
+            FROM campaign_segments WHERE id = ?
+            """,
+            (segment_id,),
+        ).fetchone()
+
+    assert run is not None and run["objective_outcome"] == "achieved"
+    assert segment is not None
+    assert tuple(segment) == ("interrupted", "achieved", "safe")
+
+
+def test_pounding_rearm_objective_requires_the_source_weapon() -> None:
+    run_context = {
+        "objective": {
+            "kind": "city_rearm",
+            "weapon_role": "pounding",
+            "required_items": ["a steel mace"],
+        }
+    }
+
+    assert _objective_outcome(
+        run_context, {"inventory": [{"name": "a chipped dagger"}]}, [], [],
+    ) == "not_achieved"
+    assert _objective_outcome(
+        run_context, {"inventory": [{"name": "a steel mace"}]}, [], [],
+    ) == "achieved"
+
+
+def test_flight_objective_requires_a_fresh_active_flight_affect() -> None:
+    run_context = {"objective": {"kind": "flight_active"}}
+
+    assert _objective_outcome(
+        run_context,
+        {
+            "affects": [[
+                {"name": "fly", "gives": "flight", "duration": "33"}
+            ]]
+        },
+        [],
+        [],
+    ) == "achieved"
+    assert _objective_outcome(
+        run_context, {"affects": []}, [], [],
+    ) == "not_achieved"
+    assert _objective_outcome(run_context, {}, [], []) == "unknown"
+
+
+def test_training_objective_requires_observed_skill_gain() -> None:
+    objective = {
+        "objective": {
+            "kind": "training_gain",
+            "initial_skill_levels": {"enhanced damage": 67, "kick": 41},
+        }
+    }
+    events = [
+        {
+            "kind": "state",
+            "payload": {
+                "state": "completed",
+                "training_audit": {
+                    "observed": True,
+                    "known_skill_levels": {
+                        "enhanced damage": 67,
+                        "kick": 41,
+                    },
+                },
+            },
+        },
+    ]
+
+    assert _objective_outcome(objective, {}, [], events) == "not_achieved"
+
+
+def test_training_objective_is_achieved_by_a_skill_gain() -> None:
+    objective = {
+        "objective": {
+            "kind": "training_gain",
+            "initial_skill_levels": {"enhanced damage": 67},
+        }
+    }
+    final_state = {
+        "campaign_training_audit": {
+            "observed": True,
+            "known_skill_levels": {"enhanced damage": 68},
+        },
+    }
+
+    assert _objective_outcome(objective, final_state, [], []) == "achieved"
+
+
+def test_training_objective_stays_unknown_without_comparable_evidence() -> None:
+    objective = {"objective": {"kind": "training_gain"}}
+
+    assert _objective_outcome(objective, {}, [], []) == "unknown"
+
+    empty_baseline = {
+        "objective": {
+            "kind": "training_gain",
+            "initial_skill_levels": {},
+        }
+    }
+    final_state = {
+        "campaign_training_audit": {
+            "observed": True,
+            "known_skill_levels": {"enhanced damage": 1},
+        },
+    }
+    assert _objective_outcome(empty_baseline, final_state, [], []) == "unknown"
+
+
 def test_report_cli_writes_json_and_markdown(tmp_path, capsys) -> None:
     database = _create_report_run(tmp_path, status="success", error=None)
     json_path = tmp_path / "reports" / "run-1.json"
@@ -346,6 +646,88 @@ def test_campaign_report_aggregates_runs_and_writes_hero_artifacts(tmp_path) -> 
     assert "Quest points: 3 total; next gate 1; shortfall 0." in markdown_path.read_text(
         encoding="utf-8"
     )
+
+
+def test_default_campaign_report_aggregates_cached_kills_without_detail_scan(
+    tmp_path,
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Summary campaign",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=30,
+        )
+        run_id = storage.create_run(
+            scenario_name="starter:Summary",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        kill = {
+            "mob_name": "tutorial wolf",
+            "xp_gained": 100,
+            "source_mobile_vnum": 3729,
+            "source_policy_id": "school-wolf",
+        }
+        storage.record_event(
+            run_id,
+            kind="run_context",
+            payload={
+                "character": {"name": "Summary"},
+                "objective": {"level": 30},
+            },
+        )
+        storage.record_event(
+            run_id,
+            kind="state",
+            payload={"completed_kills": [kill]},
+        )
+        storage.record_mob_kill(
+            run_id,
+            character_name="Summary",
+            boot_id="test-boot",
+            mob_name="tutorial wolf",
+            xp_gained=100,
+            source_mobile_vnum=3729,
+            source_policy_id="school-wolf",
+        )
+        storage.finish_run(run_id, status="success")
+        build_run_report(storage, run_id)
+
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="level-29",
+            start_state={"name": "Summary", "level": 29, "xp": 0},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="success",
+            run_id=run_id,
+            end_state={"name": "Summary", "level": 29, "xp": 100},
+            command_count=1,
+            duration_seconds=1,
+        )
+        storage.list_campaign_mob_kills = lambda *_args, **_kwargs: (
+            _ for _ in ()
+        ).throw(AssertionError("summary report scanned historical kill rows"))
+
+        report = build_campaign_report(storage, campaign_id)
+
+    assert report["totals"]["kills"] == 1
+    assert report["kills"] == []
+    assert report["kill_groups"] == [{
+        "mob_name": "tutorial wolf",
+        "source_mobile_vnum": 3729,
+        "source_policy_id": "school-wolf",
+        "kill_count": 1,
+        "xp_gained": 100,
+    }]
+    assert report["runs"][0]["progress"]
+    assert "confirmed_kills" not in report["runs"][0]["progress"]
+    assert report["evidence"]["run_summary_coverage"] == 1.0
+    markdown = render_campaign_markdown(report)
+    assert "tutorial wolf: 1 kill(s), +100 XP" in markdown
+    assert "Chronological per-kill detail is omitted" in markdown
 
 
 def test_campaign_report_cli_renders_json(tmp_path, capsys) -> None:

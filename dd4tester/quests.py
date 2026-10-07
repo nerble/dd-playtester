@@ -178,6 +178,15 @@ GOLDMOON_QUESTMASTER_ROUTE_FROM_RECALL = (
     "west",
 )
 
+# These are the only two currently registered turn-in routes. DD4's quest.c
+# calculates QP from the questmaster in the room when `quest complete` runs,
+# not the original giver. Both are below the level-40 bonus, so route length
+# breaks the reward tie until a higher-reward route passes its own audit.
+QUESTMASTER_COMPLETION_ROUTES = (
+    ("Suturb", 20, QUESTMASTER_ROUTE_FROM_RECALL),
+    ("Goldmoon", 25, GOLDMOON_QUESTMASTER_ROUTE_FROM_RECALL),
+)
+
 # Source: server/src/update.c, questpoints_required_for_advance().  The
 # server checks the character's current level before granting the next level.
 # The older level-69 reminder in act_info.c is display-only and disagrees with
@@ -463,16 +472,44 @@ def quest_request_fame_allowed(state: Mapping[str, Any]) -> bool:
     return fame is not None and fame >= 0
 
 
+def quest_request_status_observed(status: object) -> bool:
+    """Require complete, well-formed live assignment and timer fields."""
+    if not isinstance(status, Mapping) or not {"active", "nextquest"} <= status.keys():
+        return False
+
+    active = status.get("active")
+    if isinstance(active, bool):
+        active_value = int(active)
+    elif type(active) is int:
+        active_value = active
+    elif isinstance(active, str) and active.isdecimal():
+        active_value = int(active)
+    else:
+        return False
+    if active_value not in {0, 1}:
+        return False
+
+    timer = status.get("nextquest")
+    if type(timer) is int:
+        timer_value = timer
+    elif isinstance(timer, str) and timer.isdecimal():
+        timer_value = int(timer)
+    else:
+        return False
+    return timer_value >= 0
+
+
 def quest_request_blocker(
     state: Mapping[str, Any],
     *,
     quest: QuestSnapshot | None = None,
 ) -> str | None:
     """Explain why ``quest request`` cannot be issued on this state."""
+    status = state.get("quest_status")
+    if not quest_request_status_observed(status):
+        return "live quest assignment/timer is unavailable or malformed"
     current = quest or snapshot_quest_status(
-        state.get("quest_status")
-        if isinstance(state.get("quest_status"), Mapping)
-        else None
+        status if isinstance(status, Mapping) else None
     )
     if current.active:
         return "a quest is already active"
@@ -576,6 +613,22 @@ def questmaster_route_for_level(level: int) -> tuple[str, ...]:
     if level <= QUESTMASTER_MAX_LEVEL:
         return QUESTMASTER_ROUTE_FROM_RECALL
     return GOLDMOON_QUESTMASTER_ROUTE_FROM_RECALL
+
+
+def questmaster_completion_choice(
+    character_level: int,
+) -> tuple[str, int, tuple[str, ...]]:
+    """Choose the best currently registered questmaster for a hand-in."""
+    if character_level < 1 or character_level > 100:
+        raise ValueError("questmaster routes are registered for levels 1 through 100")
+
+    def ranking(
+        candidate: tuple[str, int, tuple[str, ...]],
+    ) -> tuple[bool, bool, int]:
+        _name, master_level, route = candidate
+        return master_level > 70, master_level > 40, -len(route)
+
+    return max(QUESTMASTER_COMPLETION_ROUTES, key=ranking)
 
 
 def quest_object_keyword(world: Any, object_vnum: int) -> str | None:

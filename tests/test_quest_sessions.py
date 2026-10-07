@@ -8,6 +8,7 @@ import pytest
 from dd4tester import campaign, starter
 from dd4tester.character import CharacterSpec
 from dd4tester.connection import ReadResult
+from dd4tester.excavation import DigBudget, DigObservation, HoardDigSession
 from dd4tester.equipment import GearCatalog
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import (
@@ -55,6 +56,38 @@ def phase(name):
     )
 
 
+HOARD_IDENTITY = (25305, 18022, 1777)
+
+
+def hoard_status(identity=HOARD_IDENTITY):
+    giver_vnum, room_vnum, object_vnum = identity
+    return {
+        "active": 1,
+        "type": "retrieve",
+        "giver_vnum": giver_vnum,
+        "room_vnum": room_vnum,
+        "object_vnum": object_vnum,
+        "retrieval_evidence": {
+            "method": "hoard",
+            "source": "requested-questmaster-narrative",
+            "giver_vnum": giver_vnum,
+            "room_vnum": room_vnum,
+            "object_vnum": object_vnum,
+        },
+    }
+
+
+def hoard_checkpoint(identity=HOARD_IDENTITY):
+    excavation = HoardDigSession(
+        DigBudget(3604, "shovel", 2, 2, 5, 6, 8),
+        quest_identity=identity,
+        minimum_hp=100,
+        return_movement=30,
+    )
+    excavation._last_observed_sequence = 4
+    return excavation.checkpoint()
+
+
 def test_quest_session_controller_owns_phase_history_and_rejects_repeats():
     controller = QuestSessionController(
         phase="quest-request",
@@ -83,6 +116,251 @@ def test_quest_session_controller_owns_phase_history_and_rejects_repeats():
     controller.connection_closed()
     assert not controller.observed_on_connection
     assert controller.continuation_closed
+
+
+def test_quest_session_restores_hoard_checkpoint_for_exact_active_assignment():
+    checkpoint = hoard_checkpoint()
+    controller = QuestSessionController(
+        phase="quest-target-run",
+        expected_status=hoard_status(),
+        hoard_excavation_checkpoint=checkpoint,
+    )
+
+    assert controller.hoard_excavation is not None
+    assert controller.hoard_excavation.quest_identity == HOARD_IDENTITY
+    assert controller.checkpoint_hoard_excavation() == checkpoint
+
+
+def test_quest_session_begins_one_dig_only_for_the_observed_assignment():
+    status = hoard_status()
+    controller = QuestSessionController(
+        phase="quest-target-run", expected_status=status,
+    )
+    budget = DigBudget(3604, "shovel", 2, 2, 5, 6, 8)
+
+    with pytest.raises(ValueError, match="observed on this connection"):
+        controller.begin_hoard_excavation(
+            budget, minimum_hp=100, return_movement=30,
+            current_status=status,
+        )
+
+    controller.observe_quest_status()
+    session = controller.begin_hoard_excavation(
+        budget, minimum_hp=100, return_movement=30,
+        current_status=status,
+    )
+
+    assert session.quest_identity == HOARD_IDENTITY
+    assert controller.begin_hoard_excavation(
+        budget, minimum_hp=100, return_movement=30,
+        current_status=status,
+    ) is session
+    with pytest.raises(ValueError, match="different hoard excavation"):
+        controller.begin_hoard_excavation(
+            replace(budget, maximum_digs=budget.maximum_digs + 1),
+            minimum_hp=100, return_movement=30,
+            current_status=status,
+        )
+
+
+def test_quest_session_polls_dig_only_for_the_exact_active_assignment():
+    controller = QuestSessionController(
+        phase="quest-target-run",
+        expected_status=hoard_status(),
+        hoard_excavation_checkpoint=hoard_checkpoint(),
+    )
+    budget = controller.hoard_excavation.budget
+    observed = DigObservation(
+        5, HOARD_IDENTITY, 18022, budget.tool_vnum, 100, 100,
+        False, 0, True, True, budget,
+    )
+
+    step = controller.poll_hoard_excavation(
+        observed, now=1.0, current_status=hoard_status(),
+    )
+
+    assert step is not None and step.command == "dig"
+    assert controller.hoard_excavation.commands == 1
+
+
+def test_quest_session_confirms_pickup_for_the_exact_active_hoard():
+    status = hoard_status()
+    budget = DigBudget(3604, "shovel", 2, 2, 5, 6, 8)
+    controller = QuestSessionController(
+        phase="quest-target-run", expected_status=status,
+    )
+    controller.observe_quest_status()
+    excavation = HoardDigSession(
+        budget, quest_identity=HOARD_IDENTITY, minimum_hp=100,
+        return_movement=30,
+    )
+    observed = DigObservation(
+        1, HOARD_IDENTITY, 18022, 3604, 100, 100, False, 0, True, True,
+        budget,
+    )
+    assert excavation.poll(observed, now=0).command == "dig"
+    excavation.observe(
+        "With a final effortful thrust, you unearth something!"
+        "<100/100 hits 100/100 mana 100/100 move [Sessiontest]>"
+    )
+    assert excavation.poll(
+        replace(observed, sequence=2), now=4,
+    ).status == "unearthed"
+    controller.hoard_excavation = excavation
+
+    pending = controller.prepare_hoard_object_pickup(
+        sequence=4,
+        quest_object_vnum=HOARD_IDENTITY[2],
+        source_object_description="a coin of Serenos",
+        source_description_vnums=(HOARD_IDENTITY[2],),
+        current_room_vnum=HOARD_IDENTITY[1],
+        room_listing={
+            "room_vnum": str(HOARD_IDENTITY[1]),
+            "sequence": 1,
+            "state_revision": 4,
+            "render_complete": True,
+            "targeted_lines": [{
+                "target_id": "58601",
+                "description": "a coin of Serenos",
+            }],
+            "unkeyed_lines": [],
+        },
+        inventory_items=[[[]]],
+        current_status=status,
+    )
+    step = controller.confirm_hoard_object_acquired(
+        sequence=5,
+        quest_object_vnum=HOARD_IDENTITY[2],
+        source_object_description="a coin of Serenos",
+        source_description_vnums=(HOARD_IDENTITY[2],),
+        inventory_items=[[ [{"short_desc": "a coin of Serenos", "quan": "1"}] ]],
+        current_status=status,
+    )
+
+    assert pending is not None and pending.command == "get #58601"
+    assert step is not None and step.status == "object_acquired"
+    assert controller.checkpoint_hoard_excavation(status)[
+        "quest_object_selector"
+    ] == "#58601"
+
+
+def test_quest_session_closes_dig_when_the_assignment_changes():
+    controller = QuestSessionController(
+        phase="quest-target-run",
+        expected_status=hoard_status(),
+        hoard_excavation_checkpoint=hoard_checkpoint(),
+    )
+    budget = controller.hoard_excavation.budget
+    observed = DigObservation(
+        5, HOARD_IDENTITY, 18022, budget.tool_vnum, 100, 100,
+        False, 0, True, True, budget,
+    )
+
+    step = controller.poll_hoard_excavation(
+        observed,
+        now=1.0,
+        current_status=hoard_status((25305, 18022, 1778)),
+    )
+
+    assert step is not None and step.status == "stopped"
+    assert "assignment changed" in step.reason
+    assert controller.hoard_excavation is None
+
+
+def test_quest_session_forwards_trap_response_for_exact_active_hoard():
+    status = hoard_status()
+    budget = DigBudget(3604, "shovel", 2, 2, 5, 6, 8)
+    controller = QuestSessionController(
+        phase="quest-target-run", expected_status=status,
+    )
+    controller.hoard_excavation = HoardDigSession(
+        budget, quest_identity=HOARD_IDENTITY, minimum_hp=100,
+        return_movement=30,
+    )
+    first = DigObservation(
+        1, HOARD_IDENTITY, 18022, 3604, 100, 50, False, 0, True, True,
+        budget,
+    )
+
+    assert controller.hoard_excavation.poll(first, now=0).command == "dig"
+    response = (
+        "You hear a strange noise...\n"
+        "You are struck by a small dart... your blood begins to burn!\n"
+        "<100/100 hits 100/100 mana 100/100 move [Sessiontest]>"
+    )
+    assert controller.observe_hoard_text(response, status)
+    step = controller.hoard_excavation.poll(
+        replace(first, sequence=2), now=3,
+    )
+
+    assert step.status == "trap_recovery_required"
+    assert step.trap_kind == "poison"
+    assert controller.hoard_excavation.audit()["trap_effects"] == ((2, "poison"),)
+
+
+def test_quest_session_discards_excavation_text_after_assignment_changes():
+    controller = QuestSessionController(
+        phase="quest-target-run",
+        expected_status=hoard_status(),
+        hoard_excavation_checkpoint=hoard_checkpoint(),
+    )
+    assert controller.hoard_excavation is not None
+
+    forwarded = controller.observe_hoard_text(
+        "You hear a strange noise...\nYou feel unclean.",
+        hoard_status((25305, 18022, 1778)),
+    )
+
+    assert not forwarded
+    assert controller.hoard_excavation is None
+
+
+def test_quest_session_drops_excavation_after_explicit_inactive_status():
+    controller = QuestSessionController(
+        phase="quest-target-run",
+        expected_status=hoard_status(),
+        hoard_excavation_checkpoint=hoard_checkpoint(),
+    )
+    inactive = hoard_status()
+    inactive["active"] = 0
+
+    forwarded = controller.observe_hoard_text(
+        "You hear a strange noise...\nYou feel unclean.", inactive,
+    )
+
+    assert not forwarded
+    assert controller.hoard_excavation is None
+
+
+def test_quest_session_rejects_hoard_checkpoint_for_changed_assignment():
+    checkpoint = hoard_checkpoint()
+    changed_identity = (HOARD_IDENTITY[0], HOARD_IDENTITY[1], 1778)
+
+    controller = QuestSessionController(
+        phase="quest-target-run",
+        expected_status=hoard_status(changed_identity),
+        hoard_excavation_checkpoint=checkpoint,
+    )
+
+    assert controller.hoard_excavation is None
+    issue = controller.hoard_excavation_restore_issue
+    assert issue is not None and "does not match" in issue
+    assert controller.checkpoint_hoard_excavation() is None
+
+
+def test_quest_session_does_not_persist_hoard_checkpoint_after_assignment_changes():
+    controller = QuestSessionController(
+        phase="quest-target-run",
+        expected_status=hoard_status(),
+        hoard_excavation_checkpoint=hoard_checkpoint(),
+    )
+
+    assert controller.checkpoint_hoard_excavation(
+        hoard_status((25305, 18022, 1778)),
+    ) is None
+    assert controller.checkpoint_hoard_excavation(
+        {"active": 0, "type": "none"},
+    ) is None
 
 
 def test_policy_lifecycle_flags_share_the_live_session_owner(tmp_path):
@@ -443,6 +721,27 @@ def test_quest_phase_planner_uses_live_outcome_not_cached_target(tmp_path, compl
     assert (planned.name if planned else None) == expected
 
 
+def test_completed_goldmoon_quest_uses_short_registered_turnin_route(tmp_path):
+    state = healer(
+        level=29,
+        quest_status={
+            **active_quest(),
+            "complete": 1,
+            "mob_vnum": -1,
+            "giver_vnum": 10001,
+        },
+    ).to_dict()
+
+    planned = campaign._quest_session_next_phase(
+        "quest-target-run", state, world=quest_world(),
+        gear_catalog=GearCatalog({}), character=spec(tmp_path),
+    )
+
+    assert planned is not None and planned.name == "quest-complete"
+    assert planned.route.name == "questmaster suturb complete"
+    assert planned.route.commands == campaign.questmaster_route_for_level(1)
+
+
 def test_later_phase_failure_preserves_prior_kill_in_terminal_event(tmp_path, monkeypatch):
     connection = QuestConnection()
 
@@ -544,6 +843,16 @@ def test_cooldown_poll_waits_for_actual_server_progress_and_stops_stall():
     assert controller.poll(state, now=182, food_keyword=None, has_water_skin=False).status == "ready"
 
 
+def test_cooldown_checks_again_quickly_when_less_than_a_minute_remains():
+    controller = QuestCooldownWait()
+    state = healer(quest_status={"nextquest": 1})
+    assert controller.poll(state, now=0, food_keyword=None, has_water_skin=False).command == "quest time"
+    assert controller.poll(state, now=4, food_keyword=None, has_water_skin=False).command is None
+    assert controller.poll(state, now=5, food_keyword=None, has_water_skin=False).command == "quest time"
+    state.quest_status["nextquest"] = 0
+    assert controller.poll(state, now=6, food_keyword=None, has_water_skin=False).status == "ready"
+
+
 def test_cooldown_observes_progress_and_resource_needs_between_queries():
     controller = QuestCooldownWait()
     state = healer(quest_status={"nextquest": 5})
@@ -641,15 +950,122 @@ def test_public_campaign_dispatch_enables_connected_wait(tmp_path, monkeypatch, 
     assert captured["quest_phase"] == "quest-cooldown"
     assert callable(captured["quest_phase_planner"])
     assert captured["fastwalk_hunt_stops"][0].actions == ("quest request",)
+    route = captured["fastwalk_route"]
+    assert route.route_origin_room_vnum == 3001
+    assert route.commands == campaign.questmaster_route_for_level(8)
+
+
+def test_public_campaign_dispatch_uses_short_quest_turnin_route(tmp_path, monkeypatch):
+    from dd4tester.progression import _QUEST_REQUEST_POLICY
+    captured = {}
+
+    class FakeRunner:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self):
+            return None
+
+    monkeypatch.setattr(campaign, "StarterBotRunner", FakeRunner)
+    quest_status = {
+        "active": 1,
+        "complete": 1,
+        "type": "retrieve",
+        "object_vnum": 79,
+        "giver_vnum": 10001,
+    }
+    asyncio.run(campaign._run_policy_segment(
+        spec(tmp_path), tmp_path / "profile.yaml",
+        replace(
+            _QUEST_REQUEST_POLICY,
+            policy_id="quest-complete-test",
+            execution="quest-complete",
+        ),
+        current_state=healer(level=29, quest_status=quest_status).to_dict(),
+        character_level=29,
+    ))
+
+    route = captured["fastwalk_route"]
+    assert route.name == "questmaster suturb complete"
+    assert route.commands == campaign.questmaster_route_for_level(1)
 
 
 def test_cooldown_completion_plans_the_source_questmaster_request(tmp_path):
     planned = campaign._quest_session_next_phase(
-        "quest-cooldown", healer(quest_status={"active": 0, "nextquest": 0}).to_dict(),
+        "quest-cooldown",
+        healer(
+            level=29,
+            quest_status={"active": 0, "nextquest": 0},
+        ).to_dict(),
         world=quest_world(), gear_catalog=GearCatalog({}), character=spec(tmp_path),
     )
     assert planned.name == "quest-request"
     assert planned.hunt_stops[0].actions == ("quest request",)
+    assert planned.route.route_origin_room_vnum == 3001
+    assert planned.route.commands == campaign.questmaster_route_for_level(29)
+
+
+def test_questmaster_route_keeps_recall_origin_and_rejects_unknown_room():
+    route = campaign._questmaster_fastwalk(
+        name="questmaster Goldmoon request",
+        level=29,
+        current_state={"room_vnum": "3001"},
+    )
+    assert route.route_origin_room_vnum == 3001
+    assert route.commands == campaign.questmaster_route_for_level(29)
+
+    with pytest.raises(ValueError, match="registered only"):
+        campaign._questmaster_fastwalk(
+            name="questmaster Goldmoon request",
+            level=29,
+            current_state={"room_vnum": "18013"},
+        )
+
+
+def test_request_history_does_not_block_after_the_live_timer_expires(tmp_path):
+    state = healer(
+        level=29,
+        quest_status={"active": 0, "nextquest": 15, "total_points": 0},
+    ).to_dict()
+    state.update(
+        world_boot_id="boot-1",
+        stats={"fame": 0},
+        campaign_quest_frontier_request={
+            "boot_id": "boot-1",
+            "level": 29,
+            "session_revision": 235,
+            "reason": "live quest request dispatched",
+        },
+    )
+
+    assert campaign._required_quest_cooldown_wait_allowed(
+        state, has_food=True,
+    )
+    cooldown_policy = campaign.policy_for(
+        29,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        quest_level_qp_required=1,
+        quest_level_qp_shortfall=1,
+        quest_status=state["quest_status"],
+        quest_request_allowed=(
+            not campaign.snapshot_quest_status(state["quest_status"]).active
+            and campaign.snapshot_quest_status(state["quest_status"]).nextquest <= 0
+        ),
+    )
+    assert cooldown_policy.execution != "quest-request"
+
+    state["quest_status"]["nextquest"] = 1
+    assert campaign._required_quest_cooldown_wait_allowed(
+        state, has_food=True,
+    )
+    state["quest_status"]["nextquest"] = 0
+    next_phase = campaign._quest_session_next_phase(
+        "quest-cooldown", state, world=quest_world(),
+        gear_catalog=GearCatalog({}), character=spec(tmp_path),
+    )
+    assert next_phase is not None and next_phase.name == "quest-request"
 
 
 def test_live_runner_releases_sqlite_writer_at_every_adapter_boundary(tmp_path, monkeypatch):
@@ -714,7 +1130,7 @@ def test_quest_markers_survive_campaign_checkpoint_merging():
     assert end["campaign_quest_frontier_request"] == current["campaign_quest_frontier_request"]
 
 
-def test_cleared_cooldown_does_not_start_a_quest_with_insufficient_remaining_time(tmp_path, monkeypatch):
+def test_cleared_cooldown_requests_immediately_with_bounded_time_remaining(tmp_path, monkeypatch):
     original_spec = spec
     monkeypatch.setattr(__import__(__name__), "spec", lambda path: replace(original_spec(path), max_runtime=30))
     connection = QuestConnection()
@@ -722,10 +1138,40 @@ def test_cleared_cooldown_does_not_start_a_quest_with_insufficient_remaining_tim
     immediate_timer_queries(monkeypatch)
     result, connection = run_session(tmp_path, monkeypatch, connection=connection, initial="quest-cooldown")
     assert result.final_state["quest_status"]["nextquest"] == 0
-    assert result.final_state["campaign_quest_request_deferred"] is True
-    assert "quest request" not in connection.sent
+    assert "quest request" in connection.sent
     assert "quest abort" not in connection.sent
-    assert connection.sent[-1] == "quit"
+    assert connection.sent.index("quest time") < connection.sent.index("quest request")
+
+
+def test_connected_quest_wait_outlives_generic_repeated_command_watchdog(tmp_path, monkeypatch):
+    class DelayedCooldownConnection(QuestConnection):
+        def __init__(self):
+            super().__init__()
+            self.quest["nextquest"] = 1
+            self.timer_queries = 0
+
+        async def send_command(self, command):
+            if command != "quest time":
+                return await super().send_command(command)
+            self.sent.append(command)
+            self.pending = True
+            self.timer_queries += 1
+            if self.timer_queries > 7:
+                self.quest["nextquest"] = 0
+
+    immediate_timer_queries(monkeypatch)
+    connection = DelayedCooldownConnection()
+    result, connection = run_session(
+        tmp_path, monkeypatch, connection=connection, initial="quest-cooldown",
+    )
+
+    timer_queries = [
+        index for index, command in enumerate(connection.sent)
+        if command == "quest time"
+    ]
+    assert len(timer_queries) == 8
+    assert timer_queries[-1] < connection.sent.index("quest request")
+    assert result.final_state["quest_status"]["total_points"] == 12
 
 
 def test_connected_wait_drains_chatter_before_next_query_without_sleeping_reader(tmp_path, monkeypatch):

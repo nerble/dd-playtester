@@ -829,3 +829,101 @@ def test_text_room_header_strips_a_concatenated_dd4_prompt() -> None:
     assert len(events) == 1
     assert events[0].type == "room_entered"
     assert events[0].data["name"] == "Advanced Combat Training"
+
+
+def test_room_listing_records_a_complete_empty_listing() -> None:
+    parser = ObservationParser()
+    parser.feed_gmcp(
+        'Room.Info {"name":"The maze","vnum":"4063",'
+        '"exits":{"north":"4064"}}'
+    )
+
+    events = parser.feed_text(
+        "The maze\n[Exits: north]\n"
+        "The tunnel bends sharply to the north.\n"
+        "<676/676 hits 295/261 mana 433/430 move [Moria]>"
+    )
+
+    listing = next(event for event in events if event.type == "room_listing_observed")
+    assert listing.data["room_vnum"] == "4063"
+    assert listing.data["targeted_lines"] == []
+    assert listing.data["unkeyed_lines"] == []
+    assert listing.data["render_complete"] is True
+
+
+def test_room_listing_preserves_runtime_target_ids_without_calling_them_vnums() -> None:
+    parser = ObservationParser()
+    parser.feed_gmcp(
+        'Room.Info {"name":"The maze","vnum":"4063",'
+        '"exits":{"north":"4064","east":"4065"}}'
+    )
+
+    events = parser.feed_text(
+        "The maze\n[Exits: north east]\n"
+        "[#2780] A large hobgoblin is here wondering if he should tear you apart.\n"
+        "<676/676 hits 295/261 mana 433/430 move [Moria]>"
+    )
+
+    listing = next(event for event in events if event.type == "room_listing_observed")
+    assert listing.data == {
+        "room_vnum": "4063",
+        "sequence": 1,
+        "targeted_lines": [{
+            "target_id": "2780",
+            "description": "A large hobgoblin is here wondering if he should tear you apart.",
+        }],
+        "unkeyed_lines": [],
+        "render_complete": True,
+    }
+    assert "mobile_vnum" not in listing.data["targeted_lines"][0]
+
+
+def test_quest_time_text_refreshes_cooldown_after_duplicate_login_snapshot() -> None:
+    parser = ObservationParser()
+    room = (
+        'Room.Info {"name":"By the Temple Altar","vnum":"3054",'
+        '"arrival":{"kind":"login"}}'
+    )
+    parser.feed_gmcp(room)
+    initial = parser.feed_gmcp(
+        'Char.Quest {"active":"0","status":"cooldown",'
+        '"type":"none","nextquest":"12","total_points":"0"}'
+    )
+    parser.feed_gmcp(room)
+    suppressed = parser.feed_gmcp(
+        'Char.Quest {"active":"0","status":"cooldown",'
+        '"type":"none","nextquest":"9","total_points":"0"}'
+    )
+
+    assert [event.type for event in initial] == ["quest_status_changed"]
+    assert suppressed == []
+    assert parser._discarding_duplicate_login_snapshot is True
+
+    refreshed = parser.feed_text(
+        "You aren't currently on a quest.\n"
+        "There are 9 minutes remaining until you can go on another quest.\n"
+    )
+    quest_event = next(
+        event for event in refreshed if event.type == "quest_status_changed"
+    )
+    assert quest_event.source == "text"
+    assert quest_event.data["active"] == "0"
+    assert quest_event.data["nextquest"] == "9"
+    assert quest_event.data["total_points"] == "0"
+
+
+def test_quest_timer_expiry_text_clears_cooldown_even_with_mud_colors() -> None:
+    parser = ObservationParser()
+    parser.feed_gmcp(
+        'Char.Quest {"active":"0","status":"cooldown",'
+        '"type":"none","nextquest":"1","total_points":"0"}'
+    )
+
+    events = parser.feed_text("{CYou may now quest again.{x\n")
+
+    quest_event = next(
+        event for event in events if event.type == "quest_status_changed"
+    )
+    assert quest_event.data["active"] == "0"
+    assert quest_event.data["status"] == "available"
+    assert quest_event.data["nextquest"] == "0"

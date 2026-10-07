@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Collection, Mapping
 
+from .excavation import DigBudget, DigObservation, DigStep, HoardDigSession
+from .area_recall import AreaRecallEscape
 from .fastwalks import Fastwalk
 from .quests import snapshot_quest_status
 
@@ -35,6 +37,7 @@ class TravelSessionController:
     hunt_stop_index: int = 0
     hunt_move_index: int = 0
     hunt_action_index: int = 0
+    blocked_reason: str | None = None
 
 
 @dataclass
@@ -47,6 +50,7 @@ class RecoverySessionController:
     commands: tuple[str, ...] | None = None
     wake_command_pending: bool = False
     sleep_confirmation_pending: bool = False
+    area_recall_escape: AreaRecallEscape | None = None
 
 
 @dataclass
@@ -133,7 +137,7 @@ class QuestHandoffState:
         policy.stage = "tutorial"
 
 
-QUEST_WAIT_READER_REVISION = 2
+QUEST_WAIT_READER_REVISION = 3
 
 
 @dataclass(frozen=True)
@@ -249,7 +253,8 @@ class QuestCooldownWait:
             return CooldownStep(
                 "waiting", "listen for live quest progress between timer queries",
             )
-        self.next_query_at = now + 30.0
+        query_interval = 5.0 if quest.nextquest <= 1 else 30.0
+        self.next_query_at = now + query_interval
         return CooldownStep(
             "waiting", "remain at the healer while the live quest cooldown advances",
             "quest time",
@@ -274,7 +279,215 @@ class QuestSessionController:
     cooldown: QuestCooldownWait = field(default_factory=QuestCooldownWait)
     cooldown_marker: tuple[object, ...] | None = None
     request_attempt: dict[str, Any] | None = None
-    request_deferred: bool = False
+    hoard_excavation_checkpoint: object | None = field(
+        default=None, repr=False,
+    )
+    hoard_excavation: HoardDigSession | None = field(
+        default=None, init=False,
+    )
+    hoard_excavation_restore_issue: str | None = field(
+        default=None, init=False,
+    )
+
+    def __post_init__(self) -> None:
+        if self.hoard_excavation_checkpoint is not None:
+            try:
+                self.restore_hoard_excavation(
+                    self.hoard_excavation_checkpoint,
+                )
+            except ValueError as exc:
+                self.hoard_excavation_restore_issue = str(exc)
+            self.hoard_excavation_checkpoint = None
+
+    def _active_hoard_identity(
+        self, status: Mapping[str, Any] | None = None,
+    ) -> tuple[int, int, int] | None:
+        active_status = self.expected_status if status is None else status
+        if (
+            not isinstance(active_status, Mapping)
+            or (
+                "active" in active_status
+                and not bool(active_status.get("active"))
+            )
+        ):
+            return None
+        quest = snapshot_quest_status(active_status)
+        if not quest.active or quest.kind != "hoard":
+            return None
+        try:
+            giver_vnum = int(active_status.get("giver_vnum") or 0)
+        except (TypeError, ValueError):
+            return None
+        identity = (giver_vnum, quest.room_vnum, quest.object_vnum)
+        return identity if all(value > 0 for value in identity) else None
+
+    def restore_hoard_excavation(self, checkpoint: object) -> None:
+        """Restore only against the same narrative-verified active assignment."""
+        excavation = HoardDigSession.from_checkpoint(checkpoint)
+        if self._active_hoard_identity() != excavation.quest_identity:
+            raise ValueError(
+                "hoard excavation checkpoint does not match the active verified quest"
+            )
+        self.hoard_excavation = excavation
+
+    def begin_hoard_excavation(
+        self,
+        budget: DigBudget,
+        *,
+        minimum_hp: int,
+        return_movement: int,
+        current_status: Mapping[str, Any],
+    ) -> HoardDigSession:
+        """Create one controller only for the observed matching hoard quest."""
+        expected_identity = self._active_hoard_identity()
+        current_identity = self._active_hoard_identity(current_status)
+        if (
+            self.phase != "quest-target-run"
+            or not self.observed_on_connection
+            or expected_identity is None
+            or current_identity != expected_identity
+        ):
+            raise ValueError(
+                "hoard excavation requires the exact active quest observed "
+                "on this connection"
+            )
+        if self.hoard_excavation is not None:
+            existing = self.hoard_excavation
+            if (
+                existing.quest_identity != current_identity
+                or existing.budget != budget
+                or existing.minimum_hp != minimum_hp
+                or existing.return_movement != return_movement
+            ):
+                raise ValueError("a different hoard excavation is already active")
+            return existing
+        self.hoard_excavation = HoardDigSession(
+            budget,
+            quest_identity=current_identity,
+            minimum_hp=minimum_hp,
+            return_movement=return_movement,
+        )
+        return self.hoard_excavation
+
+    def checkpoint_hoard_excavation(
+        self, current_status: Mapping[str, Any] | None = None,
+    ) -> dict[str, object] | None:
+        """Persist excavation state only while its exact hoard remains active."""
+        if self.hoard_excavation is None:
+            return None
+        if self._active_hoard_identity(
+            current_status,
+        ) != self.hoard_excavation.quest_identity:
+            return None
+        return self.hoard_excavation.checkpoint()
+
+    def poll_hoard_excavation(
+        self,
+        observed: DigObservation,
+        *,
+        now: float,
+        current_status: Mapping[str, Any],
+    ) -> DigStep | None:
+        """Advance digging only while the exact narrative-verified quest is live."""
+        excavation = self.hoard_excavation
+        if excavation is None:
+            return None
+        if self._active_hoard_identity(current_status) != excavation.quest_identity:
+            self.hoard_excavation = None
+            return DigStep("stopped", "active verified hoard assignment changed")
+        return excavation.poll(observed, now=now)
+
+    def confirm_hoard_trap_recovery(
+        self,
+        observed: DigObservation,
+        *,
+        current_status: Mapping[str, Any],
+    ) -> DigStep | None:
+        """Keep trap recovery under the same exact-assignment ownership check."""
+        excavation = self.hoard_excavation
+        if excavation is None:
+            return None
+        if self._active_hoard_identity(current_status) != excavation.quest_identity:
+            self.hoard_excavation = None
+            return DigStep("stopped", "active verified hoard assignment changed")
+        return excavation.confirm_trap_recovery(observed)
+
+    def prepare_hoard_object_pickup(
+        self,
+        *,
+        sequence: int,
+        quest_object_vnum: int,
+        source_object_description: str,
+        source_description_vnums: Collection[int],
+        current_room_vnum: int | str,
+        room_listing: Mapping[str, object],
+        inventory_items: object,
+        current_status: Mapping[str, Any],
+    ) -> DigStep | None:
+        """Persist the exact pickup intent under the active quest owner."""
+        excavation = self.hoard_excavation
+        if excavation is None:
+            return None
+        if self._active_hoard_identity(current_status) != excavation.quest_identity:
+            self.hoard_excavation = None
+            return DigStep("stopped", "active verified hoard assignment changed")
+        if self.phase != "quest-target-run" or not self.observed_on_connection:
+            return DigStep(
+                "stopped",
+                "quest-object pickup requires the active hoard phase on this connection",
+            )
+        return excavation.prepare_quest_object_pickup(
+            sequence=sequence,
+            quest_object_vnum=quest_object_vnum,
+            source_object_description=source_object_description,
+            source_description_vnums=source_description_vnums,
+            current_room_vnum=current_room_vnum,
+            room_listing=room_listing,
+            inventory_items=inventory_items,
+        )
+
+    def confirm_hoard_object_acquired(
+        self,
+        *,
+        sequence: int,
+        quest_object_vnum: int,
+        source_object_description: str,
+        source_description_vnums: Collection[int],
+        inventory_items: object,
+        current_status: Mapping[str, Any],
+    ) -> DigStep | None:
+        """Confirm the pending pickup from a newer complete inventory snapshot."""
+        excavation = self.hoard_excavation
+        if excavation is None:
+            return None
+        if self._active_hoard_identity(current_status) != excavation.quest_identity:
+            self.hoard_excavation = None
+            return DigStep("stopped", "active verified hoard assignment changed")
+        if self.phase != "quest-target-run" or not self.observed_on_connection:
+            return DigStep(
+                "stopped",
+                "quest-object pickup requires the active hoard phase on this connection",
+            )
+        return excavation.confirm_quest_object_acquired(
+            sequence=sequence,
+            quest_object_vnum=quest_object_vnum,
+            source_object_description=source_object_description,
+            source_description_vnums=source_description_vnums,
+            inventory_items=inventory_items,
+        )
+
+    def observe_hoard_text(
+        self, text: str, current_status: Mapping[str, Any],
+    ) -> bool:
+        """Forward server text only to the matching active excavation session."""
+        excavation = self.hoard_excavation
+        if excavation is None:
+            return False
+        if self._active_hoard_identity(current_status) != excavation.quest_identity:
+            self.hoard_excavation = None
+            return False
+        excavation.observe(text)
+        return True
 
     def observe_quest_status(self) -> None:
         self.observed_on_connection = True

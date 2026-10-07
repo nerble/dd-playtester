@@ -89,6 +89,7 @@ class ProgressionContext:
     quest_level_qp_required: int | None = None
     quest_level_qp_shortfall: int | None = None
     quest_status: Mapping[str, object] | None = None
+    quest_request_allowed: bool = True
     # ``None`` preserves the legacy library-call contract; campaign resumes
     # pass an explicit boolean once recall ownership is part of live state.
     recall_points_observed: bool | None = None
@@ -124,6 +125,7 @@ class ProgressionContext:
     piercing_weapon_upgrade_retry_allowed: bool = False
     needs_piercing_weapon: bool = False
     needs_pounding_weapon: bool = False
+    pounding_weapon_rearm_attempted: bool = False
     movement_available: int = 0
     movement_capacity: int = 0
     has_sanctuary_potion: bool = False
@@ -5806,6 +5808,7 @@ def policy_for(
     quest_level_qp_required: int | None = None,
     quest_level_qp_shortfall: int | None = None,
     quest_status: Mapping[str, object] | None = None,
+    quest_request_allowed: bool = True,
     recall_points_observed: bool | None = None,
     needs_recall_point: bool = False,
     has_large_sack: bool = False,
@@ -5839,6 +5842,7 @@ def policy_for(
     piercing_weapon_upgrade_retry_allowed: bool = False,
     needs_piercing_weapon: bool = False,
     needs_pounding_weapon: bool = False,
+    pounding_weapon_rearm_attempted: bool = False,
     movement_available: int = 0,
     movement_capacity: int = 0,
     has_sanctuary_potion: bool = False,
@@ -5874,6 +5878,7 @@ def policy_for(
         quest_level_qp_required=quest_level_qp_required,
         quest_level_qp_shortfall=quest_level_qp_shortfall,
         quest_status=quest_status,
+        quest_request_allowed=quest_request_allowed,
         recall_points_observed=recall_points_observed,
         needs_recall_point=needs_recall_point,
         has_large_sack=has_large_sack,
@@ -5915,6 +5920,7 @@ def policy_for(
         ),
         needs_piercing_weapon=needs_piercing_weapon,
         needs_pounding_weapon=needs_pounding_weapon,
+        pounding_weapon_rearm_attempted=pounding_weapon_rearm_attempted,
         movement_available=movement_available,
         movement_capacity=movement_capacity,
         has_sanctuary_potion=has_sanctuary_potion,
@@ -5990,11 +5996,12 @@ def policy_for(
     )
     if (
         (
-            (
-                context.quest_level_qp_shortfall is not None
+            quest_requires_action
+            or (
+                context.quest_request_allowed
+                and context.quest_level_qp_shortfall is not None
                 and context.quest_level_qp_shortfall > 0
             )
-            or quest_requires_action
         )
         # quest.c rejects every new request while fame is negative, before it
         # generates a target. Treat the observed reputation block as the
@@ -6573,7 +6580,10 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         )
     if not context.has_weapon:
         return _REARM_WEAPON_POLICY
-    if context.needs_piercing_weapon or context.needs_pounding_weapon:
+    if context.needs_piercing_weapon or (
+        context.needs_pounding_weapon
+        and not context.pounding_weapon_rearm_attempted
+    ):
         return _REARM_WEAPON_POLICY
     if (
         context.needs_provision_funding

@@ -20,6 +20,7 @@ from dd4tester.quests import (
     quest_request_blocker,
     quest_request_fame_allowed,
     quest_target_maximum_level_offset,
+    questmaster_completion_choice,
     questmaster_route_for_level,
     next_recall_point_to_buy,
     snapshot_quest_status,
@@ -64,18 +65,29 @@ def test_snapshot_quest_status_treats_live_retrieve_type_as_actionable() -> None
 @pytest.mark.parametrize(
     ("state", "allowed", "blocker"),
     (
-        ({"stats": {"fame": "0"}}, True, None),
-        ({"stats": {"fame": "-12"}}, False,
+        ({"stats": {"fame": "0"}, "quest_status": {
+            "active": 0, "nextquest": 0,
+        }}, True, None),
+        ({"stats": {"fame": "-12"}, "quest_status": {
+            "active": 0, "nextquest": 0,
+        }}, False,
          "DD4 rejects new quest requests while fame is below zero"),
-        ({}, False, "live fame is unavailable; do not request a quest"),
+        ({"stats": {"fame": "0"}}, True,
+         "live quest assignment/timer is unavailable or malformed"),
+        ({"stats": {"fame": "0"}, "quest_status": {
+            "active": 0, "nextquest": 3,
+        }}, True,
+         "quest cooldown has 3 minute(s) remaining"),
         (
-            {"stats": {"fame": "0"}, "quest_status": {"nextquest": 3}},
+            {"stats": {"fame": "0"}, "quest_status": {
+                "active": 1, "nextquest": 0,
+            }},
             True,
-            "quest cooldown has 3 minute(s) remaining",
+            "a quest is already active",
         ),
     ),
 )
-def test_fresh_quest_request_requires_current_nonnegative_fame(
+def test_quest_request_blocker_requires_live_status_and_nonnegative_fame(
     state: dict[str, object],
     allowed: bool,
     blocker: str | None,
@@ -119,6 +131,16 @@ def test_questmaster_routes_cover_junior_and_post_25_bands() -> None:
 
     with pytest.raises(ValueError, match="levels 1 through 100"):
         questmaster_route_for_level(101)
+
+
+def test_quest_turnin_uses_shortest_registered_route_with_equal_reward() -> None:
+    name, master_level, route = questmaster_completion_choice(29)
+
+    assert name == "Suturb"
+    assert master_level == 20
+    assert route == QUESTMASTER_ROUTE_FROM_RECALL
+    assert len(route) == 7
+    assert len(GOLDMOON_QUESTMASTER_ROUTE_FROM_RECALL) == 48
 
 
 @pytest.mark.parametrize(

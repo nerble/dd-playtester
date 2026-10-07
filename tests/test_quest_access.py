@@ -5,10 +5,13 @@ import pytest
 from dd4tester.campaign import _quest_source_preflight_issue, _quest_target_runner_options
 from dd4tester.equipment import ITEM_KEY
 from dd4tester.hunt_candidates import (
-    ACT_AGGRESSIVE, ACT_SENTINEL, ExitSource, MobileSource, MobReset,
+    ACT_AGGRESSIVE, ACT_SENTINEL, ExitSource, MobileProgram, MobileSource, MobReset,
     ObjectSource, RoomSource, WorldSource,
 )
-from dd4tester.quest_access import circus_quest_admission
+from dd4tester.quest_access import (
+    circus_quest_admission,
+    tentusks_key_source_chain,
+)
 from dd4tester.quests import snapshot_quest_status
 
 
@@ -31,6 +34,53 @@ def _world():
             585: ObjectSource(585, "coin serenos", "the coin of Serenos", 8, (0, 0, 0, 0), 0),
         },
         shopkeepers={4400},
+    )
+
+
+def _tentusks_world(*, gate_key_vnum=25405):
+    rooms = {
+        3001: RoomSource(3001, "Recall", "midgaard.are"),
+        25426: RoomSource(25426, "Murky Water", "tentusks.are"),
+        25429: RoomSource(25429, "Great Hall", "tentusks.are"),
+        25430: RoomSource(25430, "Hall of the Portals", "tentusks.are"),
+        25530: RoomSource(25530, "Wastelands", "tentusks.are"),
+    }
+    rooms[3001].exits["north"] = ExitSource("north", 25426, 0, -1)
+    rooms[25426].exits["north"] = ExitSource("north", 25429, 0, -1)
+    rooms[25429].exits["north"] = ExitSource(
+        "north", 25430, 7, gate_key_vnum, reset_state=2,
+    )
+    rooms[25430].exits["east"] = ExitSource("east", 25530, 0, -1)
+    return WorldSource(
+        rooms=rooms,
+        mobiles={
+            25405: MobileSource(
+                25405, "octopus", "an octopus", 26, ACT_SENTINEL, 0,
+                "tentusks.are",
+            ),
+            25408: MobileSource(
+                25408, "broken statue", "a broken statue", 60, 0, 750,
+                "tentusks.are",
+                programs=(MobileProgram(
+                    "give_prog", "badly chipped stone head",
+                    ("mpoload 25405", "unlock n", "mpjunk head", "mpjunk key"),
+                ),),
+            ),
+        },
+        objects={
+            25404: ObjectSource(
+                25404, "badly chipped stone head", "a stone head", 13,
+                (0, 1, 6, 11), 0,
+            ),
+            25405: ObjectSource(
+                25405, "stone key", "a stone key", ITEM_KEY,
+                (25429, 1, 6, 11), 0,
+            ),
+        },
+        mob_resets=[
+            MobReset(25405, 25426, 1, (25404,)),
+            MobReset(25408, 25429, 1, ()),
+        ],
     )
 
 
@@ -85,3 +135,20 @@ def test_circus_ticket_does_not_authorize_a_kill_quest():
     assert _quest_source_preflight_issue(
         world, quest, execution="quest-target-run", character_level=9, character_max_hp=123,
     ) is not None
+
+
+def test_tentusks_key_chain_keeps_mobile_and_object_vnums_separate():
+    world = _tentusks_world()
+    chain = tentusks_key_source_chain(world, 25530)
+
+    assert chain is not None
+    assert chain.key_object_vnum == 25405
+    assert chain.head_object_vnum == 25404
+    assert chain.head_carrier_mobile_vnum == 25405
+    assert chain.head_carrier_room_vnum == 25426
+    assert chain.unlocker_mobile_vnum == 25408
+
+
+def test_tentusks_key_chain_rejects_a_changed_gate_key():
+    world = _tentusks_world(gate_key_vnum=999)
+    assert tentusks_key_source_chain(world, 25530) is None

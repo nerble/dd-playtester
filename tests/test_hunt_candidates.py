@@ -725,6 +725,61 @@ def test_real_source_route_rejects_a_reachable_transit_hazard_special() -> None:
     assert any("rock crab" in hazard for hazard in candidate.hazards)
 
 
+def test_economic_transit_special_is_not_mislabeled_as_combat_joining(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100, "target", "the target", 29, ACT_SENTINEL, 0, "target.are",
+            ),
+            200: MobileSource(
+                200, "gardener", "the gardener", 25, ACT_STAY_AREA, -1000,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Transit", "target.are"),
+            7002: RoomSource(7002, "Target", "target.are"),
+            7003: RoomSource(7003, "Garden", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7002, 1, ()),
+            MobReset(200, 7003, 1, ()),
+        ],
+        mobile_specials={200: ("spec_thief",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+    world.rooms[7001].exits["south"] = ExitSource("south", 7003, 0, -1)
+    world.rooms[7003].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    [candidate] = [
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=29,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    ]
+
+    assert not candidate.autonomous_safe
+    assert "an economic special mobile can reach the route" in (
+        candidate.autonomy_rejections
+    )
+    assert not any(
+        "combat-joining special" in rejection
+        or "inside the useful XP band" in rejection
+        for rejection in candidate.autonomy_rejections
+    )
+
+
 @pytest.mark.parametrize(
     "special",
     ("spec_cast_mage", "spec_executioner", "spec_guard"),
@@ -1522,7 +1577,7 @@ A fire elemental is here.~
     assert area.mobile_specials[100] == elemental.specials
 
 
-def test_current_source_resolves_sets_ghoul_template_and_special() -> None:
+def test_current_source_resolves_sets_skeleton_template_without_special() -> None:
     source_root = Path("runs/dd4-source/server")
     templates = load_mobile_template_catalog(source_root / "src")
 
@@ -1532,11 +1587,11 @@ def test_current_source_resolves_sets_ghoul_template_and_special() -> None:
         mobile_templates=templates,
     )
     mobile = area.mobiles[2700]
-    assert mobile.template_name == "ghoul"
+    assert mobile.template_name == "skeleton"
     assert mobile.template_species == "humanoid"
     assert mobile.template_hp_modifier == 0
     assert mobile.hp_modifier == 0
-    assert area.mobile_specials.get(2700, ()) == ("spec_ghoul",)
+    assert area.mobile_specials.get(2700, ()) == ()
 
 
 def test_area_special_overrides_resolve_against_template_slots(
@@ -1635,7 +1690,7 @@ MobDamMod 35
     assert mobile.damage_modifier == 35
 
 
-def test_current_source_sets_hp_modifier_is_zero() -> None:
+def test_current_source_sets_skeleton_hp_modifier_is_zero() -> None:
     source_root = Path("runs/dd4-source/server")
     templates = load_mobile_template_catalog(source_root / "src")
     mobile = parse_area_file(
@@ -1644,7 +1699,7 @@ def test_current_source_sets_hp_modifier_is_zero() -> None:
         mobile_templates=templates,
     ).mobiles[2700]
 
-    assert mobile.template_name == "ghoul"
+    assert mobile.template_name == "skeleton"
     assert mobile.template_hp_modifier == 0
     assert mobile.area_hp_modifier is None
     assert mobile.hp_modifier == 0
@@ -3673,7 +3728,7 @@ def test_sanctuary_mobile_damage_halves_each_strike_before_round_totals() -> Non
         33,
         wielding=False,
         dual_wielding=False,
-    ) == 168
+    ) == 192
     assert mobile_sanctuary_critical_hit_damage(33, wielding=False) == 56
     assert mobile_sanctuary_peak_round_damage(
         34,
@@ -3688,7 +3743,7 @@ def test_sanctuary_applies_mobile_damage_modifier_before_mitigation() -> None:
         wielding=False,
         dual_wielding=False,
         damage_modifier=25,
-    ) == 210
+    ) == 240
     assert mobile_sanctuary_critical_hit_damage(
         33,
         wielding=False,
@@ -5873,6 +5928,62 @@ def test_candidate_uses_longer_route_around_large_below_band_crowd(monkeypatch) 
     assert not any(
         "large below-band aggressive crowd" in rejection
         for rejection in candidate.autonomy_rejections
+    )
+
+
+def test_source_route_avoids_large_sentinel_crowd_when_safe_detour_exists() -> None:
+    world = WorldSource(
+        mobiles={
+            200: MobileSource(
+                200,
+                "barracuda",
+                "a barracuda",
+                7,
+                ACT_AGGRESSIVE | ACT_SENTINEL,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={
+                    "east": ExitSource("east", 7001, 0, -1),
+                    "north": ExitSource("north", 7002, 0, -1),
+                },
+            ),
+            7001: RoomSource(
+                7001,
+                "Barracuda pool",
+                "target.are",
+                exits={"north": ExitSource("north", 7003, 0, -1)},
+            ),
+            7002: RoomSource(
+                7002,
+                "Safe path",
+                "target.are",
+                exits={"east": ExitSource("east", 7003, 0, -1)},
+            ),
+            7003: RoomSource(7003, "Quest room", "target.are"),
+        },
+        mob_resets=[MobReset(200, 7001, 16, ())],
+    )
+
+    selected = source_safe_route_to_room_with_origin(
+        world,
+        7003,
+        character_level=29,
+    )
+
+    assert selected is not None
+    assert selected[0] == ("north", "east")
+    assert 7001 not in selected[1]
+    assert not source_route_hazard_rejections(
+        world,
+        selected[1],
+        character_level=29,
     )
 
 

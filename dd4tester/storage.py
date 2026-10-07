@@ -10,10 +10,11 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Collection, Iterator
+from typing import Any, Collection, Iterator, Mapping
 
 from . import __version__
 from .lease import CampaignLease, CampaignLeaseBusyError, campaign_lease_path
+from .state import CURRENT_STATE_FIELDS
 
 
 _CAMPAIGN_EVENT_HISTORY_LIMIT = 256
@@ -32,24 +33,24 @@ _OBSERVATION_WRITE_TIMEOUT_SECONDS = 0.25
 _OBSERVATION_CONTROL_TIMEOUT_SECONDS = 10.0
 _OBSERVATION_COMMIT_MAX_AGE_SECONDS = 0.5
 _OBSERVATION_CHECKPOINT_EVENTS = frozenset(
-    {"character_identity_observed", "progress_changed", "item_acquired", "character_died", "quest_status_changed"}
+    {
+        "character_identity_observed",
+        "character_died",
+        "quest_status_changed",
+    }
 )
+# Retain legacy explicit snapshot reasons for transcript repair without
+# triggering checkpoints for every routine XP or item observation.
 _FULL_CHECKPOINT_REASONS = _OBSERVATION_CHECKPOINT_EVENTS | frozenset(
-    {"initial_state", "run_finished"}
+    {
+        "initial_state",
+        "progress_changed",
+        "item_acquired",
+        "level_changed",
+        "run_finished",
+    }
 )
-_CURRENT_STATE_FIELDS = (
-    "schema_version", "revision", "name", "race", "character_class", "subclass",
-    "sex", "level", "xp", "max_xp", "xp_to_next_level", "practice",
-    "hp", "max_hp", "mana", "max_mana", "move", "max_move", "rage",
-    "max_rage", "hunger", "max_hunger", "thirst", "max_thirst", "drunk",
-    "max_drunk", "position", "form", "room_name", "room_vnum", "area",
-    "sector", "room_flags", "exits", "stats", "progress", "progress_source",
-    "xp_loss_observed", "xp_loss_total", "currencies", "inventory", "equipment",
-    "affects", "quests", "quest_status", "quest_points", "total_quest_points",
-    "quest_level_qp_required", "quest_level_qp_shortfall", "recall_points",
-    "recall_points_observed", "current_recall", "in_combat", "combat_target", "dead",
-    "world_boot_id",
-)
+_CURRENT_STATE_FIELDS = CURRENT_STATE_FIELDS
 _EXPERIMENT_METRIC_FIELDS = frozenset(
     {
         "net_xp", "elapsed_seconds", "confirmed_kills", "deaths", "xp_lost",
@@ -101,6 +102,67 @@ def _index_game_event(
     )
 
 
+def _record_character_acquired_event(
+    connection: sqlite3.Connection,
+    *,
+    event_id: int,
+    run_id: int,
+    timestamp: str,
+    payload: dict[str, Any],
+) -> None:
+    if payload.get("type") != "item_acquired":
+        return
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return
+    description = data.get("item", data.get("name"))
+    if isinstance(description, dict):
+        description = next(
+            (
+                description.get(key)
+                for key in ("short_desc", "short_description", "name", "item")
+                if isinstance(description.get(key), str)
+            ),
+            None,
+        )
+    if not isinstance(description, str):
+        value = data.get("value")
+        if isinstance(value, str):
+            description = value
+        elif isinstance(value, dict):
+            description = next(
+                (
+                    value.get(key)
+                    for key in ("short_desc", "short_description", "name", "item")
+                    if isinstance(value.get(key), str)
+                ),
+                None,
+            )
+    if (
+        not isinstance(description, str)
+        or not description.strip()
+        or "experience point" in description.casefold()
+    ):
+        return
+    run = connection.execute(
+        "SELECT scenario_name FROM runs WHERE id = ?", (run_id,),
+    ).fetchone()
+    if run is None:
+        return
+    character_name = str(run["scenario_name"]).rpartition(":")[2].strip()
+    if not character_name:
+        return
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO character_acquired_items (
+            character_name, item_description, first_snapshot_id,
+            first_event_id, first_seen_at
+        ) VALUES (?, ?, NULL, ?, ?)
+        """,
+        (character_name, description.strip(), event_id, timestamp),
+    )
+
+
 def _validate_experiment_metrics(metrics: object) -> dict[str, Any]:
     if not isinstance(metrics, dict):
         raise ValueError("metrics must be a non-empty object")
@@ -148,14 +210,18 @@ def _validate_experiment_starting_state(state: object) -> dict[str, Any]:
         raise ValueError("starting_state.level must be a positive integer")
     if type(state["xp"]) is not int or state["xp"] < 0:
         raise ValueError("starting_state.xp must be a nonnegative integer")
-    for field in ("hp", "max_hp", "move", "max_move"):
+    for field in (
+        "hp", "max_hp", "mana", "max_mana", "move", "max_move",
+    ):
         value = state[field]
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"starting_state.{field} must be numeric")
-        if not math.isfinite(value):
-            raise ValueError(f"starting_state.{field} must be finite")
-    if state["max_hp"] <= 0 or state["max_move"] < 0:
-        raise ValueError("starting_state has invalid maximum vitals")
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(
+                f"starting_state.{field} must be finite and nonnegative"
+            )
+    if state["max_hp"] <= 0:
+        raise ValueError("starting_state.max_hp must be positive")
     if not isinstance(state["stats"], dict) or not state["stats"]:
         raise ValueError("starting_state.stats must contain the observed stats")
     if not isinstance(state["currencies"], dict):
@@ -422,6 +488,13 @@ class _BoundedObservationWriter:
                 timestamp=timestamp,
                 payload=payload,
             )
+            _record_character_acquired_event(
+                connection,
+                event_id=event_id,
+                run_id=run_id,
+                timestamp=timestamp,
+                payload=payload,
+            )
         command = payload.get("command") if kind == "command" else None
         if isinstance(command, str):
             run = connection.execute(
@@ -540,6 +613,8 @@ class RunStorage:
         self.read_only = read_only
         self._events_since_commit = 0
         self._observation_writer: _BoundedObservationWriter | None = None
+        self._initial_state_checkpoint_queued: set[int] = set()
+        self._last_observed_levels: dict[int, int] = {}
         self._recent_campaign_segments_cache: dict[
             tuple[int, int], list[sqlite3.Row]
         ] = {}
@@ -691,6 +766,8 @@ class RunStorage:
                 item_description TEXT NOT NULL COLLATE NOCASE,
                 first_snapshot_id INTEGER
                     REFERENCES state_snapshots(id) ON DELETE SET NULL,
+                first_event_id INTEGER
+                    REFERENCES events(id) ON DELETE SET NULL,
                 first_seen_at TEXT NOT NULL,
                 PRIMARY KEY (character_name, item_description)
             );
@@ -805,6 +882,7 @@ class RunStorage:
                 error TEXT,
                 execution_status TEXT,
                 objective_outcome TEXT,
+                objective_outcome_override INTEGER NOT NULL DEFAULT 0,
                 safety_outcome TEXT,
                 metrics_json TEXT,
                 UNIQUE(campaign_id, sequence)
@@ -898,6 +976,17 @@ class RunStorage:
         }
         if "boot_id" not in run_columns:
             self.connection.execute("ALTER TABLE runs ADD COLUMN boot_id TEXT")
+        acquired_item_columns = {
+            row["name"]
+            for row in self.connection.execute(
+                "PRAGMA table_info(character_acquired_items)"
+            )
+        }
+        if "first_event_id" not in acquired_item_columns:
+            self.connection.execute(
+                "ALTER TABLE character_acquired_items ADD COLUMN first_event_id "
+                "INTEGER REFERENCES events(id) ON DELETE SET NULL"
+            )
         for column in ("execution_status", "objective_outcome", "safety_outcome"):
             if column not in run_columns:
                 self.connection.execute(f"ALTER TABLE runs ADD COLUMN {column} TEXT")
@@ -912,6 +1001,11 @@ class RunStorage:
                 self.connection.execute(
                     f"ALTER TABLE campaign_segments ADD COLUMN {column} TEXT"
                 )
+        if "objective_outcome_override" not in segment_columns:
+            self.connection.execute(
+                "ALTER TABLE campaign_segments ADD COLUMN "
+                "objective_outcome_override INTEGER NOT NULL DEFAULT 1"
+            )
         experiment_columns = {
             row["name"]
             for row in self.connection.execute("PRAGMA table_info(campaign_experiments)")
@@ -1067,6 +1161,13 @@ class RunStorage:
                 timestamp=event_timestamp,
                 payload=payload,
             )
+            _record_character_acquired_event(
+                self.connection,
+                event_id=event_id,
+                run_id=run_id,
+                timestamp=event_timestamp,
+                payload=payload,
+            )
         command = payload.get("command") if kind == "command" else None
         if isinstance(command, str):
             run = self.connection.execute(
@@ -1157,13 +1258,48 @@ class RunStorage:
             and not snapshot_event
         ):
             event_type = payload.get("type") if kind == "game_event" else None
-            if isinstance(event_type, str) and event_type in _OBSERVATION_CHECKPOINT_EVENTS:
-                checkpoint_reason = event_type
-            elif all(
+            has_initial_values = all(
                 current_state.get(field) is not None
                 for field in ("level", "xp", "hp", "max_hp")
+            )
+            if (
+                has_initial_values
+                and run_id not in self._initial_state_checkpoint_queued
             ):
-                checkpoint_reason = "initial_state"
+                checkpoint_reason = (
+                    event_type
+                    if isinstance(event_type, str)
+                    and event_type in _OBSERVATION_CHECKPOINT_EVENTS
+                    else "initial_state"
+                )
+            elif (
+                isinstance(event_type, str)
+                and event_type in _OBSERVATION_CHECKPOINT_EVENTS
+            ):
+                checkpoint_reason = event_type
+            elif has_initial_values:
+                level = current_state.get("level")
+                previous_level = self._last_observed_levels.get(run_id)
+                if (
+                    isinstance(level, int)
+                    and not isinstance(level, bool)
+                    and previous_level is not None
+                    and level != previous_level
+                ):
+                    checkpoint_reason = "level_changed"
+        if (
+            isinstance(current_state, dict)
+            and checkpoint_reason in _FULL_CHECKPOINT_REASONS
+            and all(
+                current_state.get(field) is not None
+                for field in ("level", "xp", "hp", "max_hp")
+            )
+        ):
+            self._initial_state_checkpoint_queued.add(run_id)
+        if current_state is not None:
+            level = current_state.get("level")
+            if isinstance(level, int) and not isinstance(level, bool):
+                self._last_observed_levels[run_id] = level
         if checkpoint_reason not in _FULL_CHECKPOINT_REASONS:
             checkpoint_reason = None
         if self._observation_writer is None:
@@ -1249,13 +1385,14 @@ class RunStorage:
         run_id: int,
         *,
         status: str,
+        finished_at: str | None = None,
         error: str | None = None,
         execution_status: str | None = None,
         objective_outcome: str | None = None,
         safety_outcome: str | None = None,
     ) -> None:
         self.flush()
-        finished_at = _now()
+        finished_at = finished_at or _now()
         self.connection.execute(
             """
             UPDATE runs
@@ -1281,26 +1418,51 @@ class RunStorage:
             (run_id,),
         ).fetchone()
         if current is not None:
-            cursor = self.connection.execute(
+            finished_snapshot = self.connection.execute(
                 """
-                INSERT INTO state_snapshots (
-                    run_id, source_event_id, timestamp, reason, state_json
-                ) VALUES (?, ?, ?, 'run_finished', ?)
+                SELECT id FROM state_snapshots
+                WHERE run_id = ? AND reason = 'run_finished'
+                ORDER BY id DESC LIMIT 1
                 """,
-                (
-                    run_id,
-                    current["event_id"],
-                    finished_at,
-                    current["state_json"],
-                ),
-            )
+                (run_id,),
+            ).fetchone()
+            if finished_snapshot is None:
+                cursor = self.connection.execute(
+                    """
+                    INSERT INTO state_snapshots (
+                        run_id, source_event_id, timestamp, reason, state_json
+                    ) VALUES (?, ?, ?, 'run_finished', ?)
+                    """,
+                    (
+                        run_id,
+                        current["event_id"],
+                        finished_at,
+                        current["state_json"],
+                    ),
+                )
+                snapshot_id = int(cursor.lastrowid)
+            else:
+                snapshot_id = int(finished_snapshot["id"])
+                self.connection.execute(
+                    """
+                    UPDATE state_snapshots
+                    SET source_event_id = ?, timestamp = ?, state_json = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        current["event_id"],
+                        finished_at,
+                        current["state_json"],
+                        snapshot_id,
+                    ),
+                )
             try:
                 final_state = json.loads(current["state_json"])
             except (TypeError, json.JSONDecodeError):
                 final_state = None
             if isinstance(final_state, dict):
                 self._record_character_acquired_items(
-                    int(cursor.lastrowid),
+                    snapshot_id,
                     final_state,
                     timestamp=finished_at,
                 )
@@ -1329,6 +1491,19 @@ class RunStorage:
             logging.getLogger(__name__).exception(
                 "Could not cache the completed run summary for run %s", run_id,
             )
+
+    def latest_run_observation_timestamp(self, run_id: int) -> str | None:
+        event = self.connection.execute(
+            "SELECT timestamp FROM events WHERE run_id = ? ORDER BY id DESC LIMIT 1",
+            (run_id,),
+        ).fetchone()
+        if event is not None:
+            return str(event["timestamp"])
+        current = self.connection.execute(
+            "SELECT timestamp FROM run_current_states WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        return str(current["timestamp"]) if current is not None else None
 
     def _invalidate_campaign_history(self, campaign_id: int | None = None) -> None:
         if campaign_id is None:
@@ -1466,7 +1641,7 @@ class RunStorage:
             running_segments = list(
                 self.connection.execute(
                     """
-                    SELECT id, run_id, started_at
+                    SELECT id, run_id, started_at, command_count, phase
                     FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
                     WHERE campaign_id = ? AND status = 'running'
                     ORDER BY sequence DESC
@@ -1485,46 +1660,74 @@ class RunStorage:
         if not running_segments:
             return 0
 
+        bound = self._bind_unique_running_campaign_runs(
+            running_segments,
+            character_name=character_name,
+        )
+        if bound:
+            segment_ids = [int(segment["id"]) for segment in running_segments]
+            placeholders = ", ".join("?" for _ in segment_ids)
+            running_segments = list(
+                self.connection.execute(
+                    f"""
+                    SELECT id, campaign_id, run_id, started_at, command_count,
+                           phase, status
+                    FROM campaign_segments
+                    WHERE campaign_id = ? AND status = 'running'
+                      AND id IN ({placeholders})
+                    """,
+                    (campaign_id, *segment_ids),
+                )
+            )
+
+        if all(
+            segment["run_id"] is None
+            and segment["command_count"] in (None, 0)
+            for segment in running_segments
+        ):
+            timestamp = _now()
+            segment_ids = [int(segment["id"]) for segment in running_segments]
+            placeholders = ", ".join("?" for _ in segment_ids)
+            cursor = self.connection.execute(
+                f"""
+                UPDATE campaign_segments
+                SET finished_at = ?, status = 'ready', error = ?,
+                    execution_status = 'interrupted',
+                    objective_outcome = 'unknown', safety_outcome = 'unknown'
+                WHERE status = 'running' AND id IN ({placeholders})
+                """,
+                (timestamp, reason, *segment_ids),
+            )
+            self.connection.execute(
+                """
+                UPDATE campaigns
+                SET status = 'ready', error = ?, updated_at = ?
+                WHERE id = ? AND status = 'running'
+                """,
+                (reason, timestamp, campaign_id),
+            )
+            self.connection.commit()
+            self._invalidate_campaign_history(campaign_id)
+            return int(cursor.rowcount)
+
         timestamp = _now()
         run_ids = {
             int(row["run_id"])
             for row in running_segments
             if row["run_id"] is not None
         }
-        if character_name:
-            character_suffixes = (
-                f":{character_name.casefold()}",
-                f"-{character_name.casefold()}",
-            )
-            segment_started_at = min(
-                str(row["started_at"]) for row in running_segments
-            )
-            for row in self.connection.execute(
-                """
-                SELECT id, scenario_name, started_at, finished_at, status
-                FROM runs
-                ORDER BY id DESC
-                LIMIT 1024
-                """,
-            ):
-                if (
-                    row["status"] == "running"
-                    and str(row["started_at"]) >= segment_started_at
-                    and str(row["scenario_name"]).casefold().endswith(
-                        character_suffixes
-                    )
-                ):
-                    run_ids.add(int(row["id"]))
         if run_ids:
-            placeholders = ", ".join("?" for _ in run_ids)
-            self.connection.execute(
-                f"""
-                UPDATE runs
-                SET finished_at = ?, status = 'failed', error = ?
-                WHERE status = 'running' AND id IN ({placeholders})
-                """,
-                (timestamp, reason, *run_ids),
-            )
+            for run_id in run_ids:
+                self.repair_run_events_from_transcript(run_id)
+                run = self.get_run(run_id)
+                if run is not None and run["status"] == "running":
+                    self.finish_run(
+                        run_id,
+                        status="failed",
+                        finished_at=self.latest_run_observation_timestamp(run_id),
+                        error=reason,
+                        execution_status="interrupted",
+                    )
 
         segment_ids = [int(row["id"]) for row in running_segments]
         placeholders = ", ".join("?" for _ in segment_ids)
@@ -1548,6 +1751,154 @@ class RunStorage:
         self._invalidate_campaign_history(campaign_id)
         return int(cursor.rowcount)
 
+    def _matching_running_campaign_runs(
+        self,
+        segment: Mapping[str, Any],
+        *,
+        character_name: str,
+    ) -> list[int]:
+        suffixes = (
+            f":{character_name.casefold()}",
+            f"-{character_name.casefold()}",
+        )
+        campaign = self.connection.execute(
+            "SELECT character_profile_path FROM campaigns WHERE id = ?",
+            (int(segment["campaign_id"]),),
+        ).fetchone()
+        profile_path = (
+            str(campaign["character_profile_path"] or "")
+            .replace("/", "\\")
+            .casefold()
+            if campaign is not None
+            else ""
+        )
+        phase = str(segment["phase"] or "").casefold()
+        matches: list[int] = []
+        for run in self.connection.execute(
+            """
+            SELECT id, scenario_name, scenario_path, started_at, status
+            FROM runs
+            ORDER BY id DESC
+            LIMIT 1024
+            """,
+        ):
+            scenario_name = str(run["scenario_name"] or "").casefold()
+            if (
+                run["status"] != "running"
+                or str(run["started_at"]) < str(segment["started_at"])
+                or not scenario_name.endswith(suffixes)
+            ):
+                continue
+            run_path = (
+                str(run["scenario_path"] or "")
+                .replace("/", "\\")
+                .casefold()
+            )
+            if profile_path and run_path != profile_path:
+                continue
+            if (
+                phase == "provision-funding"
+                and "provision funding" not in scenario_name
+            ):
+                continue
+            already_linked = self.connection.execute(
+                """
+                SELECT 1 FROM campaign_segments
+                WHERE run_id = ? AND campaign_id != ?
+                LIMIT 1
+                """,
+                (int(run["id"]), int(segment["campaign_id"])),
+            ).fetchone()
+            if already_linked is not None:
+                continue
+            matches.append(int(run["id"]))
+        return matches
+
+    def _bind_unique_running_campaign_runs(
+        self,
+        segments: Collection[Any],
+        *,
+        character_name: str | None,
+    ) -> int:
+        """Link only a unique, time-bounded run to an unlinked live segment."""
+        if not character_name:
+            return 0
+        bound = 0
+        for segment in segments:
+            if segment["run_id"] is not None:
+                continue
+            matches = self._matching_running_campaign_runs(
+                segment,
+                character_name=character_name,
+            )
+            if len(matches) != 1:
+                continue
+            cursor = self.connection.execute(
+                """
+                UPDATE campaign_segments
+                SET run_id = ?
+                WHERE id = ? AND status = 'running' AND run_id IS NULL
+                """,
+                (matches[0], int(segment["id"])),
+            )
+            bound += int(cursor.rowcount)
+        if bound:
+            self.connection.commit()
+        return bound
+
+    def _restore_misclassified_live_segment(
+        self,
+        campaign_id: int,
+        *,
+        character_name: str | None,
+    ) -> bool:
+        """Undo the exact legacy pre-run classification when its run exists."""
+        if not character_name:
+            return False
+        segment = self.connection.execute(
+            """
+            SELECT id, campaign_id, run_id, started_at, command_count,
+                   phase, status, error, execution_status
+            FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
+            WHERE campaign_id = ? AND status = 'ready' AND run_id IS NULL
+              AND execution_status = 'interrupted'
+              AND error = ?
+            ORDER BY sequence DESC
+            LIMIT 1
+            """,
+            (
+                campaign_id,
+                "setup unavailable before run creation; zero game commands; "
+                "resumable checkpoint preserved",
+            ),
+        ).fetchone()
+        if segment is None:
+            return False
+        matches = self._matching_running_campaign_runs(
+            segment,
+            character_name=character_name,
+        )
+        if len(matches) != 1:
+            return False
+        self.connection.execute(
+            """
+            UPDATE campaign_segments
+            SET status = 'running', finished_at = NULL, run_id = ?,
+                error = 'Recovered live run after an incorrect pre-run classification'
+            WHERE id = ? AND status = 'ready' AND run_id IS NULL
+            """,
+            (matches[0], int(segment["id"])),
+        )
+        self.connection.execute(
+            """
+            UPDATE campaigns SET status = 'running', error = NULL, updated_at = ?
+            WHERE id = ?
+            """,
+            (_now(), campaign_id),
+        )
+        self.connection.commit()
+        return True
+
     def recover_campaign(
         self,
         campaign_id: int,
@@ -1566,10 +1917,16 @@ class RunStorage:
         if campaign is None:
             raise KeyError(f"campaign {campaign_id} does not exist")
 
+        self._restore_misclassified_live_segment(
+            campaign_id,
+            character_name=character_name,
+        )
+
         running_segments = list(
             self.connection.execute(
                 """
-                SELECT id, campaign_id, run_id, started_at, status
+                SELECT id, campaign_id, run_id, started_at, status,
+                       command_count, phase
                 FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
                 WHERE campaign_id = ? AND status = 'running'
                 ORDER BY sequence DESC
@@ -1578,6 +1935,25 @@ class RunStorage:
                 (campaign_id,),
             )
         )
+        bound = self._bind_unique_running_campaign_runs(
+            running_segments,
+            character_name=character_name,
+        )
+        if bound:
+            segment_ids = [int(segment["id"]) for segment in running_segments]
+            placeholders = ", ".join("?" for _ in segment_ids)
+            running_segments = list(
+                self.connection.execute(
+                    f"""
+                    SELECT id, campaign_id, run_id, started_at, status,
+                           command_count, phase
+                    FROM campaign_segments
+                    WHERE campaign_id = ? AND status = 'running'
+                      AND id IN ({placeholders})
+                    """,
+                    (campaign_id, *segment_ids),
+                )
+            )
         repaired_events = 0
         for segment in running_segments:
             if segment["run_id"] is None:
@@ -1671,7 +2047,7 @@ class RunStorage:
             running_segments = list(
                 self.connection.execute(
                     """
-                    SELECT id, run_id, started_at
+                    SELECT id, run_id, started_at, command_count, phase
                     FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
                     WHERE campaign_id = ? AND status = 'running'
                     ORDER BY sequence DESC
@@ -1687,62 +2063,74 @@ class RunStorage:
                 if int(row["campaign_id"]) == campaign_id
                 and row["status"] == "running"
             ][:1]
+        bound = self._bind_unique_running_campaign_runs(
+            running_segments,
+            character_name=character_name,
+        )
+        if bound:
+            segment_ids = [int(segment["id"]) for segment in running_segments]
+            placeholders = ", ".join("?" for _ in segment_ids)
+            running_segments = list(
+                self.connection.execute(
+                    f"""
+                    SELECT id, campaign_id, run_id, started_at, command_count,
+                           phase, status
+                    FROM campaign_segments
+                    WHERE campaign_id = ? AND status = 'running'
+                      AND id IN ({placeholders})
+                    """,
+                    (campaign_id, *segment_ids),
+                )
+            )
+        if running_segments and all(
+            segment["run_id"] is None
+            and segment["command_count"] in (None, 0)
+            for segment in running_segments
+        ):
+            timestamp = _now()
+            segment_ids = [int(segment["id"]) for segment in running_segments]
+            placeholders = ", ".join("?" for _ in segment_ids)
+            cursor = self.connection.execute(
+                f"""
+                UPDATE campaign_segments
+                SET finished_at = ?, status = 'ready', error = ?,
+                    execution_status = 'interrupted',
+                    objective_outcome = 'unknown', safety_outcome = 'unknown'
+                WHERE campaign_id = ? AND status = 'running'
+                  AND id IN ({placeholders})
+                """,
+                (timestamp, reason, campaign_id, *segment_ids),
+            )
+            self.connection.execute(
+                """
+                UPDATE campaigns
+                SET status = 'ready', error = ?, updated_at = ?
+                WHERE id = ? AND status = 'running'
+                """,
+                (reason, timestamp, campaign_id),
+            )
+            self.connection.commit()
+            self._invalidate_campaign_history(campaign_id)
+            return int(cursor.rowcount)
         run_ids = {
             int(row["run_id"])
             for row in running_segments
             if row["run_id"] is not None
         }
-        if character_name and running_segments:
-            character_suffixes = (
-                f":{character_name.casefold()}",
-                f"-{character_name.casefold()}",
-            )
-            segment_started_at = min(
-                str(row["started_at"]) for row in running_segments
-            )
-            for row in self.connection.execute(
-                """
-                SELECT id, scenario_name, started_at, finished_at, status
-                FROM runs
-                ORDER BY id DESC
-                LIMIT 1024
-                """,
-            ):
-                scenario_name = str(row["scenario_name"]).casefold()
-                if (
-                    (
-                        row["status"] == "running"
-                        or row["finished_at"] is not None
-                    )
-                    and str(row["started_at"]) >= segment_started_at
-                    and scenario_name.endswith(character_suffixes)
-                ):
-                    run_ids.add(int(row["id"]))
         timestamp = _now()
         if run_ids:
-            placeholders = ", ".join("?" for _ in run_ids)
-            self.connection.execute(
-                f"""
-                UPDATE runs
-                SET finished_at = ?, status = 'failed', error = ?
-                WHERE id IN ({placeholders}) AND status = 'running'
-                """,
-                (timestamp, reason, *run_ids),
-            )
-            unbound_segments = [
-                row for row in running_segments if row["run_id"] is None
-            ]
-            if len(run_ids) == 1:
-                run_id = next(iter(run_ids))
-                for segment in unbound_segments:
-                    self.connection.execute(
-                        """
-                        UPDATE campaign_segments
-                        SET run_id = ?
-                        WHERE id = ? AND status = 'running'
-                        """,
-                        (run_id, int(segment["id"])),
-                    )
+            for run_id in run_ids:
+                run = self.get_run(run_id)
+                if run is None or run["status"] != "running":
+                    continue
+                self.repair_run_events_from_transcript(run_id)
+                self.finish_run(
+                    run_id,
+                    status="failed",
+                    finished_at=self.latest_run_observation_timestamp(run_id),
+                    error=reason,
+                    execution_status="interrupted",
+                )
         segment_cursor = self.connection.execute(
             """
             UPDATE campaign_segments
@@ -2645,6 +3033,42 @@ class RunStorage:
         kills.sort(key=lambda row: int(row["id"]))
         return kills
 
+    def count_campaign_mob_kills(self, campaign_id: int) -> int:
+        """Count linked campaign kills without materializing historical rows."""
+        if not self._table_exists("campaign_run_links"):
+            return 0
+        row = self.connection.execute(
+            """
+            SELECT COUNT(k.id)
+            FROM campaign_run_links AS link
+            JOIN mob_kills AS k ON k.run_id = link.run_id
+            WHERE link.campaign_id = ?
+            """,
+            (campaign_id,),
+        ).fetchone()
+        return int(row[0] or 0) if row is not None else 0
+
+    def summarize_campaign_mob_kills(
+        self, campaign_id: int,
+    ) -> list[sqlite3.Row]:
+        """Aggregate the compact kill ledger without reading event history."""
+        if not self._table_exists("campaign_run_links"):
+            return []
+        return list(self.connection.execute(
+            """
+            SELECT k.mob_name, k.source_mobile_vnum, k.source_policy_id,
+                   COUNT(*) AS kill_count,
+                   COALESCE(SUM(k.xp_gained), 0) AS xp_gained
+            FROM campaign_run_links AS link
+            JOIN mob_kills AS k ON k.run_id = link.run_id
+            WHERE link.campaign_id = ?
+            GROUP BY k.mob_name, k.source_mobile_vnum, k.source_policy_id
+            ORDER BY kill_count DESC, k.mob_name COLLATE NOCASE,
+                     k.source_mobile_vnum, k.source_policy_id
+            """,
+            (campaign_id,),
+        ).fetchall())
+
     def save_run_summary(self, run_id: int, summary: dict[str, Any]) -> None:
         if self.read_only:
             raise RuntimeError("cannot save summaries through read-only storage")
@@ -2660,43 +3084,93 @@ class RunStorage:
         )
         outcomes = summary.get("outcomes")
         if isinstance(outcomes, dict):
-            execution = outcomes.get("execution")
-            objective = outcomes.get("objective")
-            safety = outcomes.get("safety")
-            self.connection.execute(
-                """
-                UPDATE runs
-                SET execution_status = COALESCE(?, execution_status),
-                    objective_outcome = COALESCE(?, objective_outcome),
-                    safety_outcome = COALESCE(?, safety_outcome)
-                WHERE id = ?
-                """,
-                (execution, objective, safety, run_id),
-            )
-            self.connection.execute(
-                """
-                UPDATE campaign_segments
-                SET execution_status = COALESCE(?, execution_status),
-                    objective_outcome = COALESCE(?, objective_outcome),
-                    safety_outcome = COALESCE(?, safety_outcome)
-                WHERE run_id = ?
-                """,
-                (execution, objective, safety, run_id),
-            )
+            self.sync_run_outcomes(run_id, outcomes)
         self.connection.commit()
 
+    def sync_run_outcomes(
+        self, run_id: int, outcomes: dict[str, Any],
+    ) -> None:
+        """Copy cached outcomes to indexed rows without reading run history."""
+        if self.read_only:
+            return
+        values = {
+            column: outcomes.get(key)
+            for key, column in (
+                ("execution", "execution_status"),
+                ("objective", "objective_outcome"),
+                ("safety", "safety_outcome"),
+            )
+            if outcomes.get(key) is not None
+        }
+        if not values:
+            return
+
+        changed = False
+        for table, key_column, is_segment in (
+            ("runs", "id", False),
+            ("campaign_segments", "run_id", True),
+        ):
+            assignments = [
+                (
+                    f"{column} = CASE WHEN objective_outcome_override = 0 "
+                    "THEN ? ELSE objective_outcome END"
+                    if is_segment and column == "objective_outcome"
+                    else f"{column} = ?"
+                )
+                for column in values
+            ]
+            differences = [
+                (
+                    f"(objective_outcome_override = 0 AND {column} IS NOT ?)"
+                    if is_segment and column == "objective_outcome"
+                    else f"({column} IS NOT ?)"
+                )
+                for column in values
+            ]
+            cursor = self.connection.execute(
+                f"UPDATE {table} SET {', '.join(assignments)} "
+                f"WHERE {key_column} = ? AND ({' OR '.join(differences)})",
+                [*values.values(), run_id, *values.values()],
+            )
+            changed = changed or cursor.rowcount > 0
+        if changed:
+            self.connection.commit()
+
     def summarize_legacy_runs(
-        self, *, after_run_id: int = 0, limit: int = 100,
+        self,
+        *,
+        after_run_id: int = 0,
+        limit: int = 100,
+        campaign_id: int | None = None,
     ) -> list[int]:
         """Backfill a bounded page of completed runs outside normal reporting."""
         if self.read_only:
             raise RuntimeError("cannot summarize runs through read-only storage")
         if after_run_id < 0 or not 1 <= limit <= 1000:
             raise ValueError("after_run_id must be nonnegative and limit 1..1000")
+        if campaign_id is not None:
+            if campaign_id < 1:
+                raise ValueError("campaign_id must be at least 1")
+            if self.get_campaign(campaign_id) is None:
+                raise LookupError(f"No campaign with id {campaign_id}")
+            if not self._table_exists("campaign_run_links"):
+                return []
+        campaign_filter = (
+            "AND EXISTS (SELECT 1 FROM campaign_run_links AS link "
+            "WHERE link.campaign_id = ? AND link.run_id = run.id)"
+            if campaign_id is not None
+            else ""
+        )
+        query_parameters: list[Any] = [
+            after_run_id, RUN_REPORT_SUMMARY_VERSION,
+        ]
+        if campaign_id is not None:
+            query_parameters.append(campaign_id)
+        query_parameters.append(limit)
         run_ids = [
             int(row["id"])
             for row in self.connection.execute(
-                """
+                f"""
                 SELECT run.id FROM runs AS run
                 LEFT JOIN run_summaries AS summary ON summary.run_id = run.id
                 WHERE run.id > ? AND run.finished_at IS NOT NULL
@@ -2712,9 +3186,10 @@ class RunStorage:
                           0
                       ) != ?
                   )
+                  {campaign_filter}
                 ORDER BY run.id LIMIT ?
                 """,
-                (after_run_id, RUN_REPORT_SUMMARY_VERSION, limit),
+                query_parameters,
             )
         ]
         if not run_ids:
@@ -2835,7 +3310,7 @@ class RunStorage:
         self,
         experiment_id: int,
         *,
-        metrics: dict[str, Any],
+        metrics: dict[str, Any] | None = None,
         run_id: int | None = None,
         bot_error: str | None = None,
         game_defect: str | None = None,
@@ -2879,7 +3354,16 @@ class RunStorage:
                     raise ValueError(
                         "the linked run must belong to the experiment campaign"
                     )
-        metrics = _validate_experiment_metrics(metrics)
+        if metrics is None:
+            if linked_run_id is None:
+                raise ValueError(
+                    "run-derived experiment metrics require a linked run"
+                )
+            metrics = self.derive_campaign_experiment_metrics(
+                int(linked_run_id),
+            )
+        else:
+            metrics = _validate_experiment_metrics(metrics)
         self.connection.execute(
             """
             UPDATE campaign_experiments
@@ -2895,6 +3379,94 @@ class RunStorage:
         if self.connection.execute("SELECT changes()").fetchone()[0] != 1:
             raise ValueError("experiment changed while it was being completed")
         self.connection.commit()
+
+    def derive_campaign_experiment_metrics(self, run_id: int) -> dict[str, Any]:
+        """Measure the shared comparison metrics from one completed run."""
+        run = self.get_run(run_id)
+        if run is None or run["finished_at"] is None:
+            raise ValueError("run-derived metrics require a completed run")
+
+        from .report import build_run_report
+
+        report = build_run_report(self, run_id, commentary_limit=100)
+        progress = report.get("progress")
+        activity = report.get("activity")
+        experience = progress.get("experience") if isinstance(progress, dict) else None
+        if (
+            not isinstance(experience, dict)
+            or type(experience.get("initial")) is not int
+            or type(experience.get("final")) is not int
+            or type(experience.get("change")) is not int
+        ):
+            raise ValueError("run evidence does not contain an initial and final XP")
+        if not isinstance(activity, dict) or activity.get("total_seconds") is None:
+            raise ValueError("run evidence does not contain a completed duration")
+
+        initial_row = self.connection.execute(
+            """
+            SELECT reason, state_json FROM state_snapshots
+            WHERE run_id = ? ORDER BY id LIMIT 1
+            """,
+            (run_id,),
+        ).fetchone()
+        final_row = self.get_latest_state_snapshot(run_id)
+        if initial_row is None or final_row is None:
+            raise ValueError("run evidence is missing state boundaries")
+        if initial_row["reason"] in {"run_finished", "current_state"}:
+            raise ValueError("run evidence is missing its starting checkpoint")
+        try:
+            initial_state = json.loads(initial_row["state_json"])
+            final_state = json.loads(final_row["state_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("run state boundaries contain invalid JSON") from exc
+        if not isinstance(initial_state, dict) or not isinstance(final_state, dict):
+            raise ValueError("run state boundaries must be JSON objects")
+
+        def required_counter(state: dict[str, Any], field: str) -> int:
+            value = state.get(field)
+            if type(value) is not int or value < 0:
+                raise ValueError(f"run state is missing a valid {field}")
+            return value
+
+        xp_lost = (
+            required_counter(final_state, "xp_loss_total")
+            - required_counter(initial_state, "xp_loss_total")
+        )
+        quest_points_gained = (
+            required_counter(final_state, "total_quest_points")
+            - required_counter(initial_state, "total_quest_points")
+        )
+        if xp_lost < 0 or quest_points_gained < 0:
+            raise ValueError("run evidence contains a decreasing loss or quest ledger")
+
+        evidence = report.get("evidence")
+        event_counts = (
+            evidence.get("game_event_counts") if isinstance(evidence, dict) else None
+        )
+        if not isinstance(event_counts, dict):
+            raise ValueError("run report is missing event counts")
+        kills = progress.get("confirmed_kills")
+        if not isinstance(kills, list):
+            raise ValueError("run report is missing confirmed-kill evidence")
+
+        metrics = {
+            "net_xp": experience["change"],
+            "elapsed_seconds": activity["total_seconds"],
+            "confirmed_kills": len(kills),
+            "deaths": int(event_counts.get("character_died", 0) or 0),
+            "xp_lost": xp_lost,
+            "quest_points_gained": quest_points_gained,
+            **{
+                field: activity[field]
+                for field in (
+                    "productive_combat_seconds",
+                    "travel_seconds",
+                    "maintenance_seconds",
+                    "waiting_seconds",
+                )
+            },
+        }
+        return _validate_experiment_metrics(metrics)
 
     def list_campaign_experiments(
         self, *, comparison_key: str | None = None,
@@ -2914,6 +3486,160 @@ class RunStorage:
                 (comparison_key,),
             ).fetchall()
         return list(rows)
+
+    def summarize_campaign_experiment_comparison(
+        self, comparison_key: str,
+    ) -> dict[str, Any] | None:
+        """Aggregate completed experiment arms without loading run history."""
+        if not comparison_key.strip():
+            raise ValueError("comparison_key must not be empty")
+        rows = self.list_campaign_experiments(comparison_key=comparison_key)
+        if not rows:
+            return None
+
+        condition_fields = (
+            "test_mode", "tester_version", "dd4_version", "source_revision",
+        )
+        condition_values = {
+            field: sorted({str(row[field] or "") for row in rows})
+            for field in condition_fields
+        }
+        conditions_consistent = all(
+            len(values) == 1 for values in condition_values.values()
+        )
+        objectives: set[str] = set()
+        variants: dict[str, list[sqlite3.Row]] = {}
+        baselines: set[str] = set()
+        starting_states: dict[int, dict[str, Any]] = {}
+        world_baseline_fields = (
+            "world_boot_id", "room_vnum", "level", "xp",
+            "quest_points", "total_quest_points",
+        )
+        for row in rows:
+            variant = str(row["variant"])
+            variants.setdefault(variant, []).append(row)
+            try:
+                objective = json.loads(row["objective_json"])
+            except (TypeError, json.JSONDecodeError):
+                objective = None
+            try:
+                objective_key = _canonical_json(objective)
+            except (TypeError, ValueError):
+                objective_key = "<invalid>"
+            if not isinstance(objective, dict):
+                objective_key = "<invalid>"
+            objectives.add(objective_key)
+            try:
+                starting_state = json.loads(row["starting_state_json"])
+            except (TypeError, json.JSONDecodeError):
+                starting_state = None
+            if isinstance(starting_state, dict):
+                starting_states[int(row["id"])] = starting_state
+                baselines.add(_canonical_json({
+                    field: starting_state.get(field)
+                    for field in world_baseline_fields
+                }))
+            else:
+                starting_states[int(row["id"])] = {}
+
+        metric_fields = tuple(sorted(_EXPERIMENT_METRIC_FIELDS))
+        variant_summaries: list[dict[str, Any]] = []
+        for variant, variant_rows in sorted(variants.items()):
+            completed: list[tuple[sqlite3.Row, dict[str, Any]]] = []
+            for row in variant_rows:
+                raw_metrics = row["metrics_json"]
+                if raw_metrics is None:
+                    continue
+                try:
+                    metrics = json.loads(raw_metrics)
+                    metrics = _validate_experiment_metrics(metrics)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                completed.append((row, metrics))
+
+            means = {
+                field: round(
+                    sum(float(metrics[field]) for _, metrics in completed)
+                    / len(completed),
+                    2,
+                )
+                for field in metric_fields
+            } if completed else {}
+            xp_rates = [
+                float(metrics["net_xp"]) * 60.0 / float(metrics["elapsed_seconds"])
+                for _, metrics in completed
+                if float(metrics["elapsed_seconds"]) > 0
+            ]
+            bot_errors = sum(
+                bool(str(row["bot_error"] or "").strip())
+                for row, _ in completed
+            )
+            game_defects = sum(
+                bool(str(row["game_defect"] or "").strip())
+                for row, _ in completed
+            )
+            both_attributions = sum(
+                bool(str(row["bot_error"] or "").strip())
+                and bool(str(row["game_defect"] or "").strip())
+                for row, _ in completed
+            )
+            unclassified = sum(
+                not str(row["bot_error"] or "").strip()
+                and not str(row["game_defect"] or "").strip()
+                for row, _ in completed
+            )
+            variant_summaries.append({
+                "variant": variant,
+                "registered_arms": len(variant_rows),
+                "completed_arms": len(completed),
+                "mean_metrics": means,
+                "mean_net_xp_per_minute": (
+                    round(sum(xp_rates) / len(xp_rates), 2) if xp_rates else None
+                ),
+                "attribution": {
+                    "bot_error_arms": bot_errors,
+                    "game_defect_arms": game_defects,
+                    "both_arms": both_attributions,
+                    "unclassified_arms": unclassified,
+                },
+                "starting_profiles": [
+                    {
+                        "experiment_id": int(row["id"]),
+                        "run_id": (
+                            int(row["run_id"])
+                            if row["run_id"] is not None else None
+                        ),
+                        **{
+                            field: state.get(field)
+                            for field in (
+                                "name", "race", "sex", "character_class",
+                                "subclass",
+                                "level", "xp", "world_boot_id", "room_vnum",
+                                "hp", "max_hp", "mana", "max_mana", "move",
+                                "max_move", "stats", "currencies", "inventory",
+                                "equipment", "quest_points", "total_quest_points",
+                            )
+                        },
+                    }
+                    for row in variant_rows
+                    for state in [starting_states.get(int(row["id"]), {})]
+                ],
+            })
+
+        return {
+            "comparison_key": comparison_key,
+            "conditions": {
+                field: values[0] if len(values) == 1 else values
+                for field, values in condition_values.items()
+            },
+            "conditions_consistent": conditions_consistent,
+            "objective_consistent": (
+                len(objectives) == 1 and "<invalid>" not in objectives
+            ),
+            "world_baseline_consistent": len(baselines) == 1,
+            "world_baseline_fields": list(world_baseline_fields),
+            "variants": variant_summaries,
+        }
 
     def get_latest_campaign_for_character(
         self,
@@ -3091,6 +3817,7 @@ class RunStorage:
         execution_status: str | None = None,
         objective_outcome: str | None = None,
         safety_outcome: str | None = None,
+        prefer_segment_objective_outcome: bool = False,
         metrics: dict[str, Any] | None = None,
     ) -> None:
         campaign_row = self.connection.execute(
@@ -3115,7 +3842,10 @@ class RunStorage:
         )
         if linked_outcomes is not None:
             execution_status = str(linked_outcomes.get("execution") or "unknown")
-            objective_outcome = str(linked_outcomes.get("objective") or "unknown")
+            if not prefer_segment_objective_outcome:
+                objective_outcome = str(
+                    linked_outcomes.get("objective") or "unknown"
+                )
             safety_outcome = str(linked_outcomes.get("safety") or "unknown")
         try:
             start_state = json.loads(campaign_row["start_state_json"] or "{}")
@@ -3158,7 +3888,7 @@ class RunStorage:
             SET run_id = ?, finished_at = ?, status = ?, end_state_json = ?,
                 command_count = ?, duration_seconds = ?, error = ?,
                 execution_status = ?, objective_outcome = ?, safety_outcome = ?,
-                metrics_json = ?
+                objective_outcome_override = ?, metrics_json = ?
             WHERE id = ?
             """,
             (
@@ -3172,6 +3902,7 @@ class RunStorage:
                 execution_status or status,
                 objective_outcome,
                 safety_outcome or "unknown",
+                int(prefer_segment_objective_outcome),
                 json.dumps(segment_metrics, sort_keys=True),
                 segment_id,
             ),
@@ -3542,11 +4273,19 @@ class RunStorage:
             return []
         ids = tuple(int(row["id"]) for row in id_rows)
         placeholders = ", ".join("?" for _ in ids)
+        columns = self._table_columns("campaign_segments")
+        outcomes = (
+            ", execution_status, objective_outcome, safety_outcome"
+            if {"execution_status", "objective_outcome", "safety_outcome"}
+            <= columns
+            else ", NULL AS execution_status, NULL AS objective_outcome, "
+            "NULL AS safety_outcome"
+        )
         rows = list(
             self.connection.execute(
                 f"""
                 SELECT id, campaign_id, sequence, phase, run_id, started_at,
-                       finished_at, status, start_state_json, end_state_json,
+                       finished_at, status{outcomes}, start_state_json, end_state_json,
                        command_count, duration_seconds, error
                 FROM campaign_segments
                 WHERE id IN ({placeholders})
@@ -3557,6 +4296,56 @@ class RunStorage:
         )
         self._recent_campaign_segments_cache[cache_key] = rows
         return list(rows)
+
+    def list_recent_campaign_segment_state_projections(
+        self,
+        campaign_id: int,
+        *,
+        state_fields: Collection[str],
+        limit: int = 256,
+    ) -> list[sqlite3.Row]:
+        """Read selected state fields from a strictly bounded segment tail."""
+        if type(campaign_id) is not int or campaign_id < 1:
+            raise ValueError("campaign_id must be a positive integer")
+        if type(limit) is not int or not 1 <= limit <= 256:
+            raise ValueError("limit must be between 1 and 256")
+        fields = tuple(dict.fromkeys(str(field) for field in state_fields))
+        if not fields:
+            raise ValueError("state_fields must not be empty")
+        start_projection, start_parameters = _campaign_state_projection(
+            "segment.start_state_json",
+            fields,
+        )
+        end_projection, end_parameters = _campaign_state_projection(
+            "segment.end_state_json",
+            fields,
+        )
+        return list(
+            self.connection.execute(
+                f"""
+                WITH recent AS MATERIALIZED (
+                    SELECT id, sequence
+                    FROM campaign_segments
+                    WHERE campaign_id = ?
+                    ORDER BY sequence DESC
+                    LIMIT ?
+                )
+                SELECT segment.id, recent.sequence, segment.phase,
+                       segment.status, segment.run_id,
+                       {start_projection} AS start_state_json,
+                       {end_projection} AS end_state_json
+                FROM recent
+                JOIN campaign_segments AS segment ON segment.id = recent.id
+                ORDER BY recent.sequence
+                """,
+                (
+                    campaign_id,
+                    limit,
+                    *start_parameters,
+                    *end_parameters,
+                ),
+            ).fetchall()
+        )
 
     def get_latest_campaign_segment_for_phase(
         self,
@@ -3584,6 +4373,45 @@ class RunStorage:
         return self.connection.execute(
             "SELECT * FROM campaign_segments WHERE id = ?",
             (row["id"],),
+        ).fetchone()
+
+    def get_indexed_campaign_phase_segment_id(
+        self,
+        campaign_id: int,
+        phase: str,
+    ) -> int | None:
+        """Resolve one old phase identity without scanning checkpoint payloads."""
+        if type(campaign_id) is not int or campaign_id < 1 or not phase:
+            raise ValueError("a positive campaign id and exact phase are required")
+        if not self.campaign_phase_index_available():
+            return None
+        row = self.connection.execute(
+            """
+            SELECT id FROM campaign_segments
+            INDEXED BY idx_campaign_segments_campaign_phase
+            WHERE campaign_id = ? AND phase = ?
+            ORDER BY sequence DESC LIMIT 1
+            """,
+            (campaign_id, phase),
+        ).fetchone()
+        return int(row["id"]) if row is not None else None
+
+    def get_campaign_segment_by_id(
+        self,
+        campaign_id: int,
+        segment_id: int,
+    ) -> sqlite3.Row | None:
+        """Load one previously recorded segment by its durable identity."""
+        if type(campaign_id) is not int or campaign_id < 1:
+            raise ValueError("campaign_id must be a positive integer")
+        if type(segment_id) is not int or segment_id < 1:
+            raise ValueError("segment_id must be a positive integer")
+        return self.connection.execute(
+            """
+            SELECT * FROM campaign_segments
+            WHERE campaign_id = ? AND id = ?
+            """,
+            (campaign_id, segment_id),
         ).fetchone()
 
     def get_latest_campaign_segment_summary_for_phase(
@@ -3759,17 +4587,16 @@ class RunStorage:
                 (run_id, limit),
             ).fetchall()
             if rows:
-                return list(reversed(rows))
-            if not self._table_columns("run_current_states"):
-                return []
-            current = self.connection.execute(
-                """
-                SELECT event_id AS id, run_id, event_id AS source_event_id,
-                       timestamp, 'current_state' AS reason, state_json
-                FROM run_current_states WHERE run_id = ?
-                """,
-                (run_id,),
-            ).fetchone()
+                ordered = list(reversed(rows))
+                current = self._current_state_row(run_id)
+                if (
+                    current is not None
+                    and self._state_row_event_id(current)
+                    > self._state_row_event_id(ordered[-1])
+                ):
+                    ordered.append(current)
+                return ordered[-limit:]
+            current = self._current_state_row(run_id)
             return [current] if current is not None else []
         cursor = self.connection.execute(
             """
@@ -3781,11 +4608,21 @@ class RunStorage:
             (run_id,),
         )
         rows = list(cursor.fetchall())
-        if rows:
-            return rows
+        current = self._current_state_row(run_id)
+        if not rows:
+            return [current] if current is not None else []
+        if (
+            current is not None
+            and self._state_row_event_id(current)
+            > self._state_row_event_id(rows[-1])
+        ):
+            rows.append(current)
+        return rows
+
+    def _current_state_row(self, run_id: int) -> sqlite3.Row | None:
         if not self._table_columns("run_current_states"):
-            return []
-        current = self.connection.execute(
+            return None
+        return self.connection.execute(
             """
             SELECT event_id AS id, run_id, event_id AS source_event_id,
                    timestamp, 'current_state' AS reason, state_json
@@ -3793,7 +4630,11 @@ class RunStorage:
             """,
             (run_id,),
         ).fetchone()
-        return [current] if current is not None else []
+
+    @staticmethod
+    def _state_row_event_id(row: sqlite3.Row) -> int:
+        value = row["source_event_id"]
+        return int(value) if value is not None else 0
 
     def get_latest_state_snapshot(self, run_id: int) -> sqlite3.Row | None:
         cursor = self.connection.execute(
@@ -3807,18 +4648,13 @@ class RunStorage:
             (run_id,),
         )
         row = cursor.fetchone()
-        if row is not None:
-            return row
-        if not self._table_columns("run_current_states"):
-            return None
-        return self.connection.execute(
-            """
-            SELECT event_id AS id, run_id, event_id AS source_event_id,
-                   timestamp, 'current_state' AS reason, state_json
-            FROM run_current_states WHERE run_id = ?
-            """,
-            (run_id,),
-        ).fetchone()
+        current = self._current_state_row(run_id)
+        if current is not None and (
+            row is None
+            or self._state_row_event_id(current) > self._state_row_event_id(row)
+        ):
+            return current
+        return row if row is not None else current
 
     def get_latest_character_state(self, character_name: str) -> dict[str, Any] | None:
         """Return the newest persisted snapshot for one named character."""

@@ -86,7 +86,9 @@ class ScenarioRunner:
                 kind=kind,
                 payload=payload,
                 timestamp=event.timestamp,
-                current_state=(self.character_state.to_dict() if changed else None),
+                current_state=(
+                    self.character_state.to_compact_dict() if changed else None
+                ),
             )
 
         try:

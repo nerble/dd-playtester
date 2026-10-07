@@ -4375,6 +4375,10 @@ def rank_hunt_candidates(
                 )
             ):
                 continue
+            combat_joining_special = _source_mobile_has_combat_joining_special(
+                world,
+                hazard.vnum,
+            )
             route_hazard_mobile_vnums.add(hazard.vnum)
             if hazard.aggressive:
                 route_aggressive_mobile_vnums.add(hazard.vnum)
@@ -4389,10 +4393,7 @@ def rank_hunt_candidates(
                 if hazard.aggressive
                 else "reachable special mobile"
                 if unsafe_special
-                and not _source_mobile_has_combat_joining_special(
-                    world,
-                    hazard.vnum,
-                )
+                and not combat_joining_special
                 else "reachable combat-joining special"
             )
             hazards.append(
@@ -4405,15 +4406,30 @@ def rank_hunt_candidates(
                 else "aggressive wanderer"
                 if hazard.aggressive
                 else "combat-joining special"
+                if combat_joining_special
+                else "special mobile"
             )
             hazard_article = (
                 "an" if hazard_noun.startswith("aggressive") else "a"
             )
             if unsafe_special:
                 dangerous = True
-                autonomy_rejections.append(
-                    "a non-safe special mobile can reach the route"
+                specials = tuple(world.mobile_specials.get(hazard.vnum, ()))
+                economic_only = bool(specials) and all(
+                    source_special_profile(special).risk == "economic"
+                    for special in specials
                 )
+                autonomy_rejections.append(
+                    "an economic special mobile can reach the route"
+                    if economic_only
+                    else "a non-safe special mobile can reach the route"
+                )
+                if not (
+                    hazard.attack_programs
+                    or hazard.aggressive
+                    or combat_joining_special
+                ):
+                    continue
             if (
                 hazard.attack_programs
                 and _source_mobile_has_deterministic_attack_program(hazard)
@@ -5679,15 +5695,7 @@ def _route_hazard_rooms(
                     and level_max > character_level - 5
                 )
                 or mobile.attack_programs
-                or (
-                    reset.maximum_count
-                    > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
-                    and _source_aggressive_reset_can_reach_character(
-                        world,
-                        mobile,
-                        character_level=character_level,
-                    )
-                )
+                or reset.maximum_count > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
             ):
                 blocked.add(room_vnum)
                 break
