@@ -84,6 +84,8 @@ class Fastwalk:
     route_economic_special_mobile_vnums: tuple[int, ...] = ()
     route_economic_quest_identity: tuple[int, int, int] | None = None
     route_economic_max_copper: int | None = None
+    # Ordinary XP travel has its own runtime purse gate, never a quest waiver.
+    route_economic_hunt_mobile_vnums: tuple[int, ...] = ()
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -155,6 +157,14 @@ FASTWALKS = (
 # Source-backed hunt routes omitted from show-fastwalks, which lists only the
 # site's official fastwalks.
 MAP_ROUTES = (
+    Fastwalk(
+        "vampire catacombs bevan",
+        25,
+        35,
+        "6sw2swsw4se;open south;s2w5s2w3s2w5swnw2swsd2s2w;"
+        "4e2n8e4s2esenes6e;4ne2n",
+        recall_after_loot=True,
+    ),
     Fastwalk("foundry", 1, 6, "2s3w4ne2d2n", recall_after_loot=True),
     Fastwalk(
         "circus midget",
@@ -457,8 +467,24 @@ MAP_ROUTES = (
         "minotaur gatekeeper",
         31,
         35,
-        "2s6e4s2ese2ed3ne3se2sw3sd4se2s2u;open south;ses2e",
+        "2s6e4s2eseed3ne3se2sw3sd4se2s2u;open south;ses2e",
         recall_after_loot=True,
+        live_navigation_target="2360",
+        live_navigation_entry_room="2351",
+        live_navigation_start_index=37,
+        live_navigation_resume_index=40,
+        live_navigation_room_vnums=(
+            "2351",
+            "2352",
+            "2354",
+            "2355",
+            "2356",
+            "2357",
+            "2358",
+            "2359",
+            "2360",
+        ),
+        live_navigation_preferred_destinations=("2358",),
     ),
     Fastwalk(
         "galaxy cancer",

@@ -72,6 +72,20 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         "north",
     )
 
+    vampire = route_named("Vampire Catacombs Bevan")
+    assert (vampire.minimum_level, vampire.maximum_level) == (25, 35)
+    assert len(vampire.commands) == 88
+    assert vampire.commands[-7:] == (
+        "north",
+        "north",
+        "north",
+        "north",
+        "east",
+        "north",
+        "north",
+    )
+    assert vampire.recall_after_loot is True
+
     captain = route_named("Foundry Captain")
     assert captain.minimum_level == 7
     assert captain.commands[-3:] == ("west", "open south", "south")
@@ -723,6 +737,45 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         "north",
     )
     assert retriever.recall_after_loot is True
+
+
+def test_minotaur_gatekeeper_route_uses_the_valley_exit() -> None:
+    route = route_named("minotaur gatekeeper")
+
+    assert (route.minimum_level, route.maximum_level) == (31, 35)
+    assert route.commands[15:21] == (
+        "east",
+        "east",
+        "down",
+        "north",
+        "north",
+        "north",
+    )
+    assert route.live_navigation_target == "2360"
+    assert route.live_navigation_entry_room == "2351"
+    assert route.live_navigation_start_index == 37
+    assert route.live_navigation_resume_index == 40
+    assert set(route.live_navigation_room_vnums) == {
+        "2351",
+        "2352",
+        "2354",
+        "2355",
+        "2356",
+        "2357",
+        "2358",
+        "2359",
+        "2360",
+    }
+    assert route.commands[40:] == (
+        "up",
+        "up",
+        "open south",
+        "south",
+        "east",
+        "south",
+        "east",
+        "east",
+    )
 
 
 @pytest.mark.parametrize(
