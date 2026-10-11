@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import dd4tester.cli
 from dd4tester.campaign import CampaignResult
 from dd4tester.cli import main
-from dd4tester.equipment import GearSourcePlacement
+from dd4tester.equipment import GearCatalog, GearSourcePlacement
 from dd4tester.lease import CampaignLease, campaign_lease_path
 from dd4tester.hunt_candidates import ObjectSource, ResourcePlacement, WorldSource
 from dd4tester.matrix import (
@@ -542,6 +542,71 @@ def test_show_combat_readiness_reports_output_and_blockers(
     )
     assert captured_alignment["value"] == 1000
     assert captured_alignment["level_ceiling_offset"] == 9
+
+
+def test_readiness_gear_uses_exact_worn_vnum_and_skips_ambiguous_names() -> None:
+    worn_weapon = ObjectSource(
+        vnum=6104,
+        keywords="branch",
+        short_description="a long, grey branch",
+        item_type=5,
+        values=(),
+        source_cost=0,
+        wear_flags=8193,
+        affects=((18, -2),),
+    )
+    duplicate_light = ObjectSource(
+        vnum=6103,
+        keywords="branch",
+        short_description="a long, grey branch",
+        item_type=1,
+        values=(),
+        source_cost=0,
+        wear_flags=16385,
+    )
+    plain_circlet = ObjectSource(
+        vnum=108,
+        keywords="silver circlet",
+        short_description="a silver circlet",
+        item_type=8,
+        values=(),
+        source_cost=0,
+        wear_flags=5,
+        affects=((3, 1),),
+    )
+    hitpoint_circlet = ObjectSource(
+        vnum=20631,
+        keywords="silver circlet",
+        short_description="a silver circlet",
+        item_type=9,
+        values=(),
+        source_cost=0,
+        wear_flags=5,
+        affects=((13, 80),),
+    )
+    catalog = GearCatalog(
+        {
+            item.vnum: item
+            for item in (
+                worn_weapon,
+                duplicate_light,
+                plain_circlet,
+                hitpoint_circlet,
+            )
+        }
+    )
+
+    items = dd4tester.cli._readiness_current_gear_items(
+        {
+            "equipment": [{"vnum": 6104, "name": "a long, grey branch"}],
+            "inventory": [[{"short_desc": "a silver circlet"}]],
+        },
+        catalog,
+        character_class="warrior",
+        subclass="knight",
+    )
+
+    assert [item.vnum for item in items] == [6104]
 
 
 def test_readiness_quest_record_keeps_request_history_out_of_live_gates() -> None:
@@ -2781,6 +2846,45 @@ def test_show_resource_sources_reports_exact_object_and_hazards(
     assert "target reset capacity exceeds one" in captured.out
 
 
+def test_show_resource_sources_accepts_underwater_alias(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "load_world_source",
+        lambda _source, *, include_all_areas: object(),
+    )
+
+    def rank_resources(_world, **kwargs):
+        assert kwargs["effect"] == "water-breathing"
+        return []
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "rank_resource_sources",
+        rank_resources,
+    )
+    exit_code = main(
+        [
+            "show-resource-sources",
+            "--level",
+            "30",
+            "--effect",
+            "underwater",
+            "--source",
+            str(tmp_path / "area"),
+            "--database",
+            str(tmp_path / "missing.sqlite3"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Placements shown: 0 of 0" in captured.out
+
+
 def test_show_hunt_candidates_ignores_hp_from_a_different_level(
     tmp_path,
     capsys,
@@ -3108,6 +3212,28 @@ def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
                     "sanctuary_required_count": 1,
                     "no_sanctuary_count": 1,
                     "same_boot_below_band_count": 1,
+                    "sanctuary_required_candidates": [{
+                        "policy_id": "source-ranked-hunt-guard-102-202-25",
+                        "selection_pool": "current",
+                        "target": "a sanctuary target",
+                        "mobile_vnum": 102,
+                        "area_file": "example.are",
+                        "room_vnum": 202,
+                        "room_name": "The Guard Room",
+                        "level_range": [25, 26],
+                        "base_hp_range": [10, 200],
+                        "peak_round_damage": 55,
+                        "equipped_weapons": ["a guard's sword"],
+                        "specials": ["spec_cast_cleric"],
+                        "boot_kills": 0,
+                        "route_hazards": ["a source route risk"],
+                        "same_boot_status": "fresh",
+                        "same_boot_loss_count": 2,
+                        "unprotected_fallback_allowed": True,
+                        "same_boot_blockers": [
+                            "two same-boot XP losses close this route"
+                        ],
+                    }],
                     "no_sanctuary_candidates": [{
                         "policy_id": "source-ranked-hunt-example-25",
                         "selection_pool": "recent-mobile-kill",
@@ -3155,6 +3281,18 @@ def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
     assert "Frontier diagnosis: no executable source-ranked frontier" in captured.out
     assert "candidates=12 current-band=3 autonomous-safe=2" in captured.out
     assert "Frontier blockers: sanctuary reserve required: 1" in captured.out
+    assert "Sanctuary-required frontier options (diagnostic only):" in captured.out
+    assert "a sanctuary target [102] at The Guard Room" in captured.out
+    assert "HP 10-200; peak 55; weapons=a guard's sword" in captured.out
+    assert (
+        "specials=spec_cast_cleric; boot kills=0; losses=2; last=fresh; "
+        "fallback screen=passed"
+    ) in captured.out
+    assert (
+        "selection blockers: two same-boot XP losses close this route"
+        in captured.out
+    )
+    assert "route: a source route risk" in captured.out
     assert "No-sanctuary frontier options (diagnostic only):" in captured.out
     assert "a plain target [103] at The Test Room" in captured.out
     assert "pool=recent-mobile-kill" in captured.out

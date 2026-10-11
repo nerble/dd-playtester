@@ -10,6 +10,7 @@ from .hunt_candidates import mobile_expected_round_damage
 
 
 COMBAT_WAIT_SECONDS = 3.25  # Twelve wait pulses, then the next 4-Hz input pulse.
+TIMED_SKILL_WAITS = {"kick": 2.25, "headbutt": 6.25}
 ACK_TIMEOUT_SECONDS = 10.0
 
 # const.c damage nouns for the registered direct spells. Authorization stays
@@ -57,6 +58,8 @@ class CombatCommandWindow:
             return
         match = re.fullmatch(r"cast '([^']+)' .+", command)
         noun = SPELL_NOUNS.get(match.group(1)) if match else None
+        if command in TIMED_SKILL_WAITS:
+            noun = command
         if noun is None and not command.startswith("kill "):
             return
         self.command, self.noun = command, noun
@@ -64,7 +67,7 @@ class CombatCommandWindow:
         self.issued_at = now
         self.suspended = False
         self.acknowledged_at = None
-        self.ready_at = now + COMBAT_WAIT_SECONDS
+        self.ready_at = now + TIMED_SKILL_WAITS.get(command, COMBAT_WAIT_SECONDS)
         self.buffer = ""
         self.sent += 1
 
@@ -84,7 +87,13 @@ class CombatCommandWindow:
         if not self.pending and not watching_kill_reply:
             return
         self.buffer = (self.buffer + text)[-4000:]
-        lines = [" ".join(line.casefold().split()) for line in self.buffer.splitlines()]
+        response = self.buffer
+        if self.command in TIMED_SKILL_WAITS:
+            response = re.sub(
+                r"<\d+/\d+ hits [^>\r\n]* move \[[^\]\r\n]+\]>",
+                "\n", response,
+            )
+        lines = [" ".join(line.casefold().split()) for line in response.splitlines()]
         if (
             self.command is not None
             and self.command.startswith("kill ")
@@ -139,7 +148,28 @@ class CombatCommandWindow:
         self.suspended = False
         self.acknowledged += 1
         # A reply proves execution, not completion of the ensuing WAIT_STATE.
-        self.ready_at = max(self.ready_at, now + COMBAT_WAIT_SECONDS)
+        wait = TIMED_SKILL_WAITS.get(self.command, COMBAT_WAIT_SECONDS)
+        if self.command == "headbutt" and damage:
+            succeeded = any(
+                (
+                    line.startswith("your headbutt causes ")
+                    and " to lose " in line
+                )
+                or line.startswith("you smash your head into ")
+                for line in lines
+            )
+            if not succeeded and any(
+                re.fullmatch(
+                    rf"your headbutt misses (?:the |an |a )?"
+                    rf"{re.escape(self.target)}[.!]",
+                    line,
+                )
+                for line in lines
+            ):
+                # A failed learned-percent roll takes one violence pulse.
+                self.ready_at = now + COMBAT_WAIT_SECONDS
+                return
+        self.ready_at = max(self.ready_at, now + wait)
 
     def blocked(self, now: float) -> bool:
         return self.suspended or self.pending or now < self.ready_at

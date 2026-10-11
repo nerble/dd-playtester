@@ -8,8 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from .decisions import classify_decision
+from .observations import strip_ansi_stream
 from .report_migrations import migrate_legacy_run_context
+from .shops import SALE_REJECTION_LINE as _SALE_REJECTION_LINE
 from .storage import RUN_REPORT_SUMMARY_VERSION, RunStorage
+from .water import can_breathe_underwater
 
 
 def build_run_report(
@@ -138,6 +141,15 @@ def _build_run_report_uncached(
         initial_state=initial_state,
         scenario_name=str(run["scenario_name"] or ""),
     )
+    logout_confirmed = any(
+        event.get("kind") == "failed_local_recall_logout"
+        and isinstance(event.get("payload"), dict)
+        and event["payload"].get("acknowledged") is True
+        for event in events
+    )
+    calculated_safety = _safety_outcome(
+        run, final_state, game_event_counts, logout_confirmed=logout_confirmed,
+    )
     outcomes = {
         "execution": run["execution_status"] or run["status"],
         "objective": (
@@ -145,9 +157,8 @@ def _build_run_report_uncached(
             if calculated_objective != "unknown"
             else "unknown"
         ),
-        "safety": run["safety_outcome"] or _safety_outcome(
-            run, final_state, game_event_counts,
-        ),
+        "safety": (calculated_safety if calculated_safety in {"unsafe", "loss"}
+                   else run["safety_outcome"] or calculated_safety),
     }
     commentary = _commentary(
         events,
@@ -185,6 +196,11 @@ def _build_run_report_uncached(
             "event_counts": dict(sorted(event_counts.items())),
             "game_event_counts": dict(sorted(game_event_counts.items())),
             "state_snapshot_count": len(snapshots),
+            "logout_confirmation": next(
+                (event["payload"] for event in reversed(events)
+                 if event["kind"] == "logout_confirmation"),
+                None,
+            ),
         },
     }
 
@@ -212,6 +228,11 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"Duration: {_format_duration(run['duration_seconds'])}",
         f"Transcript: {run['transcript_path'] or '-'}",
         f"Character: {identity}",
+        *(
+            [f"Logout: {(report['evidence']['logout_confirmation'] or {}).get('status', 'unknown')}"]
+            if (report.get("evidence") or {}).get("logout_confirmation")
+            else []
+        ),
         "",
         "## Progress",
         "",
@@ -794,6 +815,19 @@ def _progress_summary(
         _fraction(snapshot["state"].get("hp"), snapshot["state"].get("max_hp"))
         for snapshot in snapshots
     ]
+    # Boundary checkpoints can miss damage that was healed within the run.
+    # Reuse the ordered observations instead of restoring per-read snapshots.
+    for event in game_events:
+        payload = event.get("payload", {})
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            continue
+        if payload.get("type") == "vitals_changed":
+            health_samples.append(_fraction(_campaign_int(data.get("hp")),
+                                             _campaign_int(data.get("maxhp"))))
+        elif payload.get("type") == "prompt_seen":
+            health_samples.append(_fraction(_campaign_int(data.get("hits")),
+                                             _campaign_int(data.get("max_hits"))))
     health_samples = [sample for sample in health_samples if sample is not None]
     return {
         "level": _change(initial.get("level"), final.get("level")),
@@ -1306,13 +1340,6 @@ def _format_confirmed_kills(kills: list[dict[str, Any]]) -> str:
     return ", ".join(entries) or "none"
 
 
-_SALE_REJECTION_LINE = re.compile(
-    r"^\s*(?P<shop>[^\r\n]+?)\s+looks uninterested in\s+"
-    r"(?P<item>[^\.\r\n]+?)\.\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-
 def _sale_rejections_from_events(
     events: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -1585,9 +1612,30 @@ def _objective_outcome(
             training_state["campaign_training_audit"] = final_training_audit
         checks.append(_training_gain_observed(objective, training_state))
     if objective_kind == "flight_active":
-        checks.append(_named_affect_active(final_state, "fly", "flight"))
-    if objective_kind == "subclass_selection":
-        expected_subclass = str(objective.get("subclass") or "").strip().casefold()
+        minimum_flight_duration = objective.get("minimum_flight_duration")
+        try:
+            minimum_flight_duration = (
+                None
+                if minimum_flight_duration is None
+                else max(1, int(minimum_flight_duration))
+            )
+        except (TypeError, ValueError):
+            checks.append(None)
+        else:
+            checks.append(
+                _named_affect_active(
+                    final_state,
+                    "fly",
+                    "flight",
+                    minimum_duration=minimum_flight_duration,
+                )
+            )
+    if (objective_kind == "subclass_selection"
+            or (not objective_kind and str(scenario_name or "").casefold().startswith("choose-subclass:"))):
+        character = run_context.get("character")
+        requested_subclass = character.get("subclass") if isinstance(character, dict) else None
+        expected_subclass = str(objective.get("subclass")
+                                or requested_subclass or "").strip().casefold()
         observed_subclass = final_state.get("subclass")
         checks.append(
             None if not expected_subclass or observed_subclass is None
@@ -1755,6 +1803,8 @@ def _named_affect_active(
     final_state: dict[str, Any],
     name: str,
     effect: str,
+    *,
+    minimum_duration: int | None = None,
 ) -> bool | None:
     if "affects" not in final_state or final_state.get("affects") is None:
         return None
@@ -1775,6 +1825,11 @@ def _named_affect_active(
             ):
                 duration = value.get("duration")
                 try:
+                    if minimum_duration is not None:
+                        return (
+                            duration is not None
+                            and int(duration) >= minimum_duration
+                        )
                     return duration is None or int(duration) > 0
                 except (TypeError, ValueError):
                     return False
@@ -1872,9 +1927,14 @@ def _nested_strings(value: Any) -> list[str]:
         stripped = value.lstrip()
         if stripped.startswith(("[", "{")):
             try:
-                decoded = json.loads(value)
+                cleaned, pending_escape = strip_ansi_stream(value)
+                if pending_escape:
+                    return []
+                decoded = json.loads(cleaned)
             except (TypeError, json.JSONDecodeError):
-                pass
+                # A raw item selector is a single description, not a JSON list.
+                if re.match(r"^\[#\d+\]", stripped) is None:
+                    return []
             else:
                 if not isinstance(decoded, str):
                     return _nested_strings(decoded)
@@ -1890,12 +1950,11 @@ def _nested_strings(value: Any) -> list[str]:
         )
         if description is not None:
             try:
-                quantity = int(
-                    value.get("quan")
-                    or value.get("quantity")
-                    or value.get("count")
-                    or 1
-                )
+                quantity = int(next(
+                    (value[key] for key in ("quan", "quantity", "count")
+                     if key in value and value[key] is not None),
+                    1,
+                ))
             except (TypeError, ValueError):
                 quantity = 1
             return [description.casefold()] * max(0, quantity)
@@ -1986,8 +2045,13 @@ def _required_command_responses_met(
 
 def _safety_outcome(
     run: Any, final_state: dict[str, Any], game_event_counts: Counter[str],
+    *, logout_confirmed: bool = False,
 ) -> str:
     if game_event_counts["character_died"] or final_state.get("dead") is True:
+        return "unsafe"
+    if (not logout_confirmed and run["status"] in {"failed", "interrupted"}
+            and str(final_state.get("sector")) in {"8", "12", "underwater", "underwater_ground"}
+            and not can_breathe_underwater(final_state)):
         return "unsafe"
     if game_event_counts["experience_lost"] or final_state.get("xp_loss_observed"):
         return "loss"

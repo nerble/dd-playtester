@@ -1,6 +1,7 @@
 """Source-bounded city shopping and one session-local defensive interruption."""
 
 from dataclasses import dataclass, replace
+import json
 from typing import Any, Mapping, Sequence
 
 from .fastwalks import Fastwalk
@@ -19,6 +20,8 @@ MAGIC_SHOP_ROUTE_ROOMS = frozenset({
     "3017", "3012", "3033",
 })
 CITY_TRANSIT_KEY = "campaign_city_shop_transit"
+FIELD_CITY_OBSERVATION_KEY = "campaign_field_city_observation"
+PRODUCTIVE_CITY_CLEARANCE_KEY = "campaign_productive_city_clearances"
 GMCP_ALIGNMENT_HIDDEN_VALUE = 50000
 GMCP_ALIGNMENT_REVEAL_LEVEL = 10
 ALIGNMENT_MIN = -1000
@@ -30,6 +33,86 @@ _FASTWALK_DIRECTION_CODES = {
     "north": "n", "east": "e", "south": "s", "west": "w",
     "up": "u", "down": "d",
 }
+
+
+def field_city_observation_request(
+    state: Mapping[str, Any], segments: Sequence[Any],
+) -> dict[str, Any] | None:
+    """Observe one saved wandering obstruction without reopening its route."""
+    prior = state.get("campaign_field_city_preflight")
+    if not isinstance(prior, Mapping):
+        return None
+    level, boot = state.get("level"), state.get("world_boot_id")
+    revision = state.get("campaign_source_revision")
+    run_id = prior.get("run_id")
+    rooms = prior.get("route_rooms")
+    attempt = state.get(FIELD_CITY_OBSERVATION_KEY)
+    if (
+        not boot or not revision or type(level) is not int
+        or type(run_id) is not int or run_id <= 0
+        or not isinstance(prior.get("policy_id"), str) or not prior["policy_id"].strip()
+        or prior.get("complete") is not True or prior.get("blocked") is not True
+        or prior.get("boot_id") != boot or prior.get("level") != level
+        or prior.get("stopped_before_departure") is not True
+        or prior.get("outbound_index") != 0
+        or type(prior.get("wait_attempts")) is not int or prior["wait_attempts"] < 3
+        or not isinstance(rooms, (list, tuple)) or not rooms
+        or any(not isinstance(room, str) or not room.strip() for room in rooms)
+        or str(state.get("room_vnum")) != "3054"
+        or state.get("dead") is not False or state.get("in_combat") is not False
+        or state.get("enemies") not in (None, [], ())
+        or not isinstance(state.get("hp"), (int, float))
+        or not isinstance(state.get("max_hp"), (int, float))
+        or state["max_hp"] <= 0 or state["hp"] < state["max_hp"] * 0.95
+        or (
+            isinstance(attempt, Mapping) and attempt.get("prior_run_id") == run_id
+            and attempt.get("boot_id") == boot and attempt.get("level") == level
+        )
+    ):
+        return None
+    for raw in reversed(tuple(segments)[-8:]):
+        segment = dict(raw)
+        if segment.get("run_id") != run_id:
+            continue
+        if (
+            segment.get("status") != "success"
+            or segment.get("execution_status") != "success"
+            or segment.get("safety_outcome") != "safe"
+            or not segment.get("finished_at")
+            or not isinstance(segment.get("command_count"), int)
+            or segment["command_count"] <= 0
+            or segment.get("phase") != prior.get("policy_id")
+        ):
+            return None
+        try:
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+            return None
+        if (
+            end.get("campaign_field_city_preflight") != prior
+            or any(
+                start.get(key) != end.get(key) or end.get(key) != state.get(key)
+                for key in ("level", "world_boot_id", "campaign_source_revision", "xp", "campaign_xp_loss_total")
+            )
+            or any(start.get(key) is None for key in ("xp", "campaign_xp_loss_total"))
+            or str(start.get("room_vnum")) != "3054" or str(end.get("room_vnum")) != "3054"
+            or end.get("xp_loss_observed") is True
+            or end.get("dead") is not False or end.get("in_combat") is not False
+            or any(
+                (start.get(key) or []) != (end.get(key) or [])
+                for key in ("campaign_completed_kills", "campaign_objective_kills")
+            )
+        ):
+            return None
+        return {
+            "prior_run_id": run_id, "policy_id": prior["policy_id"],
+            "level": level, "boot_id": boot, "source_revision": revision,
+            "route_rooms": list(rooms), "status": "pending",
+        }
+    return None
 
 
 @dataclass(frozen=True)

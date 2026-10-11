@@ -15,6 +15,7 @@ _DATA_PATH = Path(__file__).with_name("data") / "training_priorities.json"
 _SUBCLASS_DATA_PATH = (
     Path(__file__).with_name("data") / "subclass_training_priorities.json"
 )
+_TRAINING_PLANNER_REVISION = 4
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _SKILL = re.compile(r"([A-Za-z][A-Za-z '-]{1,34}?):\s*(\d+)%")
 _BALANCE = re.compile(
@@ -175,7 +176,7 @@ def training_priorities_for(
 
 
 def training_policy_revision() -> str:
-    """Fingerprint executable training priorities, independent of campaign code."""
+    """Fingerprint priorities and the planner that chooses source-backed lessons."""
 
     def entries(priorities: tuple[TrainingPriority, ...]) -> list[dict[str, object]]:
         return [
@@ -193,6 +194,7 @@ def training_policy_revision() -> str:
         ]
 
     graph = {
+        "planner_revision": _TRAINING_PLANNER_REVISION,
         "classes": {
             name: entries(priorities)
             for name, priorities in sorted(training_priorities().items())
@@ -300,6 +302,7 @@ def plan_training_from_listing(
     teacher_teachings: Mapping[str, int] | None = None,
     skill_groups: Mapping[str, tuple[tuple[str, int], ...]] | None = None,
     stats: Mapping[str, object] | None = None,
+    skip_known_stop_when_teacher_capped: bool = False,
 ) -> tuple[TrainingChoice, ...]:
     """Plan from an observed listing, optionally requiring a positive source gain."""
     if teacher_teachings is not None and (skill_groups is None or stats is None):
@@ -323,6 +326,26 @@ def plan_training_from_listing(
         priority_ceiling_index = max(matching_ceiling_indexes, default=None)
     else:
         priority_ceiling_index = min(matching_ceiling_indexes, default=None)
+    skip_stop_boundary = False
+    if (
+        skip_known_stop_when_teacher_capped
+        and teacher_teachings is not None
+        and priority_ceiling in listing.known
+        and priority_ceiling_index is not None
+    ):
+        ceiling = priorities[priority_ceiling_index]
+        current = skills.get(ceiling.skill)
+        next_percent = (
+            practice_gain(
+                current,
+                teacher_capacity(teacher_teachings, ceiling.skill, skill_groups),
+                ceiling.practice_type,
+                stats,
+            )
+            if current is not None
+            else None
+        )
+        skip_stop_boundary = next_percent is None or next_percent <= current
 
     for index, selected in enumerate(priorities):
         eligible = not (
@@ -372,7 +395,7 @@ def plan_training_from_listing(
                 )
             )
             spent_types.add(selected.practice_type)
-        if index == priority_ceiling_index:
+        if index == priority_ceiling_index and not skip_stop_boundary:
             break
     return tuple(choices)
 

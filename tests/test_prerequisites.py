@@ -62,3 +62,17 @@ def test_bundled_snapshot_contains_mage_and_warlock_requirements() -> None:
     assert ("group majorp", 50) in {
         (entry.prerequisite, entry.minimum_percent) for entry in dragon_shield
     }
+
+
+def test_bundled_snapshot_tracks_current_knight_protection_gates() -> None:
+    source, entries = load_snapshot()
+    protection = requirements_for_skill(
+        entries,
+        class_name="knight",
+        skill="protect vs undead",
+    )
+
+    assert source["revision"] == "7953a0067e2dd96d34890661577f7852807734b1"
+    assert {
+        (entry.prerequisite, entry.minimum_percent) for entry in protection
+    } == {("knight base", 60), ("protect vs evil", 60)}

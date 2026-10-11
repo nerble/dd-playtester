@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/fromage-fraser/dd4",
-    "revision": "4cffee6551bda62b0c7accc439dfb5069712e2c0",
+  "revision": "adede97e1b9719bf6a38e1a2836462ce3d2e160e",
   "prerequisites": [
     {
       "class_name": "artist",
@@ -655,6 +655,18 @@
       "skill": "chant of protection",
       "prerequisite": "group music",
       "minimum_percent": 90
+    },
+    {
+      "class_name": "bard",
+      "skill": "chant of turning",
+      "prerequisite": "bard base",
+      "minimum_percent": 40
+    },
+    {
+      "class_name": "bard",
+      "skill": "chant of turning",
+      "prerequisite": "group music",
+      "minimum_percent": 80
     },
     {
       "class_name": "bard",
@@ -1654,6 +1666,12 @@
     },
     {
       "class_name": "cleric",
+      "skill": "detect undead",
+      "prerequisite": "cleric base",
+      "minimum_percent": 30
+    },
+    {
+      "class_name": "cleric",
       "skill": "dispel evil",
       "prerequisite": "group divine",
       "minimum_percent": 40
@@ -1978,6 +1996,24 @@
     },
     {
       "class_name": "cleric",
+      "skill": "mass protect vs evil",
+      "prerequisite": "cleric base",
+      "minimum_percent": 60
+    },
+    {
+      "class_name": "cleric",
+      "skill": "mass protect vs evil",
+      "prerequisite": "group protection",
+      "minimum_percent": 80
+    },
+    {
+      "class_name": "cleric",
+      "skill": "mass protect vs evil",
+      "prerequisite": "protect vs evil",
+      "minimum_percent": 75
+    },
+    {
+      "class_name": "cleric",
       "skill": "mass sanctuary",
       "prerequisite": "cleric base",
       "minimum_percent": 60
@@ -2029,6 +2065,36 @@
       "skill": "prayer",
       "prerequisite": "group divine",
       "minimum_percent": 90
+    },
+    {
+      "class_name": "cleric",
+      "skill": "protect vs evil",
+      "prerequisite": "cleric base",
+      "minimum_percent": 30
+    },
+    {
+      "class_name": "cleric",
+      "skill": "protect vs evil",
+      "prerequisite": "group protection",
+      "minimum_percent": 30
+    },
+    {
+      "class_name": "cleric",
+      "skill": "protect vs undead",
+      "prerequisite": "cleric base",
+      "minimum_percent": 30
+    },
+    {
+      "class_name": "cleric",
+      "skill": "protect vs undead",
+      "prerequisite": "group protection",
+      "minimum_percent": 60
+    },
+    {
+      "class_name": "cleric",
+      "skill": "protect vs undead",
+      "prerequisite": "protect vs evil",
+      "minimum_percent": 60
     },
     {
       "class_name": "cleric",
@@ -2147,6 +2213,12 @@
     {
       "class_name": "cleric",
       "skill": "summon",
+      "prerequisite": "cleric base",
+      "minimum_percent": 30
+    },
+    {
+      "class_name": "cleric",
+      "skill": "turn undead",
       "prerequisite": "cleric base",
       "minimum_percent": 30
     },
@@ -2938,6 +3010,24 @@
     },
     {
       "class_name": "infernal",
+      "skill": "mass protect vs good",
+      "prerequisite": "group dark",
+      "minimum_percent": 80
+    },
+    {
+      "class_name": "infernal",
+      "skill": "mass protect vs good",
+      "prerequisite": "infernalist base",
+      "minimum_percent": 60
+    },
+    {
+      "class_name": "infernal",
+      "skill": "mass protect vs good",
+      "prerequisite": "protect vs good",
+      "minimum_percent": 75
+    },
+    {
+      "class_name": "infernal",
       "skill": "possession",
       "prerequisite": "infernalist base",
       "minimum_percent": 70
@@ -2947,6 +3037,18 @@
       "skill": "possession",
       "prerequisite": "steal soul",
       "minimum_percent": 100
+    },
+    {
+      "class_name": "infernal",
+      "skill": "protect vs good",
+      "prerequisite": "group dark",
+      "minimum_percent": 40
+    },
+    {
+      "class_name": "infernal",
+      "skill": "protect vs good",
+      "prerequisite": "infernalist base",
+      "minimum_percent": 30
     },
     {
       "class_name": "infernal",
@@ -3190,6 +3292,12 @@
     },
     {
       "class_name": "knight",
+      "skill": "detect undead",
+      "prerequisite": "knight base",
+      "minimum_percent": 31
+    },
+    {
+      "class_name": "knight",
       "skill": "dual",
       "prerequisite": "group armed",
       "minimum_percent": 90
@@ -3346,6 +3454,24 @@
     },
     {
       "class_name": "knight",
+      "skill": "protect vs evil",
+      "prerequisite": "knight base",
+      "minimum_percent": 50
+    },
+    {
+      "class_name": "knight",
+      "skill": "protect vs undead",
+      "prerequisite": "knight base",
+      "minimum_percent": 60
+    },
+    {
+      "class_name": "knight",
+      "skill": "protect vs undead",
+      "prerequisite": "protect vs evil",
+      "minimum_percent": 60
+    },
+    {
+      "class_name": "knight",
       "skill": "sharpen",
       "prerequisite": "group metal",
       "minimum_percent": 50
@@ -3367,6 +3493,12 @@
       "skill": "target",
       "prerequisite": "knight base",
       "minimum_percent": 70
+    },
+    {
+      "class_name": "knight",
+      "skill": "turn undead",
+      "prerequisite": "knight base",
+      "minimum_percent": 50
     },
     {
       "class_name": "mage",
@@ -4546,6 +4678,24 @@
     },
     {
       "class_name": "necro",
+      "skill": "mass protect vs good",
+      "prerequisite": "group protection",
+      "minimum_percent": 80
+    },
+    {
+      "class_name": "necro",
+      "skill": "mass protect vs good",
+      "prerequisite": "necro base",
+      "minimum_percent": 60
+    },
+    {
+      "class_name": "necro",
+      "skill": "mass protect vs good",
+      "prerequisite": "protect vs good",
+      "minimum_percent": 75
+    },
+    {
+      "class_name": "necro",
       "skill": "nausea",
       "prerequisite": "group disease",
       "minimum_percent": 100
@@ -4565,6 +4715,18 @@
     {
       "class_name": "necro",
       "skill": "poison",
+      "prerequisite": "necro base",
+      "minimum_percent": 30
+    },
+    {
+      "class_name": "necro",
+      "skill": "protect vs good",
+      "prerequisite": "group protection",
+      "minimum_percent": 50
+    },
+    {
+      "class_name": "necro",
+      "skill": "protect vs good",
       "prerequisite": "necro base",
       "minimum_percent": 30
     },

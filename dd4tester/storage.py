@@ -2233,6 +2233,29 @@ class RunStorage:
         )
         return list(reversed(cursor.fetchall()))
 
+    def list_combat_loss_contexts(
+        self, run_id: int,
+    ) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
+        """Read at most four explicit penalties and 128 preceding events each."""
+        losses = self.connection.execute(
+            """
+            SELECT id, run_id, kind, payload_json FROM events
+            WHERE run_id = ? AND kind = 'game_event'
+              AND json_extract(payload_json, '$.type') = 'experience_lost'
+            ORDER BY id DESC LIMIT 4
+            """, (run_id,),
+        ).fetchall()
+        contexts = []
+        for loss in reversed(losses):
+            rows = self.connection.execute(
+                """
+                SELECT id, run_id, kind, payload_json FROM events
+                WHERE run_id = ? AND id < ? ORDER BY id DESC LIMIT 128
+                """, (run_id, loss["id"]),
+            ).fetchall()
+            contexts.append((dict(loss), [dict(row) for row in reversed(rows)]))
+        return contexts
+
     def get_latest_run_kill_event(self, run_id: int) -> sqlite3.Row | None:
         """Read the latest kill ledger without materializing a run's transcript."""
         return self.connection.execute(
@@ -4412,6 +4435,15 @@ class RunStorage:
             WHERE campaign_id = ? AND id = ?
             """,
             (campaign_id, segment_id),
+        ).fetchone()
+
+    def get_campaign_segment_by_sequence(self, campaign_id: int, sequence: int) -> sqlite3.Row | None:
+        """Read one exact neighbour without expanding the campaign history tail."""
+        if type(campaign_id) is not int or campaign_id < 1 or type(sequence) is not int or sequence < 1:
+            raise ValueError("positive campaign id and sequence are required")
+        return self.connection.execute(
+            "SELECT * FROM campaign_segments WHERE campaign_id = ? AND sequence = ?",
+            (campaign_id, sequence),
         ).fetchone()
 
     def get_latest_campaign_segment_summary_for_phase(

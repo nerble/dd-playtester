@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from typing import Collection, Mapping
 
 
+SALE_REJECTION_LINE = re.compile(
+    r"^[ \t]*(?P<shop>[^\r\n]+?)[ \t]+looks uninterested in[ \t]+"
+    r"(?P<item>[^\r\n]+?)\.[ \t]*(?=\r?\n)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
 _HEALER_TO_MARKET_SQUARE = ("south", "south", "south")
 _SHOP_SUFFIXES_FROM_MARKET_SQUARE = {
     "3010": ("east", "north"),

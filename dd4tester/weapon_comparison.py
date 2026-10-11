@@ -26,28 +26,66 @@ RESPONSE_PARSER_REVISION = 2
 def weapon_comparison_request(
     plan: Mapping[str, Any] | None, previous: Any, *, level: int, boot_id: str,
 ) -> dict[str, Any] | None:
-    """Admit a new comparison or one fresh check after a verified reversal."""
+    """Admit a new comparison or one fresh check after verified equipment changes."""
     if plan is None or not boot_id:
         return None
     restoration = None
     recovery_repair = False
     prompt_repair = False
+    primary_change_revalidation = None
     if isinstance(previous, Mapping) and (
         previous.get("level") == level and previous.get("boot_id") == boot_id
     ):
-        if any(previous.get(key) != value for key, value in plan.items()):
+        plan_matches = all(previous.get(key) == value for key, value in plan.items())
+        if not plan_matches:
+            same_candidate = all(
+                previous.get(key) == plan.get(key)
+                for key in ("candidate_vnum", "candidate_name", "keyword")
+            )
+            previous_primary = previous.get("primary_vnum")
+            current_primary = plan.get("primary_vnum")
+            primary_changed = (
+                isinstance(previous_primary, int)
+                and not isinstance(previous_primary, bool)
+                and isinstance(current_primary, int)
+                and not isinstance(current_primary, bool)
+                and previous_primary != current_primary
+            )
+            if not (
+                same_candidate
+                and primary_changed
+                and previous.get("primary_change_revalidation_of") is None
+                and previous.get("stage") == "verified"
+                and previous.get("failure") is None
+                and previous.get("commands") == 5
+            ):
+                return None
+            primary_change_revalidation = {
+                "candidate_vnum": previous.get("candidate_vnum"),
+                "primary_vnum": previous.get("primary_vnum"),
+                "level": level,
+                "boot_id": boot_id,
+                "stage": previous.get("stage"),
+                "commands": previous.get("commands"),
+            }
+        elif previous.get("primary_change_revalidation_of") is not None:
             return None
         prompt_repair = bool(
-            "response_parser_revision" not in previous
+            not primary_change_revalidation
+            and "response_parser_revision" not in previous
             and previous.get("stage") == "failed" and previous.get("commands") == 3
             and previous.get("failure") == "weapon comparison timed out during compare"
         )
-        if not prompt_repair and (
+        if not primary_change_revalidation and not prompt_repair and (
             previous.get("stage") != "verified" or previous.get("failure") is not None
             or previous.get("commands") != 5
         ):
             return None
-        if "restoration_of" in previous and not prompt_repair:
+        if (
+            "restoration_of" in previous
+            and not prompt_repair
+            and not primary_change_revalidation
+        ):
             old = previous.get("restoration_of")
             if (
                 "recovery_identity_revision" in previous
@@ -62,7 +100,7 @@ def weapon_comparison_request(
         # Keep the earlier result, but require the complete fresh comparison.
         if prompt_repair and isinstance(previous.get("restoration_of"), Mapping):
             restoration = dict(previous["restoration_of"])
-        elif not prompt_repair:
+        elif not prompt_repair and not primary_change_revalidation:
             restoration = {key: previous[key] for key in (
                 *plan, "level", "boot_id", "stage", "commands",
             )}
@@ -73,6 +111,11 @@ def weapon_comparison_request(
         **({"restoration_of": restoration} if restoration is not None else {}),
         **({"recovery_identity_repair_of": dict(previous)} if recovery_repair else {}),
         **({"prompt_repair_of": dict(previous)} if prompt_repair else {}),
+        **(
+            {"primary_change_revalidation_of": primary_change_revalidation}
+            if primary_change_revalidation is not None
+            else {}
+        ),
     }
 
 
@@ -80,6 +123,7 @@ def plan_weapon_comparison(
     catalog: GearCatalog, primary: ObjectSource,
     descriptions: Sequence[str], *, character_class: str,
     subclass: str | None, level: int,
+    character_alignment: int | None = None,
 ) -> dict[str, Any] | None:
     """Plan a read-only comparison, never infer an ambiguous object's type."""
     counts = Counter(normalize_item_name(name) for name in descriptions)
@@ -90,15 +134,20 @@ def plan_weapon_comparison(
     for name, count in counts.items():
         variants = catalog.candidates(name)
         weapons = [item for item in variants if item_category(item) == "wield"]
-        if count != 1 or len(variants) < 2 or len(weapons) != 1:
+        if count != 1 or len(weapons) != 1:
             continue
         item = weapons[0]
         if (
             item.vnum == primary.vnum or item.effective_level > level
             or not is_releasable_funding_item(item)
-            or not character_can_use_item(item, character_class=character_class, subclass=subclass)
+            or not character_can_use_item(
+                item,
+                character_class=character_class,
+                subclass=subclass,
+                character_alignment=character_alignment,
+            )
             or (preference == "piercing" and not is_piercing_weapon(item))
-            or weapon_combat_score(item) <= weapon_combat_score(primary)
+            or not _worth_comparing_weapon(item, primary)
         ):
             continue
         # get_obj_carry uses one keyword prefix and excludes worn objects.
@@ -111,12 +160,40 @@ def plan_weapon_comparison(
             )
         )), None)
         if keyword is not None:
-            choices.append((weapon_combat_score(item), item.vnum, {
+            record = {
                 "candidate_vnum": item.vnum, "candidate_name": item.short_description,
                 "primary_vnum": primary.vnum, "primary_name": primary.short_description,
                 "keyword": keyword,
-            }))
+            }
+            if character_alignment is not None:
+                record["character_alignment"] = character_alignment
+            choices.append((weapon_combat_score(item), item.vnum, record))
     return max(choices, default=(None, None, None), key=lambda value: value[:2])[2]
+
+
+def _worth_comparing_weapon(candidate: ObjectSource, primary: ObjectSource) -> bool:
+    """Compare a source-resolved weapon when combat tradeoffs are inconclusive."""
+    candidate_score = weapon_combat_score(candidate)
+    primary_score = weapon_combat_score(primary)
+    if candidate_score > primary_score:
+        return True
+    candidate_combat = candidate_score[:4]
+    primary_combat = primary_score[:4]
+    candidate_improves = any(
+        candidate_value > primary_value
+        for candidate_value, primary_value in zip(
+            candidate_combat, primary_combat,
+        )
+    )
+    candidate_trails = any(
+        candidate_value < primary_value
+        for candidate_value, primary_value in zip(
+            candidate_combat, primary_combat,
+        )
+    )
+    return (
+        candidate_improves and candidate_trails
+    )
 
 
 @dataclass
@@ -201,6 +278,7 @@ class WeaponComparison:
             plan = plan_weapon_comparison(
                 catalog, primary, descriptions, character_class=character_class,
                 subclass=subclass, level=level,
+                character_alignment=self.request.get("character_alignment"),
             )
             if _listed_inventory(self.buffer) != names or plan is None or any(
                 plan.get(key) != self.request.get(key) for key in plan

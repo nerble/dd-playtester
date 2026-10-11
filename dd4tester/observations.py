@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -231,6 +232,7 @@ class ObservationParser:
         self._recall_list_points: dict[int, dict[str, Any]] = {}
         self._room_name: str | None = None
         self._room_vnum: str | None = None
+        self._last_room_snapshot: dict[str, Any] | None = None
         self._known_room_vnums_by_name: dict[str, set[str]] = {}
         self._known_room_exits_by_vnum: dict[str, dict[str, str]] = {}
         self._last_room_exits: dict[str, str] = {}
@@ -321,6 +323,7 @@ class ObservationParser:
         self._recall_list_points.clear()
         self._room_name = None
         self._room_vnum = None
+        self._last_room_snapshot = None
         self._known_room_vnums_by_name.clear()
         self._known_room_exits_by_vnum.clear()
         self._last_room_exits = {}
@@ -387,6 +390,7 @@ class ObservationParser:
                 if isinstance(arrival, dict)
                 else ""
             )
+            ordinary_refresh = self._unchanged_login_room_refresh(payload)
             if self._discarding_duplicate_login_snapshot:
                 if arrival_kind == "login":
                     return []
@@ -396,6 +400,7 @@ class ObservationParser:
                 arrival_kind == "login"
                 and self._room_name is not None
                 and self._room_vnum is not None
+                and not ordinary_refresh
             ):
                 # DD4 can emit a second login-style full snapshot on an
                 # established connection.  It may contain stale character
@@ -406,8 +411,15 @@ class ObservationParser:
                 self._discarded_duplicate_snapshot_messages = 0
                 return []
             room_event = self._room_event(package, payload)
+            if (
+                room_event is None and ordinary_refresh
+                and payload != self._last_room_snapshot
+            ):
+                room_event = GameEvent("room_updated", "gmcp", self._gmcp_data(package, payload))
             if room_event is not None:
                 events.append(room_event)
+            if isinstance(payload, dict) and payload.get("name") and payload.get("vnum"):
+                self._last_room_snapshot = deepcopy(payload)
 
         if (
             self._discarding_duplicate_login_snapshot
@@ -507,6 +519,43 @@ class ObservationParser:
             )
 
         return events
+
+    def _unchanged_login_room_refresh(self, payload: Any) -> bool:
+        """DD4 retains arrival metadata while refreshing flight-dependent costs."""
+        previous = self._last_room_snapshot
+        required = {
+            "vnum", "name", "area", "area_id", "sector", "sector_text",
+            "description", "flags", "exits", "exit_details", "arrival", "tags",
+        }
+        if (
+            not isinstance(payload, dict) or not isinstance(previous, dict)
+            or not required.issubset(payload) or payload.keys() != previous.keys()
+            or str(payload["vnum"]) != self._room_vnum
+            or _normalized_room_name(str(payload["name"])) != self._room_name
+            or any(payload[key] != previous[key] for key in payload if key != "exit_details")
+        ):
+            return False
+        details, old_details = payload["exit_details"], previous["exit_details"]
+        if (
+            not isinstance(details, dict) or not isinstance(old_details, dict)
+            or details.keys() != old_details.keys()
+            or not isinstance(payload["exits"], dict)
+            or details.keys() != payload["exits"].keys()
+        ):
+            return False
+        for direction, detail in details.items():
+            old = old_details[direction]
+            if (
+                not isinstance(detail, dict) or not isinstance(old, dict)
+                or set(detail) != {"to", "state", "door", "cost"}
+                or detail.keys() != old.keys()
+                or any(detail[key] != old[key] for key in detail if key != "cost")
+                or str(detail["to"]) != str(payload["exits"][direction])
+                or type(detail["cost"]) is not int or detail["cost"] < 0
+                or type(old["cost"]) is not int or old["cost"] < 0
+            ):
+                return False
+        return True
 
     def _begin_foreign_snapshot(self) -> None:
         self._discarding_foreign_snapshot = True

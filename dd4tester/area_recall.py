@@ -30,6 +30,24 @@ ESCAPE_STEPS = (
 )
 
 
+def source_allows_failed_local_recall_logout(world: WorldSource | None, state: CharacterState) -> bool:
+    """A failed return must not leave a live character link-dead underwater."""
+    try:
+        commandable = state.position is not None and int(state.position) >= 4
+    except (TypeError, ValueError):
+        commandable = False
+    if (world is None or state.room_vnum != "27347" or "no_mob" not in state.room_flags
+            or state.dead or state.in_combat or state.combat_target
+            or state.hp is None or state.hp <= 0
+            or not commandable):
+        return False
+    room = world.rooms.get(27347)
+    return bool(room and room.no_mob and not source_route_hazard_rejections(
+        world, (27347,), character_level=state.level or 0,
+        require_no_combat_hazards=True, combat_at_destination=False,
+    ))
+
+
 def undersea_escape_source_issue(world: WorldSource, directory: Path, level: int) -> str | None:
     """Keep this maintenance exception tied to the exact current source shape."""
     for filename, expected in (("sahuagin_market.are", 27347), ("undersea.are", 3001)):
@@ -137,6 +155,7 @@ class AreaRecallEscape:
     def next_command(
         self, state: CharacterState, *, now: float, inventory: Sequence[tuple[str, str | None]],
         coins: int, flight: bool, infrared: bool, sanctuary: bool, purple_available: bool,
+        water_breathing: bool,
     ) -> str | None:
         self.expire(now)
         if self.failure or self.stage == "complete":
@@ -146,6 +165,9 @@ class AreaRecallEscape:
             return None
         if state.dead or state.in_combat or state.combat_target:
             self.failure = "local-recall escape observed combat; no attack is authorized"
+            return None
+        if not water_breathing:
+            self.failure = "underwater escape requires water breathing independently of flight"
             return None
         if not flight or not state.hp or not state.max_hp or state.hp < state.max_hp * 0.95:
             self.failure = "local-recall escape requires fresh flight and full recovery"

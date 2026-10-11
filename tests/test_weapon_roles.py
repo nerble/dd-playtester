@@ -2,7 +2,12 @@ from copy import deepcopy
 
 import pytest
 
-from dd4tester.campaign import CampaignRunner, CampaignSpec, _state_has_source_weapon_role
+from dd4tester.campaign import (
+    CampaignRunner,
+    CampaignSpec,
+    _campaign_inventory_source_hints_for_transition,
+    _state_has_source_weapon_role,
+)
 from dd4tester.character import CharacterSpec
 from dd4tester.equipment import GearCatalog, is_blunt_weapon, is_piercing_weapon
 from dd4tester.hunt_candidates import ObjectSource, WorldSource
@@ -89,6 +94,64 @@ def test_a_carried_distinct_weapon_can_supply_the_other_role():
     state["inventory"] = [[{"short_desc": dagger.short_description}]]
     assert has_role(catalog, state, predicate=is_piercing_weapon)
     assert not has_role(catalog, state, predicate=is_piercing_weapon, worn_only=True)
+
+
+def test_exact_carried_weapon_hint_survives_campaign_boundary():
+    catalog, state = branch_case()
+    state["equipment"] = []
+    state["campaign_primary_weapon"] = "a long sword"
+    state["campaign_worn_equipment"] = ["a long sword"]
+    state["inventory"] = [[{"short_desc": "a long, grey branch"}]]
+    state["campaign_inventory_source_hints"] = {"long grey branch": 6104}
+
+    assert has_role(catalog, state)
+    assert not has_role(catalog, state, worn_only=True)
+
+
+def test_worn_weapon_identity_is_carried_forward_only_when_inventory_confirms_it():
+    catalog, _state = branch_case()
+    branch = catalog.objects[6104]
+    previous = {
+        "inventory": [],
+        "equipment": [{
+            "item_type": 5,
+            "name": branch.short_description,
+            "vnum": branch.vnum,
+        }],
+    }
+    current = {
+        "inventory": [[{"short_desc": branch.short_description}]],
+        "equipment": [],
+    }
+
+    assert _campaign_inventory_source_hints_for_transition(previous, current) == {
+        "long grey branch": branch.vnum,
+    }
+    assert _campaign_inventory_source_hints_for_transition(
+        previous, {"inventory": [], "equipment": []}
+    ) == {}
+
+
+def test_verified_carried_weapon_comparison_restores_exact_inventory_identity():
+    state = {
+        "level": 30,
+        "world_boot_id": "boot-1",
+        "inventory": [[{"short_desc": "a long, grey branch"}]],
+        "campaign_carried_weapon_comparison": {
+            "stage": "verified",
+            "boot_id": "boot-1",
+            "level": 30,
+            "candidate_name": "a long, grey branch",
+            "candidate_vnum": 6104,
+        },
+    }
+
+    assert _campaign_inventory_source_hints_for_transition(state, state) == {
+        "long grey branch": 6104,
+    }
+
+    state["world_boot_id"] = "boot-2"
+    assert _campaign_inventory_source_hints_for_transition(state, state) == {}
 
 
 def test_legacy_unique_worn_names_remain_usable_without_structured_identity():

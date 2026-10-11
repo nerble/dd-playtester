@@ -49,6 +49,8 @@ class ProgressionPolicy:
     segment_kill_limit: int | None = None
     allow_partial_below_band: bool = False
     requires_flight_override: bool | None = None
+    source_mobile_vnums: tuple[int, ...] = ()
+    minimum_flight_duration: int | None = None
 
     @property
     def executable(self) -> bool:
@@ -2001,13 +2003,13 @@ _BANK_EXCESS_COIN_POLICY = ProgressionPolicy(
     execution="bank-excess-coins",
     summary=(
         "Deposit a critically encumbering or source-thief-exposed coin hoard "
-        "and retain one gold coin as a compact working reserve."
+        "and retain one platinum coin as a compact provision and flight reserve."
     ),
     evidence=(
         "DD4 source revision d7cb330: calc_coin_weight charges one carry unit per ten individual coins, regardless of denomination.",
         "DD4 source do_deposit accepts `deposit all`, clears carried denominations, and immediately recalculates coin weight.",
         "DD4 source special.c spec_thief uses total_coins_char and can remove up to 20 percent of carried coin value; bank exposed hoards before selecting an otherwise safe thief-special route.",
-        "DD4 source do_withdraw accepts `withdraw 1 gold`; the safe Midgaard bank is room 3007, one east of Market Square.",
+        "DD4 source do_withdraw accepts `withdraw 1 platinum`; the safe Midgaard bank is room 3007, one east of Market Square. One platinum is a single carried coin worth 1,000 copper, enough to avoid immediately refarming the reserve after food costs.",
         "Live run 2053 started at 161/170 carry weight with 240 individual "
         "coins and incorrectly lodged a silver circlet before banking. Coin "
         "deposit now takes priority whenever fewer than ten weight units remain, "
@@ -2735,6 +2737,104 @@ _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
     ),
     practice_skill=None,
     segment_kill_limit=1,
+)
+
+_VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY = ProgressionPolicy(
+    policy_id="vampire-catacombs-hunt-25-32",
+    minimum_level=25,
+    maximum_level=32,
+    status="research",
+    execution="vampire-catacombs-hunt",
+    summary=(
+        "Use the documented Kerofk entrance and hunt up to three exact, "
+        "source-registered level-30 Catacombs wanderers."
+    ),
+    evidence=(
+        "The official fastwalk route from Midgaard via Goldmoon and Kerofk "
+        "reaches the Catacombs bouncer; its source program transfers players "
+        "over level 14 into room 9500.",
+        "Bevan (9515), Martin (9513), and Charles (9535) each have one level-30 "
+        "reset, no combat special, and a source-reachable locator circuit from "
+        "the Catacombs entrance.",
+        "The source route crosses aggressive but below-band transit mobiles. "
+        "The runner keeps fresh live identity, consider, output, health, and "
+        "survival checks for each target; no kill is credited unless its "
+        "observed consider supports useful XP.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+    source_mobile_vnums=(9515, 9513, 9535),
+)
+
+_VAMPIRE_CATACOMBS_MARTIN_LEVEL_25_32_POLICY = replace(
+    _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY,
+    policy_id="vampire-catacombs-martin-hunt-25-32",
+    summary="Hunt one independently gated Martin in the Vampire Catacombs.",
+    segment_kill_limit=1,
+    source_mobile_vnums=(9513,),
+)
+
+_VAMPIRE_CATACOMBS_CHARLES_LEVEL_25_32_POLICY = replace(
+    _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY,
+    policy_id="vampire-catacombs-charles-hunt-25-32",
+    summary="Hunt one independently gated Charles in the Vampire Catacombs.",
+    segment_kill_limit=1,
+    source_mobile_vnums=(9535,),
+)
+
+_VAMPIRE_CATACOMBS_AMANDA_LEVEL_25_32_POLICY = replace(
+    _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY,
+    policy_id="vampire-catacombs-amanda-hunt-25-32",
+    summary="Hunt one independently gated Amanda in the Vampire Catacombs.",
+    evidence=(
+        *_VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY.evidence,
+        "Amanda (9512) has one level-30 reset in room 9510, stays in the "
+        "area, and has no weapon, special, or mobile program.",
+    ),
+    segment_kill_limit=1,
+    source_mobile_vnums=(9512,),
+)
+
+_VAMPIRE_CATACOMBS_SALLY_LEVEL_25_32_POLICY = replace(
+    _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY,
+    policy_id="vampire-catacombs-sally-hunt-25-32",
+    summary="Hunt one independently gated Sally in the Vampire Catacombs.",
+    evidence=(
+        *_VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY.evidence,
+        "Sally (9514) has one level-30 reset in room 9514, stays in the "
+        "area, and has no weapon, special, or mobile program.",
+    ),
+    segment_kill_limit=1,
+    source_mobile_vnums=(9514,),
+)
+
+_VAMPIRE_CATACOMBS_PAUL_LEVEL_25_32_POLICY = replace(
+    _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY,
+    policy_id="vampire-catacombs-paul-hunt-25-32",
+    summary="Hunt one independently gated Paul in the Vampire Catacombs.",
+    evidence=(
+        *_VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY.evidence,
+        "Paul (9517) has one level-30 reset in room 9509, stays in the area, "
+        "and has no weapon or special. His exact random program breaks while "
+        "fighting and otherwise emits one spoken line; no other program is admitted.",
+    ),
+    segment_kill_limit=1,
+    source_mobile_vnums=(9517,),
+)
+
+_VAMPIRE_CATACOMBS_DYING_MAN_LEVEL_25_32_POLICY = replace(
+    _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY,
+    policy_id="vampire-catacombs-dying-man-hunt-25-32",
+    summary="Hunt one independently gated unarmed Catacombs sentinel.",
+    evidence=(
+        "Mobile 9500 has one level-30 sentinel reset in room 9501, immediately "
+        "east of the audited bouncer arrival. Its greeting contains only "
+        "balanced random branches and local mpecho dialogue, with no special "
+        "or weapon reset. Source output, fresh identity, isolated targeting, "
+        "consider, and health checks remain mandatory.",
+    ),
+    segment_kill_limit=1,
+    source_mobile_vnums=(9500,),
 )
 
 
@@ -6256,6 +6356,12 @@ def policy_for(
             fallback_policy = _SOURCE_RANKED_STARTER_FALLBACK_POLICY
         elif context.level <= 10:
             fallback_policy = _SOURCE_RANKED_EARLY_FALLBACK_POLICY
+        elif (
+            25 <= context.level <= 32
+            and _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY.policy_id
+            not in context.excluded_policy_ids
+        ):
+            fallback_policy = _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY
         else:
             fallback_policy = _SOURCE_RANKED_HUNT_POLICY
         return replace(

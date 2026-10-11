@@ -54,6 +54,7 @@ from .credentials import (
 )
 from .equipment import (
     GearCatalog,
+    ITEM_WEAPON,
     STANCE_COMBAT,
     STANCE_PRE_LEVEL,
     STANCE_RECOVERY,
@@ -72,6 +73,7 @@ from .hero import (
     run_hero_until_target,
 )
 from .hunt_candidates import (
+    ObjectSource,
     load_world_source,
     rank_hunt_candidates,
     rank_resource_sources,
@@ -343,7 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     guildmaster_parser = subcommands.add_parser(
         "guildmaster-research",
-        help="read the teacher clue and inspect the trainer for the current level band",
+        help="read the teacher clue, inspect the current trainer, and take useful source-verified lessons",
     )
     guildmaster_parser.add_argument(
         "profile",
@@ -566,7 +568,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     resource_sources_parser = subcommands.add_parser(
         "show-resource-sources",
-        help="list source-backed healing, food, sanctuary, protection, and flight resources",
+        help="list source-backed recovery, travel, and survival resources",
     )
     resource_sources_parser.add_argument("--level", type=int, required=True)
     resource_sources_parser.add_argument(
@@ -581,6 +583,10 @@ def build_parser() -> argparse.ArgumentParser:
             "fly",
             "levitation",
             "travel",
+            "water-breathing",
+            "water breathing",
+            "breathe water",
+            "underwater",
             "food",
         ),
         default="all",
@@ -3077,32 +3083,10 @@ def show_gear_sources(
 
     boot_id: str | None = None
     character_max_hp: int | None = None
+    character_alignment: int | None = None
     recall_origins: dict[int, int] | None = None
     current_items = []
     catalog = GearCatalog(getattr(world, "objects", {}))
-
-    def state_descriptions(value: object) -> list[str]:
-        if isinstance(value, str):
-            try:
-                return state_descriptions(json.loads(value))
-            except json.JSONDecodeError:
-                return []
-        if isinstance(value, dict):
-            descriptions: list[str] = []
-            for key in ("short_desc", "description", "name"):
-                candidate = value.get(key)
-                if isinstance(candidate, str) and candidate.strip():
-                    descriptions.append(candidate)
-            for key, item in value.items():
-                if key not in {"short_desc", "description", "name"}:
-                    descriptions.extend(state_descriptions(item))
-            return descriptions
-        if isinstance(value, (list, tuple)):
-            descriptions: list[str] = []
-            for item in value:
-                descriptions.extend(state_descriptions(item))
-            return descriptions
-        return []
 
     if database.exists():
         with RunStorage(database, read_only=True) as storage:
@@ -3110,6 +3094,7 @@ def show_gear_sources(
             latest_state = _latest_inspection_state(storage, character)
             if latest_state is not None:
                 recall_origins = recall_origins_from_state(latest_state)
+                character_alignment = _inspection_alignment(latest_state)
                 stored_level = latest_state.get("level")
                 raw_max_hp = latest_state.get("max_hp")
                 if (
@@ -3118,18 +3103,11 @@ def show_gear_sources(
                     and raw_max_hp > 0
                 ):
                     character_max_hp = int(raw_max_hp)
-                current_items = catalog.match_many_usable(
-                    [
-                        *(
-                            _equipment_descriptions(latest_state.get("equipment"))
-                            or state_descriptions(
-                                latest_state.get("campaign_worn_equipment")
-                            )
-                        ),
-                        *_inventory_descriptions(latest_state.get("inventory")),
-                    ],
+                current_items = _readiness_current_gear_items(
+                    latest_state, catalog,
                     character_class=character_class,
                     subclass=subclass,
+                    character_alignment=character_alignment,
                 )
 
     try:
@@ -3138,6 +3116,7 @@ def show_gear_sources(
             character_level=level,
             character_class=character_class,
             subclass=subclass,
+            character_alignment=character_alignment,
             stance=stance,
             current_items=current_items,
             character_max_hp=character_max_hp,
@@ -3518,6 +3497,95 @@ def _readiness_candidate_record(
     }
 
 
+def _readiness_current_gear_items(
+    state: Mapping[str, Any],
+    catalog: GearCatalog,
+    *,
+    character_class: str,
+    subclass: str | None,
+    character_alignment: int | None = None,
+) -> list[ObjectSource]:
+    raw_equipment = state.get("equipment")
+    exact_equipment: list[ObjectSource] = []
+    unresolved_equipment: list[Any] = []
+    if isinstance(raw_equipment, (list, tuple)):
+        for entry in raw_equipment:
+            raw_vnum = entry.get("vnum") if isinstance(entry, Mapping) else None
+            if isinstance(raw_vnum, str) and raw_vnum.isdecimal():
+                raw_vnum = int(raw_vnum)
+                entry = {**entry, "vnum": raw_vnum}
+            if type(raw_vnum) is int:
+                item = catalog.observed_equipment_item(
+                    entry, character_class=character_class, subclass=subclass,
+                    character_alignment=character_alignment,
+                )
+                if item is not None:
+                    if item.item_type != ITEM_WEAPON or (
+                        state.get("campaign_has_weapon") is not False
+                        and "wield" not in (state.get("campaign_empty_equipment_categories") or ())
+                    ):
+                        exact_equipment.append(item)
+                continue
+            unresolved_equipment.append(entry)
+        equipment_descriptions = _equipment_descriptions(unresolved_equipment)
+        if not raw_equipment and not equipment_descriptions:
+            equipment_descriptions = _inspection_state_descriptions(
+                state.get("campaign_worn_equipment")
+            )
+    else:
+        equipment_descriptions = _equipment_descriptions(raw_equipment) or (
+            _inspection_state_descriptions(
+                state.get("campaign_worn_equipment")
+            )
+        )
+
+    descriptions = [
+        *equipment_descriptions,
+        *_inventory_descriptions(state.get("inventory")),
+    ]
+    matched_items: list[ObjectSource] = []
+    for description in descriptions:
+        if not catalog.is_unambiguously_usable(
+            description,
+            character_class=character_class,
+            subclass=subclass,
+            character_alignment=character_alignment,
+        ):
+            continue
+        candidates = catalog.candidates(description)
+        if not candidates:
+            continue
+        profiles = {
+            (
+                item.item_type,
+                item.values,
+                item.source_cost,
+                item.wear_flags,
+                item.level,
+                item.load_level_min,
+                item.load_level_max,
+                item.affects,
+                item.extra_flags,
+                item.weight,
+                item.value_strings,
+                tuple(
+                    sorted(
+                        set_vnum
+                        for set_vnum, object_set in catalog.object_sets.items()
+                        if item.vnum in object_set.object_vnums
+                    )
+                ),
+            )
+            for item in candidates
+        }
+        if len(profiles) != 1:
+            continue
+        matched_items.append(
+            min(candidates, key=lambda item: (item.effective_level, item.vnum))
+        )
+    return [*exact_equipment, *matched_items]
+
+
 def _readiness_gear_record(placement: Any) -> dict[str, Any]:
     source_minimum, source_maximum = placement.source_level_range
     return {
@@ -3694,16 +3762,12 @@ def show_combat_readiness(
     quest_record = _readiness_quest_record(state, level=level)
 
     catalog = GearCatalog(getattr(world, "objects", {}))
-    current_items = catalog.match_many_usable(
-        [
-            *(
-                _equipment_descriptions(state.get("equipment"))
-                or _inspection_state_descriptions(state.get("campaign_worn_equipment"))
-            ),
-            *_inventory_descriptions(state.get("inventory")),
-        ],
+    current_items = _readiness_current_gear_items(
+        state,
+        catalog,
         character_class=character_class,
         subclass=subclass or state.get("subclass"),
+        character_alignment=character_alignment,
     )
     try:
         output = _source_ranked_caster_output_for_state(
@@ -3761,6 +3825,7 @@ def show_combat_readiness(
             character_level=level,
             character_class=character_class,
             subclass=subclass or state.get("subclass"),
+            character_alignment=character_alignment,
             stance=STANCE_COMBAT,
             current_items=current_items,
             character_max_hp=character_max_hp,
@@ -4330,6 +4395,75 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                 ]
                 if rendered_blockers:
                     print("Frontier blockers: " + "; ".join(rendered_blockers))
+            sanctuary_candidates = diagnosis.get(
+                "sanctuary_required_candidates"
+            )
+            if isinstance(sanctuary_candidates, list) and sanctuary_candidates:
+                print("Sanctuary-required frontier options (diagnostic only):")
+                for candidate in sanctuary_candidates:
+                    if not isinstance(candidate, Mapping):
+                        continue
+                    levels = candidate.get("level_range", ())
+                    level_text = (
+                        f"{levels[0]}-{levels[1]}"
+                        if isinstance(levels, (list, tuple)) and len(levels) == 2
+                        else "unknown level"
+                    )
+                    hp = candidate.get("base_hp_range", ())
+                    hp_text = (
+                        f"{hp[0]}-{hp[1]}"
+                        if isinstance(hp, (list, tuple)) and len(hp) == 2
+                        else "unknown"
+                    )
+                    weapons = candidate.get("equipped_weapons", ())
+                    weapon_text = (
+                        ", ".join(str(item) for item in weapons)
+                        if isinstance(weapons, list) and weapons
+                        else "none"
+                    )
+                    specials = candidate.get("specials", ())
+                    special_text = (
+                        ", ".join(str(item) for item in specials)
+                        if isinstance(specials, list) and specials
+                        else "none"
+                    )
+                    print(
+                        "  "
+                        f"{candidate.get('target', 'unknown target')} "
+                        f"[{candidate.get('mobile_vnum', '-')}] at "
+                        f"{candidate.get('room_name', 'unknown room')} "
+                        f"({candidate.get('area_file', '-')}:"
+                        f"{candidate.get('room_vnum', '-')}); "
+                        f"levels {level_text}; HP {hp_text}; "
+                        f"peak {candidate.get('peak_round_damage', 'unknown')}; "
+                        f"weapons={weapon_text}; specials={special_text}; "
+                        f"boot kills={candidate.get('boot_kills', 0)}; "
+                        f"losses={candidate.get('same_boot_loss_count', 0)}; "
+                        f"last={candidate.get('same_boot_status', 'unknown')}; "
+                        "fallback screen="
+                        f"{'passed' if candidate.get('unprotected_fallback_allowed') else 'closed'}; "
+                        f"pool={candidate.get('selection_pool', 'unknown')}; "
+                        f"policy={candidate.get('policy_id', '-')}"
+                    )
+                    raw_sanctuary_blockers = candidate.get(
+                        "same_boot_blockers"
+                    )
+                    sanctuary_blockers = (
+                        [str(item) for item in raw_sanctuary_blockers if item]
+                        if isinstance(raw_sanctuary_blockers, list)
+                        else []
+                    )
+                    if sanctuary_blockers:
+                        print(
+                            "    selection blockers: "
+                            + "; ".join(sanctuary_blockers)
+                        )
+                    route_hazards = candidate.get("route_hazards")
+                    if isinstance(route_hazards, list) and route_hazards:
+                        rendered_route_hazards = "; ".join(
+                            str(item) for item in route_hazards
+                        )
+                        print(f"    route: {rendered_route_hazards}")
             no_sanctuary_candidates = diagnosis.get("no_sanctuary_candidates")
             if isinstance(no_sanctuary_candidates, list) and no_sanctuary_candidates:
                 print("No-sanctuary frontier options (diagnostic only):")

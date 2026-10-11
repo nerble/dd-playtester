@@ -176,6 +176,12 @@ class CharacterState:
             self.drunk = _number(data.get("drunk"), self.drunk)
             self.max_drunk = _number(data.get("maxdrunk"), self.max_drunk)
             self.position = _scalar(data.get("position"), self.position)
+            # DD4's POS_FIGHTING is 6; missing or invalid positions prove nothing.
+            position = _number(data.get("position"))
+            if position in range(8):
+                self.in_combat = position == 6
+                if not self.in_combat:
+                    self.combat_target = None
             self.form = _text(data.get("form"), self.form)
             return
 
@@ -364,6 +370,11 @@ class CharacterState:
 
         if event.type == "posture_changed":
             self.position = _scalar(data.get("position"), self.position)
+            position = _number(data.get("position"))
+            if position in range(8):
+                self.in_combat = position == 6
+                if not self.in_combat:
+                    self.combat_target = None
             return
 
         if event.type in {"room_entered", "room_updated"}:
@@ -514,6 +525,8 @@ class CharacterState:
             if _enemy_snapshot_empty(value):
                 self.in_combat = False
                 self.combat_target = None
+            else:
+                self.in_combat = True
             return
 
         if event.type == "item_acquired":

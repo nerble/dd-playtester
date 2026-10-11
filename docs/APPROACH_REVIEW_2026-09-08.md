@@ -6,8 +6,33 @@ The master goal is unchanged: a generic request for a legal race/class/subclass
 must create or resume a character and reach HERO 100 autonomously. Cosmetic sex
 is preserved, not a separate coverage dimension. No character has reached HERO.
 As of October 7, the highest frontier is Dorrik at level **30**. His latest
-durable checkpoint is **49271** at healer room **3054**, with **614,804 XP**,
-**18 quest points**, and **54,246 XP** to level 31. Run **16419** completed a
+completed checkpoint is **49306** at healer room **3054**, with **617,605 XP**,
+**18 quest points**, and **51,445 XP** to level 31. His Knight change is live
+observed. The failed area-local recall return in 16462 left a transport gap;
+16463 reconnected in Purgatory and recovered his corpse, gear, and health.
+The gap cost 226 XP; drowning is a source-supported likely cause, not directly
+recorded death text. Flight-only underwater travel is now rejected, and a
+source-verified no-mob local recall failure receives bounded explicit logout.
+16466 gained useful training but withdrew from the Kerofk bartender probe,
+losing 390 net XP without a kill; its failure remains authoritative. These
+changes and recovery do not constitute productive level-30 proof. Independent
+run **16470** subsequently killed the Dwarven Home bard for **1,305 net XP**
+without loss and with full healer recovery, about **426 net XP/minute** across
+183.59 seconds. This is one live-verified level-30 hunt, not sustained HERO
+progression. Run **16471** then met source mobile **30243** (Sosivia), whose
+live `consider` said both "the perfect match" and "much healthier". Dorrik
+dealt 169 against 1,058 live HP, took 47, and withdrew from the bounded output
+probe; the run lost 338 net XP. Keep that target result closed until fresh
+evidence changes its estimate. Run **16472** killed a second Dwarven Home bard
+for **1,267 net XP**, without XP loss and with a safe healer return. Together,
+16470-16472 netted 2,234 XP. Run **16473** bought flight for 141 copper.
+On refreshed source, **16474** killed a river witch for **1,183 net XP**, then
+returned fully healed at checkpoint **49306**. Its 143.17-second rate was
+about **496 XP/minute**. Today's progression gained 2,801 net XP. The current
+DD4 checkout is **bbd55b1**, refreshed after the live worker ended; its parser
+smoke check found 13,052 rooms, 4,125 mobiles, and 6,138 objects. Health
+summaries now include ordered observations
+between compact checkpoints. Run **16419** completed a
 live retrieve quest for 18 QP, meeting the immediate gate. Per user direction,
 optional quests are shelved until the next positive QP shortfall. Runs **16440**
 and **16442** added **2,556 net XP** from two Ki-Rin kills without loss. Fresh
@@ -35,12 +60,945 @@ resource-carrier XP cannot advance optional ring retries. The next acceptance
 gate is sustained productive level-30 play and useful training, not breadth,
 optional quest requests, or premature higher-band policy work.
 
+### October 10 Verified Level-31 Transition
+
+Checkpoint **49727**, last run **16680**, records Dorrik as level **31 Knight**,
+with **670,744 XP**, **57,556 XP** to 32, **18 QP**, and recovered healer state.
+Four sanctuary-free hunts **16674/16675/16678/16679** earned
+**2,074/2,231/1,591/1,858 XP**: two Catacombs sentinel kills and two Mirror
+Realm bucks, each success/achieved/safe. There was no flee or XP loss. Seven
+connected visits including selling, an unsuccessful ring check, and banking
+netted **7,754 XP** in **727.90 seconds**, approximately **639 XP/minute**.
+Development/planning is excluded; no HERO or balance comparison is proved.
+
+Source investigation found no currently executable free-sanctuary benefactor
+route. The earlier protection prayer failed because the character has no
+patron; no permanent patron was selected blindly. Instead, a bounded grammar
+proves purely local greeting dialogue has no combat or relocation commands.
+The unarmed level-30 sentinel has its own contract outside the failed parent
+target set, an existing bouncer entrance, and fresh source/loadout/identity/
+isolation/consider/output checks. Its positive current-version linked summary
+supports a finite repeat; it does not rewrite a failure or reopen old losses.
+The repeat selector was exercised by **16679**, which verified level 31 and
+26 HP, 17 mana, 10 movement, and 3 physical/2 intellectual practices.
+
+The shared source-timed attack preference successfully dispatched repeated
+kicks in these fights. This is live execution evidence, not a controlled
+comparison against headbutt or verification of every acknowledgement edge.
+The 20% plain single-unarmed-target withdrawal floor remains active.
+New script, independent-objective, completed-repeat and timing tests are saved
+and compile, but await October 11. Today's prior 26-test batch is unchanged.
+The next autonomous invocation completed five visits **16681-16685** and
+saved checkpoint **49733**: level **31**, **673,147 XP**, **55,153 XP** to 32,
+**18 QP**, recovered at healer **3054**. Training used all five new practices:
+kick **61% to 67%**, armed combat knowledge **53% to 62%**. The hunt skipped
+the crowded first tavern and killed the alternate source **30205** bartender
+for **2,403 XP**, without flee/loss and with lowest HP **46.4%**. Its two-target
+objective remains not-achieved; the ring objective was not achieved either.
+Five visits took **438.03 connected seconds**, about **329 net XP/minute**,
+including training, ring inspection, flight renewal and recovery, excluding
+development/planning. Source was clean and refreshed to **a3ad2fb**, then fully
+parsed before the invocation. No level 32 or HERO is proved.
+
+The next seven runs **16686-16692** saved checkpoint **49749**: **682,164 XP**,
+**46,136 XP** to 32, QP **18**, alive/recovered at healer **3054**. Three kills
+of bartender **30254** and one of Samuel **918** yielded **9,017 net XP**,
+including four **592-XP flee penalties**. Whole connected time, with ring
+inspection, flight purchase, travel and recovery, was **1,449.33 seconds**,
+about **373 net XP/minute**, excluding development/planning. The two-target
+visits remain not-achieved/loss; profitable trips are not relabelled safe.
+
+This exposed two concrete recording faults: a first kill bypassed later
+failed-stop recording, and identical per-run penalties hid consecutive losses.
+The combat controller now captures the exact source stop before withdrawal,
+commits it only on a positive explicit XP-loss event, and the campaign compares
+its monotonic loss counter. Recent linked canonical events recover the lost
+secondary identities within the eight-segment tail and 128-event contexts;
+shared bartender names do not identify a prototype. The preview recovers two
+losses for **30205/30246** and one for **30243/30284**, leaving productive
+**30254/30265** separate. No failure is reopened. Read-only departure scans
+also retain readiness until movement; already-applied combat gear stays at the
+verified safe route origin through movement-only checks. Compilation passed;
+new focused tests are saved, unrun until October 11. The 20% trigger is unchanged.
+
+The repaired startup chose the independently productive Samuel route, not either
+failed follow-up. Run **16693** killed Samuel for **1,728 XP**, minimum observed
+HP **30.0%**, no flee or XP loss, and success/achieved/safe. Checkpoint **49752**
+preserves **683,892 XP**, **44,408 XP** to 32, and recovered healer state. The
+saved ledger still contains two losses for the second bartender and one for
+Sosivia. Across **16686-16693**, five confirmed kills netted **10,745 XP** in
+**1,684.58 connected seconds**, about **383 net XP/minute**. This verifies
+startup/completion retention, not every future live loss-capture edge or HERO.
+
+The next eleven visits **16694-16704** saved checkpoint **49779** with
+**690,278 XP**, **38,022 XP** to 32 and QP **18**, alive/recovered at healer
+3054. Five kills (one bard, three witches, one buck) netted **6,386 XP**,
+including a **495-net-XP loss**. Connected time including ring attempts,
+flight, food, travel, recovery and a below-band Willow check was **1,042.02
+seconds**, about **368 XP/minute**, excluding development/planning.
+
+Run **16702** misclassified `The buck` as a joiner because its dispatched
+keyword was `deer`. Ordered GMCP showed one enemy, source **19039**, in room
+19132; flee lost 592 XP with 97 damage credit. Keep its not-achieved/loss
+verdict and exclusion. The new exact source/current-room/selected-instance
+reconciliation compiles but is not freshly live-proved. No historical loss is
+erased or failed policy reopened.
+
+Ring run **16694** stopped at a hard two-doll count despite only one missing
+ring. A bounded exact-instance look can now verify a source-unique ring in
+worn equipment without inflating the mob count. Run **16700** never reached
+that check: an existing one-item overload plus the required free slot exceeded
+its one-disposal budget. Cleanup now fixes the budget from the initial actual
+deficit, caps it at eight, retains acknowledgements/protected gear, and never
+extends it when capacity stays unchanged. Both changes compile; neither has
+new live proof or an acquired ring. New cases await October 11; today's earlier
+26-test batch remains the only regression batch.
+
+The next eleven visits **16705-16715** saved checkpoint **49803**: **692,838 XP**,
+**35,462 XP** to 32, QP **18**, recovered at healer **3054**, food present but
+no flight. The witch yielded 1,079 XP and bard 1,451; a defensive drunk kill
+added 30 incidental XP, ineligible for productive-hunt cooldowns. No flee/loss
+occurred. All eleven connected visits took **794.54 seconds**, about **193 net
+XP/minute**. Four city-blocked departures and a below-band Smithy visit explain
+much of the poor rate; they are not successful hunts or flight acquisition.
+
+Runs **16706/16708/16709** exposed a carrying blocker: inventory was **39/38**,
+and healer chatter prematurely ended a pending drop phase. The bounded reply
+tracker now retains each phase through chatter, requires complete acknowledgements
+and inventory header/footer, and keeps a five-second deadline. Recovery owns a
+separate, storage-only pouch controller. **16710** audited the exact empty worn
+pouch, stored two source-candidate clear potions with individual replies, and
+confirmed **37/38** count. A spare flask was dropped/sacrificed, followed by a
+fresh inventory audit; the route collected a rabbit roast and black gyvel.
+Useful gear and the water skin remained. This proves that path, not ambiguous
+potion effects, multi-disposal overload cleanup, or the still-unvisited ring
+carrier inspection. Additional freshness/collision guards compile only. New
+regression cases await October 11; no second October 10 batch ran.
+
+Next: restore usable flight/carrying capacity, address city-wait overhead
+without bypassing hazards, sustain current-band XP and verify level 32.
+Keep optional quests, roster breadth
+and higher-band work deferred; preserve all old loss and route evidence.
+
+### October 10 Flight And Sale-Loop Repairs
+
+The latest checkpoint is **49831**, last run **16733**: level **31 Knight**,
+**699,183 XP**, **29,117 XP** to 32, QP **18**, full health at healer **3054**,
+food and renewed flight. **16716-16733** produced five useful kills, three
+witches and two bards, for **6,345 net XP**, with no flee or loss. All eighteen
+connected visits took **958.99 seconds**, approximately **397 net XP/minute**.
+This includes two flight purchases, two unsuccessful ring trips, nine liquidation
+visits, travel and recovery; it excludes development/pre-connection planning.
+No level transition, HERO or controlled balance comparison is proved.
+
+The flight blocker was carrying capacity, not money. A shared recovery-owned
+controller now preflights a free slot at the healer, retaining the existing
+protected-item selector, fixed budget and five-second confirmed replies.
+**16716** dropped/sacrificed two spare flasks, confirmed **39/38 to 37/38**,
+then purchased and used flight for **141 copper**. **16733** renewed flight
+at **35/38** without any disposal. Bounded canonical-log repair identified the
+earlier **16707** carrying refusal without rewriting that run or its cooldown.
+
+**16719** sold antlers for **121 copper**, but **16720-16723** were empty
+reconnections. Exact matching now precedes subtraction of a worn namesake.
+A subsequent acquired duplicate changed the signature; **16728-16729** then
+exposed that completed retention was not saved without sales. The new
+run-bound completed-plan receipt rejects interrupted, pending and refused
+plans. **16730** saved retention without profit or objective-success claims,
+and fresh **16731** resumed a productive witch kill. These are bot faults,
+not DD4 defects; their wasted visits remain in the measured rate.
+
+**16724/16732** reached daycare but returned at a source-known combat-capable
+bystander, acquiring no ring. The carrier inspection remains unproved. The
+20% plain single-unarmed withdrawal trigger remains active. Focused new cases
+compile but await October 11; no second October 10 regression batch ran.
+Next acceptance remains sustained level-31 XP and a verified level-32 transition.
+
+### October 10 Room Refresh And Gear Handoffs
+
+Checkpoint **49855**, run **16747**, preserves level **31 Knight**,
+**704,052 XP**, **24,248 XP** to 32, QP **18**, full recovery at healer
+**3054**, food and renewed flight. **16734-16747** gained **4,869 net XP**:
+witch **16736** (+1,436), bards **16734/16737/16742** (+911/+1,075/+1,447),
+with no flee/loss. Fourteen connected visits took **1,121.81 seconds**, about
+**260 net XP/minute**, including maintenance, delays, travel and recovery but
+not development/planning. No level transition or HERO proof.
+
+**16740** oscillated between movement boots and recovery gear near the fountain,
+then returned after its bounded city waits; no XP objective completed.
+**16744** failed flight preparation after inventory confirmed **38/38**, while
+state still held **39/38**. Raw GMCP proves DD4 sent the correct new stats and
+inventory. Its same-room refresh retained login arrival metadata and changed
+only flight-dependent exit costs; the bot's duplicate-login quarantine dropped
+the later packets. Both are bot faults, not demonstrated DD4 defects.
+
+The filter now admits only a complete prior-matched room snapshot, unchanged
+except valid nonnegative integer exit costs; destination, door, state, identity,
+source-shape changes, existing quarantine and foreign snapshots remain blocked.
+**16745** confirmed a spare-vine disposal from **38/38 to 37/38**, bought and
+used flight for **141 copper**, and returned safely. This verifies cleanup and
+renewal, not the exact expiry-triggered parser boundary.
+
+Applied combat gear may persist during the exact ready Midgaard fountain
+preflight; health/mana/readiness and every travel/combat gate remain unchanged.
+A returning healer session retains already-applied recovery gear after waking.
+**16747** completed its fountain fill/drink without swaps, found the Ki-Rin,
+received live `no match for you`, and correctly skipped the below-band fight.
+Its return used one sleep, then stand/save/quit without another combat-gear
+sleep. It acquired no XP. Near-full fountain movement remains unproved live;
+new negative/boundary tests compile but await October 11's daily batch.
+
+The 20% plain-target withdrawal trigger remains active. Preserve old failures;
+next acceptance is useful current-band XP and a verified level 32.
+
+### October 10 Skill Priorities And Multi-Kill Follow-Through
+
+Checkpoint **50115**, run **16876**, preserves level **32 Knight**, **762,227
+XP**, **29,673 XP** to 33, QP **18**, **767/767 HP**, **505/512 movement**,
+hunger **33**, thirst **46**, four pies, **15 ticks** of flight and **278
+copper-equivalent** at healer **3054**, with confirmed logout. Thirteen visits
+**16864-16876** gained **8,169 net XP** in **1,370.406555 connected seconds**,
+about **358 net XP/minute**, including maintenance, missed targets, city waits,
+travel and recovery; development/pre-connection planning is excluded. Six kills
+earned **1,412/1,493/1,001/1,286/1,685/1,292 XP**. The last two Bartender kills
+in **16872** completed one **2,971-XP** trip instead of returning after one.
+There was no recorded flee, loss or death; cumulative losses remain **61,169**.
+
+All thirteen safety outcomes are safe, but execution/objectives remain distinct.
+**16865/16867/16869/16872/16873/16874** achieved their contracts;
+**16866/16868/16871/16876** did not; **16864/16870/16875** remain unknown.
+**16875** failed its shop procedure after bounded city-route checks and has no
+farewell confirmation. The follow-up **16876** confirmed logout; it never
+rewrites the earlier failure or claims a ring. Twelve logouts were confirmed.
+Both ring attempts remained blocked by live endpoint evidence. **16865/16876**
+ate pies during recovery, and **16873** verified flight after a **141-copper**
+purchase. Ready checkpoints do not mean every run objective completed.
+
+The user's skill-tree strategy is recorded permanently in `AGENTS.md` and
+`docs/OPERATIONS.md`, with inspection usage in `README.md`. Review each level,
+new practice balance, observed prerequisite unlock, subclass transition or
+relevant source change. Prefer useful damage, extra attacks, repeated
+between-round attacks, disarm, defenses and protective/damaging spells; plan
+prerequisites deliberately, respect trainer capacity and verify actual gains.
+Dorrik's current observed audit retains enhanced damage **67%**, kick **67%**,
+stun **62%**, second/third attack **63%**, and **zero physical/intellectual
+practices**. This is useful proficiency, not mastery or an additional lesson.
+Source `fight.c` confirms enhanced damage boosts each weapon hit and third
+attack follows a successful second-attack roll, making those improvements
+valuable when practices and the teacher permit them.
+
+After all workers finished, the clean source checkout fetched and fast-forwarded
+from **5f674ea** to **6d77df8**. The full world parsed **13,052 rooms, 4,125
+mobiles and 6,138 objects** before **16876** used it. The commit fixes inherited
+skill ADVICE, pouch restrictions, recall loading and other unrelated game bugs;
+it does not alter the prerequisite tree or establish the deployed server version.
+No gameplay code changed in this pass, and no additional regression batch ran.
+Preserve old failures and the 20% trigger. Next: sustained current-band XP to
+verified level 33 and useful lessons when available. HERO remains unproved.
+
+### October 10 Combat State And Productive Hunts
+
+Checkpoint **50085**, run **16863**, preserves level **32 Knight**, **754,058
+XP**, **37,842 XP** to 33, QP **18**, **767/767 HP**, **450/512 movement**,
+hunger **4**, thirst **48**, six pies, **27 ticks** of flight and **364
+copper-equivalent** at healer **3054**, with confirmed logout. Fourteen visits
+**16850-16863** gained **8,741 net XP** in **1,400.035794 connected seconds**,
+about **375 net XP/minute**, including supplies, selling, missed/crowded targets,
+travel and recovery; development/pre-connection planning is excluded. Six kills
+earned **1,196/1,375/1,622/1,525/1,395/1,628 XP**. There was no recorded flee,
+loss or death; cumulative loss remains **61,169**. All logouts were confirmed.
+
+All fourteen executions completed safely, but their objectives differ:
+**16850/16852/16856/16857/16861/16862/16863** achieved their contracts;
+**16853/16854/16855/16860** did not; **16851/16858/16859** remain unknown.
+The two-target visit **16854** skipped a crowd and killed its alternate target;
+that positive XP never substitutes for the missing required kill. No ring was
+acquired. **16861** verified flight after a **141-copper** purchase, and
+**16863** bought six pies for **29 copper each** with distinct inventory entries.
+Low final hunger still needs food consumption, not another purchase claim.
+
+Live GMCP-only fights exposed an ownership fault: the state stored position 6
+and a positive enemy list but left `in_combat=False`. DD4's `merc.h` explicitly
+defines position 6 as fighting, and `update.c` sends that actual position.
+Fresh valid positions and enemy snapshots now update the root combat flag;
+explicit nonfighting/empty evidence clears it. Partial or malformed messages
+neither clear combat nor revive it from an old position. Target identity is
+not guessed, and historical rows remain untouched. In **16862**, current state
+was observed with position **6**, **762/767 HP** and `in_combat=True`, then with
+position **4** and `False` at the healer after the **1,628-XP** kill. The run's
+objective and safety were both independently positive.
+
+Focused cases in `tests/test_live_combat_state.py` compile and are queued for
+October 11; no additional regression batch or synthetic replay ran today.
+After the first worker finished, source fetched/fast-forwarded cleanly and the
+full world parsed **13,052 rooms, 4,125 mobiles and 6,138 objects**, unchanged
+at **5f674ea**. The four later visits used that source. Preserve old target
+failures and the 20% trigger. Next: food, movement recovery and sustained
+current-band XP to verified level 33, not quests or breadth. HERO remains unproved.
+
+### October 10 Nourishing Supplies And Combat Baselines
+
+Checkpoint **50056**, run **16849**, preserves level **32 Knight**, **745,317
+XP**, **46,583 XP** to 33, QP **18**, **767/767 HP**, **486/512 movement**,
+hunger **35**, a toadstool, active flight and **498 copper-equivalent** at healer
+**3054**, with confirmed logout. Fifteen connected visits **16835-16849** gained
+**5,538 net XP** in **1,126.213 seconds**, about **295 net XP/minute**, including
+failed carrying preparation, supplies, empty/crowded searches, travel and recovery;
+development/pre-connection planning is excluded. Four kills earned **1,621**
+(buck), **1,241** (bartender), **1,233** (buck), and **1,443** (alternate bartender)
+XP. No flee, XP loss or death was recorded; every logout was confirmed.
+The first bartender visit's incomplete two-target objective remains not-achieved.
+The food visit **16841** also remains not-achieved; the ring was not acquired.
+
+Source-unique ordinary nonwater vessels need no spare reserve when another
+verified refillable water vessel remains. **16839** proved acknowledged last
+carafe disposal, carrying relief and two food pickups. **16847** then exposed a
+keyword problem: `glass` overlaps the retained colorless flask, although source
+object **30250** also has `shot`/`shotglass`. The corrected selector examines
+alternative source words, rejecting prefix collisions and unknown inventory.
+**16849** acknowledged `drop shot` and sacrifice, confirmed **38/38 to 37/38**,
+bought flight for **141 copper**, verified the affect and returned to the healer.
+The bottles remain ambiguous: possible source objects include drink vessels and
+trash, so they are not blindly destroyed. Water, useful gear and roles remain.
+
+Repeated low-value foraging preempted XP despite adequate money. The existing
+Bakery executor is now preferred for a needed field reserve only at the safe
+healer, with known nonnegative fame, current plain source food, a selection
+budget including flight, and preserved city-shop/no-consecutive-attempt gates.
+The live quote/stock/carry-safe order remains authoritative. **16845** bought one
+big pot pie for **29 copper**, with success/achieved/safe and confirmed inventory.
+**16846** ate it, completed the alternate bartender kill and returned with hunger
+**37**. This proves the purchase/use path, not sustained supply sufficiency.
+A missing import briefly stopped policy selection before connection; it was
+corrected before this successful live proof, without a gameplay retry.
+
+Moose **16836** consumed the existing one-use improved-output revalidation;
+the prior loss and consumed markers remain. It found a crowd, did not fight and
+gained no XP. The claimed estimate improvement **1,152 to 1,248** came from
+damroll **19 to 22** across recovery/combat stances, although the original failed
+fight **16829** already wore the combat set. New exact-source withdrawals now
+retain a compact source estimate from current combat gear and commit it only
+on the explicit XP-loss event. Target evidence keeps the old planned ceiling
+separately and uses the higher baseline. Legacy same-weapon health/damage-window
+failures without it cannot infer an upgrade solely from a stance switch. No
+historical row, failure or retry marker is rewritten; estimates are not measured
+damage. This new withdrawal branch compiles but is not freshly live-proved.
+
+New food-choice, capacity-keyword and failure-baseline tests are saved/compiled,
+unrun until October 11. Today's prior 26-test batch remains the only regression
+batch. Source was clean, fetched/fast-forwarded and fully parsed after workers
+ended: unchanged **5f674ea**, **13,052 rooms / 4,125 mobiles / 6,138 objects**.
+All gameplay workers ended; Discord remains operational. Next: sustain useful
+current-band XP and verify level 33, preserving the **20%** withdrawal trigger.
+HERO, optional quests, breadth and above-frontier policy expansion remain deferred.
+
+### October 10 Carrying Preparation And Recovery Ownership
+
+Checkpoint **50024**, last run **16834**, preserves level **32 Knight**,
+**739,779 XP**, **52,121 XP** to 33, QP **18**, full HP/mana/movement, hunger
+**12**, a carried mushroom, and confirmed logout at healer **3054**. Flight
+expired. Nine visits **16826-16834** gained **3,280 net XP** in **1,003.064
+connected seconds**, about **196 net XP/minute**. This includes failed carrying
+preparation, food and ring visits, empty searches, travel, combat and recovery;
+development/planning is excluded. Witch **16827** earned **1,568 XP** and
+bartender **16832** earned **1,484 XP**, each **success/achieved/safe**.
+
+Moose **16829** withdrew at the unchanged **20%** trigger and reached
+**12/767 HP** during escape. It credited **864 damage XP** against **636 lost**,
+or **228 net XP**, with **success/not_achieved/loss** outcomes. No death was
+recorded; cumulative campaign losses are **61,169**. The exact moose loss
+remains closed. The buck visit was crowded, the second witch visit returned for
+provisions, and the ring was not acquired. Final food visit **16834** retained
+a mushroom and restored hunger but did not meet its full reserve objective.
+All nine logout acknowledgements were confirmed.
+
+Run **16826** failed at the healer with **38/38** items. Its cleanup only
+admitted water containers, unnecessarily protecting spare carafes whose unique
+source object **30249** is an ordinary unpoisoned wine vessel. Disposal now
+admits ordinary source-unique drink vessels while retaining one of that prototype
+and another verified water source. Poison, ambiguous prototypes, stat/set/cursed
+items and keyword collisions remain excluded; it does not authorize drinking
+their contents. **16828** ate grain, confirmed drop/sacrifice/inventory for one
+carafe (**37/38 to 36/38**), collected a mushroom and toadstool, and completed
+**success/achieved/safe**. This is live proof of the carrying repair.
+
+The failed visit also alternated sleep/stand rapidly: generic departure recovery
+required 90% movement while pending logout treated full HP/mana as ready.
+Pending logout now has one recovery owner, preserving that ordinary movement
+reserve and the existing separate 40% runtime-boundary reserve. Neither health
+nor mana readiness is lowered. Its exact failed-preparation branch still needs
+fresh live proof. Focused cases compile but remain unrun until October 11;
+no second daily regression batch or out-of-schedule Git publication occurred.
+DD4 source was clean, fetched/fast-forward checked and fully parsed at unchanged
+**5f674ea** before the batch. Next: affordable flight renewal, useful current-band
+XP and verified level 33; no optional quests, roster breadth or higher-band work.
+
+### October 10 Combat Names And Food Evidence
+
+Checkpoint **50003**, last run **16825**, preserves level **32 Knight**,
+**736,499 XP**, **55,401 XP** to 33, QP **18**, **742/767 HP**, full mana and
+movement, alive at healer **3054** with confirmed logout. Eleven connected
+visits **16815-16825** gained **5,696 net XP** in **1,187.402 seconds**, about
+**288 net XP/minute**, including every supply/search, sale, travel and recovery
+visit, excluding development/planning. Four useful kills earned
+**1,288/1,960/1,864/1,494 XP**; two flees cost **636 XP** each and credited
+**276/86** damage XP. No death was recorded; cumulative campaign losses are
+**60,533**. The last trip's two kills followed by a Sosivia withdrawal netted
+**2,808 XP**, but its outcomes remain **success/not_achieved/loss**. The exact
+Sosivia and student losses remain in the ledger, not reopened by this work.
+
+Run **16820** misparsed `Teacher's last student misses you.` as an attack by
+`Teacher`. Fresh GMCP showed only source **10726**, with matching complete name
+and description; HP was **718/767**, target **441/717**, when the bot fled.
+Its first flee failed; the subsequent escape lost **636 XP**, crediting **276**
+damage XP for a **360-net-XP loss**. Parsing now prefers the complete current
+source name on direct attack lines while retaining genuine possessive attack
+nouns, unknown attackers and existing aborts. This grants no targeting,
+identity, combat or retry permission. Normal selection afterward did not
+reopen the student; the exact corrected name path still needs live proof.
+
+The earlier **16814** food-reserve failure was a report defect. Its saved raw
+inventory contains two grain portions; DD4's `update.c` inserts colour-converted
+descriptions directly into inventory JSON, making raw ANSI control bytes fail
+standard decoding. Complete escape removal now precedes structured decoding;
+distinct quantities and zero counts survive, malformed/partial data does not
+prove acquisition. An explicit one-run summary refresh corrected **16814** to
+**success/achieved/safe**, without rewriting events or transcripts or invalidating
+other caches. **16815** ate grain and observed hunger **2 to 15**. A Haon mushroom
+reserve completed in **16822**; flight renewal cost **141 copper** in **16823**.
+The final hunger **2** still requires ordinary provision handling on resume.
+
+Both fixes compile; focused cases are saved for October 11, not run today.
+All eleven logout receipts were confirmed within five seconds. The **20%**
+plain-target withdrawal floor remains unchanged; lag took HP to **116/767**
+during the last escape. No new level transition, HERO or balance proof is claimed.
+Next: provisions, sustained current-band XP and verified level 33.
+
+### October 10 Withdrawal And Logout Follow-Up
+
+Runs **16804-16811** added **2,123 net XP** over **830.829 connected seconds**,
+about **153 net XP/minute**, including training, ring inspection, provisions,
+flight, selling, travel, combat, death recovery and healing. Samuel **16806**
+earned **1,480 XP** and moose **16807** earned **2,945 XP**. The Lotus Temple
+attendant **16811** killed Dorrik after withdrawal at the 20% floor and a failed
+first flee; the queued recall did not rescue him. That visit lost **2,302 net
+XP** and is **success/not_achieved/unsafe**, not a safe objective completion.
+Autonomous recovery found and looted his corpse, used the portal, restored and
+audited equipment, and saved at healer **3054**. Checkpoint **49978** preserved
+level **32**, **730,552 XP**, **61,348 XP** to 33, QP **18**, **743/767 HP** and
+cumulative campaign losses **58,625**. The exact attendant loss remains closed.
+The earlier commentary claiming recall saved him was corrected append-only.
+
+Training **16804** improved headbutt **49% to 65%** and armed combat knowledge
+**62% to 64%**, spending the available new practices. The ring was not acquired;
+daycare's source-known `spec_thief` bystander remained a valid hazard. Antlers
+sold for **63 copper**; liquidation's whole objective remains unknown.
+
+Ordinary `quit` previously marked policy completion immediately, skipping the
+farewell read. The session owner now holds a bounded logout controller: exact
+complete farewell/refusal lines, split ANSI/prompt handling, one five-second
+deadline, and no extra commands or reconnect. Send failure and unconfirmed EOF
+are visible failures. Final responses/GMCP remain canonical events; cached
+reports add compact acknowledgement evidence without a summary-version bump
+or historical rewrite. Run **16812** confirmed farewell in **0.265 seconds**.
+Run **16813** separately confirmed farewell in **0.421 seconds**, while keeping
+its failed kill and **636-XP** flee loss. Its **887** damage XP made a **251-XP**
+net gain, not a productive kill or safety success. Checkpoint **49981** retained
+the exact Samuel loss for later selection.
+
+The final food visit **16814** acquired grain; its then-cached failed reserve
+verdict was corrected by the later inventory-parser audit above. Hunger ended
+at **2**. It separately confirmed logout in
+**0.281 seconds**. Checkpoint **49983** preserves **730,803 XP**, **61,097 XP**
+to 33, QP **18**, full HP/mana/movement at healer **3054**, and cumulative
+campaign losses **59,261**. All eleven visits **16804-16814** gained **2,374 net
+XP** over **1,233.714 connected seconds**, about **115 net XP/minute**. The last
+three visits gained **251 XP** in **402.884 seconds**; neither farewell evidence
+nor positive damage XP turns a failed hunt into a productive kill. No gameplay
+worker remained; the healthy new-only Discord relay was left running.
+
+The **20%** plain-target floor remains unchanged; command lag can pass below it.
+Source **5f674ea** was clean, fetched/fast-forward checked and fully parsed
+before live work. New logout cases compile and await October 11; no second
+October 10 regression batch ran. No new level transition or HERO is proved.
+
+### October 10 Verified Level 32
+
+Runs **16798-16803** added **2,897 net XP** from bard kills **16800** (**1,569**)
+and **16803** (**1,328**), without canonical XP-loss or death events. All six
+connected visits took **627.387 seconds**, about **277 net XP/minute**, including
+food, flight, selling checks, unsuccessful Westreen research, travel and recovery.
+Development/planning is excluded. The grain pickup restored hunger, but did
+not meet the whole food-reserve contract; selling was **unknown**, not profit.
+Flight purchase/use completed for **141 copper**.
+
+The finishing kill recorded both `You raise a level!!` and a structured
+**31-to-32** transition, with **24 HP, 21 mana, 10 movement**, three physical
+and two intellectual practices gained. The pre-level stance was confirmed
+before the opener; do not infer new item identity or a one-kill-window proof
+from this gear receipt. Checkpoint **49963** preserves level **32 Knight**,
+**728,429 XP**, **63,471 XP** to 33, QP **18**, **767/767 HP**, food and flight at
+healer **3054**. Save was acknowledged; `quit` was dispatched and the worker
+closed without a recorded farewell. Cumulative campaign losses remain
+**56,323**. Process inspection found no remaining gameplay worker; the healthy
+new-only Discord relay was left running and delivered both user and commentary.
+
+The **20%** plain-target withdrawal trigger remains active. Source **5f674ea**
+remains the audited revision. No additional regression batch was run: October
+10's allowance was already spent. Level 32 is now proved; HERO is not. The
+next work is current-level training and sustained useful XP toward 33, without
+optional quests, roster rotation or higher-band policy expansion.
+
+### October 10 Current-Band Progression Follow-Up
+
+Normal autonomous runs **16786-16797** added **6,053 net XP**: bard rewards
+**946**, **1,606**, **1,316**, and goat reward **2,185**. All twelve connected
+visits took **1,280.458 seconds**, about **284 net XP/minute**, including empty
+or below-band searches, flight, unsuccessful ring/selling work, travel and
+recovery. No canonical XP-loss or death event was recorded. The goat fight's
+lowest observed health was **254/743**; it returned fully healed. Its run's
+multi-kill objective remains **not achieved**, despite the useful kill.
+
+Checkpoint **49951**, run **16797**, preserves level **31 Knight**, **725,532
+XP**, **2,768 XP** to 32, **18 QP**, and full health at healer **3054**. The
+following autonomous batch began with food before continuing current-band XP.
+Optional quests remained parked; level 32 was unproved at that checkpoint.
+
+Two source checks explain unsuccessful maintenance/research without granting
+retries. Daycare bystanders **6600/6601/6604** have `spec_thief`, so their
+required-loot rejection is not a faulty level-window check. Westreen mobiles
+**12041/12042** share visible names and reachable rooms; run **16792** also
+observed an armed level-35 guard beside the citizen. That identity/crowd stop
+remains closed. In the dwarven resource route, key carrier **6500** is a
+sentinel, not a wandering giant. Global prototype counts can prevent its outer
+reset from spawning; an empty key room alone does not prove an imminent reset.
+No historical failure or cooldown was cleared by these investigations.
+
+Source **5f674ea** and the **20%** plain-target withdrawal trigger remain in
+use. The October 10 daily regression allowance is already spent; no new
+regression batch was run for this follow-up.
+
+### October 10 Measured Registered-Hunt Selection
+
+Successful registered hunts now compete during normal current-band source
+selection, instead of waiting for an empty generic frontier. `hunt_efficiency.py`
+uses at most eight linked, current-version visit summaries, their net XP and
+full connected duration, including safe zero-progress visits. Saved run IDs and
+rates explain the choice; this is operational evidence, not class-balance proof
+or combat permission. A faster measured generic hunt retains control. An
+already-selected multi-kill circuit also retains control because single-target
+receipts cannot establish its comparable rate.
+
+Clean source checkout **a3ad2fb** was fast-forwarded to **5f674ea** and fully
+parsed: **13,052 rooms, 4,125 mobiles, 6,138 objects**. Historical successes may
+survive that refresh only after a complete current-source route/loadout audit;
+their original start/end source revisions must match. No historical rows,
+failed objectives, parent losses or exact target quarantines are rewritten.
+This source revision does not prove the running DD4 binary's version.
+
+Normal autonomous selection produced Catacombs dying-man kills **16777/16781**
+for **1,893/1,604 XP**, then an empty Catacombs search **16782** rotated to the
+bard **16783** for **1,196 XP**. All ten visits **16776-16785** gained **4,693
+net XP** in **892.50 seconds**, about **315 net XP/minute**, including every
+maintenance, travel, recovery and zero-progress visit. Development/planning is
+excluded. There were no canonical XP-loss or death events. Food-reserve and
+ring objectives were not achieved; flight cost **141 copper** and later eating
+was observed. Supply work is not counted as progression kills.
+
+Checkpoint **49928**, run **16785**, preserves level **31 Knight**, **719,479
+XP**, **8,821 XP** to 32, QP **18**, full health, food and flight at healer
+**3054**. Save was acknowledged; `quit` was dispatched and the worker closed,
+without a recorded farewell. Cumulative losses remain **56,323**, not erased.
+The 20% plain-target withdrawal trigger remains active. Compilation passes;
+new selection/source/metric/circuit cases are saved but unrun until October 11.
+Next acceptance remains verified level 32; HERO and higher bands are unproved.
+
+### October 10 Productive Hunt Continuity
+
+Runs **16674** and **16679** completed the independently registered Catacombs
+sentinel objective for **2,074** and **1,858 XP**. The latter safely raised
+Dorrik from **30 to 31**. Its repeat receipt nevertheless required unchanged
+levels and equality with the current campaign-wide loss total. The successful
+transition and later losses elsewhere therefore discarded this useful route.
+
+`completed_single_target_hunt` now accepts an explicitly observed one-level
+transition with its exact prior-level source identity and current-version linked
+achieved/safe summary. Encounter losses must remain unchanged; campaign losses
+may only advance, and exact current/prior target loss ledgers still close the
+hunt. No history, loss record or failed parent objective is rewritten. A
+completed productive independent hunt may repeat beyond its initial three-kill
+discovery cap, retaining one kill per visit and fresh source/live gates. This is
+continuity of successful work, not another failed-route retry allowance.
+
+The actual **16679** receipt is accepted against the current saved level-31
+checkpoint. This is saved-evidence analysis, not a new live Catacombs kill.
+Focused transition, unrelated-loss, quarantine and cap cases compile but await
+October 11. The ordinary campaign remains responsible for selection; continue
+current-band XP, and measure whether restored successful routes actually run.
+
+Completed checkpoint **49907**, run **16775**, retains level **31 Knight**,
+**714,786 XP**, **13,514 XP** to 32, QP **18**, full recovery and logout at
+healer **3054**. Runs **16764-16775** gained **4,576 net XP** from three bards,
+without flee or canonical XP-loss events. All twelve connected visits totalled
+**1,387.21 seconds**, about **198 net XP/minute**, including unsuccessful ring,
+bear, sanctuary and Underdark visits plus every maintenance/route/recovery
+minute; development/planning is excluded. The ground stash added **1,256
+copper**, then flight cost **141**. Holy-water attempts ended city-blocked and
+at a locked route door, without reaching an objective kill. Underdark used seven
+locator checks; raw replies confirmed below-band individuals and remaining
+crowds, not an empty area or mistaken HP comparison.
+
+Normal selection kept choosing the executable generic bard hunt, so no new
+live Catacombs success is claimed. The remaining selection gap is that proven
+registered hunts are considered only after the generic frontier is empty.
+Next: integrate those completed current-band routes into measured selection,
+preserving their exact routes, quarantines and fresh combat gates. Level 32,
+HERO and sustained higher-band progression remain unproved.
+
+### October 10 Dotted Shop Refusals
+
+Campaign checkpoint **49884**, last progression run **16762**, records level
+**31 Knight**, **710,210 XP**, **18,090 XP** to 32, QP **18**, full recovery
+at healer **3054**, food and flight. Runs **16748-16763** gained **6,158 net
+XP** from four bards and one witch, without flee/loss. All sixteen connected
+visits took **1,414.68 seconds**, approximately **261 net XP/minute**, including
+unproductive searches, city waits, maintenance, travel and recovery, excluding
+development/planning. Level 32 and HERO remain unproved.
+
+**16750/16752** repeatedly travelled to the Leather Shop with no sale. DD4
+returned its ordinary refusal for `an I.Q. Vine`, but three duplicated bot
+patterns disallowed internal full stops. One shared pattern now preserves that
+source name across live decisions, saved refusal recovery and reports. Live
+handling accepts both value and sell replies, with a bounded command-local
+buffer and complete-line requirement to avoid interpreting a split `I.Q.` as
+the whole item. Existing alternate-buyer, donation and retention limits remain.
+
+Standalone **16763** verified one **1-copper** sale, then the correct refusal
+and immediate return without another sale to that buyer. The alternate route
+remained blocked after three city checks; execution **failed**, objective
+**unknown**, safety **safe**, with a healer save and unchanged XP. This is
+positive parser evidence, not completed liquidation or split-packet proof.
+New focused cases compile but remain unrun until October 11.
+
+Source was clean and refreshed to **a3ad2fb**, then fully parsed: 13,052 rooms,
+4,125 mobiles and 6,138 objects. Resource research confirms Caerlin's staff
+has ten sanctuary charges and is Knight-usable, but its carrier has sanctuary
+and a cleric special. The Dwarven holy-water entrance still has an independent
+protection gate. Neither audit grants a fight or reopens the spent Moria
+recheck. Continue executable current-band XP while addressing preparation;
+the 20% plain-target trigger remains active and optional quests stay deferred.
+
+### October 10 Practiced Attack Timing
+
+Checkpoint **49713** retains **662,990 XP**, **6,060 XP** to 31, QP **18**,
+and recovered healer state. The next ordinary launch ended before login:
+no new run, XP or combat. Existing frontier results and the spent sanctuary
+recheck remained authoritative.
+
+Run **16671** issued three headbutts and two kicks; all five missed. That
+unlucky sequence is live evidence, not by itself a bot defect. Source inspection
+did reveal blind alternation: headbutt waits six seconds on success and three
+on failure, versus kick's two, and NPC ordinary attacks continue during that
+wait. At observed **headbutt 49% / kick 61%**, kick has the higher raw expected
+damage rate. A shared helper now uses that source estimate for planner and
+live selection, including observed second-headbutt probability when available;
+unknown inputs retain old ordering and anatomy/capability admission is unchanged.
+Exact target acknowledgements now retain those source waits plus the input
+pulse, without treating unrelated rounds or prompts as a command reply.
+
+Compilation passed; focused ranking, source-output, split-response, prompt,
+miss/success lag and unrelated-output cases are saved but unrun before October
+11. This is an implementation improvement, not demonstrated faster live damage
+or permission to retry the failed citizen. Next: obtain protection or improve
+equipment/output enough to execute an independent current-band hunt. Do not
+replace that work with more historical retry exceptions or optional quests.
+
+### October 10 Source Inspection And Productive Citizen Kill
+
+Latest checkpoint **49712**, run **16673**, preserves **662,990 XP**, level
+**30 Knight**, **6,060 XP** to 31 and **18 QP**, recovered at healer **3054**
+with verified flight. Cumulative campaign XP loss is **53,363**. The next level
+has no quest-point shortfall; continue XP, not optional quest requests.
+
+Source mobiles **12041/12042** share room descriptions but have distinct full
+look descriptions. The world parser now retains those descriptions, and the
+travel controller owns a five-second exact-instance inspection with finite
+attempts and a context-bound receipt. **16665** actually received the expected
+woman description, but the first matcher left the article `A` before the health
+line and rejected it. That was a bot parser error, not game ambiguity. The
+correction uses the full source short name. Its single revision-2 revalidation
+required the exact ordered timely reply, unchanged source and healthy boundaries;
+the old failure and original one-use receipt remain preserved.
+
+**16666** then freshly inspected instance **#6752**, considered it, confirmed
+source VNUM **12041** through combat GMCP (live level 31), and killed her for
+**2,641 XP**. Repeated headbutts accompanied ordinary attacks. The fight used
+no sanctuary, flee or XP loss, reached **32.3%** HP, and ended with full healer
+recovery. The run's separate level-100 objective remains not-achieved; one
+productive kill does not prove sustained progression or HERO. **16667** banked
+excess coins. **16668** stopped at its bounded city preflight without reaching
+the target. Together with the parser-failure visit, these four runs netted
+**2,641 XP** in **421.565 connected seconds**, about **376 XP/minute** including
+maintenance and failed travel but excluding development. The successful hunt
+alone took **218.559 seconds**, about **725 XP/minute** including its recovery.
+
+Compilation passed. Today's earlier 26-case focused batch remains the only
+regression batch; new description, controller and historical-revalidation
+cases are saved but unrun until October 11. The 20% plain-target withdrawal
+floor is active; source, consider, crowd, loss and explicit encounter gates
+remain unchanged. Next: obtain further useful kills and verify level 31.
+
+The subsequent **16669** stopped at its three-wait city preflight. **16670**
+observed the drunk off the entire route with unchanged XP/loss and source.
+The legacy global clear-route receipt had already been consumed by another
+target, and general attempted-policy filters still excluded this productive
+hunt. The repair requires its exact recent summary-confirmed useful kill,
+a later no-travel block and changed clear locator, with one persisted
+`campaign_productive_city_clearances` entry per policy/level/boot. Preserve
+the old receipt as `superseded_clearance`, bind pending admission to current
+XP/loss and prior result, and consume both receipts before dispatch. Rebuilding
+an admitted route must repeat the ordinary economic source/purse audit; the
+old rerank accidentally replaced its audited candidate with an unaudited one.
+Several pre-connection diagnostic launches produced no game commands or runs;
+their planning/development overhead is not in connected-time metrics.
+
+**16671** live-proved the corrected departure and inspected the intended
+citizen. Combat GMCP confirmed **12041**, live level **30**, **915 maximum HP**;
+the earlier successful instance had only **624 HP**. Stun succeeded, but
+repeated attacks did not finish this stronger individual. It withdrew at the
+20% trigger, fell to **18.98%** during escape and returned recovered. Damage
+XP offset part of a **551-XP flee loss**, leaving **-188 net XP**. Outcomes are
+success/not-achieved/loss. Preserve that target loss and consumed clearance;
+do not report this as productive continuation or repeat it automatically.
+**16672** collected no sanctuary, and **16673** renewed observed flight for
+**141 copper**. These five connected visits took **360.40 seconds**, averaging
+about **-31 net XP/minute**, excluding pre-connection planning and development.
+The next work must improve combat throughput/protection and find independent
+current-band XP, not add more historical retry exceptions. New proof-binding,
+negative, finite-consumption and integrated clearance cases are saved but
+unrun until October 11. No level-31 or HERO claim follows from this repair.
+
+### October 10 Route Rotation And Population Evidence
+
+Checkpoint **49692**, run **16664**, keeps Dorrik at level **30 Knight**,
+**660,537 XP**, **8,513 XP** to 31 and **18 QP**, fully recovered at healer
+**3054**. Automatic no-progress rotation had offered a city-blocked route
+that the final guard necessarily rejected before connection. It no longer
+turns cooldown rotation into `allow_route_program_retry`; explicit retries
+and exact persisted route revalidations remain separate.
+
+Ordinary selection then dispatched **16661**, killing Quake bear **12024**
+for **1,757 XP** (820 damage plus 937 kill), without sanctuary or XP loss.
+The lowest observed health was **90.5%**; outcomes are
+success/achieved/safe. The optional ring trip **16662** stopped at its city
+preflight. **16663** found a bear but rejected `The bear is no match for you.`;
+this is below-band evidence, not absence or a reason to wait for respawn.
+
+Economic-only travel may now accompany the independently audited two-to-four
+plain population proof. Capacity remains a research rejection, every target
+reset is audited, and exact economic actor IDs travel through noncombat
+locator checks. **16664** followed positive citizen sightings and used its
+eight relocations, but recorded source-ambiguous **12041/12042** identities.
+Both prototypes share room description and reachable rooms, but differ in source
+level. No combat, XP or loss occurred; success/not-achieved/safe. Preserve
+this identity failure rather than treating it as an empty area or kill proof.
+
+The four connected visits netted **1,757 XP** over **449.301 seconds**,
+about **235 XP/minute**, excluding development/planning. This is useful
+progress, not a level transition, sustained progression or HERO. The requested
+20% plain-target floor remains active. Source refresh at 7:40 AM found clean
+`origin/master` unchanged at `a3ad2fba55f19f3d7a025d693029b28c95c2e60f`;
+full parsing found 13,052 rooms, 4,125 mobiles and 6,138 objects. Compilation
+passed; new route/population cases remain unrun until October 11.
+
+### October 10 Economic Route And Productive Hunt
+
+Checkpoint **49682**, run **16660**, is level **30 Knight**, **658,780 XP**,
+**10,270 XP** to 31 and **18 QP**, fully recovered at healer **3054** with
+verified flight. `economic_hunts.py` separates coin exposure from combat
+permission on otherwise eligible ordinary XP routes. The known purse ceiling
+is 1,250 copper-equivalent; `spec_thief` takes at most 20% per attempt, not a
+bounded aggregate. Preserve the original rejection, unique reset/loadout and
+exact actor IDs; recheck fresh money/source before outbound actions. This does
+not waive crowd, consider, source output, health, route, loss or quest rules.
+
+Ordinary autonomous selection opened **16658** against Mirror Realm buck
+**19039** without sanctuary. It gained **2,084 XP** (591 damage plus 1,493 kill),
+with a lowest observed **50.6% HP** and no loss. The neighboring moose's live
+consider failed; the two-target objective remains not-achieved despite that
+useful kill. **16659** exhausted finite city-obstruction waits without leaving
+town or earning XP. **16660** replenished verified flight for **141 copper**.
+The three visits netted **2,084 XP** in **423.60 connected seconds**, about
+**295 XP/minute** excluding planning/development. This proves a new current-band
+fight and return, not sustained progression, level 31 or HERO. The requested
+20% plain-target withdrawal floor is active. New economic cases compile but
+await October 11; October 10's earlier focused floor batch passed 26 cases.
+
+### October 10 Armed Loadout And Live Search
+
+Checkpoint **49676**, run **16657**, keeps Dorrik at level **30 Knight**,
+**656,696 XP**, **12,354 XP** to 31, **18 QP**, fully recovered at healer
+**3054**. Ordinary selection chose Highlander **11505**; live `where` led to
+an exact sighting and `consider` rejected the below-band individual. The
+110-command, 152.924-second visit produced no combat, XP or loss; outcomes are
+success/not-achieved/safe. It proves source/live route identification, not a
+productive fight. The next ordinary selection reported no executable frontier.
+
+The prepared single-weapon defense check previously rejected ordinary armor
+and non-sentinel behavior without evaluating them. `mobile_loadouts.py` now
+audits one global passive reset and its entire ordinary loadout. Known damage
+and HP affects include the common-rank weak randomiser's bounded variation;
+unknown effects, stronger randomisation, poison, spells and extra weapons stay
+closed. Highlander's weapon bonus has a conservative +3 ceiling, making its
+raw peak 432 rather than 414. Source sanctuary also halves planned player
+output, and the corrected estimate reaches field stops. This later correction
+does not rewrite 16657's old source estimate or permit another live attempt.
+Fresh training, isolation, consider, route, loss and finite-output gates remain.
+Compilation passed; new focused cases are saved but unrun until October 11.
+No armed fight, level transition or HERO is proved. The eight recent connected
+runs **16650-16657** average about **118 net XP/minute**, or **94** with the
+explicit reset wait, excluding planning/development. That is not yet adequate
+sustained progression; the next work must open a productive current-band hunt.
+
+### October 10 Productive Locator Repair
+
+Latest checkpoint **49673**, run **16656**, is still level **30 Knight**,
+**656,696 XP**, **12,354 XP** to 31, fully recovered at healer **3054**.
+The bounded healer-only city observation **16655** obtained changed, off-route
+locator evidence. Ordinary selection consumed one unchanged-route recheck
+before **16656** connected. It reached the Clan, skipped weak members, and
+returned without combat, XP or loss; success/not-achieved/safe. Contrary to
+the earlier commentary, this visit was not stopped by a crowd. Its same-visit
+population search continued after a weak member but prematurely closed at the
+next empty stop. The correction retains exact live weak-member evidence across
+empty rooms without resetting locator limits, campaign cooldowns, or consumed
+receipts. It remains unproved live. Across **16650-16656**, 1,377 net XP over
+549.47 connected seconds is about **150 XP/minute**, or **113 XP/minute** with
+the separate 180-second wait. Development/planning time is excluded. No level
+transition or HERO; new city/search cases compile but await October 11.
+DD4 source was refreshed and fully parsed at unchanged **a3ad2fba**.
+
+Earlier checkpoint **49669**, run **16654**, had the same XP and level.
+The single explicit 180-second reset wait led to successful time visit **16653**,
+which confirmed the same boot. That handoff had erased the productive route's
+kill result while retaining weak-member exclusions. The separate bounded
+historical repair restored its exact result at **49664**, referencing **16652**
+and **16653**, matching the loaded compact kill ledger and unchanged source,
+level, boot, XP and loss. Ordinary selection admitted the route again.
+Fresh city-obstruction checks in **16654** then stopped before departure:
+55.66 seconds, no travel, kill, XP or loss; success/not-achieved/safe. Keep that
+new failure closed. Across **16650-16654**, 1,377 net XP over 368.19 connected
+seconds is about **224 XP/minute**, falling to about **151 XP/minute** with the
+explicit 180-second wait. Both exclude development/planning. Multi-kill live
+proof remained outstanding; departure-route availability was then the blocker.
+The forward crowd handoff now retains verified productive facts when it clears
+only the admitted temporary crowd. Its historical repair requires the exact
+safe latest visit, later time check, full healer state, plain source population,
+matching normalized kills and immutable loss/negative evidence. New restart
+and search cases compile but await October 11. This is selector-resume evidence,
+not another kill, objective completion, level transition or HERO proof.
+
+Run **16652** added **1,377 net XP** from another useful clan member, no flee,
+death or loss, minimum health about **94.2%**, then recovered fully at healer
+**3054**. Checkpoint **49657** records level **30 Knight**, **656,696 XP**,
+**12,354 XP** to 31 and **18 QP**. The hunt's 206.63-second connected rate was
+about **400 XP/minute**. Including unavailable ring maintenance **16650** and
+verified 141-copper flight purchase **16651**, the three-run rate was about
+**274 XP/minute**, excluding planning/development. Preserve
+success/not-achieved/safe: one kill did not complete the three-kill objective,
+and a later occupied room triggered the ordinary crowd wait.
+The follow-up search previously rejected ordinary harmless drops and a weak
+individual's earlier receipt even after a useful kill; an outbound interception
+could also skip the locator's first query. The narrow plain-population path now
+retains those negative rooms without closing the remaining registered search.
+It requires fresh positive locator/consider and isolated target checks; source
+upper-load peak damage, an extra critical, and the 20% reserve define separate
+continuation entry health. Required loot and protected/special probes retain
+their existing rules. Compilation passed; new negative/search cases are saved
+for October 11 and multi-kill live proof is still outstanding.
+
+The later population visit **16648** prematurely returned after one weak
+individual despite an unchecked, reported, source-registered endpoint. Its
+one-use repair preserves that report and matches unchanged level, boot,
+source, route, XP and loss boundaries from the bounded tail. Run **16649**
+consumed the receipt before connecting, killed a useful clan member for
+**1,645 net XP**, reached **16479**, and returned fully recovered without flee,
+death or loss. Checkpoint **49650** is level **30 Knight**, **655,319 XP**,
+**13,731 XP** to 31, **18 QP**. Minimum health was about **75.9%**; connected
+session rate was about **478 net XP/minute** over 206.32 seconds, including
+travel and recovery but excluding planning/development. Preserve the run's
+success/not-achieved/safe outcomes: one kill did not complete its three-kill
+objective. New population/search cases compile but await October 11's batch.
+This is useful current-band evidence, not a level transition or HERO proof.
+
+Run **16634** killed Martin for **1,923 net XP** and returned fully recovered
+to healer **3054**, checkpoint **49605**. Dorrik remains level **30 Knight**,
+with **648,290 XP**, **20,760 XP** to 31 and **18 QP**. The bot ordered
+withdrawal at 20%; Martin died before flee resolved, and the reply was
+`You aren't fighting anyone.` There was no XP loss or death. Minimum HP was
+**58/702**, so the requested floor is a command trigger, not a guaranteed
+survival margin. The 311-second whole-run rate was about **371 XP/minute**;
+all twenty connected runs **16615-16634** averaged **182 XP/minute** for
+**9,302 net XP**, including preparation and failed searches.
+
+The focused `hunt_outcomes.py` helper admits one registered route recheck only
+for an already-productive exact source identity whose linked safe, noncombat
+run hit the missing-origin defect. Current source paths must cover all old
+positive-locator endpoints from that origin; level/boot/source and healer
+boundaries must match. It preserves run **16624**'s locator/result, current
+unrelated progress, and all target loss gates. Selection stages the receipt;
+dispatch consumes and checkpoints it before connecting. The final checkpoint
+retains that attempted receipt. This improves acquisition without claiming a
+new combat allowance or clearing Bevan, Sally, or Paul's failed attempts.
+
+Compilation and the real source/evidence preflight passed. Added replay and
+handoff cases are unrun until October 11: October 10's one regression batch
+already passed 26 tests. Keep working on Dorrik's actual current band, repeat
+verified useful hunts when admitted, and address the observed fight output
+and recovery cost. Optional quests and roster breadth remain parked.
+
+The ordinary repeat **16638** started an isolated Martin fight, then Caroline
+joined. Combat text explicitly recorded her attack while `Char.Enemies`
+duplicated Martin; the existing mismatch guard withdrew once. Flee cost
+551 XP and damage earned 362, for **-189 net XP**, no kill or death, and a
+**470/702** minimum. Checkpoint **49610** is fully recovered at the healer,
+with **648,101 XP**, **20,949 XP** to 31 and cumulative loss **52,261 XP**.
+The new exact registered loss remains saved alongside the prior ten source
+loss records. Do not let the old successful Martin research result or consumed
+locator receipt override it. The **16635** loot sale earned **548 copper**;
+**16636/16637** bank/recovery work earned no XP. This pass's net gain is
+**1,734 XP**. All twenty-four connected runs **16615-16638** averaged about
+**164 net XP/minute** for **9,113 net XP**. The next work must address this
+current-band extra-attacker problem or improve another executable current-band
+route, not repeat the lost encounter unchanged or widen the roster.
+
+### October 8 Progression Update
+
+Dorrik's current checkpoint is **49405** at healer room **3054**, level **30**,
+**628,371 XP**, **40,679 XP** from level 31, and **18 QP**. Runs **16525-16528**
+returned safely but produced no XP. The next-level QP shortfall is zero; no
+quest request or timer wait is justified, and the next QP gate is before level
+50. A bounded hero selection also stopped before connecting and left XP
+unchanged.
+
+The expanded all-area readiness scan found six source-gate candidates, all
+closed by same-boot below-band considers. Each has one reset room, so there is
+no alternate reset to recheck. The nearest other candidates fail output,
+sanctuary, aggression, or recorded-loss gates. The source-ranked Highlander
+sword would improve damroll and hitroll, but its armed carrier, HP ceiling, and
+hazardous route do not pass campaign authorization. The pink-ring recovery
+cooldown remains at three positive-XP segments. The current blocker is still
+productive, safe level-30 progression; do not broaden to new characters or
+higher bands.
+
 ### October 5 Quest Cadence Correction
 
 DD4 HELP QUEST and `quest.c` make live active-assignment status and the
 `nextquest` timer the request-frequency gates. The former one-request-per-level
 or reboot marker was an invented campaign restriction and has been removed.
-Request again at the next eligible selection once the timer reaches zero;
+During an actual next-level QP blocker, request again at the next eligible
+selection once the timer reaches zero; optional requests remain parked while
+levelling is unlocked.
 campaign markers remain audit history only. Older references below to a spent
 request allowance describe the mistaken policy and are superseded.
 
@@ -5743,3 +6701,293 @@ ceiling, hard-capped at 240; hazard, randomized-room, movement, return, and
 live-observation gates are unchanged. A regression case for a reversible
 65-command corridor was added. It compiles but is deferred to the next
 local-day test batch.
+
+### October 8: Current Knight Protection Skills
+
+The source mirror is at **7953a006**, while the bundled prerequisite graph and
+subclass training data still referenced **4cffee**. A fresh parse found 1,600
+prerequisite entries, 27 more than the bundled graph. Knight now has source
+gates for `protect vs evil` and `protect vs undead`; the skill-table names are
+`protection vs evil` and `protection vs undead`. The current Knight policy maps
+those identifiers explicitly, prioritizes the wards, and maintains them only
+when the live listing proves the skill and mana is available. Source help says
+the evil ward improves hitroll and saves against qualifying opponents; the
+undead ward only discourages fresh uncommanded attacks/joins. `turn undead` is
+room-wide and can destroy eligible mobs, so its training remains analysis-only
+pending target-composition, XP-credit, and retreat controls.
+
+Dorrik's latest recorded trainer listing contains neither ward and has zero
+practices. Live deployment and a Knight teacher listing remain unproved. The
+focused prerequisite, training, and buff regressions were added after today's
+daily test batch and await the next local-day window. This closes a reusable
+source/training gap but does not unblock Dorrik's current level-30 frontier or
+count as progression.
+
+### October 10: Level-32 Progress And Training Watch
+
+The next six bounded campaign visits completed at checkpoint **50141** (run
+**16888**). Dorrik remains level **32 Knight**, at **767,656 XP**, **24,244 XP**
+from level 33, with **18 QP** and full health at healer **3054**. The batch
+added **3,918 net XP** across **645.20 connected seconds** (about **364 XP/min**
+including maintenance, travel and recovery). Three source-ranked hunts completed
+safely for **1,663**, **1,088**, and **1,167 XP**. There was no XP loss or death.
+The ring attempt was not achieved; two loot-liquidation visits produced no
+recorded sale proceeds and should not be described as economic progress.
+
+Keep the skill-tree strategy active at every level, practice-balance change,
+unlock, subclass change, or relevant source update. Dorrik has no practices to
+spend, so no useful lesson was available in this batch. His latest same-level,
+same-boot live skill audit remains enhanced damage **67%**, kick **67%**, stun
+**62%**, and second/third attack **63%**. The Knight skill analysis ranks
+protection vs evil (**50%**), protection vs undead (**60%**), flamestrike
+(**45%**), and the healing chain ahead of mounted combat; teacher availability
+for the wards remains unverified. Reuse the current audit until a real trigger,
+then verify each lesson and newly unlocked prerequisite. Do not treat this
+analysis as live teacher evidence.
+
+The flight-cooldown maintenance helper could clear the city-shop hazard while
+its independent city cooldown was still positive. It now preserves that hazard
+until the route cooldown expires, and a focused regression covers active flight
+with remaining city cooldown. Syntax compilation and scoped diff checks passed;
+the daily regression batch had already run, so this case is deferred to October
+11. The source mirror is **6d77df8** and the complete world parse succeeded.
+The next work remains current-band XP and a prompt skill re-audit at level 33
+or when practices/unlocks make a lesson possible; no breadth or higher-band
+work is authorized before HERO100.
+
+### October 10: Knight Practice Listing And Checkpoint 50151
+
+The next six visits ended safely at checkpoint **50151** (run **16894**).
+Dorrik remains level **32 Knight** with **770,273 XP**, **21,627 XP** to level
+33, **18 QP**, and **757/767 HP** at healer **3054**. Runs **16889** and **16894**
+completed safe Bartender hunts for **1,418** and **1,199 XP**. The Daycare ring
+retry was not achieved, and the Dwarven Bard was skipped after fresh `consider`
+called her “no match for you.” A safe flight-potion purchase and return-home
+visit added no XP. Total for the six visits: **2,617 net XP** in **582.29
+connected seconds** (about **270 XP/minute**). Across runs **16883-16894**, the
+sole pilot gained **6,535 net XP** in **1,227.50 seconds**, with five achieved,
+safe hunts and no XP loss or death in those twelve visits.
+
+Run **16891** provides a fresh level-32 skill checkpoint. The live `practice`
+listing confirmed enhanced damage **67%**, kick **67%**, stun **62%**, and
+second/third attack **63%**. It listed `flamestrike` and `healing magiks` as
+learnable at **0%**, with **zero physical and zero intellectual practices**.
+Third attack already meets the source analysis target of **60%**. Protection
+vs evil and protection vs undead remain high-value Knight priorities in source
+analysis but were absent from this live list, so teacher access is not proven.
+No practice trip or lesson is justified with an empty balance; reuse this audit
+until a level, practice, or unlock changes the decision. Then take the highest
+value newly available lesson and verify its actual gain.
+
+The bounded progression command correctly skipped the live Bard candidate after
+the unfavorable `consider` reply and returned safely; do not convert “no match”
+into combat permission. The current source mirror remains **6d77df8** with a
+successful full-world parse. The focused city-shop cooldown regression remains
+deferred to October 11; do not exceed today's one-batch regression limit.
+
+### October 10: Checkpoint 50163 And Combat-Floor Evidence
+
+The next six bounded visits completed at checkpoint **50163** (run **16900**).
+Dorrik remains level **32 Knight**, at **771,138 XP**, **20,762 XP** from level
+33, and **18 QP**. He logged out alive at healer **3054** with full health, mana,
+and movement. Runs **16895-16900** netted **865 XP** over **1,012.27 connected
+seconds** (about **51 XP/minute** including travel, maintenance, and recovery).
+Only run **16896** completed a productive kill, a **1,501-XP** Bartender hunt.
+Run **16895** correctly skipped the Ki-Rin after live below-band evidence. Run
+**16897** did not achieve its Demon Clan objective. Run **16899** completed
+bounded provision-funding without XP. Run **16900** stopped safely before the
+Grand Templar because the registered west exit remained locked after the
+closed-exit recovery; no target was attacked. No death occurred.
+
+Run **16898** provides a concrete risk-boundary case. At **160/767 HP**, one
+exchange reduced Dorrik to **119/767**; the subsequent flee failed, and combat
+recall cost **636 XP**. Recovery succeeded, but this was a loss outcome and not
+objective progress. Keep the user's **20%** floor; review whether the controller
+can anticipate the next exchange without automatically withdrawing from
+productive, bounded fights. Do not raise the floor or count a safe recall as a
+successful hunt.
+
+The live level-32 Knight audit in run **16900** again showed zero physical and
+intellectual practices. Enhanced damage is **67%**, kick **67%**, stun **62%**,
+and second/third attack **63%**; `flamestrike` and `healing magiks` are listed at
+**0%**, but no lesson can be taken with an empty practice balance. Protection
+wards remain source priorities but are not offered by the observed teacher.
+Retain the permanent skill-tree strategy: re-audit when level, practices,
+unlock, subclass, or source evidence changes, train the highest-value available
+ability to an effective level promptly, and verify each gain and resulting
+unlock. No practice-only trainer trip is justified now.
+
+The six-visit summary and current skill evidence are reflected in README and the
+roadmap. Today's regression batch was already used; defer remaining focused
+tests to October 11. The next run should return to executable level-32 XP and
+preserve the 20% risk balance; HERO remains unproved.
+
+### October 10: Westreen Kill And Current Checkpoint 50173
+
+The following six bounded visits ended at checkpoint **50173** (run **16906**).
+Dorrik remains level **32 Knight** at **773,178 XP**, **18,722 XP** from level
+33, with **18 QP**. He logged out alive at healer **3054** with full health,
+mana, and movement. Visits **16901-16906** added **2,040 net XP** in **355.86
+connected seconds** (about **344 XP/minute** including route, bank, and recovery).
+The single productive encounter was a source-ranked level-30 Westreen citizen,
+mobile **12041**, at run **16903**. A fresh targeted `consider` said “easy kill.”
+The kill yielded **788 damage XP + 1,252 kill XP = 2,040 XP**, eight gold, and
+finished at **362/767 HP** without crossing the 20% floor. Dorrik recalled and
+recovered safely.
+
+The run's objective outcome remains **not achieved**, correctly: autoloot put
+carried currency above the route's known coin reserve, so the route stopped even
+though `fastwalk_objective_killed` and the positive kill ledger record the
+verified XP. Run **16904** safely banked excess coins. Keep these facts separate:
+the kill is XP progress, but not a completed route objective. The flight
+purchase in run **16901** succeeded. Runs **16902** and **16906** were safe and
+stopped before departure when the live Midgaard greeter/guard interaction
+remained blocked after bounded checks; the second left the Daycare ring
+unacquired. Do not replay the same blocked departure without qualifying fresh
+route evidence; select another executable current-band policy.
+
+The latest level-32 skill audit remains unchanged: zero physical and
+intellectual practices, enhanced damage **67%**, kick **67%**, stun **62%**, and
+second/third attack **63%**. No skill-tree trigger occurred, so the existing
+live teacher listing remains valid; practice the next high-value unlock as soon
+as the balance and trainer allow. No tests ran beyond today's already-used
+regression batch. The fresh six-visit evidence and current checkpoint are in
+README and ROADMAP. Continue Dorrik's level-32 progression only; HERO remains
+unproved.
+
+### October 10: Checkpoint 50186 And Source-Identity Stops
+
+The next six visits ended at checkpoint **50186** (run **16912**). Dorrik
+remains level **32 Knight**, **773,178 XP**, **18,722 XP** from level 33, with
+**18 QP**. He logged out alive at healer **3054**, fully restored. Visits
+**16907-16912** added **zero XP** over **777.85 connected seconds**; do not
+describe safe execution as progression.
+
+The live stops were useful but costly. Run **16907** found two mobiles while
+evaluating the Demon Clan member and recorded the no-match result; no attack was
+sent. Run **16909** used eight bounded nearby-room checks for goats; `where`
+reported “A Narrow Canyon” across many rooms and Dry Cave, but no exact safe
+target room was established. Run **16912** searched multiple live Westreen
+locations, then correctly stopped in room **12186** because mobile VNUMs
+**12041** and **12042** could both occupy it; no guessed identity or attack.
+Run **16910** completed its Moria sanctuary attempt safely without XP. Run
+**16911** renewed flight. All runs ended safely without XP loss or death.
+
+The level-32 Knight skill audit still reports zero physical and intellectual
+practices; enhanced damage **67%**, kick **67%**, stun **62%**, and second/third
+attack **63%** remain unchanged. There was no level or practice trigger and no
+lesson available. Keep the permanent skill-tree review active, but do not take a
+trainer trip without a usable practice balance. For the next batch, preserve the
+source-ambiguity, crowd, and bounded-locator evidence and select a different
+executable current-band target rather than replaying these unchanged failures.
+The current checkpoint and zero-XP interval are reflected in README and ROADMAP;
+today's one regression batch remains spent. HERO is unproved.
+
+### October 10: Failed Retreat And Recovered Checkpoint 50193
+
+Run **16913** found the chamber attendant in room **10837** and issued an
+emergency flee after health crossed the **20%** floor. The flee failed, costing
+50 XP; the subsequent recall did not beat the next combat exchange. Dorrik died,
+then navigated Purgatory, recovered his corpse and returned to healer **3054**.
+He slept to full health and logged out. The run completed as execution-success,
+objective-not-achieved, safety-unsafe, with no kill. Run **16914** confirmed no
+new reboot marker. The campaign then began a Minotaur Gatekeeper probe; recovery
+found run **16915** had logged in, saved, and adjusted equipment only at the
+healer, with no field departure or combat. It was preserved as interrupted and
+safe at checkpoint **50193**.
+
+The previous checkpoint **50186** held **773,178 XP**; recovered live state now
+shows **750,714 XP**, a **22,464-XP net decrease**. The transcript records only
+the 50-XP failed-flee cost, while the run loss total is zero. The remaining
+state delta must not be silently attributed or counted as reconciled loss until
+the live XP changes are traced through the death and recovery messages.
+
+Dorrik remains level **32 Knight**, **41,186 XP** from level 33, with **18 QP**
+and zero physical or intellectual practices. The valid level-32 audit from run
+**16912** is unchanged: enhanced damage **67%**, kick **67%**, stun **62%**, and
+second/third attack **63%**. No practice or unlock opportunity was available in
+these runs. Keep the permanent skill-tree strategy active; recheck at every
+level, practice gain, unlock, subclass or relevant source change, and promptly
+train the highest-value skills to effective proficiency when a trainer and
+practice budget allow. Today's regression batch remains spent. Continue the
+level-32 campaign without waiting for a general reboot; HERO is unproved.
+
+### October 10: Checkpoint 50202 And Shuffled-Route Repair
+
+Autonomous attempts **16916-16920** completed at checkpoint **50202**. Dorrik
+is still level **32 Knight**, at **750,714 XP**, **41,186 XP** from level 33,
+with **18 QP**, alive and fully restored at healer **3054** with confirmed
+logout. The five attempts consumed **450.27 connected seconds** and produced
+zero XP. Preserve this as real no-progress evidence, not successful leveling.
+
+Run **16920** confirmed the corrected fixed valley turn into the frigid
+wastelands but then encountered shuffled exits: the stale route tried to go
+up from room **2355**, failed, and returned to Midgaard without combat. Source
+rooms **2351-2359** form the randomized section; room **2360** is its registered
+exit into the fixed Gatekeeper approach. The fastwalk now enters bounded live
+GMCP navigation at command index **37**, targeting room **2360** only through
+registered rooms, and resumes fixed commands at index **40**. The source map
+includes aggressive level-16/20 sentinels in that zone; at Dorrik's level 32
+they cannot auto-engage under the current source's ten-level aggression
+threshold. This only informs transit risk; it grants no combat permission.
+The corrected live route remains unproved until a later bounded attempt reaches
+the registered endpoint and passes fresh target identity and `consider` gates.
+
+Run **16920** also refreshed the level-32 practice audit: enhanced damage
+**67%**, kick **67%**, stun **62%**, second/third attack **63%**, and zero
+physical or intellectual practices. `flamestrike` and `healing magiks` remain
+at 0%; protection wards are still absent from the live learnable list. The
+permanent skill-tree strategy is active in `AGENTS.md` and `docs/OPERATIONS.md`:
+audit promptly at level/practice/unlock changes, follow the useful prerequisite
+chains, and verify each proficiency gain. There is no lesson to take until
+practices or teacher availability change. Current source is **971d8e7**, fully
+parsed; `const.c` and `pre_reqs` did not change. Today's single regression
+batch is already spent, so the new focused test is deferred until October 11.
+
+Next: use the bounded live route rather than repeat the stale fixed traversal;
+if the endpoint is reached, check current identity, location and `consider`
+before deciding whether it is a worthwhile fight. Continue searching other
+executable level-32 targets if a required gate closes. Reconcile the **22,464-XP**
+post-death saved-state drop before trusting loss totals. Do not wait for a
+general reboot, switch pilots, or claim HERO.
+
+### October 10: City Block And Skill Plan At Checkpoint 50203
+
+Run **16921** safely closed at checkpoint **50203**: Dorrik is still level
+**32 Knight** with **750,714 XP**, **41,186 XP** to 33 and **18 QP**, full at
+healer **3054** with confirmed logout. It ran for **81.96 connected seconds**,
+issued **31 commands**, gained no XP and never entered field travel or combat.
+Three bounded waits each rechecked `where drunk`; the reported locations
+alternated between **Entrance to Mage's Guild / Market Square** and **Main
+Street / Market Square**. Market Square is on the source route, so the bot
+correctly stopped before departure. Do not repeat this exact route while that
+block remains unchanged.
+
+Together, runs **16916-16921** now record **532.22 seconds** with no XP. The
+live-maze fix committed as **205c0d7** remains unproved because this latest run
+never reached the maze. The fixed approach stops at room **2351**, the bounded
+maze targets **2360**, and the fixed route resumes at command **40**. Static
+source validation and Python compilation pass; today's one test batch remains
+spent.
+
+Run **16921** refreshed the live skill listing. Dorrik has enhanced damage
+**67%**, kick **67%**, stun **62%**, second and third attack **63%**, and zero
+physical/intellectual practices. `flamestrike` and `healing magiks` are
+learnable at **0%**, while the Knight protection wards are not in the live
+list. A planner-only what-if against the exact listing, with one point in each
+practice pool, chose `flamestrike` **0% to 45%** and `enhanced damage` **67% to
+100%**. These are next candidate targets, not lessons already available;
+fresh teacher-capacity checks and a positive expected gain are still required.
+The skill-analysis prerequisite snapshot at **7953a006** matches current
+`const.c` and `pre_reqs` at **971d8e7**. Reuse the listing until a level,
+practice balance, unlock, subclass or relevant source change, then train and
+verify promptly.
+
+The source map also has a possible alternate Midgaard transit to the Minotaur
+Gatekeeper boundary when Market Square and the Mage's Guild entrance are
+blocked: **29 commands**, **97 movement**, exactly **22 extra commands** over
+the registered prefix, with no static source-hazard rejection. This is a
+research candidate only. It has not been checked against fresh live exits,
+crowds, movement, or the persisted one-use revalidation contract; do not treat
+it as travel or combat permission. Keep the ordinary 16-command detour limit
+unchanged unless every separate revalidation condition is met.

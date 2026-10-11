@@ -11141,3 +11141,31 @@ def test_level_five_exhausted_starter_opens_source_ranked_fallback() -> None:
     assert policy.minimum_level == 5
     assert policy.maximum_level == 5
     assert "level-1-to-5 evidence band" in " ".join(policy.evidence)
+
+
+def test_level_thirty_exhausted_frontier_uses_vampire_catacombs_policy() -> None:
+    from dd4tester.progression import _POLICY_BY_ID
+
+    vampire_policy_id = "vampire-catacombs-hunt-25-32"
+    excluded = frozenset(
+        policy_id
+        for policy_id, policy in _POLICY_BY_ID.items()
+        if policy.minimum_level <= 30
+        and (policy.maximum_level is None or policy.maximum_level >= 30)
+        and policy_id != vampire_policy_id
+    )
+    policy = policy_for(
+        30,
+        "warrior",
+        subclass="knight",
+        has_food=True,
+        has_flight=True,
+        has_weapon=True,
+        excluded_policy_ids=excluded,
+        source_ranked_fallback=True,
+    )
+
+    assert policy.policy_id == vampire_policy_id
+    assert policy.execution == "vampire-catacombs-hunt"
+    assert policy.minimum_level == policy.maximum_level == 30
+    assert policy.segment_kill_limit == 3

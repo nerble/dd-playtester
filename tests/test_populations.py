@@ -1,0 +1,116 @@
+from dataclasses import replace
+
+import pytest
+
+from dd4tester import campaign
+from dd4tester.campaign import _source_ranked_post_loss_plain_probe_allowed
+from dd4tester.hunt_candidates import (
+    ACT_AGGRESSIVE,
+    ACT_STAY_AREA,
+    HuntCandidate,
+    MobileSource,
+    MobReset,
+    ObjectSource,
+    RoomSource,
+    WorldSource,
+)
+from dd4tester.populations import plain_bounded_population
+
+
+def population_case():
+    mobile = MobileSource(100, "clan member", "a clan member", 27, ACT_STAY_AREA, 0, "test.are")
+    ring = ObjectSource(200, "ring", "a ring", 9, (0, 0, 0, 0), 0)
+    world = WorldSource(
+        mobiles={100: mobile},
+        objects={200: ring},
+        rooms={vnum: RoomSource(vnum, "hallway", "test.are") for vnum in (300, 301, 302)},
+        mob_resets=[MobReset(100, vnum, 3, (200,), ((1, 200),)) for vnum in (300, 301, 302)],
+    )
+    candidate = HuntCandidate(
+        status="reject", score=1, area_file="test.are", mobile_vnum=100,
+        target="a clan member", target_keyword="clan", level=27, room_vnum=300,
+        room_name="hallway", route=("south",), source_spawn_limit=3, room_spawn_count=1,
+        boot_kills=0, loot=("a ring",), source_value=0, contained_coins=0, hazards=(),
+        estimated_level_range=(25, 29), estimated_base_hp_range=(356, 1073),
+        estimated_peak_round_damage=300, estimated_min_peak_round_damage=258,
+        estimated_critical_hit_damage=100,
+        autonomy_rejections=("target reset capacity exceeds one",), stay_area=True,
+    )
+    return candidate, world
+
+
+def test_bounded_population_allows_isolation_research_without_reclassifying_target():
+    candidate, world = population_case()
+    assert plain_bounded_population(candidate, world)
+    assert candidate.status == "reject"
+    assert not candidate.autonomous_safe
+    state = {"max_hp": 702, "character_class": "warrior"}
+    assert not _source_ranked_post_loss_plain_probe_allowed(
+        candidate, state, character_level=30, source_world=world,
+    )
+
+
+@pytest.mark.parametrize("changes", [
+    {"status": "eligible"}, {"level": 28}, {"area_file": "other.are"},
+    {"source_spawn_limit": 5}, {"source_spawn_limit": True},
+    {"room_spawn_count": 2}, {"room_spawn_count": True},
+    {"specials": ("spec_poison",)}, {"equipped_weapons": ("a sword",)},
+    {"autonomy_rejections": ("target reset capacity exceeds one", "target is aggressive")},
+])
+def test_bounded_population_rejects_changed_or_additional_source_rejections(changes):
+    candidate, world = population_case()
+    assert not plain_bounded_population(replace(candidate, **changes), world)
+
+
+@pytest.mark.parametrize("hazard", [
+    "aggressive", "unbounded_wanderer", "special", "random_room", "foreign_room",
+    "unknown_object", "weapon", "potion", "armed_reset", "different_limit",
+    "duplicate_room", "missing_origin", "extra_resets",
+])
+def test_bounded_population_requires_complete_plain_reset_proof(hazard):
+    candidate, world = population_case()
+    if hazard == "aggressive":
+        world.mobiles[100] = replace(world.mobiles[100], act_flags=ACT_STAY_AREA | ACT_AGGRESSIVE)
+    elif hazard == "unbounded_wanderer":
+        world.mobiles[100] = replace(world.mobiles[100], act_flags=0)
+    elif hazard == "special":
+        world.mobile_specials[100] = ("spec_mage",)
+    elif hazard == "random_room":
+        world.rooms[301] = replace(world.rooms[301], random_exits=True)
+    elif hazard == "foreign_room":
+        world.rooms[301] = replace(world.rooms[301], area_file="other.are")
+    elif hazard == "unknown_object":
+        world.objects.clear()
+    elif hazard in {"weapon", "potion"}:
+        world.objects[200] = replace(world.objects[200], item_type=5 if hazard == "weapon" else 10)
+    elif hazard == "armed_reset":
+        world.mob_resets[1] = replace(world.mob_resets[1], equipment=((16, 200),))
+    elif hazard == "different_limit":
+        world.mob_resets[1] = replace(world.mob_resets[1], maximum_count=2)
+    elif hazard == "duplicate_room":
+        world.mob_resets[1] = replace(world.mob_resets[1], room_vnum=300)
+    elif hazard == "missing_origin":
+        world.mob_resets = world.mob_resets[1:]
+    elif hazard == "extra_resets":
+        world.mob_resets.extend([MobReset(100, 303, 3, ()), MobReset(100, 304, 3, ())])
+    assert not plain_bounded_population(candidate, world)
+
+
+@pytest.mark.parametrize("change", [None, "no_source", "no_output", "higher_nominal", "wider_fuzz"])
+def test_bounded_population_fuzz_reuses_combat_proof_without_raising_live_ceiling(monkeypatch, change):
+    candidate, world = population_case()
+    candidate = replace(candidate, level=30, estimated_level_range=(28, 32))
+    world.mobiles[100] = replace(world.mobiles[100], level=30)
+    state = {"level": 30, "move": 100, "max_move": 100}
+    if change == "higher_nominal":
+        candidate = replace(candidate, level=31)
+        world.mobiles[100] = replace(world.mobiles[100], level=31)
+    elif change == "wider_fuzz":
+        candidate = replace(candidate, estimated_level_range=(29, 33))
+    monkeypatch.setattr(campaign, "_source_ranked_post_loss_plain_probe_allowed",
+                        lambda *args, **kwargs: change != "no_output")
+    assert campaign._source_ranked_capacity_research_in_current_band(
+        candidate, state, character_level=30,
+        source_world=None if change == "no_source" else world,
+    ) is (change is None)
+    assert campaign._source_ranked_maximum_level_offset(candidate) == 1

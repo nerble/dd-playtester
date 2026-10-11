@@ -167,6 +167,73 @@ def test_earlier_kill_refusal_cannot_release_a_later_spell():
     assert window.pending and window.blocked(4)
 
 
+@pytest.mark.parametrize("action,wait", [("kick", 2.25), ("headbutt", 6.25)])
+def test_source_timed_skill_reply_preserves_its_actual_wait(action, wait):
+    window = CombatCommandWindow()
+    window.issue(action, target="a citizen of Westreen", now=0)
+    window.observe(f"Your {action} hits a citizen of Westreen.\n", now=.5)
+    assert not window.pending
+    assert window.blocked(.5 + wait - .01)
+    assert not window.blocked(.5 + wait)
+
+
+def test_failed_headbutt_uses_one_violence_pulse_not_two():
+    window = CombatCommandWindow()
+    window.issue("headbutt", target="a citizen of Westreen", now=0)
+    window.observe("Your headbutt misses a citizen of Westreen.\n", now=.5)
+    assert not window.pending
+    assert window.blocked(3.74)
+    assert not window.blocked(3.75)
+
+
+def test_successful_headbutt_with_zero_damage_still_takes_two_pulses():
+    window = CombatCommandWindow()
+    window.issue("headbutt", target="a citizen of Westreen", now=0)
+    window.observe(
+        "Your headbutt causes a citizen of Westreen to lose her balance!\n"
+        "Your headbutt misses a citizen of Westreen.\n", now=.5,
+    )
+    assert not window.pending
+    assert window.blocked(6.74)
+    assert not window.blocked(6.75)
+
+
+@pytest.mark.parametrize("action", ["kick", "headbutt"])
+def test_timed_skill_does_not_acknowledge_an_unrelated_round_or_prompt(action):
+    window = CombatCommandWindow()
+    window.issue(action, target="a citizen of Westreen", now=0)
+    window.observe(
+        "Your pound hits a citizen of Westreen.\n"
+        f"Your {action} hits another opponent.\n"
+        "<636/717 hits 313/273 mana 492/492 move [The Isle of Quake]> ",
+        now=4,
+    )
+    assert window.pending and window.blocked(4)
+    assert window.expired(10)
+
+
+def test_split_skill_reply_does_not_duplicate_acknowledgements():
+    window = CombatCommandWindow()
+    window.issue("kick", target="a citizen of Westreen", now=0)
+    window.observe("Your kick misses a citizen of West", now=.1)
+    assert window.pending
+    window.observe("reen.\n", now=.5)
+    assert window.acknowledged == 1 and not window.pending
+    window.observe("Your kick misses a citizen of Westreen.\n", now=1)
+    assert window.acknowledged == 1 and window.ready_at == 2.75
+
+
+def test_complete_prompt_prefix_cannot_hide_the_skill_reply():
+    window = CombatCommandWindow()
+    window.issue("kick", target="a citizen of Westreen", now=0)
+    window.observe(
+        "<636/717 hits 313/273 mana 492/492 move [The Isle of Quake]> "
+        "Your kick misses a citizen of Westreen.\n", now=.5,
+    )
+    assert window.acknowledged == 1 and not window.pending
+    assert window.ready_at == 2.75
+
+
 def test_run_15928_refusal_releases_wait_before_the_next_round():
     fixture = json.loads(
         (Path(__file__).parent / "fixtures" / "field_zero_incoming_probe.json")

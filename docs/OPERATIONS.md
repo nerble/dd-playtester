@@ -43,8 +43,388 @@ An absent local USER record cannot be repaired by restarting Discord delivery.
 The preserved instruction archive contains the full no-rewind, timestamp,
 content-deduplication, and at-most-once delivery contract; consult it before
 editing the streamer. Launch background helpers hidden, without console windows.
+Read live results before drafting numerical claims. Do not combine an unread
+result query and a guessed commentary reward in one tool call. Timestamped
+updates describe evidence already returned; correct mistakes append-only.
 
 ## Authorization And Fail-Fast Behavior
+
+### Combat State Ownership
+
+DD4 source `merc.h` defines `POS_FIGHTING` as 6, and `update.c` reports that
+position through `Char.Vitals`. Fresh valid positions 0-7 update the root
+character state's combat flag; only 6 marks fighting. Valid nonempty
+`Char.Enemies` also marks combat, while a valid empty snapshot clears combat
+and the target. Explicit nonfighting positions clear the target too.
+Do not derive target identity from posture or an ambiguous enemy list.
+Missing/malformed position or enemy data does not prove a transition;
+partial vitals must not revive combat from a retained position 6.
+
+Runs **16850/16852** exposed position 6 and nonempty enemies persisting with
+`in_combat=False`; neither observation previously set the flag. This live-state
+correction leaves the 20% plain-target trigger, controller admissions and loss
+ledgers unchanged. Historical evidence is not rewritten. Focused cases compile
+and await October 11's regression batch; fresh live proof is tracked separately.
+Run **16862** observed position 6 and `in_combat=True` at **762/767 HP**, then
+position 4 and `False` at the healer after a **1,628-XP** kill. Its objective,
+safety and farewell confirmation were independently positive. This verifies
+the live flag transition; it does not replace the pending negative-case tests.
+
+Run **17229** reached **153/831 HP (18.4%)** with the target at 121 HP. The
+near-dead finisher calculation lowered its temporary withdrawal floor below
+20%, despite a 138-HP source critical estimate; the next hit dropped Dorrik to
+27 HP, where the ordinary reserve restored the 20% trigger. For source-proven
+unarmed targets without specials, the 20% floor is now applied before finisher
+grace. A focused case reproduces those exact values; compilation passes, and
+the case awaits the next daily regression batch. Do not retry this target
+without the verified regression and fresh policy admission.
+
+### Food Supply And Failed-Fight Baselines
+
+At a noncombat healer checkpoint, a needed current-band food reserve may prefer
+the existing Bakery executor when fame is known and nonnegative, the current
+source pie is plain nonpoisonous food, and the selection budget includes two
+source-cost pies plus the current flight allowance. Preserve city-shop blocks,
+cooldowns and the no-consecutive-restock rule. This is a purchase preference,
+not a price guarantee: live stock/quote, capacity and route checks still decide
+the order. Unaffordable or blocked characters keep the existing source-food path.
+
+Before an exact-source withdrawal, retain a compact output estimate from the
+currently worn combat gear. Commit it only on the matching explicit XP-loss
+event. Target-HP evidence keeps the old planned ceiling separately and uses the
+higher baseline for improved-output revalidation. This is source-estimated
+output with observed equipment, not measured damage. Legacy same-weapon health
+or damage-window failures lacking it cannot reopen merely because a later
+checkpoint wears combat instead of recovery gear. Keep consumed markers and
+all old losses; do not rewrite historical rows or alter combat permission.
+
+### Inventory And Combat Text
+
+DD4's source `update.c` builds Telnet inventory strings using colour-converted
+descriptions. Raw ANSI escapes can make the captured JSON nonstandard. Stored
+item-objective parsing removes complete ANSI sequences before standard JSON
+decoding, preserving quantities and distinct entries. Incomplete escapes and
+malformed structured JSON are not item evidence; raw `[#ID]` descriptions remain
+single entries. Numeric zero is not the default quantity one. An exact affected
+completed summary may be repaired with `refresh-run-summary RUN_ID`; never
+rewrite transcripts or refresh the whole database automatically.
+
+Direct attack lines may contain a possessive mobile name, such as
+`Teacher's last student misses you.` This is not an attack by `Teacher`.
+Disambiguation requires the complete current source name; ordinary possessive
+weapon/spell attack messages and genuinely additional attackers stay in force.
+Parsing does not authorize a fight, identify an instance, erase XP loss, or
+reopen a failed policy. New cases await the next available regression allowance.
+
+### Bounded Logout Confirmation
+
+Normal starter workers must read after a dispatched `quit`, for at most five
+seconds, and capture the exact complete source reply
+`You bid farewell to the Dragons Domain.` in `logout_confirmation`. The
+session owner retains a compact receipt; canonical events retain final text
+and GMCP. Split text, ANSI and complete DD4 prompts are handled incrementally.
+Chatter does not extend the deadline. A refusal, bare EOF, partial farewell,
+send/read failure or timeout is visibly unconfirmed; never reconnect, repeat
+`quit`, or issue a probe to repair it. A confirmed farewell proves logout only,
+not objective completion or a safe hunt. Death and XP-loss outcomes still win.
+Cached historical summaries without this receipt remain unknown; do not
+rewrite history or invalidate every summary to populate the new field.
+The exact failed-underwater cleanup remains separately source-gated; neither
+confirmation path permits a new field endpoint or logout in Purgatory.
+
+Run 16744 exposed a duplicate-login filter fault, not incorrect DD4 carrying
+data: flight expiry refreshed identical room metadata except exit costs while
+retaining `arrival.kind=login`. The raw packets correctly reported 38/38 and
+five loose vines after a drop, but quarantine suppressed them. Admit only a
+complete, prior-matched same-room snapshot with valid nonnegative integer
+cost-only changes; retain destination, door/state, identity and all malformed/
+foreign guards. An existing quarantine is never cleared by this allowance.
+The room baseline is connection-local and copied, not shared with event data.
+16745 verified acknowledged 38/38 to 37/38 cleanup and flight renewal, not the
+exact expiry boundary; its focused cases await October 11.
+
+The ready, registered Midgaard fountain preflight at room 3005, water steps
+1-3 and outbound index zero, may retain applied combat gear through movement-
+only checks. Require the source recall origin 3001, readiness, existing health/
+mana gates and no return lifecycle. No new travel or combat permission follows.
+A return at healer 3054 retains already-applied recovery gear after waking;
+ordinary recovery readiness still gates completion. 16747 verified fountain
+fill/drink without swaps and a single healer sleep, then stand/save/quit.
+The original near-full-movement fountain boundary remains unproved live.
+
+An explicitly registered required-loot stop may inspect one reset-ambiguous
+carrier instead of demanding a second mob that may not be present. Require an
+exact live instance, the existing source identity check, a unique source object
+name, and an audited worn reset sufficient for the missing quantity. The
+five-second `look #<instance>` reply must finish at a prompt and show the exact
+source description, target health, and the required item in equipment; neither
+description mentions nor peeked inventory count. Bind the receipt to room,
+instance, mobile, visit, missing quantity, level and boot; expire it after
+twenty seconds and invalidate it on movement. Keep the real mobile count and
+every crowd, consider, health, combat, loot and retry gate. At most eight
+inspections run per session, with no same-instance/visit retry. Only the daycare
+ring stop opts in. October 10 cases compile but await the next daily batch.
+Required-loot cleanup fixes its session budget from the initial observed item
+deficit, including any existing overload, with at most eight disposals. Keep
+the source-identified redundant-item selector and drop/sacrifice/inventory
+acknowledgements. A missing capacity change never expands that fixed budget;
+departure still requires fresh sufficient capacity. Run 16700 exposed the
+old one-item budget stopping at 38/38 after repairing a one-item overload.
+Each cleanup phase now accumulates its own bounded reply rather than using the
+latest Telnet chunk. Require complete drop/sacrifice lines and inventory's
+header/count footer; healer chatter is not an acknowledgement. A pending phase
+keeps the route open and times out visibly after five seconds. Run 16706 exposed
+the old premature logout; run 16710 subsequently confirmed a delayed flask drop,
+sacrifice and inventory audit before actual departure.
+
+`HealerPouchStorage`, owned by the recovery controller, may first audit an exact
+structured worn pouch at room 3054. Only an observed empty pouch admits one
+source-candidate potion group, at most four individual placements, bounded by
+the worst candidate weight and source container capacity. Require each exact
+put reply and a fresh text/GMCP count reduced by the acknowledged quantity.
+Every reply has a five-second deadline. A nonempty pouch or ordinary release/fit
+refusal ends this optional storage attempt without claiming a slot. Record
+`storage_only`: ambiguous potion effects remain unknown and quaffing is not
+authorized. Do not nest containers or alter the combat reserve ledger from
+storage alone. Run 16710 confirmed two clear potions stored and 39/38 to 37/38
+capacity before one redundant flask was sacrificed; the water skin and gear
+remained. Ordinary source-unique drink-vessel cleanup requires another carried
+vessel whose every source variant is plain refillable water. Retain the last
+water vessel of each prototype; an ordinary nonwater vessel needs no reserve,
+including its last copy. Poison, ambiguous prototypes, protected gear and
+keyword collisions remain excluded. Contents are not inferred safe to drink
+from prototype values; only disposal is admitted. A colliding default word may
+use another actual source keyword only with complete source-known inventory
+and no matching peer prefix. Unknown descriptions close this selector. Run
+16849 live-confirmed `drop shot`, sacrifice and 38/38 to 37/38 carrying relief,
+then purchase/use of flight for 141 copper, without changing the audit budget.
+
+`HealerCarryingCapacity` now owns the shared required-loot and flight-shop
+preflight. A flight purchase reserves one free item slot before leaving room
+3054; existing overload counts against the fixed eight-disposal maximum.
+After an aborted preparation starts healer logout, the logout controller owns
+recovery instead of alternating with generic departure recovery. Ordinary field
+returns retain the 90% movement reserve, runtime-boundary returns retain their
+separate 40% reserve, and health/mana requirements remain unchanged. Sleeping
+waits continue reading live output; a preparation correction does not reopen
+the failed route or authorize a new departure.
+Drop/sacrifice/inventory replies and five-second state confirmation remain
+mandatory. Record the compact cleanup receipt and separate purchase failure
+causes. Capacity is not insufficient money. For a legacy purchase outside the
+eight-segment tail, inspect one exact latest purchase among at most 256 segment
+rows and fewer than 256 complete canonical events. Require actual `buy light`
+carrying replies and reject funds/reputation evidence; preserve run/segment
+provenance and all cooldowns. Failed historical rows remain unchanged. These
+new cases compile but await October 11's regression batch.
+
+Runs 16720-16723 exposed four empty liquidation visits after the successful
+sale in 16719. The retained signature was unchanged, but subtracting the worn
+I.Q. Vine namesake from its baseline made carried duplicates appear new.
+Compare the exact signature first; apply the legacy inventory-to-worn
+adjustment only when it differs. A later changed signature may reopen sale
+planning, never a blind sale of an ambiguous instance. Fresh selection after
+this correction left liquidation and resumed gear/XP work; the focused cases
+compile but remain unrun until October 11.
+
+Newly retained duplicates then exposed a separate completion fault in
+16728-16729: no-sale plans kept the previous signature. Record
+`campaign_liquidation_completion`, bound to the exact run, only after finished
+planning at healer 3054 with no pending/rejected action, failure or runtime
+interruption. Its completed retention may update the baseline without profit
+or an achieved objective. Legacy no-op repair must preserve this explicit
+receipt. Run 16730 verified the new baseline and fresh 16731 resumed XP work.
+
+Runs 16750/16752 exposed repeated vine-shop trips: the refusal pattern excluded
+internal full stops and missed `an I.Q. Vine`. Share the pattern in `shops.py`
+between live policy, bounded historical recovery and reports. Accept refusals
+after value or sell, requiring a complete line from the recovery controller's
+2,048-character command-local buffer; clear it on the next shop command and
+after a recorded refusal. Preserve existing alternate-buyer, donation and
+retention checks. Standalone 16763 sold one vine for one copper, recognized the
+next refusal, and immediately returned instead of retrying that buyer. Its
+alternate route failed after three city waits: failed/unknown/safe, not completed
+cleanup. It saved at healer 3054 with no combat or XP change. Split-packet and
+negative cases compile but await October 11; no historical summaries were rewritten.
+
+Run 16702 falsely called the intended buck an extra attacker because the
+dispatched keyword was `deer` but combat text said `The buck`. Ordered GMCP
+recorded only source mobile 19039 in room 19132; flee lost 592 XP, offset by
+97 damage XP. Keep execution success, objective not-achieved, safety loss and
+the closed policy. The combat controller may reconcile that flag only for an
+already-opened, unfinished fight with one raw current-room enemy, matching
+source VNUM, canonical name and room description, the exact registered reset
+room, and one selected instance without a conflicting selector. Preserve real
+crowds and every combat limit. Record at most eight aliases per session. This
+repair compiles but has no fresh live proof; focused cases await October 11.
+
+For source-ranked circuits, record the exact source policy, mobile VNUM,
+registered room and current live opponent in the combat controller before a
+flee/recall clears identity. Commit that record only after an explicit positive
+XP-loss event. Successful earlier kills must not clear the failed stop, even
+when partial damage XP makes the trip profitable. Across connections, compare
+`campaign_xp_loss_total`; identical per-run penalties are separate losses.
+Missing legacy identities may be reconstructed only from linked runs in the
+existing eight-segment tail, at most four loss events and 128 preceding events
+each. Require exact GMCP enemy, actual room/arrival and dispatched withdrawal;
+shared names, absent targets and safe aborts never prove a failed fight. Keep
+secondary-stop counts when phase indexes omit their parent circuit. This repair
+closes losses; it creates no new retry permission. October 10 replay cases are
+written and compile, but remain unrun until the next daily batch.
+
+Departure `where`/adjacent scans retain `fastwalk_recovery_ready` until the
+first actual outbound command. At the exact verified safe route origin,
+already-applied combat gear may remain during movement-only checks when health,
+mana and other readiness gates pass. A blocked scan still aborts normally;
+this is neither a field sleep location nor relaxed combat/travel admission.
+
+Automatic source absence/no-progress fallback is not a route-program retry.
+Do not derive `allow_route_program_retry` from a cooldown-rotation flag; doing
+so offered an obstructed productive route only for the final dynamic-hazard
+guard to stop it before connection. Preserve the saved route result and useful
+kill history, select other candidates normally, and retain the final guard.
+Only an existing exact revalidation or explicit `--retry-stalled` can reopen
+that source-validated preflight. New focused cases await October 11.
+
+For a recently productive plain hunt, a completed clear city observation may
+arm one exact-policy/level/boot clearance even when a different policy spent
+the legacy global receipt. Require a current-version linked summary-confirmed
+objective kill in the existing eight-segment tail, unchanged source and total
+losses, current XP matching that recovered hunt's end, and a later successful
+no-travel three-wait block followed by a changed clear locator. Preserve the
+old receipt under `superseded_clearance`, retain the blocked-policy ledger,
+and persist `campaign_productive_city_clearances` before opening the worker.
+Admission still checks route, provisions, source output, useful XP, flight,
+health, crowd and loss; repeat fresh locator, exact instance and consider live.
+The receipt binds the prior result and XP/loss to its pending ledger entry and
+is consumed before dispatch. This cannot reset a spent same-policy clearance,
+combat loss, failed target check or changed source. Cases are saved for October
+11, not an additional October 10 regression batch.
+
+Live run 16671 consumed that productive receipt before connecting and crossed
+the formerly blocked city route. Its source-12041 citizen had 915 HP versus
+624 on the previous successful instance. The fight withdrew at the 20%
+trigger, reached 18.98% HP during flee, lost 551 XP before damage XP reduced
+the net loss to 188, and returned recovered to the healer. Record safety=loss;
+the combat failure and same-policy clearance remain closed. Run 16672 acquired
+no sanctuary; 16673 renewed flight for 141 copper. Checkpoint 49712 is level
+30 with 662,990 XP and 6,060 remaining to 31. No level transition is proved.
+
+`combat_actions.preferred_timed_damage_skill` compares already-admitted kick
+and headbutt using positive observed proficiency and DD4's strict percent roll.
+Both have blunt/nonmagic resistance flags; successful headbutt waits six
+seconds, failure three, and kick two. NPC ordinary attacks are not suspended
+by this wait. Include second headbutt only from its observed proficiency.
+Planner and live dispatch share the choice; unknown inputs keep prior ordering.
+`CombatCommandWindow` recognizes only the exact target's damage acknowledgement,
+splits complete prompt prefixes, and retains those waits plus one input pulse.
+The failed-headbutt short wait requires its exact miss without a preceding
+success message. This never reopens losses or changes encounter admission.
+At checkpoint 49713 the next launch stopped before login because the source
+frontier remained unavailable and the sanctuary recheck was spent; there was
+no new run or XP change. Timing/ranking cases compile but await October 11;
+the new rotation is not live-proved yet.
+
+### Verified Level-31 Transition
+
+Checkpoint **49727**, last run **16680**, records Dorrik at level **31 Knight**,
+**670,744 XP**, **57,556 XP** to 32, **18 QP**, alive/noncombat at healer 3054.
+Runs **16674/16675/16678/16679** killed the Catacombs sentinel and Mirror Realm
+buck for **2,074/2,231/1,591/1,858 XP**, respectively. All four record
+success/achieved/safe with no flee or XP loss. Including maintenance visits
+**16676/16677/16680**, the seven-run total is **7,754 XP** in **727.90 connected
+seconds**, approximately **639 XP/minute**; development/planning is excluded.
+Selling and banking have unknown objective outcomes; the ring objective was
+not achieved. Do not relabel these maintenance runs as successful item goals.
+
+`greeting_echo_programs_only` admits only greeting triggers, numeric percent
+conditions, at most four programs/32 commands/four nested random branches,
+balanced control flow, and non-CHAT local echoes. Unknown commands, casts,
+attack/transfer actions and malformed scripts remain closed. It is a source
+behavior proof, not route or combat permission. The sentinel retains the exact
+existing bouncer route and fresh source/loadout/identity/isolation/consider gates.
+Its independent contract was never part of the failed three-target parent.
+`completed_single_target_hunt` accepts only the exact current-version safe,
+achieved linked summary with one useful source-tagged kill, matching boot and
+recorded start/end source revisions, terminal level, and unchanged encounter
+loss totals. An opted-in one-level
+transition also requires its exact summary levels and observed gain, preserving
+the original source-policy tag. Later unrelated losses cannot erase that
+success; current/prior exact target quarantines remain authoritative and loss
+totals cannot rewind. A completed productive independent hunt may repeat beyond
+the initial three-kill discovery cap, retaining its one-kill visit limit and
+every fresh source/live check. Absence, crowd, loss, or failed objective cannot
+qualify. Historical rows and parent failure ledgers are not rewritten.
+
+`hunt_efficiency.py` compares at most eight linked completed visits using their
+actual net XP and full run duration, including safe zero-progress visits to the
+same route. It deduplicates runs and rejects old summaries, malformed timing,
+unlinked outcomes and token rewards. These are route-selection observations,
+not a controlled class-balance experiment or combat permission. A proven
+registered current-band hunt may compete before the generic frontier is empty;
+an unmeasured generic choice does not automatically suppress the proven route.
+An already-selected multi-kill circuit keeps control: single-target receipts
+cannot establish its comparable rate or justify replacing it.
+Persist the selected comparison's run IDs and rates in its segment start.
+Fresh complete source route/loadout audit may admit historical success recorded
+under an older revision; its own start/end revisions must still match, and no
+historical revision or loss ledger is rewritten. Food, recovery, flight,
+QP/fame, current source and every live targeting/consider/output gate remain.
+
+Run **16679** live-confirmed the level gain, 26 HP, 17 mana, 10 movement and
+3 physical/2 intellectual practices. Repeated kicks were dispatched in these
+fights; this does not establish comparative balance or prove every timing edge.
+No sanctuary, optional quest, reboot wait or roster rotation was needed.
+Compilation passes; new script/selection/timing cases await October 11, not
+a second October 10 regression batch. Next: fresh level-31 training and useful
+XP toward 32. HERO and full class/race coverage remain unproved.
+
+### Area-Local Recall Recovery
+
+DD4 `do_recall` uses the current area's `#RECALL` when recall index zero is
+selected. `recall set 0` does not force Midgaard, and word of recall uses the
+same rule. The Ota'ar Dar market's destination is room 27347. Run 16462
+confirmed Dorrik's Knight identity but ended there after the old return routine
+incorrectly expected Midgaard. It gained no XP and incurred no loss.
+
+The maintenance-only `AreaRecallEscape` owns one bounded return attempt. From
+27347 it may visit shop 27331 via 27341/27336/27337/27332 and purchase exactly
+source object 27292 (goblin shark pie) using a live quote, exact selector, level,
+inventory confirmation, and 100-copper reserve. Its spell level is 40; the
+object's usable level is 30. Source mobile 27246 is a separately audited
+economic risk on this shop route: non-aggressive, unprogrammed, `spec_thief`
+only, with the exact ordinary loincloth/dagger resets. No combat is authorized.
+Any other diagnosed shop-route hazard closes the exception.
+
+Require independently verified water breathing or an explicit `update.c`
+survival exemption, fresh flight, at least 95% HP, 30 movement, observed infravision (or
+clairvoyance), and observed sanctuary before the escape. Follow the exact
+source/live exits 27347 up 27647 up 27132 up 27071, scanning before each dark
+destination. Reject every one-room sighting, unknown/incomplete scan reply,
+closed exit, hidden/invisible source attacker, changed attacker set, changed
+reset or special, and source/live route mismatch. Distant sightings do not
+occupy the immediate destination. Only at source-recallable Undersea room
+27071 may the routine recall to 3001 and continue north to healer 3054. Cap
+the routine at thirty commands and every response at five seconds. Store
+`campaign_area_recall_escape` evidence. This is recovery, never hunt admission;
+live success remains unproved until an observed healer return.
+
+Trainer visits record `subclass_selection` independently from execution and
+safety. A requested subclass in the profile is not proof: require the final
+observed character identity to match. New recovery and reporting cases are
+queued for October 8; do not exceed October 7's spent regression allowance.
+
+Run 16463 reconnected in Purgatory before using this new escape controller.
+It retrieved the corpse, exited the portal, restored and audited gear, and
+returned to the healer at 696/702 HP. The gap from the previous checkpoint was
+-226 XP. `update.c` drains air and applies drowning damage in sectors 8/12
+regardless of flight; that is a likely cause, not directly observed death text.
+Do not label the old foreign-room disconnect a safe recovered return.
+On a live failed noncombat room-27347 session, only the exact source/no-mob
+logout gate may send `quit` once before closing, with five seconds each for
+send and farewell confirmation. Record `failed_local_recall_logout`; retain
+the original failed execution. `do_quit` saves the character. Missing source,
+combat, enemy evidence, an uncommandable character, or Purgatory forbids this
+cleanup. It is not generic permission to quit from arbitrary field rooms.
 
 Before calling an autonomous attempt pre-connection or retrying its policy,
 check the process list, `show-campaign`, `show-runs --limit 4`, and the exact
@@ -68,6 +448,46 @@ Campaign segments inherit refreshed run outcomes unless they explicitly own a
 campaign-specific objective. Only objective-eligible kills count toward a kill
 objective; route-gate and below-band kills remain visible evidence but never
 satisfy progression.
+Health minima must include ordered `vitals_changed` and `prompt_seen` pairs,
+not just full-state checkpoint boundaries. Require each observation's own
+valid HP and maximum; do not pair a partial update with a guessed maximum.
+This keeps compact storage without hiding damage healed before the end.
+Exact run summaries may be refreshed; do not force a full-history rebuild.
+
+Keep the DD4 source checkout at `runs/dd4-source` current with `origin/master`.
+Update it only after every live worker has finished and `git status` is clean.
+Use a fast-forward update, then parse the full world and verify representative
+pilot-route rooms and prototypes before relying on its new revision. The
+October 7 refresh moved from **48cb5a6** to **bbd55b1**; parser smoke found
+13,052 rooms, 4,125 mobiles, and 6,138 objects. No regression suite was run.
+On October 8, with no live worker and a clean source checkout, the source mirror
+fast-forwarded from **bbd55b1** to **7953a00**. Full parsing returned the same
+world counts. The refreshed source confirms club **1521** has one ground reset
+in room **1573**, and the recall-to-reset route is 18 steps / 71 ground
+movement, with no flight requirement. Its low-level program hazard is mobile
+**3064** (`greet_prog`, `mpkill`); the direct-loot placement now retains the
+registered live `where` preflight and route-room list. Live pickup is unproved.
+The new source commits also changed stun/fall and undead-aggression handling;
+the live server's deployed revision is unknown, so do not count those changes
+as live evidence.
+
+On October 10, after confirming no live worker and a clean source checkout, the
+source mirror fast-forwarded from **6d77df8** to **971d8e7**. The full parser
+again returned **13,052 rooms, 4,125 mobiles, and 6,138 objects**. The refresh
+did not change `const.c` or `pre_reqs`; it updates the working source baseline,
+not live-server behavior. Those skill-tree files also match the bundled
+analysis baseline at **7953a006**, so the class-priority report remains current
+through this refresh.
+
+On October 11, with no live worker and a clean source checkout, the mirror
+fast-forwarded from **4c039fa** to **26749cd**. Full parsing verified **13,052
+rooms, 4,125 mobiles, 6,138 objects, 7,749 mobile resets, and 1,430 object
+resets**; the three representative Midgaard, Kerofk, and 36 Chambers rooms
+loaded. This commit adds `turn undead` to the Divine Magiks trainer group and
+increments `MAX_SPELL_GROUP`; the prerequisite files did not change. The
+bundled prerequisite snapshot remains valid for its unchanged data, but teacher
+availability must still come from the live learnable listing. Source changes do
+not prove the running MUD has deployed them.
 
 Startup productive-history repair uses the already-loaded normalized,
 same-boot kill ledger alongside the eight-segment JSON tail. Require an exact
@@ -92,6 +512,8 @@ already carried takes priority over movement-rest sleep. Wake, eat or drink,
 then resume recovery. A repeated stand/sleep cycle while supplies are usable is
 a controller failure, not productive waiting.
 
+October 11 runs **17274/17275** exposed a reconnect gap: GMCP reported hunger **2** at healer room 3054 with six pies carried, but the policy only armed its food need at zero and left on a loot route. `StarterPolicy` now treats hunger or thirst at **8 or below** as a recovery need only at a safe, noncombat healer; at that low threshold it may consume the last carried food. Run **17276** live-verified waking, eating two pies to DD4's “You are full” response, and drinking from the water skin before leaving for the warehouse hunt, which finished safely for **2,305 XP**. `test_low_positive_nutrition_at_healer_preempts_loot_travel` covers the food and drink wake/consume path. The touched Python files compile; pytest is deferred because today's regression batch has already been used.
+
 Combat swiftness estimates consume the revealed GMCP `Char.Stats.swift` total.
 DD4's `GET_SWIFT` already includes the DEX and enhanced-swiftness bonuses;
 adding either again overstates automatic attacks. `number_percent()` rolls
@@ -104,28 +526,445 @@ NPC normal-hit estimates mirror `fight.c:one_hit`'s level bands: add level/4
 below 30, level/2 below 65, otherwise 3*level/4, before the weapon multiplier.
 Peak, expected, critical, and sanctuary calculations share that base; preserve
 per-hit damage-modifier scaling and sanctuary-before-critical rounding.
+For an exact, source-confirmed single unarmed target with no special, ordinary
+combat withdraws at 20% health rather than stacking two observed-hit reserves.
+This accepts more risk only for that plain-target case; poison, multiple
+enemies, explicit stop and route floors, and all live identity, consider, and
+damage/output gates remain in force.
+`mobile_loadouts.single_weapon_loadout` may extend the independently prepared
+single-weapon defense probe to passive singleton wanderers and ordinary reset
+armor/instruments. Require one global reset/capacity, exact wield identity, no
+aggression, scripts, scavenging or specials, and a complete ordinary loadout.
+For common-rank gear, `db.c` uses prototype level minus two: under 40 (or with
+the weak flag), `random_qnd` keeps existing affects within 25 percent. Round
+positive damage and HP ceilings upward; fixed gear keeps exact affects.
+Reject strong/fickle randomisation, unknown/critical/swiftness affects, poison,
+spell items and additional weapons. Add damage after the NPC wield multiplier
+and before its damage modifier; preserve corrected raw peak/critical and HP
+ceilings in the live hunt stops. Fresh training, equipped defenses, full health,
+finite damage output, isolated identity/consider, route and loss gates still
+apply. Target sanctuary halves ordinary/opening source output before finite
+action planning; unmodelled target protection, battle aura and globe close
+this new admission. Wandering permission does not widen the eight-room blind search or
+reset a saved failure. New regression cases await October 11; this expansion
+has no live combat proof. Run 16657 found the Highlander and rejected its
+below-band consider, returning to the healer without combat or loss. That
+negative evidence stays closed; the later sanctuary correction grants no retry.
+`populations.plain_bounded_population` supplies a source proof for the existing
+capacity-research isolation check: two to four passive sentinel/stay-area resets,
+one per distinct same-area room, with the same global maximum of two to four.
+Reject scripts, specials, fear/confusion/noncorporeality, randomized reset
+rooms, unknown equipment/objects, weapons, and spell items. The capacity-only
+rejection remains recorded. Post-loss no-reserve admission must independently
+pass the existing incoming peak, observed defense, output, route, and exact
+policy-loss checks. Audited route-program admission receives the bounded
+capacity-endpoint flag only from this source proof; it retains its own route
+hazard preflight. The live executor still requires one exact isolated useful-XP
+target before combat, with the ordinary finite search and action budgets.
+That source-proved plain population may retain a nominally current-level
+candidate whose source load fuzz reaches plus two only when the existing
+post-loss no-reserve peak/defense/output proof passes. It does not raise the
+live plus-one ceiling or bypass observed below-band, movement, kills, routes,
+or saved failures. Source-less and all other capacity research keep plus one.
+`plain_bounded_mobile_population` shares the complete prototype/reset audit
+with candidate admission. For its wandering, ordinary XP targets only,
+`_below_band_population_locator_allowed` may finish the current registered
+search after a weak individual is rejected. Require exact source/policy/room,
+awake noncombat state, known sufficient vitals, food/water, an isolated target
+contract, and unchanged finite locator/kill limits. Exclude required-item,
+quest, sanctuary/familiar, armed and special probes; ordinary harmless drops
+are not required-item objectives. Preserve the negative consider and sightings,
+and skip same-mobile rooms already queried in this visit. Each new target still
+needs its own live audit; exhausted routes close without a same-room recheck.
+An empty stop following the weak member retains this search context only when
+its inspection is complete, it is explicitly skipped as absent, and the visit
+contains an exact source/policy weak-member receipt. Seeded historical skip
+names alone do not qualify. Keep crowd, mismatch, unattackable, loss, vitals,
+and locator-limit stops authoritative. Run 16656 exposed this premature return;
+its corrected handoff is not yet live-proved and grants no new campaign retry.
+Reconstructing run 16648's observations with current source selected the
+remaining registered 16471-to-16479 route on refresh eight. This is offline
+evidence only; no historical result, saved exclusion, or live kill was changed.
+New cases compile and await October 11.
+
+For the same source-proved plain population, a useful objective kill may start
+the first post-kill `where` query after an outbound interception skipped the
+initial locator. Ordinary harmless reset drops do not turn XP hunting into a
+required-item objective. Existing damage-window/unprotected-HP-fuzz checks
+remain attached to every fresh isolated target; lookup grants no attack
+permission. Require exact policy/mobile kill identities, reward above the
+current-level-times-ten below-band floor, latest positive consider, known
+awake vitals, provisions, and no combat, loss, hard abort, or runtime return.
+Continuation health uses the source upper-load peak round, one extra critical
+hit, and the 20% withdrawal reserve, with the ordinary continuation minimum.
+Carry that entry requirement to the relocated stop without changing its
+separate combat withdrawal floor. Retain weak-instance receipts only when
+each has an exact-policy source sighting; skip those rooms and all same-visit
+checked destinations. A query needs no old positive locator, but its reply
+must positively identify a registered, unsearched safe destination before
+movement. Preserve the finite locator, population, and kill budgets. Required
+loot, sanctuary/familiar objectives, protected/special probes, and historical
+cooldown changes remain excluded. New replay cases compile but are unrun.
+
+Ordinary XP routes have a separate economic-only admission in
+`economic_hunts.py`. Require a passive, unarmed singleton sentinel target, an
+otherwise eligible source route, and a known whole purse no larger than 1,250
+copper-equivalent. Every economic actor must have exactly one global singleton
+reset, only `spec_thief`, no aggression or programs, and an audited ordinary
+loadout without spells, poison, positive damage bonuses or unsafe randomisers.
+Its upper source level cannot exceed the player. DD4 steals 1-20% per attempt;
+250 is the maximum single attempt at this purse ceiling, not an aggregate loss
+cap. Retain the original economic rejection and actor identities in the saved
+candidate. Recheck source and current money before outbound actions; failure
+returns home. This authorizes no combat with the thief, crowd exception, saved
+failure retry or quest waiver. Existing live isolation, route, consider,
+training, health/output, finite-action and return checks still apply. Mirror
+Realm buck/moose source candidates pass this narrower admission. Run 16658
+proved the buck kill for 2,084 XP without sanctuary, a 50.6% lowest observed HP,
+and safe healer return. The moose failed live consider, so the full two-target
+objective remains not-achieved. The next visit's finite city waits failed to
+clear the route; retain that block. New regression cases await October 11.
+
+The economic-only allowance may also accompany an independently source-proved
+plain population of two to four distinct, same-area resets. Remove only the
+economic rejection; retain `status=reject` and the capacity-only rejection so
+the existing isolation research, damage, output, loss and finite-search gates
+remain authoritative. Audit every target reset's objects. The bounded route-
+program preflight may accept only the explicitly audited economic actors, and
+noncombat locator paths receive their exact VNUMs through the existing source
+economic-transit audit. Unknown, armed or changed locator actors remain closed.
+The live purse cap still applies before outbound actions, including after gold
+loot. Quake's four level-30 Westreen citizen resets pass source preparation
+without sanctuary. Run 16664 followed positive sightings, but source identity
+remained ambiguous: 12041 and 12042 have the same room description and reachable
+rooms, with different source levels. It returned without combat, XP or loss;
+success/not-achieved/safe. Preserve that failure, not an absence claim. Do not
+infer a prototype from its instance selector or reuse an identical-profile
+alias for differently leveled mobiles. New cases compile and await October 11.
+
+`target_inspection.py` resolves a distinct contract: DD4's `look #<instance>`
+prints the source mobile's full description before its health line. The parser
+now retains that description. A passive, isolated ambiguous target may receive
+one exact-instance look with a five-second deadline, at most eight per run.
+Require all reachable prototypes to be known, passive, unprogrammed and without
+specials, plus a unique complete expected description. Match the description
+and named health acknowledgement, not gender guesses or substring keywords.
+Keep the receipt under the travel controller, bound to instance, room, stop,
+level, boot and source descriptions. It expires after twenty seconds; movement
+invalidates it. A known different prototype skips the stop without attacking.
+Unknown, partial, expired or changed output cannot authorize combat. Continue
+with fresh consider, isolation, equipment, health/output and finite-action gates;
+GMCP's post-opener VNUM must still match the intended prototype.
+
+The exact old ambiguity-only visit may receive one
+`campaign_target_inspection_revalidation`: require its linked completed run
+summary with no combat/kills, unchanged level/boot/source/XP/loss and healthy
+healer boundaries, the same candidate/route, and a currently distinguishable
+description set covering the recorded source identities. Keep the old result
+inside the receipt and in the research ledger. Consume before dispatch; the
+new failure remains closed. This never clears crowd, negative consider, loss
+or another route failure. Saved replay cases compile but await October 11.
+The exact first-generation article-prefix mismatch may receive one revision-2
+parser check only from its own completed no-combat segment and bounded
+512-event tail. Require the attempted revision-1 receipt, unchanged boundaries,
+one dispatched exact-instance look, and a complete source-matching reply within
+five seconds before the next command. Preserve `prompt_repair_of` and the
+matched response event ID. The matcher now uses the full source short name,
+not an article-stripped target alias. Recheck the current instance, source,
+consider and all combat gates; revision-2 failures remain closed. Run 16665
+proved the actual woman description but incorrectly rejected that reply; it
+returned without combat, XP or loss. Its objective remains not-achieved.
+
+Run 16666 freshly identified citizen instance #6752 using the corrected
+description matcher, then passed consider and confirmed source VNUM 12041
+through combat GMCP. It killed the live level-31 citizen for 2,641 XP without
+sanctuary, flee or XP loss, reached a lowest observed 32.3% HP, and returned
+fully recovered to healer 3054. Preserve the attempted revision-2 receipt;
+this kill does not grant more parser retries or waive another policy's route
+gate. Its independent level-100 objective remains not-achieved. Run 16668's
+subsequent city-preflight stop was no target attempt and gained no XP.
+
+An admitted temporary-crowd reset must not discard a source policy's confirmed
+useful-kill result while leaving its weak-instance exclusions authoritative.
+`productive_crowd_reset_result` retains positive evidence only for known same-
+boot, positive-consider kills above the below-band reward floor, without fatal,
+exhausted, retryable, route, absence or identity failures. Source loss policy
+gates remain authoritative. Historical repair lives separately in
+`campaign_migrations.restore_productive_population_after_crowd_reset`: require
+an already-completed, unconsumed capacity wait, that exact cleared policy, a
+source-proved plain population, current full healer state, the latest linked
+success/success/safe visit in the existing tail, exact objective kills matching
+the already-loaded normalized ledger, unchanged source/level/boot/XP/loss, and
+a later successful same-state healer `time` visit. Preserve original outcomes,
+weak-instance receipts and the two run IDs. Existing results, new losses or
+failures, changed revisions, exhausted waits, and unknown evidence never reopen.
+Checkpoint 49664 restored 16652 via time run 16653; ordinary selection admitted
+the route. Run 16654's fresh city failure remains closed. New cases compile but
+await October 11; no multi-kill live proof is claimed.
+
+When ordinary current-band selection finds nothing, the separate
+`campaign_population_search_revalidations` receipt may offer one exact saved
+premature population return. Read only the already-loaded eight-segment tail
+and its linked compact run summary. Require success/not-achieved/safe, no
+combat/kills, unchanged level/boot/source/route/XP/loss, recovered healer
+boundaries, one below-band individual, an unspent original eight-refresh
+budget, and a live-reported, originally planned, current-source registered
+room that was not checked. Keep the old negative ledger and locator evidence.
+This is a retryable search, never fabricated productive history. Repeat the
+ordinary source, route, output, survival and target-loss checks, then persist
+the attempted receipt and segment ID before connecting. Any recorded receipt
+closes another repair; fresh live identity, isolation and consider remain
+required at every destination. This is not a general cooldown reset.
+
+Equipment valuation uses `GearCatalog.observed_equipment_item` for exact
+structured worn identities. Require matching integer VNUM, name, item type,
+class compatibility, and an integer observed load level from 0 through 100.
+Keep missing-slot/weapon-loss evidence authoritative. Substitute that level
+only in a copied source item; bonuses remain source estimates. An ambiguous
+carried description cannot borrow this worn identity. `show-gear-sources` and
+campaign weapon-upgrade selection share the valuation; a lower-level placement
+of the already-worn sword is not an upgrade.
+
+Source hunt-stop preparation checks its own 60-second deadline before candidate
+work and throughout destination/relocation loops. Expiry fails visibly before
+connecting; it does not grant a target retry. `SourceRouteHazardIndex` belongs
+to one unchanged `WorldSource` within that plan. Reuse reset groups, full-world
+wanderer ranges, and level-specific special classifications, not route verdicts
+or live observations. Discard it after the plan or any source mutation/refresh.
+Stay-area navigation may search only the target area, while hazard checks still
+use the full source graph and all source-known wanderers. Skipping an empty
+combat-only hazard destination changes no permission. Keep the outer deadline
+and every route, isolation, consider, output, loss, and live response gate.
+
+`AdjacentRecallEscape`, owned by `RecoverySessionController`, handles one
+source-known no-recall room with an open, unlocked, ordinary exit to a safe,
+nonrandom land room. Audit source hazards/access and that area's default recall
+to 3001. Reject Purgatory, water/air destinations, missing source, combat,
+unknown posture, less than 50% HP, or less than ten movement. Verify the live
+exit, then dispatch only scan, one movement, and recall. Each reply has a
+five-second deadline and exact expected room; a complete immediate-occupancy
+or closed-door scan stops the attempt. Distant sightings do not become adjacent
+ones. Store `campaign_adjacent_recall_escape` on success and failure, and follow
+the ordinary healer return afterward. This authorizes no combat or field logout.
+Run 16640 proved the 16459 north 16465 recall 3001 escape after run 16639's
+failed return. Its scan showed a clan member three rooms north, not adjacent.
+The earlier failed run remains failed/not-achieved/safe despite its useful kill.
+
+`campaign_recall_route_revalidation` binds one useful failed-return hunt to its
+immediately following successful `return-home` segment. Load only the exact
+policy's latest segment within 256 rows, its sequence neighbour, its compact
+kill ledger, and its last eight events. Require unchanged level/boot/source,
+an exact recall-only error, original source route, fresh positive consider,
+useful objective-eligible kill, no original or recovery loss, and the recorded
+three-command source-safe escape followed by healer recovery. Read the hunt's
+own terminal state event: inherited campaign abort/consider flags are not that
+run's evidence. A pending receipt changes selection only, never historical
+execution/objective outcomes; consume it before opening the live segment.
+Current crowd, below-band, source, output, movement, and target-loss gates still
+apply. A later visit replaces the latest-policy evidence and cannot resurrect
+the older receipt. The helper matches saved runs 16639/16640; automatic live
+admission remains unproved. Cases in `test_recall_route_revalidation.py` are
+compiled but unrun under October 10's spent regression allowance.
+
+The Catacombs fallback stores Martin, Charles, Amanda, Sally, and Paul as separate
+mobile objectives. Amanda (9512, reset 9510) and Sally (9514, reset 9514) are
+source-confirmed level-30, unarmed, unprogrammed, same-area wanderers without
+specials. Adding them does not expand the original three-target parent contract.
+A parent-route cooldown from one linked, completed health-floor withdrawal may
+leave an untried sibling eligible only when exact source-consider and presence
+evidence identifies the failed mobile, with unchanged level, boot, source, and
+accumulated losses and no death or route hazard. Preserve the parent result and
+loss ledger. Each sibling keeps its own cooldown/loss record, exact source
+route, fresh live identity/consider/output checks, and initial one-kill limit.
+After another target fails, use that exact linked failure if it matches the
+current accumulated-loss total; an older parent failure must not override it.
+The exact extra-attacker/duplicated-GMCP abort may also scope its linked loss to
+one source target. Require success/not-achieved/loss outcomes, a real combat
+and XP-loss event, one useful consider/presence identity, no death or route
+hazard, recovered full-health healer boundaries, and the exact current loss
+total and segment-linked loss record. A historical positive research result
+cannot override that newer loss. This negative scope survives a source refresh
+only when the failed run's own start/end revision agrees; alternatives need
+fresh current-source admission. Keep every same-level/boot child abort closed
+across refreshes unless its separate recorded repair contract admits it.
+Paul (9517, reset 9509) is level 30, unarmed, and has no special. Its one
+`rand_prog` immediately breaks while fighting and otherwise executes one
+`mpecho`. `mobile_programs.py` accepts only that exact five-line control flow,
+a numeric chance from 0 through 100, and non-CHAT echo output. Other triggers,
+actions, branches, or extra commands remain excluded. Source admission is not
+live kill evidence and retains every ordinary hunt gate.
+The proven idle-script shape retains ordinary three-step source-safe pursuit
+even when a live health probe or protection check is required; those combat
+checks remain unchanged. The non-aggressive unarmed no-reserve output gate may
+use the same script proof; every source damage, output, reset, loss and live
+check still applies. Aggressive or other scripted targets remain excluded.
+After ordinary sibling selection finds nothing, one exact safe no-combat
+one-step pursuit failure may receive `campaign_idle_pursuit_revalidations`.
+Require a linked completed run, positive live locator and target presence,
+unchanged level/boot/source/XP/loss, full-health healer start/end/current state,
+no consider or combat evidence, and a newly proven three-step safe-room map.
+Persist an attempted receipt with the prior run/segment before connecting.
+Never clear the old route result, combat loss, or source policy ledger; any
+failure or previously recorded receipt closes this one-use repair.
+Receipts are sticky campaign metadata. If a terminal checkpoint lacks one,
+restore only its exact consumed receipt from the already-loaded eight-segment
+tail, with matching policy, level, boot and source. This recovery closes the
+repair; it never copies gameplay state or creates new retry permission.
+Cooldown ageing retains loss-bearing route results. If a legacy result is
+missing, target scope may use that exact linked completed segment's terminal
+result only for its recorded loss outcome and matching current loss ledger;
+all level, boot, source, identity, and hazard checks still apply. A conflicting
+current result takes precedence; never substitute history for it.
+An expired parent cooldown never clears its recorded XP-loss fight. A child's
+same-level/boot/source failed search remains closed from its exact bounded
+segment evidence, including legacy attempts without a research-result entry.
+Before-consider Catacombs aborts now record their own route failure and cooldown;
+positive `where` presence is not proof of a reached target or a useful kill.
+Relocation tables include safe positive-locator destinations beyond the eight
+blind stops as origins. Every new origin retains path, hazard, access, and live
+identity checks; blind stops and live relocation limits remain eight. This
+repairs a missing map origin, not a consumed failed search or combat permission.
+After ordinary sibling selection finds nothing, an already-productive exact
+registered source identity may receive one `campaign_registered_locator_revalidations`
+route check. Require its linked completed success/not-achieved/safe run,
+zero combat and unchanged XP/loss within that run, full-health healer boundaries,
+same level/boot/source, and the exact missing-origin abort. The final positive
+locator must lack a registered origin, and the current audited map must provide
+routes from that origin to every endpoint under its old reported labels.
+Keep its prior locator decision and result in the receipt; do not clear either
+the research result or target loss ledger. Later unrelated XP/loss remains
+current and cannot substitute for evidence from this failed search. A recorded
+loss for the exact registered or source target closes this allowance.
+Selection saves a pending receipt; the segment start consumes and checkpoints
+it before opening the connection. Fresh identity, isolated targeting, consider,
+health, protection/output gates and the eight-search/refresh limits still apply.
+Sticky attempted receipts forbid another automatic check after any outcome.
+Run 16634 completed its fresh Martin objective for 1,923 net XP and retained
+the attempted receipt at checkpoint 49605. Its ordinary repeat 16638 lost
+189 net XP after Caroline joined. The old positive research result is historical
+kill evidence, not permission to override the new registered loss. The consumed
+locator repair never reopens that combat failure; checkpoint 49610 is recovered.
+An eligible Catacombs fallback may first use the existing affordable optional
+flight purchase. Preserve current food/recovery, nonnegative fame, shop-route
+and purchase cooldowns, purchase-failure evidence, fresh price/stock, and live
+affect verification. An unaffordable or failed purchase never grants departure.
+At healer 3054 before departure or after the registered field return, retain an already-applied combat loadout when
+only movement is low and HP is at least 95% and mana at least 50%. Swapping
+movement gear can change the maximum and otherwise oscillate loadouts. Keep
+the ordinary movement ratio, absolute route budget, and recovery checks; this
+does not lower departure readiness or replace HP/mana recovery gear.
+The return case includes a movement-only pending recovery flag, but keeps the
+registered healer return and ordinary sleep/readiness requirements. Damaged
+or mana-depleted characters still use recovery gear.
+October 10's single focused regression batch passed 26 tests. The later
+cooldown-expiry, locator-origin, expanded-target, and optional-flight changes
+and their extra cases are compiled but not pytest-verified;
+do not run another regression batch before October 11 local time.
+Run 16628 live-triggered the new 20% threshold against Sally. Flee took another
+violence pulse and HP reached 48/702; the character returned to healer 3054 and
+finished fully healed. Record execution success, objective not achieved, and
+safety loss independently: 551 flee XP lost, 846 damage XP gained, +295 net.
+The prior successful Sally kill never clears this new failed fight.
 Hoard guardians are dynamic spawns: their player-derived level, HP, and extra
 level/2 damroll replace the ordinary reset assumptions. The standalone guardian
 calculation reports raw attack bounds, not complete damage after victim-specific
 effects and not a proof that the dig lag and escape can be survived.
 
-For the isolated plain-target post-loss probe, `combat_defenses.py` mirrors
-`fight.c`'s sequential shield-block, parry/pre-empt, and dodge rolls. Require
+For passive-defense probes, `combat_defenses.py` mirrors `fight.c`'s sequential
+shield-block, parry/pre-empt, and dodge rolls. Require
 observed positive proficiency from the current level/boot training audit,
 matching current skills, normal form, structured equipment/affects, and an
-awake, unimpeded character. Unknown items or armed, scripted, special,
-aggressive, fear-aura, or multiple-reset targets receive no defense credit.
-Use the source target's maximum loaded level and strict percent-roll boundary;
-ignore armor misses, dual parry, and other unproved mitigation. A combined
-normal-hit probability of at most 1/2 permits the ordinary 67%-maximum-HP
-raw-peak bound; otherwise retain the strict 50% post-loss bound. The probability
-reduces expected normal-hit damage only. Preserve the 22.5% health reserve,
-fixed action budget, lower-HP/uncertainty-gap output checks, route preflight,
-live isolation/consider/damage window, and existing exact target-loss closures.
+awake, unimpeded character. Ordinary probes remain limited to plain targets.
+One prepared armed-target probe is permitted only for a fixed sentinel with
+exactly one source-identified, reset-loaded ordinary weapon; reject specials,
+programs, aggression, fear aura, extra resets, bows, and other combat gear.
+Require at least 95% player HP, enough HP to survive one raw peak while
+retaining the 22.5% reserve, a raw peak within 67% of maximum HP, a combined
+normal-hit probability of at most 1/2, and source output covering the target's
+maximum loaded HP plus expected incoming damage. Use the target's maximum
+loaded level and strict percent-roll boundary; ignore armor misses, dual parry,
+and other unproved mitigation. The probability reduces expected normal-hit
+damage only; never discount the raw peak. Preserve the fixed action budget,
+route preflight, live isolation/consider/damage window, and exact target-loss
+closures. All other high-peak armed targets still require sanctuary or learned
+disarm. Save `campaign_source_ranked_passive_defense_estimate` as source-only
+evidence, not a retry marker or live authorization. This never reopens a
+recorded loss or any below-band/route exclusion. Focused tests were added for
+the October 8 change and await the next daily regression window.
 Save `campaign_source_ranked_passive_defense_estimate` as source-only evidence,
 not a retry marker or a successful combat observation. This never reopens the
 bard's recorded loss or any below-band/route exclusion. October 7 compilation
 passed; the new focused cases await the October 8 daily test window.
+
+An improved-output revalidation may retain one exact low-level route-program
+hazard only when `_source_ranked_route_program_candidate_allowed` validates the
+candidate's registered `where` preflight. This is not a route-hazard bypass:
+issue the locator fresh before crossing and return if it finds the mobile. The
+existing one-shot loss marker and all post-loss output, health, identity, and
+consider gates remain in force.
+For the exact policy with the prior damage-window loss, admit the post-loss
+plain-target variant only when that one-shot revalidation proves a strictly
+higher source output ceiling covers the observed target HP. Its independent
+incoming-damage bounds still apply; this does not reopen a second attempt.
+
+Persist consumption on the exact loss record and loss event, not only in the
+single active marker: selecting a different target must not make the earlier
+attempt available again. Startup may repair a legacy record only from a
+matching source-ranked segment whose marker, policy, target identity, observed
+HP, output ceiling, and loss event agree. After selection consumes the marker,
+the active stop builder may carry that exact proof through only when the same
+policy, level, boot, target, source revision, and current output signature
+still match. This preserves the selected probe's no-sanctuary admission; it
+does not reopen selection, grant a retry after interruption, or relax any live
+consider, isolation, health, route, damage-window, or return gate. A verified
+objective kill clears that policy's loss record, allowing future evidence to
+be evaluated afresh.
+
+Prefer current-band fights with the best expected net XP per whole-session
+time when the observed gear, trained skills, and source-backed output support
+the existing finite combat budget. Do not require sanctuary just to avoid
+ordinary damage when the exact plain-target no-reserve rules pass. Keep live
+`consider`, target identity, useful-XP, incoming-damage, and survival checks as
+hard gates; increased aggression means using proven capability, not weakening
+those checks.
+
+After a same-level XP loss, the plain-target HP-fuzz probe may use a combined
+source exposure ceiling of 65% of maximum HP: the worst source round plus the
+extra damage from one critical hit (half the doubled critical total). This is
+30% above the former 50% post-loss ceiling, but remains below the ordinary
+80% unprotected-probe ceiling. Require an exact fixed sentinel with one reset,
+no aggression, fear aura, program, special, or wielded weapon; retain the
+source-output lower-bound and HP-uncertainty checks, route-program `where`
+preflight, and all live isolation, `consider`, damage-window, and return gates.
+The 50% limits for route-loss and partial-timeout retries are unchanged.
+
+For a passive post-loss target whose source-loaded level range straddles the
+five-level useful-XP floor, use the range's upper bound for bounded-probe
+admission; the nominal source level alone must not close it. This is only
+permission to run the exact route preflight and fresh live `consider`. The live
+result remains authoritative: a result at -5 or lower closes that reset before
+combat and cannot earn progression XP.
+
+The passive contract above remains unchanged. A separate aggressive post-loss
+probe may be armed once per level and reboot only for one exact, fixed,
+unarmed sentinel with one reset, no special, program, fear aura, or confusion.
+Require the source-loaded minimum level to be strictly greater than
+`character_level - 5`, the maximum no more than `character_level + 2`, the same
+65% peak-plus-critical ceiling, and source output covering the lower HP bound
+and uncertainty gap. Persist the exact target marker and consume it before the
+segment opens. Start at 95% health; fresh route checks, isolated live identity,
+useful `consider`, observed damage window, and bounded withdrawal remain
+mandatory. A second aggressive probe at that level and reboot is closed even
+after interruption.
+
+Live result from run **16569**: Dorrik's exact source-ranked Olympus policy for
+Samuel the Armourer (mobile 918, room 935) reached the live fight, then withdrew
+at the hard-health floor before an objective kill. The source output ceiling was
+1,392 against 792 observed target HP, yet the segment recorded 551 XP lost
+(level 30, boot `Sun Sep 27 23:55:43 2026`). The checkpoint stores this exact
+policy in the current-boot XP-loss ledger; do not retry Samuel or infer that the
+source output estimate proves the exchange survivable. Select a distinct
+current-band policy and retain all ordinary live damage and withdrawal gates.
 
 Reject a passive armed combat-special HP-fuzz probe during source selection
 when the runner cannot open it without enemy GMCP HP. DD4 `update.c` sends that
@@ -142,6 +981,13 @@ purchase cooldown. The ordinary runner must still verify its source route,
 current quote, stock, purchase, and resulting flight affect. An empty XP
 frontier may select already-audited ground-stash or coin-carrier funding under
 their existing admission and retry contracts; record it as maintenance, not XP.
+Treat a fresh fly/levitation affect as sufficient only when its known duration
+meets the selected route's source-derived reserve; a generic flight objective
+requires positive duration. If an active affect is too short, stay at the
+healer, handle observed food or thirst needs, and sleep on the same connected
+session until it expires before buying and verifying one replacement. Duration
+zero is not route-ready flight, and repeated save/quit shop probes do not age it
+productively.
 
 `scan` describes each sighting's distance. The pre-entry check concerns the
 immediate destination, so only an exact target **one** room away in the chosen
@@ -368,6 +1214,15 @@ equipment and inventory, a new exact better-than reply, and post-wield VNUM
 verification are still required. Never infer that a same-named carried item
 is the same instance across reconnects. This repairs an observed equipment
 reversal without clearing hunt failures or granting combat permission.
+If the same source-resolved carried candidate remains available but the worn
+primary VNUM has changed since a verified comparison, allow one further check
+at the same level and reboot. Require the exact prior five-command success and
+unchanged candidate VNUM, name, and unique keyword; save the prior primary
+identity as `primary_change_revalidation_of` before dispatch. This allowance
+is consumed once even if the primary changes again. Repeat every fresh
+equipment, inventory, comparison, and post-wield check; a failed or ambiguous
+result does not reopen it, and it grants no combat permission.
+
 Run 15968 live-proved the restoration, and checkpoint 48510 after two further
 wait segments still records weapon 6104 equipped. The October 3 focused batch
 exposed incorrect wear flags in the synthetic comparison fixture; they are
@@ -393,6 +1248,23 @@ the proof XP/loss totals in the marker; later XP gains do not reopen this route.
 The marker expires when level, boot, source revision, or primary weapon changes.
 It never overrides a missing-primary or required-piercing-weapon gate, and it
 does not authorize using `stun` without a confirmed pounding weapon.
+One route-code correction may reopen only the exact safe marker whose linked
+failed segment records Dave's room label as having no bounded
+source-reachable room set. Require the same level, boot, source revision,
+primary weapon, healer checkpoint, and the linked segment's unchanged XP/loss
+and safe-return evidence. Consume the correction in the original marker and
+checkpoint it before opening the segment; it cannot be repeated. During the
+registered outbound route, a complete current room listing may instead identify
+Dave at an exact source-reachable room VNUM on that route. Stop there only when
+the source shopkeeper identity matches, the registered route prefix and its
+reverse still match open source exits, private/solitary rooms are absent, and
+observed movement covers the return. This uses exact live room identity, never
+the ambiguous `where` label, and grants no combat permission.
+For a Thief/Bounty Hunter stun opener, only the positive collapse message
+authorizes the follow-up backstab. A missed attempt can start combat through
+DD4's zero-damage path, and `do_backstab` rejects an already-fighting target;
+restore the primary weapon and use ordinary combat instead. Keep the existing
+source, target, and survival gates unchanged.
 
 Source `do_kill` adds no `WAIT_STATE` when it replies exactly `You do the best
 you can!` to an already-fighting player. Release that command window without
@@ -851,10 +1723,13 @@ precedence and ordinary stat-training preparation, and never swap while asleep
 or fighting. This is reward planning, not a promise about every possible XP
 source and not permission to change combat or route gates.
 
-Record the single daily regression batch before starting it in ignored
-`runs/regression_test_batches.json`, using the Pacific/Auckland calendar date.
-Record its outcome afterward. A failed batch also consumes the allowance; do
-not start another batch, compilation sweep, or replay-test batch that day.
+While the project is active, run exactly one regression batch each local
+calendar day. Use focused tests for routine changes or the full suite at a
+coherent milestone, never both on the same day.
+Record it before starting in ignored `runs/regression_test_batches.json`, using
+the Pacific/Auckland calendar date, and record the outcome afterward. A failed
+batch consumes the day's allowance; do not rerun tests or start another
+regression batch that day.
 
 When flight funding is unavailable, a fresh ground search with no eligible
 target may hand over to the next registered current-level policy even if the
@@ -906,14 +1781,15 @@ manufacture an escalation. If an external permission review times out, retry
 once promptly, then defer that operation and continue useful local work. Never
 wait indefinitely for an invisible review or repeatedly poll unchanged failure.
 
-Keep all Git changes local. No pushes, PRs, or remote merges unless a new
-explicit one-off instruction overrides this policy. Attempt one local commit
-at most per 24 hours, at 9:00 PM Pacific/Auckland. Bound it to 60 seconds; a
-failure consumes that day's attempt. Use the current shell's native filesystem
-operations and verify absolute targets before any recursive move or delete.
-Record the attempt before starting Git in ignored `runs/local_commit_attempt.json`,
-including its next eligible timestamp; consult it before any later attempt.
-Record success or failure there even when no new commit was created.
+At the 9:00 PM Pacific/Auckland checkpoint, make at most one local commit
+attempt per day: commit a coherent, reviewed change set only. The user handles
+all remote pushes and merges; never change a remote unless explicitly asked.
+Bound the local attempt to 60 seconds. A failure consumes the day's attempt;
+record it and do not retry for 24 hours. Do not commit unrelated or unreviewed
+worktree changes. Record the attempt and next eligible timestamp in ignored
+`runs/local_commit_attempt.json`, including success or failure when no commit
+was created. Use native filesystem operations and verify absolute targets
+before any recursive move or delete.
 
 Read-only campaign selection probes must load the same source world, gear
 catalog, and relevant history as public startup. A missing inspection dependency
@@ -1040,6 +1916,14 @@ its observed maximum is slightly above the total output budget, but never above
 the source-audited target HP ceiling. This is only the pre-probe handoff: the
 measured remaining HP and incoming damage must still fit the bounded budget
 and health reserve before combat continues.
+If the first three live samples land at least 70% of the warning threshold but
+fall just short, an exact unarmed target may receive one extra two-update
+window when the measured exchange is at least as favorable as the ordinary
+1.1:1 damage-trade floor. This also applies when incoming damage is zero. The
+source action budget must cover both updates, current health must be at least
+70% of maximum, and their projected damage must leave the usual field reserve.
+This is only more evidence for the same admitted target; the normal output,
+health, and live identity checks still decide whether the fight continues.
 DD4's `do_consider` health wording compares current hit points. In the general
 case, only `you are currently much healthier than` (a lead greater than 100
 current HP) can authorize the passive pre-combat fallback when live enemy HP
@@ -1054,6 +1938,10 @@ does not authorize continuing combat. Run **14041** remains the reason not to
 generalize from small health leads: a teensy-bit result preceded zero observed
 damage and a **419 XP** loss against the diamond golem. The normal live damage
 window and withdrawal path remain authoritative after any permitted opener.
+This exact fallback may use a route requiring flight only when the checkpoint
+proves active `fly` or `levitation` with enough remaining duration for the
+route. That satisfies movement only; it does not relax the endpoint, locator,
+consider, health, or damage-window gates.
 
 Revision **324** adds one narrow Mage fallback: a practiced familiar may open
 an otherwise sanctuary-gated endpoint when fresh source evidence proves that
@@ -1277,6 +2165,290 @@ invocation and never authorize an autonomous retry spin.
 
 ## Gameplay And Evidence
 
+### Skill Tree Progression
+
+Review the active pilot's class/subclass skill tree at each level, new practice
+balance, observed prerequisite unlock, subclass transition, or relevant source
+change. Use a current live listing, source prerequisites and skill code, and
+the actual trainer's limits.
+Choose useful damage, extra attacks, between-round attacks, disarm, defenses,
+and protective/damaging spells; practice their prerequisite chains deliberately.
+Set an effective proficiency target, improve high-value abilities toward
+mastery where worthwhile, and verify the gain and subsequent unlocks after
+each lesson. Preserve physical/intellectual practice budgets, leveling's
+unused-practice conversion, stat-training decisions, route safety, and action
+registration. An unchanged zero balance or capped teacher is not a reason to
+repeat a trainer trip; record the blocker and keep earning current-band XP.
+
+October 10 runs **16891**, **16920**, and **16921** confirmed Dorrik's level-32
+live `practice` listing:
+enhanced damage **67%**, kick **67%**, stun **62%**, second and third attack
+**63%**; `flamestrike` and `healing magiks` appeared as learnable at **0%**.
+Physical and intellectual practice balances were both **zero**, so no lesson
+could be taken. Run **16921** showed no proficiency change. A planner-only
+check against that exact live listing, with one hypothetical practice per
+type, selects `flamestrike` **0% to 45%** (intellectual) and `enhanced damage`
+**67% to 100%** (physical). This does not prove teacher capacity or authorize a
+lesson; recheck the actual teacher's positive gain before dispatch. Third attack
+already meets its analysis target of **60%**.
+Source analysis prioritizes Knight protection wards, flamestrike, and the healing
+chain, but the wards were absent from this live learnable list; do not infer
+trainer access or practice a lesson until fresh eligibility and capacity checks
+pass. Reuse this audit until level, practice balance, unlock, subclass, or source
+changes.
+
+October 11 run **17073** refreshed Dorrik's level-33 listing at healer room
+3054, then verified the nearby Cleric guildmaster accepted two practices:
+`flamestrike` rose from **0%** to **27%**, then **41%**. The final listing
+showed **zero** physical and intellectual practices and `healing magiks` still
+learnable at **0%**. The next useful target remains `flamestrike` **45%**;
+the current blocker is no intellectual practice, not trainer access. Recheck
+the tree when a new practice is earned, continue that chain if still eligible,
+and then reassess the healing/protection unlocks before spending further.
+
+Run **17079** used the one-use source-output revalidation for the dwarven
+musician but ended `objective=not_achieved`, `safety=loss`; Dorrik withdrew at
+the 20% floor and returned to the healer. The trace shows the source budget
+credited Flamestrike while the live action selector issued stun, kill, then 17
+kicks and no Flamestrike. The controller now gives an exact, practised,
+affordable source-planned spell priority over other repeatable attacks after
+disarm, subclass setup, and control actions. The planned spell keeps the normal
+mana reserve check. Its focused command-selection test is deferred because
+today's regression allowance has already been used; this is not yet live proof,
+and run 17079's target remains closed after its recorded loss.
+
+October 11 runs **17130** and **17131** refreshed Dorrik's level-34 live skill
+audit. Current proficiencies include enhanced damage **67%**, second attack
+**64%**, third attack **63%**, kick **67%**, stun **66%**, armed combat
+knowledge **64%**, defense knowledge **65%**, grip **99%**, and Flamestrike
+**48%**. The observed learnable listing showed conjuration magiks, inner force,
+rescue, riding techniques, and swim at **0%**; both physical and intellectual
+practice balances were **zero**. Source analysis keeps enhanced damage on the
+path toward **100%** and prioritizes attack-chain improvements and the
+prerequisites for disarm as they become available. No lesson is currently
+actionable; the immediate blocker is practice availability, and the exact
+teacher's positive gain must still be verified before any training trip. Recheck
+at the next level, practice gain, unlock, subclass, or source change; keep
+current-band XP moving while the balance is empty.
+
+October 11 runs **17143**, **17146**, and **17148** verified the Knight combat
+sequence in live fights: consider, stun with the hammer, switch back to the
+long sword, then use practiced Flamestrike between rounds. Those targets were
+killed for **1,146**, **1,610**, and **1,792 XP** without an XP loss. Run
+**17150** reconfirmed the level-34 skill listing and zero physical and
+intellectual practices; its separate Quake target produced **1,870 XP** with
+Flamestrike in the rotation. There is still no lesson to take. Continue current-
+band hunts, then recheck the tree immediately on a level or practice change and
+advance enhanced damage toward mastery alongside newly unlocked class skills.
+
+October 11 run **17229** observed Dorrik at level 35 with enhanced damage
+**67%**, armed combat knowledge **64%**, third attack **63%**, Flamestrike
+**48%**, healing magiks **49%**, **3 physical** practices and **0
+intellectual** practices. The latest saved run is **17230**, checkpoint
+**50877**, at healer room **3054**. The current DD4 source revision is
+`4c039fa6b0f84d51ae7d40e516977fbb8ebc6ad3`.
+
+The Knight source requires `protect vs evil` **60%** to unlock `protect vs
+undead`; the former training target incorrectly stopped at **50%**. Its target
+is now **60%**, tied to the current prerequisite snapshot and covered by a
+focused test. The changed training-policy fingerprint will force a fresh
+campaign training audit. Neither ward appeared in the observed live learnable
+listing, so live teacher support remains unproved.
+
+Source teacher checks found no safe nearby trainer that can currently raise
+enhanced damage: the level-20 Warrior teacher caps the skill at **80%**, which
+cannot improve Dorrik's **67%** with his observed practice penalty. Level-25,
+-30, and -35 teachers have more capacity, but their routes fail current source
+hazard checks; the level-35 teacher at room **31077** would raise it to **75%**
+on the next practice, but its 115-step route crosses the Barracuda reset in room
+**10005** and a `spec_thief`. Strict safe-route search found no alternate.
+Preserve the unused practices, do not repeat an unchanged teacher audit, and
+continue executable level-35 XP policies until practice, stats, or route
+evidence changes.
+
+Run **17231** superseded that unused-practice snapshot: the live level-35
+listing showed three physical practices, stun **66%**, and shield block
+**62%**. At the Captain in Kerofk, one accepted lesson raised stun to **67%**;
+two raised shield block to **65%** and then **66%**. The final practice count
+was zero. These are verified improvements, not mastery: on the next earned
+practice, refresh the full class tree and teacher limits, then favor the
+highest-value reachable leveling skill rather than repeating these lessons by
+habit. Run **17276** later confirmed Dorrik remains level 35 with **986,559 XP**
+and no practices; keep the skill plan current while continuing XP progression.
+
+Run **17310** advanced Dorrik to level 36 at **1,011,355 XP** and awarded
+three practices. The immediate post-level run **17311** refreshed his skill
+listing at the Cleric's Inner Sanctum: **3 physical, 2 intellectual**. The
+guildmaster accepted two intellectual lessons, raising healing magiks from
+**49% to 52%** and learning cure light at **28%**; the final balance was **3
+physical, 0 intellectual**. On the next selection, use a fresh class-tree and
+teacher-capacity audit to find a source-safe instructor for the physical
+points. Enhanced damage remains **67%** and a high-value priority toward
+mastery; also weigh the attack chain, stun, and disarm prerequisites against
+the exact teacher's proven gains. Do not spend physical practices merely to
+empty the balance.
+
+Run **17313** performed that fresh level-36 audit at the Captain in Kerofk.
+The reachable teacher used Dorrik's three physical practices on dodge, raising
+it from **60% to 66%**; enhanced damage remained **67%**, and no practices
+remain. This is a verified defensive improvement, not a reason to repeat the
+same trainer visit. Continue level-36 XP progression and refresh the skill
+tree at the next level, practice gain, unlock, or relevant source change; keep
+enhanced damage and the attack chain ahead of lower-value options whenever a
+safe teacher can actually improve them. The same run killed the dwarven dancer
+for **3,242 XP**, recovered a dancer's suit, and returned safely to healer room
+**3054** without XP loss. Dorrik ended at **1,014,597 XP**, **79,253 XP** from
+level 37.
+
+Run **17314** then verified the level-36 Lotus Temple route live: Dorrik
+stunned Yeun Sun Ho, used Flamestrike between attacks, and killed him for
+**2,742 XP**. He recalled and recovered at the healer with
+`objective=achieved` and `safety=safe`; the refreshed skill audit still shows
+enhanced damage **67%**, dodge **66%**, and zero practices. Continue XP
+progression, then reassess the class tree immediately when new practices or
+unlocks appear. Run **17318** repeated the source-ranked dancer hunt and
+produced another **3,120 XP**, ending at **1,020,459 XP** with
+`objective=achieved` and `safety=safe`. The same training blocker remains: no
+practices are available, so continue XP progression rather than repeating the
+unchanged trainer visit.
+Run **17320** repeated the Lotus Temple kill and earned **2,905 XP**, ending
+at **1,023,364 XP** with `objective=achieved` and `safety=safe`. The fresh
+audit remains at enhanced damage **67%**, dodge **66%**, and zero practices;
+continue current-band XP and recheck training on the next unlock or practice
+gain. Run **17322** completed another safe dancer kill for **2,417 XP**, taking
+Dorrik to **1,025,781 XP**. No new practice points or skill unlocks appeared;
+the training priorities remain unchanged until the next level or practice
+change. Run **17324** added **3,101 XP** from another clean Yeun Sun Ho kill,
+bringing the total to **1,028,882 XP** with no XP loss. Enhanced damage remains
+**67%**, dodge **66%**, and the practice balances are still empty.
+Runs **17316**, **17321**, **17326**, and **17331** each found Celia (mobile
+**30244**) at room **30291**, but the live crowd check counted two observed
+mobiles and declined combat. All four were safe, not achieved, and produced no
+XP. Keep this exact stop closed until fresh live evidence changes the room
+count or target location; do not force another unchanged trip. Run **17327** then
+completed a two-kill Dwarven Home circuit: the dancer paid **2,382 XP** and a
+route musician paid **1,855 XP**, for **4,237 XP** total. Both were looted and
+Dorrik returned safely at **1,033,119 XP**. The skill audit remains unchanged
+with no practices available. Run **17332** selected Teacher's last student,
+which failed live consideration; the route continued to Yeun Sun Ho and earned
+**2,302 XP**. Record `safety=safe` separately from
+`objective=not_achieved`, since the selected target was not killed. Dorrik ended
+at **1,035,421 XP**, still level 36 with no practices.
+Run **17334** demonstrates the cost of extending the circuit after its first
+kill. Dorrik earned **2,136 XP** from the dwarven musician, then attacked a
+1,449-HP dancer after consider said “perfect match” but “built like a tank.”
+At **87/844 HP** he fled; DD4 charged **830 XP** and awarded **733** damage XP
+for the escape, leaving net progress **+2,039 XP** at **1,037,460 XP**. The run
+is `objective=not_achieved`, `safety=loss`; Dorrik survived and reached the
+healer. Keep the exact failed dancer encounter closed unless fresh source or
+live evidence changes its output/survival case. The skill audit remains
+enhanced damage **67%**, dodge **66%**, and zero practices.
+
+Run **17337** started after the source mirror advanced from **4c039fa** to
+**26749cd**. Startup cleared Celia's same-boot crowd result and cooldown, so
+selection sent Dorrik back toward that policy. Before departure, `where drunk`
+reported the Drunk at Temple Square and the Practice Yard; three bounded waits
+did not clear the route. Dorrik saved and quit safely at healer room **3054**,
+with no target contact, combat, XP change, or loss. This exposed two persistence
+gaps: a source refresh must retain exact same-boot crowd evidence, and a later
+no-travel city block cannot supersede a crowd observation at the target room.
+Both repairs and focused tests are now in the worktree; the October 11 test
+allowance was already spent, so the new cases await the next daily batch.
+
+Run **17338** confirmed both source-registered Kerofk Bartender locations were
+below-band at level 36: live `consider` returned “The Bartender is no match for
+you” in rooms **30246** and **30265**. No attack was issued. Dorrik returned to
+healer room **3054** at **1,037,460 XP**, with full HP and movement and no loss.
+Both exact policy/room sightings are saved as same-boot below-band evidence;
+select a different current-band candidate rather than repeating either room.
+
+Run **17339** tested the Freeport source-ranked circuit. Live `consider`
+returned “The harbormaster is no match for you” in room **29116**, so Dorrik
+did not attack him; the route's warehouse overseer in room **29129** passed
+the fresh combat gates and was killed for **2,286 XP**. The segment reached its
+runtime boundary, returned Dorrik to healer room **3054**, and completed a safe
+save/logout with no XP loss. Final state: level **36**, **1,039,746 XP**,
+**54,104 XP** to level 37, **854/862 HP**, and **441/596 movement**. The skill
+audit still shows enhanced damage **67%**, dodge **66%**, and zero practices.
+
+Run **17340** was a bounded healer setup, not progression: Dorrik restored
+movement, changed from recovery gear to combat gear, checked his potion pouch,
+saved, and received a confirmed farewell. Run **17341** then attempted loot
+sales, but three fresh `where drunk` checks after bounded healer sleeps kept
+reporting the wandering Drunk at Temple Square and Alley at Levee. No sale or
+XP change occurred; the saved character remained alive at healer room **3054**
+with full HP and movement. The liquidation route is closed on this evidence;
+do not repeat its waits without a changed locator result. Its transcript has no
+explicit `quit` acknowledgement, so verify connection status on the next
+bounded login rather than assuming the logout was confirmed.
+
+Run **17342** completed the bounded Magic Shop support purchase safely. The
+live quote was **141 copper-equivalent**; Dorrik bought and quaffed one light
+blue potion, and `affects` confirmed flight. He returned to healer room **3054**
+and received a confirmed farewell. XP remained **1,039,746**. On the next login,
+recheck `affects` rather than assuming the potion's flight duration survived
+logout; keep using live prices instead of a fixed reboot-independent cost.
+Run **17343** rechecked the liquidation route after a fresh locator and used the
+Jeweller in room **3034**. The live `value notebook` offer was zero; Dorrik
+donated the redundant notebook rather than treating the route as a funding
+success. He saved and received a confirmed farewell at the healer, with no
+currency or XP gain. The exact notebook/Jeweller zero-offer pair is recorded;
+do not repeat it unless the item or shop evidence changes.
+Run **17344** selected the source-ranked Kaladim hunt for “a large knife,” but
+the audited route required live invisibility to cross its source-known
+aggression. Dorrik has no learned, usable invisibility spell or verified
+substitute; the safe-origin preflight therefore returned him to healer room
+**3054** before field departure. He saved and logged out safely with no combat,
+XP change, or loss. The same live `practice` audit confirmed zero physical and
+intellectual practices. Keep this route closed until its invisibility gate can
+actually be met; do not spend another cycle rediscovering the same blocker.
+Run **17345** returned to the Lotus Temple route after the source audit
+confirmed its level-18 small green lizard cannot join the level-36 fight.
+Fresh live evidence found Yeun Sun Ho, `consider` admitted him, and the bot
+recorded a confirmed kill for **1,836 XP**. Dorrik finished without loss,
+recovered and logged out safely at healer room **3054**: **1,041,582 XP**,
+**52,268 XP** to level 37, and **862/862 HP**. The skill audit remained
+enhanced damage **67%**, dodge **66%**, with zero practices; refresh it after
+the next practice gain or level transition.
+The currency snapshot rose from **1** to **2 silver** across run **17345** with
+no shop sale in that segment, a likely coin source from the encounter; keep it
+as a live observation, not a general drop guarantee. Run **17346** found no
+eligible sale candidate and completed a short save/logout at the healer with
+no further XP or currency change. Do not repeat that empty liquidation check.
+Run **17347** spent **177.6 seconds** reaching the Lotus Temple chamber
+attendant; exact live `consider` returned “Chamber attendant is no match for
+you.” No attack was issued. Dorrik returned and logged out safely at healer
+room **3054**, full on HP, mana, and movement, with no XP change or loss. Keep
+the exact room/target closed as same-boot below-band evidence and prefer a
+different current-band policy over repeating this long route.
+Run **17348** then found Yeun Sun Ho again on a fresh live route and passed a
+new `consider`. The hammer stun landed (“causing him to buckle and collapse”);
+Dorrik switched back to his primary and confirmed the kill for **1,390 XP**.
+The **184.7-second** run finished without loss or combat timeout and logged out
+safely at healer room **3054**. Currency rose by one silver (**2** to **3**)
+without a shop sale, a second encounter-level coin observation. Final progress
+is **1,042,972 XP**, **50,878 XP** to level 37. The skill audit remains
+enhanced damage **67%**, dodge **66%**, with zero practices.
+
+Run **17187** reached Yeun Sun Ho in room 10771 but ended without considering
+the level-34 target: the crowd gate treated its level-18 small green lizard
+companion's `spec_poison` as an active threat. `special.c:2530-2547` shows
+`spec_poison` only bites a character already fighting that lizard, and the
+source level window proves this lizard cannot join Dorrik's fight. The room
+hazard check now consults the existing source-backed non-assisting proof before
+blocking combat-only specials, while retaining guard and joinable-poisoner
+hazards. A focused regression case covers below-band versus joinable poisoners;
+it has not been run because today's regression batch was already used, and this
+route still needs live proof before being treated as productive.
+
+Run **17188** is a live calibration: Dorrik considered the source-ranked
+Gambler at two Kerofk rooms and DD4 returned “The Gambler is no match for you”
+both times. `act_info.c` computes `diff = victim->level - ch->level`; this
+message is the `diff <= -5` branch, so no attack was issued and the exact
+candidate is now below-band evidence for this level and boot. Its source level
+is 28, but the live load landed at least five levels below Dorrik. Preserve the
+negative result rather than reopening the same target without changed evidence.
+
 Keep three run outcomes separate: execution says whether the bounded worker
 finished its procedure, objective says whether the stated goal is proved, and
 safety records deaths or losses. A safe abort may be `execution=success` and
@@ -1470,6 +2642,23 @@ the existing detour rechecks find nothing executable, require a recovered
 healer checkpoint, one plain unarmed candidate passing every independent
 current-band, useful-XP, output, protection, flight, and target-loss gate, and
 a later successful run-linked locator with complete changed location evidence.
+The campaign can obtain that observation itself: after ordinary selection
+closes, a linked successful safe no-travel city stop with three waits may
+receive one `campaign_field_city_observation`. Require the same current
+source, level, boot, XP, loss, and recovered healer boundaries. Persist it
+before dispatch, use the ordinary world-time worker with the exact saved city
+route labels, keep reading through at most three 12-second waits, and save/quit
+at healer 3054. No outbound command or attack is permitted. A complete clear
+locator is a next-segment handoff, not an area-reset wait or XP progress.
+Failure or continued obstruction consumes the observation and stops.
+The existing clear-route marker may cover a source-proved small plain
+population. Require its full reset audit and ordinary no-reserve output proof,
+plus independently measured same-boot useful-kill history after the fresh-search
+cap. A no-travel city stop must not erase that historical reward, while weak
+individual receipts remain recorded and every new target still gets fresh
+isolation/consider. Only the exact pending marker may pass the old route-derived
+capacity, cooldown, and incomplete-visit filters; every real target loss,
+crowd, absence, changed route, and explicit exclusion remains authoritative.
 Map every duplicate city room label and prove all current locations lie
 outside the entire unchanged source route. The earlier exact-policy segment
 must have stopped before departure after three waits, returned to healer,
@@ -1477,6 +2666,31 @@ and changed neither XP, loss, level, boot, nor its own source revision. It
 must contain no kill, detour, or correction; its saved mobile, endpoint, and
 commands must match the current source candidate exactly. Different source
 revisions do not authorize a changed path.
+
+A separate dynamic preflight retry may reopen one exact plain current-band
+source hunt after its `where drunk` check at room 3001 finds the source Drunk
+(mobile 3064) on Temple Square and exhausts three bounded checks. Arm it only
+after ordinary current-band selection and city-detour rechecks find nothing
+executable. The linked successful prior segment must retain the exact source
+revision, policy, mobile, room, and route; unchanged level, boot, XP, and loss;
+three route-preflight retries; no target, consider, kill, or combat evidence;
+and a full-health return to healer 3054. The current checkpoint and exact
+retryable route-hazard result must still match that evidence. Persist one
+marker and consume it before connecting. It may reopen only that route's
+cooldown for a fresh healer and room-3001 locator; every normal route, live
+identity, consider, output, protection, and combat gate remains in force. Any
+new hazard, mismatch, interruption, or failed attempt closes it permanently
+for that level/boot. It does not clear other cooldowns or route exclusions.
+If the target is past the three-kill fresh-search cap, the ordinary productive
+repeat selector must independently admit that exact policy using all ranked
+candidates and the normalized XP ledger. The route marker itself is never
+productivity evidence; record `repeat_after_kill_cap` when this gate passes.
+The general dynamic-hazard reset guard yields only while this exact marker is
+pending and still matches the selected candidate and saved result.
+Repair one legacy closed marker only when it lacks that field, records the
+exact offline source/current-band gate closure, remains unattempted, and still
+matches the same run, route, boot, level, and source revision. Consume that
+repair on re-arming; never reopen a marker after dispatch or another failure.
 
 Persist `campaign_field_city_clear_route_revalidation` separately, preserve the
 old closure ledger, and consume it before dispatch. One marker per level/boot
@@ -1656,13 +2870,17 @@ remains authoritative. This changes wait admission only, not target permission,
 sanctuary markers, or combat-loss closures. New cases await the next daily
 test window.
 
-Automatic source-capacity entitlement is not permission to repeat a terminal
-sanctuary retry. Both the maintenance selector and exact Moria capacity
-admission must reject `_sanctuary_area_reset_recheck_failure_terminal`, even
-after an unrelated hunting reset wait arms general capacity evidence. This
-does not remove the original one-use capacity probe before the sanctuary
-boundary is spent. Run 16444 exposed this selection gap and returned without
-combat, acquisition, or XP change; its additional failed attempt stays recorded.
+An automatic source-capacity entitlement does not reopen general sanctuary
+recovery after its retry is terminal. One exception is the exact Moria
+capacity probe: a fresh, unconsumed automatic-reset entitlement may admit the
+source-audited mobile **4055**, object **4050** route even when the general
+sanctuary retry is exhausted. The selector must still prove the two-room,
+one-entry-per-room source capacity and all required-loot route gates. Consume
+that entitlement at persisted segment start; it grants no ordinary XP hunt or
+general protection fallback, and a live absence closes it for this boot.
+Without an unconsumed reset entitlement, the terminal sanctuary boundary
+remains closed. Run 16444's extra failed attempt remains recorded and is not
+replayed.
 
 Flight funding must not strand a healthy, fed character after its safe carrier,
 one ground probe, bounded current-band XP rotation, alternate funding targets,
@@ -1887,6 +3105,17 @@ sanctuary halves damage while active but costs 75 mana. Existing buff upkeep,
 proficiency, and mana-reserve checks remain authoritative. The revision makes
 older trainer audits stale so the next eligible segment can inspect the teacher
 again; it does not grant practice or spell-use permission by itself.
+
+DD4 source revision **7953a00** adds Knight access to `protection vs evil` and
+`protection vs undead`. The prerequisite identifiers are `protect vs evil` and
+`protect vs undead`; keep those distinct from the castable skill names in
+training data. Maintain either ward only when the current live skill listing
+proves it is known and the ordinary mana reserve passes. The undead ward can
+deter fresh uncommanded undead attacks or joins, but cannot end an existing
+fight. `turn undead` remains analysis-only until the controller can verify all
+eligible room targets, crowd risk, damage credit, and safe withdrawal. These
+new source capabilities are not live proof while the server revision and
+teacher listing remain unverified.
 
 Training-audit freshness is tracked by a fingerprint of executable base-class
 and subclass priorities, separately from the campaign code revision. A changed
@@ -2353,8 +3582,21 @@ snapshot is unknown: request one live `affects` refresh, then return safely if
 `fly` or `levitation` is still unconfirmed. Offline coverage was added
 2026-09-30 but not run because that day's regression batch was already used.
 Dorrik's latest checkpoint has an active flight affect, but a deep Moria trip
-with flight and sanctuary acquisition remain live-unproved. His one same-boot
-sanctuary recheck is spent; do not dispatch it again this boot.
+with flight and sanctuary acquisition remain live-unproved. His same-boot
+general sanctuary recheck is spent; do not dispatch it again this boot. A
+separate, unconsumed automatic-reset capacity entitlement may dispatch only
+the exact mobile-4055/object-4050 maintenance probe below. It does not reopen
+general sanctuary recovery or authorize XP combat.
+
+The 2026-10-09 all-area source inventory found no second executable sanctuary
+reserve for Dorrik at level 30. The level-27-to-33 ettin's blood (#17029) is in
+a chest behind the keyed west door at room 17220; its key (#17021) is carried
+by Redbeard in room 17218, but the 99-command route crosses audited aggressive
+and special hazards. The sanctuary scroll (#13345) is nested in chests in the
+disconnected Catacombs, while the reachable ground pill (#20645) has minimum
+load level 31 and a source hazard on its route. Checkpoint 49500 has no pending
+capacity-reset entitlement, and the one post-reset recheck is already marked
+attempted. Do not retry Moria or wait again on this evidence alone.
 
 For the exact level-20 generic protection-recovery transition, a source-backed
 fallback may use up to eight bounded locator relocations after positive carrier
@@ -2396,6 +3638,19 @@ A ground-reset pickup must wait until the live room equals its registered reset
 room. A matching name or description earlier on the route is not proof of the
 source prototype: DD4 can place different same-named objects in different rooms,
 and live object selectors are not prototype VNUMs.
+When a Warrior or Bounty Hunter still lacks its required stun weapon after the
+bounded shop-rearm attempt has been spent, a direct ground reset may supply a
+source-verified blunt weapon. Keep the best primary wielded and retain the blunt
+weapon in inventory for the existing pre-combat stun opener. The item must be a
+registered ground reset, and the ordinary live route, exact-room, capacity,
+return, and identity checks still apply; this does not admit a carrier fight or
+authorize combat on the acquisition route.
+If source-gear setup itself fails before a run is created, reopen that exact
+object/reset once only from a persisted marker tied to the failed segment,
+checkpoint, level, boot, and source revision. Require `run_id` absent, zero
+commands, and unchanged character state; consume the marker before dispatch.
+Any connected run, command, movement, target sighting, loss, or XP change closes
+this setup-only revalidation.
 A protection-recovery fallback may retain one independent, source-audited plain
 target even when its fresh useful-XP probability is below the ordinary ranking
 floor, but its source HP range must satisfy the same audited output-window rule
@@ -2421,6 +3676,10 @@ normal countdown and bounded-history reconstruction; do not let supply kills
 trigger another optional ring search. Recheck live
 route hazards and crowd on retry; the exception never relaxes combat, identity,
 health, or healer-return gates.
+If this errand was already the eligible policy before current-band fallback,
+it may run once that search and the exhausted sanctuary route have no safe
+option left, but only from the healer with no active quest and an observed
+zero QP shortfall. It remains maintenance, not progression XP.
 
 If a
 required-loot expedition withdraws after bounded source-absence sightings, keep
@@ -2428,11 +3687,11 @@ that raw terminal evidence and recover it at startup; apply the registered
 current-reboot cooldown before retrying the exact route. The sole revision-279
 exception permits the exact Moria sanctuary carrier with global capacity two
 only when source proves one reset entry in each of its two audited rooms; it
-authorizes one bounded maintenance attempt, never ordinary XP hunting. The
+authorizes one bounded maintenance attempt, never ordinary XP hunting. A fresh
 generic capacity entitlement armed by a completed automatic area-reset wait
-may reopen that same audited carrier once only while the sanctuary attempt
-counter remains available; it is never an alternate retry after the bounded
-sanctuary route is exhausted. The entitlement is source-narrowed to mobile
+may reopen that same audited carrier once, even if the general sanctuary
+attempt counter is exhausted; it never resets that counter or reopens the
+ordinary sanctuary route. The entitlement is source-narrowed to mobile
 **4055**, object **4050**, rooms **4064** or **4071**, global capacity two, and
 one room entry; it is consumed in the persisted segment start before
 connecting. A live absence closes the probe without XP credit and cannot be
@@ -2495,19 +3754,66 @@ consider, and corpse-confirmed key extraction before `unlock west`. Each room
 has two raw M resets for source mobile 6500 and each reset has a maximum-count
 of four. The source route checks 6505, makes one `east east west west` detour
 to 6540, and returns to 6505 before unlocking. It still requires passive
-source profiles, known selectors, good player alignment, and no extra or
-unknown mobile. Revisions 313 and 314 reopen their exact same-boot artifacts;
+source profiles, known selectors, a source-derived joiner defense, and no
+extra or unknown mobile. Revisions 313 and 314 reopen their exact same-boot artifacts;
 315 recovers the old selector-persistence acquisition, 316 reopens only the
 matching reconnect loss, and 317 records the alternate-room route. Revision
-318 additionally requires a verified sanctuary reserve before this gate is
-dispatchable, because DD4's same-prototype guards automatically join the
-fight. Without that reserve, select bounded Moria recovery first and stop as
-unavailable after its finite reboot-scoped attempts. These revisions do not
-broaden the live gate. At the exact level-25 frontier, source mobile 2011 is the only admitted transit special: its
+318 conservatively required sanctuary because same-prototype guards can join
+a fight. DD4 `fight.c` limits assistance to mobiles within three levels below
+through six levels above the player, and also prevents good-aligned mobs from
+joining a fight against a good-aligned player. Mobile 6500 loads at level 20
+with at most two levels of fuzz and has good alignment. The campaign uses
+DD4's level and alignment assist checks to choose the needed defense: a guard
+that could join requires sanctuary, while a known-good player who prevents the
+join must still be confirmed good at the live gate. Missing source identity
+fails closed. At level 30 the source level ceiling alone rules out assistance,
+so neither sanctuary nor good alignment blocks Dorrik's key route.
+Exact live selector, isolation, consider, the 90% route-gate health floor,
+corpse-confirmed key extraction, and all other route checks remain mandatory.
+The source proof also requires the key on the first same-room guard reset. When
+the duplicate guards are otherwise indistinguishable, the route prefers the
+lowest runtime target ID first; this is only a search order, never proof that a
+guard carries the key. Inventory/corpse confirmation remains authoritative.
+This gate grants no progression XP permission. At the exact level-25 frontier, source mobile 2011 is the only admitted transit special: its
 level-15 upper bound is exactly ten levels below the player, its
 `spec_cast_mage` acts only after combat begins, and its source damage bounds
 fit the player ceiling. The live route must confirm that VNUM through GMCP;
 the interruption is bounded maintenance combat and never progression XP.
+
+If the Dwarven route reaches room 6505 and west remains locked after the
+registered open-door recovery, record a same-level, same-boot key-gate failure
+and do not dispatch that route again without new evidence. A later live
+inventory containing the deep green key reopens the route; a level or reboot
+change also invalidates the old blocker. Startup repair may recover this
+blocker only from the matching linked, successful, safe segment with the exact
+locked-exit evidence and no objective kill.
+
+Revision 340 is a narrow implementation revalidation, not a general retry:
+only the exact revision-339 fatal result and its linked successful, safe,
+no-objective-kill segment qualify, with unchanged boot, level, source revision,
+XP, XP-loss totals, no carried key, and full-health healer start/end checkpoints.
+The route must have stopped on the exact closed-then-locked west-door hazards.
+The migration preserves the old result and marker, loss quarantines, and
+sanctuary/reset counters, while clearing only this route quarantine and old
+selector ordering. Consume the one-shot marker before dispatch. A route failure
+or interruption after that point does not authorize another attempt; fresh
+live identity, room-wide isolation, consider, health, sanctuary, and route
+gates remain mandatory.
+
+The same area also resets object **6502** on mobile **6502**, the wraith in
+room **6527**. Do not treat this as an independent key source: the source
+route to room 6527 crosses the locked west exit from room 6505, which itself
+requires object 6502. The Grand Templar carrying sanctuary flask 2008 in room
+2025 is behind that same key dependency. This is source-map evidence, not a
+live acquisition result; the level-aware guarded key gate remains
+authoritative.
+
+TARGETMODE selectors identify live mobile instances, not durable characters.
+Keep attempted gate selectors within the connected encounter; campaign history
+may retain them for audit but must not seed a later run. DD4's name-only
+`Char.Enemies` update must preserve the exact active gate selector only while
+that selector remains in the current room listing. If it is absent, fail closed
+instead of switching to another same-name mobile.
 
 Revision **282** adds one narrow funding exception for this plan. If a level-24+
 Thief still needs the 1,000-copper source lockpick, the selector may choose
@@ -2668,6 +3974,37 @@ Discord streamer and unrelated services untouched.
 On the shared multi-character database, use the indexed scoped recovery command
 (`recover-runs --campaign-id ID --character NAME`) after verifying the worker is
 gone; the global no-argument recovery scan is reserved for small databases.
+
+## Healer-Side Deity Prayer
+
+DD4's `deity.c` allows `pray protection` only when the level-15-or-higher
+character's patron offers it; peaceful and lawful patrons include that prayer,
+but the patron's stature determines which effects it grants. Never infer
+sanctuary from the command or patron name. When a selected current-band hunt
+needs sanctuary and no durable reserve exists, the campaign may try one prayer
+from healer room 3054 per DD4 boot. Require a live, safe, provisioned healer
+checkpoint; wake at most once, issue exactly one `pray protection`, then save
+and quit. Consume the marker before dispatch. A recorded command spends the
+attempt even if the patron refuses or the favor/timer prevents a grant; a
+bounded pre-login failure with no prayer command does not. Only a fresh
+sanctuary affect in the saved GMCP state can help selection, and every ordinary
+route, identity, consider, output, and survival gate still applies. Live
+success remains unproved until the affect is observed after the prayer.
+
+If the ordinary source selector rejects a current-band target solely because
+the missing reserve blocks its output admission, it may expose that exact
+source-ranked candidate only to choose the healer prayer policy. The candidate
+is removed before dispatch; this exception authorizes no route or combat. After
+the prayer, selection starts fresh and every ordinary source and live gate is
+applied again.
+
+If the MUD reports that the character has no patron, the command still spends
+the boot's one-shot attempt. Do not automatically follow it with `pray
+patronage`: DD4 warns that patronage may be difficult to leave, requires
+multiple confirmations, and may not grant the required protection. First
+verify the exact patron's prayer list and character-specific favour from
+source/live evidence. Dorrik's October 9 attempt (run 16571) returned “You have
+no patron,” granted no Sanctuary, and left him safely at healer room 3054.
 
 ## Documentation
 

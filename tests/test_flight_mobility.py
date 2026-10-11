@@ -108,3 +108,23 @@ def test_snapshot_limit_returns_latest_in_chronological_order(tmp_path):
         for invalid in (0, -1, True, 1.5):
             with pytest.raises(ValueError):
                 storage.list_state_snapshots(segment["run_id"], limit=invalid)
+
+
+def test_required_flight_duration_matches_the_registered_route_reserve():
+    target = HuntCandidate(
+        status="caution", score=100, area_file="moria.are", mobile_vnum=4002,
+        target="the centipede", target_keyword="centipede", level=3,
+        room_vnum=4023, room_name="Cave", route=("south",) * 241,
+        source_spawn_limit=3, room_spawn_count=1, boot_kills=0, loot=(),
+        source_value=0, contained_coins=0, hazards=(),
+        estimated_level_range=(1, 5), estimated_move_cost=130,
+        estimated_flying_move_cost=37, requires_flight=True,
+    )
+
+    assert campaign._source_ranked_candidate_required_flight_duration(target) == 4
+    assert campaign._source_ranked_candidate_needs_flight_refresh(
+        target, {"affects": [[{"name": "fly", "duration": "3"}]]},
+    )
+    assert not campaign._source_ranked_candidate_needs_flight_refresh(
+        target, {"affects": [[{"name": "fly", "duration": "4"}]]},
+    )

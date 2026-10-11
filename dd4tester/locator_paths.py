@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from typing import Collection
 
 from .hunt_candidates import (
-    EX_WALL, WorldSource, _shortest_paths_from, source_mobile_search_rooms,
+    EX_WALL, SourceRouteHazardIndex, WorldSource, _shortest_paths_from, source_mobile_search_rooms,
     source_route_hazard_rejections, source_route_requires_flight,
 )
 
@@ -15,6 +15,8 @@ def source_locator_path_is_safe(
     *,
     character_level: int | None,
     require_invisibility: bool = False,
+    economic_special_mobile_vnums: Collection[int] = (),
+    hazard_index: SourceRouteHazardIndex | None = None,
 ) -> bool:
     # Private, solitary, and no-recall rooms introduce a recovery boundary.
     return bool(
@@ -31,6 +33,8 @@ def source_locator_path_is_safe(
             character_level=character_level,
             combat_at_destination=False,
             invisible=require_invisibility,
+            economic_special_mobile_vnums=economic_special_mobile_vnums,
+            hazard_index=hazard_index,
         )
     )
 

@@ -31,6 +31,7 @@ from dd4tester.hunt_candidates import (
     ITEM_MONEY,
     ITEM_DONOT_RANDOMISE,
     ITEM_PILL,
+    ITEM_POTION,
     ITEM_SCROLL,
     ITEM_STAFF,
     ITEM_WAND,
@@ -457,6 +458,90 @@ def test_source_only_resource_reports_locked_route_key_provenance() -> None:
     assert any(
         "source route key 3133 has no independently reachable carrier reset"
         in note
+        for note in placement.autonomy_rejections
+    )
+
+
+def test_source_only_ground_resource_reports_room_reset_hazards() -> None:
+    potion = ObjectSource(
+        50,
+        "potion protection",
+        "a potion",
+        10,
+        (10, 64, 1),
+        200,
+        value_strings=("10", "refresh", "protection", ""),
+    )
+    daemon = MobileSource(
+        100,
+        "daemon",
+        "a guardian daemon",
+        25,
+        ACT_AGGRESSIVE,
+        0,
+        "test.are",
+    )
+    low_level_aggressor = MobileSource(
+        101,
+        "scout",
+        "a low-level guard",
+        5,
+        ACT_AGGRESSIVE,
+        0,
+        "test.are",
+    )
+    world = WorldSource(
+        mobiles={100: daemon, 101: low_level_aggressor},
+        objects={50: potion},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 3003, 0, -1)},
+            ),
+            3003: RoomSource(
+                3003,
+                "route room",
+                "test.are",
+                exits={"south": ExitSource("south", 3002, 6, 60)},
+            ),
+            3002: RoomSource(3002, "guarded resource room", "test.are"),
+        },
+        mob_resets=[
+            MobReset(100, 3002, 1, ()),
+            MobReset(101, 3003, 1, ()),
+        ],
+        mobile_specials={100: ("spec_demon",), 101: ("spec_guard",)},
+        room_object_resets=[RoomObjectReset(50, 3002, 1)],
+    )
+
+    [placement] = rank_resource_sources(
+        world,
+        character_level=30,
+        effect="protection",
+        include_all_areas=True,
+    )
+
+    assert placement.status == "source-only"
+    assert placement.route == ()
+    assert any(
+        "resource room contains a guardian daemon" in note
+        for note in placement.hazards
+    )
+    assert any("spec_demon" in note for note in placement.hazards)
+    assert any(
+        "resource room contains an aggressive mobile reset" in note
+        for note in placement.autonomy_rejections
+    )
+    assert any("a low-level guard" in note for note in placement.hazards)
+    assert not any(
+        "route room 3003 contains an aggressive mobile reset" in note
+        for note in placement.autonomy_rejections
+    )
+    assert any("spec_guard" in note for note in placement.hazards)
+    assert not any(
+        "source route room 3003 contains a combat-capable special" in note
         for note in placement.autonomy_rejections
     )
 
@@ -2278,6 +2363,27 @@ def test_protection_is_a_distinct_source_resource_effect() -> None:
     assert activation.consumes_object is True
 
 
+def test_water_breathing_philter_is_a_distinct_source_resource_effect() -> None:
+    item = ObjectSource(
+        3389,
+        "philter turquoise",
+        "a turquoise philter of water breathing",
+        ITEM_POTION,
+        (10, 64, 1, 16384),
+        2370,
+        value_strings=("20", "breathe water", "", ""),
+    )
+
+    assert resource_effects_for_object(item) == ("water-breathing",)
+    for effect in ("water-breathing", "water breathing", "breathe water", "underwater"):
+        activation = resource_activation_for_object(item, effect=effect)
+        assert activation is not None
+        assert activation.spell == "breathe water"
+        assert activation.command == "quaff"
+        assert activation.consumes_object is True
+    assert resource_effects_for_object(item, effect="flight") == ()
+
+
 def test_area_parser_records_direct_coin_stash_resets(tmp_path: Path) -> None:
     area_file = tmp_path / "stash.are"
     area_file.write_text(
@@ -3721,6 +3827,15 @@ def test_mobile_expected_round_damage_mirrors_npc_follow_up_chances() -> None:
         wielding=False,
         dual_wielding=False,
     ) == 48
+
+
+def test_weapon_damage_bonus_is_added_after_wielding_multiplier() -> None:
+    base = mobile_expected_round_damage(20, wielding=True, dual_wielding=False)
+    bonus = mobile_expected_round_damage(
+        20, wielding=True, dual_wielding=False, source_damage_bonus=2,
+    )
+    # At level 20 the source attack chances total 1.9 hits per round.
+    assert bonus - base == 4
 
 
 def test_sanctuary_mobile_damage_halves_each_strike_before_round_totals() -> None:

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from dd4tester import campaign as cp
-from dd4tester.hunt_candidates import ExitSource, HuntCandidate, RoomSource, WorldSource
+from dd4tester.hunt_candidates import ACT_STAY_AREA, ExitSource, HuntCandidate, MobileSource, MobReset, RoomSource, WorldSource
 
 
 @pytest.fixture
@@ -142,6 +142,104 @@ def test_clear_route_recheck_rejects_incomplete_or_changed_evidence(clear_city_c
 def test_clear_route_requires_independent_combat_admission(clear_city_case, monkeypatch):
     monkeypatch.setattr(cp, "_source_ranked_hp_probe_admission_available", lambda *a, **kw: False)
     assert arm(clear_city_case) is None
+
+
+def test_recent_productive_route_has_its_own_consumed_clearance(clear_city_case):
+    candidate, policy, state, world, segments = clear_city_case
+    state.update(dead=False, in_combat=False, enemies=[], campaign_xp_loss_total=0)
+    state["campaign_research_results"] = {policy: {
+        "boot_id": "boot", "previously_productive": True,
+        "consider_viable": True, "retryable_failure": True,
+    }}
+    for segment in segments:
+        for key in ("start_state_json", "end_state_json"):
+            snapshot = json.loads(segment[key])
+            snapshot.update(dead=False, in_combat=False, enemies=[], campaign_xp_loss_total=0)
+            snapshot[cp._SOURCE_REVISION_KEY] = "current-revision"
+            segment[key] = json.dumps(snapshot)
+    old_marker = {"boot_id": "boot", "level": 29, "status": "attempted", "policy_id": "other"}
+    state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY] = old_marker
+    state[cp._FIELD_CITY_ROUTE_ATTEMPTS_KEY] = {
+        "boot_id": "boot", "level": 29, "status": "attempted", "policy_ids": [policy],
+    }
+    kill = {"source_policy_id": policy, "source_mobile_vnum": 123, "xp_gained": 400}
+    productive_start = {**state, "xp": 600, cp._SOURCE_RANKED_CANDIDATE_KEY:
+                        cp._source_ranked_candidate_record(candidate, character_level=29,
+                                                          source_revision="current-revision")}
+    productive_end = {**state, "campaign_objective_kills": [kill]}
+    segments.insert(0, {"id": 41, "run_id": 90, "phase": policy, "status": "success",
+                        "finished_at": "finished", "error": None,
+                        "start_state_json": json.dumps(productive_start),
+                        "end_state_json": json.dumps(productive_end)})
+    summary = {"summary_version": 6, "run": {"id": 90}, "outcomes": {
+        "execution": "success", "objective": "not_achieved", "safety": "safe",
+    }, "progress": {"confirmed_kills": [kill], "experience": {"initial": 600, "final": 1000}}}
+    storage = SimpleNamespace(get_run_summary=lambda run_id: summary if run_id == 90 else None)
+    assert arm(clear_city_case, storage=storage) == policy
+    marker = state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY]
+    assert marker["superseded_clearance"] == old_marker
+    assert marker["productive_clearance"]["productive_run_id"] == 90
+    assert cp._mark_field_city_alternate_route_revalidation(state, candidate, character_level=29)
+    assert arm(clear_city_case, storage=storage) is None
+
+
+def test_clear_route_preserves_bounded_population_research_and_consumption(clear_city_case, monkeypatch):
+    candidate, policy, state, world, segments = clear_city_case
+    candidate = replace(candidate, status="reject", source_spawn_limit=3,
+                        autonomy_rejections=("target reset capacity exceeds one",), stay_area=True)
+    world.mobiles[123] = MobileSource(123, "plain target", "a plain target", 25, ACT_STAY_AREA, 0, "test.are")
+    world.rooms.update({v: RoomSource(v, "side room", "test.are") for v in (4001, 4002)})
+    world.mob_resets = [MobReset(123, v, 3) for v in (4000, 4001, 4002)]
+    start = json.loads(segments[0]["start_state_json"])
+    start[cp._SOURCE_RANKED_CANDIDATE_KEY] = cp._source_ranked_candidate_record(
+        candidate, character_level=29, source_revision="old-revision",
+    )
+    segments[0]["start_state_json"] = json.dumps(start)
+    state["campaign_research_results"] = {policy: {
+        "boot_id": "boot", "previously_productive": True,
+        "consider_viable": True, "max_objective_kill_xp": 600,
+    }}
+    monkeypatch.setattr(cp, "_source_ranked_candidate_in_current_band", lambda *a, **kw: False)
+    monkeypatch.setattr(cp, "_source_ranked_post_loss_plain_probe_allowed", lambda *a, **kw: True)
+    case = candidate, policy, state, world, segments
+    assert arm(case) == policy
+    assert cp._plain_population_city_recheck_pending(state, candidate, character_level=29, source_world=world)
+    assert not candidate.autonomous_safe
+    assert cp._mark_field_city_alternate_route_revalidation(state, candidate, character_level=29)
+    assert not cp._plain_population_city_recheck_pending(state, candidate, character_level=29, source_world=world)
+
+
+@pytest.mark.parametrize("flag", [
+    "crowded", "absent", "route_hazard", "low_reward", "target_vnum_mismatch",
+    "fatal_failure", "xp_loss_observed",
+])
+def test_city_block_does_not_reopen_failed_kill_history(clear_city_case, flag):
+    candidate, policy, state, _world, _segments = clear_city_case
+    candidate = replace(candidate, boot_kills=3)
+    state["campaign_research_results"] = {policy: {
+        "boot_id": "boot", "observed": True, "viable": False, "completed_kill": False,
+        "previously_productive": True, "consider_viable": True, "retryable_failure": True,
+        "max_objective_kill_xp": 600, flag: True,
+    }}
+    assert policy not in cp._source_ranked_repeatable_policy_ids(
+        [candidate], state, character_level=29, policy_xp_deltas={policy: 600},
+    )
+
+
+def test_city_block_retains_independently_measured_useful_kill_history(clear_city_case):
+    candidate, policy, state, _world, _segments = clear_city_case
+    candidate = replace(candidate, boot_kills=3)
+    state["campaign_research_results"] = {policy: {
+        "boot_id": "boot", "observed": True, "viable": False, "completed_kill": False,
+        "previously_productive": True, "consider_viable": True, "retryable_failure": True,
+        "max_objective_kill_xp": 600,
+    }}
+    assert policy in cp._source_ranked_repeatable_policy_ids(
+        [candidate], state, character_level=29, policy_xp_deltas={policy: 600},
+    )
+    assert policy not in cp._source_ranked_repeatable_policy_ids(
+        [candidate], state, character_level=29, policy_xp_deltas={},
+    )
 
 
 def test_clear_route_can_find_one_indexed_old_segment_without_broad_history(clear_city_case):

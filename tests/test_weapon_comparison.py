@@ -12,6 +12,7 @@ from dd4tester.weapon_comparison import (
 PROMPT = "<666/666 hits 100/100 mana 434/482 move [Temple]> "
 BRANCH = "a long, grey branch"
 CLUB = "a large club"
+HAMMER = "enchanted hammer"
 
 
 def source_case():
@@ -29,6 +30,10 @@ def source_case():
     objects[1521] = ObjectSource(
         1521, "club", CLUB, 5, (0, 1, 2, 7), 0,
         wear_flags=1 | (1 << 13), level=3,
+    )
+    objects[10238] = ObjectSource(
+        10238, "enchanted hammer", HAMMER, 5, (0, 2, 10, 0), 0,
+        wear_flags=1 | (1 << 13), level=11, affects=((18, 2),),
     )
     return GearCatalog(objects)
 
@@ -184,6 +189,34 @@ def test_multiple_weapon_variants_cannot_be_resolved_by_comparison():
     assert plan(catalog) is None
 
 
+def test_unique_weapon_with_incomparable_combat_stats_gets_live_comparison():
+    catalog = source_case()
+    request = plan_weapon_comparison(
+        catalog, catalog.objects[6104], (HAMMER,), character_class="warrior",
+        subclass=None, level=29,
+    )
+    assert request == {
+        "candidate_vnum": 10238,
+        "candidate_name": HAMMER,
+        "primary_vnum": 6104,
+        "primary_name": BRANCH,
+        "keyword": "enchanted",
+    }
+
+
+def test_unique_weapon_that_is_combat_dominated_is_not_compared():
+    catalog = source_case()
+    weak_weapon = ObjectSource(
+        10239, "rusty sword", "a rusty sword", 5, (0, 1, 2, 0), 0,
+        wear_flags=1 | (1 << 13), level=11,
+    )
+    catalog = GearCatalog({**catalog.objects, weak_weapon.vnum: weak_weapon})
+    assert plan_weapon_comparison(
+        catalog, catalog.objects[6104], ("a rusty sword",),
+        character_class="warrior", subclass=None, level=29,
+    ) is None
+
+
 def test_cursed_too_high_or_wrong_role_weapon_cannot_be_planned():
     catalog = source_case()
     assert plan(catalog, character_class="thief") is None
@@ -209,9 +242,52 @@ def test_verified_weapon_reversal_gets_one_fresh_comparison_with_old_evidence():
     assert weapon_comparison_request(plan(source_case()), request, level=29, boot_id="boot") is None
 
 
+def test_changed_primary_gets_one_fresh_comparison_for_same_candidate():
+    previous = verified_comparison()
+    current_plan = {
+        **plan(source_case()),
+        "primary_vnum": 3022,
+        "primary_name": "a long sword",
+    }
+
+    request = weapon_comparison_request(
+        current_plan, previous, level=29, boot_id="boot",
+    )
+
+    assert request is not None
+    assert request["stage"] == "dispatched"
+    assert request["primary_vnum"] == 3022
+    assert request["primary_change_revalidation_of"] == {
+        "candidate_vnum": previous["candidate_vnum"],
+        "primary_vnum": previous["primary_vnum"],
+        "level": 29,
+        "boot_id": "boot",
+        "stage": "verified",
+        "commands": 5,
+    }
+    assert "restoration_of" not in request
+    assert previous == verified_comparison()
+
+    assert weapon_comparison_request(
+        current_plan, request, level=29, boot_id="boot",
+    ) is None
+    request.update(stage="verified", failure=None, commands=5)
+    assert weapon_comparison_request(
+        current_plan, request, level=29, boot_id="boot",
+    ) is None
+    another_primary = {
+        **current_plan,
+        "primary_vnum": 3023,
+        "primary_name": "a steel sword",
+    }
+    assert weapon_comparison_request(
+        another_primary, request, level=29, boot_id="boot",
+    ) is None
+
+
 @pytest.mark.parametrize("changes", [
     {"stage": "dispatched"}, {"stage": "failed"}, {"stage": "rejected"},
-    {"failure": "lost identity"}, {"commands": 4}, {"primary_vnum": 999},
+    {"failure": "lost identity"}, {"commands": 4}, {"primary_name": "changed"},
     {"candidate_vnum": 999}, {"keyword": "wrong"}, {"restoration_of": None},
 ])
 def test_restoration_needs_exact_successful_prior_comparison(changes):

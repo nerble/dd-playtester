@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from itertools import combinations
 from pathlib import Path
@@ -42,6 +42,9 @@ ITEM_DRINK_CONTAINER = 17
 ITEM_KEY = 18
 ITEM_FOOD = 19
 ITEM_NODROP = 1 << 7
+ITEM_ANTI_GOOD = 1 << 9
+ITEM_ANTI_EVIL = 1 << 10
+ITEM_ANTI_NEUTRAL = 1 << 11
 ITEM_NOREMOVE = 1 << 12
 ITEM_INVENTORY = 1 << 13
 ITEM_POISONED = 1 << 14
@@ -153,6 +156,12 @@ class GearSourcePlacement:
     status: str
     route: tuple[str, ...] = ()
     route_origin_recall_index: int = 0
+    route_preflight_room_vnum: str | None = None
+    route_preflight_command: str | None = None
+    route_preflight_target: str | None = None
+    route_preflight_hard_hazard: bool = False
+    route_preflight_route_room_names: tuple[str, ...] = ()
+    route_source_program_audited: bool = False
     hazards: tuple[str, ...] = ()
     autonomy_rejections: tuple[str, ...] = ()
     weapon_role: str = "not_applicable"
@@ -204,6 +213,29 @@ class GearCatalog:
         candidates = self._by_name.get(normalize_item_name(description), ())
         return tuple({item.vnum: item for item in candidates}.values())
 
+    def observed_equipment_item(
+        self, record: Mapping[str, Any], *, character_class: str,
+        subclass: str | None = None, character_alignment: int | None = None,
+    ) -> ObjectSource | None:
+        """Value an exact worn prototype at its observed load level.
+
+        Bonuses remain source estimates, not an identification of live affects.
+        """
+        vnum, level = record.get("vnum"), record.get("level")
+        item = self.objects.get(vnum) if type(vnum) is int else None
+        if (
+            item is None or type(level) is not int or not 0 <= level <= 100
+            or record.get("item_type") != item.item_type
+            or normalize_item_name(str(record.get("name") or ""))
+            != normalize_item_name(item.short_description)
+            or not character_can_use_item(
+                item, character_class=character_class, subclass=subclass,
+                character_alignment=character_alignment,
+            )
+        ):
+            return None
+        return replace(item, level=level, load_level_min=level, load_level_max=level)
+
     def match_many(self, descriptions: Iterable[str]) -> list[ObjectSource]:
         return [
             item
@@ -217,6 +249,7 @@ class GearCatalog:
         *,
         character_class: str,
         subclass: str | None,
+        character_alignment: int | None = None,
     ) -> list[ObjectSource]:
         """Exclude ambiguous names when any matching prototype is class-restricted."""
         result: list[ObjectSource] = []
@@ -226,6 +259,7 @@ class GearCatalog:
                 description,
                 character_class=character_class,
                 subclass=subclass,
+                character_alignment=character_alignment,
             ):
                 continue
             result.append(
@@ -239,6 +273,7 @@ class GearCatalog:
         *,
         character_class: str,
         subclass: str | None,
+        character_alignment: int | None = None,
     ) -> bool:
         candidates = self._by_name.get(normalize_item_name(description), ())
         return bool(candidates) and all(
@@ -246,6 +281,7 @@ class GearCatalog:
                 item,
                 character_class=character_class,
                 subclass=subclass,
+                character_alignment=character_alignment,
             )
             for item in candidates
         )
@@ -274,6 +310,7 @@ def rank_gear_sources(
     character_level: int,
     character_class: str,
     subclass: str | None = None,
+    character_alignment: int | None = None,
     stance: str = STANCE_COMBAT,
     level_gain_priorities: tuple[str, ...] = (),
     current_items: Iterable[ObjectSource] = (),
@@ -309,6 +346,7 @@ def rank_gear_sources(
             item,
             character_class=character_class,
             subclass=subclass,
+            character_alignment=character_alignment,
         )
     )
     if not selected_objects:
@@ -476,6 +514,34 @@ def rank_gear_sources(
                 status=status,
                 route=tuple(route),
                 route_origin_recall_index=route_origin,
+                route_preflight_room_vnum=(
+                    candidate.route_preflight_room_vnum
+                    if candidate is not None
+                    else None
+                ),
+                route_preflight_command=(
+                    candidate.route_preflight_command
+                    if candidate is not None
+                    else None
+                ),
+                route_preflight_target=(
+                    candidate.route_preflight_target
+                    if candidate is not None
+                    else None
+                ),
+                route_preflight_hard_hazard=(
+                    bool(candidate.route_preflight_hard_hazard)
+                    if candidate is not None
+                    else False
+                ),
+                route_preflight_route_room_names=(
+                    tuple(candidate.route_preflight_route_room_names)
+                    if candidate is not None
+                    else ()
+                ),
+                route_source_program_audited=(
+                    source_kind == "ground-reset" and candidate is not None
+                ),
                 hazards=tuple(dict.fromkeys(hazards)),
                 autonomy_rejections=tuple(dict.fromkeys(autonomy_rejections)),
                 weapon_role=weapon_role(item, weapon_preference),
@@ -572,6 +638,7 @@ def rank_executable_ground_gear_sources(
     character_level: int,
     character_class: str,
     subclass: str | None = None,
+    character_alignment: int | None = None,
     stance: str = STANCE_COMBAT,
     level_gain_priorities: tuple[str, ...] = (),
     current_items: Iterable[ObjectSource] = (),
@@ -593,6 +660,7 @@ def rank_executable_ground_gear_sources(
         character_level=character_level,
         character_class=character_class,
         subclass=subclass,
+        character_alignment=character_alignment,
         stance=stance,
         level_gain_priorities=level_gain_priorities,
         current_items=current_items,
@@ -625,6 +693,7 @@ def rank_executable_carrier_gear_sources(
     character_level: int,
     character_class: str,
     subclass: str | None = None,
+    character_alignment: int | None = None,
     stance: str = STANCE_COMBAT,
     level_gain_priorities: tuple[str, ...] = (),
     current_items: Iterable[ObjectSource] = (),
@@ -643,6 +712,7 @@ def rank_executable_carrier_gear_sources(
         character_level=character_level,
         character_class=character_class,
         subclass=subclass,
+        character_alignment=character_alignment,
         stance=stance,
         level_gain_priorities=level_gain_priorities,
         current_items=current_items,
@@ -958,10 +1028,25 @@ def character_can_use_item(
     *,
     character_class: str,
     subclass: str | None,
+    character_alignment: int | None = None,
 ) -> bool:
     """Apply source-backed class restrictions that affect equipment planning."""
     if item.extra_flags & ITEM_BODY_PART:
         return False
+    alignment_flags = item.extra_flags & (
+        ITEM_ANTI_GOOD | ITEM_ANTI_EVIL | ITEM_ANTI_NEUTRAL
+    )
+    if alignment_flags:
+        if character_alignment is None:
+            return False
+        good = character_alignment >= 350
+        evil = character_alignment <= -350
+        if (
+            (alignment_flags & ITEM_ANTI_GOOD and good)
+            or (alignment_flags & ITEM_ANTI_EVIL and evil)
+            or (alignment_flags & ITEM_ANTI_NEUTRAL and not good and not evil)
+        ):
+            return False
     normalized_class = character_class.casefold()
     normalized_subclass = (subclass or "").casefold()
     if item.extra_flags & ITEM_LANCE and normalized_subclass != "knight":

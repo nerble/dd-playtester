@@ -1,9 +1,13 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from dd4tester.equipment import (
     GearCatalog,
+    ITEM_ANTI_EVIL,
+    ITEM_ANTI_GOOD,
+    ITEM_ANTI_NEUTRAL,
     ITEM_KEY,
     STANCE_COMBAT,
     STANCE_PRE_LEVEL,
@@ -36,6 +40,7 @@ from dd4tester.hunt_candidates import (
     ACT_AGGRESSIVE,
     ACT_SENTINEL,
     ExitSource,
+    MobileProgram,
     MobileSource,
     MobReset,
     ObjectSetBonus,
@@ -276,6 +281,79 @@ def test_rank_gear_sources_audits_direct_ground_route() -> None:
     assert placement.route == ("south",)
     assert placement.route_vnums == ("3001", "200")
     assert placement.autonomy_rejections == ()
+
+
+def test_rank_gear_sources_preserves_direct_route_program_preflight() -> None:
+    club = ObjectSource(
+        50,
+        "large club",
+        "a large club",
+        5,
+        (0, 2, 5, 7),
+        20,
+        wear_flags=1 << 13,
+        weight=2,
+    )
+    drunk = MobileSource(
+        100,
+        "drunk",
+        "the drunk",
+        2,
+        0,
+        0,
+        "test.are",
+        programs=(MobileProgram("greet_prog", "10", ("mpkill $n",)),),
+    )
+    world = WorldSource(
+        mobiles={drunk.vnum: drunk},
+        objects={club.vnum: club},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(
+                200,
+                "Avenue",
+                "test.are",
+                exits={
+                    "north": ExitSource("north", 3001, 0, -1),
+                    "east": ExitSource("east", 201, 0, -1),
+                },
+            ),
+            201: RoomSource(
+                201,
+                "Equipment room",
+                "test.are",
+                exits={"west": ExitSource("west", 200, 0, -1)},
+            ),
+        },
+        mob_resets=[MobReset(drunk.vnum, 200, 1, ())],
+        room_object_resets=[RoomObjectReset(club.vnum, 201)],
+    )
+
+    placements = rank_gear_sources(
+        world,
+        character_level=30,
+        character_class="warrior",
+        include_all_areas=True,
+    )
+
+    assert len(placements) == 1
+    placement = placements[0]
+    assert placement.route == ("south", "east")
+    assert placement.route_preflight_room_vnum == "3001"
+    assert placement.route_preflight_command == "where drunk"
+    assert placement.route_preflight_target == "the drunk"
+    assert placement.route_preflight_hard_hazard is True
+    assert placement.route_preflight_route_room_names == (
+        "recall",
+        "avenue",
+        "equipment room",
+    )
+    assert placement.route_source_program_audited is True
 
 
 def test_rank_executable_ground_gear_sources_keeps_only_safe_current_upgrades() -> None:
@@ -633,6 +711,80 @@ def test_body_part_weapons_are_never_usable_gear_candidates() -> None:
         body_part,
         character_class="thief",
         subclass="ninja",
+    )
+
+
+def test_alignment_restricted_gear_uses_dd4_alignment_thresholds() -> None:
+    anti_evil = ObjectSource(
+        10008,
+        "silver longsword",
+        "a silver longsword",
+        5,
+        (0, 5, 20, 1),
+        0,
+        wear_flags=1 | (1 << 13),
+        extra_flags=ITEM_ANTI_EVIL,
+    )
+    anti_good = replace(
+        _item(10009, "anti-good helm"), extra_flags=ITEM_ANTI_GOOD,
+    )
+    anti_neutral = replace(
+        _item(10010, "anti-neutral helm"), extra_flags=ITEM_ANTI_NEUTRAL,
+    )
+
+    assert not character_can_use_item(
+        anti_evil,
+        character_class="warrior",
+        subclass="knight",
+        character_alignment=-978,
+    )
+    assert character_can_use_item(
+        anti_evil,
+        character_class="warrior",
+        subclass="knight",
+        character_alignment=-349,
+    )
+    assert not character_can_use_item(
+        anti_good,
+        character_class="warrior",
+        subclass="knight",
+        character_alignment=350,
+    )
+    assert not character_can_use_item(
+        anti_neutral,
+        character_class="warrior",
+        subclass="knight",
+        character_alignment=0,
+    )
+    assert not character_can_use_item(
+        anti_evil,
+        character_class="warrior",
+        subclass="knight",
+    )
+
+
+def test_crystalmir_silver_longsword_is_not_recommended_to_dorrik() -> None:
+    source = parse_area_file(
+        Path("runs/dd4-source/server/area/crystal.are"),
+        include_resets=False,
+        include_entities=False,
+        include_objects=True,
+    )
+    sword = source.objects[10008]
+    catalog = GearCatalog({sword.vnum: sword})
+
+    assert sword.extra_flags & ITEM_ANTI_EVIL
+    assert not catalog.is_unambiguously_usable(
+        "silver longsword",
+        character_class="warrior",
+        subclass="knight",
+        character_alignment=-978,
+    )
+    assert catalog.is_unambiguously_usable(
+        "silver longsword",
+        character_class="warrior",
+        subclass="knight",
+        character_alignment=0,
     )
 
 

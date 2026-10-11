@@ -1,8 +1,8 @@
 {
   "source": {
     "repository": "https://github.com/fromage-fraser/dd4",
-    "revision": "4cffee6551bda62b0c7accc439dfb5069712e2c0",
-    "scope": "level-30 subclass leveling priorities"
+    "revision": "7953a0067e2dd96d34890661577f7852807734b1",
+    "scope": "level-30 subclass leveling priorities; Knight protection updates reviewed through 7953a00"
   },
   "prerequisite_class_aliases": {
     "necromancer": "necro",
@@ -81,11 +81,11 @@
       "source_refs": ["server/src/pre_reqs/pre_req-thug.c", "server/src/fight.c: multi_hit and one_hit", "server/src/act_move.c: do_smash"]
     },
     "knight": {
-      "strategy": "Add direct divine damage and self-healing to the warrior attack engine before investing in mounted combat.",
-      "practice_policy": "Improve flamestrike first, then raise healing magiks through cure serious; preserve riding practices until mount control is available.",
-      "highest_value_skills": ["flamestrike", "healing magiks", "cure light", "cure serious", "armed combat knowledge", "third attack"],
-      "automation_gaps": ["Joust and destrier require mount acquisition, retention, lance equipment, and recovery policies."],
-      "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_flamestrike and cure spells", "server/src/fight.c: do_joust"]
+      "strategy": "Maintain the Knight's alignment and undead wards, then add divine damage and self-healing to the warrior attack engine before investing in mounted combat.",
+      "practice_policy": "Learn protection vs evil to 60% so it reaches the source gate for protection vs undead, then raise protection vs undead to 60% when the Knight teacher offers them; maintain the wards for eligible routes. Improve flamestrike and the healing chain next, keep turn undead gated on a safe room-composition controller, and preserve riding practices until mount control is available.",
+      "highest_value_skills": ["protection vs evil", "protection vs undead", "flamestrike", "healing magiks", "cure light", "cure serious", "armed combat knowledge", "third attack"],
+      "automation_gaps": ["Turn undead affects every eligible undead in the room and needs composition, damage-credit, and crowd-safety controls.", "Live server support and teacher availability for the new Knight wards remain unverified.", "Joust and destrier require mount acquisition, retention, lance equipment, and recovery policies."],
+      "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/const.c: protection vs evil and protection vs undead costs", "server/src/magic.c: alignment and undead wards", "server/area/helpfile.are: HELP PROTECTION VS EVIL and HELP PROTECTION VS UNDEAD", "server/src/fight.c: turn_undead and do_joust"]
     },
     "infernalist": {
       "strategy": "Build the dark-magik prerequisites toward the source-defined single-target hellfire spell while retaining the psionic base's mana reserve.",
@@ -217,12 +217,15 @@
       {"skill": "enhanced hit", "type": "physical", "target": 100, "utility": "damage", "reason": "adds one quarter proficiency as a percentage bonus to every hit", "source_refs": ["server/src/pre_reqs/pre_req-thug.c", "server/src/fight.c: one_hit"]}
     ],
     "knight": [
+      {"skill": "protection vs evil", "source_skill": "protect vs evil", "type": "intellectual", "target": 60, "utility": "mitigation-gateway", "reason": "improves defenses against evil creatures and reaches the 60% source prerequisite for protection vs undead", "source_refs": ["server/src/pre_reqs/pre_req-knight.c: protect vs undead requires protect vs evil 60", "server/src/magic.c: spell_protect_vs_evil", "server/area/helpfile.are: HELP PROTECTION VS EVIL"]},
+      {"skill": "protection vs undead", "source_skill": "protect vs undead", "type": "intellectual", "target": 60, "utility": "safety", "reason": "deters uncommanded undead from initiating or joining combat on eligible routes; it does not end existing fights", "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_protect_vs_undead", "server/area/helpfile.are: HELP PROTECTION VS UNDEAD"]},
       {"skill": "flamestrike", "type": "intellectual", "target": 45, "utility": "damage", "reason": "adds immediate direct spell damage to the warrior attack engine", "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_flamestrike"]},
       {"skill": "healing magiks", "source_skill": "group healing", "type": "intellectual", "target": 50, "utility": "sustain-gateway", "reason": "unlocks cure light and cure serious", "source_refs": ["server/src/pre_reqs/pre_req-knight.c"]},
       {"skill": "cure light", "type": "intellectual", "target": 50, "utility": "sustain-gateway", "reason": "adds self-healing and reaches the cure-serious prerequisite", "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_cure_light"]},
       {"skill": "cure serious", "type": "intellectual", "target": 45, "utility": "sustain", "reason": "extends hunt segments with stronger self-healing", "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/magic.c: spell_cure_serious"]},
       {"skill": "armed combat knowledge", "source_skill": "group armed", "type": "intellectual", "target": 90, "utility": "damage-gateway", "reason": "supports the inherited third-attack and dual-wield chain", "source_refs": ["server/src/pre_reqs/pre_req-knight.c"]},
-      {"skill": "third attack", "type": "physical", "target": 60, "utility": "damage", "reason": "adds another automatic attack each combat round", "source_refs": ["server/src/fight.c: multi_hit"]}
+      {"skill": "third attack", "type": "physical", "target": 60, "utility": "damage", "reason": "adds another automatic attack each combat round", "source_refs": ["server/src/fight.c: multi_hit"]},
+      {"skill": "turn undead", "type": "intellectual", "target": 50, "utility": "damage", "automated": false, "reason": "can damage or destroy multiple eligible undead in the room, so it remains untrained automatically until crowd and kill-credit gates are implemented", "source_refs": ["server/src/pre_reqs/pre_req-knight.c", "server/src/fight.c: turn_undead", "server/area/helpfile.are: HELP TURN UNDEAD"]}
     ],
     "infernalist": [
       {"skill": "dark magiks", "source_skill": "group dark", "type": "intellectual", "target": 30, "utility": "damage-gateway", "reason": "unlocks dark ritual", "source_refs": ["server/src/pre_reqs/pre_req-infernal.c"]},

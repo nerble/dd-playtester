@@ -94,8 +94,33 @@ def test_remove_text_retains_exact_weapon_before_worn_snapshot(monkeypatch):
     ], state)
     carried, _ = policy._gear_inventory_sources(state)
     assert carried == [branch]
+    assert branch in policy._state_weapons(state)
     policy.observe_text("You wield a long, grey branch.\n")
     assert policy.gear_wielded_vnum == 6104
+
+
+def test_campaign_weapon_hint_resolves_carried_duplicate_name_on_resume():
+    branch, club, light = equipment_case()
+    catalog = GearCatalog({item.vnum: item for item in (branch, club, light)})
+    spec = CharacterSpec.from_mapping({
+        "name": "Testwarrior", "race": "dwarf", "gender": "neuter", "class": "warrior",
+    })
+    policy = StarterPolicy(
+        spec,
+        "test-password",
+        gear_catalog=catalog,
+        gear_inventory_source_hints={
+            normalize_item_name(branch.short_description): branch.vnum,
+        },
+    )
+    state = CharacterState(
+        inventory=[[{"short_desc": branch.short_description}]],
+    )
+
+    carried, _entries = policy._gear_inventory_sources(state)
+
+    assert carried == [branch]
+    assert branch in policy._state_weapons(state)
 
 
 def test_removing_known_nonweapon_does_not_clear_the_primary():

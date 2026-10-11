@@ -14,6 +14,7 @@ from .fastwalks import FASTWALKS, MAP_ROUTES
 from .combat_capabilities import (
     combat_capabilities_for,
 )
+from .combat_actions import preferred_timed_damage_skill
 from .specials import (
     COMBAT_JOINING_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
@@ -718,6 +719,20 @@ def source_combat_output_estimate(
     if weapon_damage_range is not None:
         actions = (*actions, "weapon strike")
     skills = _source_known_skill_set(known_skills, known_skill_levels)
+    if (
+        body_form_has_head(target_body_form_flags) is True
+        and body_form_is_huge(target_body_form_flags) is False
+    ):
+        preferred_skill = preferred_timed_damage_skill(
+            tuple(action for action in actions if action in skills),
+            level=level,
+            proficiency=known_skill_levels,
+        )
+        if preferred_skill is not None:
+            actions = tuple(
+                action for action in actions
+                if action not in {"headbutt", "kick"} or action == preferred_skill
+            )
     if (
         normalized_class == "smithy"
         and weapon_chained
@@ -1541,6 +1556,7 @@ class MobileSource:
     area_damage_modifier: int | None = None
     damage_modifier: int | None = 0
     damage_modifier_known: bool = True
+    description: str = ""
 
     @property
     def aggressive(self) -> bool:
@@ -1856,6 +1872,56 @@ class WorldSource:
     area_xp_modifiers: dict[str, int | None] = field(default_factory=dict)
 
 
+@dataclass
+class SourceRouteHazardIndex:
+    """Reuse static source ranges within one plan; never across source changes."""
+
+    world: WorldSource = field(repr=False)
+    resets_by_room: dict[int, list[MobReset]] = field(init=False, repr=False)
+    wandering_mobiles: tuple[tuple[MobileSource, MobReset], ...] = field(
+        init=False, repr=False,
+    )
+    reachable: dict[tuple[int, int], frozenset[int]] = field(
+        default_factory=dict, init=False, repr=False,
+    )
+    suppressed_specials: dict[tuple[int, int], bool] = field(
+        default_factory=dict, init=False, repr=False,
+    )
+    unsafe_specials: dict[tuple[int, int], bool] = field(
+        default_factory=dict, init=False, repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        self.resets_by_room = _resets_by_room(self.world)
+        self.wandering_mobiles = _wandering_aggressors(self.world)
+
+    def validate_world(self, world: WorldSource) -> None:
+        if world is not self.world:
+            raise ValueError("route hazard index belongs to a different source world")
+
+    def reachable_rooms(self, mobile: MobileSource, origin: int) -> frozenset[int]:
+        key = (mobile.vnum, origin)
+        if key not in self.reachable:
+            self.reachable[key] = _wanderer_reachable_rooms(self.world, mobile, origin)
+        return self.reachable[key]
+
+    def suppresses_hazard(self, mobile: MobileSource, character_level: int) -> bool:
+        key = (mobile.vnum, character_level)
+        if key not in self.suppressed_specials:
+            self.suppressed_specials[key] = _source_mobile_safe_special_suppresses_route_hazard(
+                self.world, mobile, character_level=character_level,
+            )
+        return self.suppressed_specials[key]
+
+    def has_unsafe_special(self, mobile: MobileSource, character_level: int) -> bool:
+        key = (mobile.vnum, character_level)
+        if key not in self.unsafe_specials:
+            self.unsafe_specials[key] = _source_mobile_has_unsafe_special(
+                self.world, mobile.vnum, mobile, character_level=character_level,
+            )
+        return self.unsafe_specials[key]
+
+
 @dataclass(frozen=True)
 class SourceTeacherRoute:
     """A source-reset teacher and the route to its reset room."""
@@ -1931,6 +1997,10 @@ class HuntCandidate:
     route_origin_room_vnum: int = RECALL_VNUM
     undead: bool = False
     source_damage_modifier: int | None = 0
+
+    # State-admitted ordinary XP travel only; original source risk is retained.
+    route_economic_hunt_mobile_vnums: tuple[int, ...] = ()
+    route_economic_source_rejections: tuple[str, ...] = ()
 
     @property
     def autonomous_safe(self) -> bool:
@@ -2103,6 +2173,7 @@ _RESOURCE_EFFECT_SPELLS = {
         }
     ),
     "flight": frozenset({"fly", "levitation"}),
+    "water-breathing": frozenset({"breathe water"}),
 }
 _RESOURCE_EFFECT_ALIASES = {
     "cure": "healing",
@@ -2110,12 +2181,16 @@ _RESOURCE_EFFECT_ALIASES = {
     "fly": "flight",
     "levitation": "flight",
     "travel": "flight",
+    "breathe water": "water-breathing",
+    "underwater": "water-breathing",
+    "water breathing": "water-breathing",
 }
 _RESOURCE_EFFECT_ORDER = (
     "sanctuary",
     "protection",
     "healing",
     "flight",
+    "water-breathing",
     "food",
 )
 _RESOURCE_EFFECT_SPELL_ORDER = {
@@ -2130,6 +2205,7 @@ _RESOURCE_EFFECT_SPELL_ORDER = {
         "refresh",
     ),
     "flight": ("fly", "levitation"),
+    "water-breathing": ("breathe water",),
 }
 
 
@@ -2406,6 +2482,7 @@ def rank_resource_sources(
         candidate.room_vnum: candidate for candidate in direct_candidates
     }
     direct_paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
+    source_mob_resets_by_room = _resets_by_room(world)
     object_by_vnum = {item.vnum: item for item in selected_objects}
 
     def fallback_mobile_hazards(mobile: MobileSource) -> tuple[str, ...]:
@@ -2518,6 +2595,73 @@ def rank_resource_sources(
                             (*hazards, *fallback_mobile_hazards(mobile))
                         )
                     )
+            # Locked source-analysis paths are not executable candidates, but
+            # still need to expose reset-loaded hazards at the destination and
+            # along the reconstructed route.
+            if candidate is None and source_route_rooms:
+                seen_route_mobiles: set[tuple[int, int]] = set()
+                for route_room_vnum in source_route_rooms:
+                    for reset in source_mob_resets_by_room.get(
+                        route_room_vnum, ()
+                    ):
+                        mobile = world.mobiles.get(reset.mobile_vnum)
+                        identity = (reset.mobile_vnum, route_room_vnum)
+                        if (
+                            identity in seen_route_mobiles
+                            or mobile is None
+                            or not _source_mobile_is_combat_hazard(world, mobile)
+                        ):
+                            continue
+                        seen_route_mobiles.add(identity)
+                        source_facts = fallback_mobile_hazards(mobile)
+                        location = (
+                            "resource room"
+                            if route_room_vnum == room.vnum
+                            else f"source route room {route_room_vnum}"
+                        )
+                        hazards = tuple(
+                            dict.fromkeys(
+                                (
+                                    *hazards,
+                                    f"{location} contains "
+                                    f"{mobile.short_description}: "
+                                    f"{', '.join(source_facts)}",
+                                )
+                            )
+                        )
+                        if (
+                            mobile.aggressive
+                            and _source_aggressive_reset_can_reach_character(
+                                world,
+                                mobile,
+                                character_level=character_level,
+                            )
+                        ):
+                            autonomy_rejections = (
+                                *autonomy_rejections,
+                                f"{location} contains an aggressive mobile reset",
+                            )
+                        if mobile.attack_programs:
+                            autonomy_rejections = (
+                                *autonomy_rejections,
+                                f"{location} contains a program-triggered attacker",
+                            )
+                        if (
+                            route_room_vnum == room.vnum
+                            and _source_mobile_has_combat_joining_special(
+                                world,
+                                mobile.vnum,
+                            )
+                            and not _source_mobile_safe_special_suppresses_route_hazard(
+                                world,
+                                mobile,
+                                character_level=character_level,
+                            )
+                        ):
+                            autonomy_rejections = (
+                                *autonomy_rejections,
+                                f"{location} contains a combat-capable special",
+                            )
         else:
             route = candidate.route
             source_analysis_route = ()
@@ -4941,7 +5085,7 @@ def _parse_mobiles(
         keywords, index = _read_tilde(lines, index, end)
         short_description, index = _read_tilde(lines, index, end)
         room_description, index = _read_tilde(lines, index, end)
-        _, index = _read_tilde(lines, index, end)
+        description, index = _read_tilde(lines, index, end)
         if index + 1 >= end:
             break
         flag_parts = lines[index].split()
@@ -5024,6 +5168,7 @@ def _parse_mobiles(
             alignment=int(flag_parts[2]),
             area_file=area_file,
             room_description=_clean_text(room_description),
+            description=_clean_text(description),
             affected_flags=area_affected_flags ^ template_affected_flags,
             programs=_parse_mobile_programs(lines, index, record_end),
             teachings=_parse_mobile_teachings(lines, index, record_end),
@@ -5749,6 +5894,7 @@ def _source_route_hazard_rejections(
     invisible: bool = False,
     audit_invisible_equipment: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
+    hazard_index: SourceRouteHazardIndex | None = None,
 ) -> tuple[str, ...]:
     """Return source-backed combat hazards on a route, including its endpoint.
 
@@ -5759,6 +5905,8 @@ def _source_route_hazard_rejections(
     """
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
+    if hazard_index is not None:
+        hazard_index.validate_world(world)
     path_room_sequence = tuple(path_rooms)
     path_room_set = set(path_room_sequence)
     economic_transit = {
@@ -5769,7 +5917,29 @@ def _source_route_hazard_rejections(
     target_room_vnum = (
         path_room_sequence[-1] if path_room_sequence and combat_at_destination else None
     )
-    resets_by_room = _resets_by_room(world)
+    resets_by_room = (
+        hazard_index.resets_by_room if hazard_index is not None
+        else _resets_by_room(world)
+    )
+
+    def suppresses_hazard(mobile: MobileSource) -> bool:
+        return (
+            hazard_index.suppresses_hazard(mobile, character_level)
+            if hazard_index is not None
+            else _source_mobile_safe_special_suppresses_route_hazard(
+                world, mobile, character_level=character_level,
+            )
+        )
+
+    def has_unsafe_special(mobile: MobileSource) -> bool:
+        return (
+            hazard_index.has_unsafe_special(mobile, character_level)
+            if hazard_index is not None
+            else _source_mobile_has_unsafe_special(
+                world, mobile.vnum, mobile, character_level=character_level,
+            )
+        )
+
     rejections: list[str] = []
     for room_vnum in path_room_sequence[1:]:
         access_rejection = source_room_level_rejection(
@@ -5784,11 +5954,7 @@ def _source_route_hazard_rejections(
     for room_vnum in path_room_set:
         for reset in resets_by_room.get(room_vnum, ()):
             mobile = world.mobiles.get(reset.mobile_vnum)
-            if mobile is None or _source_mobile_safe_special_suppresses_route_hazard(
-                world,
-                mobile,
-                character_level=character_level,
-            ):
+            if mobile is None or suppresses_hazard(mobile):
                 continue
             if (
                 invisible
@@ -5802,9 +5968,7 @@ def _source_route_hazard_rejections(
                 continue
             unsafe_special = (
                 mobile.vnum not in economic_transit
-                and _source_mobile_has_unsafe_special(
-                    world, mobile.vnum, mobile, character_level=character_level,
-                )
+                and has_unsafe_special(mobile)
             )
             if require_no_combat_hazards and (
                 mobile.attack_programs
@@ -5874,12 +6038,12 @@ def _source_route_hazard_rejections(
                     f"{mobile.short_description} in room {room_vnum}"
                 )
 
-    for mobile, reset in _wandering_aggressors(world):
-        if _source_mobile_safe_special_suppresses_route_hazard(
-            world,
-            mobile,
-            character_level=character_level,
-        ):
+    wandering_mobiles = (
+        hazard_index.wandering_mobiles if hazard_index is not None
+        else _wandering_aggressors(world)
+    )
+    for mobile, reset in wandering_mobiles:
+        if suppresses_hazard(mobile):
             continue
         if (
             invisible
@@ -5893,19 +6057,19 @@ def _source_route_hazard_rejections(
             continue
         unsafe_special = (
             mobile.vnum not in economic_transit
-            and _source_mobile_has_unsafe_special(
-                world, mobile.vnum, mobile, character_level=character_level,
-            )
+            and has_unsafe_special(mobile)
         )
         hazard_rooms = (
             path_room_set
             if mobile.aggressive or mobile.attack_programs or unsafe_special
             else ({target_room_vnum} if target_room_vnum is not None else set())
         )
-        if reset.room_vnum in hazard_rooms:
+        if not hazard_rooms or reset.room_vnum in hazard_rooms:
             continue
-        reachable = set(
-            _wanderer_reachable_rooms(world, mobile, reset.room_vnum)
+        reachable = (
+            hazard_index.reachable_rooms(mobile, reset.room_vnum)
+            if hazard_index is not None
+            else _wanderer_reachable_rooms(world, mobile, reset.room_vnum)
         )
         if hazard_rooms.isdisjoint(reachable):
             continue
@@ -6100,6 +6264,7 @@ def source_route_hazard_rejections(
     invisible: bool = False,
     audit_invisible_equipment: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
+    hazard_index: SourceRouteHazardIndex | None = None,
 ) -> tuple[str, ...]:
     """Check a room path; noncombat endpoints omit only combat-only joiners."""
     return _source_route_hazard_rejections(
@@ -6111,6 +6276,7 @@ def source_route_hazard_rejections(
         invisible=invisible,
         audit_invisible_equipment=audit_invisible_equipment,
         economic_special_mobile_vnums=economic_special_mobile_vnums,
+        hazard_index=hazard_index,
     )
 
 
@@ -7214,9 +7380,10 @@ def mobile_expected_round_damage(
     base_damages = range(level // 2, level * 3 // 2 + 1)
 
     def hit_damage(damage: int, *, wielding: bool) -> int:
-        amount = damage + level_bonus + source_damage_bonus
+        amount = damage + level_bonus
         if wielding:
             amount += amount // 2
+        amount += source_damage_bonus
         amount = _apply_mobile_damage_modifier(amount, damage_modifier)
         return amount // 2 if sanctuary else amount
 

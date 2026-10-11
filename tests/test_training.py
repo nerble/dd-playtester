@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 
 from dd4tester.archetypes import archetype_registry
-from dd4tester.prerequisites import known_skills, load_snapshot
+from dd4tester.prerequisites import (
+    known_skills,
+    load_snapshot,
+    requirements_for_skill,
+)
 from dd4tester.training import (
     class_training_analysis,
     parse_practice_listing,
@@ -698,6 +702,28 @@ def test_subclass_priorities_precede_inherited_base_priorities() -> None:
     assert any(item.skill == "backstab" for item in priorities)
 
 
+def test_knight_priorities_include_source_wards_and_gate_room_wide_turning() -> None:
+    priorities = training_priorities_for("warrior", subclass="knight")
+    by_skill = {item.skill: item for item in priorities}
+    _, prerequisites = load_snapshot()
+    evil_ward_gate = next(
+        requirement.minimum_percent
+        for requirement in requirements_for_skill(
+            prerequisites,
+            class_name="knight",
+            skill="protect vs undead",
+        )
+        if requirement.prerequisite == "protect vs evil"
+    )
+
+    assert by_skill["protection vs evil"].target_percent == 60
+    assert by_skill["protection vs evil"].target_percent >= evil_ward_gate
+    assert by_skill["protection vs undead"].target_percent == 60
+    assert by_skill["protection vs evil"].automated is True
+    assert by_skill["protection vs undead"].automated is True
+    assert by_skill["turn undead"].automated is False
+
+
 def test_warrior_second_attack_opens_the_third_attack_training_chain() -> None:
     priorities = training_priorities_for("warrior")
     second_attack_60 = next(
@@ -922,6 +948,25 @@ def test_kick_priority_records_source_verified_between_round_timing() -> None:
 
     assert "8-pulse wait" in kick.reason
     assert "without replacing 12-pulse automatic weapon rounds" in kick.reason
+
+
+def test_warrior_mastery_targets_keep_combat_skills_trainable() -> None:
+    priorities = training_priorities()["warrior"]
+    enhanced_hit = next(item for item in priorities if item.skill == "enhanced hit")
+    kick_targets = [item.target_percent for item in priorities if item.skill == "kick"]
+    headbutt_targets = [item.target_percent for item in priorities if item.skill == "headbutt"]
+
+    assert enhanced_hit.minimum_level == 69
+    assert kick_targets == [30, 100]
+    assert headbutt_targets == [45, 100]
+    assert any(
+        item.skill == "second attack" and item.target_percent == 100
+        for item in priorities
+    )
+    assert any(
+        item.skill == "third attack" and item.target_percent == 100
+        for item in priorities
+    )
 
 
 def test_matrix_training_analysis_carries_source_evidence() -> None:

@@ -8,8 +8,14 @@ from typing import TYPE_CHECKING, Any, Callable, Collection, Mapping
 
 from .excavation import DigBudget, DigObservation, DigStep, HoardDigSession
 from .area_recall import AreaRecallEscape
+from .recall_recovery import AdjacentRecallEscape
 from .fastwalks import Fastwalk
 from .quests import snapshot_quest_status
+from .target_inspection import TargetInspectionController
+from .carrier_inspection import CarrierEquipmentInspection
+from .loot_capacity import HealerCarryingCapacity, LootCapacityReply
+from .pouch_storage import HealerPouchStorage
+from .logout import LogoutConfirmation
 
 if TYPE_CHECKING:
     from .starter import FieldHuntStop, StarterPolicy
@@ -26,6 +32,25 @@ class CombatSessionController:
     disarm_attempts: int = 0
     disarm_resolved: bool = False
     repeat_action_cursor: int = 0
+    pending_withdrawal: dict[str, Any] | None = None
+    source_attacker_aliases: list[dict[str, Any]] = field(default_factory=list)
+    source_losses: list[dict[str, Any]] = field(default_factory=list)
+
+    def observe_xp_loss(self, data: Mapping[str, Any]) -> None:
+        if self.pending_withdrawal is None:
+            return
+        try:
+            amount = int(data.get("xp") or 0)
+            partial = int(data.get("partial_xp") or 0)
+        except (TypeError, ValueError):
+            return
+        if amount <= 0:
+            return
+        self.source_losses.append({
+            **self.pending_withdrawal, "xp_lost": amount, "partial_xp": max(0, partial),
+        })
+        self.source_losses = self.source_losses[-16:]
+        self.pending_withdrawal = None
 
 
 @dataclass
@@ -38,6 +63,9 @@ class TravelSessionController:
     hunt_move_index: int = 0
     hunt_action_index: int = 0
     blocked_reason: str | None = None
+    route_gate_room_refresh_pending: bool = False
+    target_inspection: TargetInspectionController = field(default_factory=TargetInspectionController)
+    carrier_inspection: CarrierEquipmentInspection = field(default_factory=CarrierEquipmentInspection)
 
 
 @dataclass
@@ -51,6 +79,23 @@ class RecoverySessionController:
     wake_command_pending: bool = False
     sleep_confirmation_pending: bool = False
     area_recall_escape: AreaRecallEscape | None = None
+    adjacent_recall_escape: AdjacentRecallEscape | None = None
+    carrying_capacity: HealerCarryingCapacity = field(default_factory=HealerCarryingCapacity)
+    pouch_storage: HealerPouchStorage = field(default_factory=HealerPouchStorage)
+    flight_purchase_failure_reason: str | None = None
+    sale_reply_buffer: str = ""
+
+    @property
+    def required_loot_capacity_relief_limit(self) -> int | None:
+        return self.carrying_capacity.limit
+
+    @required_loot_capacity_relief_limit.setter
+    def required_loot_capacity_relief_limit(self, value: int | None) -> None:
+        self.carrying_capacity.limit = value
+
+    @property
+    def loot_capacity_reply(self) -> LootCapacityReply:
+        return self.carrying_capacity.reply
 
 
 @dataclass
@@ -69,6 +114,7 @@ class LiveSessionState:
         default_factory=RecoverySessionController,
     )
     phase: str = "initializing"
+    logout: LogoutConfirmation = field(default_factory=LogoutConfirmation)
     authenticated: bool = False
     in_world: bool = False
     world_boot_id: str | None = None

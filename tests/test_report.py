@@ -2,6 +2,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 from dd4tester.cli import main
 from dd4tester.report import (
     _commentary,
@@ -9,6 +11,7 @@ from dd4tester.report import (
     _item_acquisition_count,
     _objective_outcome,
     _progress_summary,
+    _safety_outcome,
     build_campaign_report,
     build_run_report,
     render_campaign_markdown,
@@ -416,6 +419,36 @@ def test_flight_objective_requires_a_fresh_active_flight_affect() -> None:
         run_context, {"affects": []}, [], [],
     ) == "not_achieved"
     assert _objective_outcome(run_context, {}, [], []) == "unknown"
+
+
+def test_flight_objective_checks_the_required_route_duration() -> None:
+    run_context = {
+        "objective": {
+            "kind": "flight_active",
+            "minimum_flight_duration": 3,
+        }
+    }
+
+    assert _objective_outcome(
+        run_context,
+        {
+            "affects": [[
+                {"name": "fly", "gives": "flight", "duration": "3"}
+            ]]
+        },
+        [],
+        [],
+    ) == "achieved"
+    assert _objective_outcome(
+        run_context,
+        {
+            "affects": [[
+                {"name": "fly", "gives": "flight", "duration": "2"}
+            ]]
+        },
+        [],
+        [],
+    ) == "not_achieved"
 
 
 def test_training_objective_requires_observed_skill_gain() -> None:
@@ -1074,3 +1107,62 @@ def _create_report_run(tmp_path, *, status: str, error: str | None) -> Path:
     storage.finish_run(run_id, status=status, error=error)
     storage.close()
     return database
+
+
+@pytest.mark.parametrize("observed,expected", [
+    ("Knight", "achieved"), ("", "not_achieved"),
+    ("Berserker", "not_achieved"), (None, "unknown"),
+])
+def test_subclass_objective_uses_observed_identity_not_requested_profile(observed, expected):
+    context = {"character": {"subclass": "knight"},
+               "objective": {"kind": "subclass_selection", "subclass": "knight", "level": 30}}
+    assert _objective_outcome(context, {"level": 30, "subclass": observed}, [], [],
+                              scenario_name="choose-subclass:pilot") == expected
+
+
+def test_legacy_subclass_objective_still_requires_live_identity():
+    context = {"character": {"subclass": "Knight"}}
+    assert _objective_outcome(context, {"subclass": ""}, [], [],
+                              scenario_name="choose-subclass:pilot") == "not_achieved"
+    assert _objective_outcome(context, {"subclass": "Knight"}, [], [],
+                              scenario_name="choose-subclass:pilot") == "achieved"
+
+
+@pytest.mark.parametrize("sector", [8, 12, "underwater", "underwater_ground"])
+def test_unacknowledged_underwater_disconnect_is_not_safe(sector):
+    state = {"dead": False, "sector": sector, "race": "Dwarf",
+             "affects": [[{"name": "fly", "duration": "40"}]]}
+    run = {"status": "failed"}
+    assert _safety_outcome(run, state, Counter()) == "unsafe"
+    assert _safety_outcome(run, state, Counter(), logout_confirmed=True) == "safe"
+
+
+def test_underwater_logout_confirmation_does_not_hide_a_death_or_loss():
+    run = {"status": "failed"}
+    state = {"dead": False, "sector": "underwater"}
+    assert _safety_outcome(run, state, Counter(character_died=1), logout_confirmed=True) == "unsafe"
+    assert _safety_outcome(run, state, Counter(experience_lost=1), logout_confirmed=True) == "loss"
+
+
+@pytest.mark.parametrize("event_type,data", [
+    ("vitals_changed", {"hp": "571", "maxhp": "702"}),
+    ("prompt_seen", {"hits": 571, "max_hits": 702}),
+])
+def test_health_minimum_uses_ordered_observations_between_full_health_checkpoints(event_type, data):
+    state = {"hp": 702, "max_hp": 702}
+    snapshots = [{"state": state}, {"state": state}]
+    events = [{"payload": {"type": event_type, "data": data}}]
+    progress = _progress_summary(state, state, snapshots, Counter(), events, [], [], [])
+    assert progress["health"]["lowest_fraction"] == pytest.approx(571 / 702)
+    assert progress["health"]["initial"] == progress["health"]["final"] == 702
+
+
+@pytest.mark.parametrize("data", [
+    {"hp": "unknown", "maxhp": "702"}, {"hp": "571"},
+    {"hp": "571", "maxhp": "0"}, {"hp": None, "maxhp": "702"},
+])
+def test_health_minimum_ignores_unpaired_or_invalid_vitals(data):
+    state = {"hp": 702, "max_hp": 702}
+    events = [{"payload": {"type": "vitals_changed", "data": data}}]
+    progress = _progress_summary(state, state, [{"state": state}], Counter(), events, [], [], [])
+    assert progress["health"]["lowest_fraction"] == 1.0

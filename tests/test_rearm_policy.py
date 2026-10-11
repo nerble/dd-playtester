@@ -7,7 +7,9 @@ import pytest
 from dd4tester.campaign import (
     _campaign_segment_end_state,
     _carry_pounding_weapon_rearm_attempt,
+    _consume_pounding_weapon_rearm_route_revalidation,
     _pounding_weapon_rearm_attempted,
+    _pounding_weapon_rearm_route_revalidation_pending,
 )
 from dd4tester.campaign_migrations import (
     _repair_pounding_weapon_rearm_attempt,
@@ -117,6 +119,53 @@ def test_unmapped_dave_location_is_persisted_for_this_frontier() -> None:
     marker = migrated["campaign_pounding_weapon_rearm_attempt"]
     assert marker["run_id"] == 16139
     assert marker["segment_id"] == 15661
+
+
+def test_unmapped_room_route_fix_gets_one_persisted_revalidation() -> None:
+    segment = _failed_rearm_segment()
+    segment["error"] = (
+        "rearm-primary-weapon segment failed: Dave's located room 'park road' "
+        "had no bounded source-reachable room set; returned to the healer "
+        "without retrying"
+    )
+    state = _repair_pounding_weapon_rearm_attempt(_rearm_state(), [segment])
+
+    assert _pounding_weapon_rearm_attempted(state)
+    assert _pounding_weapon_rearm_route_revalidation_pending(state, [segment])
+
+    consumed = _consume_pounding_weapon_rearm_route_revalidation(state)
+
+    assert _pounding_weapon_rearm_attempted(consumed)
+    assert consumed["campaign_pounding_weapon_rearm_attempt"][
+        "route_revalidation"
+    ]["status"] == "consumed"
+    assert not _pounding_weapon_rearm_route_revalidation_pending(
+        consumed,
+        [segment],
+    )
+
+
+def test_rearm_route_revalidation_rejects_other_failures_and_changed_frontiers() -> None:
+    segment = _failed_rearm_segment()
+    state = _repair_pounding_weapon_rearm_attempt(_rearm_state(), [segment])
+
+    assert not _pounding_weapon_rearm_route_revalidation_pending(
+        state,
+        [segment],
+    )
+    unmapped = _failed_rearm_segment()
+    unmapped["error"] = (
+        "rearm-primary-weapon segment failed: Dave's located room 'park road' "
+        "had no bounded source-reachable room set; returned to the healer "
+        "without retrying"
+    )
+    state = _repair_pounding_weapon_rearm_attempt(_rearm_state(), [unmapped])
+
+    changed_source = {**state, "campaign_source_revision": "new-source"}
+    assert not _pounding_weapon_rearm_route_revalidation_pending(
+        changed_source,
+        [unmapped],
+    )
 
 
 @pytest.mark.parametrize(
