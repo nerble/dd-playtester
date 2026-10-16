@@ -34,6 +34,19 @@ def test_drop_acknowledgement_cannot_satisfy_sacrifice() -> None:
     assert reply.acknowledged()
 
 
+def test_eating_requires_a_confirmed_consumption_and_rejects_fullness() -> None:
+    reply = LootCapacityReply()
+    reply.begin("eat pie", now=10)
+    reply.observe("You are full.\n", now=11)
+    assert reply.failure is not None
+    assert not reply.acknowledged()
+
+    reply.begin("eat pie", now=12)
+    reply.observe("You eat a big pot pie.\nYou are full.\n", now=13)
+    assert reply.acknowledged()
+    assert reply.failure is None
+
+
 def test_inventory_needs_its_own_header_and_complete_capacity_line() -> None:
     reply = LootCapacityReply()
     reply.begin("inventory", now=10)
@@ -44,6 +57,27 @@ def test_inventory_needs_its_own_header_and_complete_capacity_line() -> None:
     reply.observe("38 items.\n", now=10.3)
     assert reply.capacity() == (37, 38)
     assert reply.acknowledged()
+
+
+def test_inventory_items_are_available_only_from_a_complete_listing() -> None:
+    reply = LootCapacityReply()
+    reply.begin("inventory", now=10)
+    reply.observe(
+        "Your backpack contains:\n"
+        "a deep green key\n"
+        "(2) a small potion\n"
+        "You are carrying 37/38 items.\n",
+        now=11,
+    )
+
+    assert reply.inventory_items() == {
+        "a deep green key": 1,
+        "a small potion": 2,
+    }
+
+    reply.begin("inventory", now=12)
+    reply.observe("Your backpack contains:\na deep green key\n", now=13)
+    assert reply.inventory_items() is None
 
 
 def test_capacity_line_without_inventory_header_is_not_a_receipt() -> None:

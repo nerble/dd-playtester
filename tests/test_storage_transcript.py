@@ -557,6 +557,11 @@ def test_single_phase_lookup_remains_bounded_without_phase_index(tmp_path, monke
             )
         assert not storage.campaign_phase_index_available()
         assert len(storage.list_recent_campaign_segments(campaign_id, limit=256)) == 8
+        headers = storage.list_recent_campaign_segment_headers(
+            campaign_id, limit=12,
+        )
+        assert [row["sequence"] for row in headers] == list(range(1, 13))
+        assert "start_state_json" not in headers[0].keys()
         assert storage.get_latest_campaign_segment_for_phase(campaign_id, "training", search_limit=8) is None
         lesson = storage.get_latest_campaign_segment_for_phase(campaign_id, "training")
         assert lesson is not None and json.loads(lesson["start_state_json"])["sequence"] == 1
@@ -980,6 +985,28 @@ def test_run_scoped_evidence_lookups_are_indexed(tmp_path) -> None:
 
     assert any("idx_loot_sales_run_id" in row[3] for row in loot_plan)
     assert any("idx_mob_kills_run_id" in row[3] for row in kill_plan)
+
+
+def test_latest_current_character_state_lookup_is_indexed(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+
+    plan = storage.connection.execute(
+        """
+        EXPLAIN QUERY PLAN
+        SELECT state_json
+        FROM run_current_states
+        WHERE lower(json_extract(state_json, '$.name')) = ?
+        ORDER BY timestamp DESC
+        LIMIT 1
+        """,
+        ("dorrik",),
+    ).fetchall()
+    storage.close()
+
+    assert any(
+        "idx_run_current_states_character_timestamp" in row[3]
+        for row in plan
+    )
 
 
 def test_storage_marks_interrupted_runs_as_failed(tmp_path) -> None:

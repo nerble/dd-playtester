@@ -21,6 +21,7 @@ from dd4tester.report import (
     render_markdown,
 )
 from dd4tester.report_migrations import migrate_legacy_run_context
+from dd4tester.sessions import LiveSessionState
 import dd4tester.storage as storage_module
 from dd4tester.storage import RUN_REPORT_SUMMARY_VERSION, RunStorage
 from dd4tester.state import CharacterState
@@ -43,6 +44,18 @@ def test_compact_projection_covers_every_durable_character_field() -> None:
     assert compact["world_boot_id"] is None
     compact["inventory"][0]["name"] = "changed copy"
     assert state.inventory == [{"name": "ration"}]
+
+
+def test_live_session_boot_identity_is_checkpointed_with_character_state() -> None:
+    character = CharacterState()
+    owner = LiveSessionState(character=character)
+    policy = object.__new__(starter_module.StarterPolicy)
+    policy._session_state_owner = owner
+
+    policy.world_boot_id = "boot-1"
+
+    assert owner.world_boot_id == "boot-1"
+    assert character.to_compact_dict()["world_boot_id"] == "boot-1"
 
 
 def test_routine_cooldown_events_use_the_bounded_writer_without_a_barrier() -> None:
@@ -260,6 +273,49 @@ def test_queued_observations_keep_one_event_and_sparse_checkpoints(
     )
     assert build_run_report(storage, run_id)["outcomes"]["objective"] == "achieved"
     storage.close()
+
+
+def test_queued_snapshot_uses_its_originating_game_event(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3", event_commit_interval=100) as storage:
+        run_id = storage.create_run(
+            scenario_name="starter:Evidence",
+            scenario_path=tmp_path / "character.yaml",
+        )
+        initial = {
+            "name": "Evidence", "level": 1, "xp": 100,
+            "hp": 20, "max_hp": 20, "dead": False,
+        }
+        storage.queue_observation(
+            run_id,
+            kind="game_event",
+            timestamp="2026-10-01T00:00:01+00:00",
+            payload={"type": "vitals_changed", "source": "gmcp", "data": {}},
+            current_state=initial,
+        )
+        storage.queue_observation(
+            run_id,
+            kind="state_snapshot",
+            timestamp="2026-10-01T00:00:02+00:00",
+            payload={"reason": "progress_changed", "source": "text", "state": initial},
+        )
+        storage.flush()
+
+        game_event_id = storage.connection.execute(
+            "SELECT id FROM events WHERE run_id = ? AND kind = 'game_event'",
+            (run_id,),
+        ).fetchone()["id"]
+        checkpoint = storage.connection.execute(
+            "SELECT source_event_id FROM state_snapshots "
+            "WHERE run_id = ? AND reason = 'progress_changed'",
+            (run_id,),
+        ).fetchone()
+        current_state = storage.connection.execute(
+            "SELECT event_id FROM run_current_states WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+
+    assert checkpoint["source_event_id"] == game_event_id
+    assert current_state["event_id"] == game_event_id
 
 
 def test_item_events_and_level_boundaries_replace_repeated_full_snapshots(
@@ -1347,6 +1403,55 @@ def test_campaign_segment_can_be_loaded_by_durable_id(tmp_path) -> None:
     assert projected_end["campaign_field_city_preflight"]["locations"] == [
         "the leather shop"
     ]
+
+
+def test_campaign_checkpoint_lookup_uses_exact_segment_and_reason(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Checkpoint lookup",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "character.yaml",
+            target_level=100,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="source-ranked-hunt-example",
+            start_state={"name": "Dorrik", "level": 39, "xp": 100},
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=segment_id,
+            run_id=1,
+            phase="source-ranked-hunt-example",
+            reason="segment_preparation_aborted",
+            state={"name": "Dorrik", "level": 39, "xp": 100},
+        )
+        expected = storage.get_campaign_checkpoint_for_segment(
+            campaign_id,
+            segment_id,
+            reason="segment_preparation_aborted",
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="source-ranked-hunt-unavailable-39",
+            reason="sanctuary_recheck_exhausted",
+            state={"name": "Dorrik", "level": 39, "xp": 100},
+        )
+        latest = storage.get_latest_campaign_checkpoint(campaign_id)
+        recovered = storage.get_campaign_checkpoint_for_segment(
+            campaign_id,
+            segment_id,
+            reason="segment_preparation_aborted",
+        )
+
+    assert expected is not None
+    assert recovered is not None
+    assert recovered["id"] == expected["id"]
+    assert latest is not None
+    assert latest["reason"] == "sanctuary_recheck_exhausted"
 
 
 def test_campaign_report_does_not_scan_events_for_cached_runs(tmp_path) -> None:

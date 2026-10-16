@@ -9,7 +9,11 @@ from dd4tester.campaign import (
     _xp_loss_event_observed,
 )
 from dd4tester.character import CharacterSpec
-from dd4tester.combat_losses import SOURCE_COMBAT_LOSSES_KEY, recover_source_combat_losses
+from dd4tester.combat_losses import (
+    SOURCE_COMBAT_LOSSES_KEY,
+    recover_source_combat_losses,
+    source_combat_loss_records,
+)
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import SourceCombatOutput
 from dd4tester.observations import GameEvent
@@ -38,6 +42,8 @@ def test_withdrawal_retains_actual_combat_output_only_with_explicit_loss(monkeyp
     policy.world_boot_id = "boot"
     policy.combat_active = True
     policy.enemy_snapshot_stale = False
+    policy.active_target = "the bartender"
+    policy.active_target_mobile_vnum = 102
     monkeypatch.setattr(policy, "_encounter_output", lambda *_args: SourceCombatOutput(
         "kick", 20, 30, 40, "movement", 5, 26, maximum_actions=48,
     ))
@@ -69,6 +75,34 @@ def _loss_record(policy_id: str = SECONDARY) -> dict:
     mobile, room = (101, 201) if policy_id == PRIMARY else (102, 202)
     return {"policy_id": policy_id, "mobile_vnum": mobile, "room_vnum": room,
             "level": 31, "target": "the bartender", "xp_lost": 592}
+
+
+def test_singleton_terminal_loss_survives_an_empty_campaign_list() -> None:
+    loss = _loss_record()
+    state = {
+        "level": 31,
+        "world_boot_id": "boot",
+        "xp_loss_observed": True,
+        "xp_loss_total": 592,
+        SOURCE_COMBAT_LOSSES_KEY: [],
+        "source_combat_losses": loss,
+        "campaign_objective_kills": [
+            {"source_policy_id": PRIMARY, "xp_gained": 2000},
+        ],
+    }
+
+    assert source_combat_loss_records(state) == {SECONDARY: loss}
+    updated = _merge_protection_recovery_metadata(
+        state,
+        policy=replace(_SOURCE_RANKED_HUNT_POLICY, policy_id=PRIMARY),
+        xp_delta=1408,
+        previous={"xp_loss_total": 0},
+        loss_event_id=77,
+    )
+
+    records = updated[_SOURCE_RANKED_XP_LOSS_POLICIES_KEY]
+    assert {record["policy_id"] for record in records} == {SECONDARY}
+    assert records[0]["exact_stop_loss"] is True
 
 
 @pytest.mark.parametrize("failed_policy", (PRIMARY, SECONDARY))

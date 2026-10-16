@@ -27,7 +27,7 @@ _CAMPAIGN_PHASE_INDEX_BUILD_MAX_BYTES = 1_000_000_000
 # segment plus the short retry/no-progress window without making a cold
 # startup scan hundreds of megabytes of JSON.
 _CAMPAIGN_LARGE_DATABASE_HISTORY_LIMIT = 8
-RUN_REPORT_SUMMARY_VERSION = 6
+RUN_REPORT_SUMMARY_VERSION = 7
 _OBSERVATION_QUEUE_SIZE = 512
 _OBSERVATION_WRITE_TIMEOUT_SECONDS = 0.25
 _OBSERVATION_CONTROL_TIMEOUT_SECONDS = 10.0
@@ -512,6 +512,7 @@ class _BoundedObservationWriter:
                 )
         full_state = item.get("checkpoint_state")
         reason = item.get("checkpoint_reason")
+        current_state_event_id = event_id
         if isinstance(full_state, dict) and isinstance(reason, str) and reason:
             if reason == "initial_state":
                 has_initial = connection.execute(
@@ -529,6 +530,21 @@ class _BoundedObservationWriter:
                 if has_initial:
                     reason = None
             if reason:
+                snapshot_source_event_id = event_id
+                if kind == "state_snapshot":
+                    previous_game_event = connection.execute(
+                        """
+                        SELECT id FROM events
+                        WHERE run_id = ? AND kind = 'game_event' AND id < ?
+                        ORDER BY id DESC LIMIT 1
+                        """,
+                        (run_id, event_id),
+                    ).fetchone()
+                    if previous_game_event is not None:
+                        snapshot_source_event_id = int(previous_game_event["id"])
+                        current_state_event_id = snapshot_source_event_id
+                    else:
+                        snapshot_source_event_id = None
                 snapshot = connection.execute(
                     """
                     INSERT INTO state_snapshots (
@@ -536,7 +552,7 @@ class _BoundedObservationWriter:
                     ) VALUES (?, ?, ?, ?, ?)
                     """,
                     (
-                        run_id, event_id, timestamp, reason,
+                        run_id, snapshot_source_event_id, timestamp, reason,
                         json.dumps(full_state, sort_keys=True),
                     ),
                 )
@@ -549,7 +565,7 @@ class _BoundedObservationWriter:
                     )
         state = item.get("current_state")
         if isinstance(state, dict):
-            return run_id, event_id, timestamp, state
+            return run_id, current_state_event_id, timestamp, state
         return None
 
     @staticmethod
@@ -740,6 +756,11 @@ class RunStorage:
                 event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
                 timestamp TEXT NOT NULL,
                 state_json TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_run_current_states_character_timestamp
+            ON run_current_states(
+                lower(json_extract(state_json, '$.name')), timestamp DESC
             );
 
             CREATE TABLE IF NOT EXISTS run_summaries (
@@ -1057,11 +1078,7 @@ class RunStorage:
 
     def _ensure_campaign_phase_index(self) -> None:
         """Build the phase index only during bounded-size schema setup."""
-        try:
-            database_size = self.path.stat().st_size
-        except OSError:
-            return
-        if database_size > _CAMPAIGN_PHASE_INDEX_BUILD_MAX_BYTES:
+        if _campaign_database_is_large(self.path):
             return
         self.connection.execute(
             """
@@ -1204,20 +1221,27 @@ class RunStorage:
                 """,
                 (run_id, event_id),
             ).fetchone()
+            source_event_id = (
+                int(previous_game_event["id"])
+                if previous_game_event is not None
+                else None
+            )
+            current_state_event_id = (
+                source_event_id
+                if snapshot_reason is not None and source_event_id is not None
+                else event_id
+            )
             _upsert_current_state(
                 self.connection,
                 run_id=run_id,
-                event_id=event_id,
+                event_id=current_state_event_id,
                 timestamp=event_timestamp,
                 state=_compact_current_state(snapshot_state),
             )
             if snapshot_reason is not None:
                 self.record_state_snapshot(
                     run_id,
-                    source_event_id=(
-                        int(previous_game_event["id"])
-                        if previous_game_event is not None else None
-                    ),
+                    source_event_id=source_event_id,
                     reason=snapshot_reason,
                     state=snapshot_state,
                     timestamp=event_timestamp,
@@ -3953,7 +3977,8 @@ class RunStorage:
             """
             SELECT id, campaign_id, sequence, phase, run_id, started_at, finished_at,
                    status, start_state_json, end_state_json, command_count,
-                   duration_seconds, error
+                   duration_seconds, error, execution_status, objective_outcome,
+                   safety_outcome, metrics_json
             FROM campaign_segments
             WHERE campaign_id = ?
             ORDER BY sequence
@@ -4075,6 +4100,32 @@ class RunStorage:
             (checkpoint_id,),
         ).fetchone()
 
+    def get_campaign_checkpoint_for_segment(
+        self,
+        campaign_id: int,
+        segment_id: int,
+        *,
+        reason: str,
+    ) -> sqlite3.Row | None:
+        """Fetch one checkpoint tied to an exact segment and outcome reason."""
+        if type(campaign_id) is not int or campaign_id < 1:
+            raise ValueError("campaign_id must be a positive integer")
+        if type(segment_id) is not int or segment_id < 1:
+            raise ValueError("segment_id must be a positive integer")
+        if not isinstance(reason, str) or not reason:
+            raise ValueError("checkpoint reason must be non-empty")
+        return self.connection.execute(
+            """
+            SELECT id, campaign_id, segment_id, run_id, phase, reason, created_at,
+                   state_json
+            FROM campaign_checkpoints
+            WHERE campaign_id = ? AND segment_id = ? AND reason = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (campaign_id, segment_id, reason),
+        ).fetchone()
+
     def get_latest_campaign_checkpoint(self, campaign_id: int) -> sqlite3.Row | None:
         cursor = self.connection.execute(
             """
@@ -4088,6 +4139,93 @@ class RunStorage:
             (campaign_id,),
         )
         return cursor.fetchone()
+
+    def list_latest_campaign_checkpoints_for_profile(
+        self,
+        character_profile_path: Path | str,
+        *,
+        exclude_campaign_id: int | None = None,
+        limit: int = 64,
+    ) -> list[sqlite3.Row]:
+        """Read each matching profile's latest checkpoint, with a hard bound."""
+        if type(limit) is not int or not 1 <= limit <= 256:
+            raise ValueError("limit must be between 1 and 256")
+        if exclude_campaign_id is not None and (
+            type(exclude_campaign_id) is not int or exclude_campaign_id < 1
+        ):
+            raise ValueError("exclude_campaign_id must be positive")
+        excluded = "AND campaign.id != ?" if exclude_campaign_id is not None else ""
+        parameters: tuple[Any, ...] = (
+            (str(character_profile_path), exclude_campaign_id, limit)
+            if exclude_campaign_id is not None
+            else (str(character_profile_path), limit)
+        )
+        return list(self.connection.execute(
+            f"""
+            SELECT campaign.id AS campaign_id,
+                   checkpoint.id, checkpoint.segment_id, checkpoint.run_id,
+                   checkpoint.phase, checkpoint.reason, checkpoint.created_at,
+                   checkpoint.state_json
+            FROM campaigns AS campaign
+            JOIN campaign_checkpoints AS checkpoint
+              ON checkpoint.id = (
+                  SELECT MAX(latest.id)
+                  FROM campaign_checkpoints AS latest
+                  WHERE latest.campaign_id = campaign.id
+              )
+            WHERE lower(replace(campaign.character_profile_path, '/', char(92)))
+                = lower(replace(?, '/', char(92)))
+              {excluded}
+            ORDER BY checkpoint.id DESC
+            LIMIT ?
+            """,
+            parameters,
+        ).fetchall())
+
+    def list_profile_source_kill_segments_after(
+        self,
+        character_profile_path: Path | str,
+        *,
+        character_name: str,
+        boot_id: str,
+        policy_id: str,
+        after_segment_id: int,
+        limit: int = 256,
+    ) -> list[sqlite3.Row]:
+        """Find bounded same-profile runs with exact, useful source kills."""
+        if not character_name or not boot_id or not policy_id:
+            raise ValueError("character, boot, and policy identities are required")
+        if type(after_segment_id) is not int or after_segment_id < 1:
+            raise ValueError("after_segment_id must be positive")
+        if type(limit) is not int or not 1 <= limit <= 256:
+            raise ValueError("limit must be between 1 and 256")
+        return list(self.connection.execute(
+            """
+            SELECT DISTINCT segment.id, segment.campaign_id, segment.phase,
+                   segment.run_id, segment.status, segment.start_state_json,
+                   segment.end_state_json
+            FROM campaigns AS campaign
+            JOIN campaign_segments AS segment
+              ON segment.campaign_id = campaign.id
+            JOIN mob_kills AS kill ON kill.run_id = segment.run_id
+            WHERE lower(replace(campaign.character_profile_path, '/', char(92)))
+                    = lower(replace(?, '/', char(92)))
+              AND segment.id > ?
+              AND lower(kill.character_name) = lower(?)
+              AND kill.boot_id = ?
+              AND kill.source_policy_id = ?
+              AND kill.xp_gained > 0
+              AND kill.below_useful_band = 0
+              AND kill.objective_eligible = 1
+              AND kill.route_gate = 0
+            ORDER BY segment.id DESC
+            LIMIT ?
+            """,
+            (
+                str(character_profile_path), after_segment_id,
+                character_name, boot_id, policy_id, limit,
+            ),
+        ).fetchall())
 
     def get_latest_campaign_checkpoint_at_or_above_level(
         self,
@@ -4319,6 +4457,29 @@ class RunStorage:
         )
         self._recent_campaign_segments_cache[cache_key] = rows
         return list(rows)
+
+    def list_recent_campaign_segment_headers(
+        self,
+        campaign_id: int,
+        *,
+        limit: int = 256,
+    ) -> list[sqlite3.Row]:
+        """Read a small indexed segment tail without materializing state JSON."""
+        if type(campaign_id) is not int or campaign_id < 1:
+            raise ValueError("campaign_id must be a positive integer")
+        if type(limit) is not int or not 1 <= limit <= 256:
+            raise ValueError("limit must be between 1 and 256")
+        rows = self.connection.execute(
+            """
+            SELECT id, campaign_id, sequence, phase, run_id, status
+            FROM campaign_segments
+            WHERE campaign_id = ?
+            ORDER BY sequence DESC
+            LIMIT ?
+            """,
+            (campaign_id, limit),
+        ).fetchall()
+        return list(reversed(rows))
 
     def list_recent_campaign_segment_state_projections(
         self,

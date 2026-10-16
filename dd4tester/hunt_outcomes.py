@@ -120,6 +120,106 @@ def completed_single_target_hunt(
     )
 
 
+def completed_prior_level_single_target_hunt(
+    state: Mapping[str, Any], segment: Mapping[str, Any], summary: Mapping[str, Any],
+    *, policy_id: str, prior_source_policy_id: str, current_source_policy_id: str,
+    mobile_vnum: int, audited_source_revision: str | None,
+) -> bool:
+    """Validate a safe productive receipt exactly one level behind current state.
+
+    This is prioritization evidence for a fresh, current-level policy only. It
+    never grants combat permission; callers must still re-audit source and run
+    all live identity, isolation, consider, output, and withdrawal checks.
+    """
+    run, outcomes, progress = (summary.get(key) for key in ("run", "outcomes", "progress"))
+    if not all(isinstance(value, Mapping) for value in (run, outcomes, progress)):
+        return False
+    if (
+        summary.get("summary_version") != RUN_REPORT_SUMMARY_VERSION
+        or segment.get("phase") != policy_id or segment.get("status") != "success"
+        or not segment.get("finished_at") or not segment.get("run_id")
+        or run.get("id") != segment.get("run_id")
+        or type(segment.get("command_count")) is not int or segment["command_count"] <= 0
+        or outcomes != {"execution": "success", "objective": "achieved", "safety": "safe"}
+    ):
+        return False
+    try:
+        start = json.loads(segment.get("start_state_json") or "{}")
+        end = json.loads(segment.get("end_state_json") or "{}")
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+        return False
+    current_level = state.get("level")
+    prior_level = current_level - 1 if type(current_level) is int else None
+    prior_revision = start.get("campaign_source_revision")
+    current_revision = state.get("campaign_source_revision")
+    if (
+        prior_level is None or prior_level < 1
+        or state.get("world_boot_id") is None
+        or not state["world_boot_id"] == start.get("world_boot_id") == end.get("world_boot_id")
+        or start.get("level") != prior_level or end.get("level") != prior_level
+        or not prior_revision or prior_revision != end.get("campaign_source_revision")
+        or not current_revision
+        or (current_revision != prior_revision and audited_source_revision != current_revision)
+    ):
+        return False
+    for snapshot in (state, start, end):
+        if (
+            str(snapshot.get("room_vnum")) != "3054" or snapshot.get("dead") is not False
+            or snapshot.get("in_combat") is not False or snapshot.get("enemies") not in (None, [])
+            or type(snapshot.get("hp")) is not int or snapshot["hp"] <= 0
+            or type(snapshot.get("xp")) is not int
+        ):
+            return False
+    if end["xp"] <= start["xp"] or state["xp"] < end["xp"]:
+        return False
+    loss_totals = [snapshot.get("campaign_xp_loss_total") for snapshot in (state, start, end)]
+    if (
+        any(type(value) is not int or value < 0 for value in loss_totals)
+        or loss_totals[1] != loss_totals[2] or loss_totals[0] < loss_totals[2]
+    ):
+        return False
+    level_progress = progress.get("level")
+    experience = progress.get("experience")
+    kills = progress.get("confirmed_kills")
+    if (
+        not isinstance(level_progress, Mapping)
+        or level_progress != {"change": 0, "final": prior_level, "initial": prior_level}
+        or progress.get("level_gains_observed") != 0
+        or not isinstance(experience, Mapping)
+        or experience.get("change") != end["xp"] - start["xp"]
+        or not isinstance(kills, list) or len(kills) != 1 or not isinstance(kills[0], Mapping)
+    ):
+        return False
+    kill = kills[0]
+    if (
+        kill.get("source_mobile_vnum") != mobile_vnum
+        or kill.get("source_policy_id") != prior_source_policy_id
+        or type(kill.get("xp_gained")) is not int
+        or kill["xp_gained"] <= prior_level * 10
+        or end.get("campaign_objective_kills") != kills
+        or end.get("campaign_fastwalk_source_consider_outcomes") != {prior_source_policy_id: True}
+        or any(end.get(key) for key in (
+            "campaign_fastwalk_abort_reason", "campaign_fastwalk_route_hazards",
+            "campaign_fastwalk_crowded", "campaign_fastwalk_target_vnum_mismatch",
+            "campaign_fastwalk_unattackable_target", "campaign_fastwalk_target_absent",
+        ))
+    ):
+        return False
+    target_ids = {policy_id, prior_source_policy_id, current_source_policy_id}
+    for key in ("campaign_registered_research_xp_loss_policies", "campaign_source_ranked_xp_loss_policies"):
+        records = state.get(key) or ()
+        if not isinstance(records, (list, tuple)) or any(
+            not isinstance(record, Mapping) or (
+                record.get("boot_id") == state["world_boot_id"]
+                and record.get("policy_id") in target_ids
+            ) for record in records
+        ):
+            return False
+    return True
+
+
 def productive_crowd_reset_result(
     result: Mapping[str, Any] | None, *, level: int, boot_id: Any,
 ) -> dict[str, Any] | None:

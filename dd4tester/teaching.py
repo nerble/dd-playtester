@@ -55,6 +55,24 @@ def parse_skill_groups(text: str) -> dict[str, tuple[tuple[str, int], ...]]:
     return {skill: tuple(groups) for skill, groups in memberships.items()}
 
 
+def parse_skill_target_types(text: str) -> dict[str, str]:
+    """Resolve const.c target classes used by DD4's mobile item logic."""
+    cleaned = re.sub(
+        r'("(?:\\.|[^"\\])*")|/\*.*?\*/|//[^\r\n]*',
+        lambda match: match.group(1) or "", text, flags=re.DOTALL,
+    )
+    targets: dict[str, str] = {}
+    for row in _initializer_rows(cleaned, "skill_table"):
+        names = _strings(row)
+        target_source = re.sub(r'"(?:\\.|[^"\\])*"', '""', row)
+        target = re.search(r"\b(TAR_[A-Z0-9_]+)\b", target_source)
+        if names and target:
+            targets[names[0].strip().casefold()] = target.group(1)
+    if not targets:
+        raise ValueError("DD4 source has no skill target types")
+    return targets
+
+
 def teacher_capacity(
     teachings: Mapping[str, int], skill: str,
     skill_groups: Mapping[str, tuple[tuple[str, int], ...]],

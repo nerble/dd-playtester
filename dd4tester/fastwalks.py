@@ -17,6 +17,20 @@ _DIRECTIONS = {
 
 
 @dataclass(frozen=True)
+class FastwalkPostCommandAction:
+    """A bounded item action to run after one exact route command succeeds."""
+
+    after_command_index: int
+    room_vnum: str
+    preceding_command: str
+    command: str
+    accepted_preceding_responses: tuple[str, ...]
+    acknowledgement_fragment: str
+    verify_item_absent: str
+    source_object_vnum: int | None = None
+
+
+@dataclass(frozen=True)
 class Fastwalk:
     """A route copied from the official DD4 fastwalk list.
 
@@ -60,6 +74,9 @@ class Fastwalk:
     route_source_program_block_reason: str | None = None
     route_origin_recall_index: int = 0
     route_origin_room_vnum: int = 3001
+    # Exact source room reached by a fixed route when a research profile
+    # needs to build a bounded, area-local locator sweep from its endpoint.
+    research_endpoint_room_vnum: int | None = None
     # A route may be split at source-audited no-mob rooms for movement
     # recovery. Keep the complete outbound path available if recall fails
     # after the route has been shortened to its first leg.
@@ -86,6 +103,7 @@ class Fastwalk:
     route_economic_max_copper: int | None = None
     # Ordinary XP travel has its own runtime purse gate, never a quest waiver.
     route_economic_hunt_mobile_vnums: tuple[int, ...] = ()
+    post_command_actions: tuple[FastwalkPostCommandAction, ...] = ()
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -160,7 +178,7 @@ MAP_ROUTES = (
     Fastwalk(
         "vampire catacombs bevan",
         25,
-        35,
+        40,
         "6sw2swsw4se;open south;s2w5s2w3s2w5swnw2swsd2s2w;"
         "4e2n8e4s2esenes6e;4ne2n",
         recall_after_loot=True,
@@ -501,8 +519,34 @@ MAP_ROUTES = (
         "mirror realm jerry garcia",
         36,
         40,
-        "2s4w3n2e3ne3n2e2n;open north;3nwd2d;open west;5wswu2e",
+        "3s3w2nw3n2e3ne3n2e2n;open north;3nw2d;open west;5wswu2e",
         recall_after_loot=True,
+    ),
+    Fastwalk(
+        "mirror realm caerlin",
+        35,
+        40,
+        "3s3w2nw3n2e3ne3n2e2n;open north;3nw2d;open west;5w",
+        recall_after_loot=True,
+        research_endpoint_room_vnum=19068,
+    ),
+    Fastwalk(
+        "mirror realm caerlin watchtowers",
+        35,
+        40,
+        "3s3w2nw3n2e3ne3n2e2n;open north;3n",
+        recall_after_loot=True,
+        research_endpoint_room_vnum=19008,
+        route_economic_hunt_mobile_vnums=(19036,),
+    ),
+    Fastwalk(
+        "mirror realm caerlin face",
+        35,
+        40,
+        "3s3w2nw3n2e3ne3n2e2n",
+        recall_after_loot=True,
+        research_endpoint_room_vnum=19005,
+        route_economic_hunt_mobile_vnums=(19036,),
     ),
     Fastwalk("pit official", 41, 45, "nund", recall_after_loot=True),
     Fastwalk(

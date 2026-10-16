@@ -836,7 +836,9 @@ def test_prepare_hero_request_writes_resumable_secret_free_configuration(
     assert loaded_profile.title == prepared.character.title
     assert loaded_profile.description == prepared.character.description
     assert loaded_profile.personality == request.personality
-    assert load_campaign_spec(prepared.campaign_path).target_level == 100
+    campaign = load_campaign_spec(prepared.campaign_path)
+    assert campaign.target_level == 100
+    assert campaign.max_total_runtime == 31_536_000
     manifest_text = prepared.manifest_path.read_text(encoding="utf-8")
     manifest = json.loads(manifest_text)
     assert manifest["coverage_dimensions"] == ["race", "class", "subclass"]
@@ -940,6 +942,117 @@ def test_prepare_hero_request_updates_resumed_level_goal(tmp_path: Path) -> None
     assert shortened.resumed
     assert load_campaign_spec(shortened.campaign_path).target_level == 40
     assert load_campaign_spec(shortened.campaign_path).name == "Valora to level 40"
+
+
+def test_named_resume_uses_latest_matching_campaign_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    request = HeroRequest(
+        name="Valora",
+        race="human",
+        sex="female",
+        character_class="mage",
+        subclass="warlock",
+    )
+    prepared = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+    )
+    database_path = tmp_path / "campaigns.sqlite3"
+    original_profile = prepared.profile_path.read_text(encoding="utf-8")
+    prepared.profile_path.write_text(
+        original_profile.replace(
+            'database: "runs/dd4tester.sqlite3"',
+            f'database: "{database_path.as_posix()}"',
+        ),
+        encoding="utf-8",
+    )
+    profile_text = prepared.profile_path.read_text(encoding="utf-8")
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE campaigns (
+                id INTEGER PRIMARY KEY,
+                config_path TEXT NOT NULL,
+                character_profile_path TEXT NOT NULL,
+                target_level INTEGER NOT NULL
+            );
+            CREATE TABLE campaign_checkpoints (
+                id INTEGER PRIMARY KEY,
+                campaign_id INTEGER NOT NULL,
+                state_json TEXT NOT NULL
+            );
+            """
+        )
+        for campaign_id, config_path in (
+            (7, prepared.campaign_path),
+            (35, prepared.profile_path),
+        ):
+            connection.execute(
+                """
+                INSERT INTO campaigns
+                    (id, config_path, character_profile_path, target_level)
+                VALUES (?, ?, ?, 100)
+                """,
+                (
+                    campaign_id,
+                    str(config_path.resolve()),
+                    str(prepared.profile_path.resolve()),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO campaign_checkpoints(id, campaign_id, state_json)
+                VALUES (?, ?, ?)
+                """,
+                (
+                    campaign_id,
+                    campaign_id,
+                    json.dumps({
+                        "name": "Valora",
+                        "race": "Human",
+                        "character_class": "Mage",
+                        "subclass": "Warlock",
+                        "level": 10,
+                    }),
+                ),
+            )
+
+    resumed = prepare_hero_request(
+        request,
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+        target_level=30,
+    )
+
+    assert resumed.campaign_path == prepared.profile_path.resolve()
+    assert resumed.profile_path.read_text(encoding="utf-8") == profile_text
+
+    captured: dict[str, object] = {}
+
+    async def fake_campaign(path: Path, **options: object) -> CampaignResult:
+        captured["path"] = path
+        captured.update(options)
+        return CampaignResult(35, "ready", 10, "checkpoint", {"level": 10})
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda _request, **_options: resumed,
+    )
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+    asyncio.run(
+        run_hero_request(
+            request,
+            workspace=tmp_path / "heroes",
+            target_level=30,
+            password="test-password",
+        )
+    )
+    assert captured["path"] == prepared.profile_path.resolve()
+    assert captured["target_level_override"] == 30
 
 
 def test_named_resume_finds_a_manifest_inside_a_matrix_workspace(

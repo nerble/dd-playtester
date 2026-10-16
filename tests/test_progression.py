@@ -1252,13 +1252,11 @@ def test_level_fifteen_protection_recovery_respects_cooled_sanctuary_route() -> 
 
 
 def test_protection_recovery_waits_on_terminal_sanctuary_route() -> None:
-    policy = policy_for(
-        18,
-        "warrior",
-        world_boot_id="boot-1",
-        protection_recovery_required=True,
-        has_sanctuary_potion=False,
-        research_results={
+    kwargs = {
+        "world_boot_id": "boot-1",
+        "protection_recovery_required": True,
+        "has_sanctuary_potion": False,
+        "research_results": {
             _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id: {
                 "boot_id": "boot-1",
                 "fatal_failure": True,
@@ -1267,13 +1265,17 @@ def test_protection_recovery_waits_on_terminal_sanctuary_route() -> None:
                 "viable": False,
             },
         },
-        excluded_policy_ids=frozenset(_POLICY_BY_ID),
-        source_ranked_fallback=True,
-    )
+        "excluded_policy_ids": frozenset(_POLICY_BY_ID),
+    }
+    waiting = policy_for(18, "warrior", **kwargs)
 
-    assert policy.status == "unavailable"
-    assert policy.execution is None
-    assert "terminal" in policy.summary
+    assert waiting.status == "unavailable"
+    assert waiting.execution is None
+    assert "terminal" in waiting.summary
+
+    fallback = policy_for(18, "warrior", **kwargs, source_ranked_fallback=True)
+    assert fallback.policy_id == "source-ranked-hunt-10-100"
+    assert fallback.execution == "source-ranked-hunt"
 
 
 def test_protection_recovery_uses_alternate_probe_during_moria_cooldown() -> None:
@@ -6821,6 +6823,37 @@ def test_level_twenty_four_thief_uses_generic_deep_sanctuary_recovery() -> None:
     assert policy.maximum_level == 24
 
 
+def test_unaffordable_flight_does_not_block_independent_source_ranked_hunt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hunt = ProgressionPolicy(
+        policy_id="source-ranked-hunt-10-100",
+        minimum_level=10,
+        maximum_level=100,
+        status="research",
+        execution="source-ranked-hunt",
+        summary="Select a current-band target with fresh evidence.",
+        evidence=(),
+        practice_skill="bash",
+    )
+    monkeypatch.setattr(
+        "dd4tester.progression._select_policy",
+        lambda _context: hunt,
+    )
+    context = ProgressionContext.from_values(
+        39,
+        "warrior",
+        subclass="knight",
+        protection_recovery_required=True,
+        protection_recovery_hard_health=True,
+        has_sanctuary_potion=False,
+        has_flight=False,
+        can_attempt_flight_purchase=False,
+    )
+
+    assert select_policy(context) is hunt
+
+
 def test_exhausted_level_twenty_one_band_opens_dynamic_source_frontier() -> None:
     exhausted_results = {
         policy_id: {
@@ -10306,16 +10339,74 @@ def test_levels_thirty_six_to_forty_start_with_no_combat_jerry_probe(
     assert policy.executable
 
 
-def test_level_thirty_six_waits_for_review_after_jerry_probe() -> None:
+def test_level_thirty_six_rechecks_jerry_route_once_after_old_probe() -> None:
     policy = policy_for(
         36,
         "mage",
-        policy_xp_deltas={"mirror-realm-jerry-garcia-probe-36-40": 0},
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-jerry-garcia-probe-36-40": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-jerry-garcia-route-recheck-36-40"
+    assert policy.status == "research"
+    assert policy.execution == "mirror-realm-jerry-garcia-research"
+    assert "no-combat" in policy.summary
+
+
+def test_level_thirty_six_does_not_repeat_a_completed_jerry_route_check() -> None:
+    policy = policy_for(
+        36,
+        "mage",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-jerry-garcia-probe-36-40": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-jerry-garcia-route-recheck-36-40": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
     )
 
     assert policy.status == "unavailable"
     assert not policy.executable
-    assert "do not authorize combat" in policy.summary
+    assert "do not spend another segment scouting" in policy.summary
+
+
+def test_level_thirty_six_keeps_jerry_v2_for_explicit_route_hazard() -> None:
+    policy = policy_for(
+        36,
+        "mage",
+        world_boot_id="boot-1",
+        research_results={
+            "mirror-realm-jerry-garcia-probe-36-40": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-jerry-garcia-route-recheck-36-40": {
+                "observed": True,
+                "viable": False,
+                "route_hazard": "confirmed route mismatch",
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-jerry-garcia-route-recheck-v2-36-40"
+    assert policy.status == "research"
+    assert policy.execution == "mirror-realm-jerry-garcia-research"
+    assert "no-combat" in policy.summary
 
 
 def test_level_forty_one_starts_with_no_combat_pit_official_probe() -> None:

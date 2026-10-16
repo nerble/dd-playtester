@@ -3,46 +3,56 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 10, 2026
+## Current Status: October 15, 2026
 
-**Latest campaign checkpoint: 50203; run 16921.** Dorrik remains level **32
-Knight**, with **750,714 XP**, **41,186 XP** to 33 and **18 QP**, alive and
-fully restored at healer **3054** with confirmed logout. Run **16913** ended in
-a death; he recovered his corpse through Purgatory and healed at the healer.
-Compared with checkpoint **50186** (**773,178 XP**), the current saved total is
-down **22,464 XP**. Only 50 XP is explained by the failed flee recorded in the
-transcript; the larger state change remains an accounting gap. Runs
-**16916-16921** spent **532.22 connected seconds** on bounded Gatekeeper route
-probes and gained no XP. Run **16920** reached the shuffled wastelands but the
-fixed route attempted a nonexistent exit and safely returned. Run **16921**
-stopped before departure after three bounded waits: the wandering drunk
-remained in Market Square, a room on the route. It ended safely at the healer
-without travel or combat. Checkpoint **50203** is not progression.
+Latest verified checkpoint **52865**, run **18112**: Dorrik is level **39 Knight**,
+with **1,347,989 XP**, **28,461 XP** to level 40 and **18 quest points**.
+He is alive, recovered and logged out at healer room **3054**. Runs 18106,
+18107, 18110 and 18112 produced no kills or XP loss. Run 18111 successfully
+renewed expired flight. Run 18105
+lost **919 net XP** after an HP-budget-triggered flee; it achieved no kill.
+Target selection now uses relative level and live `consider`; target HP and
+projected kill duration no longer veto admission or order an escape. The
+character's own health floor, route hazards and target identity checks remain.
+This behavior change still needs a verified productive live hunt. HERO remains
+unproved.
 
-Skill-tree development is a permanent strategy in `AGENTS.md` and
-`docs/OPERATIONS.md`: audit on every level, practice gain, unlock, subclass, or
-relevant source change; follow the prerequisite order; train useful leveling
-skills to effective proficiency as soon as practices and the right teacher are
-available; and confirm each real gain. Dorrik's latest live audit (run
-**16921**) remains enhanced damage **67%**, kick **67%**, stun **62%**, second
-and third attack **63%**, with **zero physical and intellectual practices**.
-`flamestrike` and `healing magiks` are listed at 0%; the Knight protection wards
-are not on the live learnable list. A planner check using that exact listing
-with one hypothetical practice per type selected `flamestrike` **0% to 45%**
-and `enhanced damage` **67% to 100%** as the next targets. No practice was
-spent; actual teacher capacity and positive-gain checks still decide dispatch.
-Recheck the wards, prerequisites and best available skills at the next level
-or practice gain.
+The current source mirror is **32a6702**, fast-forwarded from `origin/master`
+on October 15 after all live workers finished. A full parse found **4,125
+mobiles, 6,138 objects, 13,052 rooms and 409 skill groups**. Active flight now
+satisfies the purchase objective in both planner and live controller, avoiding
+repeated logins that skip buying the same redundant potion.
 
-The DD4 source mirror is now **971d8e7**; its full parse again found **13,052
-rooms, 4,125 mobiles, and 6,138 objects**. The Minotaur fastwalk now stops at
-the shuffled boundary and uses live exits to reach room **2360** before
-resuming its fixed route. Local commit **205c0d7** contains the route and
-focused test, but run **16921** never departed Midgaard, so the change is not
-live-proven. Today's regression batch is already spent; tests are deferred to
-October 11. Continue Dorrik's current-band progression without general reboot
-waits, keep the 20% combat floor and XP-accounting gap visible, and do not
-claim HERO.
+### Earlier Checkpoint: October 12
+
+**Latest campaign checkpoint: 51617; latest live run: 17571.** Dorrik remains
+the sole progression pilot: level **37 dwarf Knight**, **1,148,426 XP**,
+**33,924 XP** to level 38, and **18 quest points** (no next-level shortfall).
+Run **17571** was a safe, zero-XP locator probe; Dorrik returned and logged out
+at healer room **3054**. The saved state is alive at **885/867 HP**, **455/415
+mana**, and **618/618 movement**, with flight active. Two bounded autonomous
+preflights saved checkpoints **51616-51617** but stopped before connecting
+because no current-band policy passed its saved route and retry gates. HERO
+remains unproved.
+
+Skill-tree development is permanent; see `AGENTS.md` and
+`docs/OPERATIONS.md`. Run **17560** audited enhanced damage **68%**, second
+attack **64%**, third attack **63%**, stun **67%**, kick **68%**, Flamestrike
+**48%**, and healing magiks **52%**. Dorrik has **zero physical and zero
+intellectual practices**. His next important unlock is disarm: grip is already
+**99%**, while defense knowledge is **65%** against an **85%** prerequisite.
+At the next real practice gain, refresh the live learnable list and exact
+teacher limits; do not spend a trip or point while the balance is empty.
+
+The DD4 source mirror is now **2533108**. A full parse found **160 areas,
+13,052 rooms, 4,125 mobiles, 6,138 objects, 7,749 mobile resets, 1,430 object
+resets, 1,622 specials, 218 shops, and 408 skill groups**. The upstream update
+mainly corrects support/damage credit after successful effects; the refreshed
+prerequisite snapshot contains **1,600 entries** and now records this source
+revision. `skill-analysis --class knight` confirms the source-backed order and
+still flags live ward/teacher availability as unproved. October 11's regression
+batch is already spent. Continue Dorrik's current-band progression; do not
+claim HERO or reopen targets without their ordinary live gates.
 
 **Earlier completed checkpoint: 50085; run 16863.** Dorrik is level **32 Knight**,
 with **754,058 XP**, **37,842 XP** to 33 and **18 QP**, saved and logged out at
@@ -2749,6 +2759,7 @@ python -m dd4tester campaign campaigns/hero.example.yaml
 python -m dd4tester show-policies --class mage --level 8
 python -m dd4tester skill-analysis --class warrior
 python -m dd4tester skill-analysis --class knight
+python -m dd4tester skill-analysis --class warrior --subclass knight
 python -m dd4tester show-prereqs --class mage --skill fireball
 python -m dd4tester show-gear-sources --level 24 --class thief `
   --stance combat --all-areas
@@ -2762,13 +2773,15 @@ character output, and quits. Configure credentials first. Static audits describe
 registered templates, not live executable coverage. Observed skill names require
 source authorization and positive practice before execution.
 
-`skill-analysis` shows the ordered leveling priorities, target proficiency,
-prerequisites, and known automation gaps for a class or subclass. It is a
-source-backed plan, not the character's live skill listing. Review training
-after each level or new practice balance; prioritize useful combat improvements
-and their unlock chains, then verify actual lessons against live proficiency
-and the trainer's teaching limits. See `AGENTS.md`'s Skill Tree Progression
-strategy and `docs/OPERATIONS.md` for the operating contract.
+`skill-analysis` shows ordered leveling priorities, target proficiency,
+prerequisites, and known automation gaps for a class or subclass. Pass both
+`--class` and `--subclass` to combine inherited base-class skills with the
+subclass plan (for example, Warrior/Knight). It is a source-backed plan, not
+the character's live skill listing. Review training after each level or new
+practice balance; prioritize useful combat improvements and their unlock chains,
+then verify actual lessons against live proficiency and the trainer's teaching
+limits. See `AGENTS.md`'s Skill Tree Progression strategy and
+`docs/OPERATIONS.md` for the operating contract.
 
 `hero --source` accepts the DD4 source/area directory or `const.c`. Workspaces
 retain the resolved directory and source evidence. Keep the local DD4 checkout

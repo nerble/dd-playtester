@@ -62,6 +62,84 @@ def recover_flight_capacity_failure(
     }
 
 
+def recover_flight_capacity_preflight_failure(
+    storage: Any, segment: Mapping[str, Any], state: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Recover a safe, same-healer failure before a flight purchase was sent."""
+    expected_error = "no source-identified redundant gear could free the required item slot"
+    run_id = segment.get("run_id")
+    loader = getattr(storage, "list_recent_events", None)
+    if (
+        type(run_id) is not int or run_id <= 0 or not callable(loader)
+        or segment.get("phase") != "buy-flight-potion"
+        or segment.get("status") != "failed"
+        or not str(segment.get("error") or "").endswith(expected_error)
+        or str(state.get("room_vnum")) != "3054"
+        or state.get("dead") or state.get("in_combat")
+        or type(state.get("level")) is not int
+        or not state.get("world_boot_id")
+    ):
+        return None
+    try:
+        start = json.loads(segment.get("start_state_json") or "{}")
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(start, Mapping) or any(
+        start.get(key) != state.get(key)
+        for key in ("level", "world_boot_id", "xp")
+    ) or str(start.get("room_vnum")) != "3054":
+        return None
+    rows = loader(run_id, limit=256)
+    if not rows or len(rows) >= 256:
+        return None
+    terminal: Mapping[str, Any] | None = None
+    purchase_dispatched = False
+    for raw in rows:
+        row = dict(raw)
+        try:
+            payload = json.loads(row.get("payload_json") or "{}")
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        if row.get("kind") == "command" and str(
+            payload.get("command") or ""
+        ).casefold().strip() == "buy light":
+            purchase_dispatched = True
+        if row.get("kind") == "state" and payload.get("state") == "failed":
+            terminal = payload
+    if purchase_dispatched or terminal is None:
+        return None
+    capacity = terminal.get("healer_carrying_capacity")
+    logout = terminal.get("logout_confirmation")
+    if not (
+        terminal.get("error") == expected_error
+        and isinstance(capacity, Mapping)
+        and capacity.get("failure") == expected_error
+        and capacity.get("complete") is False
+        and capacity.get("room_vnum") == "3054"
+        and isinstance(capacity.get("required_slots"), int)
+        and capacity["required_slots"] > 0
+        and isinstance(logout, Mapping)
+        and logout.get("acknowledged") is True
+        and logout.get("reply") == "You bid farewell to the Dragons Domain."
+    ):
+        return None
+    return {
+        "reason": "capacity",
+        "run_id": run_id,
+        "segment_id": segment.get("id"),
+        "boot_id": state.get("world_boot_id"),
+        "level": state.get("level"),
+        "source_revision": state.get("campaign_source_revision"),
+        "preflight_failure": True,
+        "initial_count": capacity.get("initial_count"),
+        "maximum_count": capacity.get("maximum_count"),
+        "required_slots": capacity.get("required_slots"),
+        "canonical_event_count": len(rows),
+    }
+
+
 def productive_city_clearance_proof(
     state: Mapping[str, Any], candidate: Any, *, policy_id: str,
     segments: Collection[Any], summary_loader: Any,
@@ -297,6 +375,515 @@ def target_inspection_revalidation_evidence(
     }
 
 
+def source_consider_fuzz_revalidation_evidence(
+    state: Mapping[str, Any],
+    segment: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    candidate: Any,
+    world: Any,
+    *,
+    policy_id: str,
+    recent_events: Collection[Any] = (),
+) -> dict[str, Any] | None:
+    """Reopen one safe no-combat rejection at an exact source-fuzz boundary."""
+    from .observations import strip_ansi_stream
+
+    try:
+        segment = dict(segment)
+    except (TypeError, ValueError):
+        return None
+
+    if (
+        state.get("campaign_source_ranked_consider_fuzz_revalidation") is not None
+        or world is None
+        or candidate.mobile_vnum != 20513
+        or candidate.room_vnum != 20532
+        or candidate.area_file != "dwarven_home.are"
+        or not candidate.sentinel
+        or candidate.specials
+        or candidate.equipped_weapons
+        or candidate.source_spawn_limit != 1
+        or candidate.room_spawn_count != 1
+    ):
+        return None
+    level = state.get("level")
+    boot = state.get("world_boot_id")
+    source_revision = state.get("campaign_source_revision")
+    if (
+        type(level) is not int
+        or candidate.estimated_level_range[1] != level + 6
+        or not boot
+        or not source_revision
+        or not isinstance(state.get("xp"), int)
+        or not isinstance(state.get("campaign_xp_loss_total"), int)
+    ):
+        return None
+
+    mobile = world.mobiles.get(candidate.mobile_vnum)
+    resets = [
+        reset for reset in world.mob_resets
+        if reset.mobile_vnum == candidate.mobile_vnum
+    ]
+    if (
+        mobile is None
+        or mobile.level != candidate.level
+        or not mobile.sentinel
+        or mobile.aggressive
+        or mobile.wanders
+        or mobile.confused
+        or mobile.fear_aura
+        or mobile.non_corporeal
+        or mobile.programs
+        or world.mobile_specials.get(candidate.mobile_vnum)
+        or len(resets) != 1
+        or resets[0].room_vnum != candidate.room_vnum
+        or resets[0].maximum_count != 1
+        or resets[0].object_vnums
+        or resets[0].equipment
+    ):
+        return None
+
+    run, outcomes, progress = (
+        summary.get(key) for key in ("run", "outcomes", "progress")
+    )
+    if not all(isinstance(value, Mapping) for value in (run, outcomes, progress)):
+        return None
+    progress_experience = progress.get("experience")
+    progress_level = progress.get("level")
+    progress_health = progress.get("health")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (progress_experience, progress_level, progress_health)
+    ):
+        return None
+    run_id = segment.get("run_id")
+    if (
+        segment.get("phase") != policy_id
+        or segment.get("status") != "success"
+        or segment.get("error")
+        or type(run_id) is not int
+        or run.get("id") != run_id
+        or not segment.get("finished_at")
+        or type(segment.get("command_count")) is not int
+        or segment["command_count"] <= 0
+        or outcomes != {
+            "execution": "success",
+            "objective": "not_achieved",
+            "safety": "safe",
+        }
+        or progress.get("combat_starts") != 0
+        or progress.get("confirmed_kills") != []
+        or progress_experience.get("change") != 0
+        or progress_level.get("change") != 0
+        or progress_health.get("lowest_fraction", 0) < 0.95
+    ):
+        return None
+    try:
+        start, end = (
+            json.loads(segment.get(key) or "{}")
+            for key in ("start_state_json", "end_state_json")
+        )
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+        return None
+    boundary_keys = (
+        "level", "world_boot_id", "campaign_source_revision", "xp",
+        "campaign_xp_loss_total",
+    )
+    if any(
+        state.get(key) is None or not state[key] == start.get(key) == end.get(key)
+        for key in boundary_keys
+    ):
+        return None
+    if any(
+        snapshot.get("name") != state.get("name")
+        or str(snapshot.get("room_vnum")) != "3054"
+        or snapshot.get("dead") is not False
+        or snapshot.get("in_combat") is not False
+        or not isinstance(snapshot.get("hp"), int)
+        or not isinstance(snapshot.get("max_hp"), int)
+        or snapshot["max_hp"] <= 0
+        or snapshot["hp"] < snapshot["max_hp"] * 0.95
+        for snapshot in (state, start, end)
+    ):
+        return None
+    if (
+        progress_experience.get("initial") != state["xp"]
+        or progress_experience.get("final") != state["xp"]
+        or progress_level.get("initial") != level
+        or progress_level.get("final") != level
+    ):
+        return None
+
+    old_candidate = start.get("campaign_source_ranked_hunt_candidate")
+    result = (state.get("campaign_research_results") or {}).get(policy_id)
+    expected_abort = "the unique field target 'dwarf' failed its live consider gate"
+    if (
+        not isinstance(old_candidate, Mapping)
+        or old_candidate.get("policy_id") != policy_id
+        or old_candidate.get("source_revision") != source_revision
+        or old_candidate.get("mobile_vnum") != candidate.mobile_vnum
+        or old_candidate.get("room_vnum") != candidate.room_vnum
+        or old_candidate.get("level") != candidate.level
+        or old_candidate.get("target_identity") != "dwarf"
+        or old_candidate.get("target_keyword") != "handball"
+        or tuple(old_candidate.get("route") or ()) != tuple(candidate.route)
+        or tuple(old_candidate.get("estimated_level_range") or ())
+        != tuple(candidate.estimated_level_range)
+        or not isinstance(result, Mapping)
+        or result.get("boot_id") != boot
+        or result.get("observed") is not True
+        or result.get("consider_viable") is not False
+        or result.get("completed_kill") is not False
+        or result.get("viable") is not False
+        or result.get("xp_delta", 0) != 0
+        or end.get("campaign_fastwalk_abort_reason") != expected_abort
+    ):
+        return None
+
+    rows = sorted((dict(row) for row in recent_events), key=lambda row: row.get("id", 0))
+    if (
+        not rows
+        or len(rows) > 512
+        or any(row.get("run_id") != run_id for row in rows)
+    ):
+        return None
+    payloads: list[tuple[Mapping[str, Any], Mapping[str, Any]]] = []
+    for row in rows:
+        try:
+            payload = json.loads(row.get("payload_json") or "{}")
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        payloads.append((row, payload))
+
+    consider_commands = [
+        index
+        for index, (row, payload) in enumerate(payloads)
+        if row.get("kind") == "command"
+        and re.fullmatch(r"consider #\d+", str(payload.get("command") or ""))
+    ]
+    if len(consider_commands) != 1:
+        return None
+    command_index = consider_commands[0]
+    command_row, command_payload = payloads[command_index]
+    selector = str(command_payload.get("command") or "").split("#", 1)[-1]
+    if not selector.isdigit():
+        return None
+    latest_room_entry = None
+    for index, (row, payload) in enumerate(payloads[:command_index]):
+        if row.get("kind") != "game_event":
+            continue
+        data = payload.get("data")
+        if (
+            isinstance(data, Mapping)
+            and (
+                payload.get("type") == "room_entered"
+                or data.get("type") == "room_entered"
+            )
+        ):
+            latest_room_entry = (index, data, row.get("id"))
+    if (
+        latest_room_entry is None
+        or str(latest_room_entry[1].get("vnum")) != str(candidate.room_vnum)
+    ):
+        return None
+    listing_found = False
+    for row, payload in payloads[latest_room_entry[0] + 1:command_index]:
+        if row.get("kind") != "response":
+            continue
+        clean, _escape = strip_ansi_stream(str(payload.get("text") or ""))
+        if re.search(
+            rf"(?m)^\[#({re.escape(selector)})\]\s+A dwarf is playing handball against the wall\.$",
+            clean.replace("\r", ""),
+        ):
+            listing_found = True
+    if not listing_found:
+        return None
+
+    response_text = ""
+    response_timestamp = None
+    for row, payload in payloads[command_index + 1:]:
+        if row.get("kind") == "command":
+            break
+        if row.get("kind") != "response":
+            continue
+        response_timestamp = response_timestamp or row.get("timestamp")
+        clean, _escape = strip_ansi_stream(str(payload.get("text") or ""))
+        response_text += clean.replace("\r", "\n")
+        if len(response_text) > 2048:
+            return None
+    try:
+        elapsed = (
+            datetime.fromisoformat(str(response_timestamp))
+            - datetime.fromisoformat(str(command_row.get("timestamp")))
+        ).total_seconds()
+    except (TypeError, ValueError):
+        return None
+    response_lines = {line.strip().casefold() for line in response_text.splitlines()}
+    if (
+        elapsed < 0
+        or elapsed >= 5
+        or "the player laughs at you mercilessly." not in response_lines
+        or "also, he is much healthier than you." not in response_lines
+    ):
+        return None
+    return {
+        **{key: state[key] for key in boundary_keys},
+        "status": "pending",
+        "policy_id": policy_id,
+        "mobile_vnum": candidate.mobile_vnum,
+        "room_vnum": candidate.room_vnum,
+        "maximum_level_offset": 6,
+        "source_level_range": list(candidate.estimated_level_range),
+        "source_hp_ceiling": int(candidate.estimated_base_hp_range[1]),
+        "route": list(candidate.route),
+        "prior_result": dict(result),
+        "prior_run_id": run_id,
+        "prior_segment_id": segment.get("id"),
+        "target_instance_id": selector,
+        "matched_consider_event_id": command_row.get("id"),
+    }
+
+
+def mirror_teece_lucky_consider_revalidation_evidence(
+    state: Mapping[str, Any],
+    segment: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    world: Any,
+    *,
+    policy_id: str,
+    recent_events: Collection[Any] = (),
+) -> dict[str, Any] | None:
+    """Repair Teece's exact old +2..+5 false rejection once, without a fight.
+
+    The receipt is intentionally target-, boot-, source-, and evidence-bound.
+    It records a retry opportunity; current campaign selection and live combat
+    gates must still admit the target independently.
+    """
+    from .mobile_loadouts import unarmed_inert_instrument_reset
+    from .observations import strip_ansi_stream
+
+    expected_policy_id = "mirror-realm-plain-teece-hunt-38-40"
+    try:
+        segment = dict(segment)
+    except (TypeError, ValueError):
+        return None
+    level = state.get("level")
+    boot = state.get("world_boot_id")
+    source_revision = state.get("campaign_source_revision")
+    result = (state.get("campaign_research_results") or {}).get(policy_id)
+    if (
+        type(level) is not int
+        or level != 39
+        or not boot
+        or not source_revision
+        or policy_id != expected_policy_id
+        or segment.get("phase") != policy_id
+        or segment.get("status") != "success"
+        or segment.get("error")
+        or type(segment.get("run_id")) is not int
+        or not segment.get("finished_at")
+        or type(segment.get("command_count")) is not int
+        or segment["command_count"] <= 0
+        or not isinstance(result, Mapping)
+        or result.get("boot_id") != boot
+        or result.get("observed") is not True
+        or result.get("completed_kill") is not False
+        or result.get("viable") is not False
+        or world is None
+        or not unarmed_inert_instrument_reset(
+            world, mobile_vnum=19069, room_vnum=19166,
+        )
+    ):
+        return None
+
+    run = summary.get("run")
+    outcomes = summary.get("outcomes")
+    progress = summary.get("progress")
+    if not all(isinstance(value, Mapping) for value in (run, outcomes, progress)):
+        return None
+    experience = progress.get("experience")
+    level_progress = progress.get("level")
+    health = progress.get("health")
+    run_id = segment["run_id"]
+    if (
+        run.get("id") != run_id
+        or outcomes != {
+            "execution": "success",
+            "objective": "not_achieved",
+            "safety": "safe",
+        }
+        or progress.get("combat_starts") != 0
+        or progress.get("confirmed_kills") != []
+        or not isinstance(experience, Mapping)
+        or experience.get("change") != 0
+        or not isinstance(level_progress, Mapping)
+        or level_progress.get("change") != 0
+        or not isinstance(health, Mapping)
+        or health.get("lowest_fraction", 0) < 0.95
+    ):
+        return None
+
+    try:
+        start, end = (
+            json.loads(segment.get(key) or "{}")
+            for key in ("start_state_json", "end_state_json")
+        )
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+        return None
+    if any(
+        start.get(key) is None or start.get(key) != end.get(key)
+        for key in (
+            "level", "world_boot_id", "campaign_source_revision", "xp",
+            "campaign_xp_loss_total",
+        )
+    ) or any(
+        state.get(key) != start.get(key)
+        for key in ("level", "world_boot_id", "campaign_source_revision")
+    ):
+        return None
+    for snapshot in (state, start, end):
+        if (
+            snapshot.get("name") != "Dorrik"
+            or str(snapshot.get("room_vnum")) != "3054"
+            or snapshot.get("dead") is not False
+            or snapshot.get("in_combat") is not False
+            or not isinstance(snapshot.get("hp"), int)
+            or not isinstance(snapshot.get("max_hp"), int)
+            or snapshot["max_hp"] <= 0
+            or snapshot["hp"] < snapshot["max_hp"] * 0.95
+        ):
+            return None
+    if (
+        experience.get("initial") != start.get("xp")
+        or experience.get("final") != end.get("xp")
+        or level_progress.get("initial") != level
+        or level_progress.get("final") != level
+        or end.get("campaign_fastwalk_abort_reason")
+        != "the unique field target 'mr. teece' failed its live consider gate"
+    ):
+        return None
+
+    rows = sorted((dict(row) for row in recent_events), key=lambda row: row.get("id", 0))
+    if (
+        not rows
+        or len(rows) > 512
+        or any(row.get("run_id") != run_id for row in rows)
+    ):
+        return None
+    payloads: list[tuple[Mapping[str, Any], Mapping[str, Any]]] = []
+    for row in rows:
+        try:
+            payload = json.loads(row.get("payload_json") or "{}")
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        if (
+            row.get("kind") == "game_event"
+            and payload.get("type") == "experience_lost"
+        ):
+            return None
+        payloads.append((row, payload))
+
+    consider_commands = [
+        index
+        for index, (row, payload) in enumerate(payloads)
+        if row.get("kind") == "command"
+        and re.fullmatch(r"consider #\d+", str(payload.get("command") or ""))
+    ]
+    if len(consider_commands) != 1:
+        return None
+    command_index = consider_commands[0]
+    command_row, command_payload = payloads[command_index]
+    selector = str(command_payload.get("command") or "").split("#", 1)[-1]
+    latest_room_entry = None
+    for index, (row, payload) in enumerate(payloads[:command_index]):
+        data = payload.get("data")
+        if (
+            row.get("kind") == "game_event"
+            and isinstance(data, Mapping)
+            and payload.get("type") == "room_entered"
+        ):
+            latest_room_entry = (index, data, row.get("id"))
+    if (
+        latest_room_entry is None
+        or str(latest_room_entry[1].get("vnum")) != "19166"
+    ):
+        return None
+    target_line = re.compile(
+        r"(?:\([^)]*\)\s*)?Mr\. Teece sits here playing on his banjo\."
+    )
+    listing_event_id = None
+    for row, payload in payloads[latest_room_entry[0] + 1:command_index]:
+        data = payload.get("data")
+        if (
+            row.get("kind") != "game_event"
+            or payload.get("type") != "room_listing_observed"
+            or not isinstance(data, Mapping)
+            or str(data.get("room_vnum")) != "19166"
+        ):
+            continue
+        targeted_lines = data.get("targeted_lines")
+        if not isinstance(targeted_lines, list):
+            continue
+        exact_target_lines = [
+            line
+            for line in targeted_lines
+            if isinstance(line, Mapping)
+            and str(line.get("target_id")) == selector
+            and target_line.fullmatch(str(line.get("description") or ""))
+        ]
+        if len(exact_target_lines) == 1:
+            listing_event_id = row.get("id")
+    if listing_event_id is None:
+        return None
+
+    response_parts: list[str] = []
+    response_event_id = None
+    for row, payload in payloads[command_index + 1:]:
+        if row.get("kind") == "command":
+            break
+        if row.get("kind") != "response":
+            continue
+        clean, _escape = strip_ansi_stream(str(payload.get("text") or ""))
+        response_parts.append(clean)
+        if "Do you feel lucky, punk?" in clean:
+            response_event_id = row.get("id")
+    consider_reply = "".join(response_parts).replace("\r", "")
+    if (
+        "Mr. Teece says 'Do you feel lucky, punk?'" not in consider_reply
+        or "However, you are currently much healthier than he." not in consider_reply
+        or response_event_id is None
+    ):
+        return None
+
+    return {
+        "status": "pending",
+        "revision": 1,
+        "policy_id": policy_id,
+        "mobile_vnum": 19069,
+        "room_vnum": 19166,
+        "level": level,
+        "boot_id": boot,
+        "source_revision": source_revision,
+        "prior_run_id": run_id,
+        "prior_segment_id": segment.get("id"),
+        "prior_xp": start.get("xp"),
+        "prior_xp_loss_total": start.get("campaign_xp_loss_total"),
+        "matched_room_event_id": latest_room_entry[2],
+        "matched_listing_event_id": listing_event_id,
+        "matched_consider_command_event_id": command_row.get("id"),
+        "matched_consider_response_event_id": response_event_id,
+        "maximum_level_offset": 5,
+    }
+
+
 def restore_productive_population_after_crowd_reset(
     state: dict[str, Any], recent_segments: Collection[Any], *,
     source_world: Any, latest_policy_xp: Mapping[str, int],
@@ -400,12 +987,234 @@ def restore_productive_population_after_crowd_reset(
     return {**state, "campaign_research_results": {**results, policy_id: restored}}
 
 
+def restore_productive_source_hunt_after_unobserved_interruption(
+    state: dict[str, Any],
+    recent_segments: Collection[Any],
+    *,
+    storage: Any,
+    campaign_id: int,
+) -> dict[str, Any]:
+    """Restore one kill result erased by an interrupted route's false absence."""
+    policy_prefix = "source-ranked-hunt-"
+    expected_error = "runner process ended before the run could finish"
+    target_not_evaluated = "field route interrupted before target evaluation"
+    boot_id = state.get("world_boot_id")
+    source_revision = state.get("campaign_source_revision")
+    level = state.get("level")
+    results = state.get("campaign_research_results")
+    if (
+        not boot_id
+        or not source_revision
+        or type(level) is not int
+        or not isinstance(results, Mapping)
+    ):
+        return state
+    run_loader = getattr(storage, "get_run", None)
+    event_loader = getattr(storage, "list_recent_events", None)
+    event_counter = getattr(storage, "count_events", None)
+    if not all(callable(loader) for loader in (run_loader, event_loader, event_counter)):
+        return state
+
+    segments = [dict(row) for row in recent_segments]
+    represented_phases = {str(row.get("phase") or "") for row in segments}
+    latest_phase_loader = getattr(
+        storage,
+        "get_latest_campaign_segment_for_phase",
+        None,
+    )
+    if callable(latest_phase_loader):
+        for policy_id, result in results.items():
+            if (
+                not str(policy_id).startswith(policy_prefix)
+                or not str(policy_id).endswith(f"-{level}")
+                or policy_id in represented_phases
+                or not isinstance(result, Mapping)
+                or result.get("absent") is not True
+                or result.get("boot_id") != boot_id
+            ):
+                continue
+            try:
+                latest = latest_phase_loader(
+                    campaign_id,
+                    str(policy_id),
+                    search_limit=256,
+                )
+            except (TypeError, ValueError, KeyError):
+                continue
+            if latest is not None:
+                segments.append(dict(latest))
+                represented_phases.add(str(policy_id))
+    segments.sort(key=lambda row: int(row.get("sequence") or 0))
+    for index, segment in enumerate(segments):
+        policy_id = str(segment.get("phase") or "")
+        run_id = segment.get("run_id")
+        if (
+            not policy_id.startswith(policy_prefix)
+            or segment.get("status") != "ready"
+            or segment.get("error") != expected_error
+            or type(run_id) is not int
+            or type(segment.get("command_count")) is not int
+            or segment["command_count"] <= 0
+            or any(
+                later.get("phase") == policy_id
+                for later in segments[index + 1 :]
+            )
+        ):
+            continue
+        current_result = results.get(policy_id)
+        if not (
+            isinstance(current_result, Mapping)
+            and current_result.get("absent") is True
+            and current_result.get("boot_id") == boot_id
+        ):
+            continue
+        try:
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+            continue
+        prior_result = (start.get("campaign_research_results") or {}).get(
+            policy_id
+        )
+        candidate = start.get("campaign_source_ranked_hunt_candidate")
+        if not (
+            start.get("level") == level
+            and start.get("world_boot_id") == boot_id
+            and start.get("campaign_source_revision") == source_revision
+            and isinstance(candidate, Mapping)
+            and candidate.get("policy_id") == policy_id
+            and candidate.get("source_revision") == source_revision
+            and isinstance(prior_result, Mapping)
+            and prior_result.get("boot_id") == boot_id
+            and prior_result.get("observed") is True
+            and prior_result.get("viable") is True
+            and prior_result.get("completed_kill") is True
+            and type(prior_result.get("max_objective_kill_xp")) is int
+            and prior_result["max_objective_kill_xp"] > level * 10
+            and type(prior_result.get("objective_xp")) is int
+            and prior_result["objective_xp"] > 0
+            and end.get("campaign_fastwalk_abort_reason") == target_not_evaluated
+            and end.get("campaign_fastwalk_target_absent") is True
+            and end.get("campaign_fastwalk_target_present_observed") is not True
+            and not end.get("campaign_fastwalk_consider_outcomes")
+            and not end.get("campaign_objective_kills")
+        ):
+            continue
+        try:
+            run = run_loader(run_id)
+            run = dict(run) if run is not None else None
+            event_count = event_counter(run_id)
+            events = event_loader(run_id, limit=512)
+        except (TypeError, ValueError, KeyError):
+            continue
+        if not (
+            run is not None
+            and run.get("status") == "failed"
+            and run.get("execution_status") == "interrupted"
+            and run.get("safety_outcome") == "safe"
+            and run.get("error") == expected_error
+            and type(event_count) is int
+            and 0 < event_count <= 512
+            and len(events) == event_count
+        ):
+            continue
+
+        mobile_vnum = str(candidate.get("mobile_vnum") or "")
+        target_identity = str(
+            candidate.get("target_identity")
+            or candidate.get("target")
+            or ""
+        ).casefold()
+        target_evaluated = False
+        malformed_events = False
+        for raw_event in events:
+            event = dict(raw_event)
+            try:
+                payload = json.loads(event.get("payload_json") or "{}")
+            except (TypeError, ValueError):
+                malformed_events = True
+                break
+            if not isinstance(payload, Mapping):
+                malformed_events = True
+                break
+            if event.get("kind") == "command":
+                command = str(payload.get("command") or "").casefold().strip()
+                if command.partition(" ")[0] in {"consider", "kill"}:
+                    target_evaluated = True
+                    break
+            elif event.get("kind") == "game_event":
+                if payload.get("type") == "enemies_changed":
+                    data = payload.get("data")
+                    values = data.get("value") if isinstance(data, Mapping) else None
+                    if isinstance(values, list) and any(
+                        isinstance(enemy, Mapping)
+                        and str(enemy.get("isnpc") or "") == mobile_vnum
+                        for enemy in values
+                    ):
+                        target_evaluated = True
+                        break
+            elif event.get("kind") == "response":
+                text = str(payload.get("text") or "").casefold()
+                if target_identity and target_identity in text:
+                    target_evaluated = True
+                    break
+                if any(
+                    marker in text
+                    for marker in (
+                        "looks like an easy kill",
+                        "looks like a difficult kill",
+                        "would be a difficult kill",
+                        "would be impossible",
+                    )
+                ):
+                    target_evaluated = True
+                    break
+        if target_evaluated or malformed_events:
+            continue
+
+        updated = dict(state)
+        updated_results = dict(results)
+        updated_results[policy_id] = dict(prior_result)
+        updated["campaign_research_results"] = updated_results
+        absence_cooldowns = dict(
+            updated.get("campaign_research_absence_cooldowns") or {}
+        )
+        absence_cooldowns.pop(policy_id, None)
+        if absence_cooldowns:
+            updated["campaign_research_absence_cooldowns"] = absence_cooldowns
+        else:
+            updated.pop("campaign_research_absence_cooldowns", None)
+        cleared = {
+            str(value)
+            for value in updated.get("campaign_cleared_research_policies", ())
+        }
+        cleared.discard(policy_id)
+        if cleared:
+            updated["campaign_cleared_research_policies"] = sorted(cleared)
+        else:
+            updated.pop("campaign_cleared_research_policies", None)
+        updated["campaign_unobserved_interruption_repair"] = {
+            "policy_id": policy_id,
+            "segment_id": segment.get("id"),
+            "run_id": run_id,
+            "boot_id": boot_id,
+            "source_revision": source_revision,
+            "event_count": event_count,
+            "restored_objective_xp": prior_result["objective_xp"],
+        }
+        return updated
+    return state
+
+
 def refresh_policy_revision(
     state: dict[str, Any],
     *,
     completed_policy_ids: Collection[str] = (),
     recent_segments: Collection[Any] = (),
     recent_checkpoints: Collection[Any] = (),
+    sanctuary_route_suffix_segment: Mapping[str, Any] | None = None,
     helper_namespace: dict[str, Any],
 ) -> dict[str, Any]:
     """Apply the legacy checkpoint migration using audited campaign helpers."""
@@ -447,26 +1256,739 @@ def refresh_policy_revision(
             refreshed,
             recent_segments,
         )
+        if previous_revision < _SANCTUARY_ROUTE_SUFFIX_REVALIDATION_REVISION:
+            refreshed = _repair_moria_route_suffix_revalidation(
+                refreshed,
+                recent_segments,
+                exact_route_segment=sanctuary_route_suffix_segment,
+            )
+        if previous_revision < _SANCTUARY_END_TUNNEL_REVALIDATION_REVISION:
+            refreshed = _repair_moria_end_tunnel_revalidation(
+                refreshed,
+                recent_segments,
+            )
+        if previous_revision < _SANCTUARY_END_TUNNEL_FLIGHT_DEFER_REVISION:
+            refreshed = _repair_moria_end_tunnel_flight_defer(
+                refreshed,
+                recent_segments,
+            )
         return _restore_pounding_weapon_rearm_attempt(
             refreshed,
             recent_checkpoints,
         )
 
 
+def _repair_moria_route_suffix_revalidation(
+    state: dict[str, Any],
+    recent_segments: Collection[Any],
+    *,
+    exact_route_segment: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Reopen only the safe Moria run that skipped its registered route tail."""
+    marker_key = _SANCTUARY_ROUTE_SUFFIX_REVALIDATION_KEY
+    policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    boot_id = state.get("world_boot_id")
+    source_revision = state.get(_SOURCE_REVISION_KEY)
+    reset_marker = state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+    attempts = state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+    attempt = attempts.get(policy_id) if isinstance(attempts, Mapping) else None
+    result = _campaign_research_results(state).get(policy_id)
+    current_result_valid = result is None or (
+        isinstance(result, Mapping)
+        and result.get("boot_id") == boot_id
+        and result.get("observed") is True
+        and result.get("viable") is False
+        and result.get("completed_kill") is False
+        and result.get("retryable_failure") is True
+        and result.get("required_object_acquired") is not True
+    )
+    try:
+        level = int(state.get("level"))
+        hp = int(state.get("hp") or 0)
+        max_hp = int(state.get("max_hp") or 0)
+    except (TypeError, ValueError):
+        return state
+    if (
+        marker_key in state
+        or level != 37
+        or not boot_id
+        or not source_revision
+        or not isinstance(reset_marker, Mapping)
+        or reset_marker.get("policy_ids") != [policy_id]
+        or reset_marker.get("boot_id") != boot_id
+        or reset_marker.get("level") != level
+        or reset_marker.get("status") != "attempted"
+        or reset_marker.get("dispatch_started") is not True
+        or not isinstance(reset_marker.get("after_segment_id"), int)
+        or isinstance(reset_marker.get("after_segment_id"), bool)
+        or not isinstance(attempt, Mapping)
+        or attempt.get("boot_id") != boot_id
+        or attempt.get("level") != level
+        or attempt.get("count") != 1
+        or attempt.get("area_reset_cycle") != 1
+        or attempt.get("area_reset_after_segment_id")
+        != reset_marker.get("after_segment_id")
+        or not current_result_valid
+        or state.get("dead") is not False
+        or state.get("in_combat") is not False
+        or state.get("xp_loss_observed") is True
+        or state.get("campaign_died_during_segment") is True
+        or str(state.get("room_vnum") or "") != "3054"
+        or not {"healing", "safe"}.issubset(
+            {str(flag).casefold() for flag in state.get("room_flags", ())}
+        )
+        or state.get("position") not in {5, 6, 7}
+        or hp <= 0
+        or max_hp <= 0
+        or hp < max_hp
+        or _state_has_sanctuary_reserve(state)
+    ):
+        return state
+
+    expected_mapping = {"the maze": ["4063", "4066", "4065"]}
+    expected_endpoints = ["4020", "4066", "4065"]
+    matched_segment: dict[str, Any] | None = None
+    matched_end: dict[str, Any] | None = None
+    segment_history = tuple(recent_segments)
+    if exact_route_segment is not None:
+        segment_history = (*segment_history, exact_route_segment)
+    for raw_segment in reversed(segment_history):
+        try:
+            segment = dict(raw_segment)
+        except (TypeError, ValueError):
+            continue
+        if (
+            segment.get("phase") != policy_id
+            or segment.get("id")
+            != _SANCTUARY_ROUTE_SUFFIX_REVALIDATION_SUPERSEDED_SEGMENT_ID
+            or segment.get("sequence")
+            != _SANCTUARY_ROUTE_SUFFIX_REVALIDATION_SUPERSEDED_SEQUENCE
+            or segment.get("run_id")
+            != _SANCTUARY_ROUTE_SUFFIX_REVALIDATION_SUPERSEDED_RUN_ID
+            or segment.get("status") != "success"
+            or segment.get("execution_status") != "success"
+            or segment.get("objective_outcome") != "not_achieved"
+            or segment.get("safety_outcome") != "safe"
+            or not isinstance(segment.get("run_id"), int)
+            or isinstance(segment.get("run_id"), bool)
+            or not isinstance(segment.get("id"), int)
+            or isinstance(segment.get("id"), bool)
+        ):
+            continue
+        start = _rearm_segment_state(segment.get("start_state_json"))
+        end = _rearm_segment_state(segment.get("end_state_json"))
+        if not isinstance(start, dict) or not isinstance(end, dict):
+            continue
+        decisions = end.get("campaign_fastwalk_where_decisions")
+        if not isinstance(decisions, list) or len(decisions) != 2:
+            continue
+        first, rebase = decisions
+        area_reset_start = start.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+        area_reset_end = end.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+        attempt_start = (start.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY) or {}).get(
+            policy_id
+        )
+        attempt_end = (end.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY) or {}).get(
+            policy_id
+        )
+        if not (
+            start.get("campaign_policy_revision") == 340
+            and start.get("level") == level
+            and start.get("world_boot_id") == boot_id
+            and start.get(_SOURCE_REVISION_KEY) == source_revision
+            and isinstance(area_reset_start, Mapping)
+            and area_reset_start.get("after_segment_id")
+            == reset_marker.get("after_segment_id")
+            and area_reset_start.get("status") == "attempted"
+            and area_reset_start.get("dispatch_started") is True
+            and isinstance(area_reset_end, Mapping)
+            and area_reset_end.get("after_segment_id")
+            == reset_marker.get("after_segment_id")
+            and area_reset_end.get("status") == "attempted"
+            and area_reset_end.get("dispatch_started") is True
+            and isinstance(attempt_start, Mapping)
+            and attempt_start.get("count") == 0
+            and isinstance(attempt_end, Mapping)
+            and attempt_end.get("count") == 1
+            and attempt_end.get("area_reset_cycle") == 1
+            and end.get("level") == level
+            and end.get("campaign_policy_revision") == 340
+            and end.get("world_boot_id") == boot_id
+            and end.get(_SOURCE_REVISION_KEY) == source_revision
+            and end.get("dead") is False
+            and end.get("in_combat") is False
+            and end.get("xp_loss_observed") is False
+            and end.get("campaign_died_during_segment") is False
+            and str(end.get("room_vnum") or "") == "3054"
+            and end.get("campaign_fastwalk_where_relocation_attempts") == 1
+            and end.get("campaign_fastwalk_abort_reason") is None
+            and end.get("campaign_objective_kills") == []
+            and first.get("room_vnum") == "4064"
+            and first.get("source_mobile_vnum") == 4055
+            and first.get("target") == "large hobgoblin"
+            and first.get("locations") == ["the maze"]
+            and first.get("mapped_rooms") == expected_mapping
+            and first.get("planned_endpoints") == expected_endpoints
+            and first.get("relocation") is False
+            and rebase.get("room_vnum") == "4064"
+            and rebase.get("source_mobile_vnum") == 4055
+            and rebase.get("target") == "large hobgoblin"
+            and rebase.get("locations") == ["the maze"]
+            and rebase.get("mapped_rooms") == expected_mapping
+            and rebase.get("planned_endpoints") == expected_endpoints
+            and rebase.get("relocation") is True
+            and rebase.get("registered_route_origin") == "4012"
+            and rebase.get("selected_relocation") == ["4063"]
+        ):
+            continue
+        matched_segment = segment
+        matched_end = end
+        break
+
+    if matched_segment is None or matched_end is None:
+        return state
+
+    if result is None:
+        result = _campaign_research_results(matched_end).get(policy_id)
+    if not (
+        isinstance(result, Mapping)
+        and result.get("boot_id") == boot_id
+        and result.get("observed") is True
+        and result.get("viable") is False
+        and result.get("completed_kill") is False
+        and result.get("retryable_failure") is True
+        and result.get("required_object_acquired") is not True
+    ):
+        return state
+
+    refreshed = dict(state)
+    results = dict(_campaign_research_results(refreshed))
+    superseded_result = dict(result)
+    results.pop(policy_id, None)
+    if results:
+        refreshed["campaign_research_results"] = results
+    else:
+        refreshed.pop("campaign_research_results", None)
+    for cooldown_key in (
+        _RESEARCH_ABSENCE_COOLDOWN_KEY,
+        _RESEARCH_CROWD_COOLDOWN_KEY,
+    ):
+        cooldowns = dict(refreshed.get(cooldown_key) or {})
+        cooldowns.pop(policy_id, None)
+        if cooldowns:
+            refreshed[cooldown_key] = cooldowns
+        else:
+            refreshed.pop(cooldown_key, None)
+    cleared = [
+        str(candidate_id)
+        for candidate_id in refreshed.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
+        if str(candidate_id) != policy_id
+    ]
+    if cleared:
+        refreshed[_CLEARED_RESEARCH_POLICIES_KEY] = cleared
+    else:
+        refreshed.pop(_CLEARED_RESEARCH_POLICIES_KEY, None)
+    for key in (
+        "campaign_fastwalk_abort_reason",
+        "campaign_fastwalk_target_absent",
+        "campaign_fastwalk_target_present_observed",
+        "campaign_fastwalk_crowded",
+        "campaign_fastwalk_consider_outcomes",
+        "campaign_fastwalk_route_hazards",
+        "campaign_fastwalk_resume_checkpoint",
+        "campaign_fastwalk_where_decisions",
+        "campaign_fastwalk_where_relocation_attempts",
+        "campaign_fastwalk_required_object_vnums",
+        _SOURCE_RANKED_CANDIDATE_KEY,
+    ):
+        refreshed.pop(key, None)
+    refreshed[_SOURCE_RANKED_REVALIDATION_POLICY_KEY] = policy_id
+    refreshed[marker_key] = {
+        "policy_revision": _SANCTUARY_ROUTE_SUFFIX_REVALIDATION_REVISION,
+        "policy_id": policy_id,
+        "boot_id": boot_id,
+        "level": level,
+        "status": "pending",
+        "source_mobile_vnum": _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": _MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_revision": source_revision,
+        "superseded_run_id": matched_segment["run_id"],
+        "superseded_segment_id": matched_segment["id"],
+        "unvisited_registered_endpoints": expected_endpoints,
+        "superseded_result": superseded_result,
+        "superseded_locator_decisions": deepcopy(
+            matched_end["campaign_fastwalk_where_decisions"]
+        ),
+        "prior_area_reset_marker": deepcopy(reset_marker),
+        "prior_resource_attempt": deepcopy(attempt),
+        "reason": _SANCTUARY_ROUTE_SUFFIX_REVALIDATION_REASON,
+    }
+    return refreshed
+
+
+def _repair_moria_end_tunnel_revalidation(
+    state: dict[str, Any],
+    recent_segments: Collection[Any],
+) -> dict[str, Any]:
+    """Reopen only Dorrik's safe run whose live Moria locator missed room 4073."""
+    marker_key = _SANCTUARY_END_TUNNEL_REVALIDATION_KEY
+    policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    boot_id = state.get("world_boot_id")
+    source_revision = state.get(_SOURCE_REVISION_KEY)
+    reset_marker = state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+    attempts = state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+    attempt = attempts.get(policy_id) if isinstance(attempts, Mapping) else None
+    result = _campaign_research_results(state).get(policy_id)
+    try:
+        level = int(state.get("level"))
+        hp = int(state.get("hp") or 0)
+        max_hp = int(state.get("max_hp") or 0)
+        attempt_count = int(attempt.get("count")) if isinstance(attempt, Mapping) else -1
+    except (TypeError, ValueError):
+        return state
+    current_flags = {
+        str(flag).casefold()
+        for flag in state.get("room_flags", ())
+    }
+    if (
+        marker_key in state
+        or level != 39
+        or not boot_id
+        or not source_revision
+        or not isinstance(reset_marker, Mapping)
+        or reset_marker.get("after_segment_id")
+        != _SANCTUARY_END_TUNNEL_REVALIDATION_AFTER_SEGMENT_ID
+        or reset_marker.get("boot_id") != boot_id
+        or reset_marker.get("level") != level
+        or reset_marker.get("policy_ids") != [policy_id]
+        or reset_marker.get("status") != "attempted"
+        or reset_marker.get("dispatch_started") is not True
+        or not isinstance(attempt, Mapping)
+        or attempt.get("boot_id") != boot_id
+        or attempt.get("level") != level
+        or attempt_count != 2
+        or not isinstance(result, Mapping)
+        or result.get("boot_id") != boot_id
+        or result.get("level") != level
+        or result.get("observed") is not True
+        or result.get("viable") is not False
+        or result.get("completed_kill") is not False
+        or result.get("fatal_failure") is not True
+        or result.get("required_object_acquired") is True
+        or result.get("route_hazard")
+        != "sanctuary resource route exhausted after 2 failed attempts"
+        or state.get("dead") is not False
+        or state.get("in_combat") is not False
+        or state.get("xp_loss_observed") is True
+        or state.get("campaign_died_during_segment") is True
+        or str(state.get("room_vnum") or "") != "3054"
+        or not {"healing", "safe"}.issubset(current_flags)
+        or state.get("position") not in {5, 6, 7}
+        or hp <= 0
+        or max_hp <= 0
+        or hp < max_hp
+        or _state_has_sanctuary_reserve(state)
+    ):
+        return state
+
+    matched_segment: dict[str, Any] | None = None
+    matched_end: dict[str, Any] | None = None
+    for raw_segment in reversed(tuple(recent_segments)):
+        try:
+            segment = dict(raw_segment)
+        except (TypeError, ValueError):
+            continue
+        if (
+            segment.get("id") != _SANCTUARY_END_TUNNEL_REVALIDATION_SEGMENT_ID
+            or segment.get("sequence")
+            != _SANCTUARY_END_TUNNEL_REVALIDATION_SEQUENCE
+            or segment.get("run_id") != _SANCTUARY_END_TUNNEL_REVALIDATION_RUN_ID
+            or segment.get("phase") != policy_id
+            or segment.get("status") != "success"
+            or segment.get("execution_status") != "success"
+            or segment.get("objective_outcome") != "not_achieved"
+            or segment.get("safety_outcome") != "safe"
+        ):
+            continue
+        start = _rearm_segment_state(segment.get("start_state_json"))
+        end = _rearm_segment_state(segment.get("end_state_json"))
+        if not isinstance(start, dict) or not isinstance(end, dict):
+            continue
+        start_reset = start.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+        end_reset = end.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+        start_attempts = start.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+        end_attempts = end.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+        start_attempt = (
+            start_attempts.get(policy_id)
+            if isinstance(start_attempts, Mapping)
+            else None
+        )
+        end_attempt = (
+            end_attempts.get(policy_id)
+            if isinstance(end_attempts, Mapping)
+            else None
+        )
+        decisions = end.get("campaign_fastwalk_where_decisions")
+        if not isinstance(decisions, list) or len(decisions) != 5:
+            continue
+        try:
+            end_hp = int(end.get("hp") or 0)
+            end_max_hp = int(end.get("max_hp") or 0)
+        except (TypeError, ValueError):
+            continue
+        late_sightings = decisions[-2:]
+        exact_sighting_miss = all(
+            isinstance(decision, Mapping)
+            and decision.get("source_mobile_vnum") == 4055
+            and decision.get("target") == "large hobgoblin"
+            and decision.get("room_vnum") == room_vnum
+            and {"the large cave", "end of tunnel"}.issubset(
+                {str(location).casefold() for location in decision.get("locations", ())}
+            )
+            and "end of tunnel" not in {
+                str(location).casefold()
+                for location in (decision.get("mapped_rooms") or {})
+            }
+            and "4073" not in {
+                str(endpoint)
+                for endpoint in decision.get("planned_endpoints", ())
+            }
+            and decision.get("relocation") is False
+            for decision, room_vnum in zip(late_sightings, ("4071", "4069"))
+        )
+        if not (
+            start.get("campaign_policy_revision") == 341
+            and end.get("campaign_policy_revision") == 341
+            and start.get("level") == level
+            and end.get("level") == level
+            and start.get("world_boot_id") == boot_id
+            and end.get("world_boot_id") == boot_id
+            and start.get(_SOURCE_REVISION_KEY) == source_revision
+            and end.get(_SOURCE_REVISION_KEY) == source_revision
+            and isinstance(start_reset, Mapping)
+            and start_reset.get("after_segment_id")
+            == _SANCTUARY_END_TUNNEL_REVALIDATION_AFTER_SEGMENT_ID
+            and start_reset.get("status") == "attempted"
+            and start_reset.get("dispatch_started") is True
+            and isinstance(end_reset, Mapping)
+            and end_reset.get("after_segment_id")
+            == _SANCTUARY_END_TUNNEL_REVALIDATION_AFTER_SEGMENT_ID
+            and end_reset.get("status") == "attempted"
+            and end_reset.get("dispatch_started") is True
+            and isinstance(start_attempt, Mapping)
+            and start_attempt.get("boot_id") == boot_id
+            and start_attempt.get("level") == level
+            and start_attempt.get("count") == 0
+            and start_attempt.get("prior_count") == 2
+            and start_attempt.get("area_reset_cycle") == 1
+            and start_attempt.get("area_reset_after_segment_id")
+            == _SANCTUARY_END_TUNNEL_REVALIDATION_AFTER_SEGMENT_ID
+            and isinstance(end_attempt, Mapping)
+            and end_attempt.get("boot_id") == boot_id
+            and end_attempt.get("level") == level
+            and end_attempt.get("count") == 1
+            and end_attempt.get("prior_count") == 2
+            and end_attempt.get("area_reset_cycle") == 1
+            and end_attempt.get("area_reset_after_segment_id")
+            == _SANCTUARY_END_TUNNEL_REVALIDATION_AFTER_SEGMENT_ID
+            and start.get("xp") == end.get("xp") == state.get("xp")
+            and start.get("campaign_xp_loss_total")
+            == end.get("campaign_xp_loss_total")
+            == state.get("campaign_xp_loss_total")
+            and start.get("dead") is False
+            and end.get("dead") is False
+            and start.get("in_combat") is False
+            and end.get("in_combat") is False
+            and end.get("xp_loss_observed") is False
+            and end.get("campaign_died_during_segment") is False
+            and str(end.get("room_vnum") or "") == "3054"
+            and {"healing", "safe"}.issubset(
+                {str(flag).casefold() for flag in end.get("room_flags", ())}
+            )
+            and end.get("position") in {5, 6, 7}
+            and end_hp > 0
+            and end_max_hp > 0
+            and end_hp >= end_max_hp
+            and end.get("campaign_objective_kills") == []
+            and end.get("campaign_fastwalk_abort_reason") is None
+            and exact_sighting_miss
+        ):
+            continue
+        matched_segment = segment
+        matched_end = end
+        break
+
+    if matched_segment is None or matched_end is None:
+        return state
+
+    refreshed = dict(state)
+    results = dict(_campaign_research_results(refreshed))
+    superseded_result = dict(result)
+    results.pop(policy_id, None)
+    if results:
+        refreshed["campaign_research_results"] = results
+    else:
+        refreshed.pop("campaign_research_results", None)
+    for cooldown_key in (
+        _RESEARCH_ABSENCE_COOLDOWN_KEY,
+        _RESEARCH_CROWD_COOLDOWN_KEY,
+    ):
+        cooldowns = dict(refreshed.get(cooldown_key) or {})
+        cooldowns.pop(policy_id, None)
+        if cooldowns:
+            refreshed[cooldown_key] = cooldowns
+        else:
+            refreshed.pop(cooldown_key, None)
+    cleared = [
+        str(candidate_id)
+        for candidate_id in refreshed.get(_CLEARED_RESEARCH_POLICIES_KEY, ())
+        if str(candidate_id) != policy_id
+    ]
+    if cleared:
+        refreshed[_CLEARED_RESEARCH_POLICIES_KEY] = cleared
+    else:
+        refreshed.pop(_CLEARED_RESEARCH_POLICIES_KEY, None)
+    for key in (
+        "campaign_fastwalk_abort_reason",
+        "campaign_fastwalk_target_absent",
+        "campaign_fastwalk_target_present_observed",
+        "campaign_fastwalk_crowded",
+        "campaign_fastwalk_consider_outcomes",
+        "campaign_fastwalk_route_hazards",
+        "campaign_fastwalk_resume_checkpoint",
+        "campaign_fastwalk_where_decisions",
+        "campaign_fastwalk_where_relocation_attempts",
+        "campaign_fastwalk_required_object_vnums",
+        _SOURCE_RANKED_CANDIDATE_KEY,
+    ):
+        refreshed.pop(key, None)
+    refreshed[_SOURCE_RANKED_REVALIDATION_POLICY_KEY] = policy_id
+    refreshed[marker_key] = {
+        "policy_revision": _SANCTUARY_END_TUNNEL_REVALIDATION_REVISION,
+        "policy_id": policy_id,
+        "boot_id": boot_id,
+        "level": level,
+        "status": "pending",
+        "source_mobile_vnum": _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": _MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_revision": source_revision,
+        "missing_endpoint_room_vnum": "4073",
+        "superseded_run_id": matched_segment["run_id"],
+        "superseded_segment_id": matched_segment["id"],
+        "superseded_sequence": matched_segment["sequence"],
+        "superseded_locator_decisions": deepcopy(
+            matched_end["campaign_fastwalk_where_decisions"][-2:]
+        ),
+        "superseded_result": superseded_result,
+        "prior_area_reset_marker": deepcopy(reset_marker),
+        "reason": _SANCTUARY_END_TUNNEL_REVALIDATION_REASON,
+    }
+    return refreshed
+
+
+def _repair_moria_end_tunnel_flight_defer(
+    state: dict[str, Any],
+    recent_segments: Collection[Any],
+) -> dict[str, Any]:
+    """Restore the locator receipt after its exact no-flight preflight stop."""
+    policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    marker_key = _SANCTUARY_END_TUNNEL_REVALIDATION_KEY
+    marker = state.get(marker_key)
+    reset_marker = state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+    result = _campaign_research_results(state).get(policy_id)
+    boot_id = state.get("world_boot_id")
+    source_revision = state.get(_SOURCE_REVISION_KEY)
+    try:
+        level = int(state.get("level"))
+        attempt = (state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY) or {}).get(
+            policy_id
+        )
+        attempt_count = int(attempt.get("count")) if isinstance(attempt, Mapping) else -1
+        hp = int(state.get("hp") or 0)
+        max_hp = int(state.get("max_hp") or 0)
+    except (TypeError, ValueError):
+        return state
+    flags = {
+        str(flag).casefold()
+        for flag in state.get("room_flags", ())
+    }
+    if (
+        not isinstance(marker, Mapping)
+        or marker.get("policy_revision")
+        != _SANCTUARY_END_TUNNEL_REVALIDATION_REVISION
+        or marker.get("policy_id") != policy_id
+        or marker.get("boot_id") != boot_id
+        or marker.get("level") != level
+        or marker.get("source_revision") != source_revision
+        or marker.get("status") != "failed"
+        or marker.get("superseded_run_id")
+        != _SANCTUARY_END_TUNNEL_REVALIDATION_RUN_ID
+        or marker.get("superseded_segment_id")
+        != _SANCTUARY_END_TUNNEL_REVALIDATION_SEGMENT_ID
+        or level != 39
+        or not boot_id
+        or not source_revision
+        or state.get("campaign_flight_funding_required") is not True
+        or not isinstance(reset_marker, Mapping)
+        or reset_marker.get("after_segment_id")
+        != _SANCTUARY_END_TUNNEL_REVALIDATION_AFTER_SEGMENT_ID
+        or reset_marker.get("boot_id") != boot_id
+        or reset_marker.get("level") != level
+        or reset_marker.get("status") != "attempted"
+        or reset_marker.get("dispatch_started") is not True
+        or not isinstance(attempt, Mapping)
+        or attempt.get("boot_id") != boot_id
+        or attempt.get("level") != level
+        or attempt_count != 3
+        or not isinstance(result, Mapping)
+        or result.get("boot_id") != boot_id
+        or result.get("level") != level
+        or result.get("fatal_failure") is not True
+        or result.get("completed_kill") is not False
+        or state.get("campaign_fastwalk_abort_reason")
+        != "field route requires active fly or levitation"
+        or str(state.get("room_vnum") or "") != "3054"
+        or not {"safe", "healing"}.issubset(flags)
+        or state.get("dead") is not False
+        or state.get("in_combat") is not False
+        or state.get("xp_loss_observed") is True
+        or hp <= 0
+        or max_hp <= 0
+        or hp < max_hp
+        or _state_flight_duration(state.get("affects")) is not None
+    ):
+        return state
+
+    matched_segment: dict[str, Any] | None = None
+    for raw_segment in reversed(tuple(recent_segments)):
+        try:
+            segment = dict(raw_segment)
+        except (TypeError, ValueError):
+            continue
+        if (
+            segment.get("id") != _SANCTUARY_END_TUNNEL_FLIGHT_DEFER_SEGMENT_ID
+            or segment.get("sequence")
+            != _SANCTUARY_END_TUNNEL_FLIGHT_DEFER_SEQUENCE
+            or segment.get("run_id")
+            != _SANCTUARY_END_TUNNEL_FLIGHT_DEFER_RUN_ID
+            or segment.get("phase") != policy_id
+            or segment.get("status") != "success"
+            or segment.get("execution_status") != "success"
+            or segment.get("objective_outcome") != "not_achieved"
+            or segment.get("safety_outcome") != "safe"
+        ):
+            continue
+        start = _rearm_segment_state(segment.get("start_state_json"))
+        end = _rearm_segment_state(segment.get("end_state_json"))
+        if not isinstance(start, dict) or not isinstance(end, dict):
+            continue
+        start_marker = start.get(marker_key)
+        end_marker = end.get(marker_key)
+        if not (
+            start.get("campaign_policy_revision") == 342
+            and end.get("campaign_policy_revision") == 342
+            and start.get("level") == level
+            and end.get("level") == level
+            and start.get("world_boot_id") == boot_id
+            and end.get("world_boot_id") == boot_id
+            and start.get(_SOURCE_REVISION_KEY) == source_revision
+            and end.get(_SOURCE_REVISION_KEY) == source_revision
+            and isinstance(start_marker, Mapping)
+            and start_marker.get("status") == "attempted"
+            and start_marker.get("superseded_run_id")
+            == _SANCTUARY_END_TUNNEL_REVALIDATION_RUN_ID
+            and isinstance(end_marker, Mapping)
+            and end_marker.get("status") == "failed"
+            and end_marker.get("superseded_segment_id")
+            == _SANCTUARY_END_TUNNEL_REVALIDATION_SEGMENT_ID
+            and start.get("xp") == end.get("xp") == state.get("xp")
+            and start.get("campaign_xp_loss_total")
+            == end.get("campaign_xp_loss_total")
+            == state.get("campaign_xp_loss_total")
+            and end.get("xp_loss_observed") is False
+            and end.get("campaign_died_during_segment") is False
+            and end.get("dead") is False
+            and end.get("in_combat") is False
+            and str(end.get("room_vnum") or "") == "3054"
+            and {"safe", "healing"}.issubset(
+                {str(flag).casefold() for flag in end.get("room_flags", ())}
+            )
+            and int(end.get("hp") or 0) >= int(end.get("max_hp") or 1)
+            and end.get("campaign_fastwalk_abort_reason")
+            == "field route requires active fly or levitation"
+            and end.get("campaign_flight_funding_required") is True
+            and end.get("campaign_objective_kills") == []
+            and end.get("campaign_fastwalk_where_decisions") == []
+            and _state_flight_duration(end.get("affects")) is None
+        ):
+            continue
+        matched_segment = segment
+        break
+
+    if matched_segment is None:
+        return state
+
+    refreshed = dict(state)
+    refreshed[marker_key] = {
+        **dict(marker),
+        "status": "pending",
+        "deferred_after_run_id": matched_segment["run_id"],
+        "deferred_after_segment_id": matched_segment["id"],
+        "outcome": (
+            "deferred until flight is refreshed; the Moria route was not entered"
+        ),
+    }
+    results = dict(_campaign_research_results(refreshed))
+    results.pop(policy_id, None)
+    if results:
+        refreshed["campaign_research_results"] = results
+    else:
+        refreshed.pop("campaign_research_results", None)
+    for cooldown_key in (
+        _RESEARCH_ABSENCE_COOLDOWN_KEY,
+        _RESEARCH_CROWD_COOLDOWN_KEY,
+    ):
+        cooldowns = dict(refreshed.get(cooldown_key) or {})
+        cooldowns.pop(policy_id, None)
+        if cooldowns:
+            refreshed[cooldown_key] = cooldowns
+        else:
+            refreshed.pop(cooldown_key, None)
+    refreshed[_SOURCE_RANKED_REVALIDATION_POLICY_KEY] = policy_id
+    for key in (
+        "campaign_fastwalk_abort_reason",
+        "campaign_fastwalk_target_absent",
+        "campaign_fastwalk_target_present_observed",
+        "campaign_fastwalk_crowded",
+        "campaign_fastwalk_consider_outcomes",
+        "campaign_fastwalk_route_hazards",
+        "campaign_fastwalk_where_decisions",
+        "campaign_fastwalk_where_relocation_attempts",
+        _SOURCE_RANKED_CANDIDATE_KEY,
+    ):
+        refreshed.pop(key, None)
+    return refreshed
+
+
 def _repair_dwarven_locked_key_gate(
     state: dict[str, Any],
     recent_segments: Collection[Any],
 ) -> dict[str, Any]:
-    """Restore the exact current locked-door blocker from its safe segment."""
+    """Restore the exact current Dwarven key-gate blocker from its safe segment."""
     policy_id = _SOURCE_RANKED_DWARVEN_SANCTUARY_POLICY.policy_id
-    reason = _DWARVEN_LOCKED_KEY_GATE_ABORT_REASON
+    reason = str(state.get("campaign_fastwalk_abort_reason") or "")
+    accepted_reasons = {
+        _DWARVEN_LOCKED_KEY_GATE_ABORT_REASON,
+        _DWARVEN_LOCKED_KEY_HANDOFF_ABORT_REASON,
+        _DWARVEN_KEY_HANDOFF_ACK_FAILURE_ABORT_REASON,
+    }
     boot_id = str(state.get("world_boot_id") or "")
     level = _rearm_integer(state.get("level"))
     if not (
         boot_id
         and level is not None
         and state.get("campaign_last_policy") == policy_id
-        and state.get("campaign_fastwalk_abort_reason") == reason
+        and reason in accepted_reasons
         and not _dwarven_key_gate_key_acquired(state)
     ):
         return state
@@ -492,6 +2014,11 @@ def _repair_dwarven_locked_key_gate(
         segment_id = int(latest_segment.get("id"))
     except (TypeError, ValueError):
         return state
+    route_hazard = (
+        "route: west remained locked after open"
+        if reason == _DWARVEN_LOCKED_KEY_GATE_ABORT_REASON
+        else reason
+    )
     if not (
         run_id > 0
         and command_count > 0
@@ -504,7 +2031,7 @@ def _repair_dwarven_locked_key_gate(
         and _rearm_integer(latest_end.get("level")) == level
         and latest_end.get("campaign_last_policy") == policy_id
         and latest_end.get("campaign_fastwalk_abort_reason") == reason
-        and "route: west remained locked after open"
+        and route_hazard
         in (latest_end.get("campaign_fastwalk_route_hazards") or ())
         and not latest_end.get("campaign_objective_kills")
         and not latest_end.get("campaign_completed_kills")
@@ -1098,6 +2625,131 @@ def restore_checkpointed_sanctuary_attempts(
         return state
     updated = dict(state)
     updated[attempts_key] = attempts
+    return updated
+
+
+def restore_stale_sanctuary_absence(
+    state: Mapping[str, Any],
+    recent_segments: Collection[Any],
+) -> dict[str, Any]:
+    """Restore a fresh sanctuary-route miss hidden by an older-level failure."""
+    from .campaign import (
+        _RESEARCH_ABSENCE_COOLDOWN_KEY,
+        _RESEARCH_CROWD_COOLDOWN_KEY,
+        _SANCTUARY_RESOURCE_POLICY_IDS,
+        _campaign_research_results,
+        _research_absence_retry_cooldown,
+        _state_has_sanctuary_reserve,
+    )
+
+    boot_id = state.get("world_boot_id")
+    level = _rearm_integer(state.get("level"))
+    if level is None:
+        return dict(state)
+    policy_id = str(state.get("campaign_last_policy") or "")
+    if (
+        not boot_id
+        or policy_id not in _SANCTUARY_RESOURCE_POLICY_IDS
+        or _state_has_sanctuary_reserve(state)
+    ):
+        return dict(state)
+
+    previous_result = _campaign_research_results(dict(state)).get(policy_id)
+    if not (
+        isinstance(previous_result, Mapping)
+        and previous_result.get("fatal_failure") is True
+        and previous_result.get("boot_id") == boot_id
+        and _rearm_integer(previous_result.get("level")) != level
+        and previous_result.get("required_object_acquired") is not True
+    ):
+        return dict(state)
+
+    latest_segment: Mapping[str, Any] | None = None
+    latest_end: Mapping[str, Any] | None = None
+    for raw_segment in reversed(tuple(recent_segments)):
+        try:
+            segment = dict(raw_segment)
+        except (TypeError, ValueError):
+            continue
+        if (
+            segment.get("phase") != policy_id
+            or segment.get("status") != "success"
+            or segment.get("error")
+        ):
+            continue
+        try:
+            run_id = int(segment.get("run_id") or 0)
+            command_count = int(segment.get("command_count") or 0)
+            start = json.loads(segment.get("start_state_json") or "{}")
+            end = json.loads(segment.get("end_state_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(start, Mapping) or not isinstance(end, Mapping):
+            continue
+        sightings = end.get("campaign_fastwalk_source_absent_sightings")
+        exact_absence = any(
+            isinstance(sighting, Mapping)
+            and sighting.get("policy_id") == policy_id
+            and str(sighting.get("room_vnum") or "")
+            and str(sighting.get("target") or "")
+            for sighting in sightings
+        ) if isinstance(sightings, (list, tuple)) else False
+        if not (
+            run_id > 0
+            and command_count > 0
+            and start.get("world_boot_id") == boot_id
+            and end.get("world_boot_id") == boot_id
+            and _rearm_integer(start.get("level")) == level
+            and _rearm_integer(end.get("level")) == level
+            and start.get("xp") == end.get("xp")
+            and (
+                not state.get("campaign_source_revision")
+                or end.get("campaign_source_revision")
+                == state.get("campaign_source_revision")
+            )
+            and end.get("campaign_fastwalk_target_absent") is True
+            and end.get("campaign_fastwalk_target_present_observed") is False
+            and exact_absence
+            and not end.get("campaign_objective_kills")
+            and not end.get("campaign_completed_kills")
+            and end.get("campaign_died_during_segment") is not True
+            and end.get("dead") is not True
+            and end.get("campaign_fastwalk_abort_reason") in (None, "")
+            and end.get("campaign_fastwalk_route_hazards") in (None, [])
+        ):
+            continue
+        latest_segment = segment
+        latest_end = end
+        break
+
+    if latest_segment is None or latest_end is None:
+        return dict(state)
+    cooldown = _research_absence_retry_cooldown(policy_id)
+    if cooldown is None:
+        return dict(state)
+
+    updated = dict(state)
+    results = dict(_campaign_research_results(updated))
+    results[policy_id] = {
+        "observed": False,
+        "viable": False,
+        "absent": True,
+        "boot_id": boot_id,
+        "reconstructed_from_run_id": int(latest_segment["run_id"]),
+        "reconstructed_from_segment_id": latest_segment.get("id"),
+    }
+    updated["campaign_research_results"] = results
+    absence_cooldowns = dict(
+        updated.get(_RESEARCH_ABSENCE_COOLDOWN_KEY) or {}
+    )
+    absence_cooldowns[policy_id] = cooldown
+    updated[_RESEARCH_ABSENCE_COOLDOWN_KEY] = absence_cooldowns
+    crowd_cooldowns = dict(updated.get(_RESEARCH_CROWD_COOLDOWN_KEY) or {})
+    crowd_cooldowns.pop(policy_id, None)
+    if crowd_cooldowns:
+        updated[_RESEARCH_CROWD_COOLDOWN_KEY] = crowd_cooldowns
+    else:
+        updated.pop(_RESEARCH_CROWD_COOLDOWN_KEY, None)
     return updated
 
 

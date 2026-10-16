@@ -16,7 +16,12 @@ from dd4tester.equipment import GearCatalog
 from dd4tester.hunt_candidates import ACT_AGGRESSIVE, ACT_SENTINEL, ExitSource, MobileSource, MobReset, RoomSource, WorldSource
 from dd4tester.starter import _CLASS_TRAINERS, StarterPolicy, plan_local_training_fallback
 from dd4tester.state import CharacterState
-from dd4tester.teaching import parse_skill_groups, practice_gain, teacher_capacity
+from dd4tester.teaching import (
+    parse_skill_groups,
+    parse_skill_target_types,
+    practice_gain,
+    teacher_capacity,
+)
 from dd4tester.training import parse_practice_listing, training_priorities_for
 
 
@@ -44,6 +49,24 @@ def test_source_groups_resolve_real_names_and_multiple_memberships():
     assert teacher_capacity({"armed combat knowledge": 80, "defense knowledge": 39}, "mixed action", groups) is None
     assert teacher_capacity({"mixed action": 85}, "mixed action", groups) == 85
     assert teacher_capacity({}, "unknown", groups) is None
+
+
+def test_source_skill_target_types_resolve_item_spell_targets():
+    source = '''
+    const struct skill_type skill_table[MAX_SKILL] = {
+        {"sanctuary", &gsn_sanctuary, TYPE_INT, TAR_CHAR_DEFENSIVE,
+         spell_sanctuary, 75, 12, "", "wear off"},
+        {"earthquake", &gsn_earthquake, TYPE_INT, TAR_CHAR_OFFENSIVE,
+         spell_earthquake, 20, 12, "", "wear off"}
+    };
+    '''
+
+    targets = parse_skill_target_types(source)
+
+    assert targets == {
+        "sanctuary": "TAR_CHAR_DEFENSIVE",
+        "earthquake": "TAR_CHAR_OFFENSIVE",
+    }
 
 
 @pytest.mark.parametrize("source", [
@@ -106,6 +129,38 @@ def _plan(world, character_class="warrior", skill="dodge", **updates):
     return plan_local_training_fallback(world, **values)
 
 
+def _distant_level20_teacher_world(*, recall_vnum=3001):
+    rooms = {
+        3001: RoomSource(
+            3001, "Recall", "midgaard.are",
+            exits={"north": ExitSource("north", 3054, 0, -1)},
+        ),
+        3054: RoomSource(
+            3054, "Healer", "midgaard.are",
+            exits={"south": ExitSource("south", 3001, 0, -1)},
+        ),
+    }
+    previous = 3001
+    for step in range(1, 14):
+        room_vnum = 4000 + step
+        rooms[previous].exits["east"] = ExitSource("east", room_vnum, 0, -1)
+        rooms[room_vnum] = RoomSource(room_vnum, "Kerofk road", "kerofk.are")
+        previous = room_vnum
+    return WorldSource(
+        rooms=rooms,
+        mobiles={900: MobileSource(
+            900, "captain", "the Captain", 20, ACT_SENTINEL, 0, "kerofk.are",
+            teachings=(
+                ("teacher base", 20), ("warrior base", 30),
+                ("armed combat knowledge", 80), ("parry", 80),
+            ),
+        )},
+        mob_resets=[MobReset(900, previous, 1, ())],
+        skill_groups={"parry": (("group defense", 0),)},
+        area_recalls={"kerofk.are": recall_vnum},
+    )
+
+
 @pytest.mark.parametrize("character_class", ["warrior", "thief", "mage"])
 def test_registered_local_guild_can_offer_class_appropriate_gain(character_class):
     world, skill = _world(character_class)
@@ -115,6 +170,41 @@ def test_registered_local_guild_can_offer_class_appropriate_gain(character_class
     assert fallback.route.room_vnum == _CLASS_TRAINERS[character_class].room_vnum
     assert fallback.gains[0][0] == skill
     assert fallback.gains[0][2] > 28
+
+
+def test_level20_teacher_is_only_selected_as_an_explicit_bounded_fallback():
+    world = _distant_level20_teacher_world()
+    common = dict(
+        character_level=37, known_skill_levels={"parry": 62}, stats=STATS,
+        practice_balances=(1, 0),
+    )
+
+    assert plan_local_training_fallback(
+        world, character_class="warrior", subclass="Knight", **common,
+    ) is None
+    fallback = plan_local_training_fallback(
+        world, character_class="warrior", subclass="Knight",
+        allow_level20_teacher=True, current_move=60, **common,
+    )
+
+    assert fallback is not None
+    assert fallback.teacher_mobile_vnum == 900
+    assert fallback.route.room_vnum == "4013"
+    assert fallback.route.minimum_level == 20
+    assert fallback.gains == (("parry", 62, 64),)
+    assert fallback.estimated_walk_movement_cost is not None
+    assert fallback.return_recall_vnum == 3001
+
+
+@pytest.mark.parametrize("current_move,recall_vnum", [(47, 3001), (60, 30272)])
+def test_level20_teacher_requires_movement_and_default_recall(current_move, recall_vnum):
+    world = _distant_level20_teacher_world(recall_vnum=recall_vnum)
+    assert plan_local_training_fallback(
+        world, character_class="warrior", subclass="Knight",
+        character_level=37, known_skill_levels={"parry": 62}, stats=STATS,
+        practice_balances=(1, 0), allow_level20_teacher=True,
+        current_move=current_move,
+    ) is None
 
 
 @pytest.mark.parametrize("updates", [

@@ -4,10 +4,19 @@ from dataclasses import dataclass, replace
 
 from .equipment import is_bow, normalize_item_name
 from .hunt_candidates import (
+    AFF_SANCTUARY, ITEM_INSTRUMENT,
     ITEM_DONOT_RANDOMISE, ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF, ITEM_WAND, ITEM_WEAPON,
-    HuntCandidate, SourceCombatOutput, WorldSource,
+    HuntCandidate, MobileSource, SourceCombatOutput, WorldSource,
     _apply_mobile_damage_modifier, _mobile_normal_hit_damage,
 )
+
+_AFF_PROTECT = 1 << 13
+_AFF_BATTLE_AURA = 1 << 22
+_AFF_GLOBE = 1 << 24
+_ITEM_HUM = 1 << 1
+_ITEM_TAKE = 1
+_ITEM_HOLD = 1 << 14
+_WEAR_HOLD = 17
 
 
 def sanctuary_limited_output(output: SourceCombatOutput) -> SourceCombatOutput:
@@ -21,6 +30,52 @@ def sanctuary_limited_output(output: SourceCombatOutput) -> SourceCombatOutput:
         field: value // 2 if (value := getattr(output, field)) is not None else None
         for field in fields
     }, source_reference=f"{output.source_reference}; fight.c:target sanctuary")
+
+
+def source_mobile_has_sanctuary(mobile: MobileSource | None) -> bool:
+    """Return whether source flags show DD4's victim-side sanctuary effect."""
+    return bool(mobile is not None and mobile.affected_flags & AFF_SANCTUARY)
+
+
+def unarmed_inert_instrument_reset(
+    world: WorldSource | None,
+    *,
+    mobile_vnum: int,
+    room_vnum: int,
+) -> bool:
+    """Audit a singleton reset holding only an inert, source-defined instrument.
+
+    DD4's ``db.c`` leaves ITEM_INSTRUMENT values unchanged during object
+    randomisation. This permits only a takeable/holdable, zero-value,
+    zero-affect instrument with no flag beyond HUM; it never admits weapons,
+    consumables, hidden affects, or carried extras.
+    """
+    if world is None:
+        return False
+    resets = [
+        reset for reset in world.mob_resets
+        if reset.mobile_vnum == mobile_vnum
+    ]
+    if (
+        len(resets) != 1
+        or resets[0].room_vnum != room_vnum
+        or resets[0].maximum_count != 1
+        or len(resets[0].equipment) != 1
+        or resets[0].equipment[0][0] != _WEAR_HOLD
+        or tuple(dict.fromkeys(resets[0].object_vnums))
+        != (resets[0].equipment[0][1],)
+    ):
+        return False
+    item = world.objects.get(resets[0].equipment[0][1])
+    return bool(
+        item is not None
+        and item.item_type == ITEM_INSTRUMENT
+        and item.values
+        and all(type(value) is int and value == 0 for value in item.values)
+        and not item.affects
+        and item.extra_flags == _ITEM_HUM
+        and item.wear_flags == (_ITEM_TAKE | _ITEM_HOLD)
+    )
 
 
 @dataclass(frozen=True)
@@ -49,7 +104,10 @@ class SingleWeaponLoadout:
 
 
 def single_weapon_loadout(
-    candidate: HuntCandidate, world: WorldSource | None,
+    candidate: HuntCandidate,
+    world: WorldSource | None,
+    *,
+    character_alignment: int | None = None,
 ) -> SingleWeaponLoadout | None:
     """Audit a singleton prototype; movement never grants combat permission."""
     if (
@@ -68,7 +126,14 @@ def single_weapon_loadout(
         or candidate.level != mobile.level
         or candidate.source_damage_modifier != mobile.damage_modifier
         or mobile.rank.casefold() not in {"common", "none"}
-        or mobile.affected_flags & ((1 << 13) | (1 << 22) | (1 << 24))
+        or mobile.affected_flags & (_AFF_BATTLE_AURA | _AFF_GLOBE)
+        or (
+            mobile.affected_flags & _AFF_PROTECT
+            and (
+                type(character_alignment) is not int
+                or abs(character_alignment - mobile.alignment) > 750
+            )
+        )
         or len(resets) != 1 or resets[0].room_vnum != candidate.room_vnum
         or resets[0].maximum_count != 1
     ):
@@ -118,5 +183,5 @@ def single_weapon_loadout(
                 return None
     return SingleWeaponLoadout(
         weapon_vnum, damage_bonus, hitpoint_bonus, tuple(slots),
-        target_sanctuary=bool(mobile.affected_flags & (1 << 7)),
+        target_sanctuary=source_mobile_has_sanctuary(mobile),
     )

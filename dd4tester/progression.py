@@ -2486,6 +2486,24 @@ _THALOS_LONG_DAGGER_UPGRADE_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_BUY_SEE_INVISIBLE_POLICY = ProgressionPolicy(
+    policy_id="buy-see-invisible-potion",
+    minimum_level=1,
+    maximum_level=None,
+    status="research",
+    execution="buy-see-invisible",
+    summary=(
+        "Check the live Magic Shop stock and price, then buy and verify a "
+        "see-invisible potion before travelling to a source-invisible target."
+    ),
+    evidence=(
+        "DD4 midgaard.are resets a yellow see-invisible potion to the Wizard "
+        "Shop Keeper; each run must still confirm live stock, price, purchase, "
+        "and the active detect-invisibility affect.",
+    ),
+    practice_skill=None,
+)
+
 _BUY_FLIGHT_POLICY = ProgressionPolicy(
     policy_id="buy-flight-potion",
     minimum_level=5,
@@ -2764,6 +2782,64 @@ _VAMPIRE_CATACOMBS_LEVEL_25_32_POLICY = ProgressionPolicy(
     practice_skill=None,
     segment_kill_limit=3,
     source_mobile_vnums=(9515, 9513, 9535),
+)
+
+_VAMPIRE_CATACOMBS_LEVEL_38_40_POLICY = ProgressionPolicy(
+    policy_id="vampire-catacombs-hunt-38-40",
+    minimum_level=38,
+    maximum_level=40,
+    status="research",
+    execution="vampire-catacombs-hunt",
+    summary=(
+        "Use the documented Kerofk entrance for bounded level-38-to-40 "
+        "Catacombs hunts against exact, source-registered targets."
+    ),
+    evidence=(
+        "The bouncer's source program transfers players above level 14 into "
+        "room 9500; the fixed recall route ends at the bouncer in room 9571.",
+        "Anton (9501) is an additional level-35 passive sentinel in room 9506. "
+        "His singleton reset wields the source-identified chef's knife and "
+        "carries a loose paintbrush wand; fight.c only uses a wand from "
+        "WEAR_HOLD, which the source reset does not assign. The entry-to-room "
+        "route is north, open east, east, avoiding the locked door at 9523. "
+        "Deeper targets need a verified key route.",
+        "Target eligibility follows source level and fresh live consider, not "
+        "target HP. Keep exact identity, route, isolation, incoming-damage, "
+        "and Dorrik's own 20-percent withdrawal checks; wandering targets use "
+        "the source-mapped eight-room locator graph.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+    source_mobile_vnums=(9501, 9524, 9525, 9545, 9546, 9547),
+)
+
+_VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(
+    policy_id="vampire-catacombs-key-unlock-38-39",
+    minimum_level=38,
+    maximum_level=39,
+    status="research",
+    execution="vampire-catacombs-hunt",
+    summary=(
+        "If ordinary Catacombs targets are exhausted, acquire Joan's exact "
+        "spiked key to open the deeper current-band route."
+    ),
+    evidence=(
+        "Joan (9506) has one level-35 reset in room 9517. The reset carries "
+        "the takeable spiked key (9565), which opens the locked east exit "
+        "from room 9523 into the deeper Catacombs.",
+        "Joan is aggressive but unarmed, has no special or mobile program, "
+        "and shares the room with the source-audited passive Peter (9507). "
+        "Enter at 95% health, require exact live identity and a useful live "
+        "consider before committing to the kill, and retain the 20% combat "
+        "withdrawal floor.",
+        "This one-kill objective is selectable only when an exact source "
+        "inventory audit confirms the key is absent and a key-enabled "
+        "current-band target becomes reachable. The deeper route is not "
+        "authorized until the acquired key is confirmed in inventory.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+    source_mobile_vnums=(9506,),
 )
 
 _VAMPIRE_CATACOMBS_MARTIN_LEVEL_25_32_POLICY = replace(
@@ -5377,6 +5453,96 @@ _MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY = ProgressionPolicy(
 )
 
 
+_MIRROR_REALM_JERRY_GARCIA_ROUTE_RECHECK_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-jerry-garcia-route-recheck-36-40",
+    minimum_level=36,
+    maximum_level=40,
+    status="research",
+    execution="mirror-realm-jerry-garcia-research",
+    summary=(
+        "Recheck the corrected no-combat Mirror Realm route to Jerry Garcia, "
+        "then return to the Midgaard healer."
+    ),
+    evidence=(
+        "Run 17554 reached room 19045, Foot of the Rock Ladder, whose live exits were closed west and up; the registered route issued an extra down and received 'Alas, you cannot go that way.'",
+        "Run 17555 reached room 19044, Below the Watchtower, then tried west after only one descent; its live exits were up and down.",
+        "This distinct policy is a one-use route-only revalidation after the original probe; it preserves the failed route evidence and grants no combat permission.",
+    ),
+    practice_skill=None,
+)
+
+_MIRROR_REALM_JERRY_GARCIA_ROUTE_RECHECK_V2_POLICY = replace(
+    _MIRROR_REALM_JERRY_GARCIA_ROUTE_RECHECK_POLICY,
+    policy_id="mirror-realm-jerry-garcia-route-recheck-v2-36-40",
+    summary=(
+        "Use the source- and live-corrected no-combat Mirror Realm route to "
+        "Jerry Garcia, then return to the Midgaard healer."
+    ),
+    evidence=(
+        "Run 17555 reached room 19044, Below the Watchtower, whose live exits did not include west; the route tried west before descending to room 19045.",
+        "The source graph and run 17554 room sequence show the corrected path descends twice from Inside a Watchtower, reaches room 19045, then opens west.",
+        "This is one no-combat route recheck after the failed first correction. Preserve both earlier attempts; a failed second recheck stays closed and grants no combat permission.",
+    ),
+)
+
+
+_MIRROR_REALM_PLAIN_HUNT_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-plain-hunt-38-40",
+    minimum_level=38,
+    maximum_level=40,
+    status="research",
+    execution="mirror-realm-plain-hunt",
+    summary=(
+        "Hunt up to three source-checked, level-39/40 unarmed opponents from "
+        "the Mirror Realm Suite in one visit; sanctuary is not required "
+        "when the live gates pass."
+    ),
+    evidence=(
+        "DD4 source revision 9205f316: the barkeeper (19026) and waiter "
+        "(19027) are level 39; Mr. Teece (19069) is level 40. These three "
+        "have no combat special/program and do not wield a combat weapon. "
+        "Mandeep (19063) carries and holds a blindness wand; the armed "
+        "unicorne (19007) and Hepzibah's card-shark room (19043/19042) are "
+        "deliberately separate from this no-sanctuary policy.",
+        "The registered route reaches Suite room 19170. Three exact target "
+        "paths reach rooms 19071, 19072, and 19166. The level-25 "
+        "pool player in the barkeeper's room is accepted only as the exact "
+        "source-trivial bystander listed by that stop. Each target retains "
+        "the 20-percent floor, damage-window, and no-sanctuary checks.",
+        "The barkeeper and waiter are shopkeepers, but DD4's `do_kill` and "
+        "`is_safe` do not protect NPC shopkeepers; killing them temporarily "
+        "removes those services. This is an opportunity, not a live kill "
+        "guarantee: fresh identity, isolation, consider, damage-window, "
+        "health, provisions, and return checks decide each fight.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+    source_mobile_vnums=(19026, 19027, 19069),
+)
+
+_MIRROR_REALM_WAITER_HUNT_POLICY = replace(
+    _MIRROR_REALM_PLAIN_HUNT_POLICY,
+    policy_id="mirror-realm-plain-waiter-hunt-38-40",
+    summary=(
+        "Continue the Mirror Realm circuit at its independent level-39 "
+        "waiter stop; do not reopen the failed barkeeper."
+    ),
+    segment_kill_limit=1,
+    source_mobile_vnums=(19027,),
+)
+
+_MIRROR_REALM_TEECE_HUNT_POLICY = replace(
+    _MIRROR_REALM_PLAIN_HUNT_POLICY,
+    policy_id="mirror-realm-plain-teece-hunt-38-40",
+    summary=(
+        "Continue the Mirror Realm circuit at its independent level-40 "
+        "Mr. Teece stop; do not reopen the failed barkeeper."
+    ),
+    segment_kill_limit=1,
+    source_mobile_vnums=(19069,),
+)
+
+
 _PIT_OFFICIAL_RESEARCH_POLICY = ProgressionPolicy(
     "pit-official-probe-41-45", 41, 45, "research", "pit-official-research",
     "Reach and consider the Pit Official without initiating combat, then return to the Midgaard healer.",
@@ -6272,13 +6438,32 @@ def policy_for(
             # requirement for combat policies, but do not let it starve the
             # source-backed level-15 frontier probes.
             return selected
+        sanctuary_route_requires_flight = (
+            context.level >= 19
+            or (
+                context.character_class.casefold() == "mage"
+                and context.level >= 16
+            )
+        )
+        if (
+            selected.execution == "source-ranked-hunt"
+            and sanctuary_route_requires_flight
+            and not context.has_flight
+            and not context.can_attempt_flight_purchase
+        ):
+            # Do not turn a target-specific protection loss into a campaign-
+            # wide flight requirement when its recovery route is unavailable.
+            # The source-ranked selector still applies the exact loss,
+            # sanctuary, output, consider, route, and live-health gates to
+            # each independent target before opening combat.
+            return selected
         # Protection recovery is a shared capability gate, not a thief-only
         # progression rule. Use the safe Moria carrier route for every class
         # when a viable hunt has already reached the field safety floor.
         sanctuary_recovery_policy_id = (
             _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
         )
-        if (
+        sanctuary_recovery_blocked = (
             _research_crowd_is_active(
                 context,
                 sanctuary_recovery_policy_id,
@@ -6291,25 +6476,28 @@ def policy_for(
                 context,
                 sanctuary_recovery_policy_id,
             )
-        ):
+        )
+        if sanctuary_recovery_blocked and not source_ranked_fallback:
             # A current-reboot crowd or absence result is a real field
             # boundary. Do not turn the deep route into an immediate replay;
             # the campaign reset controller will retry it after the bounded
-            # cooldown has been consumed.
+            # cooldown has been consumed. An explicit source-ranked fallback
+            # is independent work and keeps its own live combat gates.
             return _source_ranked_sanctuary_recovery_wait_policy(context)
-        return replace(
-            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
-            minimum_level=context.level,
-            maximum_level=context.level,
-            practice_skill=context.practice_skill,
-            requires_flight_override=(
-                context.level >= 19
-                or (
-                    context.character_class.casefold() == "mage"
-                    and context.level >= 16
-                )
-            ),
-        )
+        if not sanctuary_recovery_blocked:
+            return replace(
+                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+                minimum_level=context.level,
+                maximum_level=context.level,
+                practice_skill=context.practice_skill,
+                requires_flight_override=(
+                    context.level >= 19
+                    or (
+                        context.character_class.casefold() == "mage"
+                        and context.level >= 16
+                    )
+                ),
+            )
     if handoff_policy_id:
         handoff_policy = _POLICY_BY_ID.get(handoff_policy_id)
         if (
@@ -9831,10 +10019,33 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             practice_skill=context.practice_skill,
         )
     if 36 <= normalized_level <= 40:
-        completed = context.policy_xp_deltas or {}
-        if _MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY.policy_id not in completed:
+        if not _research_result_recorded(
+            context,
+            _MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY.policy_id,
+        ):
             return replace(
                 _MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        route_recheck_id = (
+            _MIRROR_REALM_JERRY_GARCIA_ROUTE_RECHECK_POLICY.policy_id
+        )
+        if not _research_result_recorded(context, route_recheck_id):
+            return replace(
+                _MIRROR_REALM_JERRY_GARCIA_ROUTE_RECHECK_POLICY,
+                practice_skill=context.practice_skill,
+            )
+        route_result = (context.research_results or {}).get(route_recheck_id)
+        if (
+            isinstance(route_result, Mapping)
+            and route_result.get("route_hazard")
+            and not _research_result_recorded(
+                context,
+                _MIRROR_REALM_JERRY_GARCIA_ROUTE_RECHECK_V2_POLICY.policy_id,
+            )
+        ):
+            return replace(
+                _MIRROR_REALM_JERRY_GARCIA_ROUTE_RECHECK_V2_POLICY,
                 practice_skill=context.practice_skill,
             )
         return replace(
@@ -9842,11 +10053,11 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             minimum_level=36,
             maximum_level=40,
             summary=(
-                "The Mirror Realm Jerry Garcia probe is recorded for this reboot; "
-                "do not authorize combat until its route and consider evidence are "
-                "reviewed."
+                "The no-combat Jerry route evidence is recorded; do not spend "
+                "another segment scouting him. Select a source-ranked hunt "
+                "instead, without treating this as combat permission."
             ),
-            evidence=_MIRROR_REALM_JERRY_GARCIA_RESEARCH_POLICY.evidence,
+            evidence=_MIRROR_REALM_JERRY_GARCIA_ROUTE_RECHECK_V2_POLICY.evidence,
             practice_skill=context.practice_skill,
         )
     if 41 <= normalized_level <= 45:

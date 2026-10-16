@@ -3,14 +3,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Collection, Mapping
+from typing import Any, Mapping
 
-from .hunt_candidates import WorldSource
-
-
-def source_route_requires_water_breathing(world: WorldSource, rooms: Collection[int]) -> bool:
-    return any(vnum not in world.rooms or world.rooms[vnum].sector_type in {8, 12}
-               for vnum in rooms)
+from .hunt_candidates import source_route_requires_water_breathing
 
 
 def can_breathe_underwater(state: Mapping[str, Any]) -> bool:

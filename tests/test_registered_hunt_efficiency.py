@@ -70,6 +70,74 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, generic_duration:
     return runner, state, candidate, registered, summaries
 
 
+def _waiter_receipt(policy_id: str, run_id: int, *, productive: bool = True):
+    source_id = "source-ranked-hunt-mirror-realm-19027-19072-39"
+    start = {
+        "level": 39, "world_boot_id": "boot", "campaign_source_revision": "revision",
+        "campaign_xp_loss_total": 0, "room_vnum": "3054", "dead": False,
+        "in_combat": False, "enemies": [], "hp": 936, "xp": 1299757,
+    }
+    xp = 2995 if productive else 0
+    kill = {"source_mobile_vnum": 19027, "source_policy_id": source_id, "xp_gained": xp}
+    end = {
+        **start, "xp": start["xp"] + xp,
+        "campaign_objective_kills": [kill] if productive else [],
+        "campaign_fastwalk_source_consider_outcomes": {source_id: True} if productive else {},
+    }
+    segment = {
+        "id": run_id + 100, "phase": policy_id, "run_id": run_id,
+        "status": "success", "command_count": 100, "finished_at": "finished",
+        "start_state_json": json.dumps(start), "end_state_json": json.dumps(end),
+    }
+    summary = {
+        "summary_version": RUN_REPORT_SUMMARY_VERSION,
+        "run": {"id": run_id, "duration_seconds": 132.811 if productive else 120.0},
+        "outcomes": {
+            "execution": "success", "objective": "achieved" if productive else "not_achieved",
+            "safety": "safe",
+        },
+        "progress": {
+            "experience": {"change": xp},
+            "confirmed_kills": [kill] if productive else [],
+        },
+    }
+    return segment, summary
+
+
+def _waiter_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, source_available: bool = True):
+    policy = campaign._MIRROR_REALM_WAITER_HUNT_POLICY
+    policy_id = f"{policy.policy_id}-level-39"
+    segment, summary = _waiter_receipt(policy_id, 10)
+    records = [segment]
+    summaries = {10: summary}
+    character = CharacterSpec("Testpilot", "TEST_PASSWORD", "dwarf", "male", "warrior")
+    runner = campaign.CampaignRunner(
+        campaign.CampaignSpec("test", tmp_path / "character.yaml", character),
+        tmp_path / "campaign.yaml",
+    )
+    runner._source_world = WorldSource()
+    runner._campaign_policy_campaign_id = 7
+    runner._campaign_policy_segments = records
+    runner._campaign_policy_storage = SimpleNamespace(
+        get_latest_campaign_segment_for_phase=lambda _cid, phase, **_kw: next(
+            (row for row in reversed(records) if row["phase"] == phase), None,
+        ),
+        get_run_summary=lambda rid: summaries.get(rid),
+    )
+    monkeypatch.setattr(
+        campaign, "_mirror_realm_plain_hunt_source_available",
+        lambda *_a, **_kw: source_available,
+    )
+    end = json.loads(segment["end_state_json"])
+    state = {
+        **end, "level": 39, "world_boot_id": "boot", "campaign_source_revision": "revision",
+        "campaign_xp_loss_total": 0, "max_hp": 936,
+        "campaign_registered_research_xp_loss_policies": [],
+        "campaign_source_ranked_xp_loss_policies": [],
+    }
+    return runner, state, policy_id, records, summaries
+
+
 @pytest.mark.parametrize(("generic_duration", "registered_selected"), [(60, False), (120, False), (240, True), (None, True)])
 def test_current_source_audited_registered_hunt_competes_by_observed_visit_rate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -127,3 +195,61 @@ def test_single_target_rate_does_not_replace_a_selected_multi_kill_circuit(
     assert runner._productive_registered_hunt_policy(state, candidate) is None
     assert runner._selected_source_ranked_circuit == (candidate,)
     assert state == original
+
+
+def test_productive_mirror_waiter_competes_at_its_current_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, state, policy_id, _, _ = _waiter_setup(tmp_path, monkeypatch)
+
+    selected = runner._productive_registered_hunt_policy(state, None)
+
+    assert selected is not None
+    assert selected.policy_id == policy_id
+    assert selected.minimum_level == selected.maximum_level == 39
+    audit = state["campaign_hunt_efficiency_selection"]
+    assert audit["historical_run_ids"] == [10]
+    assert audit["xp_per_minute"] == pytest.approx(2995 * 60 / 132.811)
+
+
+def test_waiter_rate_charges_safe_zero_xp_visits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, state, policy_id, records, summaries = _waiter_setup(tmp_path, monkeypatch)
+    zero_segment, zero_summary = _waiter_receipt(policy_id, 11, productive=False)
+    start = json.loads(zero_segment["start_state_json"])
+    start["xp"] = 1302752
+    end = json.loads(zero_segment["end_state_json"])
+    end["xp"] = 1302752
+    zero_segment["start_state_json"] = json.dumps(start)
+    zero_segment["end_state_json"] = json.dumps(end)
+    records.insert(0, zero_segment)
+    summaries[11] = zero_summary
+    runner._campaign_policy_storage.get_latest_campaign_segment_for_phase = (
+        lambda _cid, phase, **_kw: next(
+            (row for row in reversed(records) if row["phase"] == phase), None,
+        )
+    )
+
+    selected = runner._productive_registered_hunt_policy(state, None)
+
+    assert selected is not None
+    audit = state["campaign_hunt_efficiency_selection"]
+    assert audit["historical_run_ids"] == [10, 11]
+    assert audit["xp_per_minute"] == pytest.approx(2995 * 60 / (132.811 + 120.0))
+
+
+@pytest.mark.parametrize("change", ["source_unavailable", "exact_loss"])
+def test_waiter_repeat_stays_closed_without_fresh_source_and_loss_clearance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str,
+) -> None:
+    runner, state, _, _, _ = _waiter_setup(
+        tmp_path, monkeypatch, source_available=change != "source_unavailable",
+    )
+    if change == "exact_loss":
+        state["campaign_source_ranked_xp_loss_policies"] = [{
+            "boot_id": "boot",
+            "policy_id": "source-ranked-hunt-mirror-realm-19027-19072-39",
+        }]
+
+    assert runner._productive_registered_hunt_policy(state, None) is None

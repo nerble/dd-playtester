@@ -55,8 +55,10 @@ def test_source_accepts_the_current_character_without_changing_boundaries(world)
 
 def test_shop_preflight_admits_source_bounded_transit_without_a_cast(world):
     bot = policy(world)
-    decision = bot.next_decision(state())
-    assert decision.command == "south"
+    decision = bot._midgaard_city_shop_preflight_decision(
+        state(), operation="Magic Shop visit",
+    )
+    assert decision is None
     assert bot.city_shop_transit.status == "admitted"
     assert not bot.magic_shop_invisibility_attempted
 
@@ -70,6 +72,20 @@ def test_loot_sale_still_locates_drunk_when_bounded_transit_is_available(world):
 
     assert decision is not None and decision.command == "where drunk"
     assert bot.city_shop_transit.status == "idle"
+
+
+def test_high_level_loot_sale_skips_below_band_drunk_preflight(world):
+    bot = policy(world)
+    high_level_state = replace(state(), level=39, hp=936, max_hp=936)
+
+    decision = bot._midgaard_city_shop_preflight_decision(
+        high_level_state, operation="loot liquidation",
+    )
+
+    assert decision is None
+    assert bot.city_shop_transit.status == "admitted"
+    assert bot.magic_shop_drunk_preflight_complete is True
+    assert bot.magic_shop_drunk_preflight_pending is False
 
 
 def test_field_departure_locates_drunk_before_using_bounded_transit(world):
@@ -204,7 +220,9 @@ def test_interruption_enforces_live_bounds(world, boundary):
 
 def test_live_policy_uses_bounded_combat_before_the_utility_flee(world):
     bot = policy(world)
-    bot.next_decision(state())
+    bot._midgaard_city_shop_preflight_decision(
+        state(), operation="Magic Shop visit",
+    )
     bot.combat_active = True
     bot.active_target = "the drunk"
     bot.active_target_level = 2

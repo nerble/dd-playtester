@@ -8,6 +8,7 @@ from dd4tester.economic_hunts import (
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import (
     ExitSource, HuntCandidate, MobReset, MobileSource, ObjectSource, RoomSource, WorldSource,
+    source_route_hazard_rejections,
 )
 from dd4tester.locator_paths import source_locator_path_is_safe
 from dd4tester.populations import plain_bounded_population
@@ -48,6 +49,45 @@ def test_economic_only_travel_preserves_source_risk_and_quest_separation() -> No
     route = Fastwalk("economic hunt", 1, 100, "1n", route_economic_hunt_mobile_vnums=(102,))
     assert not route.route_economic_special_mobile_vnums
     assert economic_hunt_runtime_issue(route, world, level=30, currencies=state["currencies"]) is None
+
+
+def test_known_passive_target_affects_do_not_close_economic_route() -> None:
+    candidate, world, state = economic_fixture()
+    world.mobiles[101] = replace(
+        world.mobiles[101],
+        affected_flags=(1 << 3) | (1 << 5) | (1 << 13) | (1 << 20),
+    )
+
+    admitted = economic_hunt_candidate(candidate, state, world)
+
+    assert admitted.status == "caution" and admitted.autonomous_safe
+    assert admitted.route_economic_hunt_mobile_vnums == (102,)
+    assert admitted.route_economic_source_rejections == candidate.autonomy_rejections
+
+
+def test_economic_route_preserves_a_separately_audited_target_special() -> None:
+    candidate, world, state = economic_fixture()
+    world.mobile_specials[101] = ("spec_cast_cleric",)
+    candidate = replace(
+        candidate,
+        specials=("spec_cast_cleric",),
+        autonomy_rejections=(
+            "an economic special mobile can reach the route",
+            "target has special procedure spec_cast_cleric",
+        ),
+    )
+
+    admitted = economic_hunt_candidate(candidate, state, world)
+
+    assert admitted is not candidate
+    assert admitted.route_economic_hunt_mobile_vnums == (102,)
+    assert admitted.route_economic_source_rejections == (
+        "an economic special mobile can reach the route",
+    )
+    assert admitted.autonomy_rejections == (
+        "target has special procedure spec_cast_cleric",
+    )
+    assert not admitted.autonomous_safe
 
 
 @pytest.mark.parametrize("change", [
@@ -104,6 +144,32 @@ def test_live_purse_gate_is_bounded_and_rechecked(purse: int, allowed: bool) -> 
     assert (economic_hunt_runtime_issue(route, world, level=30, currencies=currencies) is None) == allowed
     world.mobile_specials[102] = ("spec_cast_mage",)
     assert economic_hunt_runtime_issue(route, world, level=30, currencies=currencies) is not None
+
+
+def test_full_loadout_economic_hunt_audit_only_waives_noncombat_transit() -> None:
+    _candidate, world, _state = economic_fixture()
+    world.rooms = {
+        302: RoomSource(302, "route origin", "test.are"),
+        303: RoomSource(303, "route endpoint", "test.are"),
+    }
+
+    transit = source_route_hazard_rejections(
+        world,
+        (302, 303),
+        character_level=30,
+        combat_at_destination=False,
+        economic_hunt_mobile_vnums=(102,),
+    )
+    combat = source_route_hazard_rejections(
+        world,
+        (302, 303),
+        character_level=30,
+        combat_at_destination=True,
+        economic_hunt_mobile_vnums=(102,),
+    )
+
+    assert not any("non-safe special mobile" in rejection for rejection in transit)
+    assert any("non-safe special mobile" in rejection for rejection in combat)
 
 
 def test_unknown_or_invalid_currency_never_counts_as_zero() -> None:
@@ -193,7 +259,7 @@ def test_population_locator_keeps_economic_risk_explicit_and_other_hazards_close
         world, (301,), character_level=30,
         economic_special_mobile_vnums=admitted.route_economic_hunt_mobile_vnums,
     )
-    world.mobile_specials[102] = ("spec_cast_mage",)
+    world.mobile_specials[102] = ("spec_assassin",)
     assert not source_locator_path_is_safe(
         world, (301,), character_level=30,
         economic_special_mobile_vnums=admitted.route_economic_hunt_mobile_vnums,

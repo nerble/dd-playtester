@@ -45,12 +45,19 @@ def field_city_observation_request(
     level, boot = state.get("level"), state.get("world_boot_id")
     revision = state.get("campaign_source_revision")
     run_id = prior.get("run_id")
+    saved_policy_id = prior.get("policy_id")
     rooms = prior.get("route_rooms")
     attempt = state.get(FIELD_CITY_OBSERVATION_KEY)
     if (
         not boot or not revision or type(level) is not int
         or type(run_id) is not int or run_id <= 0
-        or not isinstance(prior.get("policy_id"), str) or not prior["policy_id"].strip()
+        or (
+            saved_policy_id is not None
+            and (
+                not isinstance(saved_policy_id, str)
+                or not saved_policy_id.strip()
+            )
+        )
         or prior.get("complete") is not True or prior.get("blocked") is not True
         or prior.get("boot_id") != boot or prior.get("level") != level
         or prior.get("stopped_before_departure") is not True
@@ -74,6 +81,7 @@ def field_city_observation_request(
         segment = dict(raw)
         if segment.get("run_id") != run_id:
             continue
+        segment_policy_id = segment.get("phase")
         if (
             segment.get("status") != "success"
             or segment.get("execution_status") != "success"
@@ -81,7 +89,12 @@ def field_city_observation_request(
             or not segment.get("finished_at")
             or not isinstance(segment.get("command_count"), int)
             or segment["command_count"] <= 0
-            or segment.get("phase") != prior.get("policy_id")
+            or not isinstance(segment_policy_id, str)
+            or not segment_policy_id.strip()
+            or (
+                saved_policy_id is not None
+                and segment_policy_id != saved_policy_id
+            )
         ):
             return None
         try:
@@ -108,7 +121,7 @@ def field_city_observation_request(
         ):
             return None
         return {
-            "prior_run_id": run_id, "policy_id": prior["policy_id"],
+            "prior_run_id": run_id, "policy_id": segment_policy_id,
             "level": level, "boot_id": boot, "source_revision": revision,
             "route_rooms": list(rooms), "status": "pending",
         }
@@ -311,10 +324,25 @@ def field_city_detour_for_locations(
         len(detour_commands) - len(original_prefix_commands)
     )
 
-    def shifted_navigation_index(index: int | None) -> int | None:
-        if index is None or index < boundary_command_end:
+    def shifted_command_index(index: int) -> int:
+        if index < boundary_command_end:
             return index
         return index + navigation_index_delta
+
+    def shifted_navigation_index(index: int | None) -> int | None:
+        if index is None:
+            return None
+        return shifted_command_index(index)
+
+    shifted_post_command_actions = tuple(
+        replace(
+            action,
+            after_command_index=shifted_command_index(
+                action.after_command_index
+            ),
+        )
+        for action in route.post_command_actions
+    )
 
     if route.route_preflight_command:
         preflight_names = tuple(dict.fromkeys(
@@ -331,6 +359,7 @@ def field_city_detour_for_locations(
             live_navigation_resume_index=shifted_navigation_index(
                 route.live_navigation_resume_index
             ),
+            post_command_actions=shifted_post_command_actions,
         )
     else:
         updated_route = replace(
@@ -342,6 +371,7 @@ def field_city_detour_for_locations(
             live_navigation_resume_index=shifted_navigation_index(
                 route.live_navigation_resume_index
             ),
+            post_command_actions=shifted_post_command_actions,
         )
 
     ground_old = source_route_movement_cost(world, original_path)
@@ -442,15 +472,56 @@ def field_city_route_rooms(
     return tuple(dict.fromkeys(names))
 
 
+def field_city_route_room_vnums(
+    world: WorldSource | None,
+    commands: Sequence[str],
+    *,
+    origin: int,
+) -> tuple[str, ...]:
+    """Return exact Midgaard rooms on a source-verified field route."""
+    if world is None or origin != 3001:
+        return ()
+    room = world.rooms.get(origin)
+    if room is None or room.area_file.casefold() != "midgaard.are":
+        return ()
+    room_vnums = [str(room.vnum)]
+    left_midgaard = False
+    for raw_command in commands:
+        if room.area_file.casefold() != "midgaard.are" or room.random_exits:
+            return ()
+        command = str(raw_command).casefold().strip()
+        if command.startswith(("open ", "unlock ", "pick ")):
+            continue
+        exit_source = room.exits.get(command)
+        if exit_source is None:
+            return ()
+        destination = world.rooms.get(exit_source.destination)
+        if destination is None:
+            return ()
+        if destination.area_file.casefold() != "midgaard.are":
+            left_midgaard = True
+            break
+        room = destination
+        room_vnums.append(str(room.vnum))
+    return tuple(dict.fromkeys(room_vnums)) if left_midgaard else ()
+
+
 @dataclass
 class CityShopTransit:
     status: str = "idle"
     started_at: float | None = None
     reason: str | None = None
+    route_room_vnums: tuple[str, ...] = ()
 
-    def admit(self) -> None:
+    def admit(self, *, route_room_vnums: Sequence[Any] = ()) -> None:
+        normalized_route = tuple(dict.fromkeys(
+            str(room).strip() for room in route_room_vnums if str(room).strip()
+        ))
         if self.status == "idle":
+            self.route_room_vnums = normalized_route
             self.status = "admitted"
+        elif self.status == "admitted" and self.started_at is None and normalized_route:
+            self.route_room_vnums = normalized_route
 
     def finish_combat(self) -> None:
         if self.status == "fighting":
@@ -460,17 +531,21 @@ class CityShopTransit:
         """Expire an unused or completed city admission after departure."""
         if self.status not in {"admitted", "finished"}:
             return
-        if str(room_vnum) in MAGIC_SHOP_ROUTE_ROOMS:
+        if str(room_vnum) in MAGIC_SHOP_ROUTE_ROOMS or str(room_vnum) in self.route_room_vnums:
             return
         self.status = "idle"
         self.started_at = None
         self.reason = None
+        self.route_room_vnums = ()
 
     def allows_proactive_hunt(self, room_vnum: Any) -> bool:
         """Keep field hunts out of the city corridor during bounded transit."""
         return (
             self.status == "idle"
-            or str(room_vnum) not in MAGIC_SHOP_ROUTE_ROOMS
+            or (
+                str(room_vnum) not in MAGIC_SHOP_ROUTE_ROOMS
+                and str(room_vnum) not in self.route_room_vnums
+            )
         )
 
     def combat_allowed(
@@ -487,7 +562,10 @@ class CityShopTransit:
             reason = "another city interruption is outside the one-fight budget"
         elif not bounded_city_shop_transit_available(world, state):
             reason = "city attacker no longer satisfies source combat bounds"
-        elif str(state.get("room_vnum")) not in MAGIC_SHOP_ROUTE_ROOMS:
+        elif (
+            str(state.get("room_vnum")) not in MAGIC_SHOP_ROUTE_ROOMS
+            and str(state.get("room_vnum")) not in self.route_room_vnums
+        ):
             reason = "city interruption is outside the registered shopping route"
         elif len(enemies) != 1 or _number(enemies[0].get("isnpc")) != CITY_GREETER_VNUM:
             reason = "city interruption lacks one exact source-identified enemy"

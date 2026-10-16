@@ -32,7 +32,7 @@ from .campaign import (
     _source_ranked_caster_output_for_state,
     _source_ranked_candidate_excluded_by_below_band_evidence,
     _source_ranked_fame_level_window,
-    _source_ranked_hp_probe_admission_available,
+    _source_ranked_level_admission_available,
     _source_ranked_invisibility_route_candidate_allowed,
     _source_ranked_plain_aggressive_target_invisibility_allowed,
     _source_ranked_protected_aggressive_hp_fuzz_probe_allowed,
@@ -75,10 +75,12 @@ from .hero import (
 from .hunt_candidates import (
     ObjectSource,
     load_world_source,
+    normalize_resource_effect,
     rank_hunt_candidates,
     rank_resource_sources,
     source_mobile_search_rooms,
 )
+from .mobile_loadouts import sanctuary_limited_output, source_mobile_has_sanctuary
 from .matrix import (
     live_matrix_coverage,
     matrix_coverage,
@@ -135,9 +137,11 @@ from .starter import (
 from .storage import RunStorage
 from .training import (
     prerequisite_classes_for,
+    subclass_training_analysis,
     subclass_training_priorities,
     training_analysis_for,
     training_priorities,
+    training_priorities_for,
 )
 
 
@@ -354,17 +358,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     magic_shop_parser = subcommands.add_parser(
         "magic-shop-research",
-        help="visit the Midgaard Magic Shop and record stock without buying",
+        help="visit the Midgaard Magic Shop to inspect stock or prepare a potion",
     )
     magic_shop_parser.add_argument(
         "profile",
         type=Path,
-        help="path to an existing mage character YAML profile",
+        help="path to an existing character YAML profile",
     )
     magic_shop_parser.add_argument(
         "--buy-fly",
         action="store_true",
         help="buy, use, and verify one light blue travel potion after listing stock",
+    )
+    magic_shop_parser.add_argument(
+        "--buy-see-invisible",
+        action="store_true",
+        help="buy and verify a source-matched detect-invisibility potion",
     )
     fastwalk_parser = subcommands.add_parser(
         "fastwalk-research",
@@ -401,6 +410,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--consider",
         dest="consider_target",
         help="live-consider one endpoint target without attacking it",
+    )
+    fastwalk_parser.add_argument(
+        "--where-source-mobile-vnum",
+        type=int,
+        help="issue `where <target>` first, bound to this source mobile VNUM; requires --consider",
+    )
+    fastwalk_parser.add_argument(
+        "--where-location",
+        action="append",
+        default=[],
+        help="restrict the source-bound where sweep to this exact observed room label",
     )
     fastwalk_parser.add_argument(
         "--max-matching-targets",
@@ -550,6 +570,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=20,
         help="maximum candidates to show, default: 20",
+    )
+    hunt_candidates_parser.add_argument(
+        "--level-ceiling-offset",
+        type=int,
+        help=(
+            "also rank source mobiles up to this many levels above the "
+            "character; requires a saved max-HP snapshot"
+        ),
     )
     hunt_candidates_parser.add_argument(
         "--include-xp-only",
@@ -1362,6 +1390,10 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
     skill_analysis_parser.add_argument(
+        "--subclass",
+        help="optional subclass; include its base class's inherited priorities",
+    )
+    skill_analysis_parser.add_argument(
         "--snapshot",
         type=Path,
         help="use a prerequisite snapshot JSON file instead of the bundled snapshot",
@@ -1620,7 +1652,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "magic-shop-research":
         try:
             result = asyncio.run(
-                run_magic_shop_research_profile(args.profile, buy_fly=args.buy_fly)
+                run_magic_shop_research_profile(
+                    args.profile,
+                    buy_fly=args.buy_fly,
+                    buy_see_invisible=args.buy_see_invisible,
+                )
             )
         except Exception as exc:
             print(f"Magic Shop research failed: {exc}", file=sys.stderr)
@@ -1639,6 +1675,12 @@ def main(argv: list[str] | None = None) -> int:
                 "consider_target": args.consider_target,
                 "maximum_target_count": args.maximum_target_count,
             }
+            if args.where_source_mobile_vnum is not None:
+                research_options["where_source_mobile_vnum"] = (
+                    args.where_source_mobile_vnum
+                )
+            if args.where_location:
+                research_options["where_location"] = tuple(args.where_location)
             if args.allowed_bystanders:
                 research_options["allowed_bystanders"] = tuple(
                     args.allowed_bystanders
@@ -1746,6 +1788,7 @@ def main(argv: list[str] | None = None) -> int:
             include_xp_only=args.include_xp_only,
             include_all_areas=args.all_areas,
             autonomous_safe_only=args.autonomous_safe_only,
+            level_ceiling_offset=args.level_ceiling_offset,
         )
 
     if args.command == "show-resource-sources":
@@ -2277,6 +2320,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "skill-analysis":
         return show_skill_analysis(
             args.character_class,
+            subclass=args.subclass,
             snapshot=args.snapshot,
         )
 
@@ -2652,6 +2696,7 @@ def show_hunt_candidates(
     include_xp_only: bool = False,
     include_all_areas: bool = False,
     autonomous_safe_only: bool = False,
+    level_ceiling_offset: int | None = None,
 ) -> int:
     if level < 1:
         print("--level must be at least 1", file=sys.stderr)
@@ -2752,6 +2797,13 @@ def show_hunt_candidates(
         "include_all_areas": include_all_areas,
         "recall_origins": recall_origins,
     }
+    if level_ceiling_offset is not None:
+        rank_kwargs.update(
+            {
+                "include_level_ceiling_candidates": character_max_hp is not None,
+                "level_ceiling_offset": level_ceiling_offset,
+            }
+        )
     if recorded_known_skills and character_class:
         rank_kwargs.update(
             {
@@ -2769,6 +2821,16 @@ def show_hunt_candidates(
     print(f"Character: {character}, level {level}")
     print(f"Character class: {character_class or 'unknown'}")
     print(f"Character max HP: {character_max_hp or 'unknown'}")
+    if level_ceiling_offset is not None:
+        print(
+            "Above-level source search: "
+            f"+{level_ceiling_offset} levels; "
+            + (
+                "saved max HP available"
+                if character_max_hp is not None
+                else "disabled because saved max HP is unavailable"
+            )
+        )
     print(
         "Player alignment: "
         + (str(character_alignment) if character_alignment is not None else "unknown")
@@ -2936,7 +2998,7 @@ def show_resource_sources(
         placements = rank_resource_sources(
             world,
             character_level=level,
-            effect=effect,
+            effect=normalize_resource_effect(effect),
             character_max_hp=character_max_hp,
             include_all_areas=include_all_areas,
             recall_origins=recall_origins,
@@ -3324,13 +3386,27 @@ def _readiness_candidate_record(
     candidate: Any,
     *,
     level: int,
-    output_ceiling: int,
+    output: Any,
     state: Mapping[str, Any],
     source_world: Any,
 ) -> dict[str, Any]:
     source_minimum, source_maximum = candidate.estimated_level_range
     hp_minimum, hp_maximum = candidate.estimated_base_hp_range
     in_band = _readiness_candidate_in_band(candidate, level)
+    mobile = source_world.mobiles.get(candidate.mobile_vnum)
+    target_sanctuary = source_mobile_has_sanctuary(mobile)
+    adjusted_output = (
+        sanctuary_limited_output(output)
+        if output is not None and target_sanctuary
+        else output
+    )
+    output_ceiling = (
+        int(adjusted_output.conservative_damage)
+        * int(adjusted_output.maximum_actions)
+        + int(adjusted_output.opening_conservative_damage or 0)
+        if adjusted_output is not None
+        else 0
+    )
     fame_window = _readiness_fame_window(
         candidate,
         level=level,
@@ -3401,7 +3477,7 @@ def _readiness_candidate_record(
     ):
         try:
             source_hp_admission = bool(
-                _source_ranked_hp_probe_admission_available(
+                _source_ranked_level_admission_available(
                     candidate,
                     state,
                     character_level=level,
@@ -3478,6 +3554,8 @@ def _readiness_candidate_record(
             list(fame_window[1]) if fame_window is not None else None
         ),
         "autonomous_safe": candidate.autonomous_safe,
+        "target_sanctuary": target_sanctuary,
+        "output_ceiling_after_target_effects": output_ceiling,
         "output_fit": output_fit,
         "source_hp_admission": source_hp_admission,
         "requires_sanctuary": requires_sanctuary,
@@ -3840,7 +3918,7 @@ def show_combat_readiness(
         _readiness_candidate_record(
             candidate,
             level=level,
-            output_ceiling=output_ceiling,
+            output=output,
             state=report_state,
             source_world=world,
         )
@@ -4732,28 +4810,61 @@ def show_prereqs(
 def show_skill_analysis(
     character_class: str,
     *,
+    subclass: str | None = None,
     snapshot: Path | None,
 ) -> int:
     normalized_class = " ".join(
         character_class.casefold().replace("_", " ").split()
     )
-    priorities = (
-        training_priorities().get(normalized_class)
-        or subclass_training_priorities().get(normalized_class)
+    normalized_subclass = (
+        " ".join(subclass.casefold().replace("_", " ").split())
+        if subclass
+        else None
     )
+    if normalized_subclass == "none":
+        normalized_subclass = None
+
+    if normalized_subclass:
+        if normalized_class not in prerequisite_classes_for(normalized_subclass):
+            print(
+                f"Subclass {subclass!r} is not registered for {character_class!r}.",
+                file=sys.stderr,
+            )
+            return 1
+        priorities = training_priorities_for(
+            normalized_class,
+            subclass=normalized_subclass,
+        )
+        analyses = [
+            (normalized_class, training_analysis_for(normalized_class)),
+            (
+                normalized_subclass,
+                subclass_training_analysis().get(normalized_subclass),
+            ),
+        ]
+    else:
+        priorities = (
+            training_priorities().get(normalized_class)
+            or subclass_training_priorities().get(normalized_class)
+        )
+        analyses = [(normalized_class, training_analysis_for(normalized_class))]
     if not priorities:
         print(
             f"No training analysis found for {character_class!r}.",
             file=sys.stderr,
         )
         return 1
-    analysis = training_analysis_for(normalized_class)
-    if analysis is None:
+    if any(analysis is None for _, analysis in analyses):
         print(
             f"No training analysis found for {character_class!r}.",
             file=sys.stderr,
         )
         return 1
+    valid_analyses = [
+        (name, analysis)
+        for name, analysis in analyses
+        if analysis is not None
+    ]
     try:
         source, entries = load_snapshot(snapshot)
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
@@ -4762,20 +4873,46 @@ def show_skill_analysis(
 
     print(f"Source: {source['repository']} @ {source['revision']}")
     print(f"Class: {normalized_class}")
-    print(f"Strategy: {analysis.strategy}")
-    print(f"Practice policy: {analysis.practice_policy}")
+    if normalized_subclass:
+        print(f"Subclass: {normalized_subclass}")
+        print("Strategy:")
+        for name, analysis in valid_analyses:
+            print(f"- {name}: {analysis.strategy}")
+        print("Practice policy:")
+        for name, analysis in valid_analyses:
+            print(f"- {name}: {analysis.practice_policy}")
+    else:
+        print(f"Strategy: {valid_analyses[0][1].strategy}")
+        print(f"Practice policy: {valid_analyses[0][1].practice_policy}")
+    highest_value = tuple(
+        dict.fromkeys(
+            skill
+            for _, analysis in valid_analyses
+            for skill in analysis.highest_value_skills
+        )
+    )
     print(
         "Highest leveling value: "
-        + ", ".join(analysis.highest_value_skills)
+        + ", ".join(highest_value)
     )
-    if analysis.automation_gaps:
+    automation_gaps = tuple(
+        dict.fromkeys(
+            gap
+            for _, analysis in valid_analyses
+            for gap in analysis.automation_gaps
+        )
+    )
+    if automation_gaps:
         print("Automation gaps:")
-        for gap in analysis.automation_gaps:
+        for gap in automation_gaps:
             print(f"- {gap}")
     print("Ordered leveling priorities:")
+    source_classes = prerequisite_classes_for(
+        normalized_subclass or normalized_class
+    )
     for rank, priority in enumerate(priorities, start=1):
         requirements = ()
-        for source_class in prerequisite_classes_for(normalized_class):
+        for source_class in source_classes:
             requirements = requirements_for_skill(
                 entries,
                 class_name=source_class,

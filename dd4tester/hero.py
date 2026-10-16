@@ -192,6 +192,8 @@ def prepare_hero_request(
             raise ValueError(
                 f"hero workspace {directory} belongs to a different request"
             )
+        campaign_name = str(manifest.get("campaign") or "campaign.yaml")
+        campaign_path = directory / campaign_name
         resumed_request = replace(
             canonical_request,
             subclass=(
@@ -205,10 +207,19 @@ def prepare_hero_request(
                 else stored_request.get("personality")
             ),
         )
-        if not profile_path.is_file() or not campaign_path.is_file():
+        if not profile_path.is_file():
             raise ValueError(f"hero workspace is incomplete: {directory}")
-        _update_campaign_target(campaign_path, target_level)
         character = load_character_spec(profile_path)
+        checkpointed_campaign_path = _latest_profile_campaign_config(
+            profile_path,
+            character=character,
+        )
+        if checkpointed_campaign_path is not None:
+            campaign_path = checkpointed_campaign_path
+        if not campaign_path.is_file():
+            raise ValueError(f"hero workspace is incomplete: {directory}")
+        if campaign_path.resolve() != profile_path.resolve():
+            _update_campaign_target(campaign_path, target_level)
         if character.personality is None and resumed_request.personality is not None:
             # Older profiles kept the personality only in the manifest and
             # appended it to the generated description.
@@ -254,7 +265,7 @@ def prepare_hero_request(
                 ),
                 "target_level": target_level,
                 "max_segments": 10000,
-                "max_total_runtime": 604800,
+                "max_total_runtime": 31536000,
                 "max_total_commands": 1000000,
                 "max_stalled_segments": 3,
             }
@@ -506,6 +517,103 @@ def _find_legacy_campaign_request(
         legacy_profile_path=profile_path,
         legacy_campaign_path=campaign_path,
     )
+
+
+def _latest_profile_campaign_config(
+    profile_path: Path,
+    *,
+    character: CharacterSpec,
+) -> Path | None:
+    """Find the newest checkpointed campaign using this exact character profile."""
+    database_path = Path(character.database)
+    if not database_path.is_absolute():
+        database_path = (Path.cwd() / database_path).resolve()
+    if not database_path.is_file():
+        return None
+
+    expected_profile = profile_path.resolve()
+    try:
+        with sqlite3.connect(
+            database_path.as_uri() + "?mode=ro",
+            uri=True,
+            timeout=_CAMPAIGN_PROBE_TIMEOUT_SECONDS,
+        ) as connection:
+            connection.execute(
+                f"PRAGMA busy_timeout = "
+                f"{int(_CAMPAIGN_PROBE_TIMEOUT_SECONDS * 1000)}"
+            )
+            connection.row_factory = sqlite3.Row
+            campaigns = connection.execute(
+                """
+                SELECT id, config_path, character_profile_path
+                FROM campaigns
+                ORDER BY id DESC
+                """
+            ).fetchall()
+            for row in campaigns:
+                stored_profile = Path(str(row["character_profile_path"]))
+                if not stored_profile.is_absolute():
+                    stored_profile = (Path.cwd() / stored_profile).resolve()
+                else:
+                    stored_profile = stored_profile.resolve()
+                if stored_profile != expected_profile:
+                    continue
+                checkpoint = connection.execute(
+                    """
+                    SELECT state_json FROM campaign_checkpoints
+                    WHERE campaign_id = ? ORDER BY id DESC LIMIT 1
+                    """,
+                    (int(row["id"]),),
+                ).fetchone()
+                if checkpoint is None:
+                    continue
+                try:
+                    state = json.loads(checkpoint["state_json"])
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if not _campaign_state_matches_character(state, character):
+                    continue
+                config_path = Path(str(row["config_path"]))
+                if not config_path.is_absolute():
+                    config_path = (Path.cwd() / config_path).resolve()
+                else:
+                    config_path = config_path.resolve()
+                if not config_path.is_file():
+                    continue
+                try:
+                    campaign = load_campaign_spec(config_path)
+                except (OSError, TypeError, ValueError):
+                    continue
+                if (
+                    campaign.character_profile.resolve() == expected_profile
+                    and campaign.character.name.casefold()
+                    == character.name.casefold()
+                ):
+                    return config_path
+    except sqlite3.Error:
+        return None
+    return None
+
+
+def _campaign_state_matches_character(
+    state: Any,
+    character: CharacterSpec,
+) -> bool:
+    if (
+        not isinstance(state, dict)
+        or str(state.get("name", "")).casefold() != character.name.casefold()
+    ):
+        return False
+    for field_name, expected in (
+        ("race", character.race),
+        ("character_class", character.character_class),
+        ("subclass", character.subclass),
+    ):
+        observed = state.get(field_name)
+        if observed is not None and expected is not None:
+            if str(observed).casefold() != str(expected).casefold():
+                return False
+    return True
 
 
 def _find_existing_hero_manifest(
@@ -826,6 +934,11 @@ async def run_hero_request(
             target_level_override=(
                 target_level
                 if request.legacy_campaign_path is not None
+                or (
+                    getattr(preparation, "profile_path", None) is not None
+                    and Path(preparation.campaign_path).resolve()
+                    == Path(preparation.profile_path).resolve()
+                )
                 else None
             ),
             reset_retries=(

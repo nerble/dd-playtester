@@ -699,7 +699,7 @@ def test_readiness_candidate_separates_offensive_output_from_full_admission(
         monkeypatch.setattr(dd4tester.cli, helper, lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
         dd4tester.cli,
-        "_source_ranked_hp_probe_admission_available",
+        "_source_ranked_level_admission_available",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
@@ -2135,9 +2135,12 @@ def test_magic_shop_research_command_runs_bounded_route(tmp_path, capsys, monkey
     transcript = tmp_path / "magic-shop-1.jsonl"
     database = tmp_path / "runs.sqlite3"
 
-    async def fake_magic_shop_research(path: Path, *, buy_fly: bool) -> RunResult:
+    async def fake_magic_shop_research(
+        path: Path, *, buy_fly: bool, buy_see_invisible: bool,
+    ) -> RunResult:
         assert path == profile
         assert buy_fly is False
+        assert buy_see_invisible is False
         return RunResult(13, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(
@@ -2163,9 +2166,12 @@ def test_magic_shop_research_command_can_buy_and_use_fly_potion(
     transcript = tmp_path / "magic-shop-2.jsonl"
     database = tmp_path / "runs.sqlite3"
 
-    async def fake_magic_shop_research(path: Path, *, buy_fly: bool) -> RunResult:
+    async def fake_magic_shop_research(
+        path: Path, *, buy_fly: bool, buy_see_invisible: bool,
+    ) -> RunResult:
         assert path == profile
         assert buy_fly is True
+        assert buy_see_invisible is False
         return RunResult(14, "success", transcript, database, {"level": 6})
 
     monkeypatch.setattr(
@@ -2179,6 +2185,38 @@ def test_magic_shop_research_command_can_buy_and_use_fly_potion(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Run 14 success" in captured.out
+
+
+def test_magic_shop_research_command_can_prepare_see_invisible(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "magic-shop-3.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_magic_shop_research(
+        path: Path, *, buy_fly: bool, buy_see_invisible: bool,
+    ) -> RunResult:
+        assert path == profile
+        assert buy_fly is False
+        assert buy_see_invisible is True
+        return RunResult(15, "success", transcript, database, {"level": 39})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_magic_shop_research_profile",
+        fake_magic_shop_research,
+    )
+
+    exit_code = main(
+        ["magic-shop-research", str(profile), "--buy-see-invisible"]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Run 15 success" in captured.out
 
 
 def test_return_home_command_runs_safe_recall(tmp_path, capsys, monkeypatch) -> None:
@@ -2336,6 +2374,55 @@ def test_fastwalk_research_command_can_consider_without_attacking(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Run 17 success" in captured.out
+
+
+def test_fastwalk_research_command_can_bind_where_to_source_mobile(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    profile = tmp_path / "character.yaml"
+    transcript = tmp_path / "fastwalk-where.jsonl"
+    database = tmp_path / "runs.sqlite3"
+
+    async def fake_fastwalk_research(
+        path: Path,
+        route: str,
+        *,
+        consider_target: str | None = None,
+        where_source_mobile_vnum: int | None = None,
+        where_location: tuple[str, ...] | None = None,
+        **_options: object,
+    ) -> RunResult:
+        assert path == profile
+        assert route == "mirror realm caerlin"
+        assert consider_target == "Caerlin"
+        assert where_source_mobile_vnum == 19004
+        assert where_location == ("A Bedroom", "Bend in the Path")
+        return RunResult(18, "success", transcript, database, {"level": 39})
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "run_fastwalk_research_profile",
+        fake_fastwalk_research,
+    )
+
+    exit_code = main(
+        [
+            "fastwalk-research",
+            str(profile),
+            "mirror realm caerlin",
+            "--consider",
+            "Caerlin",
+            "--where-source-mobile-vnum",
+            "19004",
+            "--where-location",
+            "A Bedroom",
+            "--where-location",
+            "Bend in the Path",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "Run 18 success" in capsys.readouterr().out
 
 
 def test_midennir_research_command_collects_large_sack(
@@ -3008,6 +3095,8 @@ def test_show_hunt_candidates_uses_durable_campaign_capabilities(
             "--database",
             str(database),
             "--include-xp-only",
+            "--level-ceiling-offset",
+            "5",
         ]
     )
 
@@ -3015,6 +3104,12 @@ def test_show_hunt_candidates_uses_durable_campaign_capabilities(
     assert exit_code == 0
     assert captured_kwargs["known_skills"] == ("burning hands",)
     assert captured_kwargs["known_skill_levels"] == {"burning hands": 31}
+    assert captured_kwargs["include_level_ceiling_candidates"] is True
+    assert captured_kwargs["level_ceiling_offset"] == 5
+    assert (
+        "Above-level source search: +5 levels; saved max HP available"
+        in captured.out
+    )
     assert "Character class: Mage" in captured.out
 
 
@@ -3410,6 +3505,22 @@ def test_skill_analysis_supports_subclass_alias_and_priorities(capsys) -> None:
     assert "Class: bounty hunter" in captured.out
     assert "assassinate" in captured.out
     assert "group stealth 85%" in captured.out
+
+
+def test_skill_analysis_combines_base_and_subclass_priorities(capsys) -> None:
+    exit_code = main(
+        ["skill-analysis", "--class", "warrior", "--subclass", "knight"]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Class: warrior" in captured.out
+    assert "Subclass: knight" in captured.out
+    assert "protection vs evil" in captured.out
+    assert "enhanced damage" in captured.out
+    assert "enhanced hit" in captured.out
+    assert "disarm" in captured.out
+    assert "Prerequisites: warrior base 30%" in captured.out
 
 
 def _create_recorded_run(tmp_path) -> tuple[Path, Path]:

@@ -6,15 +6,20 @@ from dd4tester import campaign
 from dd4tester.campaign import _source_ranked_post_loss_plain_probe_allowed
 from dd4tester.hunt_candidates import (
     ACT_AGGRESSIVE,
+    ACT_SENTINEL,
     ACT_STAY_AREA,
     HuntCandidate,
+    MobileProgram,
     MobileSource,
     MobReset,
     ObjectSource,
     RoomSource,
     WorldSource,
 )
-from dd4tester.populations import plain_bounded_population
+from dd4tester.populations import (
+    plain_bounded_population,
+    source_sequential_duplicate_reset_limit,
+)
 
 
 def population_case():
@@ -48,6 +53,69 @@ def test_bounded_population_allows_isolation_research_without_reclassifying_targ
     assert not _source_ranked_post_loss_plain_probe_allowed(
         candidate, state, character_level=30, source_world=world,
     )
+
+
+def sequential_duplicate_case():
+    mobile = MobileSource(
+        100,
+        "living shadow",
+        "a living shadow",
+        43,
+        ACT_SENTINEL,
+        0,
+        "tabernacle.are",
+        description="It's pitch black. You can barely see it.",
+    )
+    world = WorldSource(
+        mobiles={100: mobile},
+        mob_resets=[MobReset(100, 200, 2, ())],
+    )
+    return world
+
+
+def test_two_copy_sentinel_reset_is_only_admitted_for_sequential_selection():
+    world = sequential_duplicate_case()
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=100, room_vnum="200",
+    ) == 2
+
+
+@pytest.mark.parametrize("mutation", [
+    "aggressive", "wanders", "affected", "program", "special",
+    "armed", "object", "third_copy", "different_room", "second_reset",
+])
+def test_sequential_duplicate_reset_rejects_any_unverified_source_change(mutation):
+    world = sequential_duplicate_case()
+    if mutation == "aggressive":
+        world.mobiles[100] = replace(
+            world.mobiles[100], act_flags=ACT_SENTINEL | ACT_AGGRESSIVE,
+        )
+    elif mutation == "wanders":
+        world.mobiles[100] = replace(world.mobiles[100], act_flags=0)
+    elif mutation == "affected":
+        world.mobiles[100] = replace(world.mobiles[100], affected_flags=1)
+    elif mutation == "program":
+        world.mobiles[100] = replace(
+            world.mobiles[100],
+            programs=(MobileProgram("fight_prog", commands=("say hello",)),),
+        )
+    elif mutation == "special":
+        world.mobile_specials[100] = ("spec_poison",)
+    elif mutation == "armed":
+        world.mob_resets[0] = replace(
+            world.mob_resets[0], equipment=((16, 200),),
+        )
+    elif mutation == "object":
+        world.mob_resets[0] = replace(world.mob_resets[0], object_vnums=(200,))
+    elif mutation == "third_copy":
+        world.mob_resets[0] = replace(world.mob_resets[0], maximum_count=3)
+    elif mutation == "different_room":
+        world.mob_resets[0] = replace(world.mob_resets[0], room_vnum=201)
+    else:
+        world.mob_resets.append(MobReset(100, 200, 2, ()))
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=100, room_vnum=200,
+    ) is None
 
 
 @pytest.mark.parametrize("changes", [

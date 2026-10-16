@@ -40,6 +40,26 @@ def test_city_observation_is_finite_read_only_admission_without_clearing_failure
     assert field_city_observation_request(state, [segment]) is None
 
 
+def test_city_observation_recovers_legacy_policy_from_exact_linked_segment():
+    state, segment = observation_case()
+    del state["campaign_field_city_preflight"]["policy_id"]
+    segment["start_state_json"] = json.dumps(state)
+    segment["end_state_json"] = json.dumps(state)
+
+    request = field_city_observation_request(state, [segment])
+
+    assert request is not None
+    assert request["prior_run_id"] == segment["run_id"]
+    assert request["policy_id"] == segment["phase"]
+
+
+def test_city_observation_rejects_a_linked_segment_with_conflicting_policy():
+    state, segment = observation_case()
+    segment["phase"] = "different-policy"
+
+    assert field_city_observation_request(state, [segment]) is None
+
+
 @pytest.mark.parametrize("change", [
     "unlinked", "failed", "unsafe", "running", "no_commands", "travel", "loss",
     "xp_change", "revision_change", "low_hp", "dead", "combat", "missing_waits", "unknown_loss",

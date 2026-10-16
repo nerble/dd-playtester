@@ -49,6 +49,99 @@ def test_official_routes_are_searchable_by_level_and_name() -> None:
     assert route_named("Dragon-Cult").commands == ("south", "south", "south", "west", "north")
 
 
+def test_mirror_realm_routes_avoid_the_greet_attack_street() -> None:
+    expected_city_exit = (
+        "south",
+        "south",
+        "south",
+        "west",
+        "west",
+        "west",
+        "north",
+        "north",
+        "west",
+    )
+
+    for route_name in (
+        "mirror realm jerry garcia",
+        "mirror realm Caerlin",
+        "mirror realm Caerlin Watchtowers",
+        "mirror realm Caerlin Face",
+    ):
+        assert route_named(route_name).commands[:9] == expected_city_exit
+
+
+def test_mirror_realm_jerry_garcia_route_descends_to_ladder_exit() -> None:
+    route = route_named("mirror realm jerry garcia")
+    open_north = route.commands.index("open north")
+
+    assert route.commands[open_north + 1 : open_north + 8] == (
+        "north",
+        "north",
+        "north",
+        "west",
+        "down",
+        "down",
+        "open west",
+    )
+
+
+def test_mirror_realm_caerlin_route_reaches_source_reset() -> None:
+    route = route_named("mirror realm Caerlin")
+    town_route = route_named("mirror realm Jerry Garcia")
+
+    assert (route.minimum_level, route.maximum_level) == (35, 40)
+    street_route_end = town_route.commands.index(
+        "south", town_route.commands.index("open west")
+    )
+    assert route.commands == town_route.commands[:street_route_end]
+    open_north = route.commands.index("open north")
+    assert route.commands[open_north + 1 : open_north + 8] == (
+        "north",
+        "north",
+        "north",
+        "west",
+        "down",
+        "down",
+        "open west",
+    )
+    assert route.commands[-5:] == ("west", "west", "west", "west", "west")
+    assert route.recall_after_loot is True
+    assert route.research_endpoint_room_vnum == 19068
+
+
+def test_mirror_realm_caerlin_watchtower_route_stops_at_observed_room() -> None:
+    route = route_named("mirror realm Caerlin Watchtowers")
+    full_route = route_named("mirror realm Caerlin")
+    north_door = full_route.commands.index("open north")
+
+    assert (route.minimum_level, route.maximum_level) == (35, 40)
+    assert route.commands == full_route.commands[: north_door + 4]
+    assert route.recall_after_loot is True
+    assert route.research_endpoint_room_vnum == 19008
+    assert route.route_economic_hunt_mobile_vnums == (19036,)
+
+
+def test_mirror_realm_caerlin_face_route_stops_before_north_door() -> None:
+    route = route_named("mirror realm Caerlin Face")
+    watchtower_route = route_named("mirror realm Caerlin Watchtowers")
+    north_door = watchtower_route.commands.index("open north")
+
+    assert (route.minimum_level, route.maximum_level) == (35, 40)
+    assert route.commands == watchtower_route.commands[:north_door]
+    assert route.recall_after_loot is True
+    assert route.research_endpoint_room_vnum == 19005
+    assert route.route_economic_hunt_mobile_vnums == (19036,)
+
+
+def test_vampire_catacombs_route_is_available_for_level_38_hunts() -> None:
+    route = route_named("vampire catacombs bevan")
+
+    assert route.minimum_level == 25
+    assert route.maximum_level == 40
+    assert route.commands
+
+
 def test_route_named_includes_source_backed_hunt_routes() -> None:
     route = route_named("Foundry")
 
@@ -73,7 +166,7 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     )
 
     vampire = route_named("Vampire Catacombs Bevan")
-    assert (vampire.minimum_level, vampire.maximum_level) == (25, 35)
+    assert (vampire.minimum_level, vampire.maximum_level) == (25, 40)
     assert len(vampire.commands) == 88
     assert vampire.commands[-7:] == (
         "north",

@@ -32,6 +32,7 @@ class CombatSessionController:
     disarm_attempts: int = 0
     disarm_resolved: bool = False
     repeat_action_cursor: int = 0
+    source_spell_repeatable_due: bool = False
     pending_withdrawal: dict[str, Any] | None = None
     source_attacker_aliases: list[dict[str, Any]] = field(default_factory=list)
     source_losses: list[dict[str, Any]] = field(default_factory=list)

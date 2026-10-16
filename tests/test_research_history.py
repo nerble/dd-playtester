@@ -105,6 +105,138 @@ def test_secondary_view_does_not_inherit_another_stops_crowd(history):
     assert not json.loads(views[SECONDARY]["end_state_json"])["campaign_fastwalk_crowded"]
 
 
+def test_primary_view_does_not_inherit_circuit_crowd_abort():
+    phase = "source-ranked-hunt-lotus-temple-10730-10817-38"
+    crowded = "source-ranked-hunt-lotus-temple-10730-10820-38"
+    candidate = {
+        "policy_id": phase,
+        "area_file": "lotus_temple.are",
+        "mobile_vnum": 10730,
+        "room_vnum": 10817,
+        "target": "shrine attendant",
+        "target_identity": "shrine attendant",
+        "sentinel": True,
+        "route_origin_recall_index": 0,
+        "source_revision": "source-1",
+        "circuit": [],
+    }
+    sightings = [
+        {
+            "policy_id": f"source-ranked-hunt-lotus-temple-10730-{room}-38",
+            "room_vnum": str(room),
+            "target": "shrine attendant",
+        }
+        for room in (10817, 10821, 10822)
+    ]
+    present = [
+        {
+            "policy_id": crowded,
+            "room_vnum": "10820",
+            "target": "shrine attendant",
+        }
+    ]
+    end = snapshot(
+        level=38,
+        campaign_fastwalk_crowded=True,
+        campaign_fastwalk_crowded_source_policy_ids=[crowded],
+        campaign_fastwalk_target_present_observed=True,
+        campaign_fastwalk_abort_reason="field room contained 5 mobiles",
+        campaign_fastwalk_source_absent_sightings=sightings,
+        campaign_fastwalk_source_present_sightings=present,
+    )
+    segment = {
+        "phase": phase,
+        "run_id": None,
+        "start_state_json": json.dumps(
+            snapshot(level=38, **{c._SOURCE_RANKED_CANDIDATE_KEY: candidate})
+        ),
+        "end_state_json": json.dumps(
+            {**end, "campaign_objective_kills": []}
+        ),
+    }
+
+    views = c._research_segment_views(None, segment)
+    primary_end = json.loads(views[phase]["end_state_json"])
+    crowded_end = json.loads(views[crowded]["end_state_json"])
+
+    assert primary_end["campaign_fastwalk_crowded"] is False
+    assert not str(
+        primary_end.get("campaign_fastwalk_abort_reason") or ""
+    ).startswith("field room contained ")
+    assert crowded_end["campaign_fastwalk_crowded"] is True
+
+
+def test_startup_exact_absence_clears_only_its_legacy_crowd_marker():
+    policy_id = "source-ranked-hunt-lotus-temple-10730-10817-38"
+    other_policy_id = "source-ranked-hunt-lotus-temple-10730-10820-38"
+    candidate = {
+        "policy_id": policy_id,
+        "area_file": "lotus_temple.are",
+        "mobile_vnum": 10730,
+        "room_vnum": 10817,
+        "target": "shrine attendant",
+        "target_identity": "shrine attendant",
+        "sentinel": True,
+        "route_origin_recall_index": 0,
+        "source_revision": "source-1",
+        "circuit": [],
+    }
+    end = snapshot(
+        level=38,
+        **{c._SOURCE_REVISION_KEY: "source-1"},
+        **{c._SOURCE_RANKED_CANDIDATE_KEY: candidate},
+        campaign_fastwalk_crowded=True,
+        campaign_fastwalk_crowded_source_policy_ids=None,
+        campaign_fastwalk_source_absent_sightings=[{
+            "policy_id": policy_id,
+            "room_vnum": "10817",
+            "target": "shrine attendant",
+        }],
+    )
+    prior_crowd = {
+        "observed": False,
+        "viable": False,
+        "crowded": True,
+        "boot_id": "boot",
+    }
+    state = snapshot(
+        level=38,
+        **{c._SOURCE_REVISION_KEY: "source-1"},
+        campaign_research_results={
+            policy_id: dict(prior_crowd),
+            other_policy_id: dict(prior_crowd),
+        },
+        **{
+            c._SOURCE_RANKED_CROWD_ATTEMPTS_KEY: {
+                policy_id: {"boot_id": "boot", "count": 2},
+                other_policy_id: {"boot_id": "boot", "count": 1},
+            },
+            c._RESEARCH_CROWD_COOLDOWN_KEY: {
+                policy_id: 3,
+                other_policy_id: 2,
+            },
+        },
+    )
+    segment = {
+        "sequence": 1,
+        "phase": policy_id,
+        "status": "success",
+        "safety_outcome": "safe",
+        "end_state_json": json.dumps(end),
+    }
+
+    repaired = c._repair_source_ranked_crowded_circuit_history(
+        state,
+        [segment],
+    )
+
+    assert repaired["campaign_research_results"][policy_id]["absent"] is True
+    assert policy_id not in repaired[c._SOURCE_RANKED_CROWD_ATTEMPTS_KEY]
+    assert policy_id not in repaired[c._RESEARCH_CROWD_COOLDOWN_KEY]
+    assert repaired["campaign_research_results"][other_policy_id]["crowded"] is True
+    assert other_policy_id in repaired[c._SOURCE_RANKED_CROWD_ATTEMPTS_KEY]
+
+
 @pytest.mark.parametrize("boundary", ["absent", "negative-consider", "failed", "failed-with-kill", "death", "empty-ledger"])
 def test_later_exact_stop_evidence_supersedes_the_old_kill(history, boundary):
     storage, campaign_id, add = history

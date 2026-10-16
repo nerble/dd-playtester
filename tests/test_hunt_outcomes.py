@@ -10,6 +10,7 @@ from dd4tester.hunt_outcomes import (
     LOCATOR_ORIGIN_ABORT,
     REGISTERED_LOCATOR_REVALIDATIONS_KEY,
     crowded_combat_loss_target,
+    completed_prior_level_single_target_hunt,
     completed_single_target_hunt,
     idle_pursuit_revalidation_evidence,
     isolated_health_floor_target,
@@ -21,6 +22,106 @@ from dd4tester.storage import RUN_REPORT_SUMMARY_VERSION
 
 POLICY = "registered-three-target-hunt"
 SOURCE = "source-ranked-hunt-test-100-200-30"
+WAITER_POLICY = "mirror-realm-plain-waiter-hunt-38-40"
+WAITER_SOURCE_38 = "source-ranked-hunt-mirror-realm-19027-19072-38"
+WAITER_SOURCE_39 = "source-ranked-hunt-mirror-realm-19027-19072-39"
+
+
+def _prior_level_waiter_evidence():
+    state = {
+        "level": 39, "world_boot_id": "boot", "campaign_source_revision": "new-source",
+        "xp": 9000, "campaign_xp_loss_total": 1200, "room_vnum": "3054",
+        "hp": 936, "dead": False, "in_combat": False, "enemies": [],
+        "campaign_registered_research_xp_loss_policies": [],
+        "campaign_source_ranked_xp_loss_policies": [],
+    }
+    start = {
+        "level": 38, "world_boot_id": "boot", "campaign_source_revision": "old-source",
+        "xp": 1000, "campaign_xp_loss_total": 551, "room_vnum": "3054",
+        "hp": 911, "dead": False, "in_combat": False, "enemies": [],
+    }
+    kills = [{
+        "mob_name": "the waiter", "source_mobile_vnum": 19027,
+        "source_policy_id": WAITER_SOURCE_38, "xp_gained": 4206,
+    }]
+    end = {
+        **start, "xp": 5206, "campaign_objective_kills": kills,
+        "campaign_fastwalk_source_consider_outcomes": {WAITER_SOURCE_38: True},
+    }
+    segment = {
+        "id": 42, "run_id": 7, "phase": WAITER_POLICY, "status": "success",
+        "finished_at": "finished", "command_count": 122,
+        "start_state_json": json.dumps(start), "end_state_json": json.dumps(end),
+    }
+    summary = {
+        "summary_version": RUN_REPORT_SUMMARY_VERSION,
+        "run": {"id": 7},
+        "outcomes": {"execution": "success", "objective": "achieved", "safety": "safe"},
+        "progress": {
+            "level": {"change": 0, "final": 38, "initial": 38},
+            "level_gains_observed": 0,
+            "experience": {"change": 4206, "final": 5206, "initial": 1000},
+            "confirmed_kills": kills,
+        },
+    }
+    return state, segment, summary
+
+
+def test_prior_level_waiter_receipt_only_prioritizes_fresh_current_level_policy() -> None:
+    state, segment, summary = _prior_level_waiter_evidence()
+    assert completed_prior_level_single_target_hunt(
+        state, segment, summary, policy_id=WAITER_POLICY,
+        prior_source_policy_id=WAITER_SOURCE_38,
+        current_source_policy_id=WAITER_SOURCE_39, mobile_vnum=19027,
+        audited_source_revision="new-source",
+    )
+
+
+@pytest.mark.parametrize("change", [
+    "summary_version", "phase", "outcome", "boot", "terminal_level", "source_revision",
+    "not_productive", "lost_xp", "wrong_source", "wrong_mobile", "consider", "abort",
+    "target_loss",
+])
+def test_prior_level_waiter_receipt_rejects_stale_or_unsafe_evidence(change: str) -> None:
+    state, segment, summary = _prior_level_waiter_evidence()
+    start = json.loads(segment["start_state_json"])
+    end = json.loads(segment["end_state_json"])
+    if change == "summary_version":
+        summary["summary_version"] -= 1
+    elif change == "phase":
+        segment["phase"] = "other-policy"
+    elif change == "outcome":
+        summary["outcomes"]["safety"] = "loss"
+    elif change == "boot":
+        state["world_boot_id"] = "new-boot"
+    elif change == "terminal_level":
+        state["level"] = 40
+    elif change == "source_revision":
+        segment["end_state_json"] = json.dumps({**end, "campaign_source_revision": "split-source"})
+    elif change == "not_productive":
+        summary["progress"]["experience"]["change"] = 0
+    elif change == "lost_xp":
+        segment["end_state_json"] = json.dumps({**end, "campaign_xp_loss_total": 552})
+    elif change == "wrong_source":
+        summary["progress"]["confirmed_kills"][0]["source_policy_id"] = "other-source"
+    elif change == "wrong_mobile":
+        summary["progress"]["confirmed_kills"][0]["source_mobile_vnum"] = 19069
+    elif change == "consider":
+        end["campaign_fastwalk_source_consider_outcomes"][WAITER_SOURCE_38] = False
+        segment["end_state_json"] = json.dumps(end)
+    elif change == "abort":
+        end["campaign_fastwalk_abort_reason"] = "crowded room"
+        segment["end_state_json"] = json.dumps(end)
+    elif change == "target_loss":
+        state["campaign_source_ranked_xp_loss_policies"] = [{
+            "boot_id": "boot", "policy_id": WAITER_SOURCE_39,
+        }]
+    assert not completed_prior_level_single_target_hunt(
+        state, segment, summary, policy_id=WAITER_POLICY,
+        prior_source_policy_id=WAITER_SOURCE_38,
+        current_source_policy_id=WAITER_SOURCE_39, mobile_vnum=19027,
+        audited_source_revision="new-source",
+    )
 
 
 def _crowded_loss_evidence():

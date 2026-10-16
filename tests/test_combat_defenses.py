@@ -8,7 +8,7 @@ from dd4tester.combat_defenses import normal_attack_landing_probability
 from dd4tester.campaign import (
     _SOURCE_RANKED_XP_LOSS_POLICIES_KEY,
     _TRAINING_AUDIT_KEY,
-    _source_ranked_plain_defense_probability,
+    _source_ranked_passive_defense_probability,
     _source_ranked_policy_id,
     _source_ranked_post_loss_plain_probe_allowed,
 )
@@ -131,7 +131,7 @@ def defended_plain_probe():
 
 def test_fresh_defenses_support_only_a_bounded_plain_post_loss_probe(defended_plain_probe):
     candidate, world, state = defended_plain_probe
-    assert _source_ranked_plain_defense_probability(
+    assert _source_ranked_passive_defense_probability(
         candidate, state, character_level=29, source_world=world,
     ) == Fraction(1314, 3125)
     assert _source_ranked_post_loss_plain_probe_allowed(
@@ -150,7 +150,7 @@ def test_fresh_defenses_support_only_a_bounded_plain_post_loss_probe(defended_pl
 ])
 def test_incomplete_or_impaired_defense_evidence_stays_closed(defended_plain_probe, change):
     candidate, world, state = defended_plain_probe
-    assert _source_ranked_plain_defense_probability(
+    assert _source_ranked_passive_defense_probability(
         candidate, {**state, **change}, character_level=29, source_world=world,
     ) is None
 
@@ -176,6 +176,6 @@ def test_defenses_never_reduce_raw_peak_or_clear_a_target_loss(defended_plain_pr
 ])
 def test_defense_credit_excludes_nonplain_or_multiple_resets(defended_plain_probe, change):
     candidate, world, state = defended_plain_probe
-    assert _source_ranked_plain_defense_probability(
+    assert _source_ranked_passive_defense_probability(
         replace(candidate, **change), state, character_level=29, source_world=world,
     ) is None

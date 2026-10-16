@@ -15,6 +15,9 @@ ECONOMIC_HUNT_MAX_COPPER = 1250
 _ECONOMIC_ROUTE_REJECTION = "an economic special mobile can reach the route"
 _CAPACITY_REJECTION = "target reset capacity exceeds one"
 _SPELL_ITEMS = {ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF, ITEM_WAND}
+# DD4 merc.h: detect invis, detect hidden, protection, and pass door. Protection
+# only reduces damage dealt to the flagged target; none of these starts combat.
+_ECONOMIC_TARGET_PASSIVE_AFFECTS = (1 << 3) | (1 << 5) | (1 << 13) | (1 << 20)
 
 
 def known_purse(currencies: object) -> int | None:
@@ -78,8 +81,13 @@ def economic_hunt_candidate(
     purse = known_purse(state.get("currencies"))
     mobile = world.mobiles.get(candidate.mobile_vnum)
     remaining_rejections = set(candidate.autonomy_rejections) - {_ECONOMIC_ROUTE_REJECTION}
+    target_special_rejections = {
+        f"target has special procedure {str(special).strip().casefold()}"
+        for special in candidate.specials
+    }
+    unhandled_rejections = remaining_rejections - target_special_rejections
     population = bool(
-        remaining_rejections == {_CAPACITY_REJECTION}
+        unhandled_rejections == {_CAPACITY_REJECTION}
         and plain_bounded_population(replace(
             candidate, status="reject", autonomy_rejections=(_CAPACITY_REJECTION,),
         ), world)
@@ -87,14 +95,16 @@ def economic_hunt_candidate(
     if (
         type(level) is not int or purse is None or purse > ECONOMIC_HUNT_MAX_COPPER
         or _ECONOMIC_ROUTE_REJECTION not in candidate.autonomy_rejections
-        or remaining_rejections and not population
-        or candidate.is_coin_stash or candidate.is_food_stash or candidate.specials
+        or unhandled_rejections and not population
+        or not target_special_rejections.issubset(candidate.autonomy_rejections)
+        or candidate.is_coin_stash or candidate.is_food_stash
         or candidate.equipped_weapons or not (candidate.sentinel or population)
         or not population and candidate.source_spawn_limit != 1
         or candidate.room_spawn_count != 1
         or candidate.route_hard_hazard_targets
         or mobile is None or mobile.aggressive or mobile.fear_aura or mobile.confused
-        or mobile.non_corporeal or mobile.programs or mobile.affected_flags
+        or mobile.non_corporeal or mobile.programs
+        or mobile.affected_flags & ~_ECONOMIC_TARGET_PASSIVE_AFFECTS
         or not (mobile.sentinel or population)
         or not mobile.damage_modifier_known or not mobile.hp_modifier_known
         or candidate.source_damage_modifier != mobile.damage_modifier
@@ -126,9 +136,13 @@ def economic_hunt_candidate(
             return candidate
     return replace(
         candidate, status="reject" if population else "caution",
-        autonomy_rejections=(_CAPACITY_REJECTION,) if population else (),
+        autonomy_rejections=tuple(sorted(remaining_rejections)),
         route_economic_hunt_mobile_vnums=candidate.route_special_mobile_vnums,
-        route_economic_source_rejections=candidate.autonomy_rejections,
+        route_economic_source_rejections=tuple(
+            rejection
+            for rejection in candidate.autonomy_rejections
+            if rejection in {_ECONOMIC_ROUTE_REJECTION, _CAPACITY_REJECTION}
+        ),
     )
 
 

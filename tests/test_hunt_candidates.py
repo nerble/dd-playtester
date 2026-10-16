@@ -1058,6 +1058,48 @@ def test_source_route_requires_flight_detects_water_capability_gate() -> None:
     assert source_route_requires_flight(world, (1, 2)) is True
 
 
+def test_ranked_underwater_target_records_breathing_separately_from_flight() -> None:
+    world = WorldSource(
+        mobiles={
+            39012: MobileSource(
+                39012,
+                "eel electric",
+                "an electric eel",
+                39,
+                ACT_SENTINEL,
+                -100,
+                "tabernacle.are",
+            )
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "midgaard.are",
+                exits={"south": ExitSource("south", 39015, 0, -1)},
+            ),
+            39015: RoomSource(
+                39015,
+                "The Tabernacle of Coggery",
+                "tabernacle.are",
+                sector_type=8,
+            ),
+        },
+        mob_resets=[MobReset(39012, 39015, 1, ())],
+    )
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=39,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+    eel = next(candidate for candidate in candidates if candidate.mobile_vnum == 39012)
+
+    assert eel.requires_flight is True
+    assert eel.requires_water_breathing is True
+
+
 def test_source_route_requires_flight_detects_ex_wall_exit() -> None:
     world = WorldSource(
         rooms={
@@ -1317,6 +1359,21 @@ def test_area_parser_connects_mob_resets_to_direct_and_contained_loot() -> None:
         1,
         4,
     )
+
+
+def test_area_parser_tracks_default_and_explicit_recall_destinations(tmp_path: Path) -> None:
+    default_path = tmp_path / "default.are"
+    default_path.write_text("#AREA Test~ Default~\n1 10 0 100\n#$\n", encoding="latin-1")
+    explicit_path = tmp_path / "explicit.are"
+    explicit_path.write_text(
+        "#AREA Test~ Explicit~\n1 10 0 100\n#RECALL\n13441\n#$\n",
+        encoding="latin-1",
+    )
+
+    assert parse_area_file(default_path, include_resets=False).recall_vnum == 3001
+    assert parse_area_file(explicit_path, include_resets=False).recall_vnum == 13441
+    world = load_world_source(tmp_path, include_all_areas=True)
+    assert world.area_recalls == {"default.are": 3001, "explicit.are": 13441}
 
 
 def test_key_carrier_query_preserves_neighboring_reset_provenance() -> None:
@@ -3425,7 +3482,7 @@ def test_candidate_records_exact_aggressive_route_mobile_for_policy_gates() -> N
     assert candidate.route_special_mobile_vnums == ()
 
 
-def test_candidate_rejects_bounded_below_band_aggressive_route_mobile_for_xp() -> None:
+def test_candidate_keeps_bounded_below_band_aggressor_as_transit_only() -> None:
     world = WorldSource(
         mobiles={
             100: MobileSource(
@@ -3476,7 +3533,7 @@ def test_candidate_rejects_bounded_below_band_aggressive_route_mobile_for_xp() -
         include_all_areas=True,
     )
 
-    assert not candidate.autonomous_safe
+    assert candidate.autonomous_safe
     assert "below-band transit aggressor is not an XP target" in candidate.autonomy_rejections
     assert any(
         "bounded low-risk aggressive transit mobile" in hazard
@@ -3488,6 +3545,41 @@ def test_candidate_rejects_bounded_below_band_aggressive_route_mobile_for_xp() -
         world.mobiles[200],
         character_level=18,
         character_max_hp=218,
+    )
+
+
+def test_goblin_fortress_guard_does_not_close_current_band_target() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=39,
+        character_max_hp=936,
+        include_xp_only=True,
+        include_level_ceiling_candidates=True,
+        level_ceiling_offset=5,
+        include_all_areas=True,
+        recall_origins={0: 3001},
+    )
+    candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate.mobile_vnum == 20301 and candidate.room_vnum == 20319
+    )
+
+    assert candidate.estimated_level_range == (40, 44)
+    assert candidate.autonomous_safe
+    assert "below-band transit aggressor is not an XP target" in (
+        candidate.autonomy_rejections
+    )
+    assert 20315 in candidate.route_aggressive_mobile_vnums
+    assert source_mobile_route_aggressor_is_bounded(
+        world,
+        world.mobiles[20315],
+        character_level=39,
+        character_max_hp=936,
     )
 
 
@@ -4351,14 +4443,18 @@ def test_candidate_ranking_can_include_below_band_loot_targets() -> None:
     assert funding[0].estimated_level_range == (1, 3)
 
 
-def test_candidate_ranking_rejects_high_level_room_companion(monkeypatch) -> None:
+def test_candidate_ranking_keeps_nonaggressive_room_companion_in_caution(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
         ("target.are",),
     )
     world = WorldSource(
         mobiles={
-            100: MobileSource(100, "doe", "a doe", 5, 0, 0, "target.are"),
+            100: MobileSource(
+                100, "doe", "a doe", 5, ACT_SENTINEL, 0, "target.are",
+            ),
             200: MobileSource(
                 200,
                 "hierophant",
@@ -4383,8 +4479,8 @@ def test_candidate_ranking_rejects_high_level_room_companion(monkeypatch) -> Non
         include_xp_only=True,
     )[0]
 
-    assert candidate.status == "reject"
-    assert "target reset permits up to 2 matching mobiles in the room" in candidate.hazards
+    assert candidate.status == "caution"
+    assert "target reset capacity exceeds one" not in candidate.autonomy_rejections
     assert "room companion: the Hierophant L15 (up to 1)" in candidate.hazards
 
 
@@ -4419,7 +4515,10 @@ def test_candidate_ranking_rejects_same_vnum_assist_capacity(monkeypatch) -> Non
             3001: RoomSource(3001, "Recall", "midgaard.are"),
             9406: RoomSource(9406, "A Guard Room", "fleshmonger.are"),
         },
-        mob_resets=[MobReset(9405, 9406, 2, (9400,))],
+        mob_resets=[
+            MobReset(9405, 9406, 2, (9400,)),
+            MobReset(9405, 9406, 2, (9400,)),
+        ],
     )
     world.rooms[3001].exits["north"] = ExitSource("north", 9406, 0, -1)
 
@@ -4434,6 +4533,66 @@ def test_candidate_ranking_rejects_same_vnum_assist_capacity(monkeypatch) -> Non
         "target reset permits up to 2 matching mobiles in the room"
         in candidate.hazards
     )
+
+
+def test_stationary_global_population_cap_is_not_a_local_crowd(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("temple.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            10730: MobileSource(
+                10730,
+                "shrine attendant",
+                "shrine attendant",
+                37,
+                ACT_SENTINEL,
+                0,
+                "temple.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 10821, 0, -1)},
+            ),
+            10821: RoomSource(
+                10821,
+                "Northern Temple",
+                "temple.are",
+                exits={
+                    "south": ExitSource("south", 3001, 0, -1),
+                    "east": ExitSource("east", 10822, 0, -1),
+                },
+            ),
+            10822: RoomSource(
+                10822,
+                "Temple Stairs",
+                "temple.are",
+                exits={"west": ExitSource("west", 10821, 0, -1)},
+            ),
+        },
+        mob_resets=[
+            MobReset(10730, 10821, 4, ()),
+            MobReset(10730, 10822, 4, ()),
+        ],
+    )
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=38,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+    candidate = next(item for item in candidates if item.room_vnum == 10821)
+
+    assert candidate.source_spawn_limit == 4
+    assert candidate.room_spawn_count == 1
+    assert "target reset capacity exceeds one" not in candidate.autonomy_rejections
+    assert not any("matching mobiles in the room" in h for h in candidate.hazards)
 
 
 def test_candidate_ranking_keeps_an_isolated_aggressive_target_in_risk_pool(
@@ -4692,14 +4851,14 @@ def test_candidate_allows_passive_high_level_companion_outside_join_window(
     assert "target room has a dangerous reset companion" not in candidate.autonomy_rejections
 
 
-def test_fleshmonger_cook_companion_is_source_capable_assister() -> None:
+def test_fleshmonger_passive_cook_companion_does_not_block_hunt() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
         include_all_areas=True,
     )
     boy = world.mobiles[9404]
 
-    assert source_mobile_can_join_player_fight(
+    assert not source_mobile_can_join_player_fight(
         world,
         boy,
         character_level=9,
@@ -4716,16 +4875,16 @@ def test_fleshmonger_cook_companion_is_source_capable_assister() -> None:
         if candidate.mobile_vnum == 9403 and candidate.room_vnum == 9403
     )
 
-    assert not candidate.autonomous_safe
+    assert candidate.autonomous_safe
     assert (
         "source-backed companion may join player combat: the cook's boy"
-        in candidate.hazards
+        not in candidate.hazards
     )
     assert (
         "target room has a source-capable assisting companion"
-        in candidate.autonomy_rejections
+        not in candidate.autonomy_rejections
     )
-    assert "source-backed trivial companion: the cook's boy" not in candidate.hazards
+    assert "source-backed trivial companion: the cook's boy" in candidate.hazards
 
 
 def test_candidate_rejects_special_procedure_room_companion(monkeypatch) -> None:
@@ -4765,7 +4924,7 @@ def test_candidate_rejects_special_procedure_room_companion(monkeypatch) -> None
     )[0]
 
     assert not candidate.autonomous_safe
-    assert "target room has a dangerous reset companion" in candidate.autonomy_rejections
+    assert "target has special procedure spec_poison" in candidate.autonomy_rejections
 
 
 def test_candidate_allows_source_below_band_special_room_companion(monkeypatch) -> None:
@@ -5355,7 +5514,7 @@ def test_autonomous_filter_allows_good_alignment_combat_special_companion(
 
 def test_alignment_assistance_gate_uses_player_alignment_not_target_alignment() -> None:
     guard = MobileSource(
-        200, "guard", "the guard", 8, 0, 0, "target.are",
+        200, "guard", "the guard", 8, ACT_AGGRESSIVE, 0, "target.are",
     )
     good_guard = replace(guard, alignment=1000)
     target = MobileSource(
@@ -5376,12 +5535,31 @@ def test_alignment_assistance_gate_uses_player_alignment_not_target_alignment() 
 
 def test_masked_player_alignment_keeps_good_bystander_possible() -> None:
     guard = MobileSource(
-        200, "guard", "the good guard", 8, 0, 1000, "target.are",
+        200, "guard", "the good guard", 8, ACT_AGGRESSIVE, 1000, "target.are",
     )
     world = WorldSource(mobiles={200: guard})
 
     assert source_mobile_can_join_player_fight(
         world, guard, character_level=8, character_alignment=50000,
+    )
+
+
+def test_mirror_realm_green_lord_is_not_an_automatic_joiner() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    green_lord = world.mobiles[19019]
+
+    assert green_lord.wanders
+    assert not green_lord.aggressive
+    assert not green_lord.programs
+    assert not world.mobile_specials.get(green_lord.vnum)
+    assert not source_mobile_can_join_player_fight(
+        world,
+        green_lord,
+        character_level=39,
+        character_alignment=-766,
     )
 
 
@@ -5433,7 +5611,7 @@ def test_autonomous_filter_allows_bounded_borderline_route_aggressor(
     )
 
 
-def test_autonomous_filter_blocks_below_band_route_aggressor_for_xp(
+def test_autonomous_filter_allows_below_band_route_aggressor_as_transit(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
@@ -5477,7 +5655,7 @@ def test_autonomous_filter_blocks_below_band_route_aggressor_for_xp(
         if candidate.mobile_vnum == 100
     ]
 
-    assert not candidate.autonomous_safe
+    assert candidate.autonomous_safe
     assert "below-band transit aggressor is not an XP target" in (
         candidate.autonomy_rejections
     )
@@ -6209,6 +6387,65 @@ def test_candidate_ranking_rejects_a_mobile_holding_a_castable_staff(
     assert not candidate.autonomous_safe
 
 
+def test_candidate_ranking_ignores_verified_defensive_staff_spell(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "priest",
+                "the priest",
+                6,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        objects={
+            300: ObjectSource(
+                300,
+                "staff bard",
+                "a Staff of the Bard",
+                ITEM_STAFF,
+                (30, 10, 10),
+                100,
+                value_strings=("30", "10", "10", "sanctuary"),
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Temple", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, (300,), equipment=((WEAR_HOLD, 300),)),
+        ],
+        skill_target_types={"sanctuary": "TAR_CHAR_DEFENSIVE"},
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=7,
+        character_max_hp=123,
+        include_xp_only=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert not any("castable spell item" in hazard for hazard in candidate.hazards)
+    assert "target carries a source-castable spell item" not in (
+        candidate.autonomy_rejections
+    )
+
+
 def test_source_combat_readiness_is_a_soft_target_specific_hint() -> None:
     unassessed = source_combat_readiness(
         character_level=18,
@@ -6553,6 +6790,47 @@ def test_source_combat_output_uses_source_legal_subclass_spell(
     )
 
     assert output == expected
+
+
+def test_knight_flamestrike_output_includes_automatic_weapon_rounds() -> None:
+    output = source_combat_output_estimate(
+        character_level=37,
+        character_class="warrior",
+        character_subclass="knight",
+        known_skills=(
+            "flamestrike",
+            "armed combat knowledge",
+            "second attack",
+            "third attack",
+            "enhanced damage",
+        ),
+        known_skill_levels={
+            "flamestrike": 48,
+            "armed combat knowledge": 64,
+            "second attack": 64,
+            "third attack": 63,
+            "enhanced damage": 68,
+        },
+        weapon_damage_range=(1, 64),
+        weapon_vnum=10719,
+        player_damroll=23,
+        player_swiftness=5,
+    )
+
+    assert output == SourceCombatOutput(
+        action="flamestrike",
+        minimum_damage=32,
+        expected_damage=337,
+        maximum_damage=686,
+        resource="mana",
+        resource_cost=20,
+        conservative_damage=269,
+        maximum_actions=12,
+        source_reference=(
+            "magic.c:spell_flamestrike; plus fight.c:one_hit/multi_hit; "
+            "object vnum 10719"
+        ),
+    )
 
 
 def test_source_combat_output_rejects_subclass_spell_on_wrong_subclass() -> None:

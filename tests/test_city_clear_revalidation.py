@@ -67,7 +67,7 @@ def clear_city_case(monkeypatch):
         4000: RoomSource(4000, "Endpoint", "test.are"),
     })
     monkeypatch.setattr(cp, "_source_ranked_candidate_in_current_band", lambda *a, **kw: True)
-    monkeypatch.setattr(cp, "_source_ranked_hp_probe_admission_available", lambda *a, **kw: True)
+    monkeypatch.setattr(cp, "_source_ranked_level_admission_available", lambda *a, **kw: True)
     monkeypatch.setattr(cp, "_source_ranked_candidate_requires_sanctuary_for_state", lambda *a, **kw: False)
     return candidate, policy, state, world, segments
 
@@ -77,6 +77,21 @@ def arm(case, **kwargs):
     return cp._arm_field_city_clear_route_revalidation(
         state, [candidate], source_world=world, segments=segments, **kwargs,
     )
+
+
+def source_refresh_clear_case(case):
+    candidate, policy, state, world, segments = case
+    observation_start = json.loads(segments[1]["start_state_json"])
+    observation_end = json.loads(segments[1]["end_state_json"])
+    observation_start[cp._SOURCE_REVISION_KEY] = "old-revision"
+    observation_end[cp._SOURCE_REVISION_KEY] = "old-revision"
+    segments[1]["start_state_json"] = json.dumps(observation_start)
+    segments[1]["end_state_json"] = json.dumps(observation_end)
+    state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY] = {
+        "boot_id": "boot", "level": 29, "policy_id": "another-policy",
+        "status": "attempted", "attempted": True,
+    }
+    return candidate, policy, state, world, segments
 
 
 def test_clear_route_recheck_is_one_shot_and_preserves_old_closure(clear_city_case):
@@ -93,6 +108,180 @@ def test_clear_route_recheck_is_one_shot_and_preserves_old_closure(clear_city_ca
     assert cp._mark_field_city_alternate_route_revalidation(state, candidate, character_level=29)
     assert marker is not state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY]
     assert arm(clear_city_case) is None
+
+
+def test_source_refresh_clear_route_uses_old_linked_locator_and_separate_marker(
+    clear_city_case,
+):
+    case = source_refresh_clear_case(clear_city_case)
+    candidate, policy, state, _world, _segments = case
+    old_clear_marker = deepcopy(state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY])
+    old_ledger = deepcopy(state[cp._FIELD_CITY_BLOCKED_POLICIES_KEY])
+
+    assert arm(case) == policy
+
+    marker = state[cp._FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY]
+    assert marker["source_refresh"] is True
+    assert marker["route_clear_recheck"] is True
+    assert marker["prior_source_revision"] == "old-revision"
+    assert marker["source_revision"] == "current-revision"
+    assert marker["observation_source_revision"] == "old-revision"
+    assert marker["prior_segment_id"] == 42
+    assert marker["observation_segment_id"] == 43
+    assert marker["prior_run_id"] == 100
+    assert marker["observation_run_id"] == 101
+    assert marker["source_route"] == list(candidate.route)
+    assert state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY] == old_clear_marker
+    assert state[cp._FIELD_CITY_BLOCKED_POLICIES_KEY] == old_ledger
+    assert cp._field_city_alternate_route_revalidation_pending(
+        state, policy_id=policy,
+    )
+
+    assert cp._mark_field_city_alternate_route_revalidation(
+        state, candidate, character_level=29,
+    )
+    assert state[cp._FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY]["status"] == (
+        "attempted"
+    )
+    assert state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY] == old_clear_marker
+    assert arm(case) is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["locator_revision", "locator_run", "locator_xp", "locator_loss", "same_locations", "route"],
+)
+def test_source_refresh_clear_route_rejects_stale_or_changed_evidence(
+    clear_city_case, change,
+):
+    case = source_refresh_clear_case(clear_city_case)
+    candidate, _policy, state, _world, segments = case
+    start = json.loads(segments[1]["start_state_json"])
+    end = json.loads(segments[1]["end_state_json"])
+    if change == "locator_revision":
+        start[cp._SOURCE_REVISION_KEY] = "other-old-revision"
+        end[cp._SOURCE_REVISION_KEY] = "other-old-revision"
+    elif change == "locator_run":
+        end["campaign_field_city_preflight"]["run_id"] = 99
+    elif change == "locator_xp":
+        end["xp"] += 1
+    elif change == "locator_loss":
+        end["xp_loss_total"] += 1
+    elif change == "same_locations":
+        state["campaign_field_city_preflight"]["locations"] = ["old road"]
+        end["campaign_field_city_preflight"]["locations"] = ["old road"]
+    else:
+        candidate = replace(candidate, route=("north",))
+    segments[1]["start_state_json"] = json.dumps(start)
+    segments[1]["end_state_json"] = json.dumps(end)
+
+    assert arm((candidate, _policy, state, _world, segments)) is None
+
+
+def test_source_refresh_clear_route_success_releases_only_exact_city_closure(
+    clear_city_case,
+):
+    case = source_refresh_clear_case(clear_city_case)
+    candidate, policy, state, _world, _segments = case
+    old_ledger = deepcopy(state[cp._FIELD_CITY_BLOCKED_POLICIES_KEY])
+    old_clear_marker = deepcopy(state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY])
+    assert arm(case) == policy
+    assert cp._mark_field_city_alternate_route_revalidation(
+        state, candidate, character_level=29,
+    )
+
+    start = deepcopy(state)
+    start[cp._SOURCE_RANKED_CANDIDATE_KEY] = cp._source_ranked_candidate_record(
+        candidate, character_level=29, source_revision="current-revision",
+    )
+    end = deepcopy(start)
+    end["xp"] += 250
+    end["campaign_field_city_preflight"].update(run_id=102, outbound_index=2)
+    end["campaign_objective_kills"] = [{
+        "source_policy_id": policy,
+        "source_mobile_vnum": candidate.mobile_vnum,
+        "xp_gained": 250,
+    }]
+    segment = {
+        "id": 44, "run_id": 102, "phase": policy, "status": "success",
+        "start_state_json": json.dumps(start), "end_state_json": json.dumps(end),
+    }
+
+    promoted = cp._verify_field_city_clear_route_revalidation(end, [segment])
+
+    assert promoted[cp._FIELD_CITY_SOURCE_REFRESH_REVALIDATION_KEY]["status"] == (
+        "succeeded"
+    )
+    assert policy not in cp._field_city_departure_blocked_policy_ids(promoted)
+    assert promoted[cp._FIELD_CITY_BLOCKED_POLICIES_KEY] == old_ledger
+    assert promoted[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY] == old_clear_marker
+
+
+def test_clear_route_recheck_prioritizes_useful_xp_odds_over_input_order(
+    clear_city_case,
+):
+    lower_probability, lower_policy, state, world, segments = clear_city_case
+    lower_probability = replace(lower_probability, score=500)
+    higher_probability = replace(
+        lower_probability,
+        score=-100,
+        mobile_vnum=124,
+        target="a higher-band target",
+        target_keyword="higher",
+        level=27,
+        estimated_level_range=(27, 31),
+    )
+    higher_policy = cp._source_ranked_policy_id(
+        higher_probability,
+        character_level=29,
+    )
+    assert cp._source_ranked_useful_fuzz_probability(
+        higher_probability,
+        character_level=29,
+    ) > cp._source_ranked_useful_fuzz_probability(
+        lower_probability,
+        character_level=29,
+    )
+
+    state[cp._FIELD_CITY_BLOCKED_POLICIES_KEY]["policy_ids"].append(
+        higher_policy
+    )
+    low_end = json.loads(segments[0]["end_state_json"])
+    high_start = json.loads(segments[0]["start_state_json"])
+    high_start[cp._SOURCE_RANKED_CANDIDATE_KEY] = (
+        cp._source_ranked_candidate_record(
+            higher_probability,
+            character_level=29,
+            source_revision="old-revision",
+        )
+    )
+    high_end = deepcopy(high_start)
+    high_end["campaign_field_city_preflight"] = {
+        **low_end["campaign_field_city_preflight"],
+        "policy_id": higher_policy,
+        "run_id": 99,
+    }
+    high_segment = {
+        "id": 41,
+        "run_id": 99,
+        "phase": higher_policy,
+        "status": "success",
+        "start_state_json": json.dumps(high_start),
+        "end_state_json": json.dumps(high_end),
+    }
+
+    selected = arm((
+        lower_probability,
+        lower_policy,
+        state,
+        world,
+        [high_segment, *segments],
+    ))
+    assert selected == higher_policy
+    assert (
+        state[cp._FIELD_CITY_CLEAR_ROUTE_REVALIDATION_KEY]["policy_id"]
+        == higher_policy
+    )
 
 
 @pytest.mark.parametrize("change", [
@@ -140,7 +329,7 @@ def test_clear_route_recheck_rejects_incomplete_or_changed_evidence(clear_city_c
 
 
 def test_clear_route_requires_independent_combat_admission(clear_city_case, monkeypatch):
-    monkeypatch.setattr(cp, "_source_ranked_hp_probe_admission_available", lambda *a, **kw: False)
+    monkeypatch.setattr(cp, "_source_ranked_level_admission_available", lambda *a, **kw: False)
     assert arm(clear_city_case) is None
 
 
@@ -369,6 +558,20 @@ def test_fresh_productive_absence_can_enter_first_wait_without_changing_state(cl
         state, segments, source_world=world,
     ) == policy
     assert state == before
+
+
+def test_first_absence_wait_does_not_reuse_a_kill_outside_the_eight_segment_tail(
+    clear_city_case,
+):
+    policy, state, world, segments = productive_absence_case(clear_city_case)
+    unrelated = [
+        {"phase": f"other-probe-{index}", "status": "success"}
+        for index in range(7)
+    ]
+
+    assert cp._productive_source_hunt_absence_wait_policy(
+        state, [*segments, *unrelated], source_world=world,
+    ) is None
 
 
 @pytest.mark.parametrize("change", [

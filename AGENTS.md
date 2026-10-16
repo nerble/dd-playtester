@@ -2,6 +2,14 @@
 
 ## Objective And Evidence
 
+Target selection uses relative level and live `consider`, never the mobile's
+current, maximum, estimated, or comparative hitpoints. This October 15 user
+instruction supersedes older target-HP/output-window admission, sanctuary,
+equipment, probe, and automatic-withdrawal rules below. Keep target HP as
+observation/report evidence only. Keep the character's own health withdrawal
+floor, level limits, source hazards, identity, provisioning and recovery checks.
+Do not flee because a target is a tank or exceeds a predicted damage budget.
+
 Build for every source-legal race, cosmetic
 sex, base class, optional subclass, name, and personality, capable of creating
 or resuming characters to HERO 100. HERO remains unproved. Follow
@@ -27,6 +35,26 @@ take the useful-XP opportunity instead of detouring merely to avoid ordinary
 damage or waiting automatically for sanctuary. Missing sanctuary alone does not
 close a plain target when the documented no-reserve gates pass; target identity,
 route, health, output, and live abort checks remain mandatory.
+Generate ranked candidates through the source-supported +5 `consider` band so
+the existing lucky-consider and HP-fuzz probe paths can actually see them.
+This widens scouting only: exact live `consider`, target identity, route,
+damage/output, and the 20% withdrawal floor still govern every engagement.
+Describe broad source placements separately from targets that currently pass
+the live and campaign gates; a narrow selector result is not the world’s roster.
+Before declaring a current-band frontier empty, audit source-defined area
+entries including bouncers, portals, scripted transfers and level-specific
+fastwalks. An unreachable result from the generic recall graph does not close
+an area: register a separate bounded route and exact target set, then retain
+live isolation, consider, output, recovery and return-route checks.
+Two independently verified, solo, useful-XP kills of the exact same plain,
+unarmed source reset at the immediately previous character level may clear only
+its current-level source HP-fuzz gate. Require safe achieved runs, matching
+character/class/subclass/boot and source policy, observed GMCP affects with no
+Sanctuary, at least a 20% prior health floor, and at least 95% current health.
+The prior GMCP target max HP must fit current conservative source output. This
+is selection evidence only: fresh route, identity, consider, live target HP,
+output, and combat-abort checks still govern every attempt; any XP loss closes
+the exception.
 For a source-confirmed, single unarmed target with no special, use a 20% combat
 withdrawal floor rather than stacking two observed-hit reserves. Keep poison,
 crowd, explicit route/stop floors, and all identity/output/consider gates intact.
@@ -36,6 +64,14 @@ identity. A positive first kill never erases a later explicit loss on that trip.
 Compare cumulative campaign losses across connections, not reset per-run totals.
 Recover missing stop identities only from bounded linked ordered events; names
 shared by different prototypes are not identity proof or retry permission.
+For an already-engaged, exact, isolated, unarmed source target whose only
+special is `spec_poison`, a fresh matching room/VNUM/description may keep that
+same fight going under the ordinary poison withdrawal floor and every existing
+combat check. This is not permission to begin a new fight, accept a crowd, or
+ignore another hazard. After the target is killed, return to the healer before
+starting another hunt; other or unverified poison still triggers the normal
+field return. Do not repeatedly issue recall while the MUD still reports the
+character fighting; let the existing combat withdrawal decision handle it.
 Apply the 20% floor for source-confirmed unarmed targets with no special before
 near-dead finisher grace; a final attack may not push below that floor.
 Read-only departure checks retain recovery readiness until movement dispatch.
@@ -366,6 +402,16 @@ pilot's live proficiency and
 learnable listing against the current class/subclass prerequisites, skill
 implementation, and exact trainer's teaching limits. Reuse a still-valid audit;
 do not repeatedly query an unchanged tree or travel when no lesson can help.
+Keep this active throughout each level band: when practices, an unlock, or
+trainer access makes a high-value lesson actionable, pursue it at the first
+eligible trainer opportunity, subject to the existing travel and recovery gates;
+do not wait for the next level transition.
+Use fresh physical and intellectual practice balances and the exact teacher
+listing to weigh another high-value improvement against its level-up HP/mana
+value. Refresh the skill tree after an accepted lesson; continue a priority
+skill when its next gain is useful and source-supported rather than assuming
+the first unlock is enough. Preserve practices when no worthwhile
+teacher-supported lesson remains.
 
 Prioritize improvements that increase whole-session XP: enhanced damage/hit,
 extra attacks, repeatable between-round attacks, disarm, effective defenses,
@@ -376,6 +422,12 @@ mastery for high-value abilities where worthwhile; a skill being learned does
 not mean its development is complete. Preserve separate physical/intellectual
 budgets and the cost of unused practices converting to HP/mana at leveling;
 do not spend on low-value or unsupported abilities merely to empty a balance.
+
+For every priority skill, track its current proficiency, next prerequisite,
+useful target threshold, and exact blocker. Set thresholds from source behavior,
+combat evidence, and teacher limits; raise key damage, attack, control, and
+protection skills at the earliest eligible trainer visit rather than treating
+initial unlock as completion.
 
 Verify each lesson with live proficiency changes and refresh the unlock plan.
 Record the next useful skill, target proficiency, prerequisites, and actual
@@ -620,6 +672,14 @@ and the normal route checks; a fresh shop quote must confirm affordability
 before buying. Affordable food restocking precedes
 an emergency equipment sale whether flying or walking; ordinary loot sales
 retain their existing rules.
+For a flight-shop capacity shortfall that has no ordinary safe relief item,
+allow one deferred slot only when the live healer equipment proves the exact,
+releasable Mud School diploma (VNUM 3715) is worn and caching that item covers
+the measured deficit. At the Magic Shop, require DD4's exact carrying-capacity
+refusal before removing and caching it; retry purchase only after the drop is
+acknowledged, preserve the last food reserve, and restore the diploma before
+leaving. Record this as a deferred destination plan, never as capacity already
+freed. See `docs/OPERATIONS.md` for the source and live evidence.
 After ordinary current-band source selection finds nothing executable, a
 source-required next-level quest-point shortfall may use the connected healer
 cooldown. Require food, recovery, nonnegative observed fame, and actual timer
@@ -784,6 +844,13 @@ history. Persist this separately as
 and blocked-policy ledger unchanged. Match the locator to its exact successful
 segment/run in the bounded recent history. The fresh live locator and every
 ordinary gate still apply.
+The same source-refresh marker may carry `route_clear_recheck` when the old
+blocked and later clear locator segments share their prior source revision and
+the current-source candidate retains the identical route. Map every old and new
+city label to rooms; require the old blocker on that route and all later
+locations outside it. This reopens only the exact route for one fresh live
+preflight; preserve the earlier clear-route marker and blocked-policy ledger.
+Release that closure only after a linked positive-XP kill and safe healer return.
 A candidate past the ordinary three-kill fresh-search cap may use that same
 one-shot city-route revalidation only when the ordinary same-boot productive
 repeat selector independently admits its exact policy. Calculate that proof

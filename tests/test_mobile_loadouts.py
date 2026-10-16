@@ -5,7 +5,11 @@ import pytest
 from dd4tester.hunt_candidates import (
     HuntCandidate, MobReset, MobileSource, ObjectSource, SourceCombatOutput, WorldSource,
 )
-from dd4tester.mobile_loadouts import sanctuary_limited_output, single_weapon_loadout
+from dd4tester.mobile_loadouts import (
+    sanctuary_limited_output,
+    single_weapon_loadout,
+    unarmed_inert_instrument_reset,
+)
 
 
 def loadout_fixture() -> tuple[HuntCandidate, WorldSource]:
@@ -71,6 +75,53 @@ def test_target_sanctuary_reduces_normal_and_opening_output() -> None:
     assert (limited.opening_min_damage, limited.opening_expected_damage,
             limited.opening_max_damage, limited.opening_conservative_damage) == (9, 14, 19, 11)
     assert (limited.maximum_actions, limited.resource_cost) == (12, 0)
+
+
+def test_protection_is_admitted_only_when_source_alignment_makes_it_irrelevant() -> None:
+    candidate, world = loadout_fixture()
+    world.mobiles[101] = replace(
+        world.mobiles[101], affected_flags=1 << 13, alignment=-750,
+    )
+
+    assert single_weapon_loadout(candidate, world) is None
+    assert single_weapon_loadout(
+        candidate, world, character_alignment=-875,
+    ) is not None
+    assert single_weapon_loadout(
+        candidate, world, character_alignment=1000,
+    ) is None
+
+
+def test_unarmed_singleton_admits_only_a_zero_effect_held_instrument() -> None:
+    mobile = MobileSource(19069, "mr teece", "Mr. Teece", 40, 1 << 6, 0, "mirror_realm.are")
+    instrument = ObjectSource(
+        19156, "banjo", "a banjo", 36, (0, 0, 0, 0), 0,
+        wear_flags=1 | (1 << 14), extra_flags=1 << 1,
+    )
+    reset = MobReset(19069, 19166, 1, (19156,), equipment=((17, 19156),))
+    world = WorldSource(mobiles={19069: mobile}, objects={19156: instrument},
+                        mob_resets=[reset])
+
+    assert unarmed_inert_instrument_reset(
+        world, mobile_vnum=19069, room_vnum=19166,
+    )
+
+    for changed in (
+        replace(instrument, item_type=4),
+        replace(instrument, affects=((19, 1),)),
+        replace(instrument, extra_flags=1 << 2),
+        replace(instrument, values=(0, 0, 0, 1)),
+        replace(instrument, wear_flags=1),
+    ):
+        world.objects[19156] = changed
+        assert not unarmed_inert_instrument_reset(
+            world, mobile_vnum=19069, room_vnum=19166,
+        )
+    world.objects[19156] = instrument
+    world.mob_resets[0] = replace(reset, object_vnums=(19156, 19157))
+    assert not unarmed_inert_instrument_reset(
+        world, mobile_vnum=19069, room_vnum=19166,
+    )
 
 
 @pytest.mark.parametrize("change", [

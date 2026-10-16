@@ -26,6 +26,7 @@ from .specials import (
 
 
 ACT_SENTINEL = 1 << 1
+ACT_SCAVENGER = 1 << 2
 ACT_AGGRESSIVE = 1 << 5
 ACT_STAY_AREA = 1 << 6
 ACT_WIMPY = 1 << 7
@@ -127,9 +128,12 @@ def body_form_has_head(flags: int | None) -> bool | None:
 
 
 AFF_BLIND = 1 << 0
+AFF_INVISIBLE = 1 << 1
 AFF_DETECT_INVIS = 1 << 3
 AFF_DETECT_MAGIC = 1 << 4
+AFF_SANCTUARY = 1 << 7
 AFF_CHARM = 1 << 18
+AFF_DETECT_CURSE = 1 << 29
 AFF_NON_CORPOREAL = 1 << 28
 AFF_MINDLESS = 1 << 49
 
@@ -171,6 +175,7 @@ ITEM_CONTAINER = 15
 ITEM_FOOD = 19
 ITEM_MONEY = 20
 ITEM_LOCK_PICK = 35
+ITEM_INSTRUMENT = 36
 ITEM_DONOT_RANDOMISE = 1 << 37
 
 # Container flags from ``merc.h``.  A nested resource is not loose ground
@@ -279,12 +284,15 @@ _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY = 4
 # It remains eligible as an incidental kill when it is farther below this band;
 # this does not change target selection or the live consider rule.
 _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP = 10
-# A source-identified, unarmed aggressor below the useful XP band may still
-# interrupt travel.  Admit it only when one live exchange and one critical
-# hit remain well inside the character's current HP reserve; the live runner
-# still requires exact identity, isolation, and a bounded return.
+# A source-identified aggressor below the useful XP band may still interrupt
+# travel. The 7-9-level part of the transit-risk band gets a wider one-round
+# bound; deeper gaps keep the stricter limits. Live identity, isolation, and
+# return checks still apply.
 _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO = 0.40
 _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO = 0.20
+_SOURCE_BOUNDED_DEEP_TRANSIT_LEVEL_GAP = 7
+_SOURCE_BOUNDED_DEEP_TRANSIT_PEAK_RATIO = 0.65
+_SOURCE_BOUNDED_DEEP_TRANSIT_CRITICAL_RATIO = 0.25
 # A probabilistic greet-program attacker may be treated as bounded route noise
 # only when both its trigger and source combat envelope are tightly capped.
 _SOURCE_BOUNDED_PROGRAM_MAX_TRIGGER_PERCENT = 25
@@ -660,9 +668,9 @@ def source_combat_output_estimate(
     """Return the first executable source-backed damage action.
 
     This covers formulas audited in ``magic.c``, ``skill.c``, and the bounded
-    werewolf natural attacks in ``sft.c``. It also models the source-backed
-    between-round ``headbutt``, ``kick``, ``knife toss``, and ``circle`` actions
-    when their observed skill percentage and weapon requirements are present.
+    werewolf natural attacks in ``sft.c``. It also models source-backed
+    between-round attacks and the weapon cycle that continues during
+    ``flamestrike``'s one-violence-pulse wait.
     Headbutt is estimated only with parsed source body-form evidence proving a
     non-huge target has a head. When a
     current structured equipment snapshot supplies a source object damage
@@ -1397,7 +1405,7 @@ def source_combat_output_estimate(
             continue
         if minimum <= 0 or maximum < minimum or expected <= 0:
             return None
-        if action in {
+        if action == "flamestrike" or action in {
             "headbutt",
             "kick",
             "knife toss",
@@ -1405,10 +1413,11 @@ def source_combat_output_estimate(
             "suck",
             "hurl",
         }:
-            # These commands are issued between automatic combat rounds. If a
-            # source weapon is currently wielded, include one audited
-            # ``multi_hit`` cycle in the same planning window instead of
-            # pretending that the controller stops making normal attacks.
+            # These commands are issued between automatic combat rounds. DD4
+            # also gives Flamestrike a 12-pulse wait, exactly one
+            # PULSE_VIOLENCE; violence_update still calls multi_hit while the
+            # caster waits. Include that audited weapon cycle in either
+            # planning window instead of dropping ordinary attacks.
             automatic_hit_values = _source_weapon_hit_values(
                 weapon_damage_range,
                 skills=skills,
@@ -1438,6 +1447,8 @@ def source_combat_output_estimate(
                 )
                 expected += automatic_expected
                 reference += "; plus fight.c:one_hit/multi_hit"
+                if action == "flamestrike" and weapon_vnum is not None:
+                    reference += f"; object vnum {int(weapon_vnum)}"
         return SourceCombatOutput(
             action=action,
             minimum_damage=minimum,
@@ -1855,6 +1866,7 @@ class AreaSource:
     mobile_specials: dict[int, tuple[str, ...]]
     shopkeepers: frozenset[int] = frozenset()
     xp_modifier: int | None = None
+    recall_vnum: int | None = RECALL_VNUM
 
 
 @dataclass
@@ -1870,6 +1882,8 @@ class WorldSource:
     mobile_templates: dict[str, MobileTemplateSource] = field(default_factory=dict)
     skill_groups: dict[str, tuple[tuple[str, int], ...]] = field(default_factory=dict)
     area_xp_modifiers: dict[str, int | None] = field(default_factory=dict)
+    skill_target_types: dict[str, str] = field(default_factory=dict)
+    area_recalls: dict[str, int | None] = field(default_factory=dict)
 
 
 @dataclass
@@ -1989,6 +2003,8 @@ class HuntCandidate:
     estimated_move_cost: int = 0
     estimated_flying_move_cost: int = 0
     requires_flight: bool = False
+    requires_water_breathing: bool = False
+    requires_detect_invisibility: bool = False
     ground_loot_keywords: tuple[str, ...] = ()
     ground_loot_object_vnums: tuple[int, ...] = ()
     is_coin_stash: bool = False
@@ -2001,11 +2017,25 @@ class HuntCandidate:
     # State-admitted ordinary XP travel only; original source risk is retained.
     route_economic_hunt_mobile_vnums: tuple[int, ...] = ()
     route_economic_source_rejections: tuple[str, ...] = ()
+    route_key_object_vnums: tuple[int, ...] = ()
 
     @property
     def autonomous_safe(self) -> bool:
-        """Whether source evidence permits a live probe-to-hunt policy."""
-        return not self.autonomy_rejections
+        """Whether source evidence permits a live probe-to-hunt policy.
+
+        A bounded below-band route attacker is incidental transit, not the
+        selected XP target, so its diagnostic marker alone does not close an
+        otherwise admissible hunt.
+        """
+        nonfatal_transit = {
+            "below-band transit aggressor is not an XP target",
+            "below-band wandering aggressor is not an XP target",
+        }
+        rejections = set(self.autonomy_rejections)
+        return bool(
+            not (rejections - nonfatal_transit)
+            and (not rejections or self.route_aggressive_mobile_vnums)
+        )
 
 
 @dataclass(frozen=True)
@@ -2185,6 +2215,14 @@ _RESOURCE_EFFECT_ALIASES = {
     "underwater": "water-breathing",
     "water breathing": "water-breathing",
 }
+
+
+def normalize_resource_effect(effect: str) -> str:
+    """Normalize a user-facing resource effect alias to its canonical key."""
+    normalized = " ".join(str(effect).casefold().split())
+    return _RESOURCE_EFFECT_ALIASES.get(normalized, normalized)
+
+
 _RESOURCE_EFFECT_ORDER = (
     "sanctuary",
     "protection",
@@ -2248,6 +2286,22 @@ def castable_spell_names(item: ObjectSource) -> tuple[str, ...]:
     return _encoded_spell_names(item)
 
 
+def _castable_item_is_npc_combat_hazard(
+    item: ObjectSource,
+    world: WorldSource,
+) -> bool:
+    spells = castable_spell_names(item)
+    if not spells:
+        return False
+    if item.item_type != ITEM_STAFF:
+        return True
+    safe_staff_targets = {"TAR_CHAR_SELF", "TAR_CHAR_DEFENSIVE"}
+    return not all(
+        world.skill_target_types.get(spell) in safe_staff_targets
+        for spell in spells
+    )
+
+
 def potion_spell_names(item: ObjectSource) -> tuple[str, ...]:
     """Return normalized source spell names encoded on a potion prototype."""
     if item.item_type != ITEM_POTION:
@@ -2273,8 +2327,7 @@ def resource_effects_for_object(
     direct-food rule used by :func:`rank_food_stashes`.  Spell effects are
     read from the source-encoded potion, pill, scroll, wand, or staff values.
     """
-    normalized = " ".join(str(effect).casefold().split())
-    normalized = _RESOURCE_EFFECT_ALIASES.get(normalized, normalized)
+    normalized = normalize_resource_effect(effect)
     valid_effects = set(_RESOURCE_EFFECT_SPELLS) | {"food"}
     if normalized != "all" and normalized not in valid_effects:
         choices = ", ".join(("all", *_RESOURCE_EFFECT_ORDER))
@@ -2427,11 +2480,7 @@ def rank_resource_sources(
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
     # Validate the effect once even when the source contains no objects.
-    normalized_effect = " ".join(str(effect).casefold().split())
-    normalized_effect = _RESOURCE_EFFECT_ALIASES.get(
-        normalized_effect,
-        normalized_effect,
-    )
+    normalized_effect = normalize_resource_effect(effect)
     if normalized_effect != "all":
         resource_effects_for_object(
             ObjectSource(0, "", "", 0, (), 0),
@@ -3307,13 +3356,24 @@ def load_world_source(
     world = WorldSource(mobile_templates=mobile_templates)
     const_path = area_directory.parent / "src" / "const.c"
     if const_path.is_file():
-        from .teaching import parse_skill_groups
+        from .teaching import parse_skill_groups, parse_skill_target_types
 
         try:
-            world.skill_groups = parse_skill_groups(const_path.read_text(encoding="utf-8"))
+            const_source = const_path.read_text(encoding="utf-8")
         except (OSError, UnicodeError, ValueError):
-            # Missing teaching evidence cannot authorize the optional fallback.
             world.skill_groups = {}
+            world.skill_target_types = {}
+        else:
+            try:
+                world.skill_groups = parse_skill_groups(const_source)
+            except ValueError:
+                # Missing teaching evidence cannot authorize the optional fallback.
+                world.skill_groups = {}
+            try:
+                world.skill_target_types = parse_skill_target_types(const_source)
+            except ValueError:
+                # Unknown spell targets must remain a conservative item hazard.
+                world.skill_target_types = {}
     area_files = {path.name for path in area_directory.glob("*.are")}
     target_files = (
         area_files
@@ -3341,6 +3401,7 @@ def load_world_source(
         world.mobile_specials.update(parsed.mobile_specials)
         world.shopkeepers.update(parsed.shopkeepers)
         world.area_xp_modifiers[path.name] = parsed.xp_modifier
+        world.area_recalls[path.name] = parsed.recall_vnum
         for container, contents in parsed.container_contents.items():
             world.container_contents.setdefault(container, []).extend(contents)
     return world
@@ -3457,7 +3518,31 @@ def parse_area_file(
         mobile_specials,
         frozenset(shopkeepers),
         _parse_area_xp_modifier(lines, sections.get("#AREA_SPECIAL")),
+        _parse_area_recall(lines, sections.get("#RECALL")),
     )
+
+
+def _parse_area_recall(
+    lines: list[str], bounds: tuple[int, int] | None,
+) -> int | None:
+    """Mirror DD4's per-area recall, including its default and invalid fallback."""
+    if bounds is None:
+        return RECALL_VNUM
+    start, end = bounds
+    header = lines[start - 1].strip().split(maxsplit=1) if start else []
+    raw_value = header[1].split()[0] if len(header) > 1 else None
+    if raw_value is None:
+        raw_value = next(
+            (line.strip().split()[0] for line in lines[start:end] if line.strip()),
+            None,
+        )
+    if raw_value is None:
+        return RECALL_VNUM
+    try:
+        recall_vnum = int(raw_value)
+    except ValueError:
+        return None
+    return recall_vnum if recall_vnum >= 1 else RECALL_VNUM
 
 
 def _parse_area_xp_modifier(
@@ -3581,8 +3666,9 @@ def source_mobile_route_aggressor_is_bounded(
     cutoff.  It is for source-identified mobiles that can only make a small
     incidental interruption: scripted attacks, unsafe specials, dual-wielded
     or otherwise ambiguous equipment, and useful-band loads remain rejected.
-    A single source-listed wielded weapon is admitted only when its stricter
-    peak and critical-damage bounds fit the character's transit reserve.
+    A single source-listed wielded weapon is admitted only when its peak and
+    critical damage fit the transit reserve. More distant, at-least-seven-
+    level-below threats use a wider bound, but still leave the live 20% floor.
     Additional source-listed armor is inert for this damage bound and is
     accepted when its object type is known; a second weapon or unknown
     equipment remains ambiguous and is rejected.
@@ -3613,6 +3699,22 @@ def source_mobile_route_aggressor_is_bounded(
     maximum_level = _mobile_level_range(mobile.level)[1]
     if maximum_level > character_level - 5:
         return False
+    deep_transit_gap = character_level - maximum_level
+    use_deep_transit_bound = (
+        _SOURCE_BOUNDED_DEEP_TRANSIT_LEVEL_GAP
+        <= deep_transit_gap
+        < _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+    )
+    peak_ratio = (
+        _SOURCE_BOUNDED_DEEP_TRANSIT_PEAK_RATIO
+        if use_deep_transit_bound
+        else _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO
+    )
+    critical_ratio = (
+        _SOURCE_BOUNDED_DEEP_TRANSIT_CRITICAL_RATIO
+        if use_deep_transit_bound
+        else _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO
+    )
     resets = [
         reset
         for reset in world.mob_resets
@@ -3636,12 +3738,9 @@ def source_mobile_route_aggressor_is_bounded(
             damage_modifier=mobile.damage_modifier,
         )
         return (
-            peak_round_damage * 100
-            <= int(character_max_hp * _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO * 100)
+            peak_round_damage * 100 <= int(character_max_hp * peak_ratio * 100)
             and critical_hit_damage * 100
-            <= int(
-                character_max_hp * _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO * 100
-            )
+            <= int(character_max_hp * critical_ratio * 100)
         )
     # A mobile prototype can reset in more than one room. Equipment belongs
     # to each reset instance; aggregating the rows would turn one sword on
@@ -3676,12 +3775,8 @@ def source_mobile_route_aggressor_is_bounded(
         return False
     if character_max_hp is None or character_max_hp <= 0:
         return maximum_level <= character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
-    peak_limit = int(
-        character_max_hp * _SOURCE_BOUNDED_TRANSIT_PEAK_RATIO * 100
-    )
-    critical_limit = int(
-        character_max_hp * _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO * 100
-    )
+    peak_limit = int(character_max_hp * peak_ratio * 100)
+    critical_limit = int(character_max_hp * critical_ratio * 100)
     return all(
         _mobile_peak_round_damage(
             maximum_level,
@@ -4048,7 +4143,7 @@ def rank_hunt_candidates(
             for wear_location, object_vnum in reset.equipment
             if wear_location in {WEAR_HOLD, WEAR_WIELD, WEAR_DUAL}
             and (item := world.objects.get(object_vnum)) is not None
-            and castable_spell_names(item)
+            and _castable_item_is_npc_combat_hazard(item, world)
         )
         hp_range = _mobile_base_hp_range(
             level_range,
@@ -4126,6 +4221,10 @@ def rank_hunt_candidates(
             flying=True,
         )
         requires_flight = source_route_requires_flight(world, path_rooms)
+        requires_water_breathing = source_route_requires_water_breathing(
+            world,
+            path_rooms,
+        )
         (
             route_preflight_room_vnum,
             route_preflight_command,
@@ -4170,17 +4269,24 @@ def rank_hunt_candidates(
             dangerous = True
             autonomy_rejections.append("source mobile is non-corporeal")
 
-        # db.c checks the prototype-global count for every M reset. A local
-        # reset with a smaller limit cannot bound spawns from other rooms.
+        # db.c compares arg2 with the prototype-global count, but that is not
+        # the number of copies that can share this room. Stationary mobiles
+        # can co-locate only through repeated M resets here; copies of a
+        # wandering prototype may converge from every reset room.
         matching_target_capacity = prototype_population_limits[mobile.vnum]
-        if matching_target_capacity > 1:
+        same_room_target_capacity = (
+            matching_target_capacity
+            if mobile.wanders
+            else min(room_spawn_count, matching_target_capacity)
+        )
+        if same_room_target_capacity > 1:
             hazards.append(
                 "target reset permits up to "
-                f"{matching_target_capacity} matching mobiles in the room"
+                f"{same_room_target_capacity} matching mobiles in the room"
             )
-            # Same-vnum mobiles can automatically assist each other in
-            # violence_update, including before an aggressive room can be
-            # inspected. Solo hunt policies must reject this source capacity.
+            # Same-prototype mobiles in the room can assist one another before
+            # the live room can be inspected. Do not confuse DD4's global
+            # prototype population cap with that room-local crowd.
             dangerous = True
             autonomy_rejections.append("target reset capacity exceeds one")
         for room_reset in resets_by_room.get(room.vnum, ()):
@@ -4865,9 +4971,14 @@ def rank_hunt_candidates(
                 estimated_move_cost=estimated_move_cost,
                 estimated_flying_move_cost=estimated_flying_move_cost,
                 requires_flight=requires_flight,
+                requires_water_breathing=requires_water_breathing,
+                requires_detect_invisibility=bool(
+                    mobile.affected_flags & AFF_INVISIBLE
+                ),
                 route_origin_recall_index=route_origin_recall_index,
                 route_origin_room_vnum=route_origin_room_vnum,
                 source_damage_modifier=mobile.damage_modifier,
+                route_key_object_vnums=tuple(sorted(route_key_vnums)),
             )
         )
 
@@ -5894,6 +6005,7 @@ def _source_route_hazard_rejections(
     invisible: bool = False,
     audit_invisible_equipment: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
+    economic_hunt_mobile_vnums: Collection[int] = (),
     hazard_index: SourceRouteHazardIndex | None = None,
 ) -> tuple[str, ...]:
     """Return source-backed combat hazards on a route, including its endpoint.
@@ -5914,6 +6026,15 @@ def _source_route_hazard_rejections(
         if not combat_at_destination
         and source_mobile_has_only_economic_transit_risk(world, vnum)
     }
+    if not combat_at_destination and economic_hunt_mobile_vnums:
+        from .economic_hunts import passive_economic_hunt_mobile
+
+        economic_transit.update(
+            vnum for vnum in economic_hunt_mobile_vnums
+            if passive_economic_hunt_mobile(
+                world, vnum, level=character_level,
+            )
+        )
     target_room_vnum = (
         path_room_sequence[-1] if path_room_sequence and combat_at_destination else None
     )
@@ -6264,6 +6385,7 @@ def source_route_hazard_rejections(
     invisible: bool = False,
     audit_invisible_equipment: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
+    economic_hunt_mobile_vnums: Collection[int] = (),
     hazard_index: SourceRouteHazardIndex | None = None,
 ) -> tuple[str, ...]:
     """Check a room path; noncombat endpoints omit only combat-only joiners."""
@@ -6276,6 +6398,7 @@ def source_route_hazard_rejections(
         invisible=invisible,
         audit_invisible_equipment=audit_invisible_equipment,
         economic_special_mobile_vnums=economic_special_mobile_vnums,
+        economic_hunt_mobile_vnums=economic_hunt_mobile_vnums,
         hazard_index=hazard_index,
     )
 
@@ -7065,6 +7188,21 @@ def source_route_requires_flight(
     return False
 
 
+def source_route_requires_water_breathing(
+    world: WorldSource,
+    rooms: Collection[int],
+) -> bool:
+    """Return whether a source route enters underwater terrain."""
+    return any(
+        room_vnum not in world.rooms
+        or world.rooms[room_vnum].sector_type in {
+            SECT_UNDERWATER,
+            SECT_UNDERWATER_GROUND,
+        }
+        for room_vnum in rooms
+    )
+
+
 def _loot_objects(
     world: WorldSource,
     direct_object_vnums: Iterable[int],
@@ -7148,21 +7286,31 @@ def source_mobile_can_join_player_fight(
     character_level: int | None = None,
     character_alignment: int | None = None,
 ) -> bool:
-    """Mirror the source conditions for an NPC joining a player fight.
+    """Mirror ``aggr_update`` for an ordinary mobile joining a player fight.
 
-    ``violence_update`` considers every visible, ordinary NPC in the room,
-    not only mobiles with ``ACT_AGGRESSIVE``.  The source level window in that
-    function is player level minus three through plus six; a source range is
-    eligible when any fuzzy load can fall inside it.  ``ACT_NO_FIGHT`` is not
-    excluded because DD4 still puts that mobile into combat and permits
-    effects such as fireshield. Once the player's alignment is revealed,
-    DD4's exact ``IS_GOOD(ch) && IS_GOOD(victim)`` branch prevents a good
-    bystander from joining a good player's fight. Unknown or masked alignment
-    remains possible and therefore fails closed.
+    The loop considers every visible NPC in the room, but only reaches its
+    attack path for ``ACT_AGGRESSIVE`` mobiles or the detect-curse exception.
+    Guard specials have a separate fight-joining path; other specials and
+    mobile programs need their own source audit.
+    The source level window is player level minus three through plus six; a
+    fuzzy source range is eligible when any load can fall inside it.
+    ``ACT_NO_FIGHT`` is not excluded because DD4 still puts that mobile into
+    combat and permits effects such as fireshield. Once the player's alignment
+    is revealed, DD4's exact ``IS_GOOD(ch) && IS_GOOD(victim)`` branch
+    prevents a good bystander from joining a good player's fight. Unknown or
+    masked alignment remains possible and therefore fails closed.
     """
     if mobile.vnum in world.shopkeepers:
         return False
     if not mobile.keywords.strip():
+        return False
+    joining_specials = set(world.mobile_specials.get(mobile.vnum, ()))
+    if not (
+        mobile.aggressive
+        or joining_specials & COMBAT_JOINING_SPECIALS
+        or mobile.programs
+        or mobile.affected_flags & AFF_DETECT_CURSE
+    ):
         return False
     if mobile.act_flags & ACT_WIZINVIS_MOB:
         return False
@@ -7835,6 +7983,10 @@ def _rank_direct_ground_stashes(
             flying=True,
         )
         requires_flight = source_route_requires_flight(world, path_rooms)
+        requires_water_breathing = source_route_requires_water_breathing(
+            world,
+            path_rooms,
+        )
         if requires_flight:
             hazards.append("route requires flight or another movement capability")
         status = "reject" if rejections else "caution" if hazards else "promising"
@@ -7865,6 +8017,7 @@ def _rank_direct_ground_stashes(
                 estimated_move_cost=route_cost,
                 estimated_flying_move_cost=flying_route_cost,
                 requires_flight=requires_flight,
+                requires_water_breathing=requires_water_breathing,
                 ground_loot_keywords=keywords,
                 ground_loot_object_vnums=object_vnums,
                 is_coin_stash=is_coin_stash,

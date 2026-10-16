@@ -1,11 +1,13 @@
 """Source proofs for bounded, non-aggressive same-prototype populations."""
 
 import json
+import re
 from collections.abc import Mapping
 from typing import Any
 
 from .equipment import normalize_item_name
 from .hunt_candidates import (
+    ACT_SENTINEL,
     ITEM_PILL,
     ITEM_POTION,
     ITEM_SCROLL,
@@ -20,6 +22,181 @@ from .hunt_candidates import (
 
 
 POPULATION_SEARCH_REVALIDATIONS_KEY = "campaign_population_search_revalidations"
+POPULATION_LOCATOR_MISMATCHES_KEY = "campaign_population_locator_mismatches"
+POPULATION_LOCATOR_DETECT_INVIS_VERIFIED_KEY = (
+    "campaign_population_locator_detect_invisibility_verified"
+)
+POPULATION_LOCATOR_ABORT_PREFIX = (
+    "field locator did not confirm the exact source population "
+)
+_SOURCE_HUNT_ID = re.compile(
+    r"source-ranked-hunt-[a-z0-9-]+-(?P<mobile>[1-9]\d*)-(?P<room>[1-9]\d*)-(?P<level>[1-9]\d*)\Z"
+)
+
+
+def source_sequential_duplicate_reset_limit(
+    world: WorldSource | None,
+    *,
+    mobile_vnum: int,
+    room_vnum: int | str,
+) -> int | None:
+    """Prove a two-copy sentinel reset safe to select one instance at a time.
+
+    This is not multi-target combat permission or the capacity-only population
+    research path. It applies only to one unprogrammed, unspecial, unequipped
+    sentinel reset with exactly two instances in one room.
+    """
+    try:
+        room = int(room_vnum)
+    except (TypeError, ValueError):
+        return None
+    mobile = world.mobiles.get(mobile_vnum) if world is not None else None
+    resets = [
+        reset for reset in world.mob_resets
+        if reset.mobile_vnum == mobile_vnum
+    ] if world is not None else []
+    if (
+        mobile is None
+        or mobile.act_flags != ACT_SENTINEL
+        or mobile.affected_flags != 0
+        or mobile.programs
+        or world.mobile_specials.get(mobile_vnum)
+        or mobile.rank.casefold() not in {"common", "none"}
+        or not mobile.short_description.strip()
+        or len(resets) != 1
+        or resets[0].room_vnum != room
+        or resets[0].maximum_count != 2
+        or resets[0].object_vnums
+        or resets[0].equipment
+    ):
+        return None
+    return 2
+
+
+def population_locator_mismatch_receipt(state: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Keep a positive, source-bound locator mismatch distinct from absence."""
+    if not str(state.get("campaign_fastwalk_abort_reason") or "").startswith(
+        POPULATION_LOCATOR_ABORT_PREFIX,
+    ):
+        return None
+    run_id = state.get("campaign_population_locator_run_id")
+    level, boot = state.get("level"), state.get("world_boot_id")
+    revision = state.get("campaign_source_revision")
+    candidate = state.get("campaign_source_ranked_hunt_candidate")
+    requires_detection = (
+        isinstance(candidate, Mapping)
+        and candidate.get("requires_detect_invisibility") is True
+    )
+    detection_verified = (
+        state.get(POPULATION_LOCATOR_DETECT_INVIS_VERIFIED_KEY) is True
+    )
+    policy_id = str(state.get("campaign_last_policy") or "")
+    policy_identity = _SOURCE_HUNT_ID.fullmatch(policy_id)
+    audits = state.get("campaign_fastwalk_where_decisions")
+    if (
+        type(run_id) is not int or run_id <= 0
+        or type(level) is not int or not 1 <= level <= 100
+        or not isinstance(boot, str) or not boot
+        or not isinstance(revision, str) or not revision
+        or policy_identity is None
+        or int(policy_identity["level"]) != level
+        or not isinstance(audits, list)
+        or requires_detection and not detection_verified
+    ):
+        return None
+    for audit in reversed(audits[-8:]):
+        if not isinstance(audit, Mapping):
+            continue
+        mobile = audit.get("source_mobile_vnum")
+        counts = audit.get("location_counts")
+        locations = audit.get("locations")
+        if (
+            type(mobile) is not int or mobile <= 0
+            or int(policy_identity["mobile"]) != mobile
+            or isinstance(candidate, Mapping) and candidate.get("mobile_vnum") != mobile
+            or not isinstance(counts, Mapping) or not 1 <= len(counts) <= 8
+            or not isinstance(locations, list)
+            or not all(isinstance(label, str) for label in locations)
+            or set(locations) != set(counts)
+            or any(
+                not isinstance(label, str) or not label or len(label) > 160
+                or type(count) is not int or not 1 <= count <= 4
+                for label, count in counts.items()
+            )
+            or sum(counts.values()) > 4
+        ):
+            continue
+        receipt = {
+            "run_id": run_id, "mobile_vnum": mobile, "level": level,
+            "boot_id": boot, "source_revision": revision,
+            "location_counts": dict(counts), "reason": "population_mismatch",
+            "policy_id": policy_id,
+        }
+        if requires_detection:
+            receipt["detect_invisibility_verified"] = True
+        return receipt
+    return None
+
+
+def merge_population_locator_mismatches(
+    previous: Mapping[str, Any], current: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for state in (previous, current):
+        saved = state.get(POPULATION_LOCATOR_MISMATCHES_KEY)
+        additions = list(saved[-8:]) if isinstance(saved, list) else []
+        receipt = population_locator_mismatch_receipt(state)
+        if receipt is not None:
+            additions.append(receipt)
+        for item in additions:
+            if (
+                not isinstance(item, Mapping)
+                or item.get("reason") != "population_mismatch"
+                or type(item.get("run_id")) is not int or item["run_id"] <= 0
+                or type(item.get("mobile_vnum")) is not int or item["mobile_vnum"] <= 0
+                or type(item.get("level")) is not int or not 1 <= item["level"] <= 100
+                or not isinstance(item.get("boot_id"), str) or not item["boot_id"]
+                or not isinstance(item.get("source_revision"), str) or not item["source_revision"]
+                or not isinstance(item.get("location_counts"), Mapping)
+                or not 1 <= len(item["location_counts"]) <= 8
+                or (
+                    "detect_invisibility_verified" in item
+                    and type(item["detect_invisibility_verified"]) is not bool
+                )
+                or any(
+                    not isinstance(label, str) or not label
+                    or type(count) is not int or not 1 <= count <= 4
+                    for label, count in item["location_counts"].items()
+                )
+                or sum(item["location_counts"].values()) > 4
+            ):
+                continue
+            identity = tuple(item.get(k) for k in ("mobile_vnum", "level", "boot_id", "source_revision"))
+            records = [
+                old for old in records
+                if tuple(old.get(k) for k in ("mobile_vnum", "level", "boot_id", "source_revision")) != identity
+            ]
+            records.append(dict(item))
+    return records[-8:]
+
+
+def population_locator_mismatch_blocks(
+    state: Mapping[str, Any], candidate: HuntCandidate, *, character_level: int,
+) -> bool:
+    return any(
+        record.get("mobile_vnum") == candidate.mobile_vnum
+        and record.get("level") == character_level
+        and record.get("boot_id") == state.get("world_boot_id")
+        and record.get("source_revision") == state.get("campaign_source_revision")
+        and type(record.get("run_id")) is int
+        and record["run_id"] > 0
+        and record.get("reason") == "population_mismatch"
+        and (
+            not getattr(candidate, "requires_detect_invisibility", False)
+            or record.get("detect_invisibility_verified") is True
+        )
+        for record in merge_population_locator_mismatches({}, state)
+    )
 
 
 def population_search_revalidation_pending(
@@ -150,7 +327,12 @@ def incomplete_population_search_evidence(
     }
 
 
-def plain_bounded_mobile_population(mobile_vnum: int, world: WorldSource | None) -> bool:
+def plain_bounded_mobile_population(
+    mobile_vnum: int,
+    world: WorldSource | None,
+    *,
+    resets_by_mobile: Mapping[int, tuple[Any, ...]] | None = None,
+) -> bool:
     """Audit every reset of a small passive population, not its live occupants."""
     if world is None:
         return False
@@ -166,7 +348,11 @@ def plain_bounded_mobile_population(mobile_vnum: int, world: WorldSource | None)
         or world.mobile_specials.get(mobile.vnum)
     ):
         return False
-    resets = [reset for reset in world.mob_resets if reset.mobile_vnum == mobile.vnum]
+    resets = (
+        list(resets_by_mobile.get(mobile.vnum, ()))
+        if resets_by_mobile is not None
+        else [reset for reset in world.mob_resets if reset.mobile_vnum == mobile.vnum]
+    )
     if (
         not 2 <= len(resets) <= 4
         or len({reset.room_vnum for reset in resets}) != len(resets)
@@ -194,9 +380,18 @@ def plain_bounded_mobile_population(mobile_vnum: int, world: WorldSource | None)
     return True
 
 
-def plain_bounded_population(candidate: HuntCandidate, world: WorldSource | None) -> bool:
+def plain_bounded_population(
+    candidate: HuntCandidate,
+    world: WorldSource | None,
+    *,
+    resets_by_mobile: Mapping[int, tuple[Any, ...]] | None = None,
+) -> bool:
     """Permit a live isolation check, never infer that a room is uncrowded."""
-    if not plain_bounded_mobile_population(candidate.mobile_vnum, world):
+    if not plain_bounded_mobile_population(
+        candidate.mobile_vnum,
+        world,
+        resets_by_mobile=resets_by_mobile,
+    ):
         return False
     mobile = world.mobiles[candidate.mobile_vnum]
     return bool(
@@ -207,8 +402,14 @@ def plain_bounded_population(candidate: HuntCandidate, world: WorldSource | None
         and 2 <= candidate.source_spawn_limit <= 4
         and type(candidate.room_spawn_count) is int and candidate.room_spawn_count == 1
         and candidate.level == mobile.level and candidate.area_file == mobile.area_file
-        and any(reset.room_vnum == candidate.room_vnum for reset in world.mob_resets
-                if reset.mobile_vnum == mobile.vnum)
-        and all(reset.maximum_count == candidate.source_spawn_limit for reset in world.mob_resets
-                if reset.mobile_vnum == mobile.vnum)
+        and any(reset.room_vnum == candidate.room_vnum for reset in (
+            resets_by_mobile.get(mobile.vnum, ())
+            if resets_by_mobile is not None
+            else world.mob_resets
+        ) if reset.mobile_vnum == mobile.vnum)
+        and all(reset.maximum_count == candidate.source_spawn_limit for reset in (
+            resets_by_mobile.get(mobile.vnum, ())
+            if resets_by_mobile is not None
+            else world.mob_resets
+        ) if reset.mobile_vnum == mobile.vnum)
     )

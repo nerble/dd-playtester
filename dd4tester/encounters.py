@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from itertools import permutations
 from math import ceil
-from typing import Any, Mapping, Sequence
+from typing import Any, Collection, Mapping, Sequence
 
 from .combat_timing import COMBAT_WAIT_SECONDS
 
@@ -142,7 +142,7 @@ class SourceMaterialEncounter:
     target_selector: str
     target_vnum: int
     bystander: str
-    bystander_selector: str
+    bystander_selector: str | None
     bystander_vnum: int
     room_vnum: str
     stop_index: int
@@ -329,6 +329,9 @@ def active_encounter_budget(
     mana: int,
     max_mana: int,
     output: SourceCombatOutput | None,
+    target_hp_evidence_only: bool = False,
+    maximum_level_offsets_by_vnum: Mapping[int, int] | None = None,
+    allowed_adept_special_vnums: Collection[int] = (),
 ) -> EncounterBudget:
     """Estimate a short finish without granting permission to start combat.
 
@@ -343,6 +346,19 @@ def active_encounter_budget(
         return EncounterBudget(False, "no executable source-backed damage action")
     if not 0 < hp <= max_hp or character_level <= 0:
         return EncounterBudget(False, "missing live health or level")
+    if target_hp_evidence_only:
+        return _active_level_encounter_budget(
+            world,
+            enemies,
+            character_level=character_level,
+            hp=hp,
+            max_hp=max_hp,
+            mana=mana,
+            max_mana=max_mana,
+            output=output,
+            maximum_level_offsets_by_vnum=maximum_level_offsets_by_vnum or {},
+            allowed_adept_special_vnums=allowed_adept_special_vnums,
+        )
     members: list[tuple[int, int, int]] = []
     peak = critical = 0
     for enemy in enemies:
@@ -432,6 +448,130 @@ def active_encounter_budget(
     return EncounterBudget(True, "live ordinary encounter fits the finishing budget", **values)
 
 
+def _active_level_encounter_budget(
+    world: WorldSource,
+    enemies: Sequence[Mapping[str, Any]],
+    *,
+    character_level: int,
+    hp: int,
+    max_hp: int,
+    mana: int,
+    max_mana: int,
+    output: SourceCombatOutput | None,
+    maximum_level_offsets_by_vnum: Mapping[int, int],
+    allowed_adept_special_vnums: Collection[int],
+) -> EncounterBudget:
+    """Validate live source identities and levels without using enemy HP."""
+    if not 1 <= len(enemies) <= 2:
+        return EncounterBudget(False, "level-bound encounter must contain one or two enemies")
+    if output is None or output.conservative_damage <= 0:
+        return EncounterBudget(False, "no executable source-backed damage action")
+    if hp <= ceil(max_hp * 0.20):
+        return EncounterBudget(False, "the character reached the 20% withdrawal floor")
+
+    vnums: list[int] = []
+    expected = peak = critical = 0
+    for enemy in enemies:
+        try:
+            vnum = int(enemy["isnpc"])
+            level = int(enemy["level"])
+        except (KeyError, ValueError, TypeError):
+            return EncounterBudget(False, "incomplete live source identity or level")
+        mobile = world.mobiles.get(vnum)
+        if mobile is None or vnum in vnums:
+            return EncounterBudget(False, "unknown or ambiguous source mobile")
+        lower, upper = _mobile_level_range(mobile.level)
+        maximum_offset = maximum_level_offsets_by_vnum.get(vnum, 1)
+        if (
+            not lower <= level <= upper
+            or level > character_level + maximum_offset
+        ):
+            return EncounterBudget(False, "live mobile level left its audited band")
+        if (
+            mobile.programs or mobile.non_corporeal or mobile.costs_fame
+            or not _encounter_special_is_allowed(
+                world,
+                vnum,
+                allowed_adept_special_vnums,
+            )
+            or vnum in world.shopkeepers
+        ):
+            return EncounterBudget(False, "enemy requires a separate source-hazard policy")
+        if not mobile.damage_modifier_known:
+            return EncounterBudget(False, "source mobile damage modifier is unavailable")
+        resets = [reset for reset in world.mob_resets if reset.mobile_vnum == vnum]
+        if not resets or any(
+            slot in {WEAR_WIELD, WEAR_DUAL}
+            and (
+                (item := world.objects.get(object_vnum)) is None
+                or item.item_type == ITEM_WEAPON
+            )
+            for reset in resets
+            for slot, object_vnum in reset.equipment
+        ):
+            return EncounterBudget(False, "armed or unreset enemy retains its source gate")
+        vnums.append(vnum)
+        expected += mobile_expected_round_damage(
+            level,
+            wielding=False,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+        peak += _mobile_peak_round_damage(
+            level,
+            wielding=False,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+        critical += _mobile_critical_hit_damage(
+            level,
+            wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+
+    reserve = ceil(max_hp * 0.20)
+    mana_cost = 2 * output.resource_cost if output.resource == "mana" else 0
+    if output.resource == "mana" and (
+        max_mana <= 0 or mana - mana_cost < ceil(max_mana * 0.15)
+    ):
+        return EncounterBudget(
+            False,
+            "level-bound encounter would consume the 15% mana reserve",
+            tuple(vnums), 0, expected, peak, reserve, mana_cost,
+        )
+    return EncounterBudget(
+        True,
+        "live identities and levels pass; enemy HP does not gate this encounter",
+        tuple(vnums), 0, expected, peak, reserve, mana_cost,
+    )
+
+
+def _encounter_special_is_allowed(
+    world: WorldSource,
+    mobile_vnum: int,
+    allowed_adept_special_vnums: Collection[int],
+) -> bool:
+    specials = set(world.mobile_specials.get(mobile_vnum, ()))
+    if not specials:
+        return True
+    mobile = world.mobiles.get(mobile_vnum)
+    resets = [reset for reset in world.mob_resets if reset.mobile_vnum == mobile_vnum]
+    return bool(
+        mobile_vnum in allowed_adept_special_vnums
+        and specials == {"spec_cast_adept"}
+        and mobile is not None
+        and mobile.sentinel
+        and not mobile.aggressive
+        and not mobile.wanders
+        and not mobile.fear_aura
+        and not mobile.programs
+        and not mobile.non_corporeal
+        and not mobile.costs_fame
+        and len(resets) == 1
+        and resets[0].maximum_count == 1
+    )
+
+
 def source_multi_encounter_budget(
     world: WorldSource,
     mobile_vnums: Sequence[int],
@@ -442,6 +582,10 @@ def source_multi_encounter_budget(
     mana: int,
     max_mana: int,
     output: SourceCombatOutput | None,
+    target_hp_evidence_only: bool = False,
+    target_maximum_level_offset: int = 1,
+    allowed_adept_special_vnums: Collection[int] = (),
+    require_near_full_health: bool = True,
 ) -> EncounterBudget:
     """Price two exact easy-band source mobiles before either one engages.
 
@@ -453,8 +597,102 @@ def source_multi_encounter_budget(
         return EncounterBudget(False, "source material encounter needs two distinct mobiles")
     if output is None or output.conservative_damage <= 0:
         return EncounterBudget(False, "no executable source-backed damage action")
-    if character_level <= 0 or not 0 < hp <= max_hp or hp < ceil(max_hp * .95):
-        return EncounterBudget(False, "source material admission requires near-full health")
+    if (
+        character_level <= 0
+        or not 0 < hp <= max_hp
+        or (
+            require_near_full_health
+            and hp < ceil(max_hp * .95)
+        )
+        or (
+            not require_near_full_health
+            and hp <= ceil(max_hp * .20)
+        )
+    ):
+        return EncounterBudget(False, "source material admission is below its health boundary")
+
+    if target_hp_evidence_only:
+        if not 0 <= target_maximum_level_offset <= 5:
+            return EncounterBudget(False, "source target level offset is outside consider range")
+        levels: list[tuple[int, Any]] = []
+        for index, mobile_vnum in enumerate(mobile_vnums):
+            mobile = world.mobiles.get(mobile_vnum)
+            if mobile is None:
+                return EncounterBudget(False, "source material mobile is unavailable")
+            if (
+                mobile.aggressive or mobile.programs or mobile.non_corporeal
+                or mobile.costs_fame
+                or not _encounter_special_is_allowed(
+                    world,
+                    mobile_vnum,
+                    allowed_adept_special_vnums,
+                )
+                or mobile_vnum in world.shopkeepers
+            ):
+                return EncounterBudget(False, "source material mobile requires a separate hazard policy")
+            if not mobile.damage_modifier_known:
+                return EncounterBudget(False, "source mobile damage modifier is unavailable")
+            resets = [
+                reset for reset in world.mob_resets
+                if reset.mobile_vnum == mobile_vnum
+            ]
+            if not resets or max(reset.maximum_count for reset in resets) > 4:
+                return EncounterBudget(False, "source material mobile has no bounded reset population")
+            if any(
+                slot in {WEAR_WIELD, WEAR_DUAL}
+                and (
+                    (item := world.objects.get(object_vnum)) is None
+                    or item.item_type == ITEM_WEAPON
+                )
+                for reset in resets
+                for slot, object_vnum in reset.equipment
+            ):
+                return EncounterBudget(False, "source material mobile retains the armed-target gate")
+            lower, upper = _mobile_level_range(mobile.level)
+            lower = max(lower, character_level - 4)
+            upper = min(
+                upper,
+                character_level + target_maximum_level_offset
+                if index == 0
+                else character_level - 2,
+            )
+            if lower <= 0 or lower > upper:
+                return EncounterBudget(False, "source material mobile has no considered level-band intersection")
+            levels.append((upper, mobile))
+
+        expected = sum(
+            mobile_expected_round_damage(
+                level,
+                wielding=False,
+                dual_wielding=False,
+                damage_modifier=mobile.damage_modifier,
+            )
+            for level, mobile in levels
+        )
+        peak = sum(
+            _mobile_peak_round_damage(
+                level,
+                wielding=False,
+                dual_wielding=False,
+                damage_modifier=mobile.damage_modifier,
+            )
+            for level, mobile in levels
+        )
+        reserve = ceil(max_hp * 0.20)
+        mana_cost = 2 * output.resource_cost if output.resource == "mana" else 0
+        if output.resource == "mana" and (
+            max_mana <= 0 or mana - mana_cost < ceil(max_mana * 0.15)
+        ):
+            return EncounterBudget(
+                False,
+                "source material encounter would consume the 15% mana reserve",
+                tuple(mobile_vnums), 0, expected, peak, reserve, mana_cost,
+            )
+        return EncounterBudget(
+            True,
+            "source identities and consider levels pass; target HP is not used",
+            tuple(mobile_vnums), 0, expected, peak, reserve, mana_cost,
+        )
 
     enemies: list[dict[str, int | str]] = []
     for mobile_vnum in mobile_vnums:

@@ -18,11 +18,15 @@ def source_stop_identity(policy_id: str) -> tuple[int, int, int] | None:
 
 
 def source_combat_loss_records(state: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    raw = state.get(SOURCE_COMBAT_LOSSES_KEY, state.get("source_combat_losses"))
-    if not isinstance(raw, (list, tuple)):
-        return {}
+    raw_records: list[Any] = []
+    for key in (SOURCE_COMBAT_LOSSES_KEY, "source_combat_losses"):
+        raw = state.get(key)
+        if isinstance(raw, Mapping):
+            raw_records.append(raw)
+        elif isinstance(raw, (list, tuple)):
+            raw_records.extend(raw[: max(0, 16 - len(raw_records))])
     records = {}
-    for record in raw[:16]:
+    for record in raw_records[:16]:
         if not isinstance(record, Mapping):
             continue
         policy_id = str(record.get("policy_id") or "")

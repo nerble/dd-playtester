@@ -200,8 +200,16 @@ and no matching peer prefix. Unknown descriptions close this selector. Run
 then purchase/use of flight for 141 copper, without changing the audit budget.
 
 `HealerCarryingCapacity` now owns the shared required-loot and flight-shop
-preflight. A flight purchase reserves one free item slot before leaving room
-3054; existing overload counts against the fixed eight-disposal maximum.
+preflight. A flight purchase normally reserves one free item slot before
+leaving room 3054; existing overload counts against the fixed eight-disposal
+maximum. If no ordinary safe relief item exists, one exact source-identified
+worn Mud School diploma (#3715) may be recorded as a destination relief plan
+only when dropping it covers the measured deficit. At the Magic Shop, require
+DD4's exact capacity refusal before removing and caching the diploma, retry the
+purchase only after the acknowledged drop, and restore it before departure.
+Preserve the last carried food reserve; only surplus food or urgently needed
+food may be consumed for capacity. The plan is not a free slot until the live
+shop rejection and recovery flow confirms it.
 After an aborted preparation starts healer logout, the logout controller owns
 recovery instead of alternating with generic departure recovery. Ordinary field
 returns retain the 90% movement reserve, runtime-boundary returns retain their
@@ -844,9 +852,45 @@ the attempted receipt at checkpoint 49605. Its ordinary repeat 16638 lost
 189 net XP after Caroline joined. The old positive research result is historical
 kill evidence, not permission to override the new registered loss. The consumed
 locator repair never reopens that combat failure; checkpoint 49610 is recovered.
-An eligible Catacombs fallback may first use the existing affordable optional
-flight purchase. Preserve current food/recovery, nonnegative fame, shop-route
-and purchase cooldowns, purchase-failure evidence, fresh price/stock, and live
+The higher-band Vampire Catacombs fallback now admits one source-reachable
+current-band target after generic selection is exhausted: Anton (mobile 9501,
+level 35, room 9506). His singleton passive sentinel reset has no special or
+program, wields the source-identified chef's knife (object 9506), and carries
+the paintbrush wand (9504) loose in inventory. DD4's `fight.c` only zaps a wand
+when it occupies `WEAR_HOLD`; this reset does not equip it there, and the source
+admission rejects any loadout change that holds it. From the bouncer's entry
+room 9500, the route is north, open east, east. The fallback evaluates each
+reset independently, so unreachable targets do not close this route. Admission
+uses source level and fresh live `consider`, not target HP; identity, isolation,
+route hazards, incoming damage, Dorrik's own 20-percent withdrawal floor,
+provisions, and return checks remain in force.
+
+This Anton route is implemented but not yet regression-verified. The October
+16 full suite before this change reported 8,078 passed and 545 failed; no
+second suite was run today. The changed Python files passed compilation.
+
+The bats, art critic, and gallery visitors remain unavailable behind Grok's
+locked east door in room 9523. It needs the spiked key (object 9565), which
+Joan (mobile 9506) carries in room 9517. A separate key acquisition, confirmed
+key inventory, and key-aware route are still required before admitting those
+deeper objectives; their reset rooms do not prove a traversable path.
+
+The default Midgaard recall shortlist is not the whole level-38 frontier.
+From the registered Mirror Realm route's Suite (19170), source revision
+9205f316 admits three close, plain level-39/40 opponents: the barkeeper
+(19026, room 19071), the waiter (19027, room 19072), and Mr. Teece (19069,
+room 19166). Each is a single-reset sentinel with no aggression, attack
+program, combat special, or combat weapon reset; their exact source paths are
+registered as one bounded three-kill visit. Each stop keeps the 20% health
+floor, unprotected HP-fuzz probe, and live damage-window, identity, isolation,
+and consider gates. No sanctuary is required if those gates pass. This is
+source-approved opportunity, not live proof of presence or a kill. Positive
+alignment on Teece may shift Dorrik's alignment further negative under
+`xp_compute`; fame and XP remain separately observed.
+
+An eligible target route may first use an existing affordable optional flight
+purchase. Preserve current food/recovery, nonnegative fame, shop-route and
+purchase cooldowns, purchase-failure evidence, fresh price/stock, and live
 affect verification. An unaffordable or failed purchase never grants departure.
 At healer 3054 before departure or after the registered field return, retain an already-applied combat loadout when
 only movement is low and HP is at least 95% and mana at least 50%. Swapping
@@ -1555,6 +1599,15 @@ cap. Never reverse a path or join fragments to invent a connection. Record the
 original route origin with the selected suffix. When no usable relocation
 remains, or the one same-room recheck is spent, close that locator until its
 scope changes; do not spend its remaining budget repeating an unchanged query.
+Treat a positive-location rebase as a detour, not a replacement circuit:
+insert its inspection immediately after the current stop and preserve the
+original unvisited stop suffix. If the destination is empty, continue that
+registered suffix instead of jumping to the end of the itinerary. Before
+continuing, re-root only the first unvisited VNUM leg from the exact detour
+endpoint to that same registered endpoint, using a bounded source-safe bridge
+and live GMCP exits; keep later stops unchanged. Never replay its old
+origin-relative VNUM sequence or widen the allowed room graph. If no safe
+bridge exists, return with the route evidence intact.
 If that selected path crosses an already registered recovery endpoint, split
 the relocation at the exact endpoint and retain its targetless transit stop.
 Do not copy recovery permission to the origin, an off-path room, or an
@@ -2180,6 +2233,207 @@ unused-practice conversion, stat-training decisions, route safety, and action
 registration. An unchanged zero balance or capped teacher is not a reason to
 repeat a trainer trip; record the blocker and keep earning current-band XP.
 
+October 13's level-38 audit, before the later Captain visit, had these verified
+proficiencies:
+enhanced damage **68%**, second attack **64%**, third attack **63%**, armed
+combat knowledge **64%**, stun **67%**, and defense knowledge **65%**. The
+healer checkpoint then had three physical practices and no intellectual
+practices.
+The local Midgaard Warrior teacher cannot improve the priority physical skills
+under Dorrik's current practice penalty. Source data identifies Cluh'g Mani
+(mobile **27205**, room **27616**) as a level-30 teacher with a higher cap; the
+current planner predicts useful gains to enhanced damage (**68% to 71%**),
+second attack (**64% to 69%**), and third attack (**63% to 68%**). Do not make
+that 29-step trip yet: it crosses underwater rooms and needs both flight and
+independent water breathing, while source hazard checks still identify the
+aggressive rolling calf and Old Higue. Flight alone does not prevent drowning.
+Run **17687** then completed a separate source-preflighted route to the live
+Warrior Captain in room **30272**. The refreshed practice listing led to one
+stun lesson (**67% to 68%**) and two shield-block lessons (**66% to 68%**); all
+three physical practices were spent. He returned to healer room **3054** at
+full HP with no XP loss. This is the current verified skill state; keep the
+Cluh'g Mani route closed until its underwater and hazard gates can be met.
+Knight protection-vs-evil/undead remains the next intellectual chain when
+Dorrik earns intellectual practices.
+
+Run **17664** tested Celia at level 38. Dorrik fled at **177/893 HP** after
+his magical armor wore off and Celia was still alive. The flee cost **941 XP**;
+damage earned **1,064 XP**, for only **+123 net XP**. He returned to the healer
+alive, but the run records a safety loss and no completed kill. Do not
+immediately replay this unchanged policy. Keep the priority skill plan active
+and prefer another current-band target until a material training, gear, or
+protection improvement changes the fight's expected value.
+
+On October 13, the clean DD4 source mirror fast-forwarded from **26749cd** to
+**9205f31** and the all-area level-38 candidate scan completed. It ranked the
+level-37 Astral Guardian highest, but marked it caution: the source model gives
+a **690 damage peak round**, the mobile wields a massive slate-grey sledgehammer,
+and the route analysis reports a reachable griffin and Drunk. Treat this as the
+next lead to validate, not combat authorization; require fresh exact identity,
+route, live consider, protection, and output checks. The same refreshed scan
+leaves Celia in caution, consistent with run **17664**'s poor net-XP result.
+The upstream changes did not alter `server/src/pre_reqs`, so the recorded
+Warrior/Knight practice order remains current. The refreshed `update.c` now
+enforces quest points at level gain; Dorrik's **18 QP** do not block level 39,
+but he will need **200 QP** before level 50.
+Follow-up run **17665** safely closed the Dwarven Catacombs sanctuary route when
+the west door remained locked after the source-identified open step; do not
+repeat it unchanged. Run **17666** rechecked the Dwarven Ballroom after its
+earlier crowd result, found the dancer alone, and earned **2,023 XP** without
+loss before returning to the healer. Liquidation run **17667** sold another
+dancer's suit for **4 coins** after the prior suit sold for **10**; the amulet
+of protection again brought no offer. None of these runs changed Dorrik's
+three physical practices or his priority-skill audit.
+Run **17668** confirms the low-consider gate: Teacher's last student returned
+"no match for you" and was recorded below-band without an attack. The route
+then admitted the separate level-34 Yeun Sun Ho on a positive live consider;
+Dorrik killed him for **2,190 XP** with no loss. Run **17669** killed the
+Dwarven dancer for **2,316 XP** without loss. At the final healer checkpoint,
+run **17670**, Dorrik was full, level 38, and **43,563 XP** from level 39, with
+all three physical practices intact. Sale pricing is seller-specific: the
+Leather Shop paid **4 coins** for a repeat dancer's suit, while the Armourer
+paid **42** for another; do not assume one shop's margin applies to another.
+Run **17673** confirmed the level gate independently: the chamber attendant's
+live consider was "no match for you," so the below-band target was skipped.
+Dorrik returned to the healer full with no XP or safety loss. Keep this
+level/boot result closed and continue to a different executable policy; his
+priority skills and three physical practices remain unchanged.
+Run **17674** safely restocked food and water when provisions became a real
+shortfall. Run **17675** killed the Dwarven dancer for **1,716 XP** with only
+**38 HP** lost, then recovered at the healer. Run **17676** sold the next
+dancer's suit for **2 coins** at the Leather Shop; its successive offers were
+**10**, **4**, and **2** coins, while the Armourer paid **42** for another.
+Dorrik remains level 38 at **1,234,603 XP**, **41,847** from level 39, with
+three physical practices.
+Run **17677** reached the Freeport warehouse overseer, but live consider said
+"no match"; the target was skipped with no XP or safety loss despite the
+source estimate. Run **17678** killed the Dwarven dancer for **1,515 XP**;
+Dorrik ate the severed arm and sacrificed the corpse for one silver coin before
+returning to the healer. Run **17679** sold its suit for **1 coin** at the
+Leather Shop. Dorrik finished full at **1,236,118 XP**, **40,332** from level
+39; the three physical practices and priority proficiencies remain unchanged.
+Run **17680** killed Yeun Sun Ho for **1,713 XP** without loss. Run **17681**
+killed the Dwarven dancer for **2,223 XP**, also without loss, bringing Dorrik
+to **1,240,054 XP**, **36,396** from level 39. Run **17682** safely sold loot
+and returned him to the healer. The next bounded campaign attempt, run **17683**,
+quoted **141 copper** for a light-blue travel potion, bought and quaffed it,
+verified its flight objective, and received the healer's farewell on logout.
+That supply segment added no XP or loss; it provides fresh evidence that this
+reboot's shop quote was affordable, not a fixed price guarantee. The campaign
+was then checkpointed at the healer, level 38, with three physical practices.
+Run **17684** reached the Lotus Temple but the live `consider` for Yeun Sun Ho
+said “no match,” so Dorrik skipped that instance, recalled, and finished safely
+without XP change. This contrasts with the earlier positive Yeun kill: judge
+each live instance rather than allowing a source/name match to authorize it.
+Run **17685** passed its own live gates and killed the Dwarven dancer for
+**2,207 XP**; Dorrik recalled at **490/893 HP**, above the configured 20% floor,
+and recovered at the healer without XP loss. Run **17686** safely sold loot.
+Run **17687** used the three available physical practices at the live Captain
+trainer as recorded above, then saved and quit safely at the healer. Run
+**17688** safely confirmed the healer checkpoint. Run **17689** followed eight
+bounded live `where citizen` relocations through the mapped Isle of Quake
+rooms, but never observed a citizen at a reached endpoint; it returned safely
+with `objective=not_achieved`, no kill, and no XP loss. The locator ledger
+records eight attempts, not a proven target absence; do not blindly repeat the
+same circuit without changed live location evidence. Run **17690** then
+received a positive live consider on the Dwarven dancer, landed stun at **68%**,
+and killed her for **1,531 XP** without loss. Its fresh campaign training audit
+confirmed stun **68%**, shield block **68%**, and zero physical/intellectual
+practices. The current campaign checkpoint **51866** is level 38 at
+**1,243,792 XP**, **32,658** from level 39; other priority proficiencies remain
+at their previous verified values.
+Run **17691** safely sold loot. Run **17692** reached the Shrine Attendant's
+registered endpoint but found no target, then returned safely without XP
+change. Run **17693** passed fresh live identity and consider checks, landed
+stun at **68%**, and killed the Dwarven dancer for **1,802 XP**. Dorrik finished
+safely at healer room **3054**, with no XP loss. The latest checkpoint **51873**
+is level 38 at **1,245,594 XP**, **30,856** from level 39. Its training audit
+still shows zero practices, stun **68%**, and shield block **68%**; keep using
+the trained stun in admitted fights and resume skill-tree review promptly when
+a level, practice gain, or unlock changes lesson eligibility.
+The next bounded campaign pass safely liquidated loot (run **17694**), bought
+and verified flight from a fresh affordable shop quote (run **17695**), then
+completed another source-ranked Dwarven dancer kill for **1,790 XP** (run
+**17696**). Its transcript confirms the exact target passed live consider and
+logout was confirmed. Checkpoint **51878** is level 38 at **1,247,384 XP**,
+**29,066** from level 39. The fresh training listing remains unchanged with
+zero practices, so continue using stun and do not make an empty-balance trainer
+trip.
+Runs **17697–17699** added no XP. The Quake candidate in room **12194** was
+not reached: at Midgaard, three fresh `where drunk` checks still showed the
+greeter at **Alley at Levee** and **the Pet Shop**, so departure stopped safely
+before travel. Keep that exact route closed until fresh locator evidence
+changes. The later Dwarven Ballroom check saw the dancer with a maid in the
+room; the isolation gate marked it crowded and skipped combat. Do not retry
+either unchanged condition. Checkpoint **51885** remains level 38 at
+**1,247,384 XP**, **29,066** from level 39; the fresh skill audit still shows
+zero practices, stun **68%**, and shield block **68%**.
+A fresh all-area candidate scan ranks the level-**37** Astral Guardian in room
+**1906** as the next lead: its short registered route requires flight, and the
+source model estimates a **690-damage peak round** because it wields a
+massive slate-grey sledgehammer. A reachable griffin and the Drunk are route
+hazards. Keep this as a caution candidate, not an automatic rejection; require
+fresh live route and target identity, positive consider, flight, and the normal
+20% survival/output gates before deciding whether to fight.
+Run **17700** checked the source-ranked sanctuary-reserve Alchemist at room
+**927**, but live evidence confirmed the target absent; no sanctuary objective
+or XP was achieved. Run **17701** likewise found the Shrine Attendant absent at
+room **10822** and returned safely. Run **17702** then found the Dwarven dancer
+alone, passed live consider, opened with stun at **68%**, and killed her for
+**2,397 XP** using six Flamestrikes at **48%**. No combat loss was recorded;
+the post-fight healer score was **724/911 HP**. Checkpoint **51890** is level 38
+at **1,249,781 XP**, **26,669** from level 39. The fresh training listing still
+shows zero practices, stun **68%**, Flamestrike **48%**, and kick **68%**.
+The transcript showed kick was not used because the source-spell branch always
+preempted repeatable actions. The combat loop now alternates the admitted
+source-planned spell with an eligible repeatable attack, while preserving
+capability and target gates; a focused sequence test is added. Syntax checking
+passed; the daily regression-test allowance was already used, so the new test
+has not yet been run.
+Run **17703** could not liquidate loot: three bounded `where drunk` checks
+still blocked the Midgaard shop route, so it stopped safely before sale. Run
+**17704** then live-verified the new skill rhythm: stun, Flamestrike, kick,
+Flamestrike, kick, Flamestrike. The dancer died for **2,259 XP**; Dorrik slept
+at the Healer and recovered from **665/911 HP** to full without XP loss. Run
+**17705** found the dancer absent at room **20516** and returned safely without
+combat. Checkpoint **51897** is level 38 at **1,252,040 XP**, **24,410** from
+level 39. The fresh audit remains at zero practices, with kick **68%** and
+Flamestrike **48%**. Do not repeat the absent target without changed evidence.
+Runs **17706** and **17708** each deferred loot liquidation safely after three
+bounded checks found the source-backed Drunk blocking the city shop route. In
+run **17708**, `where drunk` first returned Weapon Shop, Poor Alley, and Practice
+Yard, then Main Street, Poor Alley, and Practice Yard; the route remained
+blocked. Do not retry that sale route until fresh evidence makes a registered
+route clear. Between them, run **17707** bought a light-blue flight potion for
+the fresh quoted price of **141 copper**; `affect` confirmed `fly` for **34 MUD
+hours**. The purchase succeeded but added no XP. Checkpoint **51900** remains
+level 38 at **1,252,040 XP**, **24,410** from level 39, with no practices
+available and no XP loss.
+
+The October 12 level-37 audit (run **17560**) found Dorrik had no physical or
+intellectual practices to spend. His useful combat skills included enhanced
+damage **68%**, second attack **64%**, third attack **63%**, stun **67%**, kick
+**68%**, Flamestrike **48%**, and healing magiks **52%**. Keep earning current-
+band XP until practices or unlocks change; do not make an empty-balance trainer
+trip. The next source-backed Warrior skill-tree target is disarm: its
+prerequisites are Warrior **30%**, grip **85%**, and defense group **85%**.
+Dorrik already has grip **99%** and defense knowledge **65%**; at the next
+physical practice balance, refresh the live learnable list and teacher limits,
+then test whether raising the defense-group path toward **85%** unlocks
+disarm. Verify every lesson and unlock live. Keep comparing that path with
+enhanced damage, attack-chain gains, and the Knight protection/spell chain;
+source value alone never proves current trainer access.
+
+On October 13 NZST, run **17720** refreshed Dorrik's level-38 skill listing at
+healer room **3054**: enhanced damage **68%**, second attack **64%**, third
+attack **63%**, stun **68%**, defense knowledge **65%**, grip **99%**, dodge
+**66%**, and no physical or intellectual practices. The learnable entries
+(conjuration magiks, inner force, rescue, riding techniques, and swim) were all
+at **0%**. No lesson was actionable, so continue current-band XP rather than
+making an empty-balance trainer trip. Recheck at the next level, practice gain,
+unlock, or relevant source change; keep disarm's defense prerequisite on the
+priority list once a useful practice becomes available.
+
 October 10 runs **16891**, **16920**, and **16921** confirmed Dorrik's level-32
 live `practice` listing:
 enhanced damage **67%**, kick **67%**, stun **62%**, second and third attack
@@ -2631,6 +2885,13 @@ history. Persist this separately as
 and blocked-policy ledger unchanged. Match the locator to its exact successful
 segment/run in the bounded recent history. The fresh live locator and every
 normal gate still apply.
+The same source-refresh marker may carry `route_clear_recheck` when the old
+blocked and later clear locator segments share their prior source revision and
+the current-source candidate retains the identical route. Map every old and new
+city label to rooms; require the old blocker on that route and all later
+locations outside it. This reopens only the exact route for one fresh live
+preflight; preserve the earlier clear-route marker and blocked-policy ledger.
+Release that closure only after a linked positive-XP kill and safe healer return.
 A city-blocked policy must not short-circuit offline source selection: keep
 that exact policy excluded unless its one-use marker is pending or its exact
 route-clear recheck has verified productive completion, but allow
@@ -3485,6 +3746,18 @@ may clear only the indoor familiar HP-fuzz gate for a repeat when no XP-loss
 record exists. It does not clear current absence, crowd, route, consider, or
 source combat-output evidence, and it does not authorize an unproven target.
 
+For the same narrow HP-fuzz hurdle, two independent solo kills at exactly the
+previous character level may support the matching plain, unarmed reset one
+level later. Rebuild the receipt from the same-boot objective-eligible kill
+ledger, safe completed run summaries, and bounded transcripts with observed
+GMCP affects and no Sanctuary use; require the prior fights to stay above the
+20% floor and current HP to be at least 95%. Match character, class/subclass,
+mobile, reset room, and source policy exactly. The prior GMCP target max HP
+must fit the current conservative source output budget. This is not an XP or
+combat permission: the endpoint must still match the live identity and max HP,
+pass `consider`, and pass the damage-window, output, and abort checks; any XP
+loss closes the exception.
+
 After that kind of productive kill, the exact route may also re-enter the
 recent-kill rotation before its three-kill cap when the fresh frontier is
 exhausted. This is a bounded fallback, not a repeat loop: current presence,
@@ -3524,6 +3797,58 @@ source-audited direct ground gear reset that improves the combat envelope and
 does not require combat; then reconsider an eligible fame-awarding kill. A
 pending flight-funding marker must not hide that no-combat upgrade pass, but it
 continues to block flight-only and carrier actions until their own gates clear.
+
+October 12 NZST run **17552** refreshed Dorrik's level-37 tree at healer room
+**3054**: enhanced damage **68%**, second attack **64%**, third attack **63%**,
+stun **67%**, kick **68%**, Flamestrike **48%**, and **zero** physical or
+intellectual practices. The live learnable list includes rescue, conjuration
+magiks, riding techniques, inner force, and swim. Source shows Warrior Inner
+Force can lead to Fast Healing (**40%** group prerequisite), which improves
+natural HP recovery; Bash is door-only, while Warcry adds hitroll/damroll but
+requires at least **16 Intelligence** (Dorrik currently has **12**). Do not
+spend or detour with an empty balance. At the next real practice gain, recheck
+the current class tree and exact teacher; prioritize useful damage, attacks,
+control, protection, and recovery skills by measured combat value, not by a new
+learnable label alone. Run **17552** killed the warehouse overseer for **1,707
+XP**, ending safely at **1,148,396 XP**, **33,954** from level 38. Run **17553**
+confirmed the same target absent without a loss, but the same-level, same-boot
+field-city route-attempt marker still includes this policy, so the retry selector
+excludes it from the independent reset wait. Preserve that marker; do not retry
+or wait on this route until its registered route-clear evidence changes. Run
+**17554** returned safely to room **3054** at full health; it added no XP or
+practices.
+
+Run **17560** refreshed the level-37 skill listing: enhanced damage **68%**,
+second attack **64%**, third attack **63%**, stun **67%**, kick **68%**,
+Flamestrike **48%**, and healing magiks **52%**. Physical and intellectual
+practice balances were both **zero**; learnable entries included conjuration
+magiks, inner force, rescue, riding techniques, and swim at **0%**. No lesson
+was actionable, so keep current-band XP progressing and recheck the full class
+tree as soon as practices, an unlock, or level changes.
+
+On October 12, run **17571** safely returned Dorrik to healer room **3054** and
+logged out without XP change. He remains level **37**, at **1,148,426 XP** with
+**33,924 XP** to level 38, **18 QP** and no next-level shortfall, and zero
+physical or intellectual practices. Autonomous preflights saved checkpoints
+**51616** and **51617**, both before any game connection. Keep the active skill
+plan focused: disarm needs Warrior **30%**, grip **85%**, and defense group
+**85%**; grip is **99%**, defense knowledge **65%**. Recheck and train the
+defense prerequisite as soon as a physical practice is earned, subject to the
+live listing and teacher cap.
+
+The adjacent-level unprotected-kill evidence now accepts candidates whose
+source route requires a live locator preflight; it does not waive that route
+check. Offline validation found two safe level-36 Yeun Sun Ho kills (runs
+**17449** and **17452**) with observed target maxima of **782** and **925 HP**,
+within Dorrik's current **2,784** source-output envelope. The level-37 Yeun
+policy remains explicitly city-blocked, however. The one level-37 city-clear
+marker was already consumed for a different Lotus Temple mobile (**10736**),
+so do not transfer or retry it; its status is still `attempted`. The Dwarven
+Dancer policy retains explicit level-36 and level-37 XP-loss evidence, while
+the warehouse policy has extensive same-boot kill history and a retry cooldown.
+Do not clear those records or wait for a reboot. Continue source-ranked current-
+band selection for another eligible policy; no live hunt has yet passed these
+gates since checkpoint **51617**.
 
 ### Source-Ranked Random-Exit Relocation
 
@@ -3573,17 +3898,32 @@ consider, required-item, and healer-return sequence remains necessary. Policy
 revision **283** may reopen one exact same-boot, no-loss level-24 exhaustion
 result after a source-mapped locator graph change; it preserves the old attempt
 and does not authorize a second unbounded retry.
+At room **4064**, a positive `The maze` result may detour to one exact safe
+mapped room first, but an empty inspection must return to the still-unvisited
+registered stops (including **4020**, **4152**, and the later carrier rooms).
+That locator detour cannot replace or complete the rest of the route.
 
 The source-ranked deep sanctuary recovery route is flight-required from level
 19, and from level 16 for a mage. DD4 reduces ordinary non-underwater movement
 cost to one third while `AFF_FLYING` is active. Select flight through the
 existing bounded purchase workflow before dispatch. A missing `affects`
 snapshot is unknown: request one live `affects` refresh, then return safely if
-`fly` or `levitation` is still unconfirmed. Offline coverage was added
+`fly` or `levitation` is still unconfirmed. Targetless transit stops do not
+require the purple potion before the route reaches an exact carrier inspection;
+the required-item objective applies at carrier stops and at run completion.
+Offline coverage was added
 2026-09-30 but not run because that day's regression batch was already used.
 Dorrik's latest checkpoint has an active flight affect, but a deep Moria trip
-with flight and sanctuary acquisition remain live-unproved. His same-boot
-general sanctuary recheck is spent; do not dispatch it again this boot. A
+with flight and sanctuary acquisition remain live-unproved. His original
+same-boot general sanctuary recheck is spent; do not repeat its reset wait or
+ordinary retry. The one distinct route-suffix correction for safe run **17547** /
+segment **17037** was consumed by run **17560** / segment **17050**. The positive
+maze locator reached room **4063**, found no carrier, and safely returned after
+the original 4020 route (which began at 4012) could not be replayed from 4063.
+No further Moria attempt is authorized on this boot; preserve the original
+evidence and spent marker. The general suffix repair now re-roots only the first
+unvisited VNUM leg through a bounded source-safe bridge and fresh live exits,
+then preserves later stops. It grants no reset wait or combat permission. A
 separate, unconsumed automatic-reset capacity entitlement may dispatch only
 the exact mobile-4055/object-4050 maintenance probe below. It does not reopen
 general sanctuary recovery or authorize XP combat.
@@ -3779,6 +4119,16 @@ level-15 upper bound is exactly ten levels below the player, its
 `spec_cast_mage` acts only after combat begins, and its source damage bounds
 fit the player ceiling. The live route must confirm that VNUM through GMCP;
 the interruption is bounded maintenance combat and never progression XP.
+
+October 12 NZST live run **17571** reached Dwarven Kingdom room **6505** and
+used the area-scoped `where dwarf guard`. It listed six guards at **Door to
+Kingdom** (room **6509**) and none at the key-route rooms 6505 or 6540. The
+source `M 0 6500 6 6509` reset groups equip gear but do not load key 6502; the
+key-bearing resets are the separate groups at 6505 and 6540. This snapshot does
+not satisfy the route's key-carrier gate, and the level-20 guards at 6509 are
+below-band for Dorrik 37. Do not fight them for XP or reopen the failed route
+from this evidence. The probe recalled, returned north to healer room 3054, and
+logged out cleanly without combat.
 
 If the Dwarven route reaches room 6505 and west remains locked after the
 registered open-door recovery, record a same-level, same-boot key-gate failure
@@ -4006,9 +4356,84 @@ verify the exact patron's prayer list and character-specific favour from
 source/live evidence. Dorrik's October 9 attempt (run 16571) returned “You have
 no patron,” granted no Sanctuary, and left him safely at healer room 3054.
 
+## Mirror Realm Route Recheck
+
+Run **17554** reached Mirror Realm room **19056**, Foot of the Rock Ladder. The
+live exits were a closed west door and up, but the registered Jerry Garcia
+route issued another `down`, received `Alas, you cannot go that way.`, and
+recalled without combat. The first route correction was short by one descent:
+run **17555** reached room **19044**, Below the Watchtower, then tried west
+although its exits were up and down. The source graph and run 17554's room
+sequence show the path needs two downs after entering the watchtower, reaching
+room **19045** before opening west. Preserve both failed segments and use the
+distinct `mirror-realm-jerry-garcia-route-recheck-v2-36-40` policy for one
+final no-combat route check. Run **17565** consumed that policy but did not
+leave healer room **3054**: its three bounded `where drunk` checks ended with
+the field-city preflight blocked, without movement, XP change, or loss. Run
+**17566** was a separate eight-command world-time/locator check at the healer;
+it observed three city locations instead of none. Both runs used source
+revision `2533108641f46f7a6998d3ac4ec54c0f47194e8d`, while the current parsed
+source is `9205f31648e713953edb77f844325fa47b6fd9bf`. The level-37 city-clear
+revalidation was already consumed for the exact Lotus Temple policy
+`source-ranked-hunt-lotus-temple-10736-10837-37`; do not transfer it to Mirror
+Realm. These records do not prove the Mirror route clear or authorize a route
+or combat retry. Any distinct source-refresh revalidation must satisfy its
+exact registered policy and all ordinary live gates.
+
+Source audit correction: Mirror Realm mobile **19004** is Caerlin, level **35**.
+His reset in room **19068** equips the **Staff of the Bard** (**19173**) in
+the hold slot and also loads a silver harp (**19011**); object 19173 is a
+10-charge staff whose source spell is `sanctuary`. This makes Caerlin a valid
+Sanctuary-resource target, not a safe or plain XP target. His
+`spec_cast_cleric` special only selects someone already fighting him, then
+casts offensive spells including blindness, curse, flamestrike, harm, and
+dispel evil. Require exact live identity and consider, a source-bounded combat
+plan, and verified acquisition/brandish before counting Sanctuary as a reserve.
+Do not confuse it with the separate Royal Staff (**19010**) equipped by the
+withered knight (**19012**) in room **19043**; that staff casts `heal`.
+
+Run **18010** followed the official recall route through room **19008** and
+received two live `where Caerlin` replies naming “Beside the Watchtowers”; the
+mobile had moved before the later room inspections. The reset-room endpoint
+**19068** has no source-safe reverse route to **19008**, so the generic local
+locator cannot recover that sighting. The bounded recall-origin prefix
+`mirror realm caerlin watchtowers` ends at **19008** and is for exact live
+consideration only. It does not lower Caerlin's special, output, isolation,
+recovery, or combat gates.
+
+October 13 NZST run **17722** reached Jerry Garcia's registered endpoint and
+refreshed `where` once; the live result located him only at “Below the
+Watchtower.” The current source map identifies that label as room **19044**,
+but it is outside the route's registered source-safe relocation graph. The
+probe returned to healer room **3054** and logged out safely without combat or
+XP. Preserve the locator evidence, but do not follow or fight there until an
+audited safe approach is registered.
+
+Dorrik's level-37 skill audit is historical; the current level-38 proficiency,
+practice, and trainer audit is recorded above. Keep the same Warrior/Knight
+source priorities, but re-evaluate their useful targets and actual lesson access
+against the current live balance and exact teacher before travelling. Recheck
+on the next level, practice gain, new unlock, or relevant source change; do not
+repeat an unchanged trainer visit.
+At a fresh trainer listing, compare the current proficiency, useful target,
+remaining practice balance, teacher cap, and level-up HP/mana value. Refresh the
+listing after an accepted lesson and continue high-value training when another
+source-supported gain is worthwhile; do not mistake an initial unlock for a
+finished skill. Preserve practices when no useful teacher-supported lesson
+remains.
+
 ## Documentation
 
 `README.md` is current usage; `ROADMAP.md` is delivery gates. Dated reviews hold
 analysis and run evidence. `docs/history/` preserves prior documents without
 making their old "latest" sections authoritative. Update current facts once
 in the active review rather than copying every run into all three root files.
+
+## Level-Based Engagement (October 15)
+
+Choose mobs by relative level and live `consider`. Target hitpoints are
+diagnostic evidence, including the health comparison in `consider`; they do
+not veto a target, require sanctuary or HP gear, or trigger an escape based on
+predicted damage or kill duration. The character's own health and actual
+encounter hazards still govern withdrawal. Preserve exact previous loss
+records; changing this strategy does not automatically retry failed targets.

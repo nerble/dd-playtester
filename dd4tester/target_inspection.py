@@ -44,7 +44,50 @@ class TargetInspectionController:
     receipt: dict | None = None
     records: list[dict] = field(default_factory=list)
     attempted: set[tuple[str, str, int]] = field(default_factory=set)
+    rejected_instances: dict[tuple[str, int, int, str | None], tuple[int, str]] = field(default_factory=dict)
     buffer: str = ""
+
+    def is_rejected(self, *, selector: str, expected: int, level: int,
+                    boot: str | None) -> bool:
+        return (selector, expected, level, boot) in self.rejected_instances
+
+    def record_known_mismatch(self, *, room: str, selector: str, expected: int,
+                              level: int, boot: str | None, visit: int) -> bool:
+        """Record a new room sighting of the same runtime ID already disproved."""
+        key = (selector, expected, level, boot)
+        known = self.rejected_instances.get(key)
+        if known is None:
+            return False
+        if any(
+            record.get("room") == room
+            and record.get("selector") == selector
+            and record.get("expected") == expected
+            and record.get("level") == level
+            and record.get("boot") == boot
+            for record in self.records
+        ):
+            return True
+        actual, source_description = known
+        self.records.append({
+            "room": room, "selector": selector, "expected": expected,
+            "level": level, "boot": boot, "visit": visit,
+            "status": "different_prototype", "actual": actual,
+            "reason": "same runtime instance was already source-identified",
+            "source_description": source_description,
+        })
+        return True
+
+    def different_prototype_rooms(self, *, expected: int, level: int | None,
+                                  boot: str | None) -> set[str]:
+        return {
+            str(record["room"])
+            for record in self.records
+            if record.get("status") == "different_prototype"
+            and record.get("expected") == expected
+            and record.get("level") == level
+            and record.get("boot") == boot
+            and record.get("room")
+        }
 
     def begin(self, *, room: str, selector: str, expected: int,
               descriptions: Mapping[int, str], name: str, level: int,
@@ -52,6 +95,9 @@ class TargetInspectionController:
         key = (room, selector, visit)
         if (
             self.pending is not None or len(self.attempted) >= 8 or key in self.attempted
+            or self.is_rejected(
+                selector=selector, expected=expected, level=level, boot=boot,
+            )
             or not re.fullmatch(r"#[0-9]+", selector)
             or not distinguishable_descriptions(descriptions, expected)
         ):
@@ -110,6 +156,10 @@ class TargetInspectionController:
         self.records.append({key: value for key, value in self.receipt.items()
                              if key not in {"observed", "descriptions"}})
         self.records[-1]["source_description"] = plan["descriptions"].get(actual, "")
+        if status == "different_prototype" and actual is not None:
+            self.rejected_instances[(
+                plan["selector"], plan["expected"], plan["level"], plan["boot"],
+            )] = (actual, plan["descriptions"].get(actual, ""))
         self.pending = None
         self.buffer = ""
 

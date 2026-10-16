@@ -74,6 +74,110 @@ def _encounter(character_class: str = "mage") -> tuple[StarterPolicy, CharacterS
     return policy, state
 
 
+def _sequential_duplicate_shadow() -> tuple[StarterPolicy, CharacterState]:
+    examine_description = "It's pitch black. You can barely see it."
+    mobile = MobileSource(
+        39038,
+        "living shadow",
+        "a living shadow",
+        43,
+        ACT_SENTINEL,
+        0,
+        "tabernacle.are",
+        description=examine_description,
+    )
+    world = WorldSource(
+        mobiles={mobile.vnum: mobile},
+        mob_resets=[MobReset(mobile.vnum, 39007, 2, ())],
+    )
+    stop = FieldHuntStop(
+        (),
+        "a living shadow",
+        command_keyword="shadow",
+        exact_target=True,
+        maximum_target_count=1,
+        require_isolated=True,
+        source_mobile_vnum=mobile.vnum,
+        source_mobile_room_description="",
+        source_target_armed=False,
+        source_policy_id="source-ranked-hunt-tabernacle-39038-39007-39",
+        allow_source_sequential_duplicate_rotation=True,
+    )
+    policy = StarterPolicy(
+        CharacterSpec.from_mapping({
+            "name": "Dorrik", "race": "dwarf", "gender": "male",
+            "class": "warrior", "subclass": "knight", "title": "",
+        }),
+        "test-password",
+        source_world=world,
+        fastwalk_hunt_stops=(stop,),
+        source_mobile_targets={
+            "a living shadow": ("living shadow",),
+        },
+        source_mobile_level_ranges_by_vnum={mobile.vnum: (41, 45)},
+        source_mobile_vnums_by_target_room={
+            "living shadow": {"39007": (mobile.vnum,)},
+        },
+    )
+    policy.current_room = "39007"
+    policy.enemy_snapshot_room = "39007"
+    policy.fastwalk_attack_target = "a living shadow"
+    policy.room_targets["39007"] = ["a living shadow", "a living shadow"]
+    policy.room_target_counts["39007"] = {"a living shadow": 2}
+    policy.room_target_selectors["39007"] = {
+        "a living shadow": ["#20646", "#19146"],
+    }
+    policy.room_target_selector_descriptions["39007"] = {
+        "#20646": "#20646 a living shadow is here.",
+        "#19146": "#19146 a living shadow is here.",
+    }
+    state = CharacterState(
+        level=39,
+        hp=936,
+        max_hp=936,
+        room_vnum="39007",
+        position=7,
+        enemies=[],
+    )
+    return policy, state
+
+
+def test_two_copy_source_sentinel_is_considered_one_exact_instance_at_a_time():
+    policy, state = _sequential_duplicate_shadow()
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "consider #19146"
+    assert policy.fastwalk_crowded is False
+    assert policy.fastwalk_attack_started is False
+    assert policy.fastwalk_hunt_stops[0].maximum_target_count == 1
+
+    policy._forget_defeated_room_target("a living shadow", "#19146")
+    next_decision = policy._consider_fastwalk_target(state)
+
+    assert next_decision is not None
+    assert next_decision.command == "consider #20646"
+    assert policy.consider_viable is None
+
+
+def test_sequential_duplicate_selection_still_rejects_extra_mobile():
+    policy, state = _sequential_duplicate_shadow()
+    policy.room_targets["39007"].append("a cave rat")
+    policy.room_target_counts["39007"]["a cave rat"] = 1
+    policy.room_target_selectors["39007"]["a cave rat"] = ["#30001"]
+    policy.room_target_selector_descriptions["39007"]["#30001"] = (
+        "#30001 a cave rat is here."
+    )
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert policy.fastwalk_crowded is True
+    assert policy.consider_target is None
+
+
 def _inspect(policy: StarterPolicy, state: CharacterState) -> None:
     decision = policy._consider_fastwalk_target(state)
     assert decision is not None
@@ -155,6 +259,129 @@ def test_source_material_admission_allows_one_safe_distinct_bystander(monkeypatc
     assert decision is not None and decision.command.startswith("cast 'chill touch'")
     assert policy.active_encounter_vnums == frozenset({100, 101})
     assert policy.fastwalk_encounter_budgets[-1]["mode"] == "source-material-live"
+
+
+@pytest.mark.parametrize("extra_target_packets, admitted", [(1, True), (2, False)])
+def test_live_source_joiner_can_replace_one_legacy_duplicate_target_packet(
+    extra_target_packets, admitted,
+):
+    policy, state = _encounter()
+    _source_material(policy, state)
+    policy.source_world.mobiles[101] = replace(
+        policy.source_world.mobiles[101], level=5,
+    )
+    policy.source_mobile_level_ranges_by_vnum[101] = (4, 5)
+    policy.source_mobile_vnums_by_target_room = {"midget": {"200": (101,)}}
+    policy.fastwalk_source_consider_outcomes[
+        policy.fastwalk_hunt_stops[0].source_policy_id
+    ] = True
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.active_target = "the illusionist"
+    policy.active_target_selector = "#10"
+    policy.active_target_mobile_vnum = 100
+    policy.unapproved_field_attacker = "a midget"
+    state.in_combat = True
+    target = {
+        "name": "the illusionist", "isnpc": "100", "level": "5",
+        "hp": "20", "maxhp": "55",
+    }
+    state.enemies = [[target, *[dict(target) for _ in range(extra_target_packets)]]]
+    policy.observe_events([
+        GameEvent("enemies_changed", "gmcp", {"value": state.enemies}),
+    ], state)
+
+    assert policy._source_material_bystander_is_admitted("a midget", state) is admitted
+    if not admitted:
+        assert policy.source_material_encounter is None
+        return
+
+    encounter = policy.source_material_encounter
+    assert encounter is not None
+    assert encounter.bystander_vnum == 101
+    assert encounter.bystander_selector is None
+    assert "target HP is not used" in encounter.budget.reason
+    policy.unapproved_field_attacker = None
+    handled, decision = policy._source_material_encounter_decision(state)
+    assert handled
+    assert decision is not None and decision.command.startswith("cast 'chill touch'")
+
+
+def test_live_source_joiner_keeps_plus_five_adept_target_on_level_only_gates():
+    policy, state = _encounter()
+    _source_material(policy, state)
+    room = "200"
+    policy.source_world.mobiles[100] = replace(
+        policy.source_world.mobiles[100],
+        key="statue of the golden buddha",
+        short_description="statue of the Golden Buddha",
+        room_description="The statue of the Golden Buddha sits here.",
+        level=44,
+        act_flags=ACT_SENTINEL,
+    )
+    policy.source_world.mobiles[101] = replace(
+        policy.source_world.mobiles[101],
+        key="shrine attendant",
+        short_description="shrine attendant",
+        level=37,
+    )
+    policy.source_world.mobile_specials[100] = ("spec_cast_adept",)
+    policy.source_world.mob_resets = [
+        MobReset(100, 200, 1, ()),
+        MobReset(101, 200, 4, ()),
+    ]
+    policy.fastwalk_hunt_stops = (replace(
+        policy.fastwalk_hunt_stops[0],
+        target="statue of the golden buddha",
+        source_mobile_room_description=(
+            policy.source_world.mobiles[100].room_description
+        ),
+        source_reset_room_vnum=room,
+        source_specials=("spec_cast_adept",),
+        maximum_level_offset=5,
+        allow_lucky_consider=True,
+    ),)
+    policy.fastwalk_attack_target = "statue of the golden buddha"
+    policy.source_mobile_level_ranges_by_vnum = {
+        100: (42, 46), 101: (35, 39),
+    }
+    policy.source_mobile_vnums_by_target_room = {
+        "statue of the golden buddha": {room: (100,)},
+        "shrine attendant": {room: (101,)},
+    }
+    policy.fastwalk_source_consider_outcomes[
+        policy.fastwalk_hunt_stops[0].source_policy_id
+    ] = True
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.active_target = "statue of the Golden Buddha"
+    policy.active_target_selector = "#10"
+    policy.active_target_mobile_vnum = 100
+    policy.unapproved_field_attacker = "Shrine attendant"
+    state.level = 39
+    state.hp = 523
+    state.max_hp = 918
+    state.in_combat = True
+    target = {
+        "name": "statue of the Golden Buddha", "isnpc": "100",
+        "level": "44", "hp": "922", "maxhp": "1195",
+    }
+    state.enemies = [[target, dict(target)]]
+    policy.observe_events([
+        GameEvent("enemies_changed", "gmcp", {"value": state.enemies}),
+    ], state)
+
+    assert policy._source_material_bystander_is_admitted(
+        "Shrine attendant", state,
+    )
+    assert policy.source_material_encounter is not None
+    assert policy.source_material_encounter.budget.actions == 0
+    policy.unapproved_field_attacker = None
+
+    handled, decision = policy._source_material_encounter_decision(state)
+
+    assert handled
+    assert decision is not None and decision.command.startswith("cast 'chill touch'")
 
 
 @pytest.mark.parametrize("allow_coin_bystander", [False, True])

@@ -99,6 +99,7 @@ class CharacterState:
     in_combat: bool = False
     combat_target: str | None = None
     dead: bool = False
+    world_boot_id: str | None = None
 
     def apply(self, event: GameEvent) -> bool:
         before = self._content()

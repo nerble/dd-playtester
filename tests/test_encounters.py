@@ -195,6 +195,58 @@ def test_source_multi_prices_two_distinct_easy_band_mobiles():
     assert "two-mobile encounter" in budget.reason
 
 
+def test_level_only_source_pair_uses_consider_band_not_enemy_hp():
+    world = _world()
+    world.mobiles[1] = replace(
+        world.mobiles[1],
+        level=44,
+        hp_modifier=50000,
+        hp_modifier_known=False,
+    )
+    world.mobiles[2] = replace(world.mobiles[2], level=37)
+
+    budget = source_multi_encounter_budget(
+        world,
+        (1, 2),
+        character_level=39,
+        hp=950,
+        max_hp=1000,
+        mana=324,
+        max_mana=324,
+        output=SourceCombatOutput("kick", 28, 35, 42, "actions", 0, 28),
+        target_hp_evidence_only=True,
+        target_maximum_level_offset=5,
+    )
+
+    assert budget.allowed
+    assert budget.actions == 0
+    assert budget.health_reserve == 200
+    assert "target HP is not used" in budget.reason
+
+
+def test_live_level_only_pair_ignores_enemy_hp_but_keeps_level_and_floor_gates():
+    world = _world()
+    world.mobiles[1] = replace(world.mobiles[1], level=44)
+    enemy = {"name": "mob1", "isnpc": "1", "level": "44"}
+    kwargs = dict(
+        character_level=39,
+        hp=500,
+        max_hp=1000,
+        mana=324,
+        max_mana=324,
+        output=SourceCombatOutput("kick", 28, 35, 42, "actions", 0, 28),
+        target_hp_evidence_only=True,
+        maximum_level_offsets_by_vnum={1: 5},
+    )
+
+    assert active_encounter_budget(world, [enemy], **kwargs).allowed
+    enemy["level"] = "45"
+    assert not active_encounter_budget(world, [enemy], **kwargs).allowed
+    enemy["level"] = "44"
+    kwargs["hp"] = 199
+    assert not active_encounter_budget(world, [enemy], **kwargs).allowed
+
+
 @pytest.mark.parametrize("hazard", [
     "special", "aggressive", "program", "armed", "missing_reset", "population",
 ])

@@ -70,6 +70,18 @@ def test_different_prototype_is_a_negative_identity_not_combat_permission() -> N
     assert controller.receipt["status"] == "different_prototype"
     assert controller.records[0]["actual"] == 102
     assert not start(controller)
+    assert not start(controller, visit=1)
+    assert controller.record_known_mismatch(
+        room="302", selector="#123", expected=101, level=30,
+        boot="boot", visit=1,
+    )
+    assert controller.different_prototype_rooms(
+        expected=101, level=30, boot="boot",
+    ) == {"301", "302"}
+    assert controller.different_prototype_rooms(
+        expected=101, level=30, boot="new-boot",
+    ) == set()
+    assert start(controller, selector="#124", visit=1)
 
 
 def test_explicit_missing_instance_reply_is_a_context_bound_absence_receipt() -> None:
@@ -122,9 +134,9 @@ def test_identical_missing_or_unknown_look_descriptions_do_not_identify_a_mobile
 def test_look_inspections_retain_a_finite_run_budget() -> None:
     controller = TargetInspectionController()
     for visit in range(8):
-        assert start(controller, visit=visit)
+        assert start(controller, selector=f"#{123 + visit}", visit=visit)
         controller.observe(DESCRIPTIONS[102] + "\nA citizen is in perfect health.\n", now=11)
-    assert not start(controller, visit=8)
+    assert not start(controller, selector="#999", visit=8)
 
 
 def test_mobile_parser_preserves_the_source_look_description(tmp_path) -> None:
@@ -158,7 +170,7 @@ def test_starter_uses_look_before_consider_for_an_isolated_source_ambiguity(monk
     policy.current_room = "301"
     policy.world_boot_id = "boot"
     policy.fastwalk_attack_target = target
-    policy.room_targets["301"] = [target]
+    policy.room_target_counts["301"] = {target: 1}
     policy.room_target_selectors["301"] = {target: ("#123",)}
     state = CharacterState(level=30, room_vnum="301", hp=700, max_hp=700)
     decision = policy._consider_fastwalk_target(state)
@@ -168,6 +180,55 @@ def test_starter_uses_look_before_consider_for_an_isolated_source_ambiguity(monk
     world.mobiles[102] = replace(world.mobiles[102], programs=world.mobiles[101].programs,
                                  description=DESCRIPTIONS[101])
     assert policy._source_target_reachability_issue(state, policy.fastwalk_hunt_stops[0], "a citizen") is not None
+
+
+def test_starter_skips_a_known_wrong_runtime_mobile_in_its_next_room(monkeypatch) -> None:
+    monkeypatch.setattr("dd4tester.starter.time.monotonic", lambda: 10)
+    world = WorldSource(mobiles={
+        101: MobileSource(101, "citizen", "a citizen", 30, 64, 0, "identity.are",
+                          description=DESCRIPTIONS[101]),
+        102: MobileSource(102, "citizen", "a citizen", 32, 64, 0, "identity.are",
+                          description=DESCRIPTIONS[102]),
+    })
+    stop = FieldHuntStop(
+        (), "a citizen", exact_target=True, source_mobile_vnum=101,
+        source_target_armed=False,
+    )
+    policy = StarterPolicy(
+        CharacterSpec(name="Sample", password_env="TEST_PASSWORD", race="human",
+                      gender="male", character_class="warrior"), "unused",
+        source_world=world, fastwalk_route=Fastwalk("identity", 1, 100, "1n"),
+        fastwalk_hunt_stops=(stop, stop),
+        source_mobile_vnums_by_target_room={
+            "a citizen": {"301": (101, 102), "302": (101, 102)},
+        },
+    )
+    policy.current_room = "301"
+    policy.world_boot_id = "boot"
+    policy.fastwalk_attack_target = "a citizen"
+    policy.room_target_counts["301"] = {"a citizen": 1}
+    policy.room_target_selectors["301"] = {"a citizen": ("#123",)}
+    state = CharacterState(level=30, room_vnum="301", hp=700, max_hp=700)
+
+    first = policy._consider_fastwalk_target(state)
+    assert first.command == "look #123"
+    policy.observe_text(DESCRIPTIONS[102] + "\na citizen is in perfect health.\n")
+    policy.text = ""
+    policy.current_room = "302"
+    policy.fastwalk_hunt_stop_index = 1
+    policy.room_target_counts["302"] = {"a citizen": 1}
+    policy.room_target_selectors["302"] = {"a citizen": ("#123",)}
+
+    second = policy._consider_fastwalk_target(
+        CharacterState(level=30, room_vnum="302", hp=700, max_hp=700),
+    )
+
+    assert second.command == "look"
+    assert "without repeating" in second.reason
+    assert policy._travel_session.target_inspection.pending is None
+    assert policy._travel_session.target_inspection.different_prototype_rooms(
+        expected=101, level=30, boot="boot",
+    ) == {"301", "302"}
 
 
 def test_starter_checks_both_duplicate_exact_ids_but_keeps_the_crowd_gate(monkeypatch) -> None:
@@ -191,7 +252,7 @@ def test_starter_checks_both_duplicate_exact_ids_but_keeps_the_crowd_gate(monkey
     policy.current_room = "301"
     policy.world_boot_id = "boot"
     policy.fastwalk_attack_target = "a citizen"
-    policy.room_targets["301"] = ["a citizen", "a citizen"]
+    policy.room_target_counts["301"] = {"a citizen": 2}
     policy.room_target_selectors["301"] = {"a citizen": ["#123", "#124"]}
     policy.room_target_selector_descriptions["301"] = {
         "#123": "A citizen of Westreen is standing here.",
@@ -202,10 +263,13 @@ def test_starter_checks_both_duplicate_exact_ids_but_keeps_the_crowd_gate(monkey
     first = policy._consider_fastwalk_target(state)
     assert first.command == "look #124"
     policy.observe_text(DESCRIPTIONS[102] + "\nA citizen is in perfect health.\n")
+    policy.text = ""
+    policy.room_target_counts["301"] = {"a citizen": 2}
 
     second = policy._consider_fastwalk_target(state)
     assert second.command == "look #123"
     policy.observe_text(DESCRIPTIONS[101] + "\nA citizen is in perfect health.\n")
+    policy.text = ""
     assert policy._source_target_reachability_issue(state, stop, "a citizen") is None
     assert policy._target_selector_for("a citizen", stop, state=state) == "#123"
 
@@ -297,6 +361,49 @@ def test_stale_sentinel_instance_is_skipped_without_locator_or_combat(monkeypatc
     assert policy.fastwalk_where_relocation_query_active is False
     assert policy.fastwalk_hunt_stop_skipped is True
     assert policy.fastwalk_attack_target is None
+
+
+def test_locator_skips_rooms_with_source_disproved_instances_and_tries_another(monkeypatch) -> None:
+    monkeypatch.setattr("dd4tester.starter.time.monotonic", lambda: 12)
+    policy, target = stale_wandering_target_case()
+    locator = policy.fastwalk_where_locator_stop
+    assert locator is not None
+    locator = replace(
+        locator,
+        where_relocation_routes=(
+            ("201", "hall", ("202",)),
+            ("201", "hall", ("203",)),
+        ),
+    )
+    policy.fastwalk_hunt_stops = (locator, target)
+    policy.fastwalk_where_locator_stop = locator
+    policy.source_world.rooms[203] = RoomSource(203, "hall", "identity.are")
+    policy.fastwalk_where_relocation_result_ready = True
+    policy.fastwalk_where_locations = ("hall",)
+    policy.fastwalk_locator_where_locations = ("hall",)
+    policy.fastwalk_locator_target_present_observed = True
+    policy.fastwalk_where_decisions = [{
+        "locations": ["hall"], "room_vnum": "201",
+        "source_mobile_vnum": 101, "target": "clan member",
+    }]
+    inspection = TargetInspectionController()
+    for room, selector, visit in (("201", "#123", 1), ("202", "#124", 2)):
+        assert inspection.begin(
+            room=room, selector=selector, expected=101,
+            descriptions=DESCRIPTIONS, name="a clan member", level=30,
+            boot="boot", visit=visit, now=10,
+        )
+        inspection.observe(
+            DESCRIPTIONS[102] + "\na clan member is in perfect health.\n",
+            now=11,
+        )
+    policy._travel_session.target_inspection = inspection
+
+    decision = policy._fastwalk_where_relocation_decision(
+        CharacterState(level=30, room_vnum="201", hp=700, max_hp=700),
+    )
+
+    assert policy.fastwalk_where_decisions[-1]["selected_relocation"] == ["203"]
 
 
 def revalidation_fixture():

@@ -85,6 +85,7 @@ def _build_run_report_uncached(
     ]
     initial_state = _initial_observed_state(snapshots)
     final_state = snapshots[-1]["state"] if snapshots else {}
+    final_state_timestamp = snapshots[-1]["timestamp"] if snapshots else None
     final_training_audit = _final_training_audit(events)
     if final_training_audit is not None:
         final_state = {
@@ -140,6 +141,7 @@ def _build_run_report_uncached(
         run_context, final_state, confirmed_kills, events,
         initial_state=initial_state,
         scenario_name=str(run["scenario_name"] or ""),
+        final_state_timestamp=final_state_timestamp,
     )
     logout_confirmed = any(
         event.get("kind") == "failed_local_recall_logout"
@@ -155,7 +157,7 @@ def _build_run_report_uncached(
         "objective": (
             calculated_objective
             if calculated_objective != "unknown"
-            else "unknown"
+            else run["objective_outcome"] or "unknown"
         ),
         "safety": (calculated_safety if calculated_safety in {"unsafe", "loss"}
                    else run["safety_outcome"] or calculated_safety),
@@ -1531,6 +1533,33 @@ def _activity_bucket(command: str) -> str:
     return "maintenance_seconds"
 
 
+def _level_state_invalidated_by_later_death(
+    events: list[dict[str, Any]],
+    state_timestamp: str | None,
+) -> bool:
+    deaths = [
+        event
+        for event in events
+        if event.get("kind") == "game_event"
+        and isinstance(event.get("payload"), dict)
+        and event["payload"].get("type") == "character_died"
+    ]
+    if not deaths:
+        return False
+    try:
+        state_time = datetime.fromisoformat(state_timestamp or "")
+    except (TypeError, ValueError):
+        return True
+    for event in deaths:
+        try:
+            death_time = datetime.fromisoformat(str(event.get("timestamp") or ""))
+            if death_time >= state_time:
+                return True
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
 def _objective_outcome(
     run_context: dict[str, Any],
     final_state: dict[str, Any],
@@ -1539,10 +1568,11 @@ def _objective_outcome(
     *,
     initial_state: dict[str, Any] | None = None,
     scenario_name: str | None = None,
+    final_state_timestamp: str | None = None,
 ) -> str:
     objective = run_context.get("objective")
     if not isinstance(objective, dict):
-        return "unknown"
+        objective = {}
     checks: list[bool | None] = []
     if _terminal_objective_failure_evidence(events):
         checks.append(False)
@@ -1561,6 +1591,9 @@ def _objective_outcome(
         or any(event.get("kind") == "quest_request_attempt" for event in events)
     )
     objective_kind = str(objective.get("kind") or "").casefold()
+    level_state_stale = _level_state_invalidated_by_later_death(
+        events, final_state_timestamp,
+    )
     legacy_starter_level_objective = (
         scenario_name is None
         or scenario_name.casefold().startswith("starter:")
@@ -1582,7 +1615,9 @@ def _objective_outcome(
         except (KeyError, TypeError, ValueError):
             checks.append(None)
         else:
-            checks.append(final_level >= target_level)
+            checks.append(
+                None if level_state_stale else final_level >= target_level
+            )
     if "required_level" in objective:
         try:
             required_level = int(objective["required_level"])
@@ -1590,7 +1625,9 @@ def _objective_outcome(
         except (KeyError, TypeError, ValueError):
             checks.append(None)
         else:
-            checks.append(final_level >= required_level)
+            checks.append(
+                None if level_state_stale else final_level >= required_level
+            )
     if kill_limit > 0:
         checks.append(
             sum(_kill_is_objective_eligible(kill) for kill in confirmed_kills)

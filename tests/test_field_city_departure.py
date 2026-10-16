@@ -10,7 +10,7 @@ from dd4tester.city_travel import (
     observed_guard_safe_alignment,
     revealed_gmcp_alignment,
 )
-from dd4tester.fastwalks import Fastwalk
+from dd4tester.fastwalks import Fastwalk, FastwalkPostCommandAction
 from dd4tester.hunt_candidates import WorldSource, load_world_source
 from dd4tester.starter import FieldHuntStop, StarterPolicy, _CLASS_TRAINERS
 from dd4tester.state import CharacterState
@@ -130,6 +130,16 @@ def test_source_detour_rebases_later_live_maze_indices(world):
     assert baseline is not None
 
     entry_index = len(baseline.original_city_commands)
+    key_handoff = FastwalkPostCommandAction(
+        after_command_index=16,
+        room_vnum="6505",
+        preceding_command="open west",
+        command="drop",
+        accepted_preceding_responses=("ok.",),
+        acknowledgement_fragment="you drop deep green key.",
+        verify_item_absent="deep green key",
+        source_object_vnum=6502,
+    )
     route = replace(
         route,
         live_navigation_target="3508",
@@ -137,6 +147,7 @@ def test_source_detour_rebases_later_live_maze_indices(world):
         live_navigation_start_index=entry_index,
         live_navigation_resume_index=entry_index + 4,
         live_navigation_room_vnums=(str(baseline.boundary_room_vnum), "3508"),
+        post_command_actions=(key_handoff,),
     )
     detour = field_city_detour_for_locations(
         world,
@@ -153,6 +164,49 @@ def test_source_detour_rebases_later_live_maze_indices(world):
     )
     assert detour.route.live_navigation_start_index == entry_index + delta
     assert detour.route.live_navigation_resume_index == entry_index + 4 + delta
+    assert detour.route.post_command_actions == (
+        replace(key_handoff, after_command_index=16 + delta),
+    )
+
+
+def test_source_detour_rebases_dwarven_key_handoff(world):
+    key_handoff = FastwalkPostCommandAction(
+        after_command_index=17,
+        room_vnum="6505",
+        preceding_command="open west",
+        command="drop",
+        accepted_preceding_responses=("ok.", "it's already open."),
+        acknowledgement_fragment="you drop deep green key.",
+        verify_item_absent="deep green key",
+        source_object_vnum=6502,
+    )
+    route = Fastwalk(
+        "source dwarven sanctuary",
+        1,
+        100,
+        (
+            "s;s;e;e;e;e;e;e;d;n;n;n;e;w;w;unlock west;open west;"
+            "w;n;n;w;n;n;e;e;e;open south;s;s;open down;d;s;s;"
+            "w;w;s;s;s;s;e"
+        ),
+        route_preflight_command="where drunk",
+        post_command_actions=(key_handoff,),
+    )
+
+    detour = field_city_detour_for_locations(
+        world,
+        route,
+        ("Main Street", "the armoury"),
+        character_level=36,
+        character_max_hp=844,
+    )
+
+    assert detour is not None
+    delta = len(detour.detour_city_commands) - len(detour.original_city_commands)
+    assert delta > 0
+    assert detour.route.post_command_actions == (
+        replace(key_handoff, after_command_index=17 + delta),
+    )
 
 
 def test_source_detour_fails_closed_for_unmapped_or_custom_return_routes(world):
@@ -270,12 +324,62 @@ def test_run_12792_city_departure_checks_before_moving(world, monkeypatch, chara
     assert bot.city_shop_transit.status == "idle"
 
 
-def test_bounded_city_transit_can_admit_a_funding_departure(world, monkeypatch):
+def test_field_departure_observes_drunk_before_bounded_transit(world, monkeypatch):
     bot, state, _ = setup(world, monkeypatch)
     bot.allow_bounded_city_shop_transit = True
     handled, decision = bot._field_city_departure_decision(state)
+    assert handled and decision.command == "where drunk"
+    assert bot.city_shop_transit.status == "idle"
+
+
+def test_high_level_field_departure_skips_bounded_greeter_locator(
+    world, monkeypatch,
+):
+    bot, state, _ = setup(world, monkeypatch)
+    state = replace(state, level=39, hp=936, max_hp=936)
+    bot.allow_bounded_city_shop_transit = True
+
+    handled, decision = bot._field_city_departure_decision(state)
+
     assert (handled, decision) == (False, None)
     assert bot.city_shop_transit.status == "admitted"
+    assert "3005" in bot.city_shop_transit.route_room_vnums
+    assert bot.magic_shop_drunk_preflight_complete
+    assert not bot.magic_shop_drunk_preflight_pending
+
+
+def test_bounded_city_transit_carries_one_live_drunk_on_the_audited_route(
+    world, monkeypatch,
+):
+    bot, state, _ = setup(world, monkeypatch)
+    bot.allow_bounded_city_shop_transit = True
+    locate(
+        bot,
+        state,
+        "You detect the presence of:\nThe drunk                    The Main Street",
+    )
+
+    handled, decision = bot._field_city_departure_decision(state)
+
+    assert (handled, decision) == (False, None)
+    assert bot.city_shop_transit.status == "admitted"
+    assert "3015" in bot.city_shop_transit.route_room_vnums
+    assert not bot.city_shop_transit.allows_proactive_hunt("3015")
+    bot.city_shop_transit.leave_route("3015")
+    assert bot.city_shop_transit.status == "admitted"
+    assert bot.city_shop_transit.combat_allowed(
+        world,
+        replace(state, room_vnum="3015").to_dict(),
+        [{
+            "isnpc": "3064", "name": "the drunk", "level": "2",
+            "hp": "18", "maxhp": "18",
+        }],
+        now=100.0,
+        nutrition_ready=True,
+    )
+    bot.city_shop_transit.finish_combat()
+    bot.city_shop_transit.leave_route("12000")
+    assert bot.city_shop_transit.status == "idle"
 
 
 def test_trainer_route_locates_under_band_drunk_before_entering_city(

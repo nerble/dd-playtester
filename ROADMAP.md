@@ -8,45 +8,46 @@ and autonomously reach the requested level, up to HERO 100. Preserve progress,
 explain the experience, and support direct Telnet and visible Mudlet operation.
 
 **Not complete:** no HERO character is proved. The highest actual frontier is
-32 (Dorrik). Per the current focus instruction, breadth is deferred until one
+39 (Dorrik). Per the current focus instruction, breadth is deferred until one
 character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 10, 2026
+### Current campaign status: October 16, 2026
 
-Latest campaign checkpoint **50203**, run **16921**, preserves level **32
-Knight**, **750,714 XP**, **41,186 XP** to 33, QP **18**, and an alive, fully
-restored state at healer **3054** with confirmed logout. Runs **16916-16921**
-consumed **532.22 connected seconds** with zero XP. Run **16920** reached the
-shuffled wastelands but its old fixed directions failed on a changed exit. The
-route now has bounded live-GMCP navigation from room **2351** to **2360**, then
-resumes the source-fixed path. Run **16921** did not test that repair: the
-wandering drunk stayed in Market Square, blocking the city route through three
-bounded waits. Dorrik safely logged out from the healer before departure.
+Campaign **7**, checkpoint **52954**, keeps Dorrik as the only progression
+pilot. The latest saved character state is run **18149** at healer room **3054**:
+level **39 Knight**, **1,344,700 XP**, **31,750 XP** to 40, QP **18** with no
+level-up shortfall, alive and fully restored at **936/936 HP**, **502/502 mana**,
+and **583/583 movement**. Hunger is **23**, thirst **41**, with a pot pie and
+water skin carried. He has no practices to spend.
 
-The level-32 Knight skill audit in run **16921** reconfirmed enhanced damage
-**67%**, kick **67%**, stun **62%**, second/third attack **63%**, and zero
-physical/intellectual practices. Flamestrike and healing magiks remain listed
-at 0%; the Knight protection wards are absent from the live learnable list.
-The permanent skill-tree strategy in `AGENTS.md` and `docs/OPERATIONS.md`
-requires prompt investment in effective combat skills, in prerequisite order,
-as soon as a practice balance and suitable teacher permit it, with each gain
-verified. A planner check against the exact live listing, with one hypothetical
-practice in each pool, selects flamestrike **0% to 45%** and enhanced damage
-**67% to 100%**; actual teacher capacity and positive expected gain remain
-required. No lesson is currently possible. The source mirror is **971d8e7** and
-the full world parse succeeded. Local commit **205c0d7** contains the route
-metadata and focused test; they compile and source-validate, but are not yet
-live-proven. Today's single regression batch is spent, so pytest is deferred
-to October 11.
+The current campaign has exhausted its one sanctuary recheck. Its 30
+current-band source candidates are not a world-wide roster; the no-sanctuary
+options currently have cooldown or route/history gates. Do not wait for a
+general reboot or switch characters. Keep choosing executable level-and-live-
+consider opportunities, preserving Dorrik's own 20-percent withdrawal floor.
+Target HP is diagnostic only, not an admission, ranking, or withdrawal gate.
 
-Next: do not repeat the blocked city route unchanged; select another executable
-current-band policy or wait only for fresh changed-location evidence. Verify the
-updated live-maze route before interpreting Gatekeeper absence, and re-audit
-skills immediately after the next level/practice/unlock change. Keep the
-failed-retreat XP gap visible, do not wait for a general reboot, and do not
-broaden the roster or claim HERO before verified level 100.
+Source review found an omitted Catacombs option: Anton (mobile **9501**), level
+35 in room **9506**, has a singleton passive reset with the chef's knife and
+is reachable from entry room **9500** via north, open east, east. The fallback
+now checks each reset independently and admits this route without depending on
+target HP. The deeper bats/gallery targets remain behind the locked east door
+and require the key carried by Joan. Code and a focused test were updated; the
+new path has passed Python compilation but has not had a pytest run or live
+proof yet.
+
+The October 16 full regression batch completed in **18m17s**: **8,078 passed,
+545 failed**. It used the user's one-off daily-budget exception. Do not rerun
+pytest today; investigate the saved failures and give the focused Catacombs
+change a regression run on a later test day. The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md)
+remains the work order. No HERO proof exists; do not resume breadth.
+
+Next: continue with Dorrik at level 39, use fresh live identity, route, and
+consider checks for the newly admitted reachable target, then keep cycling
+current-band XP. Revisit deeper Catacombs only after a source-checked key route
+exists; review skills again when a practice, unlock, trainer, or level changes.
 
 Earlier completed checkpoint **50085**, run **16863**, preserves level **32
 Knight**, **754,058 XP**, **37,842 XP** to 33, QP **18**, **767/767 HP**,
