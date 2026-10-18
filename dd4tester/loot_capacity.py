@@ -89,6 +89,8 @@ class LootCapacityReply:
             pattern = r"^\s*You eat [^\r\n]+\.[ \t]*\n"
         elif verb in {"drop", "sacrifice"}:
             pattern = r"^\s*You " + verb + r" [^\r\n]+\.[ \t]*\n"
+        elif verb == "remove":
+            pattern = r"^\s*You (?:stop using|remove) [^\r\n]+\.[ \t]*\n"
         else:
             return False
         return bool(re.search(pattern, self.buffer, re.MULTILINE))

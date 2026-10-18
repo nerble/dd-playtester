@@ -1,0 +1,115 @@
+from pathlib import Path
+from types import SimpleNamespace
+
+from dd4tester.campaign import (
+    CampaignResult,
+    _decorate_campaign_result,
+)
+from dd4tester.storage import RunStorage
+
+
+def test_campaign_result_exposes_independent_outcomes() -> None:
+    result = CampaignResult(
+        7,
+        "ready",
+        None,
+        "safe checkpoint",
+        {"level": 39},
+        execution_status="success",
+        objective_outcome="not_achieved",
+        safety_outcome="safe",
+        target_outcome="not_achieved",
+    )
+
+    assert result.outcomes == {
+        "execution": "success",
+        "objective": "not_achieved",
+        "safety": "safe",
+    }
+    assert result.objective_achieved is False
+    assert result.ran_safely is True
+    assert result.target_achieved is False
+
+
+def test_campaign_result_decorates_from_the_checkpointed_segment(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "campaign.sqlite3"
+    config_path = tmp_path / "campaign.yaml"
+    profile_path = tmp_path / "character.yaml"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Dorrik to HERO",
+            config_path=config_path,
+            character_profile_path=profile_path,
+            target_level=100,
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="source-ranked-hunt",
+            start_state={"level": 39, "xp": 1_000},
+        )
+        storage.finish_campaign_segment(
+            segment_id,
+            status="ready",
+            run_id=None,
+            end_state={"level": 39, "xp": 1_000},
+            command_count=3,
+            duration_seconds=1.5,
+            execution_status="success",
+            objective_outcome="not_achieved",
+            safety_outcome="safe",
+        )
+        checkpoint_id = storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=segment_id,
+            run_id=None,
+            phase="source-ranked-hunt",
+            reason="segment_complete",
+            state={"level": 39, "xp": 1_000},
+        )
+
+    decorated = _decorate_campaign_result(
+        CampaignResult(
+            campaign_id,
+            "ready",
+            checkpoint_id,
+            "checkpointed",
+            {"level": 39, "xp": 1_000},
+        ),
+        SimpleNamespace(database=database, target_level=100),
+    )
+
+    assert decorated.outcomes == {
+        "execution": "success",
+        "objective": "not_achieved",
+        "safety": "safe",
+    }
+    assert decorated.objective_achieved is False
+    assert decorated.ran_safely is True
+    assert decorated.target_outcome == "not_achieved"
+
+
+def test_successful_target_result_marks_objective_achieved(tmp_path: Path) -> None:
+    result = _decorate_campaign_result(
+        CampaignResult(
+            9,
+            "success",
+            None,
+            "Target level 100 reached.",
+            {"level": 100, "xp": 10_000},
+        ),
+        SimpleNamespace(
+            database=tmp_path / "missing.sqlite3",
+            target_level=100,
+        ),
+    )
+
+    assert result.objective_achieved is True
+    assert result.outcomes == {
+        "execution": "success",
+        "objective": "achieved",
+        "safety": "unknown",
+    }
+    assert result.target_outcome == "achieved"
+    assert result.target_achieved is True

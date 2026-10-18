@@ -4,11 +4,12 @@ import pytest
 
 from dd4tester.encounters import (
     active_encounter_budget,
+    source_duplicate_pair_budget,
     source_multi_encounter_budget,
     source_pair_budget,
 )
 from dd4tester.hunt_candidates import (
-    ITEM_WEAPON, WEAR_WIELD, MobileProgram, MobileSource, MobReset,
+    ACT_SENTINEL, ITEM_WEAPON, WEAR_WIELD, MobileProgram, MobileSource, MobReset,
     ObjectSource, SourceCombatOutput, WorldSource,
 )
 
@@ -34,33 +35,32 @@ def _budget(world=None, enemies=None, **overrides):
     return active_encounter_budget(world or _world(), enemies or _enemies(10, 10), **params)
 
 
-def test_active_encounter_can_finish_two_low_hp_enemies():
+def test_active_encounter_accepts_two_source_level_enemies_without_target_hp():
     budget = _budget()
     assert budget.allowed
-    assert budget.actions == 2
-    assert budget.expected_incoming == 49
+    assert budget.actions == 0
+    assert budget.expected_incoming == 14
     assert budget.peak_round == 80
-    assert budget.health_reserve == 46
-    assert budget.mana_cost == 60
+    assert budget.health_reserve == 23
+    assert budget.mana_cost == 20
 
 
 def test_active_encounter_accounts_for_every_enemy_and_worst_defeat_order():
     first = _enemies(10, 30)
     budget = _budget(enemies=first)
-    assert budget.expected_incoming == 63
+    assert budget.expected_incoming == 14
     assert _budget(enemies=list(reversed(first))) == replace(budget, mobile_vnums=(2, 1))
     three = _budget(enemies=_enemies(10, 10, 10), hp=240, max_hp=240)
     assert three.allowed
-    assert three.actions == 3
-    assert three.expected_incoming == 84
+    assert three.actions == 0
+    assert three.expected_incoming == 21
 
 
 @pytest.mark.parametrize("changes,reason", [
-    ({"hp": 80}, "health reserve"),
-    ({"mana": 100}, "mana reserve"),
+    ({"hp": 20}, "20% withdrawal"),
+    ({"mana": 20}, "mana reserve"),
     ({"max_mana": 0}, "mana reserve"),
     ({"output": None}, "damage action"),
-    ({"enemies": _enemies(100, 100)}, "six-action"),
     ({"enemies": _enemies(10, 10, 10, 10)}, "one to three"),
 ])
 def test_active_encounter_rejects_insufficient_budget(changes, reason):
@@ -70,7 +70,6 @@ def test_active_encounter_rejects_insufficient_budget(changes, reason):
 
 
 @pytest.mark.parametrize("field,value", [
-    ("hp", "unknown"), ("hp", "0"), ("hp", "101"), ("maxhp", None),
     ("isnpc", "999"), ("isnpc", "2"), ("level", "9"), ("level", "0"),
 ])
 def test_active_encounter_rejects_missing_or_inconsistent_enemy_state(field, value):
@@ -114,9 +113,9 @@ def test_active_encounter_physical_damage_does_not_require_mana_or_credit_backst
                                 opening_conservative_damage=1000)
     budget = _budget(output=output, mana=0, max_mana=0)
     assert budget.allowed
-    assert budget.actions == 2
+    assert budget.actions == 0
     assert budget.mana_cost == 0
-    assert not _budget(output=output, enemies=_enemies(100, 100)).allowed
+    assert _budget(output=output, enemies=_enemies(100, 100)).allowed
 
 
 def _source_pair(**overrides):
@@ -132,7 +131,7 @@ def test_source_pair_reserves_two_full_loads_and_actual_practice_mana_cost():
     budget = _source_pair()
     assert budget.allowed
     assert budget.mobile_vnums == (1, 1)
-    assert budget.level_ceiling == 5 and budget.target_hp_ceiling == 65
+    assert budget.level_ceiling == 5 and budget.target_hp_ceiling == 0
     assert budget.peak_round == 80 and budget.health_reserve == 46
     assert budget.actions == 8 and budget.mana_cost == 250
     assert budget.expected_incoming == 28  # Initial two-round probe, not the whole fight.
@@ -141,10 +140,17 @@ def test_source_pair_reserves_two_full_loads_and_actual_practice_mana_cost():
 @pytest.mark.parametrize("changes", [
     {"hp": 100}, {"hp": 80, "max_hp": 80}, {"mana": 298}, {"max_mana": 0},
     {"character_level": 11}, {"output": None},
-    {"output": SourceCombatOutput("kick", 4, 6, 8, "actions", 0, 4)},
 ])
 def test_source_pair_rejects_inadequate_initial_budget(changes):
     assert not _source_pair(**changes).allowed
+
+
+def test_source_pair_accepts_action_resource_without_target_hp_gate():
+    budget = _source_pair(
+        output=SourceCombatOutput("kick", 4, 6, 8, "actions", 0, 4),
+    )
+    assert budget.allowed
+    assert budget.target_hp_ceiling == 0 and budget.mana_cost == 0
 
 
 @pytest.mark.parametrize("hazard", ["special", "aggressive", "shop", "missing_reset", "population", "armed"])
@@ -169,6 +175,57 @@ def test_source_pair_does_not_bypass_source_hazards(hazard):
     ).allowed
 
 
+def _source_duplicate_pair(**overrides):
+    world = _world()
+    world.mobiles[1] = replace(
+        world.mobiles[1],
+        level=39,
+        act_flags=ACT_SENTINEL,
+    )
+    world.objects[1000] = ObjectSource(
+        1000, "longsword", "a longsword", ITEM_WEAPON,
+        (0, 1, 8, 0), 100,
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        room_vnum=100,
+        maximum_count=2,
+        object_vnums=(1000,),
+        equipment=((WEAR_WIELD, 1000),),
+    )
+    params = dict(
+        room_vnum=100,
+        character_level=39,
+        hp=1000,
+        max_hp=1000,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput("kick", 100, 100, 100, "actions", 0, 12),
+        sanctuary_mitigation=True,
+    )
+    params.update(overrides)
+    return source_duplicate_pair_budget(world, 1, **params)
+
+
+def test_source_duplicate_pair_uses_live_consider_and_own_floor_not_target_hp():
+    budget = _source_duplicate_pair()
+
+    assert budget.allowed
+    assert budget.source_only
+    assert budget.mobile_vnums == (1, 1)
+    assert budget.target_hp_ceiling == 0
+    assert budget.health_reserve == 200
+    assert "target HP" not in budget.reason
+
+
+@pytest.mark.parametrize("change", [
+    {"sanctuary_mitigation": False, "hp": 700, "max_hp": 1000},
+    {"max_mana": 0, "mana": 0, "output": SourceCombatOutput("spell", 100, 100, 100, "mana", 60, 12)},
+])
+def test_source_duplicate_pair_keeps_armed_and_resource_boundaries(change):
+    assert not _source_duplicate_pair(**change).allowed
+
+
 def _source_multi(**overrides):
     world = _world()
     world.mobiles[1] = replace(world.mobiles[1], level=5)
@@ -190,9 +247,9 @@ def test_source_multi_prices_two_distinct_easy_band_mobiles():
 
     assert budget.allowed
     assert budget.mobile_vnums == (1, 2)
-    assert budget.actions > 0
+    assert budget.actions == 0
     assert budget.expected_incoming > 0
-    assert "two-mobile encounter" in budget.reason
+    assert "target HP is not used" in budget.reason
 
 
 def test_level_only_source_pair_uses_consider_band_not_enemy_hp():

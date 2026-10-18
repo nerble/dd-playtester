@@ -34,6 +34,14 @@ def test_drop_acknowledgement_cannot_satisfy_sacrifice() -> None:
     assert reply.acknowledged()
 
 
+def test_remove_acknowledgement_accepts_dd4_stop_using_reply() -> None:
+    reply = LootCapacityReply()
+    reply.begin("remove spiked", now=10)
+    reply.observe("You stop using a spiked key.\n", now=11)
+    assert reply.acknowledged()
+    assert reply.failure is None
+
+
 def test_eating_requires_a_confirmed_consumption_and_rejects_fullness() -> None:
     reply = LootCapacityReply()
     reply.begin("eat pie", now=10)

@@ -219,6 +219,60 @@ def test_storage_finds_latest_campaign_checkpoint_for_character(tmp_path) -> Non
     assert campaign["id"] == campaign_id
 
 
+def test_storage_finds_latest_checkpoint_by_reason_and_world_boot(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        campaign_id = storage.create_campaign(
+            name="Dorrik to HERO",
+            config_path=Path("runs/heroes/dorrik/campaign.yaml"),
+            character_profile_path=Path("runs/heroes/dorrik/character.yaml"),
+            target_level=100,
+        )
+        first = storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="hunt",
+            reason="research_reset_wait_completed",
+            state={"world_boot_id": "boot-1"},
+        )
+        storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="hunt",
+            reason="segment_complete",
+            state={"world_boot_id": "boot-1"},
+        )
+        latest = storage.record_campaign_checkpoint(
+            campaign_id,
+            segment_id=None,
+            run_id=None,
+            phase="hunt",
+            reason="research_reset_wait_completed",
+            state={"world_boot_id": "boot-2"},
+        )
+
+        boot_one = storage.get_latest_campaign_checkpoint_for_reason(
+            campaign_id,
+            "research_reset_wait_completed",
+            world_boot_id="boot-1",
+        )
+        boot_two = storage.get_latest_campaign_checkpoint_for_reason(
+            campaign_id,
+            "research_reset_wait_completed",
+            world_boot_id="boot-2",
+        )
+        any_boot = storage.get_latest_campaign_checkpoint_for_reason(
+            campaign_id,
+            "research_reset_wait_completed",
+        )
+
+    assert boot_one is not None and boot_one["id"] == first
+    assert boot_two is not None and boot_two["id"] == latest
+    assert any_boot is not None and any_boot["id"] == latest
+
+
 def test_storage_finds_named_character_from_indexed_campaign_tails(tmp_path) -> None:
     database = tmp_path / "runs.sqlite3"
     with RunStorage(database) as storage:
@@ -496,6 +550,12 @@ def test_storage_lists_bounded_recent_campaign_history_in_sequence_order(
     assert json.loads(full_summaries[0]["start_state_json"]) == {
         "level": None,
         "xp": None,
+    }
+    compact_progress = storage.list_campaign_segment_progress(campaign_id)
+    assert json.loads(compact_progress[0]["start_state_json"]) == {
+        "level": None,
+        "xp": None,
+        "world_boot_id": None,
     }
 
     def reject_json_projection(*_args):

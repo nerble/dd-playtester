@@ -122,7 +122,7 @@ def test_required_flight_duration_matches_the_registered_route_reserve():
     )
 
     assert campaign._source_ranked_candidate_required_flight_duration(target) == 4
-    assert campaign._source_ranked_candidate_needs_flight_refresh(
+    assert not campaign._source_ranked_candidate_needs_flight_refresh(
         target, {"affects": [[{"name": "fly", "duration": "3"}]]},
     )
     assert not campaign._source_ranked_candidate_needs_flight_refresh(

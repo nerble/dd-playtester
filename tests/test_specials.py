@@ -2,6 +2,7 @@ from dd4tester.specials import (
     COMBAT_JOINING_SPECIALS,
     CONDITIONAL_COMBAT_SPECIALS,
     ECONOMIC_SPECIALS,
+    POST_OBJECTIVE_HAZARD_SPECIALS,
     SAFE_NONCOMBAT_SPECIALS,
     TRANSIT_HAZARD_SPECIALS,
     TRANSIT_SAFE_COMBAT_JOINING_SPECIALS,
@@ -26,6 +27,9 @@ def test_special_profiles_mirror_source_xp_bonus_tiers() -> None:
     assert source_special_xp_bonus("spec_grail") == 20
     assert source_special_xp_bonus("spec_cast_mage") == 10
     assert source_special_xp_bonus("spec_wraith") == 10
+    assert source_special_xp_bonus("spec_wight") == 10
+    assert source_special_xp_bonus("spec_spectre") == 15
+    assert source_special_xp_bonus("spec_dracolich") == 15
 
 
 def test_special_profiles_distinguish_behavioral_risk() -> None:
@@ -36,6 +40,13 @@ def test_special_profiles_distinguish_behavioral_risk() -> None:
     assert source_special_profile("spec_cast_judge").risk == "direct-damage"
     assert source_special_profile("spec_executioner").risk == "conditional-combat"
     assert source_special_profile("spec_wraith").risk == "moderate-combat"
+    assert source_special_profile("spec_wight").risk == "moderate-combat"
+    assert source_special_profile("spec_spectre").risk == "strong-combat"
+    assert source_special_profile("spec_mummy").status_effects == (
+        "fear",
+        "mummy rot",
+    )
+    assert "spec_wight" in POST_OBJECTIVE_HAZARD_SPECIALS
 
 
 def test_special_classification_sets_are_explicit() -> None:
@@ -46,6 +57,13 @@ def test_special_classification_sets_are_explicit() -> None:
     assert "spec_thief" in ECONOMIC_SPECIALS
     assert "spec_cast_undead" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
     assert "spec_wraith" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_wight" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_spectre" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_mummy" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_banshee" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_death_knight" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_lich" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
+    assert "spec_dracolich" in TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
     assert "spec_guard" in TRANSIT_SAFE_COMBAT_JOINING_SPECIALS
     assert "spec_spectral_minion" in TRANSIT_SAFE_RELOCATION_SPECIALS
     assert "spec_assassin" in TRANSIT_HAZARD_SPECIALS
@@ -67,9 +85,35 @@ def test_source_caster_profiles_expose_status_effects_from_special_c() -> None:
         "trip",
     )
     assert source_special_status_effects("spec_wraith") == ("energy drain",)
+    assert source_special_status_effects("spec_wight") == ("energy drain",)
+    assert source_special_status_effects("spec_spectre") == ("energy drain",)
+    assert source_special_status_effects("spec_death_knight", level=5) == (
+        "curse",
+    )
+    assert source_special_status_effects("spec_death_knight", level=18) == (
+        "curse",
+        "chill touch",
+        "harm",
+    )
+    assert source_special_status_effects("spec_lich", level=14) == (
+        "curse",
+        "chill touch",
+        "blindness",
+    )
+    assert source_special_status_effects("spec_dracolich", level=25)[-2:] == (
+        "acid blast",
+        "paralysis",
+    )
     assert source_special_status_effects("spec_cast_druid", level=14) == ()
     assert source_special_status_effects("spec_cast_druid", level=15) == (
         "fear",
+    )
+    assert source_special_status_effects("spec_cast_druid", level=17) == (
+        "fear",
+    )
+    assert source_special_status_effects("spec_cast_druid", level=18) == (
+        "fear",
+        "blindness",
     )
     assert source_special_status_effects("spec_cast_psionicist", level=13) == ()
     assert source_special_status_effects("spec_cast_psionicist", level=35) == (
@@ -148,4 +192,5 @@ def test_transit_special_audit_distinguishes_route_and_combat_risk() -> None:
     assert not source_special_is_transit_safe("spec_thief")
     assert not source_special_is_transit_safe("spec_assassin")
     assert source_special_is_transit_safe("spec_wraith")
+    assert source_special_is_transit_safe("spec_dracolich")
     assert not source_special_is_transit_safe("spec_unknown")

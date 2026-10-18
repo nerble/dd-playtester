@@ -7,6 +7,7 @@ from dd4tester.water import can_breathe_underwater, source_route_requires_water_
 @pytest.mark.parametrize("affects,expected", [
     ([[{"name": "fly", "duration": "40"}]], False),
     ([[{"name": "breathe water", "duration": "4"}]], True),
+    ([[{"name": "breathe water", "duration": "-1"}]], True),
     ([[{"name": "breathe water", "duration": "0"}]], False),
     ([[{"name": "breathe water"}]], False), (None, False),
 ])

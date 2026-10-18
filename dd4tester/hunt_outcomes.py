@@ -572,6 +572,8 @@ def isolated_health_floor_target(
     *,
     policy_id: str,
     source_policy_ids: Collection[str],
+    allow_exact_registered_loss: bool = False,
+    audited_source_revision: str | None = None,
 ) -> str | None:
     """Scope one registered route's health withdrawal to its observed target.
 
@@ -604,9 +606,21 @@ def isolated_health_floor_target(
         return None
     if not isinstance(start, Mapping) or not isinstance(end, Mapping):
         return None
-    for key in ("level", "world_boot_id", "campaign_source_revision"):
+    for key in ("level", "world_boot_id"):
         if state.get(key) is None or not state.get(key) == start.get(key) == end.get(key):
             return None
+    recorded_revision = start.get("campaign_source_revision")
+    current_revision = state.get("campaign_source_revision")
+    if (
+        not recorded_revision
+        or not current_revision
+        or recorded_revision != end.get("campaign_source_revision")
+        or (
+            current_revision != recorded_revision
+            and audited_source_revision != current_revision
+        )
+    ):
+        return None
     if (
         str(start.get("room_vnum")) != "3054"
         or str(end.get("room_vnum")) != "3054"
@@ -625,23 +639,6 @@ def isolated_health_floor_target(
         )
     ):
         return None
-    results = state.get("campaign_research_results")
-    result = results.get(policy_id) if isinstance(results, Mapping) else None
-    if result is None:
-        # Legacy cooldown expiry could remove this result while retaining its
-        # exact loss ledger. Reuse only the linked terminal record for scope.
-        terminal_results = end.get("campaign_research_results")
-        if outcomes.get("safety") != "loss" or not isinstance(terminal_results, Mapping):
-            return None
-        result = terminal_results.get(policy_id)
-    if (
-        not isinstance(result, Mapping)
-        or result.get("boot_id") != state.get("world_boot_id")
-        or result.get("completed_kill") is True
-        or result.get("fatal_failure") is True
-        or result.get("retryable_failure") is not True
-    ):
-        return None
     losses = [
         record
         for record in state.get("campaign_registered_research_xp_loss_policies") or ()
@@ -651,12 +648,72 @@ def isolated_health_floor_target(
     ]
     if bool(losses) != (outcomes.get("safety") == "loss"):
         return None
-    if losses and (
-        len(losses) != 1
-        or losses[0].get("loss_count") != 1
-        or losses[0].get("loss_event_id") != segment.get("id")
-    ):
+    exact_registered_loss = False
+    if losses:
+        try:
+            loss_count = int(losses[0].get("loss_count") or 0)
+        except (AttributeError, TypeError, ValueError):
+            loss_count = 0
+        exact_registered_loss = bool(
+            len(losses) == 1
+            and loss_count >= 1
+            and losses[0].get("loss_event_id") == segment.get("id")
+            and (
+                not allow_exact_registered_loss
+                or losses[0].get("level") == state.get("level")
+            )
+        )
+        if not exact_registered_loss or (loss_count != 1 and not allow_exact_registered_loss):
+            return None
+    if allow_exact_registered_loss and not exact_registered_loss:
         return None
+
+    if allow_exact_registered_loss and exact_registered_loss:
+        # Multi-target registered routes record the completed run-level result
+        # separately from the exact target loss. Scope only the linked terminal
+        # health-floor loss, even if a later sibling result updated the parent.
+        terminal_results = end.get("campaign_research_results")
+        result = (
+            terminal_results.get(policy_id)
+            if isinstance(terminal_results, Mapping)
+            else None
+        )
+        counts = evidence.get("game_event_counts")
+        try:
+            loss_delta = int(end.get("campaign_xp_loss_total")) - int(
+                start.get("campaign_xp_loss_total")
+            )
+        except (TypeError, ValueError):
+            loss_delta = 0
+        if (
+            not isinstance(result, Mapping)
+            or result.get("boot_id") != state.get("world_boot_id")
+            or result.get("completed_kill") is not False
+            or result.get("fatal_failure") is True
+            or result.get("viable") is not False
+            or not isinstance(counts, Mapping)
+            or not counts.get("experience_lost")
+            or loss_delta <= 0
+        ):
+            return None
+    else:
+        results = state.get("campaign_research_results")
+        result = results.get(policy_id) if isinstance(results, Mapping) else None
+        if result is None:
+            # Legacy cooldown expiry could remove this result while retaining
+            # its exact loss ledger. Reuse only the linked terminal record.
+            terminal_results = end.get("campaign_research_results")
+            if outcomes.get("safety") != "loss" or not isinstance(terminal_results, Mapping):
+                return None
+            result = terminal_results.get(policy_id)
+        if (
+            not isinstance(result, Mapping)
+            or result.get("boot_id") != state.get("world_boot_id")
+            or result.get("completed_kill") is True
+            or result.get("fatal_failure") is True
+            or result.get("retryable_failure") is not True
+        ):
+            return None
     outcomes = end.get("campaign_fastwalk_source_consider_outcomes")
     if not isinstance(outcomes, Mapping) or len(outcomes) != 1:
         return None

@@ -3,25 +3,41 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 15, 2026
+## Current Status: October 18, 2026
 
-Latest verified checkpoint **52865**, run **18112**: Dorrik is level **39 Knight**,
-with **1,347,989 XP**, **28,461 XP** to level 40 and **18 quest points**.
-He is alive, recovered and logged out at healer room **3054**. Runs 18106,
-18107, 18110 and 18112 produced no kills or XP loss. Run 18111 successfully
-renewed expired flight. Run 18105
-lost **919 net XP** after an HP-budget-triggered flee; it achieved no kill.
-Target selection now uses relative level and live `consider`; target HP and
-projected kill duration no longer veto admission or order an escape. The
-character's own health floor, route hazards and target identity checks remain.
-This behavior change still needs a verified productive live hunt. HERO remains
-unproved.
+Latest durable campaign checkpoint **54677** (campaign **35**, segment run
+**18490**): Dorrik is a level **39 Knight** with **1,310,690 XP**, **65,760 XP**
+to level 40, and **18 quest points**. He is alive, fully recovered, and logged
+out in the Midgaard healer room **3054**. No current level-up quest shortfall
+is present. HERO remains unproved, and Dorrik remains the sole progression
+pilot; campaign 36 is a separate stale run that exhausted its 100-segment
+budget and is not the active track.
 
-The current source mirror is **32a6702**, fast-forwarded from `origin/master`
-on October 15 after all live workers finished. A full parse found **4,125
-mobiles, 6,138 objects, 13,052 rooms and 409 skill groups**. Active flight now
-satisfies the purchase objective in both planner and live controller, avoiding
-repeated logins that skip buying the same redundant potion.
+The source mirror is **e85c085a**, clean and aligned with `origin/master`.
+The current DD4 boot is **Wed Oct 14 09:25:18 2026**. Campaign 35's latest
+frontier diagnosis has **314 candidates**, **32 current-band** candidates, and
+**24 autonomous-safe** candidates, but no executable route on this boot: the
+remaining options are closed by the current protection and same-boot evidence
+ledger. Continue the same pilot after genuinely fresh boot/live evidence
+rather than creating roster breadth.
+
+The verified Catacombs spiked key (object **9565**) is deliberately dropped in
+room **3007**. Its world-cache receipt is tied to the current boot and source
+revision, so it is expected to remain available until the next DD4 reboot and
+must be rechecked afterward.
+
+The October 18 target-admission update widens ordinary source-ranked scouting
+through the source-supported **+5** level band. Exact source identity, route
+hazards, isolation and live `consider` decide whether a fight is attempted;
+target HP, predicted output, Sanctuary and damage-window estimates remain
+observation/report evidence rather than ordinary admission gates. Focused
+campaign and candidate tests pass; the full regression batch remains on its
+daily schedule.
+
+The optional Daycare pink-ring retry now keeps its three positive-XP,
+non-maintenance segment cooldown across reboots. Live carrier and route
+evidence is rechecked when that cooldown expires; maintenance XP does not age
+it.
 
 ### Earlier Checkpoint: October 12
 
@@ -2231,7 +2247,7 @@ python -m dd4tester hero-options
 python -m dd4tester hero --race human --sex female --class mage --prepare-only
 python -m dd4tester hero --race human --sex female --class mage --progress
 python -m dd4tester hero --race human --sex female --class mage `
-  --autonomous --progress
+  --single-segment --progress
 python -m dd4tester hero --username Astrevo --workspace runs/heroes/astrevo `
   --segments 3 --max-segment-runtime 180 --reset-retries 1 --reset-wait 180 --progress
 python -m dd4tester hero --username Ararisa --progress
@@ -2275,16 +2291,22 @@ python -m dd4tester moria-research runs/heroes/dorrik/character.yaml `
 ```
 
 This command is maintenance evidence, not ordinary XP or fame progression;
-the autonomous `hero --autonomous` campaign remains the production path.
+the autonomous `hero` campaign remains the production path.
 
-`hero` is a bounded invocation. Add `--autonomous` to keep opening one
-bounded worker at a time until the target is reached or the campaign reports a
-durable blocker. In this mode `--segments` is the cycle budget and
-`--max-reset-waits` (default 3) is the total area-reset wait budget. The
-supervisor preserves the same SQLite checkpoints and credentials between
-cycles, counts one completed wait rather than each progress heartbeat, returns
-on a real failure or blocked policy, and never spins on an unchanged world. A
+`hero` is autonomous by default: it keeps opening one bounded worker at a time
+until the target is reached or the campaign reports a durable blocker. In this
+mode `--segments` is the cycle budget and `--max-reset-waits` (default 3) is
+the total area-reset wait budget. The supervisor preserves the same SQLite
+checkpoints and credentials between cycles, counts one completed wait rather
+than each progress heartbeat, returns on a real failure or blocked policy, and
+never spins on an unchanged world. Use `--single-segment` for one bounded
+diagnostic worker; `--autonomous` remains accepted as a compatibility flag. A
 returned `ready` result is safe to resume later.
+Campaign and HERO commands also print separate `execution`, bounded-segment
+`objective`, `safety`, and overall level `target` outcomes. `show-campaign`
+prints the same target outcome from its latest checkpoint, so a safe
+checkpoint can be inspected or resumed without being mistaken for a completed
+hunt or HERO target.
 An exhausted, already-dispatched sanctuary recheck remains blocked across
 process restarts; it does not authorize another identical area-reset wait.
 
@@ -2343,7 +2365,7 @@ historical run. It also closes a run row left marked `running` after its
 campaign segment has already failed. The no-argument form remains available
 for small databases.
 
-For unattended progression, use `hero --autonomous --progress`. Its worker
+For unattended progression, use `hero --progress`. Its worker
 and reset budgets are finite by design; increase them explicitly only when
 the surrounding run supervisor can observe and stop the process.
 Ctrl+C exits 130 after preserving the durable checkpoint, so the same command
@@ -3485,3 +3507,20 @@ died for **607 XP**, and the character recalled and slept in healer room
 **3054** with no death or XP loss. Checkpoint **42423** records
 `completed_kill=true` and a succeeded, single-use revalidation marker. HERO
 remains unproved.
+
+### Current Pilot Checkpoint: October 18, 2026
+
+Dorrik is the only active progression pilot. He is level **39** with
+**1,310,690 XP**, safely at healer room **3054**. The current MUD boot has
+closed the bounded Moria Sanctuary recovery and its one Caerlin staff retry;
+the campaign must remain local and idle until the next reboot rather than
+replaying those routes.
+
+The source-ranked fallback policy
+`source-ranked-sanctuary-alternate-2-100` is now available for the next
+eligible boundary. It audits the Alchemist reset at room **927** (mobile
+**916**) and the Sanctuary-capable ivory staff (**905**) and nectar (**926**),
+then requires fresh live identity, isolation, consider, output, loot, and
+healer-return evidence. Its same-boot absence evidence is retained, so it will
+not loop before the reboot. This is a required-loot recovery route, not XP
+credit; HERO 100 is still unproved.

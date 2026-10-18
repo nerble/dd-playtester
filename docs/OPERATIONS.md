@@ -1,5 +1,19 @@
 # Operating Instructions
 
+## Current Target-Selection Policy
+
+For ordinary source-ranked XP hunts, consider every source-supported target
+through the active character's `+5` level band. The live `consider` response,
+exact source identity, route, crowd state, and source hazards decide admission.
+Target hitpoints, weapon output, Sanctuary, damage-window estimates, and
+equipment projections are observation/report evidence only; they must not make
+a plain target ineligible or trigger an automatic flee. Preserve source
+specials and aggression hazards, identity and isolation checks, provisioning,
+movement and recovery checks, and the character's own health withdrawal floor.
+Historical rejection records remain evidence for their exact target and boot;
+they are not permission to reject an otherwise valid current target merely
+because an old predicted output estimate was unfavorable.
+
 ## Commentary And Discord
 
 At the start of every assistant turn, before commentary or other tool work,
@@ -832,6 +846,12 @@ Relocation tables include safe positive-locator destinations beyond the eight
 blind stops as origins. Every new origin retains path, hazard, access, and live
 identity checks; blind stops and live relocation limits remain eight. This
 repairs a missing map origin, not a consumed failed search or combat permission.
+After one source-mapped room is rechecked and still lacks a source-ranked
+wanderer, the locator may broaden to another non-empty source-mapped label only
+when the locator explicitly permits continuation and the target/source VNUMs
+match. The alternate leg is still source-routed and bounded by the same
+eight-refresh limit; this never authorizes combat without fresh identity,
+isolation, consider, output and recovery checks.
 After ordinary sibling selection finds nothing, an already-productive exact
 registered source identity may receive one `campaign_registered_locator_revalidations`
 route check. Require its linked completed success/not-achieved/safe run,
@@ -852,28 +872,37 @@ the attempted receipt at checkpoint 49605. Its ordinary repeat 16638 lost
 189 net XP after Caroline joined. The old positive research result is historical
 kill evidence, not permission to override the new registered loss. The consumed
 locator repair never reopens that combat failure; checkpoint 49610 is recovered.
-The higher-band Vampire Catacombs fallback now admits one source-reachable
-current-band target after generic selection is exhausted: Anton (mobile 9501,
-level 35, room 9506). His singleton passive sentinel reset has no special or
+The higher-band Vampire Catacombs fallback audits each reset separately.
+Anton (mobile 9501, level 35, room 9506) is a source candidate, but his current
+combat stop requires Sanctuary, so source level and the short entrance route do
+not make him an executable no-reserve target. His reset has no special or
 program, wields the source-identified chef's knife (object 9506), and carries
-the paintbrush wand (9504) loose in inventory. DD4's `fight.c` only zaps a wand
-when it occupies `WEAR_HOLD`; this reset does not equip it there, and the source
-admission rejects any loadout change that holds it. From the bouncer's entry
-room 9500, the route is north, open east, east. The fallback evaluates each
-reset independently, so unreachable targets do not close this route. Admission
-uses source level and fresh live `consider`, not target HP; identity, isolation,
-route hazards, incoming damage, Dorrik's own 20-percent withdrawal floor,
-provisions, and return checks remain in force.
+the paintbrush wand (9504) loose; `fight.c` only zaps a wand held in
+`WEAR_HOLD`, and the source audit rejects a loadout change that holds it.
 
-This Anton route is implemented but not yet regression-verified. The October
-16 full suite before this change reported 8,078 passed and 545 failed; no
-second suite was run today. The changed Python files passed compilation.
+The exact XP-loss receipt for Grok (9510) scopes that failure to Grok only.
+The parent Catacombs failure and cumulative loss ledger remain intact. If a
+source refresh makes that historical target scope unusable, the parent remains
+closed rather than retrying an unknown mobile, but the independent missing-key
+route remains eligible. At levels 38-39 the separate Joan key hunt (mobile
+9506, room 9517) passes its source audit for the spiked key (object 9565), with
+a 95-percent starting-health requirement and Peter retained as a checked
+trivial bystander. The key opens the east door from room 9523; the bats, art
+critic, and gallery visitors then pass their individual source audits. This is
+candidate evidence only: confirmed key inventory, reachable live exits, exact
+identity, consider, isolation, output, health, provisions, and return checks
+still govern each attempt.
 
-The bats, art critic, and gallery visitors remain unavailable behind Grok's
-locked east door in room 9523. It needs the spiked key (object 9565), which
-Joan (mobile 9506) carries in room 9517. A separate key acquisition, confirmed
-key inventory, and key-aware route are still required before admitting those
-deeper objectives; their reset rooms do not prove a traversable path.
+Joan's required-loot policy may fight an otherwise below-XP-band Joan when the
+key is absent; that evidence must not close the key route as it would an
+ordinary XP hunt. After a successful key hunt, the starter now enters the
+reboot-scoped cache route from the healer before logout and verifies the key is
+dropped in room 3007. The key is then expected to remain available until the
+next MUD reboot; a missing cache receipt still means the key was not preserved.
+
+The target-scoped loss and fallback behavior passed its focused campaign tests,
+and all 120 `test_hunt_outcomes.py` tests passed on October 17. The full
+regression suite was already run today and was not repeated for this change.
 
 The default Midgaard recall shortlist is not the whole level-38 frontier.
 From the registered Mirror Realm route's Suite (19170), source revision
@@ -946,6 +975,15 @@ candidate's registered `where` preflight. This is not a route-hazard bypass:
 issue the locator fresh before crossing and return if it finds the mobile. The
 existing one-shot loss marker and all post-loss output, health, identity, and
 consider gates remain in force.
+
+For a source-ranked route that crosses a plain wandering aggressor, a positive
+`where` result anywhere in the current area closes the no-combat transit proof,
+even when the reported room is not on the planned path. The mobile may move
+between the origin locator and an adjacent scan; generated routes therefore
+recall on any positive location and retain their bounded scan checks for a
+negative result. This protects route identity without reopening the failed
+target or authorizing combat with the wandering mobile.
+
 For the exact policy with the prior damage-window loss, admit the post-loss
 plain-target variant only when that one-shot revalidation proves a strictly
 higher source output ceiling covers the observed target HP. Its independent
@@ -2055,6 +2093,13 @@ permission to replay the exhausted route. Run **13275** is the current live
 proof that the reconciled policy opens the full 11-stop Moria route through
 rooms 4064, 4152, 4071, and 4074; the carrier was absent, so the route remains
 unproved for resource acquisition.
+Run **18252** exposed a locator stop after a confirmed below-band route-gate
+kill in Maze room **4058**: the generic post-fight guard closed the required-
+loot search. The exact room-4064 purple-potion hunt may resume its locator after
+only confirmed kills from its audited route-gate VNUMs, while in a source-mapped
+Maze room and within the existing eight-query limit. This resumes searching;
+each fight retains its original live identity, consider, route, output, and
+survival gates.
 
 Policy revision **303** makes healer recovery explicit when a checkpoint in
 room **3054** still has active poison. The exact reopened Forest
@@ -3920,13 +3965,30 @@ ordinary retry. The one distinct route-suffix correction for safe run **17547** 
 segment **17037** was consumed by run **17560** / segment **17050**. The positive
 maze locator reached room **4063**, found no carrier, and safely returned after
 the original 4020 route (which began at 4012) could not be replayed from 4063.
-No further Moria attempt is authorized on this boot; preserve the original
-evidence and spent marker. The general suffix repair now re-roots only the first
-unvisited VNUM leg through a bounded source-safe bridge and fresh live exits,
-then preserves later stops. It grants no reset wait or combat permission. A
+No further general Moria attempt is authorized on this boot; preserve the
+original evidence and spent marker. The general suffix repair now re-roots only
+the first unvisited VNUM leg through a bounded source-safe bridge and fresh live
+exits, then preserves later stops. It grants no reset wait or combat permission. A
 separate, unconsumed automatic-reset capacity entitlement may dispatch only
 the exact mobile-4055/object-4050 maintenance probe below. It does not reopen
 general sanctuary recovery or authorize XP combat.
+
+Run **18250** / segment **17684** later used the exact room-4064 entitlement and
+ended safely at the healer: its sole fixed-room target was absent, with no kill,
+XP change, or cumulative-loss change. Because mobile **4055** wanders through
+source-mapped Moria rooms, that precise miss permits one locator-only
+revalidation while boot, level, source revision, XP, and cumulative losses stay
+unchanged. Consume its receipt before dispatch; require a recovered healer,
+current flight reserve, the eight-relocation bound, exact source route gates
+(4053/4056/4050 in rooms 4058/4057/4062), and all normal live identity, item,
+consider, hazard, and return checks. A miss or abort ends Moria retries for this
+boot. Run **18252** / segment **17686** consumed this exception, found no potion,
+and returned safely to the healer; it recorded 80 incidental XP from one
+source-authorized route-gate kill. Do not repeat it. This does not clear a combat
+loss, authorize fighting a route-gate mob outside that exact route, or grant
+progression-XP permission against the carrier. A source refresh cannot reset
+this consumed same-boot, same-level receipt; the exact attempt history remains
+closed even when its original route revision is older than the current source.
 
 The 2026-10-09 all-area source inventory found no second executable sanctuary
 reserve for Dorrik at level 30. The level-27-to-33 ettin's blood (#17029) is in
@@ -4008,8 +4070,9 @@ present, and the last exact selector identifies the ring-loaded instance. If
 fewer than two selectors are present, return without a kill. Verify the ring
 before loot or equip commands. A below-band consider is expected for this
 required-loot task: it grants no progression XP and must not permanently close this policy.
-After a miss or crowd abort, retain a three-segment cooldown, decremented only
-by positive-XP, non-maintenance work at the same level and reboot. Sanctuary,
+After a miss or crowd abort, retain a three-segment cooldown across reboot,
+decremented only by positive-XP, non-maintenance work at the same level.
+Sanctuary,
 healing, food, and flight reserve hunts are resource maintenance even when a
 required carrier grants incidental XP. Exclude those executions from both
 normal countdown and bounded-history reconstruction; do not let supply kills
@@ -4400,6 +4463,34 @@ locator cannot recover that sighting. The bounded recall-origin prefix
 `mirror realm caerlin watchtowers` ends at **19008** and is for exact live
 consideration only. It does not lower Caerlin's special, output, isolation,
 recovery, or combat gates.
+
+The current carrier executor starts at the exact reset room with a live `where
+caerlin` locator. If Caerlin wanders into an already-checked room or outside the
+audited relocation graph, one safe, no-loss retry may be consumed after the
+positive locator evidence is checkpointed. A second miss closes this recovery
+attempt until the normal source/reboot evidence changes; it never authorizes a
+generic chase or combat outside the registered route.
+
+Run **18490** added a distinct live observation: Caerlin was visible in room
+**19002**, “The Path,” while Dorrik was still following the official outbound
+route to room 19068. The generic locator must continue to reject that ambiguous
+label, but the exact source VNUM and route prove this one waypoint. The carrier
+stop now permits one outbound interception at VNUM 19002 only; it still requires
+the live source identity, isolation, consider, output, required staff receipt,
+and healer-return checks. The current boot's retry is already closed, so this
+evidence will be used on the next eligible recovery attempt rather than looped.
+
+The next source-ranked Sanctuary fallback is recorded as
+`source-ranked-sanctuary-alternate-2-100`. Its first eligible carrier is the
+level-39 Alchemist (mobile **916**, room **927**), whose source reset can load
+the ivory staff (**905**) and nectar (**926**) and has no listed special. The
+selector binds the effect, reset, route, isolation, and output evidence rather
+than assuming a mobile name. The ordinary Alchemist hunt already recorded an
+absence on the current boot, so this fallback remains closed until a reboot or
+source revision changes that evidence; it is required-loot maintenance, not XP
+permission. A legacy absence without a complete boot boundary is also kept
+closed, because it cannot prove either current-reboot absence or post-reboot
+availability.
 
 October 13 NZST run **17722** reached Jerry Garcia's registered endpoint and
 refreshed `where` once; the live result located him only at “Below the

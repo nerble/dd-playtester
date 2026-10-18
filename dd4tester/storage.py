@@ -2864,6 +2864,22 @@ class RunStorage:
         )
         return cursor.fetchone()
 
+    def update_campaign_config_path(
+        self,
+        campaign_id: int,
+        config_path: Path,
+    ) -> None:
+        """Adopt a canonical campaign file without changing its history."""
+        self.connection.execute(
+            """
+            UPDATE campaigns
+            SET config_path = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (str(config_path), _now(), campaign_id),
+        )
+        self.connection.commit()
+
     def get_run_summary(self, run_id: int) -> dict[str, Any] | None:
         if not self._run_summaries_available:
             return None
@@ -4140,6 +4156,36 @@ class RunStorage:
         )
         return cursor.fetchone()
 
+    def get_latest_campaign_checkpoint_for_reason(
+        self,
+        campaign_id: int,
+        reason: str,
+        *,
+        world_boot_id: str | None = None,
+    ) -> sqlite3.Row | None:
+        """Find the newest checkpoint of one reason, optionally by boot."""
+        if not reason:
+            raise ValueError("checkpoint reason must be non-empty")
+        boot_filter = (
+            "AND json_extract(state_json, '$.world_boot_id') = ?"
+            if world_boot_id is not None
+            else ""
+        )
+        parameters: tuple[Any, ...] = (campaign_id, reason)
+        if world_boot_id is not None:
+            parameters += (world_boot_id,)
+        return self.connection.execute(
+            f"""
+            SELECT id, campaign_id, segment_id, run_id, phase, reason,
+                   created_at, state_json
+            FROM campaign_checkpoints
+            WHERE campaign_id = ? AND reason = ? {boot_filter}
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            parameters,
+        ).fetchone()
+
     def list_latest_campaign_checkpoints_for_profile(
         self,
         character_profile_path: Path | str,
@@ -4337,6 +4383,41 @@ class RunStorage:
                    {optional},
                    {start_projection} AS start_state_json,
                    {end_projection} AS end_state_json
+            FROM campaign_segments
+            WHERE campaign_id = ?
+            ORDER BY sequence
+            """,
+            (campaign_id,),
+        )
+        return list(cursor.fetchall())
+
+    def list_campaign_segment_progress(
+        self,
+        campaign_id: int,
+    ) -> list[sqlite3.Row]:
+        """Return compact ordered progress fields for campaign history.
+
+        Runtime policy recovery sometimes needs to inspect more than the
+        large-database eight-segment tail, but it does not need each segment's
+        full state snapshot. Keep that scan on level, XP, and boot identity.
+        """
+        cursor = self.connection.execute(
+            """
+            SELECT id, sequence, phase, status, run_id,
+                   json_object(
+                       'level', json_extract(start_state_json, '$.level'),
+                       'xp', json_extract(start_state_json, '$.xp'),
+                       'world_boot_id', json_extract(
+                           start_state_json, '$.world_boot_id'
+                       )
+                   ) AS start_state_json,
+                   json_object(
+                       'level', json_extract(end_state_json, '$.level'),
+                       'xp', json_extract(end_state_json, '$.xp'),
+                       'world_boot_id', json_extract(
+                           end_state_json, '$.world_boot_id'
+                       )
+                   ) AS end_state_json
             FROM campaign_segments
             WHERE campaign_id = ?
             ORDER BY sequence
@@ -4605,6 +4686,20 @@ class RunStorage:
         return self.connection.execute(
             "SELECT * FROM campaign_segments WHERE campaign_id = ? AND sequence = ?",
             (campaign_id, sequence),
+        ).fetchone()
+
+    def get_latest_campaign_segment(self, campaign_id: int) -> sqlite3.Row | None:
+        """Read the newest segment without materializing campaign history."""
+        if type(campaign_id) is not int or campaign_id < 1:
+            raise ValueError("campaign_id must be a positive integer")
+        return self.connection.execute(
+            """
+            SELECT * FROM campaign_segments
+            WHERE campaign_id = ?
+            ORDER BY sequence DESC
+            LIMIT 1
+            """,
+            (campaign_id,),
         ).fetchone()
 
     def get_latest_campaign_segment_summary_for_phase(

@@ -317,6 +317,7 @@ def test_autonomous_hero_continues_ready_cycles_and_limits_reset_waits(
                 "try source-ranked current-band targets before waiting for the "
                 "Mud School area reset.",
                 {"level": 2, "xp": 3266},
+                    target_outcome="not_achieved",
             ),
             CampaignResult(
                 1,
@@ -324,6 +325,7 @@ def test_autonomous_hero_continues_ready_cycles_and_limits_reset_waits(
                 2,
                 "Campaign checkpointed while awaiting the field area reset.",
                 {"level": 8, "xp": 100},
+                    target_outcome="not_achieved",
             ),
         )
     )
@@ -351,6 +353,7 @@ def test_autonomous_hero_continues_ready_cycles_and_limits_reset_waits(
             ),
             workspace=tmp_path / "heroes",
             cycles=5,
+            reset_retries=1,
             reset_wait=42,
             max_reset_waits=1,
             progress_callback=progress.append,
@@ -367,6 +370,51 @@ def test_autonomous_hero_continues_ready_cycles_and_limits_reset_waits(
     assert calls[0]["force_new"] is False
     assert any("reset waits used=1/1" in message for message in progress)
     assert not any("reset waits used=2/1" in message for message in progress)
+    assert any(
+        "segment_execution=ready; segment_objective=unknown; "
+        "segment_safety=unknown; campaign_target=not_achieved" in message
+        for message in progress
+    )
+
+
+def test_autonomous_hero_does_not_default_to_a_reset_wait(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    prepared = object()
+
+    async def fake_request(request, **options):
+        calls.append(options)
+        return prepared, CampaignResult(
+            1,
+            "ready",
+            1,
+            "Campaign checkpointed while awaiting the field area reset.",
+            {"level": 39},
+        )
+
+    monkeypatch.setattr("dd4tester.hero.run_hero_request", fake_request)
+
+    preparation, result = asyncio.run(
+        run_hero_until_target(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            cycles=5,
+            max_reset_waits=1,
+            password="test-password",
+        )
+    )
+
+    assert preparation is prepared
+    assert result.awaiting_area_reset
+    assert len(calls) == 1
+    assert calls[0]["reset_retries"] == 0
 
 
 def test_autonomous_hero_stops_on_blocked_result(tmp_path: Path, monkeypatch) -> None:
@@ -1028,7 +1076,7 @@ def test_named_resume_uses_latest_matching_campaign_config(
         target_level=30,
     )
 
-    assert resumed.campaign_path == prepared.profile_path.resolve()
+    assert resumed.campaign_path == prepared.campaign_path.resolve()
     assert resumed.profile_path.read_text(encoding="utf-8") == profile_text
 
     captured: dict[str, object] = {}
@@ -1051,8 +1099,8 @@ def test_named_resume_uses_latest_matching_campaign_config(
             password="test-password",
         )
     )
-    assert captured["path"] == prepared.profile_path.resolve()
-    assert captured["target_level_override"] == 30
+    assert captured["path"] == prepared.campaign_path.resolve()
+    assert captured["target_level_override"] is None
 
 
 def test_named_resume_finds_a_manifest_inside_a_matrix_workspace(

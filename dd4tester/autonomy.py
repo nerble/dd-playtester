@@ -43,7 +43,12 @@ class PolicyBand:
 
 @dataclass(frozen=True)
 class AutonomyAudit:
-    """Source legality and declared template coverage, without live proof."""
+    """Source legality and declared coverage, without live proof.
+
+    The declared policy graph and the campaign's generic source-ranked
+    fallback are reported separately. A research template is still not live
+    proof, but it should not be mistaken for a dead runtime path.
+    """
 
     race: str
     sex: str
@@ -59,6 +64,9 @@ class AutonomyAudit:
     combat_automation_status: str
     policy_bands: tuple[PolicyBand, ...]
     registered_through_target: bool
+    runtime_fallback_through_target: bool
+    first_runtime_gap_level: int | None
+    first_runtime_gap_policy: str | None
     templates_marked_verified_through_target: bool
     first_proof_gap_level: int | None
     first_proof_gap_policy: str | None
@@ -91,6 +99,11 @@ class AutonomyAudit:
             },
             "policy_bands": [band.to_mapping() for band in self.policy_bands],
             "registered_through_target": self.registered_through_target,
+            "runtime_fallback": {
+                "executable_through_target": self.runtime_fallback_through_target,
+                "first_gap_level": self.first_runtime_gap_level,
+                "first_gap_policy": self.first_runtime_gap_policy,
+            },
             "templates_marked_verified_through_target": (
                 self.templates_marked_verified_through_target
             ),
@@ -169,6 +182,25 @@ def audit_hero_request(
         for level in range(0, target_level + 1)
     ]
     bands = _collapse_policy_bands(selections)
+    runtime_selections = [
+        (
+            level,
+            _runtime_policy_for_level(
+                level,
+                canonical_class,
+                canonical_subclass,
+            ),
+        )
+        for level in range(0, target_level + 1)
+    ]
+    runtime_gap = next(
+        (
+            (level, policy)
+            for level, policy in runtime_selections
+            if level >= 2 and not policy.executable
+        ),
+        None,
+    )
     first_gap = next(
         (
             band
@@ -210,15 +242,26 @@ def audit_hero_request(
             f"{canonical_class} has no automated damage or control training "
             "priority"
         )
+    if runtime_gap is not None:
+        blockers.append(
+            "campaign fallback has no executable policy at level "
+            f"{runtime_gap[0]} ({runtime_gap[1].policy_id})"
+        )
     blockers.append(
         "static policy coverage is not a substitute for a fresh autonomous "
         "creation-to-target live run"
     )
 
-    if first_gap is None and registered_through_target:
+    if runtime_gap is None and first_gap is None and registered_through_target:
         next_action = (
             "Run a fresh bounded live campaign and promote each segment only "
             "after its route, combat, XP, and healer-return evidence passes."
+        )
+    elif runtime_gap is None and first_gap is not None:
+        next_action = (
+            "Run the campaign's executable source-ranked fallback while "
+            "promoting each research band only after its route, combat, XP, "
+            "and healer-return evidence passes."
         )
     elif first_gap is not None and first_gap.status == "research":
         next_action = (
@@ -248,6 +291,11 @@ def audit_hero_request(
         combat_automation_status=combat_automation_status,
         policy_bands=bands,
         registered_through_target=registered_through_target,
+        runtime_fallback_through_target=runtime_gap is None,
+        first_runtime_gap_level=(runtime_gap[0] if runtime_gap else None),
+        first_runtime_gap_policy=(
+            runtime_gap[1].policy_id if runtime_gap else None
+        ),
         templates_marked_verified_through_target=templates_marked_verified_through_target,
         first_proof_gap_level=(
             first_gap.minimum_level if first_gap is not None else None
@@ -295,6 +343,12 @@ def render_autonomy_audit(audit: AutonomyAudit) -> str:
             if audit.registered_through_target
             else "incomplete before target"
         ),
+        "Runtime fallback coverage: "
+        + (
+            "executable through target"
+            if audit.runtime_fallback_through_target
+            else "incomplete before target"
+        ),
         "Templates marked verified: "
         + ("all" if audit.templates_marked_verified_through_target else "not all"),
         "Live progression proof: not assessed by this static audit",
@@ -319,6 +373,13 @@ def render_autonomy_audit(audit: AutonomyAudit) -> str:
         lines.append(
             f"First unverified template: level {audit.first_proof_gap_level} "
             f"({audit.first_proof_gap_policy})"
+        )
+    if audit.first_runtime_gap_level is None:
+        lines.append("First runtime selection gap: none in fallback graph")
+    else:
+        lines.append(
+            f"First runtime selection gap: level {audit.first_runtime_gap_level} "
+            f"({audit.first_runtime_gap_policy})"
         )
     lines.append("Blockers:")
     lines.extend(f"- {blocker}" for blocker in audit.blockers)
@@ -358,6 +419,28 @@ def _static_policy_for_level(
         level,
         character_class,
         target_subclass=subclass,
+    )
+
+
+def _runtime_policy_for_level(
+    level: int,
+    character_class: str,
+    subclass: str | None,
+) -> ProgressionPolicy:
+    """Mirror the campaign's generic fallback mode for coverage audits."""
+    if subclass and level > 30:
+        return policy_for(
+            level,
+            character_class,
+            subclass=subclass,
+            target_subclass=subclass,
+            source_ranked_fallback=True,
+        )
+    return policy_for(
+        level,
+        character_class,
+        target_subclass=subclass,
+        source_ranked_fallback=True,
     )
 
 

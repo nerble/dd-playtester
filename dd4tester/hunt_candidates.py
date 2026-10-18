@@ -39,6 +39,10 @@ ACT_NO_FIGHT = 1 << 26
 ACT_UNDEAD = 1 << 30
 ACT_FEAR_AURA = 1 << 31
 
+# Kept as an evidence label for older serialized candidates. It must never
+# close an ordinary target: source level and live ``consider`` own admission.
+_TARGET_OUTPUT_EVIDENCE_REJECTION = "source peak round can exceed character HP"
+
 # ``rank_table`` in ``server/src/mob.c`` is applied by ``create_mobile``
 # after the ordinary area-file hit-point roll.  Keep the source multiplier
 # here so static target estimates match live elite/boss/world mobiles.
@@ -177,6 +181,7 @@ ITEM_MONEY = 20
 ITEM_LOCK_PICK = 35
 ITEM_INSTRUMENT = 36
 ITEM_DONOT_RANDOMISE = 1 << 37
+APPLY_BREATHE_WATER = 40
 
 # Container flags from ``merc.h``.  A nested resource is not loose ground
 # loot: a closed or locked container needs an explicit extraction plan.
@@ -298,6 +303,7 @@ _SOURCE_BOUNDED_DEEP_TRANSIT_CRITICAL_RATIO = 0.25
 _SOURCE_BOUNDED_PROGRAM_MAX_TRIGGER_PERCENT = 25
 _SOURCE_BOUNDED_PROGRAM_LEVEL_GAP = 4
 _SOURCE_BOUNDED_PROGRAM_MAX_CAPACITY = 3
+_MIDGAARD_DRUNK_MOBILE_VNUM = 3064
 # A low-level probabilistic greet program can be checked from recall before
 # the route is crossed. Keep this separate from the ordinary transit-risk
 # band: the starter has a bounded ``where`` preflight for exactly this case.
@@ -1987,6 +1993,9 @@ class HuntCandidate:
     route_preflight_room_vnum: str | None = None
     route_preflight_command: str | None = None
     route_preflight_target: str | None = None
+    # Ordered exact source identities to check when one route crosses more
+    # than one wandering mobile prototype.
+    route_preflight_checks: tuple[tuple[str, str], ...] = ()
     route_preflight_level_range: tuple[int, int] = (0, 0)
     route_preflight_hard_hazard: bool = False
     route_preflight_route_room_names: tuple[str, ...] = ()
@@ -2016,6 +2025,10 @@ class HuntCandidate:
 
     # State-admitted ordinary XP travel only; original source risk is retained.
     route_economic_hunt_mobile_vnums: tuple[int, ...] = ()
+    # A plain bounded target population may carry the same source-audited
+    # economic special across multiple fixed resets. This never authorizes
+    # fighting the special or waives the target population gates.
+    route_economic_population: bool = False
     route_economic_source_rejections: tuple[str, ...] = ()
     route_key_object_vnums: tuple[int, ...] = ()
 
@@ -2032,6 +2045,26 @@ class HuntCandidate:
             "below-band wandering aggressor is not an XP target",
         }
         rejections = set(self.autonomy_rejections)
+        return bool(
+            not (rejections - nonfatal_transit)
+            and (not rejections or self.route_aggressive_mobile_vnums)
+        )
+
+    @property
+    def target_selection_safe(self) -> bool:
+        """Whether ordinary target admission survives non-output hazards.
+
+        Older checkpoints recorded a predicted incoming peak as an autonomy
+        rejection. That value is still useful report evidence, but it is not
+        a target-selection gate under the live level/``consider`` policy.
+        All other source hazards retain the strict admission behavior.
+        """
+        nonfatal_transit = {
+            "below-band transit aggressor is not an XP target",
+            "below-band wandering aggressor is not an XP target",
+        }
+        rejections = set(self.autonomy_rejections)
+        rejections.discard(_TARGET_OUTPUT_EVIDENCE_REJECTION)
         return bool(
             not (rejections - nonfatal_transit)
             and (not rejections or self.route_aggressive_mobile_vnums)
@@ -2324,8 +2357,9 @@ def resource_effects_for_object(
     """Return recovery effects supported by one source object.
 
     ``food`` is deliberately limited to the same positive, non-poisonous
-    direct-food rule used by :func:`rank_food_stashes`.  Spell effects are
-    read from the source-encoded potion, pill, scroll, wand, or staff values.
+    direct-food rule used by :func:`rank_food_stashes`. Spell effects are read
+    from source-encoded consumables; water breathing also recognizes wearable
+    armour that applies DD4's permanent ``APPLY_BREATHE_WATER`` effect.
     """
     normalized = normalize_resource_effect(effect)
     valid_effects = set(_RESOURCE_EFFECT_SPELLS) | {"food"}
@@ -2342,6 +2376,13 @@ def resource_effects_for_object(
         and normalized in {"all", "food"}
     ):
         effects.append("food")
+    if (
+        normalized in {"all", "water-breathing"}
+        and item.item_type == ITEM_ARMOR
+        and item.wear_flags & ~1
+        and any(location == APPLY_BREATHE_WATER for location, _ in item.affects)
+    ):
+        effects.append("water-breathing")
     spell_names = (
         set(potion_spell_names(item))
         | set(pill_spell_names(item))
@@ -2377,6 +2418,20 @@ def resource_activation_for_object(
         if spell_name is not None
         else None
     )
+    if (
+        normalized == "water-breathing"
+        and item.item_type == ITEM_ARMOR
+        and item.wear_flags & ~1
+        and any(location == APPLY_BREATHE_WATER for location, _ in item.affects)
+    ):
+        return ResourceActivation(
+            spell="breathe water",
+            command="wear",
+            mode="wearable",
+            requires_hold=False,
+            consumes_object=False,
+            consumes_charge=False,
+        )
     if requested_spell is None:
         # Accepting a spell-shaped effect keeps the campaign selector able to
         # ask for an exact source spell without duplicating the effect table.
@@ -3596,11 +3651,13 @@ def _bounded_borderline_route_aggressor(
     character_level: int,
     character_max_hp: int | None,
 ) -> bool:
-    """Allow a one-mobile route hazard whose only useful roll is the fringe.
+    """Allow a tightly bounded aggressive route mobile near the XP floor.
 
-    The live runner still defeats the mobile only when GMCP proves it is in the
-    forbidden below-band range. A maximum fuzzy roll at ``level - 4`` follows
-    the existing flee-and-return path instead of becoming an implicit target.
+    The existing level-4 fringe case keeps its established damage bound. A
+    level-3 fringe is admitted only for one unarmed, stay-area reset with no
+    programs or specials, and only when peak + critical + the 20% floor fits
+    the character's maximum HP. Runtime still requires exact live identity,
+    consider, isolation, and combat-stop checks.
     """
     if character_max_hp is None or character_max_hp <= 0:
         return False
@@ -3626,7 +3683,7 @@ def _bounded_borderline_route_aggressor(
     if reset.maximum_count != 1 or source_capacity != 1:
         return False
     maximum_level = _mobile_level_range(mobile.level)[1]
-    if maximum_level != character_level - 4:
+    if maximum_level not in (character_level - 4, character_level - 3):
         return False
     wielding = any(
         wear_location == WEAR_WIELD
@@ -3647,9 +3704,80 @@ def _bounded_borderline_route_aggressor(
         wielding=wielding or dual_wielding,
         damage_modifier=mobile.damage_modifier,
     )
+    if maximum_level == character_level - 4:
+        return (
+            peak_round_damage < character_max_hp
+            and critical_hit_damage < character_max_hp
+        )
+
+    resets = tuple(
+        candidate
+        for candidate in world.mob_resets
+        if candidate.mobile_vnum == mobile.vnum
+    )
+    if (
+        len(resets) != 1
+        or resets[0] != reset
+        or reset.maximum_count != 1
+        or reset.equipment
+        or not mobile.stay_area
+        or mobile.confused
+        or mobile.programs
+        or mobile.attack_programs
+    ):
+        return False
+    health_floor = (character_max_hp + 4) // 5
+    return peak_round_damage + critical_hit_damage + health_floor <= character_max_hp
+
+
+def _bounded_aggressive_target_probe(
+    world: WorldSource,
+    mobile: MobileSource,
+    reset: MobReset,
+    *,
+    character_level: int,
+    character_max_hp: int | None,
+) -> bool:
+    """Allow one live consider probe when a singleton aggressor may be useful."""
+    if (
+        character_max_hp is None
+        or character_max_hp <= 0
+        or not mobile.aggressive
+        or mobile.costs_fame
+        or mobile.vnum in world.shopkeepers
+        or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+        or mobile.attack_programs
+        or mobile.fear_aura
+        or not mobile.damage_modifier_known
+        or world.mobile_specials.get(mobile.vnum)
+    ):
+        return False
+    maximum_level = _mobile_level_range(mobile.level)[1]
+    if maximum_level < character_level - 4:
+        return False
+    resets = [
+        candidate for candidate in world.mob_resets
+        if candidate.mobile_vnum == mobile.vnum
+    ]
+    if len(resets) != 1 or resets[0] != reset or reset.maximum_count != 1:
+        return False
+    if reset.equipment:
+        return False
+    peak_round_damage = _mobile_peak_round_damage(
+        maximum_level,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
+    critical_hit_damage = _mobile_critical_hit_damage(
+        maximum_level,
+        wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
+    health_floor = (character_max_hp + 4) // 5
     return (
-        peak_round_damage < character_max_hp
-        and critical_hit_damage < character_max_hp
+        peak_round_damage + critical_hit_damage + health_floor
+        <= character_max_hp
     )
 
 
@@ -3880,6 +4008,83 @@ def source_mobile_route_program_attacker_is_bounded(
     )
 
 
+def source_mobile_route_program_family_is_preflight_safe(
+    world: WorldSource,
+    mobile_vnums: Collection[int],
+    *,
+    character_level: int,
+) -> bool:
+    """Prove one identical multi-prototype greet family for ``where`` checks.
+
+    Some areas reset identical copies of the same low-chance program mobile
+    from more than one room. The family is still route-only: a fresh locator
+    and adjacent-room scan must keep every copy out of the route, and this
+    proof never authorizes fighting one.
+    """
+    vnums = tuple(dict.fromkeys(int(vnum) for vnum in mobile_vnums))
+    if not 2 <= len(vnums) <= 4:
+        return False
+    mobiles = tuple(world.mobiles.get(vnum) for vnum in vnums)
+    if any(mobile is None for mobile in mobiles):
+        return False
+    resolved = tuple(mobile for mobile in mobiles if mobile is not None)
+    if len({mobile.area_file for mobile in resolved}) != 1:
+        return False
+    if len({mobile.short_description for mobile in resolved}) != 1:
+        return False
+    if len({mobile.programs for mobile in resolved}) != 1:
+        return False
+    for mobile in resolved:
+        if (
+            mobile.aggressive
+            or mobile.non_corporeal
+            or mobile.costs_fame
+            or mobile.vnum in world.shopkeepers
+            or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+            or not mobile.hp_modifier_known
+            or not mobile.damage_modifier_known
+            or world.mobile_specials.get(mobile.vnum)
+            or len(mobile.attack_programs) != 1
+            or mobile.attack_programs[0].trigger.casefold() != "greet_prog"
+            or _source_mobile_has_deterministic_attack_program(mobile)
+            or _mobile_level_range(mobile.level)[1]
+            > character_level - _SOURCE_PROGRAM_PREFLIGHT_LEVEL_GAP
+        ):
+            return False
+        try:
+            trigger_percent = int(str(mobile.attack_programs[0].condition).strip())
+        except (TypeError, ValueError):
+            return False
+        if not 0 < trigger_percent <= _SOURCE_BOUNDED_PROGRAM_MAX_TRIGGER_PERCENT:
+            return False
+        resets = tuple(
+            reset
+            for reset in world.mob_resets
+            if reset.mobile_vnum == mobile.vnum
+        )
+        if (
+            not 1 <= len(resets) <= _SOURCE_BOUNDED_PROGRAM_MAX_CAPACITY
+            or any(
+                reset.maximum_count < 1
+                or reset.maximum_count > _SOURCE_BOUNDED_PROGRAM_MAX_CAPACITY
+                or reset.object_vnums
+                or reset.equipment
+                or (world.rooms.get(reset.room_vnum) is None)
+                or world.rooms[reset.room_vnum].area_file != mobile.area_file
+                or world.rooms[reset.room_vnum].random_exits
+                for reset in resets
+            )
+        ):
+            return False
+    total_population = sum(
+        reset.maximum_count
+        for mobile in resolved
+        for reset in world.mob_resets
+        if reset.mobile_vnum == mobile.vnum
+    )
+    return total_population <= 8
+
+
 def rank_hunt_candidates(
     world: WorldSource,
     *,
@@ -3911,6 +4116,18 @@ def rank_hunt_candidates(
         raise ValueError("route_blocked_room_max_extra_steps must not be negative")
     effective_level_ceiling_offset = (
         1 if level_ceiling_offset is None else int(level_ceiling_offset)
+    )
+    drunk = world.mobiles.get(_MIDGAARD_DRUNK_MOBILE_VNUM)
+    bounded_midgaard_drunk_transit = bool(
+        drunk is not None
+        and character_max_hp is not None
+        and _mobile_level_range(drunk.level)[1] <= character_level - 5
+        and source_mobile_route_program_attacker_is_bounded(
+            world,
+            drunk,
+            character_level=character_level,
+            character_max_hp=character_max_hp,
+        )
     )
     kill_counts = {
         _normalize_name(name): count for name, count in (boot_kill_counts or {}).items()
@@ -4296,6 +4513,10 @@ def rank_hunt_candidates(
             if companion is None:
                 continue
             companion_level_range = _mobile_level_range(companion.level)
+            companion_is_bounded_drunk = bool(
+                companion.vnum == _MIDGAARD_DRUNK_MOBILE_VNUM
+                and bounded_midgaard_drunk_transit
+            )
             companion_specials = world.mobile_specials.get(
                 companion.vnum,
                 (),
@@ -4307,7 +4528,7 @@ def rank_hunt_candidates(
             )
             companion_is_below_band = (
                 companion_level_range[1] <= character_level - 5
-                and not companion.attack_programs
+                and (not companion.attack_programs or companion_is_bounded_drunk)
             )
             companion_can_join = source_mobile_can_join_player_fight(
                 world,
@@ -4415,6 +4636,11 @@ def rank_hunt_candidates(
             for path_reset in resets_by_room.get(path_room, ()):
                 hazard = world.mobiles.get(path_reset.mobile_vnum)
                 if hazard is None:
+                    continue
+                if (
+                    hazard.vnum == _MIDGAARD_DRUNK_MOBILE_VNUM
+                    and bounded_midgaard_drunk_transit
+                ):
                     continue
                 unsafe_special = _source_mobile_has_unsafe_special(
                     world,
@@ -4573,6 +4799,12 @@ def rank_hunt_candidates(
             reachable_wanderers.update(transit_wanderers.get(path_room, ()))
         for index in sorted(reachable_wanderers):
             hazard, hazard_reset = wandering_aggressors[index]
+            if (
+                hazard.vnum == _MIDGAARD_DRUNK_MOBILE_VNUM
+                and hazard.vnum != mobile.vnum
+                and bounded_midgaard_drunk_transit
+            ):
+                continue
             if _source_mobile_safe_special_suppresses_route_hazard(
                 world,
                 hazard,
@@ -4743,33 +4975,47 @@ def rank_hunt_candidates(
                         "can reach the route"
                     )
 
-        # A single far-below-band probabilistic greet program can be checked
-        # once from the recall origin. Preserve the exact source identity and
-        # room map so the live starter can issue ``where`` before crossing the
-        # route; deterministic or multi-program routes remain ordinary hazards.
-        if (
-            route_preflight_room_vnum is None
-            and len(route_attack_program_mobile_vnums) == 1
+        # A single or source-identical family of low-chance greet programs can
+        # be checked once from the recall origin. Preserve the exact source
+        # family and room map so the live starter can issue ``where`` before
+        # crossing the route; unrelated multi-program routes remain hazards.
+        program_vnums = tuple(sorted(route_attack_program_mobile_vnums))
+        family_preflight = source_mobile_route_program_family_is_preflight_safe(
+            world,
+            program_vnums,
+            character_level=character_level,
+        )
+        if route_preflight_room_vnum is None and (
+            len(program_vnums) == 1 or family_preflight
         ):
-            program_mobile = world.mobiles.get(
-                next(iter(route_attack_program_mobile_vnums))
-            )
+            program_mobile = world.mobiles.get(program_vnums[0]) if program_vnums else None
             if (
                 program_mobile is not None
                 and program_mobile.attack_programs
-                and not _source_mobile_has_deterministic_attack_program(
-                    program_mobile
+                and (
+                    family_preflight
+                    or (
+                        not _source_mobile_has_deterministic_attack_program(
+                            program_mobile
+                        )
+                        and _mobile_level_range(program_mobile.level)[1]
+                        <= character_level - _SOURCE_PROGRAM_PREFLIGHT_LEVEL_GAP
+                    )
                 )
-                and _mobile_level_range(program_mobile.level)[1]
-                <= character_level - _SOURCE_PROGRAM_PREFLIGHT_LEVEL_GAP
             ):
+                program_ranges = tuple(
+                    _mobile_level_range(world.mobiles[vnum].level)
+                    for vnum in program_vnums
+                    if vnum in world.mobiles
+                )
                 route_preflight_room_vnum = str(route_origin_room_vnum)
                 route_preflight_command = (
                     f"where {_source_mobile_where_keyword(program_mobile)}"
                 )
                 route_preflight_target = program_mobile.short_description
-                route_preflight_level_range = _mobile_level_range(
-                    program_mobile.level
+                route_preflight_level_range = (
+                    min(low for low, _ in program_ranges),
+                    max(high for _, high in program_ranges),
                 )
                 route_preflight_hard_hazard = True
                 route_preflight_route_room_names = _source_route_room_names(
@@ -4814,12 +5060,21 @@ def rank_hunt_candidates(
             )
         if mobile.aggressive:
             hazards.append("target is aggressive")
-            # Aggressive mobiles can enter combat as soon as their reset room
-            # loads, before live consider can reject a below-band fuzzy load.
-            # The minimum fuzzed level must be strictly above the useful XP
-            # floor; equality can still load at the floor and force a flee.
-            # Mark it before research pools can treat the target as probeable.
-            if level_range[0] <= character_level - 5:
+            bounded_probe = _bounded_aggressive_target_probe(
+                world,
+                mobile,
+                reset,
+                character_level=character_level,
+                character_max_hp=character_max_hp,
+            )
+            if bounded_probe:
+                hazards.append(
+                    "one source-bounded round plus a critical preserves the "
+                    "20% floor for a live consider probe"
+                )
+            elif level_range[0] <= character_level - 5:
+                # Without the bounded probe contract, an aggressive fuzzy
+                # load can attack before live consider rejects it below band.
                 dangerous = True
                 autonomy_rejections.append("target is aggressive")
         if equipped_weapons:
@@ -4848,8 +5103,9 @@ def rank_hunt_candidates(
                 f"source peak round {peak_round_damage} >= "
                 f"character max HP {character_max_hp}"
             )
-            dangerous = True
-            autonomy_rejections.append("source peak round can exceed character HP")
+            # Keep the estimate for reports and ranking context only. The
+            # live source level and ``consider`` response decide admission;
+            # the field controller owns the player's health floor.
         target_specials = tuple(
             str(special).strip().casefold()
             for special in world.mobile_specials.get(mobile.vnum, ())
@@ -6006,6 +6262,7 @@ def _source_route_hazard_rejections(
     audit_invisible_equipment: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
     economic_hunt_mobile_vnums: Collection[int] = (),
+    economic_hunt_allow_bounded_population: bool = False,
     hazard_index: SourceRouteHazardIndex | None = None,
 ) -> tuple[str, ...]:
     """Return source-backed combat hazards on a route, including its endpoint.
@@ -6032,7 +6289,10 @@ def _source_route_hazard_rejections(
         economic_transit.update(
             vnum for vnum in economic_hunt_mobile_vnums
             if passive_economic_hunt_mobile(
-                world, vnum, level=character_level,
+                world,
+                vnum,
+                level=character_level,
+                allow_bounded_population=economic_hunt_allow_bounded_population,
             )
         )
     target_room_vnum = (
@@ -6386,6 +6646,7 @@ def source_route_hazard_rejections(
     audit_invisible_equipment: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
     economic_hunt_mobile_vnums: Collection[int] = (),
+    economic_hunt_allow_bounded_population: bool = False,
     hazard_index: SourceRouteHazardIndex | None = None,
 ) -> tuple[str, ...]:
     """Check a room path; noncombat endpoints omit only combat-only joiners."""
@@ -6399,6 +6660,9 @@ def source_route_hazard_rejections(
         audit_invisible_equipment=audit_invisible_equipment,
         economic_special_mobile_vnums=economic_special_mobile_vnums,
         economic_hunt_mobile_vnums=economic_hunt_mobile_vnums,
+        economic_hunt_allow_bounded_population=(
+            economic_hunt_allow_bounded_population
+        ),
         hazard_index=hazard_index,
     )
 

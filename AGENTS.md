@@ -46,6 +46,15 @@ entries including bouncers, portals, scripted transfers and level-specific
 fastwalks. An unreachable result from the generic recall graph does not close
 an area: register a separate bounded route and exact target set, then retain
 live isolation, consider, output, recovery and return-route checks.
+The verified spiked key (object VNUM 9565) may be left loose in room 3007 as a
+world cache. Treat that receipt as valid only for the current DD4 reboot and
+source revision; the key is expected to remain there until the next reboot, but
+must be rechecked after reboot before relying on it.
+The exact Midgaard Drunk (mobile VNUM 3064) is not a route blocker when his
+source-verified maximum level is at least five below the active pilot and the
+existing bounded-transit evidence passes. Do not wait or reroute solely for
+him; if his greet attack fires, keep the ordinary live combat and return gates.
+Do not extend this exception to other mobiles or stale/ambiguous source data.
 Two independently verified, solo, useful-XP kills of the exact same plain,
 unarmed source reset at the immediately previous character level may clear only
 its current-level source HP-fuzz gate. Require safe achieved runs, matching
@@ -722,9 +731,11 @@ Do not add a new round delay for it or relax any action or survival limits.
 Source-audited
 capability registration plus positive practice and action-specific gates are
 required for dispatch; observed skill names alone authorize nothing. Preserve
-loss evidence, exact live targeting, bounded retries, and healer recovery. Use
-`hero --autonomous` for multi-segment progression; it keeps each worker
-bounded and stops after its finite reset-wait budget or a durable blocker. For
+loss evidence, exact live targeting, bounded retries, and healer recovery. The
+`hero` command defaults to multi-segment progression; it keeps each worker
+bounded and stops after its finite reset-wait budget or a durable blocker. Use
+`hero --single-segment` only for one bounded diagnostic worker; the legacy
+`--autonomous` flag remains accepted. For
 an outer timeout, reconcile a uniquely matched terminal `ready`/`success` run
 without rewriting its status: link its cached summary and checkpoint, preserving
 execution, objective, safety, and the timeout diagnostic independently. Resume
@@ -1007,6 +1018,17 @@ probe only after sanctuary and healer nausea recovery are observed; this never
 extends pre-sanctuary admission or creates an unbounded fight. Protection-
 recovery fallback cannot bypass that output gate in a live source-backed state
 with a known character class; source-less fixtures are not live authorization.
+The source-audited `spec_cast_druid` exception is level-bounded: below source
+level 15 only the direct flamestrike bound applies, while level 15+ requires a
+sanctuary reserve and level 18+ also requires a verified blindness cure reserve
+unless the character has an active recovery path. Bound the special pulse to
+DD4's worst moonray weather multiplier, keep the nominal target within the
+special live ceiling, and retain exact isolation, route, consider, output,
+health, and flee/return checks. Do not generalize this exception to other
+caster specials or armed druid targets.
+When this frontier needs a second purple reserve, bind the acquisition to the
+source-verified Moria large hobgoblin at room 4064; never substitute the
+shorter Alchemist carrier after a recorded protection loss.
 AI personality generation does not authorize AI gameplay.
 Provision-funding may use one exact source-audited dynamic saleable drop
 behind practiced route invisibility only when the endpoint is unarmed, its
@@ -1235,8 +1257,8 @@ object 6601) carries the pink ice ring. Require both reset-load selectors in
 that room and choose the last exact selector; with fewer than two, return
 without a kill. Its below-band consider is expected required-loot evidence,
 never progression XP or a permanent same-level/boot exclusion. After a miss
-or crowd abort, preserve the three-positive-XP-segment cooldown; count only
-same-level, same-boot, non-maintenance segments, then recheck the live route
+or crowd abort, preserve the three-positive-XP-segment cooldown across reboot;
+count only same-level, non-maintenance segments, then recheck the live route
 and crowd before the next bounded attempt.
 When flight funding is short and a candidate has no audited coin balance or
 measured same-boot proceeds covering the shortfall, a failed funding route, a

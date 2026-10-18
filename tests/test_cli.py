@@ -1349,6 +1349,7 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
             "--target-level",
             "30",
             "--retry-stalled",
+            "--single-segment",
         ]
     )
 
@@ -1421,7 +1422,6 @@ def test_hero_command_dispatches_autonomous_supervisor(
             "female",
             "--class",
             "mage",
-            "--autonomous",
             "--segments",
             "4",
             "--max-reset-waits",
@@ -1529,6 +1529,7 @@ def test_hero_command_infers_existing_identity_for_level_goal(
             "30",
             "--workspace",
             str(workspace),
+            "--single-segment",
         ]
     )
 
@@ -1910,7 +1911,17 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
         assert _kwargs["segments"] == 1
         assert _kwargs["reset_retries"] is None
         assert _kwargs["max_segment_runtime"] == 300.0
-        return CampaignResult(4, "blocked", 9, "awaiting verified policy", {"level": 2})
+        return CampaignResult(
+            4,
+            "blocked",
+            9,
+            "awaiting verified policy",
+            {"level": 2},
+            execution_status="blocked",
+            objective_outcome="not_achieved",
+            safety_outcome="safe",
+            target_outcome="not_achieved",
+        )
 
     monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
 
@@ -1921,6 +1932,38 @@ def test_campaign_command_prints_checkpointed_status(tmp_path, capsys, monkeypat
     assert "Campaign 4 blocked" in captured.out
     assert "Checkpoint: 9" in captured.out
     assert "Level: 2" in captured.out
+    assert "Segment outcomes: execution=blocked, objective=not_achieved, safety=safe" in captured.out
+    assert "Campaign target: not_achieved" in captured.out
+
+
+def test_campaign_command_distinguishes_segment_objective_from_campaign_target(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    config = tmp_path / "campaign.yaml"
+
+    async def fake_campaign(path: Path, **_kwargs) -> CampaignResult:
+        assert path == config
+        return CampaignResult(
+            35,
+            "ready",
+            12,
+            "world-time work unit completed",
+            {"level": 39},
+            execution_status="success",
+            objective_outcome="achieved",
+            safety_outcome="safe",
+            target_outcome="not_achieved",
+        )
+
+    monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
+
+    assert main(["campaign", str(config)]) == 0
+    captured = capsys.readouterr()
+    assert (
+        "Segment outcomes: execution=success, objective=achieved, safety=safe"
+        in captured.out
+    )
+    assert "Campaign target: not_achieved" in captured.out
 
 
 def test_campaign_progress_option_reports_to_stderr(tmp_path, capsys, monkeypatch) -> None:
@@ -1972,6 +2015,25 @@ def test_campaign_command_passes_per_segment_runtime_cap(tmp_path, capsys, monke
     assert exit_code == 0
     assert captured_options["max_segment_runtime"] == 180
     assert "Campaign 4 ready" in capsys.readouterr().out
+
+
+def test_campaign_command_passes_one_shot_joan_key_retry(
+    tmp_path, monkeypatch
+) -> None:
+    config = tmp_path / "campaign.yaml"
+    captured_options: dict[str, object] = {}
+
+    async def fake_campaign(path: Path, **kwargs) -> CampaignResult:
+        assert path == config
+        captured_options.update(kwargs)
+        return CampaignResult(36, "ready", 9, "checkpointed", {"level": 39})
+
+    monkeypatch.setattr(dd4tester.cli, "run_campaign_file", fake_campaign)
+
+    assert main(
+        ["campaign", str(config), "--revalidate-joan-key-once"]
+    ) == 0
+    assert captured_options["revalidate_joan_key_once"] is True
 
 
 def test_campaign_command_returns_success_for_ready_checkpoint(tmp_path, capsys, monkeypatch) -> None:
@@ -3274,6 +3336,7 @@ def test_show_campaign_prints_checkpoint_and_segments(tmp_path, capsys) -> None:
     assert exit_code == 0
     assert "Campaign 1: Rulemage to HERO" in captured.out
     assert "Checkpoint 1: starter (segment_complete), level 2" in captured.out
+    assert "Target outcome: not_achieved (level 2/100)" in captured.out
     assert (
         "1\tstarter\tsuccess\tsuccess\tnot_achieved\tsafe\t"
         "7\t42\t12.5s\t-"

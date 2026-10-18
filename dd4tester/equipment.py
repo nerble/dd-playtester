@@ -745,6 +745,9 @@ def normalize_item_name(value: str) -> str:
     cleaned = _NUMERIC_COLOUR_CODE.sub("", cleaned)
     cleaned = re.sub(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", cleaned)
     cleaned = re.sub(r"^\s*\[#\d+\]\s*", "", cleaned)
+    # DD4 may place colour codes immediately around display prefixes, so
+    # stripping them can join ``(Glowing)`` to the article that follows.
+    cleaned = re.sub(r"\)(?=[A-Za-z])", ") ", cleaned)
     cleaned = " ".join(cleaned.casefold().split())
     while True:
         reduced = _DISPLAY_PREFIX.sub("", cleaned)

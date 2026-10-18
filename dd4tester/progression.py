@@ -1776,6 +1776,30 @@ _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-sanctuary-alternate-2-100",
+    minimum_level=2,
+    maximum_level=100,
+    status="research",
+    execution="moria-sanctuary-hunt",
+    summary=(
+        "Acquire a source-ranked Sanctuary reserve from an alternate carrier "
+        "after the primary recovery routes have closed for this reboot."
+    ),
+    evidence=(
+        "The carrier is chosen by the source-defined Sanctuary effect, exact "
+        "reset, route, isolation, and current-band output checks rather than "
+        "by a hard-coded mobile name.",
+        "This route has its own reboot-scoped result and attempt budget, so a "
+        "failed primary recovery route cannot hide a viable alternate carrier.",
+        "A same-boot absent or terminal carrier remains closed; a fresh reboot "
+        "or source revision is required before that exact source identity is "
+        "considered again.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
 _SOURCE_RANKED_DWARVEN_SANCTUARY_POLICY = ProgressionPolicy(
     policy_id="source-ranked-sanctuary-dwarven-catacombs-25-100",
     minimum_level=25,
@@ -2801,8 +2825,13 @@ _VAMPIRE_CATACOMBS_LEVEL_38_40_POLICY = ProgressionPolicy(
         "His singleton reset wields the source-identified chef's knife and "
         "carries a loose paintbrush wand; fight.c only uses a wand from "
         "WEAR_HOLD, which the source reset does not assign. The entry-to-room "
-        "route is north, open east, east, avoiding the locked door at 9523. "
-        "Deeper targets need a verified key route.",
+        "route is north, open east, east, avoiding the locked east door at "
+        "9523. Grok (9510) is a level-40 singleton sentinel in room 9523, "
+        "reached by north, north, north, west, west, open north, north. His "
+        "brainbiter and complete reset loadout are audited with spec_warrior; "
+        "his sanctuary is source-confirmed and the hunt requires Dorrik's own "
+        "sanctuary reserve and at least 90-percent entry health. The other "
+        "deeper targets still need a verified key route.",
         "Target eligibility follows source level and fresh live consider, not "
         "target HP. Keep exact identity, route, isolation, incoming-damage, "
         "and Dorrik's own 20-percent withdrawal checks; wandering targets use "
@@ -2810,7 +2839,7 @@ _VAMPIRE_CATACOMBS_LEVEL_38_40_POLICY = ProgressionPolicy(
     ),
     practice_skill=None,
     segment_kill_limit=3,
-    source_mobile_vnums=(9501, 9524, 9525, 9545, 9546, 9547),
+    source_mobile_vnums=(9501, 9510, 9524, 9525, 9545, 9546, 9547),
 )
 
 _VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(
@@ -2829,9 +2858,10 @@ _VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(
         "from room 9523 into the deeper Catacombs.",
         "Joan is aggressive but unarmed, has no special or mobile program, "
         "and shares the room with the source-audited passive Peter (9507). "
-        "Enter at 95% health, require exact live identity and a useful live "
-        "consider before committing to the kill, and retain the 20% combat "
-        "withdrawal floor.",
+        "Enter at 95% health and require exact live identity, isolation, and "
+        "fresh consider. A live five-below result is never useful-XP evidence, "
+        "but this exact carrier may be fought once solely for the missing key "
+        "to unlock the deeper route; retain the 20% withdrawal floor.",
         "This one-kill objective is selectable only when an exact source "
         "inventory audit confirms the key is absent and a key-enabled "
         "current-band target becomes reachable. The deeper route is not "
@@ -2840,6 +2870,26 @@ _VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(
     practice_skill=None,
     segment_kill_limit=1,
     source_mobile_vnums=(9506,),
+)
+
+_VAMPIRE_CATACOMBS_KEY_RECOVERY_38_40_POLICY = ProgressionPolicy(
+    policy_id="vampire-catacombs-key-recovery-38-40",
+    minimum_level=38,
+    maximum_level=40,
+    status="research",
+    execution="vampire-catacombs-key-recovery",
+    summary=(
+        "Recover a previously verified spiked-key stash in the Vampire "
+        "Catacombs before its reboot-scoped floor object disappears."
+    ),
+    evidence=(
+        "The key-drop policy verifies the exact key is absent from inventory "
+        "in room 9517 after Joan is defeated.",
+        "Recovery is same-boot and source-audited; it does not authorize a "
+        "second Joan fight or infer that an unverified old key still exists.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
 )
 
 _VAMPIRE_CATACOMBS_MARTIN_LEVEL_25_32_POLICY = replace(
@@ -6423,6 +6473,7 @@ def policy_for(
         and not context.has_sanctuary_potion
         and not (
             selected.execution in _HANDOFF_BLOCKING_EXECUTIONS
+            and selected.execution != "recover-daycare-ring"
             and not (
                 selected.execution == _PROVISION_FUNDING_POLICY.execution
                 and context.has_food
@@ -6484,6 +6535,16 @@ def policy_for(
             # cooldown has been consumed. An explicit source-ranked fallback
             # is independent work and keeps its own live combat gates.
             return _source_ranked_sanctuary_recovery_wait_policy(context)
+        if sanctuary_recovery_blocked and selected.execution == "recover-daycare-ring":
+            # The ring is optional maintenance. Once protection recovery has
+            # been exhausted for this reboot, keep the current-band fallback
+            # moving instead of letting that handoff hide it.
+            return replace(
+                _SOURCE_RANKED_HUNT_POLICY,
+                minimum_level=context.level,
+                maximum_level=context.level,
+                practice_skill=context.practice_skill,
+            )
         if not sanctuary_recovery_blocked:
             return replace(
                 _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,

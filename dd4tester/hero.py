@@ -215,7 +215,14 @@ def prepare_hero_request(
             character=character,
         )
         if checkpointed_campaign_path is not None:
-            campaign_path = checkpointed_campaign_path
+            # A legacy launch could record the profile itself as the campaign
+            # config. Prefer the generated campaign contract when it exists;
+            # CampaignRunner will reattach the old history to that path.
+            if (
+                checkpointed_campaign_path.resolve() != profile_path.resolve()
+                or not (directory / "campaign.yaml").is_file()
+            ):
+                campaign_path = checkpointed_campaign_path
         if not campaign_path.is_file():
             raise ValueError(f"hero workspace is incomplete: {directory}")
         if campaign_path.resolve() != profile_path.resolve():
@@ -1005,9 +1012,13 @@ async def run_hero_until_target(
                 f"reset waits used={waits_used}/{max_reset_waits}."
             )
         available_waits = max(0, max_reset_waits - waits_used)
+        # A bounded HERO cycle is a work unit, not a reason to sleep through
+        # an area reset.  Reset waits remain available as an explicit caller
+        # choice, but an omitted value must match run_hero_request's bounded
+        # default and pass zero retries down to the campaign runner.
         cycle_reset_retries = (
-            (1 if reset_retries is None else reset_retries)
-            if available_waits
+            reset_retries
+            if reset_retries is not None and available_waits
             else 0
         )
         cycle_reset_retries = min(cycle_reset_retries, available_waits)
@@ -1029,12 +1040,17 @@ async def run_hero_until_target(
 
         level = _result_level(result)
         if progress_callback is not None:
+            outcomes = result.outcomes
             progress_callback(
                 f"Completed autonomous HERO cycle {cycle}/{cycles}: "
                 f"status={result.status}; level={level}; "
+                f"segment_execution={outcomes['execution']}; "
+                f"segment_objective={outcomes['objective']}; "
+                f"segment_safety={outcomes['safety']}; "
+                f"campaign_target={result.target_outcome or 'unknown'}; "
                 f"reset waits used={waits_used}/{max_reset_waits}."
             )
-        if result.status == "success" or level >= target_level:
+        if result.target_achieved or level >= target_level:
             return preparation, result
         if result.status != "ready":
             return preparation, result

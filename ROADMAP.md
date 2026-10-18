@@ -13,21 +13,49 @@ character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 16, 2026
+### Current campaign status: October 18, 2026
 
-Campaign **7**, checkpoint **52954**, keeps Dorrik as the only progression
-pilot. The latest saved character state is run **18149** at healer room **3054**:
-level **39 Knight**, **1,344,700 XP**, **31,750 XP** to 40, QP **18** with no
-level-up shortfall, alive and fully restored at **936/936 HP**, **502/502 mana**,
-and **583/583 movement**. Hunger is **23**, thirst **41**, with a pot pie and
-water skin carried. He has no practices to spend.
+Campaign **35**, checkpoint **54677**, keeps Dorrik as the only progression
+pilot. The latest saved character state is segment run **18490** at healer room
+**3054**: level **39 Knight**, **1,310,690 XP**, **18 QP**, and no current
+level-up shortfall. The current DD4 boot remains **Wed Oct 14 09:25:18 2026**.
 
-The current campaign has exhausted its one sanctuary recheck. Its 30
-current-band source candidates are not a world-wide roster; the no-sanctuary
-options currently have cooldown or route/history gates. Do not wait for a
-general reboot or switch characters. Keep choosing executable level-and-live-
-consider opportunities, preserving Dorrik's own 20-percent withdrawal floor.
-Target HP is diagnostic only, not an admission, ranking, or withdrawal gate.
+The latest checkpoint records **314** source candidates, **32** current-band
+candidates, and **24** autonomous-safe candidates, but no executable route on
+this boot. Current protection and same-boot evidence close the remaining
+options; campaign 36 is a separate stale run that exhausted its 100-segment
+budget and is not the active track. Keep the same pilot and wait for genuinely
+fresh source/live evidence; do not create roster breadth.
+The campaign and HERO result paths now distinguish bounded execution,
+segment-objective, safety, and overall target outcomes. `show-campaign` reports
+the target outcome from the latest checkpoint, so a safe segment is not
+mistaken for HERO completion.
+Keep Dorrik's 20-percent withdrawal floor. Target HP is
+diagnostic evidence only, never an admission, ranking, or withdrawal gate.
+
+The verified **spiked key** (object **9565**) is deliberately dropped in room
+**3007** and remains available until the next DD4 reboot. Its receipt is tied to
+the current boot and must be rechecked after reboot before relying on it.
+
+The October 18 target-admission revision now lets ordinary source-ranked
+targets through the source-supported **+5** band for live `consider`. Source
+identity, route hazards and isolation still gate the trip, while target HP,
+predicted output, Sanctuary and damage-window estimates are retained as
+evidence rather than used as ordinary target-selection vetoes. The focused
+campaign/candidate checks pass; no live connection was opened for this change.
+
+The optional Daycare ring retry preserves its three positive-XP,
+non-maintenance segment cooldown across reboot. Maintenance XP does not age
+that cooldown, and live carrier/route evidence is rechecked before retry.
+
+The active-flight handoff is now repaired in `StarterPolicy`: a source-ranked
+hunt that requests flight reacquisition continues into the fastwalk when DD4
+already reports `fly` or `levitation` at the healer, while ordinary Magic Shop
+maintenance still saves and quits. A real level-39 Hephaestus route now guards
+the campaign dispatch boundary as well as the starter handoff. The focused
+handoff test, six related starter cases, eight campaign cases, and Python
+compilation pass. The broader existing starter selection group still has
+unrelated known failures and was not treated as a clean regression run.
 
 Source review found an omitted Catacombs option: Anton (mobile **9501**), level
 35 in room **9506**, has a singleton passive reset with the chef's knife and
@@ -39,9 +67,9 @@ new path has passed Python compilation but has not had a pytest run or live
 proof yet.
 
 The October 16 full regression batch completed in **18m17s**: **8,078 passed,
-545 failed**. It used the user's one-off daily-budget exception. Do not rerun
-pytest today; investigate the saved failures and give the focused Catacombs
-change a regression run on a later test day. The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md)
+545 failed**. It used the user's one-off daily-budget exception. Keep full
+regression runs to the agreed daily cadence; focused tests are appropriate for
+the current implementation change. The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md)
 remains the work order. No HERO proof exists; do not resume breadth.
 
 Next: continue with Dorrik at level 39, use fresh live identity, route, and
@@ -4192,3 +4220,20 @@ No Sanctuary or XP resulted; Dorrik saved and quit alive at room **3054** with
 checkpoint is **49505**, still level **30**. DD4 warns patronage is difficult
 to reverse; do not select one without verifying character-specific favour and
 the exact needed prayer.
+
+### Reboot-Bounded Sanctuary Carrier Fallback: October 18, 2026
+
+Dorrik is the sole progression pilot at level **39**, with **1,310,690 XP**,
+and is safely checkpointed in healer room **3054**. The current DD4 boot has
+closed the Moria sanctuary route after its bounded attempts and closed the one
+Caerlin staff retry after a positive locator miss. Do not reconnect to replay
+either route on this boot; the next action boundary is the next MUD reboot.
+
+Offline source analysis found a distinct fallback: Alchemist mobile **916** in
+room **927** can reset the ivory staff (**905**) and nectar (**926**) and has no
+listed special. The new
+`source-ranked-sanctuary-alternate-2-100` policy selects that carrier by source
+effect, exact reset, route, isolation, and output evidence. It keeps its own
+reboot-scoped attempt/result record and refuses the already-absent Alchemist on
+the current boot. Ten focused Sanctuary recovery tests pass; HERO 100 remains
+unproved.

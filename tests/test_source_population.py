@@ -18,7 +18,9 @@ from dd4tester.hunt_candidates import (
     ACT_WIMPY,
     ExitSource, HuntCandidate, MobileProgram, MobileSource, MobReset, RoomSource, WorldSource,
     load_world_source, rank_hunt_candidates,
+    source_mobile_route_program_family_is_preflight_safe,
 )
+from dd4tester.economic_hunts import economic_hunt_candidate
 from dd4tester.character import CharacterSpec
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.starter import FieldHuntStop, StarterPolicy
@@ -278,6 +280,86 @@ def test_xp_route_preflights_greeter_whose_level_fuzz_reaches_below_band():
     assert options["route_preflight_command"] == "where drunk"
     assert options["route_preflight_target"] == "the drunk"
     assert options["route_preflight_hard_hazard"] is True
+
+
+def test_identical_canal_program_family_gets_bounded_where_preflight() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+        include_all_objects=True,
+    )
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=39,
+        character_max_hp=937,
+        include_xp_only=True,
+        include_level_ceiling_candidates=True,
+        level_ceiling_offset=5,
+        include_all_areas=True,
+        recall_origins={1: 27347},
+        character_alignment=-681,
+    )
+    candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate.mobile_vnum == 27324 and candidate.room_vnum == 27847
+    )
+
+    assert candidate.route_attack_program_mobile_vnums == (27267, 27268)
+    assert candidate.route_preflight_command == "where giant"
+    assert source_mobile_route_program_family_is_preflight_safe(
+        world,
+        candidate.route_attack_program_mobile_vnums,
+        character_level=39,
+    )
+    options = _source_ranked_route_program_fastwalk_options(
+        world,
+        candidate,
+        {"max_hp": 937},
+        character_level=39,
+    )
+    assert options["route_preflight_command"] == "where giant"
+    assert "27355" in options["route_preflight_scan_room_vnums"]
+
+    changed = deepcopy(world)
+    changed.mobiles[27268] = replace(
+        changed.mobiles[27268],
+        programs=(MobileProgram("greet_prog", "5", ("mpkill $n",)),),
+    )
+    assert not source_mobile_route_program_family_is_preflight_safe(
+        changed,
+        candidate.route_attack_program_mobile_vnums,
+        character_level=39,
+    )
+
+
+def test_population_economic_admission_keeps_armored_thief_closed() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+        include_all_objects=True,
+    )
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=39,
+        character_max_hp=937,
+        include_xp_only=True,
+        include_level_ceiling_candidates=True,
+        level_ceiling_offset=5,
+        include_all_areas=True,
+        recall_origins={1: 27347},
+        character_alignment=-681,
+    )
+    candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate.mobile_vnum == 27324 and candidate.room_vnum == 27847
+    )
+    state = {
+        "level": 39,
+        "currencies": {"platinum": 0, "gold": 6, "silver": 4, "copper": 0},
+    }
+    assert economic_hunt_candidate(candidate, state, world) is candidate
 
 
 @pytest.mark.parametrize("character_class", ["mage", "thief", "warrior"])

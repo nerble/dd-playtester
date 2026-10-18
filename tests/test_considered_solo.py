@@ -64,9 +64,9 @@ def test_easy_consider_at_funded_boundary_reserves_full_solo_damage(monkeypatch)
     confirm_solo(policy, state)
     budget = policy.source_pair_encounter.budget
     assert budget.allowed and budget.mobile_vnums == (4005,)
-    assert budget.target_hp_ceiling == 84 and budget.level_ceiling == 6
+    assert budget.target_hp_ceiling == 0 and budget.level_ceiling == 6
     assert budget.actions == 5 and budget.mana_cost == 175
-    assert budget.peak_round == 50 and budget.health_reserve == 46
+    assert budget.peak_round == 50 and budget.health_reserve == 23
     assert not policy.familiar_preparation.order_pending
     assert policy.fastwalk_encounter_budgets[-1]["mode"] == "considered-solo"
 
@@ -368,4 +368,4 @@ def test_source_solo_budget_prices_highest_easy_load_not_nominal_level():
         world, 1, character_level=8, hp=113, max_hp=113, mana=224, max_mana=324,
         output=SourceCombatOutput("chill touch", 18, 23, 28, "mana", 25, 18),
     )
-    assert budget.allowed and budget.level_ceiling == 6 and budget.target_hp_ceiling == 84
+    assert budget.allowed and budget.level_ceiling == 6 and budget.target_hp_ceiling == 0

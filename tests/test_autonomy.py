@@ -1,6 +1,12 @@
 import pytest
 
-from dd4tester.autonomy import audit_hero_request, audit_json, render_autonomy_audit
+from dd4tester.archetypes import archetype_registry
+from dd4tester.autonomy import (
+    audit_all_base_classes,
+    audit_hero_request,
+    audit_json,
+    render_autonomy_audit,
+)
 
 
 def test_audit_separates_executable_research_from_verified_proof() -> None:
@@ -60,9 +66,46 @@ def test_audit_renderers_are_operator_and_ci_friendly() -> None:
     rendered = render_autonomy_audit(audit)
     payload = audit_json(audit)
     assert "Template coverage: registered through target" in rendered
+    assert "Runtime fallback coverage: executable through target" in rendered
+    assert "First runtime selection gap: none in fallback graph" in rendered
     assert "First unverified template: level 10" in rendered
     assert '"live_progression_assessed": false' in payload
+    assert payload.count('"executable_through_target": true') == 1
     assert payload.endswith("\n")
+
+
+def test_runtime_fallback_covers_every_source_class_to_hero() -> None:
+    audits = audit_all_base_classes(
+        race="human",
+        sex="female",
+        target_level=100,
+    )
+
+    assert {audit.character_class for audit in audits} == set(
+        archetype_registry().classes
+    )
+    assert all(audit.runtime_fallback_through_target for audit in audits)
+    assert all(audit.first_runtime_gap_level is None for audit in audits)
+
+
+@pytest.mark.parametrize(
+    "subclass",
+    sorted(archetype_registry().subclasses),
+)
+def test_runtime_fallback_covers_each_legal_subclass_to_hero(
+    subclass: str,
+) -> None:
+    profile = archetype_registry().subclass_profile(subclass)
+    audit = audit_hero_request(
+        race="human",
+        sex="female",
+        character_class=profile.base_class,
+        subclass=subclass,
+        target_level=100,
+    )
+
+    assert audit.runtime_fallback_through_target
+    assert audit.first_runtime_gap_level is None
 
 
 def test_verified_starter_templates_do_not_claim_live_progression_proof() -> None:

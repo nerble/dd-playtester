@@ -10,7 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-SOURCE_SPECIAL_AUDIT_REVISION = "79a76852013b2fc8ee4efdb9c12d82b6f1fd3633"
+# Reviewed against the current local DD4 source mirror. The upstream server
+# added six undead procedures after the previous audit; keep that source drift
+# visible to evidence and reporting code.
+SOURCE_SPECIAL_AUDIT_REVISION = "e85c085a9113c2b789211333f9a17d0d6d04d0be"
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,12 @@ TRANSIT_SAFE_COMBAT_ONLY_SPECIALS = frozenset(
         "spec_cast_psionicist",
         "spec_cast_undead",
         "spec_cast_water_sprite",
+        "spec_spectre",
+        "spec_mummy",
+        "spec_banshee",
+        "spec_death_knight",
+        "spec_lich",
+        "spec_dracolich",
         "spec_demon",
         "spec_evil_evil_gezhp",
         "spec_green_grung",
@@ -104,6 +113,7 @@ TRANSIT_SAFE_COMBAT_ONLY_SPECIALS = frozenset(
         "spec_uzollru",
         "spec_vampire",
         "spec_warrior",
+        "spec_wight",
         "spec_wraith",
     }
 )
@@ -144,6 +154,7 @@ POST_OBJECTIVE_HAZARD_SPECIALS = frozenset(
         "spec_cast_cleric",
         "spec_cast_mage",
         "spec_cast_undead",
+        "spec_wight",
         "spec_wraith",
     }
 )
@@ -179,8 +190,10 @@ _STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
         "harm",
         "gate",
     ),
-    # The druid table adds fear at source level 15; its lower-level direct
-    # spell set is bounded separately by the campaign selector.
+    "spec_wight": ("energy drain",),
+    # The druid table adds fear at source level 15 and sunray at 18. Sunray
+    # can blind on a failed save; the campaign selector supplies the damage,
+    # sanctuary, and recovery bounds for the high-level exception.
     "spec_cast_druid": ("fear",),
     # The psionicist table adds energy drain at 14 and disintegrate at 35;
     # both are intentionally outside the autonomous special audit for now.
@@ -208,6 +221,28 @@ _STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
     # Wraith phasing is not itself a status effect, but its combat special
     # delegates to the source Energy Drain procedure after materialisation.
     "spec_wraith": ("energy drain",),
+    # These current-source undead specials act only after combat begins. Keep
+    # their effects explicit even though they remain excluded from autonomous
+    # combat until each has a bounded live policy.
+    "spec_spectre": ("energy drain",),
+    "spec_mummy": ("fear", "mummy rot"),
+    "spec_banshee": ("fear",),
+    "spec_death_knight": ("curse", "chill touch", "harm"),
+    "spec_lich": (
+        "curse",
+        "chill touch",
+        "blindness",
+        "fireball",
+        "acid blast",
+    ),
+    "spec_dracolich": (
+        "curse",
+        "chill touch",
+        "blindness",
+        "fireball",
+        "acid blast",
+        "paralysis",
+    ),
 }
 
 _ZERO_BONUS_SPECIALS = frozenset(
@@ -241,6 +276,7 @@ _MODERATE_BONUS_SPECIALS = frozenset(
         "spec_small_whale",
         "spec_uzollru",
         "spec_warrior",
+        "spec_wight",
         "spec_wraith",
     }
 )
@@ -251,6 +287,12 @@ _STRONG_BONUS_SPECIALS = frozenset(
         "spec_cast_druid",
         "spec_cast_electric",
         "spec_cast_water_sprite",
+        "spec_spectre",
+        "spec_mummy",
+        "spec_banshee",
+        "spec_death_knight",
+        "spec_lich",
+        "spec_dracolich",
         "spec_demon",
         "spec_orange_grung",
         "spec_purple_grung",
@@ -352,6 +394,9 @@ def source_special_status_effects(
         "spec_cast_druid",
         "spec_cast_psionicist",
         "spec_demon",
+        "spec_death_knight",
+        "spec_lich",
+        "spec_dracolich",
     } or level is None:
         return source_special_profile(normalized).status_effects
     try:
@@ -375,7 +420,12 @@ def source_special_status_effects(
             effects.append("energy drain")
         return tuple(effects)
     if normalized == "spec_cast_druid":
-        return ("fear",) if caster_level >= 15 else ()
+        effects: list[str] = []
+        if caster_level >= 15:
+            effects.append("fear")
+        if caster_level >= 18:
+            effects.append("blindness")
+        return tuple(effects)
     if normalized == "spec_cast_psionicist":
         effects: list[str] = []
         if caster_level >= 14:
@@ -406,6 +456,29 @@ def source_special_status_effects(
         if caster_level >= 50:
             effects.append("fire breath")
         return tuple(effects)
+    if normalized == "spec_death_knight":
+        effects = ["curse"]
+        if caster_level >= 6:
+            effects.append("chill touch")
+        if caster_level >= 18:
+            effects.append("harm")
+        return tuple(effects)
+    if normalized == "spec_lich":
+        effects = ["curse"]
+        if caster_level >= 6:
+            effects.append("chill touch")
+        if caster_level >= 9:
+            effects.append("blindness")
+        if caster_level >= 15:
+            effects.append("fireball")
+        if caster_level >= 25:
+            effects.append("acid blast")
+        return tuple(effects)
+    if normalized == "spec_dracolich":
+        return (
+            *source_special_status_effects("spec_lich", level=caster_level),
+            "paralysis",
+        )
     effects = ["curse"]
     if caster_level >= 6:
         effects.append("strength drain")

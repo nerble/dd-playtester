@@ -160,6 +160,230 @@ def _fallback_evidence(
     return state, unavailable, _RecoveryEvidenceStorage(segment, summary)
 
 
+def _locator_revalidation_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[dict[str, Any], campaign.ProgressionPolicy, _RecoveryEvidenceStorage]:
+    state, policy, base_storage = _fallback_evidence(monkeypatch)
+    attempt = {
+        "attempted_at": "attempt-1",
+        "boot_id": "boot-1",
+        "level": 39,
+        "source_revision": "current-source-revision",
+        "status": "attempted",
+        "prior_segment_id": 17,
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_reset_room_vnum": 4064,
+    }
+    state[campaign._MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY] = attempt
+    state["affects"] = [[{"name": "fly", "duration": "17"}]]
+    snapshot = {
+        "level": 39,
+        "world_boot_id": "boot-1",
+        campaign._SOURCE_REVISION_KEY: "current-source-revision",
+        "room_vnum": "3054",
+        "dead": False,
+        "in_combat": False,
+        "xp": 12345,
+        "campaign_xp_loss_total": 0,
+        campaign._MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY: attempt,
+    }
+    end = {
+        **snapshot,
+        "campaign_fastwalk_target_absent": True,
+        "campaign_fastwalk_target_present_observed": False,
+        "campaign_fastwalk_where_relocation_attempts": 0,
+        "fastwalk_route": "moria",
+        "fastwalk_abort_reason": None,
+    }
+    segment = {
+        "id": 44,
+        "run_id": 101,
+        "phase": campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID,
+        "status": "success",
+        "finished_at": "finished",
+        "start_state_json": json.dumps(snapshot),
+        "end_state_json": json.dumps(end),
+    }
+    summary = {
+        "run": {"id": 101},
+        "outcomes": {
+            "execution": "success",
+            "objective": "not_achieved",
+            "safety": "safe",
+        },
+        "progress": {
+            "experience": {"change": 0},
+            "confirmed_kills": [],
+            "combat_starts": 0,
+            "items_acquired": 0,
+        },
+        "objective": {
+            "fastwalk_route": "moria",
+            "fastwalk_hunt_stop_boundaries": [
+                {
+                    "actions": [],
+                    "required_items": ["purple potion"],
+                    "source_reset_room_vnum": "4064",
+                    "target": "large hobgoblin",
+                }
+            ],
+        },
+    }
+    storage = _RecoveryEvidenceStorage(
+        base_storage.segment,
+        base_storage.summary,
+        moria_segment=segment,
+        moria_summary=summary,
+    )
+    return state, policy, storage
+
+
+def test_moria_safe_fixed_reset_miss_allows_one_bounded_locator_revalidation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, policy, storage = _locator_revalidation_evidence(monkeypatch)
+
+    evidence = campaign._moria_sanctuary_fixed_reset_locator_revalidation_evidence(
+        state,
+        policy,
+        storage=storage,
+        campaign_id=7,
+    )
+
+    assert evidence == {
+        "boot_id": "boot-1",
+        "level": 39,
+        "source_revision": "current-source-revision",
+        "prior_source_revision": "current-source-revision",
+        "prior_run_id": 101,
+        "prior_segment_id": 44,
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_reset_room_vnum": 4064,
+        "reason": "prior exact room-4064 check safely missed the wandering carrier",
+    }
+
+    state[campaign._MORIA_SANCTUARY_FIXED_RESET_LOCATOR_REVALIDATION_KEY] = {
+        **evidence,
+        "status": "attempted",
+    }
+    assert campaign._moria_sanctuary_fixed_reset_locator_revalidation_evidence(
+        state,
+        policy,
+        storage=storage,
+        campaign_id=7,
+    ) is None
+
+
+def test_moria_safe_miss_can_cross_source_refresh_only_after_exact_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, policy, storage = _locator_revalidation_evidence(monkeypatch)
+    prior_revision = "e7e3a269c006c5386590cfbc07419b42ebd5b424"
+    current_revision = campaign._current_dd4_source_revision()
+    assert current_revision is not None and current_revision != prior_revision
+    monkeypatch.setattr(
+        campaign,
+        "_current_dd4_source_revision",
+        lambda: current_revision,
+    )
+    state[campaign._SOURCE_REVISION_KEY] = current_revision
+    state[campaign._MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY][
+        "source_revision"
+    ] = prior_revision
+    start = json.loads(storage.moria_segment["start_state_json"])
+    end = json.loads(storage.moria_segment["end_state_json"])
+    for snapshot in (start, end):
+        snapshot[campaign._SOURCE_REVISION_KEY] = prior_revision
+        snapshot[campaign._MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY][
+            "source_revision"
+        ] = prior_revision
+    storage.moria_segment["start_state_json"] = json.dumps(start)
+    storage.moria_segment["end_state_json"] = json.dumps(end)
+
+    assert campaign._moria_sanctuary_fixed_reset_locator_revalidation_evidence(
+        state,
+        policy,
+        storage=storage,
+        campaign_id=7,
+    ) is None
+
+    current_world = campaign.load_world_source(
+        campaign.current_source_directory(),
+        include_all_areas=True,
+    )
+    evidence = (
+        campaign._moria_sanctuary_fixed_reset_locator_revalidation_evidence(
+            state,
+            policy,
+            storage=storage,
+            campaign_id=7,
+            source_world=current_world,
+        )
+    )
+    assert evidence is not None
+    assert evidence["source_revision"] == current_revision
+    assert evidence["prior_source_revision"] == prior_revision
+    assert evidence["prior_run_id"] == 101
+    assert evidence["prior_segment_id"] == 44
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "stale-source",
+        "changed-current-xp",
+        "changed-current-loss",
+        "unsafe-run",
+        "carrier-not-absent",
+        "wrong-reset",
+        "multiple-stops",
+        "prior-revalidation",
+    ],
+)
+def test_moria_locator_revalidation_rejects_changed_or_unsafe_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    state, policy, storage = _locator_revalidation_evidence(monkeypatch)
+    end = json.loads(storage.moria_segment["end_state_json"])
+    objective = storage.moria_summary["objective"]
+
+    if mutation == "stale-source":
+        state[campaign._SOURCE_REVISION_KEY] = "old-source"
+    elif mutation == "changed-current-xp":
+        state["xp"] += 1
+    elif mutation == "changed-current-loss":
+        state["campaign_xp_loss_total"] += 1
+    elif mutation == "unsafe-run":
+        storage.moria_summary["outcomes"]["safety"] = "loss"
+    elif mutation == "carrier-not-absent":
+        end["campaign_fastwalk_target_absent"] = False
+    elif mutation == "wrong-reset":
+        objective["fastwalk_hunt_stop_boundaries"][0][
+            "source_reset_room_vnum"
+        ] = "4071"
+    elif mutation == "multiple-stops":
+        objective["fastwalk_hunt_stop_boundaries"].append(
+            objective["fastwalk_hunt_stop_boundaries"][0]
+        )
+    elif mutation == "prior-revalidation":
+        state[campaign._MORIA_SANCTUARY_FIXED_RESET_REVALIDATION_KEY] = {
+            "boot_id": "boot-1",
+            "level": 39,
+            "status": "attempted",
+        }
+    storage.moria_segment["end_state_json"] = json.dumps(end)
+
+    assert campaign._moria_sanctuary_fixed_reset_locator_revalidation_evidence(
+        state,
+        policy,
+        storage=storage,
+        campaign_id=7,
+    ) is None
+
+
 def test_moria_sanctuary_fallback_requires_complete_exact_absence_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -672,6 +896,104 @@ def test_moria_fixed_reset_stop_cannot_expand_into_a_where_sweep() -> None:
     assert stop.maximum_where_relocations == 0
 
 
+def test_moria_locator_revalidation_uses_only_the_audited_bounded_search() -> None:
+    (stop,) = campaign._moria_sanctuary_fixed_reset_locator_stops()
+
+    assert stop.source_mobile_vnum == campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM
+    assert stop.source_reset_room_vnum == "4064"
+    assert stop.source_loot_object_vnums == (
+        campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+    )
+    assert stop.required_items == ("purple potion",)
+    assert stop.where_target == "large hobgoblin"
+    assert stop.where_source_mobile_vnum == campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM
+    assert stop.actions == ("where hobgoblin",)
+    assert stop.maximum_where_relocations == 8
+    assert stop.abort_if_where_target_absent is True
+    assert stop.abort_if_where_location_unknown is True
+    assert stop.route_gate_source_mobile_vnums == (4053, 4056, 4050)
+    assert stop.route_gate_room_vnums == ("4058", "4057", "4062")
+    assert stop.route_gate_requires_locator_target is True
+
+
+def test_moria_locator_dispatch_requires_its_exact_consumed_receipt() -> None:
+    state = {
+        "world_boot_id": "boot-1",
+        campaign._SOURCE_REVISION_KEY: "source-1",
+        campaign._MORIA_SANCTUARY_FIXED_RESET_LOCATOR_REVALIDATION_KEY: {
+            "status": "attempted",
+            "consumed_before_dispatch": True,
+            "boot_id": "boot-1",
+            "level": 39,
+            "source_revision": "source-1",
+            "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+            "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+            "source_reset_room_vnum": 4064,
+            "prior_run_id": 101,
+            "prior_segment_id": 44,
+        },
+    }
+
+    assert campaign._moria_sanctuary_fixed_reset_locator_revalidation_requested(
+        state,
+        policy_id=campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID,
+        character_level=39,
+    )
+    assert not campaign._moria_sanctuary_fixed_reset_locator_revalidation_requested(
+        state,
+        policy_id=campaign._MORIA_SANCTUARY_SECOND_FIXED_RESET_POLICY_ID,
+        character_level=39,
+    )
+    state[campaign._MORIA_SANCTUARY_FIXED_RESET_LOCATOR_REVALIDATION_KEY][
+        "consumed_before_dispatch"
+    ] = False
+    assert not campaign._moria_sanctuary_fixed_reset_locator_revalidation_requested(
+        state,
+        policy_id=campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID,
+        character_level=39,
+    )
+
+
+def test_moria_locator_receipt_survives_campaign_state_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, policy, storage = _locator_revalidation_evidence(monkeypatch)
+    marker = {
+        "status": "attempted",
+        "consumed_before_dispatch": True,
+        "boot_id": "boot-1",
+        "level": 39,
+        "source_revision": "current-source-revision",
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_reset_room_vnum": 4064,
+        "prior_run_id": 101,
+        "prior_segment_id": 44,
+    }
+    previous = {
+        **state,
+        campaign._MORIA_SANCTUARY_FIXED_RESET_LOCATOR_REVALIDATION_KEY: marker,
+    }
+
+    merged = campaign._campaign_segment_end_state(
+        previous,
+        state,
+        execution="source-ranked-hunt",
+        policy_id=campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID,
+    )
+
+    assert (
+        merged[campaign._MORIA_SANCTUARY_FIXED_RESET_LOCATOR_REVALIDATION_KEY]
+        == marker
+    )
+    assert campaign._moria_sanctuary_fixed_reset_locator_revalidation_evidence(
+        merged,
+        policy,
+        storage=storage,
+        campaign_id=7,
+    ) is None
+
+
 def test_moria_second_reset_requires_exhausted_first_reset_and_fresh_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -699,6 +1021,114 @@ def test_moria_second_reset_requires_exhausted_first_reset_and_fresh_state(
     state[campaign._SANCTUARY_RESOURCE_ATTEMPTS_KEY][
         campaign._MORIA_SANCTUARY_SECOND_FIXED_RESET_POLICY_ID
     ] = {"boot_id": "boot-1", "level": 39, "count": 1}
+    assert not campaign._moria_sanctuary_second_fixed_reset_fallback_ready(
+        state, policy, storage=storage, campaign_id=7
+    )
+
+
+def test_moria_second_reset_can_refill_a_verified_potion_spent_in_a_lost_hunt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, policy, _ = _fallback_evidence(monkeypatch)
+    state[campaign._MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY] = {
+        "boot_id": "boot-1",
+        "level": 39,
+        "source_revision": "current-source-revision",
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_reset_room_vnum": 4064,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "status": "attempted",
+    }
+    state[campaign._SANCTUARY_RESOURCE_ATTEMPTS_KEY].pop(
+        campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID, None
+    )
+    state[campaign._SANCTUARY_RESOURCE_ATTEMPTS_KEY][
+        campaign._SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    ]["count"] = campaign._SANCTUARY_RESOURCE_MAX_ATTEMPTS
+    state["campaign_research_results"][
+        campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID
+    ] = {
+        "boot_id": "boot-1",
+        "level": 39,
+        "required_object_acquired": True,
+    }
+    state["campaign_fastwalk_sanctuary_consumed_in_combat"] = True
+    state["campaign_last_policy"] = "source-ranked-hunt-cyclops-14004-14007-39"
+    recovery_result = state["campaign_research_results"][
+        campaign._SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    ]
+    recovery_result.pop("absent", None)
+    recovery_result["observed"] = True
+    recovery_result["viable"] = False
+
+    acquired_state = {
+        "world_boot_id": "boot-1",
+        "level": 39,
+        campaign._SOURCE_REVISION_KEY: "current-source-revision",
+        "fastwalk_route": "moria",
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_required_object_vnums": [4050],
+        "combat_pouch_potions": {"purple": 1},
+        "campaign_completed_kills": [{"source_mobile_vnum": 4055}],
+    }
+    loss_state = {
+        "world_boot_id": "boot-1",
+        "level": 39,
+        campaign._SOURCE_REVISION_KEY: "current-source-revision",
+        "campaign_fastwalk_sanctuary_consumed_in_combat": True,
+        "combat_pouch_potions": {},
+    }
+    segments = {
+        campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID: {
+            "id": 30,
+            "phase": campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID,
+            "status": "success",
+            "finished_at": "finished",
+            "run_id": 300,
+            "end_state_json": json.dumps(acquired_state),
+        },
+        state["campaign_last_policy"]: {
+            "id": 31,
+            "phase": state["campaign_last_policy"],
+            "status": "success",
+            "finished_at": "finished",
+            "run_id": 301,
+            "end_state_json": json.dumps(loss_state),
+        },
+    }
+    summaries = {
+        300: {
+            "outcomes": {
+                "execution": "success",
+                "objective": "achieved",
+                "safety": "safe",
+            },
+            "progress": {"experience": {"change": 100}},
+        },
+        301: {
+            "outcomes": {
+                "execution": "success",
+                "objective": "not_achieved",
+                "safety": "loss",
+            },
+            "progress": {"experience": {"change": -475}},
+        },
+    }
+    storage = SimpleNamespace(
+        get_latest_campaign_segment_for_phase=lambda _campaign, phase, **_kw: (
+            segments.get(phase)
+        ),
+        get_run_summary=lambda run_id: summaries[run_id],
+    )
+
+    assert campaign._moria_sanctuary_first_reserve_spent_after_loss(
+        state, storage=storage, campaign_id=7
+    )
+    assert campaign._moria_sanctuary_second_fixed_reset_fallback_ready(
+        state, policy, storage=storage, campaign_id=7
+    )
+
+    state["campaign_fastwalk_sanctuary_consumed_in_combat"] = False
     assert not campaign._moria_sanctuary_second_fixed_reset_fallback_ready(
         state, policy, storage=storage, campaign_id=7
     )

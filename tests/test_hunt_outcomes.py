@@ -466,6 +466,146 @@ def test_health_withdrawal_scopes_failure_without_clearing_xp_loss() -> None:
     assert state == original
 
 
+def test_registered_health_loss_can_scope_only_its_linked_mobile() -> None:
+    state, segment, summary = _evidence()
+    start = json.loads(segment["start_state_json"])
+    end = json.loads(segment["end_state_json"])
+    start.update(level=39, campaign_xp_loss_total=500)
+    end.update(
+        level=39,
+        campaign_research_results={
+            POLICY: {
+                "boot_id": "boot",
+                "completed_kill": False,
+                "fatal_failure": False,
+                "viable": False,
+            },
+        },
+    )
+    segment["start_state_json"] = json.dumps(start)
+    segment["end_state_json"] = json.dumps(end)
+    state.update(
+        level=39,
+        campaign_xp_loss_total=end["campaign_xp_loss_total"],
+        campaign_registered_research_xp_loss_policies=[{
+            "policy_id": POLICY,
+            "boot_id": "boot",
+            "level": 39,
+            "loss_count": 1,
+            "loss_event_id": segment["id"],
+        }],
+    )
+
+    assert isolated_health_floor_target(
+        state,
+        segment,
+        summary,
+        policy_id=POLICY,
+        source_policy_ids=(SOURCE,),
+        allow_exact_registered_loss=True,
+    ) == SOURCE
+
+
+def test_registered_health_loss_scope_allows_audited_source_refresh() -> None:
+    state, segment, summary = _evidence()
+    start = json.loads(segment["start_state_json"])
+    end = json.loads(segment["end_state_json"])
+    start.update(
+        level=39,
+        campaign_source_revision="old-source",
+        campaign_xp_loss_total=500,
+    )
+    end.update(
+        level=39,
+        campaign_source_revision="old-source",
+        campaign_research_results={
+            POLICY: {
+                "boot_id": "boot",
+                "completed_kill": False,
+                "fatal_failure": False,
+                "viable": False,
+            },
+        },
+    )
+    segment["start_state_json"] = json.dumps(start)
+    segment["end_state_json"] = json.dumps(end)
+    state.update(
+        level=39,
+        campaign_source_revision="new-source",
+        campaign_xp_loss_total=end["campaign_xp_loss_total"],
+        campaign_registered_research_xp_loss_policies=[{
+            "policy_id": POLICY,
+            "boot_id": "boot",
+            "level": 39,
+            "loss_count": 1,
+            "loss_event_id": segment["id"],
+        }],
+    )
+
+    assert isolated_health_floor_target(
+        state,
+        segment,
+        summary,
+        policy_id=POLICY,
+        source_policy_ids=(SOURCE,),
+        allow_exact_registered_loss=True,
+    ) is None
+    assert isolated_health_floor_target(
+        state,
+        segment,
+        summary,
+        policy_id=POLICY,
+        source_policy_ids=(SOURCE,),
+        allow_exact_registered_loss=True,
+        audited_source_revision="new-source",
+    ) == SOURCE
+
+
+@pytest.mark.parametrize("change", ["wrong_level", "zero_loss", "wrong_event"])
+def test_registered_health_loss_scope_rejects_mismatched_receipts(change: str) -> None:
+    state, segment, summary = _evidence()
+    start = json.loads(segment["start_state_json"])
+    end = json.loads(segment["end_state_json"])
+    start.update(level=39, campaign_xp_loss_total=500)
+    end["campaign_research_results"] = {
+        POLICY: {
+            "boot_id": "boot",
+            "completed_kill": False,
+            "fatal_failure": False,
+            "viable": False,
+        },
+    }
+    state.update(
+        level=39,
+        campaign_xp_loss_total=end["campaign_xp_loss_total"],
+        campaign_registered_research_xp_loss_policies=[{
+            "policy_id": POLICY,
+            "boot_id": "boot",
+            "level": 39,
+            "loss_count": 1,
+            "loss_event_id": segment["id"],
+        }],
+    )
+    if change == "wrong_level":
+        state["campaign_registered_research_xp_loss_policies"][0]["level"] = 38
+    elif change == "zero_loss":
+        end["campaign_xp_loss_total"] = start["campaign_xp_loss_total"]
+        state["campaign_xp_loss_total"] = end["campaign_xp_loss_total"]
+    else:
+        state["campaign_registered_research_xp_loss_policies"][0]["loss_event_id"] += 1
+    segment["start_state_json"] = json.dumps(start)
+    segment["end_state_json"] = json.dumps(end)
+
+    assert isolated_health_floor_target(
+        state,
+        segment,
+        summary,
+        policy_id=POLICY,
+        source_policy_ids=(SOURCE,),
+        allow_exact_registered_loss=True,
+    ) is None
+
+
 @pytest.mark.parametrize("conflicting_current_result", [False, True])
 def test_expired_result_uses_exact_linked_loss_evidence_only_when_missing(
     conflicting_current_result: bool,

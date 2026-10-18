@@ -1,16 +1,17 @@
 """Source bounds for one ordinary armed mobile's complete reset loadout."""
 
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 
-from .equipment import is_bow, normalize_item_name
+from .equipment import normalize_item_name
 from .hunt_candidates import (
     AFF_SANCTUARY, ITEM_INSTRUMENT,
     ITEM_DONOT_RANDOMISE, ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF, ITEM_WAND, ITEM_WEAPON,
     HuntCandidate, MobileSource, SourceCombatOutput, WorldSource,
     _apply_mobile_damage_modifier, _mobile_normal_hit_damage,
 )
+from .specials import SAFE_NONCOMBAT_SPECIALS, source_special_profile
 
-_AFF_PROTECT = 1 << 13
 _AFF_BATTLE_AURA = 1 << 22
 _AFF_GLOBE = 1 << 24
 _ITEM_HUM = 1 << 1
@@ -107,33 +108,55 @@ def single_weapon_loadout(
     candidate: HuntCandidate,
     world: WorldSource | None,
     *,
-    character_alignment: int | None = None,
+    allow_aggressive: bool = False,
+    allow_specials: Collection[str] = (),
 ) -> SingleWeaponLoadout | None:
     """Audit a singleton prototype; movement never grants combat permission."""
+    if world is None:
+        return None
+    candidate_specials = frozenset(candidate.specials)
+    source_specials = frozenset(
+        world.mobile_specials.get(candidate.mobile_vnum, ())
+    )
+    requested_specials = frozenset(
+        str(special).casefold().strip() for special in allow_specials
+    )
+    warrior_profile = source_special_profile("spec_warrior")
+    audited_grok_special = bool(
+        requested_specials == {"spec_warrior"}
+        and candidate.mobile_vnum == 9510
+        and candidate.room_vnum == 9523
+        and candidate.area_file == "vamp_catacombs.are"
+        and candidate_specials == source_specials == {"spec_warrior"}
+        and candidate.autonomy_rejections == (
+            "target has special procedure spec_warrior",
+        )
+        and warrior_profile.xp_bonus == 10
+        and warrior_profile.risk == "moderate-combat"
+        and not warrior_profile.status_effects
+    )
     if (
-        world is None or not candidate.autonomous_safe or candidate.specials
+        not (candidate.autonomous_safe or audited_grok_special)
         or len(candidate.equipped_weapons) != 1
         or candidate.source_spawn_limit != 1 or candidate.room_spawn_count != 1
+        or candidate_specials != source_specials
+        or not (
+            source_specials <= SAFE_NONCOMBAT_SPECIALS
+            or audited_grok_special
+        )
     ):
         return None
     mobile = world.mobiles.get(candidate.mobile_vnum)
     resets = [r for r in world.mob_resets if r.mobile_vnum == candidate.mobile_vnum]
     if (
-        mobile is None or mobile.aggressive or mobile.fear_aura or mobile.confused
-        or mobile.act_flags & (1 << 2) or mobile.programs
-        or world.mobile_specials.get(mobile.vnum)
+        mobile is None or (mobile.aggressive and not allow_aggressive)
+        or mobile.fear_aura or mobile.confused
+        or mobile.programs
         or not mobile.damage_modifier_known or mobile.damage_modifier is None
         or candidate.level != mobile.level
         or candidate.source_damage_modifier != mobile.damage_modifier
         or mobile.rank.casefold() not in {"common", "none"}
         or mobile.affected_flags & (_AFF_BATTLE_AURA | _AFF_GLOBE)
-        or (
-            mobile.affected_flags & _AFF_PROTECT
-            and (
-                type(character_alignment) is not int
-                or abs(character_alignment - mobile.alignment) > 750
-            )
-        )
         or len(resets) != 1 or resets[0].room_vnum != candidate.room_vnum
         or resets[0].maximum_count != 1
     ):
@@ -148,16 +171,24 @@ def single_weapon_loadout(
     weapon_vnum = next(vnum for slot, vnum in reset.equipment if slot == 16)
     weapon = world.objects.get(weapon_vnum)
     if (
-        weapon is None or weapon.item_type != ITEM_WEAPON or is_bow(weapon)
+        # NPC one_hit() uses any ITEM_WEAPON in WEAR_WIELD as its ordinary
+        # melee weapon. ITEM_BOW only changes player use through do_shoot().
+        weapon is None or weapon.item_type != ITEM_WEAPON
         or weapon.extra_flags & (1 << 14)
         or normalize_item_name(weapon.short_description)
         != normalize_item_name(candidate.equipped_weapons[0])
     ):
         return None
-    for vnum in set(reset.object_vnums) | {vnum for _slot, vnum in reset.equipment}:
+    equipped_vnums = {vnum for _slot, vnum in reset.equipment}
+    for vnum in set(reset.object_vnums) | equipped_vnums:
         item = world.objects.get(vnum)
-        if (
-            item is None or item.item_type in {ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF, ITEM_WAND}
+        if item is None:
+            return None
+        # Carried objects do not change the NPC's fight.c one_hit() output.
+        # Scavenging only transfers loose room objects to inventory; it does
+        # not equip them. Reject combat items only when they are worn/held.
+        if vnum in equipped_vnums and (
+            item.item_type in {ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF, ITEM_WAND}
             or item.item_type == ITEM_WEAPON and vnum != weapon_vnum
         ):
             return None

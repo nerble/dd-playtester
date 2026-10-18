@@ -87,6 +87,7 @@ from dd4tester.hunt_candidates import (
     source_mobile_can_join_target_fight,
     source_mobile_route_aggressor_is_bounded,
     source_mobile_route_program_attacker_is_bounded,
+    _bounded_borderline_route_aggressor,
     _source_key_carrier_resets,
     source_subclass_teacher_route,
     source_subclass_teacher_skill,
@@ -1917,6 +1918,33 @@ def test_candidate_ranking_rejects_unresolved_mobile_template_hp_modifier() -> N
     assert "source mobile damage modifier is unavailable" in candidate.autonomy_rejections
 
 
+def test_plain_target_peak_is_retained_as_evidence_not_a_selection_rejection() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=39,
+        character_max_hp=1,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+    candidate = next(
+        item
+        for item in candidates
+        if not item.specials
+        and any("source peak round" in hazard for hazard in item.hazards)
+    )
+
+    assert candidate.status != "reject"
+    assert candidate.target_selection_safe is True
+    assert "source peak round can exceed character HP" not in (
+        candidate.autonomy_rejections
+    )
+
+
 def test_mobile_template_area_masks_cancel_inherited_flags(tmp_path: Path) -> None:
     template = MobileTemplateSource(
         name="templated",
@@ -2439,6 +2467,44 @@ def test_water_breathing_philter_is_a_distinct_source_resource_effect() -> None:
         assert activation.command == "quaff"
         assert activation.consumes_object is True
     assert resource_effects_for_object(item, effect="flight") == ()
+
+
+def test_wearable_aqualung_is_a_persistent_source_resource() -> None:
+    item = ObjectSource(
+        205,
+        "bladder inflatable",
+        "an inflatable bladder",
+        ITEM_ARMOR,
+        (4, 0, 0, 0),
+        0,
+        wear_flags=1025,
+        affects=((40, -1),),
+    )
+
+    assert resource_effects_for_object(item) == ("water-breathing",)
+    activation = resource_activation_for_object(item, effect="underwater")
+
+    assert activation is not None
+    assert activation.spell == "breathe water"
+    assert activation.mode == "wearable"
+    assert activation.command == "wear"
+    assert not activation.consumes_object
+    assert not activation.consumes_charge
+
+
+def test_aqualung_effect_requires_wearable_armour() -> None:
+    not_wearable = ObjectSource(
+        205, "bladder", "an inflatable bladder", ITEM_ARMOR, (), 0,
+        wear_flags=1, affects=((40, -1),),
+    )
+    wrong_effect = ObjectSource(
+        206, "bladder", "an inflatable bladder", ITEM_ARMOR, (), 0,
+        wear_flags=1025, affects=((39, -1),),
+    )
+
+    assert resource_effects_for_object(not_wearable) == ()
+    assert resource_activation_for_object(not_wearable, effect="water-breathing") is None
+    assert resource_effects_for_object(wrong_effect) == ()
 
 
 def test_area_parser_records_direct_coin_stash_resets(tmp_path: Path) -> None:
@@ -3936,12 +4002,14 @@ def test_sanctuary_mobile_damage_halves_each_strike_before_round_totals() -> Non
         wielding=False,
         dual_wielding=False,
     ) == 192
-    assert mobile_sanctuary_critical_hit_damage(33, wielding=False) == 56
+    # Source order is ordinary damage, Sanctuary halving, then critical
+    # doubling: the level-33 maximum ordinary hit is 65.
+    assert mobile_sanctuary_critical_hit_damage(33, wielding=False) == 64
     assert mobile_sanctuary_peak_round_damage(
         34,
         wielding=False,
         dual_wielding=False,
-    ) == 174
+    ) == 204
 
 
 def test_sanctuary_applies_mobile_damage_modifier_before_mitigation() -> None:
@@ -3955,7 +4023,7 @@ def test_sanctuary_applies_mobile_damage_modifier_before_mitigation() -> None:
         33,
         wielding=False,
         damage_modifier=25,
-    ) == 70
+    ) == 80
 
 
 def test_candidate_ranking_includes_aggressors_from_transit_areas(monkeypatch) -> None:
@@ -4719,6 +4787,85 @@ def test_candidate_ranking_rejects_aggressive_target_below_useful_fuzz_floor(
     assert "target is aggressive" in candidate.autonomy_rejections
 
 
+def test_candidate_ranking_allows_bounded_aggressive_consider_probe(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "knife",
+                "a large knife",
+                13,
+                ACT_AGGRESSIVE | (1 << 6),
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Knife room", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=16,
+        character_max_hp=500,
+        include_xp_only=True,
+    )
+
+    assert candidate.estimated_level_range == (11, 15)
+    assert candidate.status == "caution"
+    assert candidate.autonomous_safe
+    assert "target is aggressive" in candidate.hazards
+    assert "target is aggressive" not in candidate.autonomy_rejections
+    assert any("live consider probe" in hazard for hazard in candidate.hazards)
+
+
+def test_bounded_aggressive_consider_probe_rejects_insufficient_health_reserve(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "knife",
+                "a large knife",
+                13,
+                ACT_AGGRESSIVE,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Knife room", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=16,
+        character_max_hp=200,
+        include_xp_only=True,
+    )
+
+    assert candidate.status == "reject"
+    assert not candidate.autonomous_safe
+    assert "target is aggressive" in candidate.autonomy_rejections
+
+
 def test_candidate_ranking_excludes_wanderer_behind_reset_closed_door(
     monkeypatch,
 ) -> None:
@@ -5070,7 +5217,7 @@ def test_candidate_ranking_omits_resets_that_cannot_award_useful_xp(monkeypatch)
     ]
 
 
-def test_candidate_ranking_rejects_source_peak_round_above_character_hp(
+def test_candidate_ranking_retains_source_peak_as_selection_evidence(
     monkeypatch,
 ) -> None:
     area = parse_area_file(FIXTURE)
@@ -5094,7 +5241,11 @@ def test_candidate_ranking_rejects_source_peak_round_above_character_hp(
         character_max_hp=50,
     )[0]
 
-    assert candidate.status == "reject"
+    # This fixture is still rejected for its aggressive route and duplicate
+    # population. The predicted peak itself must not add another selection
+    # rejection.
+    assert candidate.target_selection_safe is False
+    assert "source peak round can exceed character HP" not in candidate.autonomy_rejections
     assert "source peak round 60 >= character max HP 50" in candidate.hazards
 
 
@@ -5611,6 +5762,77 @@ def test_autonomous_filter_allows_bounded_borderline_route_aggressor(
     )
 
 
+def test_autonomous_filter_allows_unarmed_level_three_fringe_route_mobile(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    guard = MobileSource(
+        200,
+        "guard",
+        "the route guard",
+        34,
+        ACT_AGGRESSIVE | ACT_STAY_AREA,
+        0,
+        "target.are",
+    )
+    reset = MobReset(200, 7001, 1, ())
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100, "target", "the target", 39, 0, 0, "target.are",
+            ),
+            200: guard,
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Guard post", "target.are"),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[reset, MobReset(100, 7002, 1, ())],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    assert _bounded_borderline_route_aggressor(
+        world,
+        reset,
+        character_level=39,
+        character_max_hp=918,
+    )
+    [candidate] = [
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=39,
+            character_max_hp=918,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    ]
+    assert candidate.autonomous_safe
+    assert any(
+        "bounded borderline route aggressor" in hazard
+        for hazard in candidate.hazards
+    )
+
+    assert not _bounded_borderline_route_aggressor(
+        world,
+        reset,
+        character_level=39,
+        character_max_hp=700,
+    )
+    world.mob_resets.append(MobReset(200, 7002, 1, ()))
+    assert not _bounded_borderline_route_aggressor(
+        world,
+        reset,
+        character_level=39,
+        character_max_hp=918,
+    )
+
+
 def test_autonomous_filter_allows_below_band_route_aggressor_as_transit(
     monkeypatch,
 ) -> None:
@@ -6055,7 +6277,7 @@ def test_probabilistic_wandering_program_remains_explicit_route_risk() -> None:
         include_level_ceiling_candidates=True,
         level_ceiling_offset=9,
         include_all_areas=True,
-        character_max_hp=500,
+        character_max_hp=50,
         recall_origins={0: 3001},
     )
 
@@ -6065,6 +6287,26 @@ def test_probabilistic_wandering_program_remains_explicit_route_risk() -> None:
         in candidate.autonomy_rejections
         for candidate in candidates
     )
+
+    level_39_candidates = rank_hunt_candidates(
+        world,
+        character_level=39,
+        include_xp_only=True,
+        include_level_ceiling_candidates=True,
+        level_ceiling_offset=5,
+        include_all_areas=True,
+        character_max_hp=936,
+        recall_origins={0: 3001},
+    )
+    hermes = next(
+        candidate for candidate in level_39_candidates
+        if candidate.mobile_vnum == 903
+    )
+
+    assert hermes.autonomous_safe
+    assert hermes.route_preflight_command is None
+    assert 3064 not in hermes.route_attack_program_mobile_vnums
+    assert not any("drunk" in hazard.casefold() for hazard in hermes.hazards)
 
 
 def test_noncombat_special_route_crowd_does_not_block_target(monkeypatch) -> None:

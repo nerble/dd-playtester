@@ -179,6 +179,7 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     )
     assert vampire.recall_after_loot is True
 
+
     captain = route_named("Foundry Captain")
     assert captain.minimum_level == 7
     assert captain.commands[-3:] == ("west", "open south", "south")
@@ -941,4 +942,24 @@ def test_solace_magnus_route_is_source_derived_and_recall_safe() -> None:
         "open south",
         "south",
     )
+
+
+def test_olympus_apollo_consider_route_reaches_registered_source_endpoint() -> None:
+    route = route_named("Olympus Apollo Consider")
+
+    assert (route.minimum_level, route.maximum_level) == (39, 39)
+    assert route.commands == (
+        "south",
+        "up",
+        "up",
+        "north",
+        "up",
+        "up",
+        "north",
+        "north",
+        "west",
+    )
+    assert route.research_endpoint_room_vnum == 926
+    assert route.requires_flight is True
+    assert route.recall_after_loot is True
 

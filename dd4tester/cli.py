@@ -375,6 +375,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="buy and verify a source-matched detect-invisibility potion",
     )
+    magic_shop_parser.add_argument(
+        "--buy-water-breathing",
+        action="store_true",
+        help="buy and verify the source-matched water-breathing philter",
+    )
     fastwalk_parser = subcommands.add_parser(
         "fastwalk-research",
         help="verify an official recall-origin route without initiating combat",
@@ -829,6 +834,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="retry a watchdog-stalled segment instead of honoring its stall budget",
     )
     campaign_parser.add_argument(
+        "--revalidate-joan-key-once",
+        action="store_true",
+        help=(
+            "make one source- and healer-gated, required-key-only Joan attempt "
+            "for a source-audited dwarf warrior/knight; cannot be repeated "
+            "after the attempt is recorded"
+        ),
+    )
+    campaign_parser.add_argument(
         "--progress",
         action="store_true",
         help="print bounded attempt start and completion progress to stderr",
@@ -939,8 +953,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--autonomous",
         action="store_true",
         help=(
-            "continue bounded workers until the target or a durable blocker; "
-            "reset waits use a separate finite budget"
+            "compatibility flag; autonomous target pursuit is already the "
+            "default"
+        ),
+    )
+    hero_parser.add_argument(
+        "--single-segment",
+        action="store_true",
+        help=(
+            "run exactly one bounded campaign segment instead of pursuing "
+            "the target until HERO or a durable blocker"
         ),
     )
     hero_parser.add_argument(
@@ -949,7 +971,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "bounded retries after empty-area checkpoints; defaults to "
             "--segments without a runtime cap, or 0 for a bounded worker; "
-            "--autonomous defaults to one per cycle"
+            "autonomous mode defaults to one per cycle"
         ),
     )
     hero_parser.add_argument(
@@ -966,7 +988,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_AUTONOMOUS_RESET_WAITS,
         help=(
-            "total area-reset waits allowed by --autonomous, default: "
+            "total area-reset waits allowed in autonomous mode, default: "
             f"{DEFAULT_AUTONOMOUS_RESET_WAITS}"
         ),
     )
@@ -1510,6 +1532,17 @@ def _print_campaign_progress(message: str) -> None:
     print(f"Progress: {message}", file=sys.stderr, flush=True)
 
 
+def _print_campaign_result_outcomes(result: CampaignResult) -> None:
+    """Label segment outcomes separately from the campaign-level target."""
+    print(
+        "Segment outcomes: "
+        f"execution={result.outcomes['execution']}, "
+        f"objective={result.outcomes['objective']}, "
+        f"safety={result.outcomes['safety']}"
+    )
+    print(f"Campaign target: {result.target_outcome or 'unknown'}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1656,6 +1689,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.profile,
                     buy_fly=args.buy_fly,
                     buy_see_invisible=args.buy_see_invisible,
+                    buy_water_breathing=args.buy_water_breathing,
                 )
             )
         except Exception as exc:
@@ -1854,6 +1888,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_campaign_file(
                     args.config,
                     force_new=args.new,
+                    revalidate_joan_key_once=args.revalidate_joan_key_once,
                     segments=args.segments,
                     reset_retries=args.reset_retries,
                     reset_wait=args.reset_wait,
@@ -1873,6 +1908,7 @@ def main(argv: list[str] | None = None) -> int:
         if result.checkpoint_id is not None:
             print(f"Checkpoint: {result.checkpoint_id}")
         print(f"Level: {result.state.get('level', '-')}")
+        _print_campaign_result_outcomes(result)
         return 0 if result.status in {"success", "ready"} else 1
 
     if args.command == "hero":
@@ -1953,9 +1989,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 result = None
             else:
+                run_autonomously = not args.single_segment
                 hero_runner = (
                     run_hero_until_target
-                    if args.autonomous
+                    if run_autonomously
                     else run_hero_request
                 )
                 hero_options = dict(
@@ -1973,7 +2010,7 @@ def main(argv: list[str] | None = None) -> int:
                     password=args.password,
                     remember_password=args.remember_password,
                 )
-                if args.autonomous:
+                if run_autonomously:
                     hero_options.update(
                         cycles=args.segments,
                         max_reset_waits=args.max_reset_waits,
@@ -2018,6 +2055,7 @@ def main(argv: list[str] | None = None) -> int:
         if result.message:
             print(f"Status: {result.message}")
         print(f"Level: {result.state.get('level', '-')}")
+        _print_campaign_result_outcomes(result)
         return 0 if result.status in {"success", "ready"} else 1
 
     if args.command == "hero-options":
@@ -4442,8 +4480,11 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
     print(f"Profile: {campaign['character_profile_path']}")
     if campaign["error"]:
         print(f"Reason: {campaign['error']}")
+    checkpoint_state: dict[str, Any] | None = None
     if checkpoint is not None:
         state = json.loads(checkpoint["state_json"])
+        if isinstance(state, dict):
+            checkpoint_state = state
         print(
             f"Checkpoint {checkpoint['id']}: {checkpoint['phase']} "
             f"({checkpoint['reason']}), level {state.get('level', '-')}"
@@ -4460,9 +4501,12 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                 f"candidates={diagnosis.get('candidate_count', 0)} "
                 f"current-band={diagnosis.get('current_band_count', 0)} "
                 f"autonomous-safe={diagnosis.get('autonomous_safe_count', 0)} "
+                f"plain-executable={diagnosis.get('plain_executable_current_band_count', 0)} "
                 f"sanctuary-required={diagnosis.get('sanctuary_required_count', 0)} "
                 f"no-sanctuary={diagnosis.get('no_sanctuary_count', 0)} "
-                f"below-band={diagnosis.get('same_boot_below_band_count', 0)}"
+                f"below-band={diagnosis.get('same_boot_below_band_count', 0)} "
+                f"transit-hazard={diagnosis.get('same_boot_transit_hazard_count', 0)} "
+                f"cooldown={diagnosis.get('same_boot_cooldown_count', 0)}"
             )
             blockers = diagnosis.get("top_blockers")
             if isinstance(blockers, list):
@@ -4665,6 +4709,21 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                             "    same-boot history: "
                             + "; ".join(history_parts)
                         )
+    target_level = int(campaign["target_level"])
+    observed_level = (
+        checkpoint_state.get("level")
+        if checkpoint_state is not None
+        else None
+    )
+    if isinstance(observed_level, int) and not isinstance(observed_level, bool):
+        target_outcome = (
+            "achieved" if observed_level >= target_level else "not_achieved"
+        )
+        target_detail = f"level {observed_level}/{target_level}"
+    else:
+        target_outcome = "unknown"
+        target_detail = f"level ?/{target_level}"
+    print(f"Target outcome: {target_outcome} ({target_detail})")
     print(
         f"recent segments (up to {limit}; newest segment last)"
     )

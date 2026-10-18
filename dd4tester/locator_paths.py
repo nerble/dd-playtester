@@ -16,6 +16,7 @@ def source_locator_path_is_safe(
     character_level: int | None,
     require_invisibility: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
+    economic_hunt_allow_bounded_population: bool = False,
     hazard_index: SourceRouteHazardIndex | None = None,
 ) -> bool:
     # Private, solitary, and no-recall rooms introduce a recovery boundary.
@@ -34,6 +35,9 @@ def source_locator_path_is_safe(
             combat_at_destination=False,
             invisible=require_invisibility,
             economic_special_mobile_vnums=economic_special_mobile_vnums,
+            economic_hunt_allow_bounded_population=(
+                economic_hunt_allow_bounded_population
+            ),
             hazard_index=hazard_index,
         )
     )

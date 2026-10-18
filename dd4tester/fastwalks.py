@@ -31,6 +31,17 @@ class FastwalkPostCommandAction:
 
 
 @dataclass(frozen=True)
+class HuntPostCommandAction:
+    """A verified item action to run after one exact hunt stop succeeds."""
+
+    command: str
+    room_vnum: str
+    acknowledgement_fragment: str
+    verify_item_absent: str
+    source_object_vnum: int | None = None
+
+
+@dataclass(frozen=True)
 class Fastwalk:
     """A route copied from the official DD4 fastwalk list.
 
@@ -55,6 +66,11 @@ class Fastwalk:
     route_preflight_room_vnum: str | None = None
     route_preflight_command: str | None = None
     route_preflight_target: str | None = None
+    # A route may need more than one exact source identity checked with
+    # ``where``.  The legacy singular fields remain the first check for
+    # fixed routes and older callers; generated routes can provide the full
+    # ordered command/target pairs here.
+    route_preflight_checks: tuple[tuple[str, str], ...] = ()
     route_preflight_hard_hazard: bool = False
     # Source-ranked routes set this only when the catalog proved one
     # non-deterministic attack program whose live location can be rechecked.
@@ -63,6 +79,10 @@ class Fastwalk:
     # target is unsafe.  A live `where` result outside these rooms permits
     # the route to continue while the ordinary combat gates remain active.
     route_preflight_route_room_names: tuple[str, ...] = ()
+    # Wandering route aggressors can move between a safe-origin locator and
+    # the first path scan.  For source-ranked wandering hazards, any positive
+    # `where` result in the current area therefore keeps the route closed.
+    route_preflight_any_location_hazard: bool = False
     # `where` only searches the caller's current area. Source-ranked routes
     # therefore scan each adjacent destination the preflight mobile can reach.
     route_preflight_scan_room_vnums: tuple[str, ...] = ()
@@ -77,6 +97,8 @@ class Fastwalk:
     # Exact source room reached by a fixed route when a research profile
     # needs to build a bounded, area-local locator sweep from its endpoint.
     research_endpoint_room_vnum: int | None = None
+    # Routes marked here must confirm active flight before the first move.
+    requires_flight: bool = False
     # A route may be split at source-audited no-mob rooms for movement
     # recovery. Keep the complete outbound path available if recall fails
     # after the route has been shortened to its first leg.
@@ -97,12 +119,20 @@ class Fastwalk:
     # transit interruption.  The starter still requires its live GMCP VNUM;
     # this never authorizes an endpoint or progression kill.
     route_bounded_transit_special_mobile_vnums: tuple[int, ...] = ()
+    # A source-ranked route may carry one exact plain aggressive mobile inside
+    # the useful-XP band. Runtime still requires one isolated live VNUM,
+    # source description, healthy player, and bounded source output before it
+    # fights the interruption. These are route rooms, not endpoint rooms.
+    route_allowed_plain_transit_mobile_vnums: tuple[int, ...] = ()
+    route_allowed_plain_transit_room_vnums: tuple[str, ...] = ()
     # Exact noncombat quest transit only; runtime rechecks the whole purse.
     route_economic_special_mobile_vnums: tuple[int, ...] = ()
     route_economic_quest_identity: tuple[int, int, int] | None = None
     route_economic_max_copper: int | None = None
     # Ordinary XP travel has its own runtime purse gate, never a quest waiver.
     route_economic_hunt_mobile_vnums: tuple[int, ...] = ()
+    # Population-only source proof for the ordinary XP economic gate.
+    route_economic_hunt_allow_bounded_population: bool = False
     post_command_actions: tuple[FastwalkPostCommandAction, ...] = ()
 
     @property
@@ -175,6 +205,15 @@ FASTWALKS = (
 # Source-backed hunt routes omitted from show-fastwalks, which lists only the
 # site's official fastwalks.
 MAP_ROUTES = (
+    Fastwalk(
+        "olympus apollo consider",
+        39,
+        39,
+        "s;2u;n;2u;2n;w",
+        recall_after_loot=True,
+        research_endpoint_room_vnum=926,
+        requires_flight=True,
+    ),
     Fastwalk(
         "vampire catacombs bevan",
         25,

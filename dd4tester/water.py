@@ -25,7 +25,8 @@ def can_breathe_underwater(state: Mapping[str, Any]) -> bool:
             if str(value.get("name") or "").casefold() in {
                     "breathe water", "mist walk", "astral sidestep"}:
                 try:
-                    return int(value.get("duration", 0)) > 0
+                    # Worn aqualungs expose their source effect as duration -1.
+                    return int(value.get("duration", 0)) != 0
                 except (TypeError, ValueError):
                     return False
             return any(active(item) for item in value.values())

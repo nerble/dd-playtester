@@ -11,6 +11,21 @@ from typing import Any, Collection, Mapping
 _namespace_lock = RLock()
 
 
+def _same_character_name(
+    snapshots: Collection[Mapping[str, Any]],
+) -> bool:
+    """Require one explicit character identity across an evidence chain."""
+    names: set[str] = set()
+    for snapshot in snapshots:
+        if not isinstance(snapshot, Mapping):
+            return False
+        name = snapshot.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return False
+        names.add(name.strip().casefold())
+    return len(names) == 1
+
+
 def recover_flight_capacity_failure(
     storage: Any, segment: Mapping[str, Any], state: Mapping[str, Any],
 ) -> dict[str, Any] | None:
@@ -747,10 +762,11 @@ def mirror_teece_lucky_consider_revalidation_evidence(
         for key in ("level", "world_boot_id", "campaign_source_revision")
     ):
         return None
+    if not _same_character_name((state, start, end)):
+        return None
     for snapshot in (state, start, end):
         if (
-            snapshot.get("name") != "Dorrik"
-            or str(snapshot.get("room_vnum")) != "3054"
+            str(snapshot.get("room_vnum")) != "3054"
             or snapshot.get("dead") is not False
             or snapshot.get("in_combat") is not False
             or not isinstance(snapshot.get("hp"), int)
@@ -1530,7 +1546,7 @@ def _repair_moria_end_tunnel_revalidation(
     state: dict[str, Any],
     recent_segments: Collection[Any],
 ) -> dict[str, Any]:
-    """Reopen only Dorrik's safe run whose live Moria locator missed room 4073."""
+    """Reopen one exact safe run whose live Moria locator missed room 4073."""
     marker_key = _SANCTUARY_END_TUNNEL_REVALIDATION_KEY
     policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
     boot_id = state.get("world_boot_id")
@@ -3934,8 +3950,8 @@ def _refresh_campaign_policy_revision_impl(
         # Revision 315 recovers the exact live key acquisition that happened
         # before the old selector persistence crash. The failed run's latest
         # GMCP/text checkpoint carries the source-named key in inventory even
-        # though its derived object ledger is empty; do not make Dorrik kill
-        # that guard again or replay the stale sanctuary counter.
+        # though its derived object ledger is empty; do not make the active
+        # character kill that guard again or replay the stale sanctuary counter.
         current_dwarven_result = _campaign_research_results(state).get(
             dwarven_gate_policy_id
         )

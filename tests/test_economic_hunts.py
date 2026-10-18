@@ -90,11 +90,39 @@ def test_economic_route_preserves_a_separately_audited_target_special() -> None:
     assert not admitted.autonomous_safe
 
 
+def test_economic_route_allows_source_verified_adept_and_sanctuary_target() -> None:
+    candidate, world, state = economic_fixture()
+    world.mobiles[101] = replace(world.mobiles[101], affected_flags=1 << 7)
+    world.mobile_specials[101] = ("spec_cast_adept",)
+    world.objects[202] = ObjectSource(
+        202, "rose ring", "a rose-colored ring", 9, (0, 0, 0, 0), 0,
+        affects=((13, 25), (3, 1)),
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0], object_vnums=(202,), equipment=((5, 202),),
+    )
+    candidate = replace(candidate, specials=("spec_cast_adept",))
+
+    admitted = economic_hunt_candidate(candidate, state, world)
+
+    assert admitted is not candidate
+    assert admitted.status == "caution" and admitted.autonomous_safe
+    assert admitted.route_economic_hunt_mobile_vnums == (102,)
+    assert admitted.autonomy_rejections == ()
+
+
+def test_economic_route_rejects_unmatched_target_special_evidence() -> None:
+    candidate, world, state = economic_fixture()
+    candidate = replace(candidate, specials=("spec_cast_adept",))
+
+    assert economic_hunt_candidate(candidate, state, world) is candidate
+
+
 @pytest.mark.parametrize("change", [
     "rich", "missing_coins", "extra_rejection", "target_special", "target_weapon",
     "wanderer", "aggressive_target", "target_affect", "unknown_object",
     "spell_item", "thief_aggressive", "thief_special", "thief_capacity",
-    "thief_damage_modifier", "thief_damage_bonus", "target_hp_bonus",
+    "thief_damage_modifier", "thief_damage_bonus", "target_damroll_bonus",
 ])
 def test_economic_route_does_not_waive_other_hazards(change: str) -> None:
     candidate, world, state = economic_fixture()
@@ -114,7 +142,7 @@ def test_economic_route_does_not_waive_other_hazards(change: str) -> None:
     elif change == "aggressive_target":
         world.mobiles[101] = replace(world.mobiles[101], act_flags=34)
     elif change == "target_affect":
-        world.mobiles[101] = replace(world.mobiles[101], affected_flags=128)
+        world.mobiles[101] = replace(world.mobiles[101], affected_flags=1)
     elif change == "unknown_object":
         del world.objects[201]
     elif change == "spell_item":
@@ -129,9 +157,9 @@ def test_economic_route_does_not_waive_other_hazards(change: str) -> None:
         world.mobiles[102] = replace(world.mobiles[102], damage_modifier=20)
     elif change == "thief_damage_bonus":
         world.objects[201] = replace(world.objects[201], affects=((19, 50),))
-    elif change == "target_hp_bonus":
+    elif change == "target_damroll_bonus":
         world.objects[202] = ObjectSource(202, "armor", "armor", 9, (0, 0, 0, 0), 0,
-                                        affects=((13, 100),))
+                                        affects=((19, 50),))
         world.mob_resets[0] = replace(world.mob_resets[0], equipment=((5, 202),))
     assert economic_hunt_candidate(candidate, state, world) is candidate
 
@@ -233,6 +261,60 @@ def test_economic_population_remains_capacity_research_with_original_risks() -> 
     assert admitted.autonomy_rejections == ("target reset capacity exceeds one",)
     assert admitted.route_economic_source_rejections == candidate.autonomy_rejections
     assert plain_bounded_population(admitted, world)
+
+
+def test_population_economic_route_allows_exact_bounded_thief_resets() -> None:
+    candidate, world, state = population_economic_fixture()
+    world.mob_resets = [
+        *world.mob_resets[:-1],
+        MobReset(102, 302, 2, ()),
+        MobReset(102, 304, 2, ()),
+    ]
+
+    admitted = economic_hunt_candidate(candidate, state, world)
+
+    assert admitted is not candidate
+    assert admitted.status == "reject"
+    assert admitted.autonomy_rejections == ("target reset capacity exceeds one",)
+    assert admitted.route_economic_hunt_mobile_vnums == (102,)
+    assert admitted.route_economic_population is True
+    assert admitted.route_economic_source_rejections == (
+        "target reset capacity exceeds one",
+        "an economic special mobile can reach the route",
+    )
+    route = Fastwalk(
+        "population economic hunt",
+        1,
+        100,
+        "1n",
+        route_economic_hunt_mobile_vnums=(102,),
+        route_economic_hunt_allow_bounded_population=True,
+    )
+    assert economic_hunt_runtime_issue(
+        route,
+        world,
+        level=30,
+        currencies=state["currencies"],
+        allow_bounded_population=True,
+    ) is None
+
+
+@pytest.mark.parametrize("change", ["different_counts", "equipped"])
+def test_population_economic_route_rejects_unbounded_thief_resets(change: str) -> None:
+    candidate, world, state = population_economic_fixture()
+    world.mob_resets = [
+        *world.mob_resets[:-1],
+        MobReset(102, 302, 2, ()),
+        MobReset(102, 304, 2, ()),
+    ]
+    if change == "different_counts":
+        world.mob_resets[-1] = replace(world.mob_resets[-1], maximum_count=3)
+    else:
+        world.mob_resets[-1] = replace(
+            world.mob_resets[-1], equipment=((13, 201),),
+        )
+
+    assert economic_hunt_candidate(candidate, state, world) is candidate
 
 
 @pytest.mark.parametrize("change", ["fifth_reset", "duplicate_room", "spell_loadout", "rich"])

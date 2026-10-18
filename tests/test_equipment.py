@@ -558,6 +558,9 @@ def test_keys_are_not_added_to_or_retained_by_stance_gear() -> None:
 
 def test_item_normalization_discards_ephemeral_targetmode_selector() -> None:
     assert normalize_item_name("[#24943] a strange amulet") == "strange amulet"
+    assert normalize_item_name(
+        "\x1b[38;5;121m(Glowing)\x1b[0ma spiked key"
+    ) == "spiked key"
 
 
 def test_catalog_matches_some_prefixed_multisentence_room_object() -> None:

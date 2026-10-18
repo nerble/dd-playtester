@@ -3,8 +3,10 @@ from dataclasses import replace
 import pytest
 
 from dd4tester.hunt_candidates import (
-    HuntCandidate, MobReset, MobileSource, ObjectSource, SourceCombatOutput, WorldSource,
+    ACT_AGGRESSIVE, ACT_SCAVENGER, ACT_SENTINEL, ITEM_POTION, HuntCandidate, MobReset, MobileSource,
+    ObjectSource, SourceCombatOutput, WorldSource,
 )
+from dd4tester.equipment import ITEM_BOW
 from dd4tester.mobile_loadouts import (
     sanctuary_limited_output,
     single_weapon_loadout,
@@ -50,6 +52,23 @@ def test_passive_wanderer_loadout_bounds_weapon_and_health_fuzz() -> None:
     assert loadout.critical_damage(candidate) == 144
 
 
+def test_aggressive_weapon_loadout_requires_explicit_singleton_admission() -> None:
+    candidate, world = loadout_fixture()
+    world.mobiles[101] = replace(
+        world.mobiles[101],
+        act_flags=ACT_AGGRESSIVE | ACT_SENTINEL,
+    )
+
+    assert single_weapon_loadout(candidate, world) is None
+    admitted = single_weapon_loadout(
+        candidate,
+        world,
+        allow_aggressive=True,
+    )
+    assert admitted is not None
+    assert admitted.weapon_vnum == 201
+
+
 def test_nonrandomised_loadout_keeps_exact_affects() -> None:
     candidate, world = loadout_fixture()
     world.objects = {vnum: replace(item, extra_flags=1 << 37)
@@ -57,6 +76,38 @@ def test_nonrandomised_loadout_keeps_exact_affects() -> None:
     loadout = single_weapon_loadout(candidate, world)
     assert loadout is not None
     assert (loadout.damage_bonus, loadout.hitpoint_bonus) == (2, 10)
+
+
+def test_npc_wielded_bow_uses_ordinary_melee_loadout_bounds() -> None:
+    candidate, world = loadout_fixture()
+    world.objects[201] = replace(world.objects[201], extra_flags=ITEM_BOW)
+
+    loadout = single_weapon_loadout(candidate, world)
+
+    assert loadout is not None
+    assert loadout.weapon_vnum == 201
+    assert loadout.damage_bonus == 3
+
+
+def test_scavenger_with_source_verified_support_and_carried_potion_keeps_wield_bounds() -> None:
+    candidate, world = loadout_fixture()
+    world.mobiles[101] = replace(
+        world.mobiles[101], act_flags=ACT_SCAVENGER,
+    )
+    world.mobile_specials[101] = ("spec_cast_adept",)
+    candidate = replace(candidate, specials=("spec_cast_adept",))
+    world.objects[201] = replace(world.objects[201], extra_flags=1 << 30)
+    potion = ObjectSource(204, "potion", "a potion", ITEM_POTION, (0, 0, 0, 0), 10)
+    world.objects[204] = potion
+    world.mob_resets[0] = replace(
+        world.mob_resets[0], object_vnums=(201, 202, 203, 204),
+    )
+
+    loadout = single_weapon_loadout(candidate, world)
+
+    assert loadout is not None
+    assert loadout.weapon_vnum == 201
+    assert loadout.damage_bonus == 3
 
 
 def test_target_sanctuary_reduces_normal_and_opening_output() -> None:
@@ -77,19 +128,15 @@ def test_target_sanctuary_reduces_normal_and_opening_output() -> None:
     assert (limited.maximum_actions, limited.resource_cost) == (12, 0)
 
 
-def test_protection_is_admitted_only_when_source_alignment_makes_it_irrelevant() -> None:
+def test_target_protection_does_not_change_its_outgoing_damage_bound() -> None:
     candidate, world = loadout_fixture()
     world.mobiles[101] = replace(
         world.mobiles[101], affected_flags=1 << 13, alignment=-750,
     )
 
-    assert single_weapon_loadout(candidate, world) is None
-    assert single_weapon_loadout(
-        candidate, world, character_alignment=-875,
-    ) is not None
-    assert single_weapon_loadout(
-        candidate, world, character_alignment=1000,
-    ) is None
+    assert single_weapon_loadout(candidate, world) is not None
+    world.mobiles[101] = replace(world.mobiles[101], alignment=1000)
+    assert single_weapon_loadout(candidate, world) is not None
 
 
 def test_unarmed_singleton_admits_only_a_zero_effect_held_instrument() -> None:
@@ -126,9 +173,9 @@ def test_unarmed_singleton_admits_only_a_zero_effect_held_instrument() -> None:
 
 @pytest.mark.parametrize("change", [
     "capacity", "multiple_resets", "dual", "duplicate_slot", "aggressive",
-    "scavenger", "special", "poisoned", "spell_item", "unknown_object",
+    "special", "poisoned", "spell_item", "unknown_object",
     "critical", "swiftness", "fickle", "strong_randomiser", "wrong_weapon",
-    "damage_mismatch", "rank", "protect", "battle_aura", "globe",
+    "damage_mismatch", "rank", "battle_aura", "globe",
 ])
 def test_uncertain_or_dangerous_loadout_is_not_admitted(change: str) -> None:
     candidate, world = loadout_fixture()
@@ -140,9 +187,8 @@ def test_uncertain_or_dangerous_loadout_is_not_admitted(change: str) -> None:
     elif change in {"dual", "duplicate_slot"}:
         world.mob_resets[0] = replace(reset, equipment=reset.equipment + (
             (18 if change == "dual" else 16, 201),))
-    elif change in {"aggressive", "scavenger"}:
-        world.mobiles[101] = replace(world.mobiles[101], act_flags=1 | (
-            1 << 5 if change == "aggressive" else 1 << 2))
+    elif change == "aggressive":
+        world.mobiles[101] = replace(world.mobiles[101], act_flags=1 | (1 << 5))
     elif change == "special":
         world.mobile_specials[101] = ("spec_poison",)
     elif change == "poisoned":
@@ -165,7 +211,7 @@ def test_uncertain_or_dangerous_loadout_is_not_admitted(change: str) -> None:
         candidate = replace(candidate, source_damage_modifier=25)
     elif change == "rank":
         world.mobiles[101] = replace(world.mobiles[101], rank="boss")
-    elif change in {"protect", "battle_aura", "globe"}:
-        bit = {"protect": 13, "battle_aura": 22, "globe": 24}[change]
+    elif change in {"battle_aura", "globe"}:
+        bit = {"battle_aura": 22, "globe": 24}[change]
         world.mobiles[101] = replace(world.mobiles[101], affected_flags=1 << bit)
     assert single_weapon_loadout(candidate, world) is None

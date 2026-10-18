@@ -22,6 +22,7 @@ from .hunt_candidates import (
     _mobile_level_range,
     _mobile_peak_round_damage,
     mobile_expected_round_damage,
+    mobile_sanctuary_peak_round_damage,
 )
 
 
@@ -111,6 +112,9 @@ def displaced_sentinel_reset_room(
 class SourcePairBudget(EncounterBudget):
     level_ceiling: int = 0
     target_hp_ceiling: int = 0
+    # This is a source-verified duplicate reset fought one instance at a
+    # time.  Its admission never uses a live or estimated target HP value.
+    source_only: bool = False
 
 
 @dataclass
@@ -159,13 +163,23 @@ def source_solo_budget(
 ) -> SourcePairBudget:
     """Price a useful easy-kill source load without pretending it is live GMCP.
 
-    The caller must bind a fresh exact-instance easy-kill consider. Use the
-    full source HP ceiling and the existing short-encounter cost calculation;
-    no companion, armor, or opening damage receives credit.
+    The caller must bind a fresh exact-instance easy-kill consider. Use source
+    level and incoming-damage bounds only; target HP remains evidence rather
+    than a permission or action-count gate.
     """
     mobile = world.mobiles.get(mobile_vnum)
-    if mobile is None or mobile.aggressive:
+    if (
+        mobile is None
+        or mobile.aggressive
+        or mobile.programs
+        or mobile.non_corporeal
+        or mobile.costs_fame
+        or world.mobile_specials.get(mobile_vnum)
+        or mobile_vnum in world.shopkeepers
+    ):
         return SourcePairBudget(False, "missing or aggressive solo source target")
+    if output is None or output.conservative_damage <= 0:
+        return SourcePairBudget(False, "missing source solo damage action")
     if not mobile.hp_modifier_known:
         return SourcePairBudget(False, "source mobile HP modifier is unavailable")
     if not mobile.damage_modifier_known:
@@ -181,21 +195,59 @@ def source_solo_budget(
         return SourcePairBudget(False, "no useful easy-kill source intersection")
     if not 0 < hp <= max_hp or hp < ceil(max_hp * .95):
         return SourcePairBudget(False, "solo admission requires near-full health")
-    hp_ceiling = _mobile_base_hp_range(
-        (lower, upper),
-        rank=mobile.rank,
-        hp_modifier=mobile.hp_modifier,
-    )[1]
-    budget = active_encounter_budget(
-        world, [{"isnpc": mobile_vnum, "level": upper, "hp": hp_ceiling, "maxhp": hp_ceiling}],
-        character_level=character_level, hp=hp, max_hp=max_hp,
-        mana=mana, max_mana=max_mana, output=output,
+    expected = mobile_expected_round_damage(
+        upper,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
     )
+    peak = _mobile_peak_round_damage(
+        upper,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
+    reserve = ceil(max_hp * 0.20)
+    # Keep a finite opening window and two command acknowledgements. This is a
+    # player-resource boundary, not an estimate of how much target HP remains.
+    actions = max(2, min(5, max(1, output.maximum_actions)))
+    mana_cost = (
+        (actions + 2) * output.resource_cost
+        if output.resource == "mana"
+        else 0
+    )
+    values = dict(
+        mobile_vnums=(mobile_vnum,),
+        actions=actions,
+        expected_incoming=expected,
+        peak_round=peak,
+        health_reserve=reserve,
+        mana_cost=mana_cost,
+        level_ceiling=upper,
+        target_hp_ceiling=0,
+    )
+    if peak >= hp - reserve:
+        return SourcePairBudget(
+            False,
+            "source solo incoming bound reaches the player's health reserve",
+            **values,
+        )
+    if output.resource == "mana" and (
+        max_mana <= 0 or mana - mana_cost < ceil(max_mana * .15)
+    ):
+        return SourcePairBudget(
+            False,
+            "source solo actions exceed the 15% mana reserve",
+            **values,
+        )
+    if output.resource not in {"actions", "mana"} or (
+        output.resource == "actions" and output.resource_cost
+    ):
+        return SourcePairBudget(False, "unsupported solo damage resource", **values)
     return SourcePairBudget(
-        budget.allowed, "source-bounded solo: " + budget.reason,
-        budget.mobile_vnums, budget.actions, budget.expected_incoming,
-        budget.peak_round, budget.health_reserve, budget.mana_cost,
-        upper, hp_ceiling,
+        True,
+        "source-bounded solo: target HP is not used",
+        **values,
     )
 
 
@@ -207,9 +259,9 @@ def source_pair_budget(
     """Admit an observed easy-kill pair to a measured probe, not a predicted win.
 
     Both instances must separately pass exact live easy-kill considers at the
-    caller. Source ceilings reserve damage actions for two full-health loads.
-    Initial admission covers two expected rounds plus the withdrawal reserve;
-    subsequent continuation requires the measured combined incoming damage.
+    caller. Source level and incoming-damage bounds reserve a finite measured
+    window. Subsequent continuation uses the player's own health, time, and
+    command reserves rather than target HP.
     No armor, avoided attacks, sanctuary or opening damage receives credit.
     """
     mobile = world.mobiles.get(mobile_vnum)
@@ -236,12 +288,7 @@ def source_pair_budget(
         return SourcePairBudget(False, "source range has no useful easy-kill intersection")
     if not 0 < hp <= max_hp or hp < ceil(max_hp * .95):
         return SourcePairBudget(False, "pair admission requires fresh near-full health")
-    hp_ceiling = _mobile_base_hp_range(
-        (lower, upper),
-        rank=mobile.rank,
-        hp_modifier=mobile.hp_modifier,
-    )[1]
-    actions = 2 * ceil(hp_ceiling / output.conservative_damage)
+    actions = max(4, min(8, 2 * max(1, output.maximum_actions)))
     peak = 2 * _mobile_peak_round_damage(
         upper,
         wielding=False,
@@ -266,10 +313,8 @@ def source_pair_budget(
     values = dict(
         mobile_vnums=(mobile_vnum, mobile_vnum), actions=actions,
         expected_incoming=probe_damage, peak_round=peak, health_reserve=reserve,
-        mana_cost=mana_cost, level_ceiling=upper, target_hp_ceiling=hp_ceiling,
+        mana_cost=mana_cost, level_ceiling=upper, target_hp_ceiling=0,
     )
-    if actions > min(10, output.maximum_actions):
-        return SourcePairBudget(False, "pair exceeds the bounded damage-action budget", **values)
     if peak >= hp or probe_damage >= hp - reserve:
         return SourcePairBudget(False, "pair probe exceeds the current health reserve", **values)
     if output.resource == "mana":
@@ -277,7 +322,123 @@ def source_pair_budget(
             return SourcePairBudget(False, "pair exceeds the current mana reserve", **values)
     elif output.resource != "actions" or output.resource_cost:
         return SourcePairBudget(False, "unsupported pair damage resource", **values)
-    return SourcePairBudget(True, "source-estimated pair fits a measured probe", **values)
+    return SourcePairBudget(
+        True,
+        "source-level pair fits a measured probe; target HP is not used",
+        **values,
+    )
+
+
+def source_duplicate_pair_budget(
+    world: WorldSource,
+    mobile_vnum: int,
+    *,
+    room_vnum: int,
+    character_level: int,
+    hp: int,
+    max_hp: int,
+    mana: int,
+    max_mana: int,
+    output: SourceCombatOutput | None,
+    sanctuary_mitigation: bool = False,
+) -> SourcePairBudget:
+    """Admit two exact copies of one plain armed reset for sequential kills.
+
+    The reset, mobile flags, live ``consider`` results, and the player's own
+    resources are the admission evidence.  Target HP is deliberately absent:
+    the runtime controller owns the 20% withdrawal floor and the finite
+    encounter deadline.
+    """
+    mobile = world.mobiles.get(mobile_vnum)
+    if mobile is None or output is None or output.conservative_damage <= 0:
+        return SourcePairBudget(False, "missing source mobile or executable damage")
+    if (
+        not mobile.sentinel or mobile.wanders or mobile.aggressive
+        or mobile.fear_aura or mobile.programs or mobile.attack_programs
+        or mobile.non_corporeal or mobile.costs_fame
+        or world.mobile_specials.get(mobile_vnum)
+        or mobile_vnum in world.shopkeepers
+    ):
+        return SourcePairBudget(False, "duplicate pair requires a plain sentinel reset")
+    if not mobile.damage_modifier_known:
+        return SourcePairBudget(False, "source mobile damage modifier is unavailable")
+    resets = [
+        reset for reset in world.mob_resets
+        if reset.mobile_vnum == mobile_vnum
+    ]
+    if len(resets) != 1 or resets[0].room_vnum != room_vnum:
+        return SourcePairBudget(False, "duplicate pair reset is not unique to this room")
+    reset = resets[0]
+    if reset.maximum_count != 2:
+        return SourcePairBudget(False, "duplicate pair reset does not load exactly two copies")
+    weapons = [
+        object_vnum
+        for slot, object_vnum in reset.equipment
+        if slot in {WEAR_WIELD, WEAR_DUAL}
+    ]
+    if len(reset.equipment) != 1 or len(weapons) != 1:
+        return SourcePairBudget(False, "duplicate pair reset is not a single-weapon loadout")
+    weapon = world.objects.get(weapons[0])
+    if weapon is None or weapon.item_type != ITEM_WEAPON:
+        return SourcePairBudget(False, "duplicate pair weapon is not source-verified")
+    if character_level <= 0 or not 0 < hp <= max_hp:
+        return SourcePairBudget(False, "duplicate pair is missing live player resources")
+    if hp < ceil(max_hp * .95):
+        return SourcePairBudget(False, "duplicate pair admission requires near-full health")
+    lower, upper = _mobile_level_range(mobile.level)
+    lower = max(lower, character_level - 4)
+    upper = min(upper, character_level + 5)
+    if lower <= 0 or lower > upper:
+        return SourcePairBudget(False, "duplicate pair has no source level intersection")
+    expected_one = mobile_expected_round_damage(
+        upper,
+        wielding=True,
+        dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
+    peak_one = (
+        mobile_sanctuary_peak_round_damage(
+            upper,
+            wielding=True,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+        if sanctuary_mitigation
+        else _mobile_peak_round_damage(
+            upper,
+            wielding=True,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+    )
+    reserve = ceil(max_hp * .20)
+    values = dict(
+        mobile_vnums=(mobile_vnum, mobile_vnum),
+        # This is a time/command bound, not a target-HP estimate.
+        actions=max(4, min(24, 2 * max(1, output.maximum_actions))),
+        expected_incoming=(expected_one // 2 if sanctuary_mitigation else expected_one) * 2,
+        peak_round=peak_one,
+        health_reserve=reserve,
+        mana_cost=(2 * output.resource_cost if output.resource == "mana" else 0),
+        level_ceiling=upper,
+        target_hp_ceiling=0,
+        source_only=True,
+    )
+    if peak_one >= hp - reserve:
+        return SourcePairBudget(False, "duplicate pair source damage reaches the 20% reserve", **values)
+    if output.resource == "mana" and (
+        max_mana <= 0 or mana - values["mana_cost"] < ceil(max_mana * .15)
+    ):
+        return SourcePairBudget(False, "duplicate pair would consume the 15% mana reserve", **values)
+    if output.resource not in {"actions", "mana"} or (
+        output.resource == "actions" and output.resource_cost
+    ):
+        return SourcePairBudget(False, "unsupported duplicate pair damage resource", **values)
+    return SourcePairBudget(
+        True,
+        "source duplicate reset and live considers fit a sequential pair",
+        **values,
+    )
 
 
 def solo_continuation_budget(
@@ -288,15 +449,16 @@ def solo_continuation_budget(
 ) -> EncounterBudget:
     """Reprice an already-bound solo fight against its remaining resources.
 
-    A fixed fraction of initial target HP is not a remaining-fight estimate.
-    Retain source ceilings and measured loss/time projections instead. This
-    function never admits a new target or extends the controller's deadline.
+    Target HP is not a remaining-fight estimate. Retain source level checks,
+    the player's own health/resource floors, and the fixed time/command
+    boundary. This function never admits a new target or extends the deadline.
     """
     if len(enemies) != 1:
         return EncounterBudget(False, "solo continuation requires one live opponent")
     budget = active_encounter_budget(
         world, enemies, character_level=character_level, hp=hp, max_hp=max_hp,
         mana=mana, max_mana=max_mana, output=output,
+        target_hp_evidence_only=True,
     )
     if not budget.allowed:
         return budget
@@ -305,17 +467,10 @@ def solo_continuation_budget(
         reason = "solo finish exceeds the remaining command reserve"
     elif remaining_seconds <= COMBAT_WAIT_SECONDS or elapsed < 0:
         reason = "solo finish has no remaining time reserve"
-    elif elapsed >= 12 and effective_damage <= 0:
-        reason = "solo opponent made no net damage progress within twelve seconds"
-    elif elapsed >= 2 * COMBAT_WAIT_SECONDS and effective_damage > 0:
-        remaining_hp = int(enemies[0]["hp"])
-        projected_loss = ceil(remaining_hp * max(0, received_damage) / effective_damage)
-        # The observed wall-clock rate already includes input and round waits.
-        projected_seconds = remaining_hp * elapsed / effective_damage
-        if projected_loss >= hp - budget.health_reserve:
-            reason = "solo measured exchange exceeds the remaining health reserve"
-        elif projected_seconds >= remaining_seconds:
-            reason = "solo measured finish exceeds the original encounter deadline"
+    # Target HP and measured target progress are retained by the caller for
+    # evidence/reporting, but never decide whether this already-open fight
+    # continues. The player's own health, resources, time, and command caps
+    # remain authoritative.
     return replace(budget, allowed=False, reason=reason) if reason else budget
 
 
@@ -329,16 +484,20 @@ def active_encounter_budget(
     mana: int,
     max_mana: int,
     output: SourceCombatOutput | None,
-    target_hp_evidence_only: bool = False,
+    # Target HP is observation data by default. The compatibility flag is
+    # retained for checkpoint callers, but current callers should leave it on.
+    target_hp_evidence_only: bool = True,
     maximum_level_offsets_by_vnum: Mapping[int, int] | None = None,
     allowed_adept_special_vnums: Collection[int] = (),
+    allowed_caerlin_special_vnums: Collection[int] = (),
 ) -> EncounterBudget:
     """Estimate a short finish without granting permission to start combat.
 
     Assume every active enemy contributes damage, including below-band mobs.
-    Budget the worst defeat order and two utility/acknowledgement rounds; no
-    armor, sanctuary, opening attack, or unobserved skill receives credit.
-    Live HP, resource, plateau, and identity checks remain runtime authorities.
+    Validate source identities, relative levels, source hazards, resources,
+    and the player's own health floor. Target HP and predicted finish length
+    are observation/report data; no armor, Sanctuary, opening attack, or
+    unobserved skill receives credit.
     """
     if not 1 <= len(enemies) <= 3:
         return EncounterBudget(False, "active encounter must contain one to three enemies")
@@ -358,6 +517,7 @@ def active_encounter_budget(
             output=output,
             maximum_level_offsets_by_vnum=maximum_level_offsets_by_vnum or {},
             allowed_adept_special_vnums=allowed_adept_special_vnums,
+            allowed_caerlin_special_vnums=allowed_caerlin_special_vnums,
         )
     members: list[tuple[int, int, int]] = []
     peak = critical = 0
@@ -460,10 +620,11 @@ def _active_level_encounter_budget(
     output: SourceCombatOutput | None,
     maximum_level_offsets_by_vnum: Mapping[int, int],
     allowed_adept_special_vnums: Collection[int],
+    allowed_caerlin_special_vnums: Collection[int],
 ) -> EncounterBudget:
     """Validate live source identities and levels without using enemy HP."""
-    if not 1 <= len(enemies) <= 2:
-        return EncounterBudget(False, "level-bound encounter must contain one or two enemies")
+    if not 1 <= len(enemies) <= 3:
+        return EncounterBudget(False, "level-bound encounter must contain one to three enemies")
     if output is None or output.conservative_damage <= 0:
         return EncounterBudget(False, "no executable source-backed damage action")
     if hp <= ceil(max_hp * 0.20):
@@ -493,6 +654,7 @@ def _active_level_encounter_budget(
                 world,
                 vnum,
                 allowed_adept_special_vnums,
+                allowed_caerlin_special_vnums,
             )
             or vnum in world.shopkeepers
         ):
@@ -550,13 +712,14 @@ def _encounter_special_is_allowed(
     world: WorldSource,
     mobile_vnum: int,
     allowed_adept_special_vnums: Collection[int],
+    allowed_caerlin_special_vnums: Collection[int] = (),
 ) -> bool:
     specials = set(world.mobile_specials.get(mobile_vnum, ()))
     if not specials:
         return True
     mobile = world.mobiles.get(mobile_vnum)
     resets = [reset for reset in world.mob_resets if reset.mobile_vnum == mobile_vnum]
-    return bool(
+    adept_allowed = (
         mobile_vnum in allowed_adept_special_vnums
         and specials == {"spec_cast_adept"}
         and mobile is not None
@@ -570,6 +733,34 @@ def _encounter_special_is_allowed(
         and len(resets) == 1
         and resets[0].maximum_count == 1
     )
+    caerlin_allowed = (
+        mobile_vnum in allowed_caerlin_special_vnums
+        and mobile_vnum == 19004
+        and specials == {"spec_cast_cleric"}
+        and mobile is not None
+        and mobile.level == 35
+        and (mobile.sentinel or (mobile.wanders and mobile.stay_area))
+        and not mobile.aggressive
+        and not mobile.fear_aura
+        and not mobile.confused
+        and not mobile.programs
+        and not mobile.non_corporeal
+        and not mobile.costs_fame
+        and len(resets) == 1
+        and resets[0].room_vnum == 19068
+        and resets[0].maximum_count == 1
+        and any(
+            object_vnum == 19173
+            for _slot, object_vnum in resets[0].equipment
+        )
+        and all(
+            (item := world.objects.get(object_vnum)) is not None
+            and item.item_type != ITEM_WEAPON
+            for reset in resets
+            for _slot, object_vnum in reset.equipment
+        )
+    )
+    return adept_allowed or caerlin_allowed
 
 
 def source_multi_encounter_budget(
@@ -582,7 +773,9 @@ def source_multi_encounter_budget(
     mana: int,
     max_mana: int,
     output: SourceCombatOutput | None,
-    target_hp_evidence_only: bool = False,
+    # Target HP is observation data by default; level/consider and the
+    # player's own-health floor remain the live admission boundaries.
+    target_hp_evidence_only: bool = True,
     target_maximum_level_offset: int = 1,
     allowed_adept_special_vnums: Collection[int] = (),
     require_near_full_health: bool = True,
@@ -590,8 +783,9 @@ def source_multi_encounter_budget(
     """Price two exact easy-band source mobiles before either one engages.
 
     The caller must separately bind unique room selectors and fresh easy-kill
-    considers. Use the upper source level and HP bounds for both mobiles so
-    this admission never relies on concealed live values for the bystander.
+    considers. Use the upper source level bounds for both mobiles so this
+    admission never relies on concealed live values for the bystander; target
+    HP remains observation/report data.
     """
     if len(mobile_vnums) != 2 or len(set(mobile_vnums)) != 2:
         return EncounterBudget(False, "source material encounter needs two distinct mobiles")
@@ -730,16 +924,11 @@ def source_multi_encounter_budget(
         upper = min(upper, character_level - 2)
         if lower <= 0 or lower > upper:
             return EncounterBudget(False, "source material mobile has no easy-band level intersection")
-        hp_ceiling = _mobile_base_hp_range(
-            (lower, upper),
-            rank=mobile.rank,
-            hp_modifier=mobile.hp_modifier,
-        )[1]
         enemies.append({
             "isnpc": str(mobile_vnum),
             "level": str(upper),
-            "hp": str(hp_ceiling),
-            "maxhp": str(hp_ceiling),
+            "hp": "1",
+            "maxhp": "1",
         })
 
     budget = active_encounter_budget(
@@ -751,7 +940,19 @@ def source_multi_encounter_budget(
         mana=mana,
         max_mana=max_mana,
         output=output,
+        target_hp_evidence_only=True,
+        maximum_level_offsets_by_vnum={
+            int(mobile_vnum): target_maximum_level_offset
+            for mobile_vnum in mobile_vnums
+        },
     )
+    if budget.allowed and not target_hp_evidence_only:
+        # This is a finite command window for the source-ranked fallback, not
+        # a claim about how many attacks the target's HP requires.
+        budget = replace(
+            budget,
+            actions=max(1, min(6, 2 * max(1, output.maximum_actions))),
+        )
     return replace(
         budget,
         reason="source-estimated two-mobile encounter: " + budget.reason,
